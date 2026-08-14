@@ -7,11 +7,12 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/pkg/errors"
 	"github.com/xolo-gateway/xolo/internal/core/model"
 	"github.com/xolo-gateway/xolo/internal/core/port"
 	"github.com/xolo-gateway/xolo/internal/core/rbac"
 	"github.com/xolo-gateway/xolo/internal/core/secretcleanup"
-	"github.com/pkg/errors"
+	httpCtx "github.com/xolo-gateway/xolo/internal/http/context"
 )
 
 // mwResource adapts the middleware store to the generic pipeline graph handlers.
@@ -246,7 +247,7 @@ func (h *Handler) orgForPerm(w http.ResponseWriter, r *http.Request, perm rbac.P
 	ctx := r.Context()
 	orgSlug := r.PathValue("orgSlug")
 
-	org, err := h.orgStore.GetOrgBySlug(ctx, orgSlug)
+	org, err := h.orgStore.GetOrgBySlug(ctx, httpCtx.TenantID(ctx), orgSlug)
 	if err != nil {
 		if errors.Is(err, port.ErrNotFound) {
 			http.Error(w, "org not found", http.StatusNotFound)

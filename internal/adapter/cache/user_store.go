@@ -45,12 +45,12 @@ func (s *UserStore) FindAuthToken(ctx context.Context, token string) (model.Auth
 }
 
 // FindOrCreateUser implements [port.UserStore].
-func (s *UserStore) FindOrCreateUser(ctx context.Context, provider string, subject string) (model.User, error) {
-	if user, exists := s.userCache.Get(getUserProviderSubjectCacheKey(provider, subject)); exists {
+func (s *UserStore) FindOrCreateUser(ctx context.Context, tenantID model.TenantID, provider string, subject string) (model.User, error) {
+	if user, exists := s.userCache.Get(getUserProviderSubjectCacheKey(tenantID, provider, subject)); exists {
 		return user, nil
 	}
 
-	user, err := s.backend.FindOrCreateUser(ctx, provider, subject)
+	user, err := s.backend.FindOrCreateUser(ctx, tenantID, provider, subject)
 	if err != nil {
 		return nil, err
 	}
@@ -61,12 +61,12 @@ func (s *UserStore) FindOrCreateUser(ctx context.Context, provider string, subje
 }
 
 // GetUserByIdentity implements [port.UserStore].
-func (s *UserStore) GetUserByIdentity(ctx context.Context, provider string, subject string) (model.User, error) {
-	if user, exists := s.userCache.Get(getUserProviderSubjectCacheKey(provider, subject)); exists {
+func (s *UserStore) GetUserByIdentity(ctx context.Context, tenantID model.TenantID, provider string, subject string) (model.User, error) {
+	if user, exists := s.userCache.Get(getUserProviderSubjectCacheKey(tenantID, provider, subject)); exists {
 		return user, nil
 	}
 
-	user, err := s.backend.GetUserByIdentity(ctx, provider, subject)
+	user, err := s.backend.GetUserByIdentity(ctx, tenantID, provider, subject)
 	if err != nil {
 		return nil, err
 	}

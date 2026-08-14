@@ -76,6 +76,12 @@ func (h *Handler) getUserFromToken(ctx context.Context, token string) (*authn.Us
 		if !app.Active() {
 			return nil, errors.WithStack(port.ErrNotFound)
 		}
+
+		org, err := h.orgStore.GetOrgByID(ctx, authToken.OrgID())
+		if err != nil {
+			return nil, errors.WithStack(err)
+		}
+
 		// Provider/Subject are what permission resolution keys off to map the
 		// request back to the application and its org roles — see
 		// memberships.newPermissionResolver.
@@ -85,6 +91,7 @@ func (h *Handler) getUserFromToken(ctx context.Context, token string) (*authn.Us
 			DisplayName: app.Name(),
 			OrgID:       string(authToken.OrgID()),
 			TokenID:     string(authToken.ID()),
+			TenantID:    string(org.TenantID()),
 		}, nil
 	}
 
@@ -111,5 +118,6 @@ func (h *Handler) getUserFromToken(ctx context.Context, token string) (*authn.Us
 		DisplayName: user.DisplayName(),
 		OrgID:       string(authToken.OrgID()),
 		TokenID:     string(authToken.ID()),
+		TenantID:    string(user.TenantID()),
 	}, nil
 }

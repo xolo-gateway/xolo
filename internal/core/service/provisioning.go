@@ -3,7 +3,6 @@ package service
 import (
 	"context"
 	"log/slog"
-	"regexp"
 	"slices"
 	"strings"
 
@@ -15,17 +14,23 @@ import (
 )
 
 // ProvisioningService orchestrates the multi-store workflows needed to
-// provision organizations ("tenants" in the machine-to-machine vocabulary),
-// their members and their roles.
+// provision tenants, the organizations they own, their members and their roles.
 //
 // It is the single place where the invariants spanning several stores are
 // enforced: an organization always gets its builtin roles, it never loses its
-// last owner, roles are never assigned across organizations, and provisioning a
-// tenant administrator never grants platform-wide privileges.
+// last owner, roles are never assigned across organizations, users never cross
+// a tenant boundary, and provisioning an organization administrator never
+// grants platform-wide privileges.
 type ProvisioningService struct {
-	orgStore  port.OrgStore
-	userStore port.UserStore
-	roleStore port.RoleStore
+	tenantStore port.TenantStore
+	orgStore    port.OrgStore
+	userStore   port.UserStore
+	roleStore   port.RoleStore
+
+	// multiTenant reports whether the instance may hold more than one tenant.
+	// When false, the API serves the single default tenant but refuses to
+	// create another one.
+	multiTenant bool
 
 	// reservedEmails lists the addresses the API must never write on a user.
 	// They are the instance's default administrators: the authentication bridge
@@ -49,11 +54,21 @@ func WithReservedEmails(emails ...string) ProvisioningServiceOptionFunc {
 	}
 }
 
-func NewProvisioningService(orgStore port.OrgStore, userStore port.UserStore, roleStore port.RoleStore, funcs ...ProvisioningServiceOptionFunc) *ProvisioningService {
+// WithMultiTenant allows the service to provision more than one tenant. It
+// mirrors XOLO_MULTITENANCY_ENABLED: on a single-tenant instance, creating a
+// second tenant would produce organizations no hostname can ever reach.
+func WithMultiTenant(enabled bool) ProvisioningServiceOptionFunc {
+	return func(s *ProvisioningService) {
+		s.multiTenant = enabled
+	}
+}
+
+func NewProvisioningService(tenantStore port.TenantStore, orgStore port.OrgStore, userStore port.UserStore, roleStore port.RoleStore, funcs ...ProvisioningServiceOptionFunc) *ProvisioningService {
 	s := &ProvisioningService{
-		orgStore:  orgStore,
-		userStore: userStore,
-		roleStore: roleStore,
+		tenantStore: tenantStore,
+		orgStore:    orgStore,
+		userStore:   userStore,
+		roleStore:   roleStore,
 	}
 
 	for _, fn := range funcs {
@@ -61,6 +76,138 @@ func NewProvisioningService(orgStore port.OrgStore, userStore port.UserStore, ro
 	}
 
 	return s
+}
+
+type CreateTenantParams struct {
+	Slug        string
+	Name        string
+	Description string
+	Active      *bool
+}
+
+// CreateTenant creates a tenant. It is refused on a single-tenant instance:
+// without multi-tenancy no hostname resolves to a second tenant, so its
+// organizations would be unreachable.
+func (s *ProvisioningService) CreateTenant(ctx context.Context, params CreateTenantParams) (model.Tenant, error) {
+	if !s.multiTenant {
+		return nil, errors.Wrap(port.ErrNotAllowed, "this instance runs in single-tenant mode; set XOLO_MULTITENANCY_ENABLED=true to provision additional tenants")
+	}
+
+	if err := validateSlug(params.Slug); err != nil {
+		return nil, errors.WithStack(err)
+	}
+
+	name := strings.TrimSpace(params.Name)
+	if name == "" {
+		return nil, errors.Wrap(port.ErrInvalid, "name is required")
+	}
+
+	// Explicit pre-check so the conflict carries the existing identifier, which
+	// is what an external reconciler needs. The unique constraint on the slug
+	// remains the authoritative backstop.
+	if existing, err := s.tenantStore.GetTenantBySlug(ctx, params.Slug); err == nil {
+		return nil, errors.Wrapf(port.ErrAlreadyExists, "tenant with slug %q already exists (id: %s)", params.Slug, existing.ID())
+	} else if !errors.Is(err, port.ErrNotFound) {
+		return nil, errors.WithStack(err)
+	}
+
+	tenant := model.NewTenant(params.Slug, name, strings.TrimSpace(params.Description))
+	if params.Active != nil {
+		tenant = model.UpdateTenant(tenant, model.WithTenantActive(*params.Active))
+	}
+
+	if err := s.tenantStore.CreateTenant(ctx, tenant); err != nil {
+		return nil, errors.WithStack(err)
+	}
+
+	return tenant, nil
+}
+
+func (s *ProvisioningService) GetTenant(ctx context.Context, tenantID model.TenantID) (model.Tenant, error) {
+	tenant, err := s.tenantStore.GetTenantByID(ctx, tenantID)
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+	return tenant, nil
+}
+
+func (s *ProvisioningService) GetTenantBySlug(ctx context.Context, slug string) (model.Tenant, error) {
+	tenant, err := s.tenantStore.GetTenantBySlug(ctx, slug)
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+	return tenant, nil
+}
+
+func (s *ProvisioningService) ListTenants(ctx context.Context, opts port.ListTenantsOptions) ([]model.Tenant, int64, error) {
+	tenants, total, err := s.tenantStore.ListTenants(ctx, opts)
+	if err != nil {
+		return nil, 0, errors.WithStack(err)
+	}
+	return tenants, total, nil
+}
+
+type UpdateTenantParams struct {
+	Name        *string
+	Description *string
+	Active      *bool
+}
+
+// UpdateTenant applies the provided fields to an existing tenant. The slug is
+// immutable: it is the stable handle external systems reconcile on, and in
+// multi-tenant mode it is also the hostname label routing to the tenant.
+func (s *ProvisioningService) UpdateTenant(ctx context.Context, tenantID model.TenantID, params UpdateTenantParams) (model.Tenant, error) {
+	tenant, err := s.tenantStore.GetTenantByID(ctx, tenantID)
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+
+	opts := make([]model.TenantOption, 0, 3)
+
+	if params.Name != nil {
+		name := strings.TrimSpace(*params.Name)
+		if name == "" {
+			return nil, errors.Wrap(port.ErrInvalid, "name can not be empty")
+		}
+		opts = append(opts, model.WithTenantName(name))
+	}
+	if params.Description != nil {
+		opts = append(opts, model.WithTenantDescription(strings.TrimSpace(*params.Description)))
+	}
+	if params.Active != nil {
+		if !*params.Active && tenant.Slug() == model.DefaultTenantSlug {
+			return nil, errors.Wrap(port.ErrNotAllowed, "the default tenant can not be deactivated")
+		}
+		opts = append(opts, model.WithTenantActive(*params.Active))
+	}
+
+	updated := model.UpdateTenant(tenant, opts...)
+
+	if err := s.tenantStore.SaveTenant(ctx, updated); err != nil {
+		return nil, errors.WithStack(err)
+	}
+
+	return updated, nil
+}
+
+// DeleteTenant removes a tenant and everything it owns. The default tenant is
+// never deletable: it is the fallback every single-tenant instance resolves to,
+// and losing it would leave the instance unusable.
+func (s *ProvisioningService) DeleteTenant(ctx context.Context, tenantID model.TenantID) error {
+	tenant, err := s.tenantStore.GetTenantByID(ctx, tenantID)
+	if err != nil {
+		return errors.WithStack(err)
+	}
+
+	if tenant.Slug() == model.DefaultTenantSlug {
+		return errors.Wrap(port.ErrNotAllowed, "the default tenant can not be deleted")
+	}
+
+	if err := s.tenantStore.DeleteTenant(ctx, tenantID); err != nil {
+		return errors.WithStack(err)
+	}
+
+	return nil
 }
 
 // assertEmailAllowed rejects an email reserved for the instance administrators.
@@ -77,12 +224,6 @@ func (s *ProvisioningService) assertEmailAllowed(email *string) error {
 	return nil
 }
 
-// slugPattern matches a DNS-label-like identifier, the form external systems
-// (Kubernetes operators, Terraform providers) can always produce.
-var slugPattern = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]*[a-z0-9])?$`)
-
-const maxSlugLength = 63
-
 // UserIdentityParams describes a user by its authentication identity. The
 // provider/subject tuple is required: it is the same key interactive
 // authentication uses, so a provisioned user can log in afterwards. No
@@ -95,7 +236,8 @@ type UserIdentityParams struct {
 	Active      *bool
 }
 
-type CreateTenantParams struct {
+type CreateOrganizationParams struct {
+	TenantID    model.TenantID
 	Slug        string
 	Name        string
 	Description string
@@ -103,11 +245,11 @@ type CreateTenantParams struct {
 	Active      *bool
 
 	// Owner, when set, is provisioned and granted the builtin owner role of the
-	// new tenant.
+	// new organization.
 	Owner *UserIdentityParams
 }
 
-type CreateTenantResult struct {
+type CreateOrganizationResult struct {
 	Org model.Organization
 
 	// Owner and OwnerMembership are nil when no initial owner was requested.
@@ -119,14 +261,14 @@ type CreateTenantResult struct {
 	OwnerCreated bool
 }
 
-// CreateTenant creates an organization, its builtin roles and, optionally, its
+// CreateOrganization creates an organization, its builtin roles and, optionally, its
 // initial owner.
 //
 // The stores expose no cross-store transaction, so any failure occurring after
 // the organization row exists triggers a best-effort compensation: the
 // organization is deleted (memberships cascade) to avoid leaving a half
-// provisioned tenant behind. A pre-existing user is never deleted.
-func (s *ProvisioningService) CreateTenant(ctx context.Context, params CreateTenantParams) (*CreateTenantResult, error) {
+// provisioned organization behind. A pre-existing user is never deleted.
+func (s *ProvisioningService) CreateOrganization(ctx context.Context, params CreateOrganizationParams) (*CreateOrganizationResult, error) {
 	if err := validateSlug(params.Slug); err != nil {
 		return nil, errors.WithStack(err)
 	}
@@ -147,16 +289,16 @@ func (s *ProvisioningService) CreateTenant(ctx context.Context, params CreateTen
 		}
 	}
 
-	// Explicit pre-check so the conflict carries the existing tenant identifier,
+	// Explicit pre-check so the conflict carries the existing organization identifier,
 	// which is what an external reconciler needs. The unique constraint on the
 	// slug remains the authoritative backstop.
-	if existing, err := s.orgStore.GetOrgBySlug(ctx, params.Slug); err == nil {
-		return nil, errors.Wrapf(port.ErrAlreadyExists, "tenant with slug %q already exists (id: %s)", params.Slug, existing.ID())
+	if existing, err := s.orgStore.GetOrgBySlug(ctx, params.TenantID, params.Slug); err == nil {
+		return nil, errors.Wrapf(port.ErrAlreadyExists, "organization with slug %q already exists in this tenant (id: %s)", params.Slug, existing.ID())
 	} else if !errors.Is(err, port.ErrNotFound) {
 		return nil, errors.WithStack(err)
 	}
 
-	org := model.NewOrganization(params.Slug, name, strings.TrimSpace(params.Description), currency)
+	org := model.NewOrganization(params.TenantID, params.Slug, name, strings.TrimSpace(params.Description), currency)
 	if params.Active != nil {
 		org = model.UpdateOrganization(org, model.WithOrgActive(*params.Active))
 	}
@@ -165,29 +307,29 @@ func (s *ProvisioningService) CreateTenant(ctx context.Context, params CreateTen
 		return nil, errors.WithStack(err)
 	}
 
-	result, err := s.completeTenantCreation(ctx, org, params.Owner)
+	result, err := s.completeOrganizationCreation(ctx, org, params.Owner)
 	if err != nil {
-		s.rollbackTenant(ctx, org.ID())
+		s.rollbackOrganization(ctx, org.ID())
 		return nil, errors.WithStack(err)
 	}
 
 	return result, nil
 }
 
-// completeTenantCreation performs every step following the organization
+// completeOrganizationCreation performs every step following the organization
 // insertion. It is split out so the caller can compensate on any failure.
-func (s *ProvisioningService) completeTenantCreation(ctx context.Context, org model.Organization, owner *UserIdentityParams) (*CreateTenantResult, error) {
+func (s *ProvisioningService) completeOrganizationCreation(ctx context.Context, org model.Organization, owner *UserIdentityParams) (*CreateOrganizationResult, error) {
 	if err := s.roleStore.EnsureBuiltinRoles(ctx, org.ID()); err != nil {
 		return nil, errors.WithStack(err)
 	}
 
-	result := &CreateTenantResult{Org: org}
+	result := &CreateOrganizationResult{Org: org}
 
 	if owner == nil {
 		return result, nil
 	}
 
-	user, created, err := s.ProvisionUser(ctx, *owner)
+	user, created, err := s.ProvisionUser(ctx, org.TenantID(), *owner)
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
@@ -219,32 +361,40 @@ func (s *ProvisioningService) completeTenantCreation(ctx context.Context, org mo
 	return result, nil
 }
 
-// rollbackTenant compensates a partially created tenant. Failures are logged
+// rollbackOrganization compensates a partially created organization. Failures are logged
 // rather than returned: the caller is already reporting the original error.
-func (s *ProvisioningService) rollbackTenant(ctx context.Context, orgID model.OrgID) {
+func (s *ProvisioningService) rollbackOrganization(ctx context.Context, orgID model.OrgID) {
 	if err := s.orgStore.DeleteOrg(ctx, orgID); err != nil {
-		slog.ErrorContext(ctx, "could not rollback partially created tenant",
+		slog.ErrorContext(ctx, "could not rollback partially created organization",
 			slog.String("orgID", string(orgID)), slogx.Error(errors.WithStack(err)))
 	}
 }
 
-func (s *ProvisioningService) GetTenant(ctx context.Context, orgID model.OrgID) (model.Organization, error) {
+// GetOrganization returns an organization scoped to the given tenant. An
+// organization belonging to another tenant is reported as not found: the
+// Provisionning API must not let a caller probe another tenant's identifiers.
+func (s *ProvisioningService) GetOrganization(ctx context.Context, tenantID model.TenantID, orgID model.OrgID) (model.Organization, error) {
 	org, err := s.orgStore.GetOrgByID(ctx, orgID)
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
+
+	if org.TenantID() != tenantID {
+		return nil, errors.Wrapf(port.ErrNotFound, "organization %q does not belong to tenant %q", orgID, tenantID)
+	}
+
 	return org, nil
 }
 
-func (s *ProvisioningService) GetTenantBySlug(ctx context.Context, slug string) (model.Organization, error) {
-	org, err := s.orgStore.GetOrgBySlug(ctx, slug)
+func (s *ProvisioningService) GetOrganizationBySlug(ctx context.Context, tenantID model.TenantID, slug string) (model.Organization, error) {
+	org, err := s.orgStore.GetOrgBySlug(ctx, tenantID, slug)
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
 	return org, nil
 }
 
-func (s *ProvisioningService) ListTenants(ctx context.Context, opts port.ListOrgsOptions) ([]model.Organization, int64, error) {
+func (s *ProvisioningService) ListOrganizations(ctx context.Context, opts port.ListOrgsOptions) ([]model.Organization, int64, error) {
 	orgs, total, err := s.orgStore.ListOrgs(ctx, opts)
 	if err != nil {
 		return nil, 0, errors.WithStack(err)
@@ -252,7 +402,7 @@ func (s *ProvisioningService) ListTenants(ctx context.Context, opts port.ListOrg
 	return orgs, total, nil
 }
 
-type UpdateTenantParams struct {
+type UpdateOrganizationParams struct {
 	Name              *string
 	Description       *string
 	Active            *bool
@@ -260,10 +410,10 @@ type UpdateTenantParams struct {
 	ShareQuotaEqually *bool
 }
 
-// UpdateTenant applies the provided fields to an existing tenant. The slug is
+// UpdateOrganization applies the provided fields to an existing organization. The slug is
 // immutable: it is the stable handle external systems reconcile on.
-func (s *ProvisioningService) UpdateTenant(ctx context.Context, orgID model.OrgID, params UpdateTenantParams) (model.Organization, error) {
-	org, err := s.orgStore.GetOrgByID(ctx, orgID)
+func (s *ProvisioningService) UpdateOrganization(ctx context.Context, tenantID model.TenantID, orgID model.OrgID, params UpdateOrganizationParams) (model.Organization, error) {
+	org, err := s.GetOrganization(ctx, tenantID, orgID)
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
@@ -303,7 +453,11 @@ func (s *ProvisioningService) UpdateTenant(ctx context.Context, orgID model.OrgI
 	return updated, nil
 }
 
-func (s *ProvisioningService) DeleteTenant(ctx context.Context, orgID model.OrgID) error {
+func (s *ProvisioningService) DeleteOrganization(ctx context.Context, tenantID model.TenantID, orgID model.OrgID) error {
+	if _, err := s.GetOrganization(ctx, tenantID, orgID); err != nil {
+		return errors.WithStack(err)
+	}
+
 	if err := s.orgStore.DeleteOrg(ctx, orgID); err != nil {
 		return errors.WithStack(err)
 	}
@@ -314,9 +468,9 @@ func (s *ProvisioningService) DeleteTenant(ctx context.Context, orgID model.OrgI
 // it if needed, and reports whether it was created.
 //
 // A newly created user receives exactly the "user" platform role: administering
-// a tenant must never turn into administering the Xolo instance. The platform
+// an organization must never turn into administering the Xolo instance. The platform
 // roles of an already known user are never modified here.
-func (s *ProvisioningService) ProvisionUser(ctx context.Context, params UserIdentityParams) (model.User, bool, error) {
+func (s *ProvisioningService) ProvisionUser(ctx context.Context, tenantID model.TenantID, params UserIdentityParams) (model.User, bool, error) {
 	if err := validateIdentity(params); err != nil {
 		return nil, false, errors.WithStack(err)
 	}
@@ -325,7 +479,7 @@ func (s *ProvisioningService) ProvisionUser(ctx context.Context, params UserIden
 		return nil, false, errors.WithStack(err)
 	}
 
-	existing, err := s.userStore.GetUserByIdentity(ctx, params.Provider, params.Subject)
+	existing, err := s.userStore.GetUserByIdentity(ctx, tenantID, params.Provider, params.Subject)
 	if err != nil && !errors.Is(err, port.ErrNotFound) {
 		return nil, false, errors.WithStack(err)
 	}
@@ -338,7 +492,7 @@ func (s *ProvisioningService) ProvisionUser(ctx context.Context, params UserIden
 		return updated, false, nil
 	}
 
-	created, err := s.userStore.FindOrCreateUser(ctx, params.Provider, params.Subject)
+	created, err := s.userStore.FindOrCreateUser(ctx, tenantID, params.Provider, params.Subject)
 	if err != nil {
 		return nil, false, errors.WithStack(err)
 	}
@@ -380,16 +534,23 @@ func (s *ProvisioningService) ProvisionUser(ctx context.Context, params UserIden
 	return user, fresh, nil
 }
 
-func (s *ProvisioningService) GetUser(ctx context.Context, userID model.UserID) (model.User, error) {
+// GetUser returns a user scoped to the given tenant. A user belonging to
+// another tenant is reported as not found.
+func (s *ProvisioningService) GetUser(ctx context.Context, tenantID model.TenantID, userID model.UserID) (model.User, error) {
 	user, err := s.userStore.GetUserByID(ctx, userID)
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
+
+	if user.TenantID() != tenantID {
+		return nil, errors.Wrapf(port.ErrNotFound, "user %q does not belong to tenant %q", userID, tenantID)
+	}
+
 	return user, nil
 }
 
-func (s *ProvisioningService) FindUserByIdentity(ctx context.Context, provider, subject string) (model.User, error) {
-	user, err := s.userStore.GetUserByIdentity(ctx, provider, subject)
+func (s *ProvisioningService) FindUserByIdentity(ctx context.Context, tenantID model.TenantID, provider, subject string) (model.User, error) {
+	user, err := s.userStore.GetUserByIdentity(ctx, tenantID, provider, subject)
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
@@ -418,8 +579,8 @@ type UpdateUserParams struct {
 
 // UpdateUser updates the profile fields of a user. Platform roles are
 // deliberately not exposed: the Provisionning API never grants instance-wide privileges.
-func (s *ProvisioningService) UpdateUser(ctx context.Context, userID model.UserID, params UpdateUserParams) (model.User, error) {
-	user, err := s.userStore.GetUserByID(ctx, userID)
+func (s *ProvisioningService) UpdateUser(ctx context.Context, tenantID model.TenantID, userID model.UserID, params UpdateUserParams) (model.User, error) {
+	user, err := s.GetUser(ctx, tenantID, userID)
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
@@ -482,25 +643,25 @@ type AddMemberParams struct {
 	BuiltinRoles []string
 }
 
-// AddMember adds a user to a tenant and assigns its initial roles.
+// AddMember adds a user to an organization and assigns its initial roles. The
+// user is resolved within the organization's own tenant, which is what makes
+// cross-tenant membership impossible.
 func (s *ProvisioningService) AddMember(ctx context.Context, orgID model.OrgID, params AddMemberParams) (model.Membership, error) {
-	if _, err := s.orgStore.GetOrgByID(ctx, orgID); err != nil {
+	org, err := s.orgStore.GetOrgByID(ctx, orgID)
+	if err != nil {
 		return nil, errors.WithStack(err)
 	}
 
-	var (
-		user model.User
-		err  error
-	)
+	var user model.User
 
 	switch {
 	case params.UserID != "":
-		user, err = s.userStore.GetUserByID(ctx, params.UserID)
+		user, err = s.GetUser(ctx, org.TenantID(), params.UserID)
 		if err != nil {
 			return nil, errors.WithStack(err)
 		}
 	case params.User != nil:
-		user, _, err = s.ProvisionUser(ctx, *params.User)
+		user, _, err = s.ProvisionUser(ctx, org.TenantID(), *params.User)
 		if err != nil {
 			return nil, errors.WithStack(err)
 		}
@@ -509,7 +670,7 @@ func (s *ProvisioningService) AddMember(ctx context.Context, orgID model.OrgID, 
 	}
 
 	if existing, err := s.orgStore.GetUserOrgMembership(ctx, user.ID(), orgID); err == nil {
-		return nil, errors.Wrapf(port.ErrAlreadyExists, "user is already a member of this tenant (membership id: %s)", existing.ID())
+		return nil, errors.Wrapf(port.ErrAlreadyExists, "user is already a member of this organization (membership id: %s)", existing.ID())
 	} else if !errors.Is(err, port.ErrNotFound) {
 		return nil, errors.WithStack(err)
 	}
@@ -555,9 +716,9 @@ func (s *ProvisioningService) ListMembers(ctx context.Context, orgID model.OrgID
 	return members, total, nil
 }
 
-// GetMember returns a membership scoped to the given tenant. A membership
-// belonging to another tenant is reported as not found: the Provisionning API must not
-// let a caller probe another tenant's identifiers.
+// GetMember returns a membership scoped to the given organization. A membership
+// belonging to another organization is reported as not found: the Provisionning API
+// must not let a caller probe another organization's identifiers.
 func (s *ProvisioningService) GetMember(ctx context.Context, orgID model.OrgID, membershipID model.MembershipID) (model.Membership, error) {
 	membership, err := s.orgStore.GetMembership(ctx, membershipID)
 	if err != nil {
@@ -565,14 +726,14 @@ func (s *ProvisioningService) GetMember(ctx context.Context, orgID model.OrgID, 
 	}
 
 	if membership.OrgID() != orgID {
-		return nil, errors.Wrapf(port.ErrNotFound, "membership %q does not belong to tenant %q", membershipID, orgID)
+		return nil, errors.Wrapf(port.ErrNotFound, "membership %q does not belong to organization %q", membershipID, orgID)
 	}
 
 	return membership, nil
 }
 
 // SetMemberRoles fully replaces the roles of a membership. Every role must
-// belong to the membership's tenant, and the tenant must keep at least one
+// belong to the membership's organization, and the organization must keep at least one
 // owner.
 func (s *ProvisioningService) SetMemberRoles(ctx context.Context, orgID model.OrgID, membershipID model.MembershipID, roleIDs []model.RoleID, builtinRoles []string) (model.Membership, error) {
 	membership, err := s.GetMember(ctx, orgID, membershipID)
@@ -635,8 +796,8 @@ func (s *ProvisioningService) ListRoles(ctx context.Context, orgID model.OrgID) 
 	return roles, nil
 }
 
-// GetRole returns a role scoped to the given tenant. A role belonging to
-// another tenant is reported as not found.
+// GetRole returns a role scoped to the given organization. A role belonging to
+// another organization is reported as not found.
 func (s *ProvisioningService) GetRole(ctx context.Context, orgID model.OrgID, roleID model.RoleID) (model.Role, error) {
 	role, err := s.roleStore.GetRoleByID(ctx, roleID)
 	if err != nil {
@@ -644,7 +805,7 @@ func (s *ProvisioningService) GetRole(ctx context.Context, orgID model.OrgID, ro
 	}
 
 	if role.OrgID() != orgID {
-		return nil, errors.Wrapf(port.ErrNotFound, "role %q does not belong to tenant %q", roleID, orgID)
+		return nil, errors.Wrapf(port.ErrNotFound, "role %q does not belong to organization %q", roleID, orgID)
 	}
 
 	return role, nil
@@ -755,7 +916,7 @@ func (s *ProvisioningService) DeleteRole(ctx context.Context, orgID model.OrgID,
 
 // resolveRoleIDs merges explicit role identifiers and builtin role kinds into a
 // deduplicated list, and verifies every resulting role belongs to orgID. This
-// is what makes cross-tenant role assignment impossible.
+// is what makes cross-organization role assignment impossible.
 func (s *ProvisioningService) resolveRoleIDs(ctx context.Context, orgID model.OrgID, roleIDs []model.RoleID, builtinKinds []string) ([]model.RoleID, error) {
 	if len(roleIDs) == 0 && len(builtinKinds) == 0 {
 		return nil, nil
@@ -788,7 +949,7 @@ func (s *ProvisioningService) resolveRoleIDs(ctx context.Context, orgID model.Or
 
 	for _, id := range roleIDs {
 		if _, ok := byID[id]; !ok {
-			return nil, errors.Wrapf(port.ErrInvalid, "role %q does not belong to tenant %q", id, orgID)
+			return nil, errors.Wrapf(port.ErrInvalid, "role %q does not belong to organization %q", id, orgID)
 		}
 		appendRole(id)
 	}
@@ -816,10 +977,10 @@ func (s *ProvisioningService) resolveBuiltinRole(ctx context.Context, orgID mode
 		}
 	}
 
-	return nil, errors.Wrapf(port.ErrNotFound, "no builtin %q role found for tenant %q", kind, orgID)
+	return nil, errors.Wrapf(port.ErrNotFound, "no builtin %q role found for organization %q", kind, orgID)
 }
 
-// assertNotLastOwner refuses an operation that would leave the tenant without
+// assertNotLastOwner refuses an operation that would leave the organization without
 // any owner.
 func (s *ProvisioningService) assertNotLastOwner(ctx context.Context, orgID model.OrgID, membershipID model.MembershipID) error {
 	members, _, err := s.orgStore.ListOrgMembers(ctx, orgID, port.ListOrgMembersOptions{})
@@ -828,7 +989,7 @@ func (s *ProvisioningService) assertNotLastOwner(ctx context.Context, orgID mode
 	}
 
 	if IsLastOwner(members, membershipID) {
-		return errors.Wrap(port.ErrNotAllowed, "a tenant must keep at least one owner")
+		return errors.Wrap(port.ErrNotAllowed, "an organization must keep at least one owner")
 	}
 
 	return nil
@@ -865,10 +1026,10 @@ func validateSlug(slug string) error {
 	if slug == "" {
 		return errors.Wrap(port.ErrInvalid, "slug is required")
 	}
-	if len(slug) > maxSlugLength {
-		return errors.Wrapf(port.ErrInvalid, "slug must be at most %d characters long", maxSlugLength)
+	if len(slug) > model.MaxSlugLength {
+		return errors.Wrapf(port.ErrInvalid, "slug must be at most %d characters long", model.MaxSlugLength)
 	}
-	if !slugPattern.MatchString(slug) {
+	if !model.SlugPattern.MatchString(slug) {
 		return errors.Wrap(port.ErrInvalid, "slug must only contain lowercase letters, digits and dashes, and must start and end with a letter or a digit")
 	}
 	return nil

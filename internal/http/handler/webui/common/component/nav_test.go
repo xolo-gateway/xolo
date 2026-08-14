@@ -59,7 +59,7 @@ func findEntry(groups []NavGroup, label string) (NavEntry, bool) {
 }
 
 func TestPersonalNavGroups(t *testing.T) {
-	user := model.NewUser("test", "subject", "user@xolo.test", "Ada Lovelace", true, authz.RoleUser)
+	user := model.NewUser(testTenantID, "test", "subject", "user@xolo.test", "Ada Lovelace", true, authz.RoleUser)
 	ctx := testContext(user, nil, nil)
 
 	groups := PersonalNavGroups(ctx, "tokens")
@@ -89,7 +89,7 @@ func TestPersonalNavGroups(t *testing.T) {
 }
 
 func TestPlatformNavGroups(t *testing.T) {
-	user := model.NewUser("test", "subject", "admin@xolo.test", "Root", true, authz.RoleAdmin)
+	user := model.NewUser(testTenantID, "test", "subject", "admin@xolo.test", "Root", true, authz.RoleAdmin)
 	ctx := testContext(user, nil, nil)
 
 	groups := PlatformNavGroups(ctx, "users")
@@ -126,7 +126,7 @@ func TestPlatformNavGroups(t *testing.T) {
 }
 
 func TestOrgNavGroupsFiltersOnPermissions(t *testing.T) {
-	user := model.NewUser("test", "subject", "user@xolo.test", "Ada Lovelace", true, authz.RoleUser)
+	user := model.NewUser(testTenantID, "test", "subject", "user@xolo.test", "Ada Lovelace", true, authz.RoleUser)
 	orgID := model.OrgID("org-1")
 
 	t.Run("member without any admin permission", func(t *testing.T) {
@@ -179,9 +179,9 @@ func TestOrgNavGroupsFiltersOnPermissions(t *testing.T) {
 }
 
 func TestSwitcherEntriesOrdering(t *testing.T) {
-	user := model.NewUser("test", "subject", "admin@xolo.test", "Root", true, authz.RoleAdmin)
-	zebra := model.NewOrganization("zebra", "Zebra", "")
-	acme := model.NewOrganization("acme", "ACME Corp", "")
+	user := model.NewUser(testTenantID, "test", "subject", "admin@xolo.test", "Root", true, authz.RoleAdmin)
+	zebra := model.NewOrganization(testTenantID, "zebra", "Zebra", "")
+	acme := model.NewOrganization(testTenantID, "acme", "ACME Corp", "")
 	memberships := []model.Membership{
 		fakeMembership{orgID: zebra.ID(), org: zebra},
 		fakeMembership{orgID: acme.ID(), org: acme},
@@ -209,7 +209,7 @@ func TestSwitcherEntriesOrdering(t *testing.T) {
 }
 
 func TestSwitcherOmitsPlatformForNonAdmins(t *testing.T) {
-	user := model.NewUser("test", "subject", "user@xolo.test", "Ada Lovelace", true, authz.RoleUser)
+	user := model.NewUser(testTenantID, "test", "subject", "user@xolo.test", "Ada Lovelace", true, authz.RoleUser)
 
 	for _, e := range SwitcherEntries(testContext(user, nil, nil), ContextPersonal, "") {
 		if e.Context == ContextPlatform {
@@ -219,7 +219,7 @@ func TestSwitcherOmitsPlatformForNonAdmins(t *testing.T) {
 }
 
 func TestResolveDefaults(t *testing.T) {
-	user := model.NewUser("test", "subject", "user@xolo.test", "Ada Lovelace", true, authz.RoleUser)
+	user := model.NewUser(testTenantID, "test", "subject", "user@xolo.test", "Ada Lovelace", true, authz.RoleUser)
 	ctx := testContext(user, nil, nil)
 
 	resolved := AppLayoutVModel{}.resolve(ctx)
@@ -245,9 +245,9 @@ func TestResolveDetectsAdminVisit(t *testing.T) {
 	orgID := model.OrgID("org-1")
 	visited := AppLayoutVModel{Context: ContextOrg, ContextSlug: "acme", ContextOrgID: orgID}
 
-	admin := model.NewUser("test", "subject", "admin@xolo.test", "Root", true, authz.RoleAdmin)
-	member := model.NewUser("test", "subject", "user@xolo.test", "Ada", true, authz.RoleUser)
-	membership := []model.Membership{fakeMembership{orgID: orgID, org: model.NewOrganization("acme", "ACME", "")}}
+	admin := model.NewUser(testTenantID, "test", "subject", "admin@xolo.test", "Root", true, authz.RoleAdmin)
+	member := model.NewUser(testTenantID, "test", "subject", "user@xolo.test", "Ada", true, authz.RoleUser)
+	membership := []model.Membership{fakeMembership{orgID: orgID, org: model.NewOrganization(testTenantID, "acme", "ACME", "")}}
 
 	if !visited.resolve(testContext(admin, nil, nil)).IsAdminVisit {
 		t.Error("a platform admin browsing an org they do not belong to is an admin visit")
@@ -261,7 +261,7 @@ func TestResolveDetectsAdminVisit(t *testing.T) {
 }
 
 func TestAppLayoutRendersShellAnchors(t *testing.T) {
-	user := model.NewUser("test", "subject", "user@xolo.test", "Ada Lovelace", true, authz.RoleUser)
+	user := model.NewUser(testTenantID, "test", "subject", "user@xolo.test", "Ada Lovelace", true, authz.RoleUser)
 	ctx := testContext(user, nil, nil)
 
 	var out strings.Builder
@@ -308,7 +308,7 @@ func TestAppLayoutRendersShellAnchors(t *testing.T) {
 // place, so a script only some pages declare is missing on all the others. Every
 // script a page may need is therefore registered by the layout itself.
 func TestAppLayoutShipsComponentScripts(t *testing.T) {
-	user := model.NewUser("test", "subject", "user@xolo.test", "Ada Lovelace", true, authz.RoleUser)
+	user := model.NewUser(testTenantID, "test", "subject", "user@xolo.test", "Ada Lovelace", true, authz.RoleUser)
 	ctx := testContext(user, nil, nil)
 
 	var out strings.Builder
@@ -396,3 +396,8 @@ func TestSwitcherGroupLabel(t *testing.T) {
 		}
 	}
 }
+
+// testTenantID is the tenant every fixture of this package belongs to.
+// Tenancy is not what these tests exercise: they only need a stable, shared
+// owner so the tenant-scoped unique keys behave like the pre-tenant ones.
+const testTenantID = model.TenantID("test-tenant")

@@ -32,6 +32,15 @@ func (s *Server) Run(ctx context.Context) error {
 	}
 
 	handler := sloghttp.Recovery(mux)
+
+	// Applied in reverse so the first declared middleware ends up outermost.
+	// They sit inside the request-scoped context injection below: tenant
+	// resolution renders an error page when it fails, and those templates read
+	// the base and current URLs.
+	for i := len(s.opts.Middlewares) - 1; i >= 0; i-- {
+		handler = s.opts.Middlewares[i](handler)
+	}
+
 	handler = sloghttp.New(slog.Default())(handler)
 	handler = httpmetrics.Middleware()(handler)
 

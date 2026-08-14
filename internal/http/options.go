@@ -12,6 +12,11 @@ type Options struct {
 	Mounts  map[string]http.Handler
 	Routes  map[string]http.Handler
 	CORS    cors.Options
+
+	// Middlewares wrap the whole mux, outside every mount. The first one is the
+	// outermost. Tenant resolution lives here: authentication resolves a user
+	// within a tenant, so the tenant has to be known before any route runs.
+	Middlewares []func(http.Handler) http.Handler
 }
 
 type OptionFunc func(opts *Options)
@@ -58,6 +63,14 @@ func WithBaseURL(baseURL string) OptionFunc {
 func WithAddress(addr string) OptionFunc {
 	return func(opts *Options) {
 		opts.Address = addr
+	}
+}
+
+// WithMiddleware appends a middleware wrapping the entire server, outside every
+// mount and route. They apply in declaration order, the first being outermost.
+func WithMiddleware(middlewares ...func(http.Handler) http.Handler) OptionFunc {
+	return func(opts *Options) {
+		opts.Middlewares = append(opts.Middlewares, middlewares...)
 	}
 }
 

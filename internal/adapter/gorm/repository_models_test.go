@@ -33,11 +33,11 @@ func TestProviderStore_Providers(t *testing.T) {
 func scenarioProviderStoreProviders(t *testing.T, store *xologorm.Store) {
 	ctx := context.Background()
 
-	org := model.NewOrganization("acme", "Acme", "")
+	org := model.NewOrganization(testTenantID, "acme", "Acme", "")
 	if err := store.CreateOrg(ctx, org); err != nil {
 		t.Fatalf("CreateOrg: %v", err)
 	}
-	otherOrg := model.NewOrganization("other", "Other", "")
+	otherOrg := model.NewOrganization(testTenantID, "other", "Other", "")
 	if err := store.CreateOrg(ctx, otherOrg); err != nil {
 		t.Fatalf("CreateOrg (other): %v", err)
 	}
@@ -104,7 +104,7 @@ func TestProviderStore_LLMModels(t *testing.T) {
 func scenarioProviderStoreLLMModels(t *testing.T, store *xologorm.Store) {
 	ctx := context.Background()
 
-	org := model.NewOrganization("acme", "Acme", "")
+	org := model.NewOrganization(testTenantID, "acme", "Acme", "")
 	if err := store.CreateOrg(ctx, org); err != nil {
 		t.Fatalf("CreateOrg: %v", err)
 	}
@@ -188,7 +188,7 @@ func TestDefaultedFlagsCanBeCleared(t *testing.T) {
 func scenarioDefaultedFlagsCanBeCleared(t *testing.T, store *xologorm.Store) {
 	ctx := context.Background()
 
-	org := model.NewOrganization("acme", "Acme", "")
+	org := model.NewOrganization(testTenantID, "acme", "Acme", "")
 	if err := store.CreateOrg(ctx, org); err != nil {
 		t.Fatalf("CreateOrg: %v", err)
 	}
@@ -263,7 +263,7 @@ func TestVirtualModelStore_Lifecycle(t *testing.T) {
 func scenarioVirtualModelStoreLifecycle(t *testing.T, store *xologorm.Store) {
 	ctx := context.Background()
 
-	org := model.NewOrganization("acme", "Acme", "")
+	org := model.NewOrganization(testTenantID, "acme", "Acme", "")
 	if err := store.CreateOrg(ctx, org); err != nil {
 		t.Fatalf("CreateOrg: %v", err)
 	}
@@ -342,7 +342,7 @@ func TestMiddlewareStore_EnabledOrdering(t *testing.T) {
 func scenarioMiddlewareStoreEnabledOrdering(t *testing.T, store *xologorm.Store) {
 	ctx := context.Background()
 
-	org := model.NewOrganization("acme", "Acme", "")
+	org := model.NewOrganization(testTenantID, "acme", "Acme", "")
 	if err := store.CreateOrg(ctx, org); err != nil {
 		t.Fatalf("CreateOrg: %v", err)
 	}

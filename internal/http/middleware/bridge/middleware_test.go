@@ -78,6 +78,9 @@ func call(t *testing.T, store port.UserStore, opts bridge.Options, identity *aut
 	reqCtx := authn.SetContextUser(req.Context(), identity)
 	reqCtx = httpCtx.SetBaseURL(reqCtx, "/")
 	reqCtx = httpCtx.SetCurrentURL(reqCtx, req.URL)
+	// The tenant middleware runs before the bridge in the real chain: without a
+	// tenant the bridge has no scope to resolve the identity in.
+	reqCtx = httpCtx.SetTenant(reqCtx, testTenant)
 
 	req = req.WithContext(reqCtx)
 
@@ -111,7 +114,7 @@ func TestAutoCreateEnabled(t *testing.T) {
 			t.Fatalf("request should have been served, got status %d", result.status)
 		}
 
-		user, err := store.GetUserByIdentity(ctx, "openid-connect", "sub-1")
+		user, err := store.GetUserByIdentity(ctx, testTenantID, "openid-connect", "sub-1")
 		if err != nil {
 			t.Fatalf("get user: %v", err)
 		}
@@ -137,7 +140,7 @@ func TestAutoCreateEnabled(t *testing.T) {
 			t.Fatalf("request should have been served, got status %d", result.status)
 		}
 
-		user, err := store.GetUserByIdentity(ctx, "openid-connect", "sub-1")
+		user, err := store.GetUserByIdentity(ctx, testTenantID, "openid-connect", "sub-1")
 		if err != nil {
 			t.Fatalf("get user: %v", err)
 		}
@@ -163,7 +166,7 @@ func TestAutoCreateDisabled(t *testing.T) {
 		if result.status != http.StatusForbidden {
 			t.Errorf("status: got %d, want %d", result.status, http.StatusForbidden)
 		}
-		if _, err := store.GetUserByIdentity(ctx, "openid-connect", "sub-1"); !errors.Is(err, port.ErrNotFound) {
+		if _, err := store.GetUserByIdentity(ctx, testTenantID, "openid-connect", "sub-1"); !errors.Is(err, port.ErrNotFound) {
 			t.Errorf("no user should have been created, got %v", err)
 		}
 		if types := result.emitter.types(); !slices.Contains(types, model.EventTypeAuthLoginFailed) {
@@ -174,7 +177,7 @@ func TestAutoCreateDisabled(t *testing.T) {
 	t.Run("accepts a pre-provisioned identity", func(t *testing.T) {
 		store := newStore(t)
 
-		provisioned := model.NewUser("openid-connect", "sub-1", "jean@corp.tld", "Jean", true, model.PlatformRoleUser)
+		provisioned := model.NewUser(testTenantID, "openid-connect", "sub-1", "jean@corp.tld", "Jean", true, model.PlatformRoleUser)
 		if err := store.SaveUser(ctx, provisioned); err != nil {
 			t.Fatalf("save user: %v", err)
 		}
@@ -204,7 +207,7 @@ func TestAutoCreateDisabled(t *testing.T) {
 			t.Fatalf("request should have been served, got status %d", result.status)
 		}
 
-		user, err := store.GetUserByIdentity(ctx, "openid-connect", "sub-boss")
+		user, err := store.GetUserByIdentity(ctx, testTenantID, "openid-connect", "sub-boss")
 		if err != nil {
 			t.Fatalf("get user: %v", err)
 		}
@@ -223,7 +226,7 @@ func TestExistingUserSynchronization(t *testing.T) {
 	t.Run("updates the profile from the identity provider", func(t *testing.T) {
 		store := newStore(t)
 
-		existing := model.NewUser("openid-connect", "sub-1", "old@corp.tld", "Old", true, model.PlatformRoleUser)
+		existing := model.NewUser(testTenantID, "openid-connect", "sub-1", "old@corp.tld", "Old", true, model.PlatformRoleUser)
 		if err := store.SaveUser(ctx, existing); err != nil {
 			t.Fatalf("save user: %v", err)
 		}
@@ -231,7 +234,7 @@ func TestExistingUserSynchronization(t *testing.T) {
 		call(t, store, bridge.Options{AutoCreateUsers: true, ActiveByDefault: true},
 			newIdentity("sub-1", "new@corp.tld", "New"))
 
-		user, err := store.GetUserByIdentity(ctx, "openid-connect", "sub-1")
+		user, err := store.GetUserByIdentity(ctx, testTenantID, "openid-connect", "sub-1")
 		if err != nil {
 			t.Fatalf("get user: %v", err)
 		}
@@ -245,7 +248,7 @@ func TestExistingUserSynchronization(t *testing.T) {
 	t.Run("keeps stored values when the identity carries none", func(t *testing.T) {
 		store := newStore(t)
 
-		existing := model.NewUser("openid-connect", "sub-1", "jean@corp.tld", "Jean", true, model.PlatformRoleUser)
+		existing := model.NewUser(testTenantID, "openid-connect", "sub-1", "jean@corp.tld", "Jean", true, model.PlatformRoleUser)
 		if err := store.SaveUser(ctx, existing); err != nil {
 			t.Fatalf("save user: %v", err)
 		}
@@ -253,7 +256,7 @@ func TestExistingUserSynchronization(t *testing.T) {
 		call(t, store, bridge.Options{AutoCreateUsers: true, ActiveByDefault: true},
 			newIdentity("sub-1", "", ""))
 
-		user, err := store.GetUserByIdentity(ctx, "openid-connect", "sub-1")
+		user, err := store.GetUserByIdentity(ctx, testTenantID, "openid-connect", "sub-1")
 		if err != nil {
 			t.Fatalf("get user: %v", err)
 		}
@@ -262,3 +265,20 @@ func TestExistingUserSynchronization(t *testing.T) {
 		}
 	})
 }
+
+// testTenantID is the tenant every fixture of this package belongs to.
+// Tenancy is not what these tests exercise: they only need a stable, shared
+// owner so the tenant-scoped unique keys behave like the pre-tenant ones.
+const testTenantID = model.TenantID("test-tenant")
+
+// testTenant is what the tenant middleware would have injected in the request
+// context. Only its identifier matters here: the bridge scopes the identity
+// lookup with it and never reads the tenant back from the store.
+var testTenant = &stubTenant{id: testTenantID}
+
+type stubTenant struct {
+	model.Tenant
+	id model.TenantID
+}
+
+func (t *stubTenant) ID() model.TenantID { return t.id }

@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/xolo-gateway/xolo/internal/core/model"
 	"github.com/xolo-gateway/xolo/internal/core/service"
 )
 
@@ -44,22 +45,32 @@ func NewHandler(provisioning *service.ProvisioningService) *Handler {
 	h.mux.HandleFunc("PATCH /v1/tenants/{tenantID}", h.handleUpdateTenant)
 	h.mux.HandleFunc("DELETE /v1/tenants/{tenantID}", h.handleDeleteTenant)
 
-	h.mux.HandleFunc("GET /v1/tenants/{tenantID}/members", h.handleListMembers)
-	h.mux.HandleFunc("POST /v1/tenants/{tenantID}/members", h.handleAddMember)
-	h.mux.HandleFunc("GET /v1/tenants/{tenantID}/members/{membershipID}", h.handleGetMember)
-	h.mux.HandleFunc("DELETE /v1/tenants/{tenantID}/members/{membershipID}", h.handleRemoveMember)
-	h.mux.HandleFunc("PUT /v1/tenants/{tenantID}/members/{membershipID}/roles", h.handleSetMemberRoles)
+	const orgPath = "/v1/tenants/{tenantID}/organizations"
 
-	h.mux.HandleFunc("GET /v1/tenants/{tenantID}/roles", h.handleListRoles)
-	h.mux.HandleFunc("POST /v1/tenants/{tenantID}/roles", h.handleCreateRole)
-	h.mux.HandleFunc("GET /v1/tenants/{tenantID}/roles/{roleID}", h.handleGetRole)
-	h.mux.HandleFunc("PUT /v1/tenants/{tenantID}/roles/{roleID}", h.handleUpdateRole)
-	h.mux.HandleFunc("DELETE /v1/tenants/{tenantID}/roles/{roleID}", h.handleDeleteRole)
+	h.mux.HandleFunc("GET "+orgPath, h.handleListOrganizations)
+	h.mux.HandleFunc("POST "+orgPath, h.handleCreateOrganization)
+	h.mux.HandleFunc("GET "+orgPath+"/{orgID}", h.handleGetOrganization)
+	h.mux.HandleFunc("PATCH "+orgPath+"/{orgID}", h.handleUpdateOrganization)
+	h.mux.HandleFunc("DELETE "+orgPath+"/{orgID}", h.handleDeleteOrganization)
 
-	h.mux.HandleFunc("GET /v1/users", h.handleListUsers)
-	h.mux.HandleFunc("PUT /v1/users", h.handlePutUser)
-	h.mux.HandleFunc("GET /v1/users/{userID}", h.handleGetUser)
-	h.mux.HandleFunc("PATCH /v1/users/{userID}", h.handleUpdateUser)
+	h.mux.HandleFunc("GET "+orgPath+"/{orgID}/members", h.handleListMembers)
+	h.mux.HandleFunc("POST "+orgPath+"/{orgID}/members", h.handleAddMember)
+	h.mux.HandleFunc("GET "+orgPath+"/{orgID}/members/{membershipID}", h.handleGetMember)
+	h.mux.HandleFunc("DELETE "+orgPath+"/{orgID}/members/{membershipID}", h.handleRemoveMember)
+	h.mux.HandleFunc("PUT "+orgPath+"/{orgID}/members/{membershipID}/roles", h.handleSetMemberRoles)
+
+	h.mux.HandleFunc("GET "+orgPath+"/{orgID}/roles", h.handleListRoles)
+	h.mux.HandleFunc("POST "+orgPath+"/{orgID}/roles", h.handleCreateRole)
+	h.mux.HandleFunc("GET "+orgPath+"/{orgID}/roles/{roleID}", h.handleGetRole)
+	h.mux.HandleFunc("PUT "+orgPath+"/{orgID}/roles/{roleID}", h.handleUpdateRole)
+	h.mux.HandleFunc("DELETE "+orgPath+"/{orgID}/roles/{roleID}", h.handleDeleteRole)
+
+	// Users hang from the tenant: (provider, subject) is only unique within
+	// one, so an instance-wide /v1/users upsert would have no key to act on.
+	h.mux.HandleFunc("GET /v1/tenants/{tenantID}/users", h.handleListUsers)
+	h.mux.HandleFunc("PUT /v1/tenants/{tenantID}/users", h.handlePutUser)
+	h.mux.HandleFunc("GET /v1/tenants/{tenantID}/users/{userID}", h.handleGetUser)
+	h.mux.HandleFunc("PATCH /v1/tenants/{tenantID}/users/{userID}", h.handleUpdateUser)
 
 	// Catch-all so an unknown route answers with the same error envelope as
 	// everything else.
@@ -155,6 +166,40 @@ func pagination(r *http.Request) (page, limit int, ok bool) {
 	}
 
 	return page, limit, true
+}
+
+// resolveTenant reads the {tenantID} path segment and loads the tenant. It
+// writes the error response itself and reports whether the caller may proceed,
+// so every nested handler starts from a tenant that is known to exist.
+func (h *Handler) resolveTenant(w http.ResponseWriter, r *http.Request) (model.Tenant, bool) {
+	ctx := r.Context()
+
+	tenant, err := h.provisioning.GetTenant(ctx, model.TenantID(r.PathValue("tenantID")))
+	if err != nil {
+		writeServiceError(ctx, w, err, "tenant not found")
+		return nil, false
+	}
+
+	return tenant, true
+}
+
+// resolveOrganization loads the {orgID} of the {tenantID}. An organization
+// belonging to another tenant is reported as not found.
+func (h *Handler) resolveOrganization(w http.ResponseWriter, r *http.Request) (model.Organization, bool) {
+	ctx := r.Context()
+
+	tenant, ok := h.resolveTenant(w, r)
+	if !ok {
+		return nil, false
+	}
+
+	org, err := h.provisioning.GetOrganization(ctx, tenant.ID(), model.OrgID(r.PathValue("orgID")))
+	if err != nil {
+		writeServiceError(ctx, w, err, "organization not found")
+		return nil, false
+	}
+
+	return org, true
 }
 
 func writeInvalidPagination(w http.ResponseWriter) {

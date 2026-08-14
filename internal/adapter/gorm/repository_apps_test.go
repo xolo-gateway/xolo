@@ -18,11 +18,11 @@ func TestApplicationStore_Lifecycle(t *testing.T) {
 func scenarioApplicationStoreLifecycle(t *testing.T, store *xologorm.Store) {
 	ctx := context.Background()
 
-	org := model.NewOrganization("acme", "Acme", "")
+	org := model.NewOrganization(testTenantID, "acme", "Acme", "")
 	if err := store.CreateOrg(ctx, org); err != nil {
 		t.Fatalf("CreateOrg: %v", err)
 	}
-	otherOrg := model.NewOrganization("other", "Other", "")
+	otherOrg := model.NewOrganization(testTenantID, "other", "Other", "")
 	if err := store.CreateOrg(ctx, otherOrg); err != nil {
 		t.Fatalf("CreateOrg (other): %v", err)
 	}
@@ -81,7 +81,7 @@ func TestApplicationStore_AuthTokens(t *testing.T) {
 func scenarioApplicationStoreAuthTokens(t *testing.T, store *xologorm.Store) {
 	ctx := context.Background()
 
-	org := model.NewOrganization("acme", "Acme", "")
+	org := model.NewOrganization(testTenantID, "acme", "Acme", "")
 	if err := store.CreateOrg(ctx, org); err != nil {
 		t.Fatalf("CreateOrg: %v", err)
 	}
@@ -141,7 +141,7 @@ func TestInviteStore_Lifecycle(t *testing.T) {
 func scenarioInviteStoreLifecycle(t *testing.T, store *xologorm.Store) {
 	ctx := context.Background()
 
-	org := model.NewOrganization("acme", "Acme", "")
+	org := model.NewOrganization(testTenantID, "acme", "Acme", "")
 	if err := store.CreateOrg(ctx, org); err != nil {
 		t.Fatalf("CreateOrg: %v", err)
 	}
@@ -237,7 +237,7 @@ func TestInviteStore_ExpiredNotPending(t *testing.T) {
 func scenarioInviteStoreExpiredNotPending(t *testing.T, store *xologorm.Store) {
 	ctx := context.Background()
 
-	org := model.NewOrganization("acme", "Acme", "")
+	org := model.NewOrganization(testTenantID, "acme", "Acme", "")
 	if err := store.CreateOrg(ctx, org); err != nil {
 		t.Fatalf("CreateOrg: %v", err)
 	}
@@ -256,3 +256,8 @@ func scenarioInviteStoreExpiredNotPending(t *testing.T, store *xologorm.Store) {
 		t.Errorf("expected an expired invite not to be pending, got %d", len(pending))
 	}
 }
+
+// testTenantID is the tenant every fixture of this package belongs to.
+// Tenancy is not what these tests exercise: they only need a stable, shared
+// owner so the tenant-scoped unique keys behave like the pre-tenant ones.
+const testTenantID = model.TenantID("test-tenant")

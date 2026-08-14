@@ -74,7 +74,7 @@ func TestUsageTrackerUsesProviderCostWhenAvailable(t *testing.T) {
 	providerID := model.NewProviderID()
 	provider := model.NewProvider(orgID, "openrouter", "openrouter", "https://openrouter.ai", "key", "USD")
 	llmModel := model.NewLLMModel(providerID, orgID, "cadoles/test-model", "real/model", "desc", 1000, 2000)
-	org := model.NewOrganization("org-1", "Org 1", "", "USD")
+	org := model.NewOrganization(testTenantID, "org-1", "Org 1", "", "USD")
 
 	tracker, usageStore := newTestTracker(&fakeProviderStore{provider: provider, llmModel: llmModel}, &fakeOrgStore{org: org})
 
@@ -108,7 +108,7 @@ func TestUsageTrackerFallsBackToComputedCost(t *testing.T) {
 	provider := model.NewProvider(orgID, "openai", "openai", "https://api.openai.com", "key", "USD")
 	// 1000 microcents/1K prompt tokens, 2000 microcents/1K completion tokens
 	llmModel := model.NewLLMModel(providerID, orgID, "cadoles/test-model", "real/model", "desc", 1000, 2000)
-	org := model.NewOrganization("org-1", "Org 1", "", "USD")
+	org := model.NewOrganization(testTenantID, "org-1", "Org 1", "", "USD")
 
 	tracker, usageStore := newTestTracker(&fakeProviderStore{provider: provider, llmModel: llmModel}, &fakeOrgStore{org: org})
 
@@ -134,3 +134,8 @@ func TestUsageTrackerFallsBackToComputedCost(t *testing.T) {
 		t.Errorf("CostSource() = %q, want %q", got, want)
 	}
 }
+
+// testTenantID is the tenant every fixture of this package belongs to.
+// Tenancy is not what these tests exercise: they only need a stable, shared
+// owner so the tenant-scoped unique keys behave like the pre-tenant ones.
+const testTenantID = model.TenantID("test-tenant")

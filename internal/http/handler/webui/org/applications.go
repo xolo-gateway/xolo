@@ -24,7 +24,7 @@ func (h *Handler) getApplicationsPage(w http.ResponseWriter, r *http.Request) {
 	orgSlug := r.PathValue("orgSlug")
 	user := httpCtx.User(ctx)
 
-	org, err := h.orgStore.GetOrgBySlug(ctx, orgSlug)
+	org, err := h.orgStore.GetOrgBySlug(ctx, httpCtx.TenantID(ctx), orgSlug)
 	if err != nil {
 		if errors.Is(err, port.ErrNotFound) {
 			http.Error(w, "Organization not found", http.StatusNotFound)
@@ -93,7 +93,7 @@ func (h *Handler) getNewApplicationPage(w http.ResponseWriter, r *http.Request) 
 	orgSlug := r.PathValue("orgSlug")
 	user := httpCtx.User(ctx)
 
-	org, err := h.orgStore.GetOrgBySlug(ctx, orgSlug)
+	org, err := h.orgStore.GetOrgBySlug(ctx, httpCtx.TenantID(ctx), orgSlug)
 	if err != nil {
 		if errors.Is(err, port.ErrNotFound) {
 			http.Error(w, "Organization not found", http.StatusNotFound)
@@ -159,7 +159,7 @@ func (h *Handler) createApplication(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	org, err := h.orgStore.GetOrgBySlug(ctx, orgSlug)
+	org, err := h.orgStore.GetOrgBySlug(ctx, httpCtx.TenantID(ctx), orgSlug)
 	if err != nil {
 		if errors.Is(err, port.ErrNotFound) {
 			http.Error(w, "Organization not found", http.StatusNotFound)
@@ -223,7 +223,7 @@ func (h *Handler) getEditApplicationPage(w http.ResponseWriter, r *http.Request)
 	appID := r.PathValue("appID")
 	user := httpCtx.User(ctx)
 
-	org, err := h.orgStore.GetOrgBySlug(ctx, orgSlug)
+	org, err := h.orgStore.GetOrgBySlug(ctx, httpCtx.TenantID(ctx), orgSlug)
 	if err != nil {
 		if errors.Is(err, port.ErrNotFound) {
 			http.Error(w, "Organization not found", http.StatusNotFound)
@@ -388,7 +388,7 @@ func (h *Handler) createApplicationToken(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	org, err := h.orgStore.GetOrgBySlug(ctx, orgSlug)
+	org, err := h.orgStore.GetOrgBySlug(ctx, httpCtx.TenantID(ctx), orgSlug)
 	if err != nil {
 		if errors.Is(err, port.ErrNotFound) {
 			http.Error(w, "Organization not found", http.StatusNotFound)

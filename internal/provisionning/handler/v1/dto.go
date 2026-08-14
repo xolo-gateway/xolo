@@ -10,11 +10,34 @@ import (
 // The API exposes its own representations: the domain interfaces are never
 // serialized directly, so the wire contract stays stable when the domain moves.
 //
-// The external vocabulary is "tenant" where the domain says "organization". No
-// Tenant business object exists: it is only a naming choice of this transport.
+// The resource hierarchy mirrors the domain: a tenant owns organizations and
+// users, an organization owns members and roles.
 
 type tenantDTO struct {
+	ID          string    `json:"id"`
+	Slug        string    `json:"slug"`
+	Name        string    `json:"name"`
+	Description string    `json:"description"`
+	Active      bool      `json:"active"`
+	CreatedAt   time.Time `json:"createdAt"`
+	UpdatedAt   time.Time `json:"updatedAt"`
+}
+
+func newTenantDTO(tenant model.Tenant) tenantDTO {
+	return tenantDTO{
+		ID:          string(tenant.ID()),
+		Slug:        tenant.Slug(),
+		Name:        tenant.Name(),
+		Description: tenant.Description(),
+		Active:      tenant.Active(),
+		CreatedAt:   tenant.CreatedAt(),
+		UpdatedAt:   tenant.UpdatedAt(),
+	}
+}
+
+type organizationDTO struct {
 	ID                string    `json:"id"`
+	TenantID          string    `json:"tenantId"`
 	Slug              string    `json:"slug"`
 	Name              string    `json:"name"`
 	Description       string    `json:"description"`
@@ -25,9 +48,10 @@ type tenantDTO struct {
 	UpdatedAt         time.Time `json:"updatedAt"`
 }
 
-func newTenantDTO(org model.Organization) tenantDTO {
-	return tenantDTO{
+func newOrganizationDTO(org model.Organization) organizationDTO {
+	return organizationDTO{
 		ID:                string(org.ID()),
+		TenantID:          string(org.TenantID()),
 		Slug:              org.Slug(),
 		Name:              org.Name(),
 		Description:       org.Description(),
@@ -99,9 +123,9 @@ type modelGrantDTO struct {
 }
 
 type roleDTO struct {
-	ID          string          `json:"id"`
-	TenantID    string          `json:"tenantId"`
-	Name        string          `json:"name"`
+	ID             string          `json:"id"`
+	OrganizationID string          `json:"organizationId"`
+	Name           string          `json:"name"`
 	Description string          `json:"description"`
 	Builtin     bool            `json:"builtin"`
 	BuiltinKind string          `json:"builtinKind,omitempty"`
@@ -123,8 +147,8 @@ func newRoleDTO(role model.Role) roleDTO {
 	}
 
 	return roleDTO{
-		ID:          string(role.ID()),
-		TenantID:    string(role.OrgID()),
+		ID:             string(role.ID()),
+		OrganizationID: string(role.OrgID()),
 		Name:        role.Name(),
 		Description: role.Description(),
 		Builtin:     role.Builtin(),
@@ -160,9 +184,9 @@ func newRoleRefDTOs(roles []model.Role) []roleRefDTO {
 }
 
 type membershipDTO struct {
-	ID        string       `json:"id"`
-	TenantID  string       `json:"tenantId"`
-	UserID    string       `json:"userId"`
+	ID             string       `json:"id"`
+	OrganizationID string       `json:"organizationId"`
+	UserID         string       `json:"userId"`
 	User      *userRefDTO  `json:"user,omitempty"`
 	Roles     []roleRefDTO `json:"roles"`
 	CreatedAt time.Time    `json:"createdAt"`
@@ -170,8 +194,8 @@ type membershipDTO struct {
 
 func newMembershipDTO(membership model.Membership) membershipDTO {
 	dto := membershipDTO{
-		ID:        string(membership.ID()),
-		TenantID:  string(membership.OrgID()),
+		ID:             string(membership.ID()),
+		OrganizationID: string(membership.OrgID()),
 		UserID:    string(membership.UserID()),
 		Roles:     newRoleRefDTOs(membership.Roles()),
 		CreatedAt: membership.CreatedAt(),
@@ -248,6 +272,19 @@ type userIdentityRequest struct {
 }
 
 type createTenantRequest struct {
+	Slug        string `json:"slug"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Active      *bool  `json:"active"`
+}
+
+type updateTenantRequest struct {
+	Name        *string `json:"name"`
+	Description *string `json:"description"`
+	Active      *bool   `json:"active"`
+}
+
+type createOrganizationRequest struct {
 	Slug        string               `json:"slug"`
 	Name        string               `json:"name"`
 	Description string               `json:"description"`
@@ -256,7 +293,7 @@ type createTenantRequest struct {
 	Owner       *userIdentityRequest `json:"owner"`
 }
 
-type updateTenantRequest struct {
+type updateOrganizationRequest struct {
 	Name              *string `json:"name"`
 	Description       *string `json:"description"`
 	Active            *bool   `json:"active"`

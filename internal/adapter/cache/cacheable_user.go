@@ -14,7 +14,7 @@ type CacheableUser struct {
 // CacheKeys implements [Cacheable].
 func (u *CacheableUser) CacheKeys() []string {
 	return []string{
-		getUserProviderSubjectCacheKey(u.Provider(), u.Subject()),
+		getUserProviderSubjectCacheKey(u.TenantID(), u.Provider(), u.Subject()),
 		string(u.ID()),
 	}
 }
@@ -28,8 +28,12 @@ var (
 	_ Cacheable  = &CacheableUser{}
 )
 
-func getUserProviderSubjectCacheKey(provider string, subject string) string {
-	return getCompositeCacheKey(provider, subject)
+// getUserProviderSubjectCacheKey keys the identity cache. The tenant is part of
+// the key because (provider, subject) is only unique within a tenant: without
+// it, the first tenant to resolve an identity would serve it to every other
+// one.
+func getUserProviderSubjectCacheKey(tenantID model.TenantID, provider string, subject string) string {
+	return getCompositeCacheKey(string(tenantID), provider, subject)
 }
 
 func getCompositeCacheKey(parts ...any) string {

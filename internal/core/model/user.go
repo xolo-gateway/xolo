@@ -23,6 +23,11 @@ func NewUserID() UserID {
 type User interface {
 	WithID[UserID]
 
+	// TenantID is the owning tenant. The identity tuple (provider, subject) is
+	// unique per tenant, not instance-wide: the same person authenticating on
+	// two tenants owns two distinct accounts.
+	TenantID() TenantID
+
 	Email() string
 
 	Subject() string
@@ -39,6 +44,7 @@ type User interface {
 
 type BaseUser struct {
 	id          UserID
+	tenantID    TenantID
 	displayName string
 	email       string
 	subject     string
@@ -68,6 +74,11 @@ func (u *BaseUser) ID() UserID {
 	return u.id
 }
 
+// TenantID implements [User].
+func (u *BaseUser) TenantID() TenantID {
+	return u.tenantID
+}
+
 // DisplayName implements User.
 func (u *BaseUser) DisplayName() string {
 	return u.displayName
@@ -93,6 +104,7 @@ var _ User = &BaseUser{}
 func CopyUser(user User) *BaseUser {
 	return &BaseUser{
 		id:          user.ID(),
+		tenantID:    user.TenantID(),
 		displayName: user.DisplayName(),
 		email:       user.Email(),
 		subject:     user.Subject(),
@@ -103,9 +115,10 @@ func CopyUser(user User) *BaseUser {
 	}
 }
 
-func NewUser(provider, subject, email string, displayName string, active bool, roles ...string) *BaseUser {
+func NewUser(tenantID TenantID, provider, subject, email string, displayName string, active bool, roles ...string) *BaseUser {
 	return &BaseUser{
 		id:          NewUserID(),
+		tenantID:    tenantID,
 		displayName: displayName,
 		email:       email,
 		subject:     subject,

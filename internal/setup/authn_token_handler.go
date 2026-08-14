@@ -19,7 +19,12 @@ func getTokenAuthnHandlerFromConfig(ctx context.Context, conf *config.Config) (*
 		return nil, errors.WithStack(err)
 	}
 
-	handler := token.NewHandler(sessionStore, userStore)
+	orgStore, err := getOrgStoreFromConfig(ctx, conf)
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+
+	handler := token.NewHandler(sessionStore, userStore, orgStore)
 
 	return handler, nil
 }

@@ -15,6 +15,11 @@ func (h *Handler) handleListUsers(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	query := r.URL.Query()
 
+	tenant, ok := h.resolveTenant(w, r)
+	if !ok {
+		return
+	}
+
 	provider := strings.TrimSpace(query.Get("provider"))
 	subject := strings.TrimSpace(query.Get("subject"))
 
@@ -26,7 +31,7 @@ func (h *Handler) handleListUsers(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		user, err := h.provisioning.FindUserByIdentity(ctx, provider, subject)
+		user, err := h.provisioning.FindUserByIdentity(ctx, tenant.ID(), provider, subject)
 		if err != nil {
 			if errors.Is(err, port.ErrNotFound) {
 				writeJSON(w, http.StatusOK, newListDTO([]userDTO{}, 1, 1, 0))
@@ -61,11 +66,14 @@ func (h *Handler) handleListUsers(w http.ResponseWriter, r *http.Request) {
 
 	offset := page - 1
 
+	tenantID := tenant.ID()
+
 	users, total, err := h.provisioning.ListUsers(ctx, port.QueryUsersOptions{
-		Page:   &offset,
-		Limit:  &limit,
-		Search: query.Get("search"),
-		Active: active,
+		Page:     &offset,
+		Limit:    &limit,
+		Search:   query.Get("search"),
+		Active:   active,
+		TenantID: &tenantID,
 	})
 	if err != nil {
 		writeServiceError(ctx, w, err, "could not list users")
@@ -86,12 +94,17 @@ func (h *Handler) handleListUsers(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) handlePutUser(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
+	tenant, ok := h.resolveTenant(w, r)
+	if !ok {
+		return
+	}
+
 	var payload userIdentityRequest
 	if !decodeJSON(w, r, &payload) {
 		return
 	}
 
-	user, created, err := h.provisioning.ProvisionUser(ctx, toIdentityParams(payload))
+	user, created, err := h.provisioning.ProvisionUser(ctx, tenant.ID(), toIdentityParams(payload))
 	if err != nil {
 		writeServiceError(ctx, w, err, "could not provision user")
 		return
@@ -108,7 +121,12 @@ func (h *Handler) handlePutUser(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) handleGetUser(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	user, err := h.provisioning.GetUser(ctx, model.UserID(r.PathValue("userID")))
+	tenant, ok := h.resolveTenant(w, r)
+	if !ok {
+		return
+	}
+
+	user, err := h.provisioning.GetUser(ctx, tenant.ID(), model.UserID(r.PathValue("userID")))
 	if err != nil {
 		writeServiceError(ctx, w, err, "user not found")
 		return
@@ -120,12 +138,17 @@ func (h *Handler) handleGetUser(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) handleUpdateUser(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
+	tenant, ok := h.resolveTenant(w, r)
+	if !ok {
+		return
+	}
+
 	var payload updateUserRequest
 	if !decodeJSON(w, r, &payload) {
 		return
 	}
 
-	user, err := h.provisioning.UpdateUser(ctx, model.UserID(r.PathValue("userID")), service.UpdateUserParams{
+	user, err := h.provisioning.UpdateUser(ctx, tenant.ID(), model.UserID(r.PathValue("userID")), service.UpdateUserParams{
 		Email:       payload.Email,
 		DisplayName: payload.DisplayName,
 		Active:      payload.Active,

@@ -3,30 +3,21 @@ package v1
 import (
 	"net/http"
 
+	"github.com/pkg/errors"
 	"github.com/xolo-gateway/xolo/internal/core/model"
 	"github.com/xolo-gateway/xolo/internal/core/port"
 	"github.com/xolo-gateway/xolo/internal/core/service"
-	"github.com/pkg/errors"
 )
-
-type createTenantResponse struct {
-	Tenant tenantDTO `json:"tenant"`
-
-	// Owner and Membership are present only when an initial owner was
-	// requested. OwnerCreated tells an external reconciler whether the identity
-	// already existed.
-	Owner        *userDTO       `json:"owner,omitempty"`
-	Membership   *membershipDTO `json:"ownerMembership,omitempty"`
-	OwnerCreated bool           `json:"ownerCreated"`
-}
 
 func (h *Handler) handleListTenants(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
 	// An exact slug lookup lets a reconciler read back the state it just
-	// declared without knowing the generated identifier.
+	// declared without knowing the generated identifier. On a single-tenant
+	// instance it is also how a control plane discovers the tenant identifier
+	// every other route needs.
 	if slug := r.URL.Query().Get("slug"); slug != "" {
-		org, err := h.provisioning.GetTenantBySlug(ctx, slug)
+		tenant, err := h.provisioning.GetTenantBySlug(ctx, slug)
 		if err != nil {
 			if errors.Is(err, port.ErrNotFound) {
 				writeJSON(w, http.StatusOK, newListDTO([]tenantDTO{}, 1, 1, 0))
@@ -36,7 +27,7 @@ func (h *Handler) handleListTenants(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		writeJSON(w, http.StatusOK, newListDTO([]tenantDTO{newTenantDTO(org)}, 1, 1, 1))
+		writeJSON(w, http.StatusOK, newListDTO([]tenantDTO{newTenantDTO(tenant)}, 1, 1, 1))
 
 		return
 	}
@@ -49,20 +40,23 @@ func (h *Handler) handleListTenants(w http.ResponseWriter, r *http.Request) {
 
 	offset := page - 1
 
-	orgs, total, err := h.provisioning.ListTenants(ctx, port.ListOrgsOptions{Page: &offset, Limit: &limit})
+	tenants, total, err := h.provisioning.ListTenants(ctx, port.ListTenantsOptions{Page: &offset, Limit: &limit})
 	if err != nil {
 		writeServiceError(ctx, w, err, "could not list tenants")
 		return
 	}
 
-	items := make([]tenantDTO, 0, len(orgs))
-	for _, org := range orgs {
-		items = append(items, newTenantDTO(org))
+	items := make([]tenantDTO, 0, len(tenants))
+	for _, tenant := range tenants {
+		items = append(items, newTenantDTO(tenant))
 	}
 
 	writeJSON(w, http.StatusOK, newListDTO(items, page, limit, total))
 }
 
+// handleCreateTenant provisions a tenant. On a single-tenant instance the
+// service refuses it with a conflict: no hostname would ever resolve to the new
+// tenant, so its organizations would be unreachable.
 func (h *Handler) handleCreateTenant(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
@@ -71,52 +65,27 @@ func (h *Handler) handleCreateTenant(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	params := service.CreateTenantParams{
+	tenant, err := h.provisioning.CreateTenant(ctx, service.CreateTenantParams{
 		Slug:        payload.Slug,
 		Name:        payload.Name,
 		Description: payload.Description,
-		Currency:    payload.Currency,
 		Active:      payload.Active,
-	}
-
-	if payload.Owner != nil {
-		owner := toIdentityParams(*payload.Owner)
-		params.Owner = &owner
-	}
-
-	result, err := h.provisioning.CreateTenant(ctx, params)
+	})
 	if err != nil {
 		writeServiceError(ctx, w, err, "could not create tenant")
 		return
 	}
 
-	response := createTenantResponse{
-		Tenant:       newTenantDTO(result.Org),
-		OwnerCreated: result.OwnerCreated,
-	}
-
-	if result.Owner != nil {
-		owner := newUserDTO(result.Owner)
-		response.Owner = &owner
-	}
-	if result.OwnerMembership != nil {
-		membership := newMembershipDTO(result.OwnerMembership)
-		response.Membership = &membership
-	}
-
-	writeJSON(w, http.StatusCreated, response)
+	writeJSON(w, http.StatusCreated, newTenantDTO(tenant))
 }
 
 func (h *Handler) handleGetTenant(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-
-	org, err := h.provisioning.GetTenant(ctx, model.OrgID(r.PathValue("tenantID")))
-	if err != nil {
-		writeServiceError(ctx, w, err, "tenant not found")
+	tenant, ok := h.resolveTenant(w, r)
+	if !ok {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, newTenantDTO(org))
+	writeJSON(w, http.StatusOK, newTenantDTO(tenant))
 }
 
 func (h *Handler) handleUpdateTenant(w http.ResponseWriter, r *http.Request) {
@@ -127,38 +96,26 @@ func (h *Handler) handleUpdateTenant(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	org, err := h.provisioning.UpdateTenant(ctx, model.OrgID(r.PathValue("tenantID")), service.UpdateTenantParams{
-		Name:              payload.Name,
-		Description:       payload.Description,
-		Active:            payload.Active,
-		Currency:          payload.Currency,
-		ShareQuotaEqually: payload.ShareQuotaEqually,
+	tenant, err := h.provisioning.UpdateTenant(ctx, model.TenantID(r.PathValue("tenantID")), service.UpdateTenantParams{
+		Name:        payload.Name,
+		Description: payload.Description,
+		Active:      payload.Active,
 	})
 	if err != nil {
 		writeServiceError(ctx, w, err, "tenant not found")
 		return
 	}
 
-	writeJSON(w, http.StatusOK, newTenantDTO(org))
+	writeJSON(w, http.StatusOK, newTenantDTO(tenant))
 }
 
 func (h *Handler) handleDeleteTenant(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	if err := h.provisioning.DeleteTenant(ctx, model.OrgID(r.PathValue("tenantID"))); err != nil {
+	if err := h.provisioning.DeleteTenant(ctx, model.TenantID(r.PathValue("tenantID"))); err != nil {
 		writeServiceError(ctx, w, err, "tenant not found")
 		return
 	}
 
 	w.WriteHeader(http.StatusNoContent)
-}
-
-func toIdentityParams(payload userIdentityRequest) service.UserIdentityParams {
-	return service.UserIdentityParams{
-		Provider:    payload.Provider,
-		Subject:     payload.Subject,
-		Email:       payload.Email,
-		DisplayName: payload.DisplayName,
-		Active:      payload.Active,
-	}
 }

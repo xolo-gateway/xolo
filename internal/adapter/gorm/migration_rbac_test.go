@@ -32,7 +32,7 @@ func TestMigrateLegacyMembershipRoles(t *testing.T) {
 		t.Fatalf("migrate legacy memberships: %v", err)
 	}
 
-	org := fromOrganization(model.NewOrganization("acme", "Acme", ""))
+	org := fromOrganization(model.NewOrganization(testTenantID, "acme", "Acme", ""))
 	if err := db.Create(org).Error; err != nil {
 		t.Fatalf("create org: %v", err)
 	}
@@ -113,12 +113,12 @@ func TestBackfillApplicationBuiltinRoles(t *testing.T) {
 		t.Fatalf("migrate: %v", err)
 	}
 
-	org := fromOrganization(model.NewOrganization("acme", "Acme", ""))
+	org := fromOrganization(model.NewOrganization(testTenantID, "acme", "Acme", ""))
 	if err := db.Create(org).Error; err != nil {
 		t.Fatalf("create org: %v", err)
 	}
 
-	other := fromOrganization(model.NewOrganization("other", "Other", ""))
+	other := fromOrganization(model.NewOrganization(testTenantID, "other", "Other", ""))
 	if err := db.Create(other).Error; err != nil {
 		t.Fatalf("create other org: %v", err)
 	}
@@ -182,3 +182,8 @@ func TestBackfillApplicationBuiltinRoles(t *testing.T) {
 	// Scoped per org: never assigned another org's member role.
 	assertAssignment("app-3", roleIDByOrg[other.ID])
 }
+
+// testTenantID is the tenant every fixture of this package belongs to.
+// Tenancy is not what these tests exercise: they only need a stable, shared
+// owner so the tenant-scoped unique keys behave like the pre-tenant ones.
+const testTenantID = model.TenantID("test-tenant")

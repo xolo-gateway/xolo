@@ -38,7 +38,7 @@ func TestPermissionResolver_Application(t *testing.T) {
 	store := &stubRoleStore{}
 	// The shadow user backing an application: provider "application", subject
 	// carrying the ApplicationID.
-	user := model.NewUser(model.ApplicationProvider, "app-123", "", "CI", true, authz.RoleUser)
+	user := model.NewUser(testTenantID, model.ApplicationProvider, "app-123", "", "CI", true, authz.RoleUser)
 
 	resolve := newPermissionResolver(store, user)
 
@@ -73,7 +73,7 @@ func TestPermissionResolver_Application(t *testing.T) {
 // created by the authn bridge, not granted by an operator.
 func TestPermissionResolver_ApplicationNeverGlobalAdmin(t *testing.T) {
 	store := &stubRoleStore{}
-	user := model.NewUser(model.ApplicationProvider, "app-123", "", "CI", true, authz.RoleAdmin)
+	user := model.NewUser(testTenantID, model.ApplicationProvider, "app-123", "", "CI", true, authz.RoleAdmin)
 
 	set, err := newPermissionResolver(store, user)(context.Background(), "org-1")
 	if err != nil {
@@ -90,7 +90,7 @@ func TestPermissionResolver_ApplicationNeverGlobalAdmin(t *testing.T) {
 
 func TestPermissionResolver_User(t *testing.T) {
 	store := &stubRoleStore{}
-	user := model.NewUser("oidc", "u1", "u1@example.com", "U1", true, authz.RoleUser)
+	user := model.NewUser(testTenantID, "oidc", "u1", "u1@example.com", "U1", true, authz.RoleUser)
 
 	set, err := newPermissionResolver(store, user)(context.Background(), "org-1")
 	if err != nil {
@@ -110,7 +110,7 @@ func TestPermissionResolver_User(t *testing.T) {
 
 func TestPermissionResolver_GlobalAdmin(t *testing.T) {
 	store := &stubRoleStore{}
-	user := model.NewUser("oidc", "u1", "u1@example.com", "U1", true, authz.RoleUser, authz.RoleAdmin)
+	user := model.NewUser(testTenantID, "oidc", "u1", "u1@example.com", "U1", true, authz.RoleUser, authz.RoleAdmin)
 
 	set, err := newPermissionResolver(store, user)(context.Background(), "org-1")
 	if err != nil {
@@ -124,3 +124,8 @@ func TestPermissionResolver_GlobalAdmin(t *testing.T) {
 		t.Error("a global admin should not hit the role store")
 	}
 }
+
+// testTenantID is the tenant every fixture of this package belongs to.
+// Tenancy is not what these tests exercise: they only need a stable, shared
+// owner so the tenant-scoped unique keys behave like the pre-tenant ones.
+const testTenantID = model.TenantID("test-tenant")

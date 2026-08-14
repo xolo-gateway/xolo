@@ -33,7 +33,7 @@ func (h *Handler) handleSeedPluginUIConfig(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	org, err := h.orgStore.GetOrgBySlug(ctx, orgSlug)
+	org, err := h.orgStore.GetOrgBySlug(ctx, httpCtx.TenantID(ctx), orgSlug)
 	if err != nil {
 		if errors.Is(err, port.ErrNotFound) {
 			http.Error(w, "org not found", http.StatusNotFound)
@@ -135,7 +135,7 @@ func (h *Handler) handleReadPluginUIConfig(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	org, err := h.orgStore.GetOrgBySlug(ctx, orgSlug)
+	org, err := h.orgStore.GetOrgBySlug(ctx, httpCtx.TenantID(ctx), orgSlug)
 	if err != nil {
 		if errors.Is(err, port.ErrNotFound) {
 			http.Error(w, "org not found", http.StatusNotFound)

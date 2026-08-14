@@ -29,9 +29,12 @@ type fakeOrgStore struct {
 	memberships map[string]model.Membership // key: userID+"/"+orgID
 }
 
-func (s *fakeOrgStore) GetOrgBySlug(ctx context.Context, slug string) (model.Organization, error) {
+func (s *fakeOrgStore) GetOrgBySlug(ctx context.Context, tenantID model.TenantID, slug string) (model.Organization, error) {
 	org, ok := s.orgsBySlug[slug]
 	if !ok {
+		return nil, port.ErrNotFound
+	}
+	if org.TenantID() != tenantID {
 		return nil, port.ErrNotFound
 	}
 	return org, nil
@@ -72,10 +75,10 @@ func (s *fakeVirtualModelStore) DeleteVirtualModel(ctx context.Context, id model
 // belonged to the model's owning org, so any authenticated user could
 // forge a DELETE for a vmID belonging to an org they have no access to.
 func TestHandleDeleteVirtualModel_RejectsCrossOrgRequest(t *testing.T) {
-	orgA := model.NewOrganization("org-a", "Org A", "")
-	orgB := model.NewOrganization("org-b", "Org B", "")
+	orgA := model.NewOrganization(testTenantID, "org-a", "Org A", "")
+	orgB := model.NewOrganization(testTenantID, "org-b", "Org B", "")
 
-	attacker := model.NewUser("test", "attacker", "attacker@example.com", "Attacker", true, "user")
+	attacker := model.NewUser(testTenantID, "test", "attacker", "attacker@example.com", "Attacker", true, "user")
 
 	orgStore := &fakeOrgStore{
 		orgsBySlug: map[string]model.Organization{
@@ -116,3 +119,8 @@ func TestHandleDeleteVirtualModel_RejectsCrossOrgRequest(t *testing.T) {
 }
 
 var _ http.Handler = &api.Handler{}
+
+// testTenantID is the tenant every fixture of this package belongs to.
+// Tenancy is not what these tests exercise: they only need a stable, shared
+// owner so the tenant-scoped unique keys behave like the pre-tenant ones.
+const testTenantID = model.TenantID("test-tenant")

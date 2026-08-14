@@ -10,9 +10,14 @@ import (
 func (h *Handler) handleListRoles(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	roles, err := h.provisioning.ListRoles(ctx, model.OrgID(r.PathValue("tenantID")))
+	org, ok := h.resolveOrganization(w, r)
+	if !ok {
+		return
+	}
+
+	roles, err := h.provisioning.ListRoles(ctx, org.ID())
 	if err != nil {
-		writeServiceError(ctx, w, err, "tenant not found")
+		writeServiceError(ctx, w, err, "organization not found")
 		return
 	}
 
@@ -30,12 +35,17 @@ func (h *Handler) handleListRoles(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) handleCreateRole(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
+	org, ok := h.resolveOrganization(w, r)
+	if !ok {
+		return
+	}
+
 	var payload roleRequest
 	if !decodeJSON(w, r, &payload) {
 		return
 	}
 
-	role, err := h.provisioning.CreateRole(ctx, model.OrgID(r.PathValue("tenantID")), service.RoleParams{
+	role, err := h.provisioning.CreateRole(ctx, org.ID(), service.RoleParams{
 		Name:        payload.Name,
 		Description: payload.Description,
 		Permissions: payload.Permissions,
@@ -52,8 +62,13 @@ func (h *Handler) handleCreateRole(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) handleGetRole(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
+	org, ok := h.resolveOrganization(w, r)
+	if !ok {
+		return
+	}
+
 	role, err := h.provisioning.GetRole(ctx,
-		model.OrgID(r.PathValue("tenantID")),
+		org.ID(),
 		model.RoleID(r.PathValue("roleID")),
 	)
 	if err != nil {
@@ -67,13 +82,18 @@ func (h *Handler) handleGetRole(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) handleUpdateRole(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
+	org, ok := h.resolveOrganization(w, r)
+	if !ok {
+		return
+	}
+
 	var payload roleRequest
 	if !decodeJSON(w, r, &payload) {
 		return
 	}
 
 	role, err := h.provisioning.UpdateRole(ctx,
-		model.OrgID(r.PathValue("tenantID")),
+		org.ID(),
 		model.RoleID(r.PathValue("roleID")),
 		service.RoleParams{
 			Name:        payload.Name,
@@ -93,8 +113,13 @@ func (h *Handler) handleUpdateRole(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) handleDeleteRole(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
+	org, ok := h.resolveOrganization(w, r)
+	if !ok {
+		return
+	}
+
 	err := h.provisioning.DeleteRole(ctx,
-		model.OrgID(r.PathValue("tenantID")),
+		org.ID(),
 		model.RoleID(r.PathValue("roleID")),
 	)
 	if err != nil {

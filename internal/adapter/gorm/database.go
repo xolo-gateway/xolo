@@ -228,6 +228,23 @@ func createGetDatabase(db *gorm.DB) func(ctx context.Context) (*gorm.DB, error) 
 						return errors.WithStack(tx.Migrator().DropTable("application_roles"))
 					},
 				},
+				{
+					// Introduce the tenant level above organizations and users.
+					// Existing instances keep working unchanged: everything is
+					// attached to the "default" tenant, the one Xolo resolves
+					// transparently when multi-tenancy is disabled.
+					ID: "202608130001",
+					Migrate: func(tx *gorm.DB) error {
+						return withoutForeignKeys(tx, func() error {
+							return migrateToDefaultTenant(tx)
+						})
+					},
+					Rollback: func(tx *gorm.DB) error {
+						return withoutForeignKeys(tx, func() error {
+							return rollbackDefaultTenant(tx)
+						})
+					},
+				},
 			})
 
 			m.InitSchema(func(tx *gorm.DB) error {
@@ -240,6 +257,8 @@ func createGetDatabase(db *gorm.DB) func(ctx context.Context) (*gorm.DB, error) 
 					}
 
 					err := tx.AutoMigrate(
+						// Tenant store
+						&Tenant{},
 						// User store
 						&User{}, &AuthToken{}, &UserRole{}, &UserPreferences{},
 						// Org store
@@ -268,6 +287,12 @@ func createGetDatabase(db *gorm.DB) func(ctx context.Context) (*gorm.DB, error) 
 						&Event{}, &Alert{}, &AlertIncident{}, &EventSettings{},
 					)
 					if err != nil {
+						return errors.WithStack(err)
+					}
+
+					// A fresh instance still needs the tenant every organization
+					// and user hangs from, exactly like an upgraded one.
+					if _, err := ensureDefaultTenant(tx); err != nil {
 						return errors.WithStack(err)
 					}
 

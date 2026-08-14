@@ -88,6 +88,11 @@ type seeder struct {
 
 	usageRecords int
 	usageCost    map[string]int64 // orgID -> total cost (microcents, org currency)
+
+	// tenantID is the default tenant, created by the schema migration. The
+	// fixture is single-tenant: everything hangs from it, exactly like an
+	// instance running with multi-tenancy disabled.
+	tenantID string
 }
 
 func newRand(seed int64) *rand.Rand {
@@ -101,6 +106,7 @@ func (s *seeder) seed(ctx context.Context) error {
 		name string
 		fn   func(ctx context.Context) error
 	}{
+		{"tenant", s.resolveTenant},
 		{"organizations", s.seedOrganizations},
 		{"users", s.seedUsers},
 		{"roles", s.seedRoles},
@@ -136,6 +142,19 @@ func (s *seeder) create(records ...any) error {
 			return errors.WithStack(err)
 		}
 	}
+	return nil
+}
+
+// resolveTenant reads the tenant every fixture belongs to. It is created by the
+// schema migration, which has already run by the time the seeder starts.
+func (s *seeder) resolveTenant(ctx context.Context) error {
+	tenant, err := s.store.GetTenantBySlug(ctx, model.DefaultTenantSlug)
+	if err != nil {
+		return errors.WithStack(err)
+	}
+
+	s.tenantID = string(tenant.ID())
+
 	return nil
 }
 
@@ -175,6 +194,8 @@ func (s *seeder) seedOrganizations(ctx context.Context) error {
 	}
 
 	for _, org := range orgs {
+		org.TenantID = s.tenantID
+
 		if err := s.create(org); err != nil {
 			return errors.WithStack(err)
 		}
@@ -264,6 +285,8 @@ func (s *seeder) seedUsers(ctx context.Context) error {
 	}
 
 	for _, user := range users {
+		user.TenantID = s.tenantID
+
 		roles := user.Roles
 		prefs := user.Preferences
 		user.Roles = nil

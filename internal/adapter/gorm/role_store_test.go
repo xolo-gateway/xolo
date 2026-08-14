@@ -16,7 +16,7 @@ func TestRoleStore_BuiltinRolesAndResolution(t *testing.T) {
 func scenarioRoleStore_BuiltinRolesAndResolution(t *testing.T, store *xologorm.Store) {
 	ctx := context.Background()
 
-	org := model.NewOrganization("acme", "Acme", "")
+	org := model.NewOrganization(testTenantID, "acme", "Acme", "")
 	if err := store.CreateOrg(ctx, org); err != nil {
 		t.Fatalf("CreateOrg: %v", err)
 	}
@@ -50,7 +50,7 @@ func scenarioRoleStore_BuiltinRolesAndResolution(t *testing.T, store *xologorm.S
 	}
 
 	// Member with a member role: usage permission but no admin permission.
-	user := model.NewUser("test", "u1", "u1@example.com", "U1", true, "user")
+	user := model.NewUser(testTenantID, "test", "u1", "u1@example.com", "U1", true, "user")
 	user.SetPreferences(model.NewUserPreferences())
 	if err := store.SaveUser(ctx, user); err != nil {
 		t.Fatalf("SaveUser: %v", err)
@@ -98,7 +98,7 @@ func TestRoleStore_CustomRoleAndModelGrant(t *testing.T) {
 func scenarioRoleStore_CustomRoleAndModelGrant(t *testing.T, store *xologorm.Store) {
 	ctx := context.Background()
 
-	org := model.NewOrganization("acme", "Acme", "")
+	org := model.NewOrganization(testTenantID, "acme", "Acme", "")
 	if err := store.CreateOrg(ctx, org); err != nil {
 		t.Fatalf("CreateOrg: %v", err)
 	}
@@ -149,7 +149,7 @@ func TestRoleStore_ApplicationRoleResolution(t *testing.T) {
 func scenarioRoleStore_ApplicationRoleResolution(t *testing.T, store *xologorm.Store) {
 	ctx := context.Background()
 
-	org := model.NewOrganization("acme", "Acme", "")
+	org := model.NewOrganization(testTenantID, "acme", "Acme", "")
 	if err := store.CreateOrg(ctx, org); err != nil {
 		t.Fatalf("CreateOrg: %v", err)
 	}
@@ -209,7 +209,7 @@ func scenarioRoleStore_ApplicationRoleResolution(t *testing.T, store *xologorm.S
 	}
 
 	// A token scoped to another org must not resolve to the app's permissions.
-	other := model.NewOrganization("other", "Other", "")
+	other := model.NewOrganization(testTenantID, "other", "Other", "")
 	if err := store.CreateOrg(ctx, other); err != nil {
 		t.Fatalf("CreateOrg other: %v", err)
 	}
@@ -255,7 +255,7 @@ func TestRoleStore_DeleteRoleClearsApplicationAssignment(t *testing.T) {
 func scenarioRoleStore_DeleteRoleClearsApplicationAssignment(t *testing.T, store *xologorm.Store) {
 	ctx := context.Background()
 
-	org := model.NewOrganization("acme", "Acme", "")
+	org := model.NewOrganization(testTenantID, "acme", "Acme", "")
 	if err := store.CreateOrg(ctx, org); err != nil {
 		t.Fatalf("CreateOrg: %v", err)
 	}
@@ -294,7 +294,7 @@ func TestRoleStore_BuiltinRoleNotDeletable(t *testing.T) {
 func scenarioRoleStore_BuiltinRoleNotDeletable(t *testing.T, store *xologorm.Store) {
 	ctx := context.Background()
 
-	org := model.NewOrganization("acme", "Acme", "")
+	org := model.NewOrganization(testTenantID, "acme", "Acme", "")
 	if err := store.CreateOrg(ctx, org); err != nil {
 		t.Fatalf("CreateOrg: %v", err)
 	}

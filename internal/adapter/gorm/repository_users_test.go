@@ -14,7 +14,7 @@ import (
 // newUser builds a user ready to be persisted. NewUser leaves Preferences nil,
 // which the GORM mapping dereferences, so every caller has to seed them.
 func newUser(subject, email, displayName string, active bool, roles ...string) *model.BaseUser {
-	u := model.NewUser("test", subject, email, displayName, active, roles...)
+	u := model.NewUser(testTenantID, "test", subject, email, displayName, active, roles...)
 	u.SetPreferences(model.NewUserPreferences())
 	return u
 }
@@ -27,11 +27,11 @@ func scenarioUserStoreLifecycle(t *testing.T, store *xologorm.Store) {
 	ctx := context.Background()
 
 	// FindOrCreateUser is keyed on (provider, subject) and must not duplicate.
-	created, err := store.FindOrCreateUser(ctx, "oidc", "subject-1")
+	created, err := store.FindOrCreateUser(ctx, testTenantID, "oidc", "subject-1")
 	if err != nil {
 		t.Fatalf("FindOrCreateUser: %v", err)
 	}
-	again, err := store.FindOrCreateUser(ctx, "oidc", "subject-1")
+	again, err := store.FindOrCreateUser(ctx, testTenantID, "oidc", "subject-1")
 	if err != nil {
 		t.Fatalf("FindOrCreateUser (again): %v", err)
 	}
@@ -39,7 +39,7 @@ func scenarioUserStoreLifecycle(t *testing.T, store *xologorm.Store) {
 		t.Fatalf("expected the same user, got %q then %q", created.ID(), again.ID())
 	}
 
-	other, err := store.FindOrCreateUser(ctx, "oidc", "subject-2")
+	other, err := store.FindOrCreateUser(ctx, testTenantID, "oidc", "subject-2")
 	if err != nil {
 		t.Fatalf("FindOrCreateUser (other subject): %v", err)
 	}
@@ -193,7 +193,7 @@ func scenarioUserStoreAuthTokens(t *testing.T, store *xologorm.Store) {
 		t.Fatalf("SaveUser: %v", err)
 	}
 
-	org := model.NewOrganization("acme", "Acme", "")
+	org := model.NewOrganization(testTenantID, "acme", "Acme", "")
 	if err := store.CreateOrg(ctx, org); err != nil {
 		t.Fatalf("CreateOrg: %v", err)
 	}

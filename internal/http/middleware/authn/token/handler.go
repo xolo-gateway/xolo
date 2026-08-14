@@ -12,6 +12,10 @@ type Handler struct {
 	sessionStore sessions.Store
 	sessionName  string
 	userStore    port.UserStore
+	// orgStore resolves the tenant owning the organization an application token
+	// is scoped to. A user token carries its tenant through its owner; an
+	// application token only knows its organization.
+	orgStore port.OrgStore
 }
 
 // ServeHTTP implements [http.Handler].
@@ -19,13 +23,14 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	h.mux.ServeHTTP(w, r)
 }
 
-func NewHandler(sessionStore sessions.Store, userStore port.UserStore, funcs ...OptionFunc) *Handler {
+func NewHandler(sessionStore sessions.Store, userStore port.UserStore, orgStore port.OrgStore, funcs ...OptionFunc) *Handler {
 	opts := NewOptions(funcs...)
 	h := &Handler{
 		mux:          http.NewServeMux(),
 		sessionStore: sessionStore,
 		sessionName:  opts.SessionName,
 		userStore:    userStore,
+		orgStore:     orgStore,
 	}
 
 	h.mux.HandleFunc("GET /login", h.getLoginPage)

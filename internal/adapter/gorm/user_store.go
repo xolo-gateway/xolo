@@ -31,16 +31,17 @@ func fromAuthToken(t model.AuthToken) *AuthToken {
 }
 
 // FindOrCreateUser implements port.UserStore.
-func (s *Store) FindOrCreateUser(ctx context.Context, provider, subject string) (model.User, error) {
+func (s *Store) FindOrCreateUser(ctx context.Context, tenantID model.TenantID, provider, subject string) (model.User, error) {
 	var user model.User
 	err := s.withRetry(ctx, true, func(ctx context.Context, db *gorm.DB) error {
 		var u User
 
-		err := db.Where("provider = ? AND subject = ?", provider, subject).
+		err := db.Where("tenant_id = ? AND provider = ? AND subject = ?", string(tenantID), provider, subject).
 			Preload("Roles").
 			Preload("Preferences").
 			Attrs(&User{
 				ID:       string(model.NewUserID()),
+				TenantID: string(tenantID),
 				Provider: provider,
 				Subject:  subject,
 				Active:   true,
@@ -81,12 +82,12 @@ func (s *Store) GetUserByID(ctx context.Context, userID model.UserID) (model.Use
 }
 
 // GetUserByIdentity implements port.UserStore.
-func (s *Store) GetUserByIdentity(ctx context.Context, provider, subject string) (model.User, error) {
+func (s *Store) GetUserByIdentity(ctx context.Context, tenantID model.TenantID, provider, subject string) (model.User, error) {
 	var user User
 
 	err := s.withRetry(ctx, false, func(ctx context.Context, db *gorm.DB) error {
 		err := db.Preload("Roles").Preload("Preferences").
-			Where("provider = ? AND subject = ?", provider, subject).
+			Where("tenant_id = ? AND provider = ? AND subject = ?", string(tenantID), provider, subject).
 			First(&user).Error
 		if err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -287,6 +288,15 @@ func applyUserSearch(query *gorm.DB, term string) *gorm.DB {
 	)
 }
 
+// applyUserTenant restricts a user query to a single tenant. The column is
+// qualified because the role filter joins user_roles.
+func applyUserTenant(query *gorm.DB, tenantID *model.TenantID) *gorm.DB {
+	if tenantID == nil {
+		return query
+	}
+	return query.Where("users.tenant_id = ?", string(*tenantID))
+}
+
 // CountUsers implements port.UserStore.
 func (s *Store) CountUsers(ctx context.Context, opts port.QueryUsersOptions) (int64, error) {
 	var count int64
@@ -304,6 +314,7 @@ func (s *Store) CountUsers(ctx context.Context, opts port.QueryUsersOptions) (in
 			query = query.Where("active = ?", *opts.Active)
 		}
 
+		query = applyUserTenant(query, opts.TenantID)
 		query = applyUserSearch(query, opts.Search)
 
 		return errors.WithStack(query.Count(&count).Error)
@@ -335,6 +346,7 @@ func (s *Store) QueryUsers(ctx context.Context, opts port.QueryUsersOptions) ([]
 			query = query.Where("active = ?", *opts.Active)
 		}
 
+		query = applyUserTenant(query, opts.TenantID)
 		query = applyUserSearch(query, opts.Search)
 
 		// Apply pagination

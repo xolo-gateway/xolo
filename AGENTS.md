@@ -34,11 +34,11 @@ Xolo is an enterprise LLM gateway. It wraps the `github.com/bornholm/genai/proxy
 ```
 internal/
   core/
-    model/      — domain types: User, AuthToken, Task
-    port/       — interfaces: UserStore, TaskRunner, error sentinels
+    model/      — domain types: Tenant, Organization, User, AuthToken, Task
+    port/       — interfaces: TenantStore, UserStore, TaskRunner, error sentinels
     service/    — orchestration across stores (QuotaService, ProvisioningService)
   provisionning/ — instance provisionning API: own listener, own port, mutual TLS
-    handler/v1/ — versioned M2M REST API (tenants, members, roles, users)
+    handler/v1/ — versioned M2M REST API (tenants > organizations > members/roles, tenant users)
   adapter/
     gorm/       — GORM implementation of the stores (SQLite or PostgreSQL, see internal/adapter/gorm/dialect.go)
                   store tests go through eachBackend() so every behaviour is asserted on both backends
@@ -47,8 +47,9 @@ internal/
   http/
     server.go   — HTTP server (CORS, slog middleware, context injection)
     options.go  — mount points configuration
-    context/    — request-scoped values (BaseURL, CurrentURL, User)
+    context/    — request-scoped values (BaseURL, CurrentURL, Tenant, User)
     middleware/
+      tenant/   — resolves the request tenant (subdomain in multi-tenant mode); runs before everything else
       authn/    — authentication: OIDC (goth) + token-based
       authz/    — role assertions (user/admin/active)
       bridge/   — populates/creates User from authn identity
@@ -73,12 +74,30 @@ internal/
 - The genai proxy is mounted at `/v1/` and sits behind auth middleware
 - `cmd/server` runs the public HTTP server and, when enabled, the Provisionning API server on the same root context; the first fatal error stops both
 
+### Multi-tenancy
+
+A **Tenant** owns organizations and users; it is the outermost isolation
+boundary. Slugs and identities are unique per tenant, never instance-wide:
+`GetOrgBySlug`, `GetUserByIdentity` and `FindOrCreateUser` all take a
+`model.TenantID`, and `ListOrgsOptions`/`QueryUsersOptions` carry a `TenantID`
+filter. Xolo IDs stay globally unique, so lookups by ID keep their signature —
+the tenant is then asserted by the service layer.
+
+Disabled by default: the schema migration creates a single `default` tenant,
+attaches every pre-existing row to it, and the tenant is never surfaced (no
+subdomain, no change of URL). `XOLO_MULTITENANCY_ENABLED=true` plus
+`XOLO_MULTITENANCY_HOST_PATTERN={tenant}.example.com` switches the resolution to
+the request host; a host matching no active tenant answers 404.
+See `internal/http/middleware/tenant/`.
+
 ### Provisionning API
 
-Machine-to-machine provisioning of tenants, members, roles and users, on a
-dedicated listener authenticated by mutual TLS only (`XOLO_PROVISIONNING_API_*`,
-disabled by default). It never grants platform-wide privileges and shares the
-same store instances as the public server. See `internal/provisionning/README.md`.
+Machine-to-machine provisioning of tenants, the organizations they own, their
+members, roles and users, on a dedicated listener authenticated by mutual TLS
+only (`XOLO_PROVISIONNING_API_*`, disabled by default). It never grants
+platform-wide privileges and shares the same store instances as the public
+server. Creating a second tenant is refused while multi-tenancy is disabled.
+See `internal/provisionning/README.md`.
 
 ### UI / templating
 

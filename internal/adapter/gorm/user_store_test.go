@@ -22,13 +22,13 @@ func TestUserStore_DuplicateEmailRejected(t *testing.T) {
 func scenarioUserStore_DuplicateEmailRejected(t *testing.T, store *xologorm.Store) {
 	ctx := context.Background()
 
-	first := model.NewUser("test", "subject-1", "duplicate@example.com", "First", true)
+	first := model.NewUser(testTenantID, "test", "subject-1", "duplicate@example.com", "First", true)
 	first.SetPreferences(model.NewUserPreferences())
 	if err := store.SaveUser(ctx, first); err != nil {
 		t.Fatalf("SaveUser (first): %v", err)
 	}
 
-	second := model.NewUser("test", "subject-2", "duplicate@example.com", "Second", true)
+	second := model.NewUser(testTenantID, "test", "subject-2", "duplicate@example.com", "Second", true)
 	second.SetPreferences(model.NewUserPreferences())
 	err := store.SaveUser(ctx, second)
 	if !errors.Is(err, port.ErrAlreadyExists) {
@@ -46,7 +46,7 @@ func scenarioUserStore_EmptyEmailsAllowed(t *testing.T, store *xologorm.Store) {
 	ctx := context.Background()
 
 	for _, subject := range []string{"subject-1", "subject-2"} {
-		user := model.NewUser("test", subject, "", "No mail", true)
+		user := model.NewUser(testTenantID, "test", subject, "", "No mail", true)
 		user.SetPreferences(model.NewUserPreferences())
 		if err := store.SaveUser(ctx, user); err != nil {
 			t.Fatalf("SaveUser (%s): %v", subject, err)

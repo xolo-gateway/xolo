@@ -9,12 +9,13 @@ import (
 	"strings"
 	"time"
 
+	"github.com/pkg/errors"
 	"github.com/xolo-gateway/xolo/internal/core/model"
 	"github.com/xolo-gateway/xolo/internal/core/port"
 	"github.com/xolo-gateway/xolo/internal/core/rbac"
 	"github.com/xolo-gateway/xolo/internal/core/secretcleanup"
+	httpCtx "github.com/xolo-gateway/xolo/internal/http/context"
 	proto "github.com/xolo-gateway/xolo/pkg/pluginsdk/proto"
-	"github.com/pkg/errors"
 )
 
 // ─── Request / response shapes ───────────────────────────────────────────────
@@ -67,7 +68,7 @@ func (h *Handler) handleListVirtualModels(w http.ResponseWriter, r *http.Request
 	ctx := r.Context()
 	orgSlug := r.PathValue("orgSlug")
 
-	org, err := h.orgStore.GetOrgBySlug(ctx, orgSlug)
+	org, err := h.orgStore.GetOrgBySlug(ctx, httpCtx.TenantID(ctx), orgSlug)
 	if err != nil {
 		if errors.Is(err, port.ErrNotFound) {
 			http.Error(w, "org not found", http.StatusNotFound)
@@ -104,7 +105,7 @@ func (h *Handler) handleCreateVirtualModel(w http.ResponseWriter, r *http.Reques
 	ctx := r.Context()
 	orgSlug := r.PathValue("orgSlug")
 
-	org, err := h.orgStore.GetOrgBySlug(ctx, orgSlug)
+	org, err := h.orgStore.GetOrgBySlug(ctx, httpCtx.TenantID(ctx), orgSlug)
 	if err != nil {
 		if errors.Is(err, port.ErrNotFound) {
 			http.Error(w, "org not found", http.StatusNotFound)
@@ -320,7 +321,7 @@ func (h *Handler) handleImportVirtualModel(w http.ResponseWriter, r *http.Reques
 	ctx := r.Context()
 	orgSlug := r.PathValue("orgSlug")
 
-	org, err := h.orgStore.GetOrgBySlug(ctx, orgSlug)
+	org, err := h.orgStore.GetOrgBySlug(ctx, httpCtx.TenantID(ctx), orgSlug)
 	if err != nil {
 		if errors.Is(err, port.ErrNotFound) {
 			http.Error(w, "org not found", http.StatusNotFound)
@@ -390,5 +391,3 @@ func sanitizeFilename(name string) string {
 func toVMResponse(vm model.VirtualModel) pipelineEntityResponse {
 	return toEntityResponse(vm.(model.PipelineEntity))
 }
-
-

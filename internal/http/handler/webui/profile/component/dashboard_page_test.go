@@ -15,7 +15,7 @@ import (
 // reading as a dashboard, and a missing figure becomes indistinguishable from a
 // failed load. Every frame is rendered on a brand new account too.
 func TestDashboardPageKeepsEveryBlockWhenEmpty(t *testing.T) {
-	user := model.NewUser("test", "subject", "user@xolo.test", "Ada Lovelace", true, authz.RoleUser)
+	user := model.NewUser(testTenantID, "test", "subject", "user@xolo.test", "Ada Lovelace", true, authz.RoleUser)
 	ctx := httpCtx.SetBaseURL(context.Background(), "http://xolo.test")
 	ctx = httpCtx.SetUser(ctx, user)
 	ctx = httpCtx.SetMemberships(ctx, nil)
@@ -41,3 +41,8 @@ func TestDashboardPageKeepsEveryBlockWhenEmpty(t *testing.T) {
 		}
 	}
 }
+
+// testTenantID is the tenant every fixture of this package belongs to.
+// Tenancy is not what these tests exercise: they only need a stable, shared
+// owner so the tenant-scoped unique keys behave like the pre-tenant ones.
+const testTenantID = model.TenantID("test-tenant")

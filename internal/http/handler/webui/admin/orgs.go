@@ -20,7 +20,11 @@ func (h *Handler) getOrgsPage(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	user := httpCtx.User(ctx)
 
-	orgs, _, err := h.orgStore.ListOrgs(ctx, port.ListOrgsOptions{})
+	// The platform console is tenant-scoped: a platform admin administers its
+	// own tenant, never the whole instance.
+	tenantID := httpCtx.TenantID(ctx)
+
+	orgs, _, err := h.orgStore.ListOrgs(ctx, port.ListOrgsOptions{TenantID: &tenantID})
 	if err != nil {
 		slog.ErrorContext(ctx, "could not list orgs", slogx.Error(err))
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
@@ -135,7 +139,7 @@ func (h *Handler) createOrg(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	org := model.NewOrganization(slug, name, description)
+	org := model.NewOrganization(httpCtx.TenantID(ctx), slug, name, description)
 	if err := h.orgStore.CreateOrg(ctx, org); err != nil {
 		slog.ErrorContext(ctx, "could not create org", slogx.Error(err))
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)

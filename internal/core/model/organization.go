@@ -15,6 +15,9 @@ func NewOrgID() OrgID {
 type Organization interface {
 	WithID[OrgID]
 
+	// TenantID is the owning tenant. Slugs are unique per tenant, never
+	// instance-wide.
+	TenantID() TenantID
 	Slug() string
 	Name() string
 	Description() string
@@ -27,6 +30,7 @@ type Organization interface {
 
 type BaseOrganization struct {
 	id                  OrgID
+	tenantID            TenantID
 	slug                string
 	name                string
 	description         string
@@ -38,6 +42,7 @@ type BaseOrganization struct {
 }
 
 func (o *BaseOrganization) ID() OrgID           { return o.id }
+func (o *BaseOrganization) TenantID() TenantID   { return o.tenantID }
 func (o *BaseOrganization) Slug() string         { return o.slug }
 func (o *BaseOrganization) Name() string         { return o.name }
 func (o *BaseOrganization) Description() string  { return o.description }
@@ -49,13 +54,14 @@ func (o *BaseOrganization) ShareQuotaEqually() bool { return o.shareQuotaEqually
 
 var _ Organization = &BaseOrganization{}
 
-func NewOrganization(slug, name, description string, currency ...string) *BaseOrganization {
+func NewOrganization(tenantID TenantID, slug, name, description string, currency ...string) *BaseOrganization {
 	cur := DefaultCurrency
 	if len(currency) > 0 && currency[0] != "" {
 		cur = currency[0]
 	}
 	return &BaseOrganization{
 		id:          NewOrgID(),
+		tenantID:    tenantID,
 		slug:        slug,
 		name:        name,
 		description: description,
@@ -77,6 +83,7 @@ func WithOrgShareQuotaEqually(v bool) OrgOption { return func(o *BaseOrganizatio
 func UpdateOrganization(org Organization, opts ...OrgOption) *BaseOrganization {
 	b := &BaseOrganization{
 		id:                  org.ID(),
+		tenantID:            org.TenantID(),
 		slug:                org.Slug(),
 		name:                org.Name(),
 		description:         org.Description(),

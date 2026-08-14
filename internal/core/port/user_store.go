@@ -7,17 +7,18 @@ import (
 )
 
 type UserStore interface {
-	// FindOrCreateUser searches for a User in the store by its provider/subject unique tuple and returns
-	// it if it exists, or create a new one otherwise
-	FindOrCreateUser(ctx context.Context, provider, subject string) (model.User, error)
+	// FindOrCreateUser searches for a User in the store by its
+	// tenant/provider/subject unique tuple and returns it if it exists, or
+	// creates a new one otherwise.
+	FindOrCreateUser(ctx context.Context, tenantID model.TenantID, provider, subject string) (model.User, error)
 
 	// GetUserByID finds a user by its ID, or returns ErrNotFound if not found
 	GetUserByID(ctx context.Context, userID model.UserID) (model.User, error)
 
-	// GetUserByIdentity finds a user by its provider/subject unique tuple, or
-	// returns ErrNotFound if not found. Unlike FindOrCreateUser, it never
-	// creates anything.
-	GetUserByIdentity(ctx context.Context, provider, subject string) (model.User, error)
+	// GetUserByIdentity finds a user by its tenant/provider/subject unique
+	// tuple, or returns ErrNotFound if not found. Unlike FindOrCreateUser, it
+	// never creates anything.
+	GetUserByIdentity(ctx context.Context, tenantID model.TenantID, provider, subject string) (model.User, error)
 
 	// QueryUsers returns a paginated list of users
 	QueryUsers(ctx context.Context, opts QueryUsersOptions) ([]model.User, error)
@@ -49,6 +50,11 @@ type QueryUsersOptions struct {
 	Limit *int
 
 	// Filters
+
+	// TenantID restricts the result to a single tenant. A nil value spans the
+	// whole instance and must stay reserved for maintenance loops that
+	// legitimately cross tenants.
+	TenantID *model.TenantID
 
 	// Users with specific roles
 	Roles []string

@@ -13,11 +13,15 @@ type User struct {
 	CreatedAt time.Time
 	UpdatedAt time.Time
 
-	Subject  string `gorm:"index"`
-	Provider string `gorm:"index"`
+	// TenantID scopes the identity: (tenant_id, provider, subject) is the unique
+	// key, so the same person signing in on two tenants owns two accounts.
+	TenantID string `gorm:"index;uniqueIndex:idx_users_tenant_identity,priority:1;uniqueIndex:idx_users_tenant_email_nonempty,priority:1;not null"`
+
+	Subject  string `gorm:"index;uniqueIndex:idx_users_tenant_identity,priority:2"`
+	Provider string `gorm:"index;uniqueIndex:idx_users_tenant_identity,priority:3"`
 
 	DisplayName string
-	Email       string `gorm:"uniqueIndex:idx_users_email_nonempty,where:email != ''"`
+	Email       string `gorm:"uniqueIndex:idx_users_tenant_email_nonempty,priority:2,where:email != ''"`
 
 	AuthTokens []*AuthToken `gorm:"foreignKey:OwnerID;constraint:OnDelete:CASCADE;"`
 
@@ -53,6 +57,7 @@ type UserPreferences struct {
 func fromUser(u model.User) *User {
 	user := &User{
 		ID:          string(u.ID()),
+		TenantID:    string(u.TenantID()),
 		Subject:     u.Subject(),
 		Provider:    u.Provider(),
 		DisplayName: u.DisplayName(),
@@ -150,6 +155,11 @@ func (w *wrappedUser) Active() bool {
 }
 
 // ID implements model.User.
+// TenantID implements model.User.
+func (w *wrappedUser) TenantID() model.TenantID {
+	return model.TenantID(w.u.TenantID)
+}
+
 func (w *wrappedUser) ID() model.UserID {
 	return model.UserID(w.u.ID)
 }

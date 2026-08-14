@@ -17,7 +17,7 @@ func TestOrgStore_Lifecycle(t *testing.T) {
 func scenarioOrgStoreLifecycle(t *testing.T, store *xologorm.Store) {
 	ctx := context.Background()
 
-	org := model.NewOrganization("acme", "Acme Corp", "The description", "EUR")
+	org := model.NewOrganization(testTenantID, "acme", "Acme Corp", "The description", "EUR")
 	if err := store.CreateOrg(ctx, org); err != nil {
 		t.Fatalf("CreateOrg: %v", err)
 	}
@@ -30,7 +30,7 @@ func scenarioOrgStoreLifecycle(t *testing.T, store *xologorm.Store) {
 		t.Errorf("unexpected org round-trip: name=%q currency=%q active=%v", byID.Name(), byID.Currency(), byID.Active())
 	}
 
-	bySlug, err := store.GetOrgBySlug(ctx, "acme")
+	bySlug, err := store.GetOrgBySlug(ctx, testTenantID, "acme")
 	if err != nil {
 		t.Fatalf("GetOrgBySlug: %v", err)
 	}
@@ -38,7 +38,7 @@ func scenarioOrgStoreLifecycle(t *testing.T, store *xologorm.Store) {
 		t.Errorf("expected org %q, got %q", org.ID(), bySlug.ID())
 	}
 
-	if _, err := store.GetOrgBySlug(ctx, "unknown"); !errors.Is(err, port.ErrNotFound) {
+	if _, err := store.GetOrgBySlug(ctx, testTenantID, "unknown"); !errors.Is(err, port.ErrNotFound) {
 		t.Fatalf("GetOrgBySlug (unknown): expected port.ErrNotFound, got %v", err)
 	}
 	if _, err := store.GetOrgByID(ctx, model.NewOrgID()); !errors.Is(err, port.ErrNotFound) {
@@ -79,7 +79,7 @@ func TestOrgStore_DeletePurgesScopedData(t *testing.T) {
 func scenarioOrgStoreDeletePurgesScopedData(t *testing.T, store *xologorm.Store) {
 	ctx := context.Background()
 
-	org := model.NewOrganization("acme", "Acme Corp", "")
+	org := model.NewOrganization(testTenantID, "acme", "Acme Corp", "")
 	if err := store.CreateOrg(ctx, org); err != nil {
 		t.Fatalf("CreateOrg: %v", err)
 	}
@@ -126,7 +126,7 @@ func scenarioOrgStoreListPagination(t *testing.T, store *xologorm.Store) {
 	ctx := context.Background()
 
 	for _, slug := range []string{"org-a", "org-b", "org-c"} {
-		if err := store.CreateOrg(ctx, model.NewOrganization(slug, slug, "")); err != nil {
+		if err := store.CreateOrg(ctx, model.NewOrganization(testTenantID, slug, slug, "")); err != nil {
 			t.Fatalf("CreateOrg(%s): %v", slug, err)
 		}
 	}
@@ -158,11 +158,11 @@ func TestOrgStore_Memberships(t *testing.T) {
 func scenarioOrgStoreMemberships(t *testing.T, store *xologorm.Store) {
 	ctx := context.Background()
 
-	org := model.NewOrganization("acme", "Acme", "")
+	org := model.NewOrganization(testTenantID, "acme", "Acme", "")
 	if err := store.CreateOrg(ctx, org); err != nil {
 		t.Fatalf("CreateOrg: %v", err)
 	}
-	otherOrg := model.NewOrganization("other", "Other", "")
+	otherOrg := model.NewOrganization(testTenantID, "other", "Other", "")
 	if err := store.CreateOrg(ctx, otherOrg); err != nil {
 		t.Fatalf("CreateOrg (other): %v", err)
 	}

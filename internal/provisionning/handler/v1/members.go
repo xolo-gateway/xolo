@@ -11,6 +11,11 @@ import (
 func (h *Handler) handleListMembers(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
+	org, ok := h.resolveOrganization(w, r)
+	if !ok {
+		return
+	}
+
 	page, limit, ok := pagination(r)
 	if !ok {
 		writeInvalidPagination(w)
@@ -19,12 +24,12 @@ func (h *Handler) handleListMembers(w http.ResponseWriter, r *http.Request) {
 
 	offset := page - 1
 
-	members, total, err := h.provisioning.ListMembers(ctx, model.OrgID(r.PathValue("tenantID")), port.ListOrgMembersOptions{
+	members, total, err := h.provisioning.ListMembers(ctx, org.ID(), port.ListOrgMembersOptions{
 		Page:  &offset,
 		Limit: &limit,
 	})
 	if err != nil {
-		writeServiceError(ctx, w, err, "tenant not found")
+		writeServiceError(ctx, w, err, "organization not found")
 		return
 	}
 
@@ -38,6 +43,11 @@ func (h *Handler) handleListMembers(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) handleAddMember(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
+
+	org, ok := h.resolveOrganization(w, r)
+	if !ok {
+		return
+	}
 
 	var payload addMemberRequest
 	if !decodeJSON(w, r, &payload) {
@@ -55,7 +65,7 @@ func (h *Handler) handleAddMember(w http.ResponseWriter, r *http.Request) {
 		params.User = &user
 	}
 
-	membership, err := h.provisioning.AddMember(ctx, model.OrgID(r.PathValue("tenantID")), params)
+	membership, err := h.provisioning.AddMember(ctx, org.ID(), params)
 	if err != nil {
 		writeServiceError(ctx, w, err, "could not add member")
 		return
@@ -67,8 +77,13 @@ func (h *Handler) handleAddMember(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) handleGetMember(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
+	org, ok := h.resolveOrganization(w, r)
+	if !ok {
+		return
+	}
+
 	membership, err := h.provisioning.GetMember(ctx,
-		model.OrgID(r.PathValue("tenantID")),
+		org.ID(),
 		model.MembershipID(r.PathValue("membershipID")),
 	)
 	if err != nil {
@@ -82,13 +97,18 @@ func (h *Handler) handleGetMember(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) handleSetMemberRoles(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
+	org, ok := h.resolveOrganization(w, r)
+	if !ok {
+		return
+	}
+
 	var payload setMemberRolesRequest
 	if !decodeJSON(w, r, &payload) {
 		return
 	}
 
 	membership, err := h.provisioning.SetMemberRoles(ctx,
-		model.OrgID(r.PathValue("tenantID")),
+		org.ID(),
 		model.MembershipID(r.PathValue("membershipID")),
 		toRoleIDs(payload.RoleIDs),
 		payload.BuiltinRoles,
@@ -104,8 +124,13 @@ func (h *Handler) handleSetMemberRoles(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) handleRemoveMember(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
+	org, ok := h.resolveOrganization(w, r)
+	if !ok {
+		return
+	}
+
 	err := h.provisioning.RemoveMember(ctx,
-		model.OrgID(r.PathValue("tenantID")),
+		org.ID(),
 		model.MembershipID(r.PathValue("membershipID")),
 	)
 	if err != nil {

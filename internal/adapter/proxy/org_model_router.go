@@ -78,7 +78,7 @@ func (r *OrgModelRouter) ResolveModel(ctx context.Context, req *genaiProxy.Proxy
 		return nil, "", errors.Errorf("invalid model name %q: expected format \"<org-slug>/<model-name>\"", req.Model)
 	}
 
-	org, err := r.orgStore.GetOrgBySlug(ctx, orgSlug)
+	org, err := r.orgStore.GetOrgBySlug(ctx, httpCtx.TenantID(ctx), orgSlug)
 	if err != nil {
 		if errors.Is(err, port.ErrNotFound) {
 			return nil, "", errors.Errorf("model '%s' not available in your organization", req.Model)
@@ -247,7 +247,7 @@ func (r *OrgModelRouter) ResolveRealModel(ctx context.Context, orgID model.OrgID
 	if idx := strings.IndexByte(proxyName, '/'); idx > 0 {
 		orgSlug := proxyName[:idx]
 		proxyName = proxyName[idx+1:]
-		if org, err := r.orgStore.GetOrgBySlug(ctx, orgSlug); err == nil {
+		if org, err := r.orgStore.GetOrgBySlug(ctx, httpCtx.TenantID(ctx), orgSlug); err == nil {
 			// When the referenced org differs from the token's org, verify that the
 			// requesting user is actually a member of that org.
 			if org.ID() != orgID {

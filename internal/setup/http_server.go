@@ -15,6 +15,7 @@ import (
 	"github.com/xolo-gateway/xolo/internal/http/middleware/authn"
 	"github.com/xolo-gateway/xolo/internal/http/middleware/authz"
 	membershipsMiddleware "github.com/xolo-gateway/xolo/internal/http/middleware/memberships"
+	"github.com/xolo-gateway/xolo/internal/http/middleware/tenant"
 	"github.com/xolo-gateway/xolo/internal/http/middleware/ratelimit"
 	"github.com/pkg/errors"
 
@@ -253,9 +254,26 @@ func NewHTTPServerFromConfig(ctx context.Context, conf *config.Config) (*http.Se
 		return apiAuthnMiddleware(bridgeMiddleware(apiActiveCheck(withMemberships(h))))
 	}
 
+	tenantStore, err := getTenantStoreFromConfig(ctx, conf)
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+
+	// Tenant resolution wraps the whole server: authentication resolves a user
+	// within a tenant, so no route may run before the tenant is known. A host
+	// matching none answers 404 — an unknown subdomain must not reveal whether
+	// the instance exists.
+	tenantMiddleware := tenant.Middleware(
+		tenant.NewResolver(tenantStore, conf.Multitenancy),
+		gohttp.HandlerFunc(func(w gohttp.ResponseWriter, r *gohttp.Request) {
+			common.HandleError(w, r, common.NewHTTPError(gohttp.StatusNotFound))
+		}),
+	)
+
 	options := []http.OptionFunc{
 		http.WithAddress(conf.HTTP.Address),
 		http.WithBaseURL(conf.HTTP.BaseURL),
+		http.WithMiddleware(tenantMiddleware),
 		http.WithMount("/assets/", assets),
 		http.WithMount("/assets/pipeline/", pipelineAssets.NewAssetsHandler()),
 		http.WithMount("/auth/oidc/", rateLimiter(oidcAuthn)),

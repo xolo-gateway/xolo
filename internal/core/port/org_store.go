@@ -10,7 +10,9 @@ type OrgStore interface {
 	// Organizations
 	CreateOrg(ctx context.Context, org model.Organization) error
 	GetOrgByID(ctx context.Context, id model.OrgID) (model.Organization, error)
-	GetOrgBySlug(ctx context.Context, slug string) (model.Organization, error)
+	// GetOrgBySlug resolves an organization within a tenant. Slugs are only
+	// unique per tenant, so the tenant is part of the key, never optional.
+	GetOrgBySlug(ctx context.Context, tenantID model.TenantID, slug string) (model.Organization, error)
 	ListOrgs(ctx context.Context, opts ListOrgsOptions) ([]model.Organization, int64, error)
 	SaveOrg(ctx context.Context, org model.Organization) error
 	DeleteOrg(ctx context.Context, id model.OrgID) error
@@ -28,6 +30,11 @@ type OrgStore interface {
 type ListOrgsOptions struct {
 	Page  *int
 	Limit *int
+
+	// TenantID restricts the listing to a single tenant. A nil value spans the
+	// whole instance and must stay reserved for maintenance loops that
+	// legitimately cross tenants.
+	TenantID *model.TenantID
 }
 
 type ListOrgMembersOptions struct {

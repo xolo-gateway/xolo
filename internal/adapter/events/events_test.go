@@ -31,7 +31,7 @@ func newStore(t *testing.T) *xologorm.Store {
 }
 
 func withActor(ctx context.Context) context.Context {
-	user := model.NewUser("test", "sub-1", "u@example.com", "Alice", true, "user")
+	user := model.NewUser(testTenantID, "test", "sub-1", "u@example.com", "Alice", true, "user")
 	return httpCtx.SetUser(ctx, user)
 }
 
@@ -41,7 +41,7 @@ func TestProviderStore_EmitsWithActor(t *testing.T) {
 	store := eventsAdapter.NewProviderStore(backend, emitter)
 
 	ctx := withActor(context.Background())
-	org := model.NewOrganization("acme", "Acme", "")
+	org := model.NewOrganization(testTenantID, "acme", "Acme", "")
 	if err := backend.CreateOrg(ctx, org); err != nil {
 		t.Fatalf("CreateOrg: %v", err)
 	}
@@ -86,7 +86,7 @@ func TestProviderStore_NoActorNoEvent(t *testing.T) {
 
 	// No user in context (system/seed path): no event should be emitted.
 	ctx := context.Background()
-	org := model.NewOrganization("acme", "Acme", "")
+	org := model.NewOrganization(testTenantID, "acme", "Acme", "")
 	if err := backend.CreateOrg(ctx, org); err != nil {
 		t.Fatalf("CreateOrg: %v", err)
 	}
@@ -106,11 +106,11 @@ func TestRoleStore_MemberUpdatedResolvesOrgAndUser(t *testing.T) {
 	store := eventsAdapter.NewRoleStore(backend, emitter, backend)
 
 	ctx := withActor(context.Background())
-	org := model.NewOrganization("acme", "Acme", "")
+	org := model.NewOrganization(testTenantID, "acme", "Acme", "")
 	if err := backend.CreateOrg(ctx, org); err != nil {
 		t.Fatalf("CreateOrg: %v", err)
 	}
-	user := model.NewUser("test", "sub-2", "bob@example.com", "Bob", true, "user")
+	user := model.NewUser(testTenantID, "test", "sub-2", "bob@example.com", "Bob", true, "user")
 	user.SetPreferences(model.NewUserPreferences())
 	if err := backend.SaveUser(ctx, user); err != nil {
 		t.Fatalf("SaveUser: %v", err)
@@ -145,7 +145,7 @@ func TestApplicationStore_TokenEvents(t *testing.T) {
 	store := eventsAdapter.NewApplicationStore(backend, emitter)
 
 	ctx := withActor(context.Background())
-	org := model.NewOrganization("acme", "Acme", "")
+	org := model.NewOrganization(testTenantID, "acme", "Acme", "")
 	if err := backend.CreateOrg(ctx, org); err != nil {
 		t.Fatalf("CreateOrg: %v", err)
 	}
@@ -177,3 +177,8 @@ func TestApplicationStore_TokenEvents(t *testing.T) {
 		t.Fatalf("expected label prod, got %q", del.Attributes()["label"])
 	}
 }
+
+// testTenantID is the tenant every fixture of this package belongs to.
+// Tenancy is not what these tests exercise: they only need a stable, shared
+// owner so the tenant-scoped unique keys behave like the pre-tenant ones.
+const testTenantID = model.TenantID("test-tenant")

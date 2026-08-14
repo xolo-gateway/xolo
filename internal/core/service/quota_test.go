@@ -5,10 +5,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/pkg/errors"
 	"github.com/xolo-gateway/xolo/internal/core/model"
 	"github.com/xolo-gateway/xolo/internal/core/port"
 	"github.com/xolo-gateway/xolo/internal/core/service"
-	"github.com/pkg/errors"
 )
 
 // ── Fakes ─────────────────────────────────────────────────────────────────────
@@ -77,15 +77,16 @@ type fakeOrg struct {
 	shareQuotaEqually bool
 }
 
-func (o *fakeOrg) ID() model.OrgID         { return "org1" }
-func (o *fakeOrg) Slug() string            { return "org1" }
-func (o *fakeOrg) Name() string            { return "Org1" }
-func (o *fakeOrg) Description() string     { return "" }
-func (o *fakeOrg) Active() bool            { return true }
-func (o *fakeOrg) Currency() string        { return "EUR" }
-func (o *fakeOrg) CreatedAt() time.Time    { return time.Time{} }
-func (o *fakeOrg) UpdatedAt() time.Time    { return time.Time{} }
-func (o *fakeOrg) ShareQuotaEqually() bool { return o.shareQuotaEqually }
+func (o *fakeOrg) ID() model.OrgID          { return "org1" }
+func (o *fakeOrg) TenantID() model.TenantID { return "tenant1" }
+func (o *fakeOrg) Slug() string             { return "org1" }
+func (o *fakeOrg) Name() string             { return "Org1" }
+func (o *fakeOrg) Description() string      { return "" }
+func (o *fakeOrg) Active() bool             { return true }
+func (o *fakeOrg) Currency() string         { return "EUR" }
+func (o *fakeOrg) CreatedAt() time.Time     { return time.Time{} }
+func (o *fakeOrg) UpdatedAt() time.Time     { return time.Time{} }
+func (o *fakeOrg) ShareQuotaEqually() bool  { return o.shareQuotaEqually }
 
 // fakeQuota satisfies model.Quota.
 type fakeQuota struct {

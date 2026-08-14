@@ -27,7 +27,7 @@ func (h *Handler) hasPermission(orgSlug string, perm rbac.Permission) authz.Asse
 			return true, nil
 		}
 
-		org, err := h.orgStore.GetOrgBySlug(ctx, orgSlug)
+		org, err := h.orgStore.GetOrgBySlug(ctx, httpCtx.TenantID(ctx), orgSlug)
 		if err != nil {
 			return false, errors.WithStack(err)
 		}
@@ -52,7 +52,7 @@ func (h *Handler) hasAnyPermission(orgSlug string, perms ...rbac.Permission) aut
 			return true, nil
 		}
 
-		org, err := h.orgStore.GetOrgBySlug(ctx, orgSlug)
+		org, err := h.orgStore.GetOrgBySlug(ctx, httpCtx.TenantID(ctx), orgSlug)
 		if err != nil {
 			return false, errors.WithStack(err)
 		}
@@ -95,7 +95,7 @@ func (h *Handler) hasOrgMembership(orgSlug string) authz.AssertFunc {
 			return true, nil
 		}
 
-		org, err := h.orgStore.GetOrgBySlug(ctx, orgSlug)
+		org, err := h.orgStore.GetOrgBySlug(ctx, httpCtx.TenantID(ctx), orgSlug)
 		if err != nil {
 			return false, errors.WithStack(err)
 		}
@@ -119,7 +119,7 @@ func (h *Handler) hasOrgMembership(orgSlug string) authz.AssertFunc {
 
 // orgFromSlug resolves the org from the request path slug.
 func (h *Handler) orgFromSlug(ctx context.Context, orgSlug string) (model.Organization, error) {
-	return h.orgStore.GetOrgBySlug(ctx, orgSlug)
+	return h.orgStore.GetOrgBySlug(ctx, httpCtx.TenantID(ctx), orgSlug)
 }
 
 // currentUser retrieves the current user from context.

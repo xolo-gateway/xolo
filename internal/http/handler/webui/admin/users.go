@@ -208,11 +208,16 @@ func (h *Handler) fillUsersPageVModelUsers(ctx context.Context, vmodel *componen
 
 	search := strings.TrimSpace(r.URL.Query().Get("q"))
 
-	filterOpts := port.QueryUsersOptions{Search: search}
+	// The platform console is tenant-scoped: a platform admin administers the
+	// accounts of its own tenant, never those of the whole instance.
+	tenantID := httpCtx.TenantID(ctx)
+
+	filterOpts := port.QueryUsersOptions{Search: search, TenantID: &tenantID}
 	opts := port.QueryUsersOptions{
-		Page:   &page,
-		Limit:  &limit,
-		Search: search,
+		Page:     &page,
+		Limit:    &limit,
+		Search:   search,
+		TenantID: &tenantID,
 	}
 
 	total, err := h.userStore.CountUsers(ctx, filterOpts)
@@ -228,7 +233,7 @@ func (h *Handler) fillUsersPageVModelUsers(ctx context.Context, vmodel *componen
 	// The subtitle states how many accounts are deactivated. It is a count on the
 	// unfiltered set, so it keeps meaning something while a search is active.
 	inactive := false
-	inactiveCount, err := h.userStore.CountUsers(ctx, port.QueryUsersOptions{Active: &inactive})
+	inactiveCount, err := h.userStore.CountUsers(ctx, port.QueryUsersOptions{Active: &inactive, TenantID: &tenantID})
 	if err != nil {
 		return errors.WithStack(err)
 	}

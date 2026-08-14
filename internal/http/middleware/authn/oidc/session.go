@@ -5,9 +5,10 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/xolo-gateway/xolo/internal/http/middleware/authn"
 	"github.com/gorilla/sessions"
 	"github.com/pkg/errors"
+	httpCtx "github.com/xolo-gateway/xolo/internal/http/context"
+	"github.com/xolo-gateway/xolo/internal/http/middleware/authn"
 )
 
 const userAttr = "u"
@@ -22,6 +23,12 @@ func (h *Handler) storeSessionUser(w http.ResponseWriter, r *http.Request, user 
 	sess, err := h.getSession(r)
 	if err != nil {
 		return errors.WithStack(err)
+	}
+
+	// Stamp the tenant the session was opened on, so it can not be replayed on
+	// another one (see authn.Middleware).
+	if tenant := httpCtx.Tenant(r.Context()); tenant != nil {
+		user.TenantID = string(tenant.ID())
 	}
 
 	sess.Values[userAttr] = user

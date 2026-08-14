@@ -203,7 +203,7 @@ func (a *PipelineHookAdapter) applyMiddlewares(ctx context.Context, req *genaiPr
 		return false, nil
 	}
 
-	org, err := a.orgStore.GetOrgBySlug(ctx, orgSlug)
+	org, err := a.orgStore.GetOrgBySlug(ctx, httpCtx.TenantID(ctx), orgSlug)
 	if err != nil {
 		return false, nil //nolint:nilerr
 	}
@@ -497,7 +497,7 @@ func (a *PipelineHookAdapter) lookupVirtualModel(ctx context.Context, modelName 
 	}
 
 	// Org virtual model
-	org, err := a.orgStore.GetOrgBySlug(ctx, orgSlug)
+	org, err := a.orgStore.GetOrgBySlug(ctx, httpCtx.TenantID(ctx), orgSlug)
 	if err != nil {
 		return nil, nil, nil //nolint:nilerr
 	}

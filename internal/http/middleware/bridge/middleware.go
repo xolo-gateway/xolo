@@ -56,9 +56,17 @@ func Middleware(userStore port.UserStore, emitter port.EventEmitter, opts Option
 				return
 			}
 
+			// The tenant middleware runs before this one and answers 404 when it
+			// resolves none, so a request reaching here always carries one.
+			tenant := httpCtx.Tenant(ctx)
+			if tenant == nil {
+				common.HandleError(w, r, common.NewHTTPError(http.StatusNotFound))
+				return
+			}
+
 			isDefaultAdmin := slices.Contains(opts.DefaultAdmins, authnUser.Email)
 
-			user, err := userStore.GetUserByIdentity(ctx, authnUser.Provider, authnUser.Subject)
+			user, err := userStore.GetUserByIdentity(ctx, tenant.ID(), authnUser.Provider, authnUser.Subject)
 			if err != nil {
 				if !errors.Is(err, port.ErrNotFound) {
 					common.HandleError(w, r, err)
@@ -79,6 +87,7 @@ func Middleware(userStore port.UserStore, emitter port.EventEmitter, opts Option
 				}
 
 				user = model.NewUser(
+					tenant.ID(),
 					authnUser.Provider, authnUser.Subject, authnUser.Email, authnUser.DisplayName,
 					opts.ActiveByDefault || isDefaultAdmin,
 					authz.RoleUser,

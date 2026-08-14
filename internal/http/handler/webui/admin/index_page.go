@@ -31,7 +31,9 @@ func (h *Handler) getIndexPage(w http.ResponseWriter, r *http.Request) {
 
 	since := time.Now().Add(-overviewWindow)
 
-	orgs, _, err := h.orgStore.ListOrgs(ctx, port.ListOrgsOptions{})
+	tenantID := httpCtx.TenantID(ctx)
+
+	orgs, _, err := h.orgStore.ListOrgs(ctx, port.ListOrgsOptions{TenantID: &tenantID})
 	if err != nil {
 		slog.ErrorContext(ctx, "could not list orgs", slogx.Error(err))
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)

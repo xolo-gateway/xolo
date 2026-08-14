@@ -5,18 +5,18 @@ import (
 	"slices"
 	"testing"
 
+	_ "github.com/ncruces/go-sqlite3/embed"
+	"github.com/ncruces/go-sqlite3/gormlite"
+	"github.com/pkg/errors"
 	xologorm "github.com/xolo-gateway/xolo/internal/adapter/gorm"
 	"github.com/xolo-gateway/xolo/internal/core/model"
 	"github.com/xolo-gateway/xolo/internal/core/port"
 	"github.com/xolo-gateway/xolo/internal/core/rbac"
 	"github.com/xolo-gateway/xolo/internal/core/service"
-	_ "github.com/ncruces/go-sqlite3/embed"
-	"github.com/ncruces/go-sqlite3/gormlite"
-	"github.com/pkg/errors"
 	gormpkg "gorm.io/gorm"
 )
 
-func newTestService(t *testing.T) (*service.ProvisioningService, *xologorm.Store) {
+func newTestService(t *testing.T) (*service.ProvisioningService, *xologorm.Store, model.TenantID) {
 	t.Helper()
 
 	db, err := gormpkg.Open(gormlite.Open(":memory:"), &gormpkg.Config{})
@@ -26,7 +26,17 @@ func newTestService(t *testing.T) (*service.ProvisioningService, *xologorm.Store
 
 	store := xologorm.NewStore(db)
 
-	return service.NewProvisioningService(store, store, store), store
+	// The schema migration creates the default tenant; every fixture of this
+	// package hangs from it, so the tests exercise organizations rather than
+	// tenancy.
+	tenant, err := store.GetTenantBySlug(context.Background(), model.DefaultTenantSlug)
+	if err != nil {
+		t.Fatalf("get default tenant: %v", err)
+	}
+
+	svc := service.NewProvisioningService(store, store, store, store)
+
+	return svc, store, tenant.ID()
 }
 
 func strPtr(v string) *string { return &v }
@@ -40,28 +50,30 @@ func ownerParams() *service.UserIdentityParams {
 	}
 }
 
-func createTenant(t *testing.T, svc *service.ProvisioningService, slug string, owner *service.UserIdentityParams) *service.CreateTenantResult {
+func createOrganization(t *testing.T, svc *service.ProvisioningService, tenantID model.TenantID, slug string, owner *service.UserIdentityParams) *service.CreateOrganizationResult {
 	t.Helper()
 
-	result, err := svc.CreateTenant(context.Background(), service.CreateTenantParams{
-		Slug:  slug,
-		Name:  slug,
-		Owner: owner,
+	result, err := svc.CreateOrganization(context.Background(), service.CreateOrganizationParams{
+		TenantID: tenantID,
+		Slug:     slug,
+		Name:     slug,
+		Owner:    owner,
 	})
 	if err != nil {
-		t.Fatalf("create tenant %q: %v", slug, err)
+		t.Fatalf("create organization %q: %v", slug, err)
 	}
 
 	return result
 }
 
-func TestCreateTenant(t *testing.T) {
+func TestCreateOrganization(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("provisions organization, builtin roles and initial owner", func(t *testing.T) {
-		svc, store := newTestService(t)
+		svc, store, testTenantID := newTestService(t)
 
-		result, err := svc.CreateTenant(ctx, service.CreateTenantParams{
+		result, err := svc.CreateOrganization(ctx, service.CreateOrganizationParams{
+			TenantID:    testTenantID,
 			Slug:        "acme",
 			Name:        "Acme",
 			Description: "Acme Inc.",
@@ -69,10 +81,10 @@ func TestCreateTenant(t *testing.T) {
 			Owner:       ownerParams(),
 		})
 		if err != nil {
-			t.Fatalf("create tenant: %v", err)
+			t.Fatalf("create organization: %v", err)
 		}
 
-		org, err := store.GetOrgBySlug(ctx, "acme")
+		org, err := store.GetOrgBySlug(ctx, testTenantID, "acme")
 		if err != nil {
 			t.Fatalf("get org by slug: %v", err)
 		}
@@ -133,10 +145,10 @@ func TestCreateTenant(t *testing.T) {
 		}
 	})
 
-	t.Run("tenant owner never becomes a platform admin", func(t *testing.T) {
-		svc, store := newTestService(t)
+	t.Run("organization owner never becomes a platform admin", func(t *testing.T) {
+		svc, store, testTenantID := newTestService(t)
 
-		result := createTenant(t, svc, "acme", ownerParams())
+		result := createOrganization(t, svc, testTenantID, "acme", ownerParams())
 
 		user, err := store.GetUserByID(ctx, result.Owner.ID())
 		if err != nil {
@@ -144,7 +156,7 @@ func TestCreateTenant(t *testing.T) {
 		}
 
 		if slices.Contains(user.Roles(), model.PlatformRoleAdmin) {
-			t.Fatalf("tenant owner must not hold the %q platform role, got %v", model.PlatformRoleAdmin, user.Roles())
+			t.Fatalf("organization owner must not hold the %q platform role, got %v", model.PlatformRoleAdmin, user.Roles())
 		}
 		if len(user.Roles()) != 1 || user.Roles()[0] != model.PlatformRoleUser {
 			t.Errorf("platform roles: got %v, want [%q]", user.Roles(), model.PlatformRoleUser)
@@ -152,9 +164,9 @@ func TestCreateTenant(t *testing.T) {
 	})
 
 	t.Run("existing user keeps its platform roles", func(t *testing.T) {
-		svc, store := newTestService(t)
+		svc, store, testTenantID := newTestService(t)
 
-		existing, err := store.FindOrCreateUser(ctx, "openid-connect", "sub-owner")
+		existing, err := store.FindOrCreateUser(ctx, testTenantID, "openid-connect", "sub-owner")
 		if err != nil {
 			t.Fatalf("find or create user: %v", err)
 		}
@@ -166,13 +178,14 @@ func TestCreateTenant(t *testing.T) {
 			t.Fatalf("save user: %v", err)
 		}
 
-		result, err := svc.CreateTenant(ctx, service.CreateTenantParams{
-			Slug:  "acme",
-			Name:  "Acme",
-			Owner: &service.UserIdentityParams{Provider: "openid-connect", Subject: "sub-owner"},
+		result, err := svc.CreateOrganization(ctx, service.CreateOrganizationParams{
+			TenantID: testTenantID,
+			Slug:     "acme",
+			Name:     "Acme",
+			Owner:    &service.UserIdentityParams{Provider: "openid-connect", Subject: "sub-owner"},
 		})
 		if err != nil {
-			t.Fatalf("create tenant: %v", err)
+			t.Fatalf("create organization: %v", err)
 		}
 
 		if result.OwnerCreated {
@@ -192,20 +205,20 @@ func TestCreateTenant(t *testing.T) {
 	})
 
 	t.Run("duplicate slug is refused", func(t *testing.T) {
-		svc, _ := newTestService(t)
+		svc, _, testTenantID := newTestService(t)
 
-		createTenant(t, svc, "acme", nil)
+		createOrganization(t, svc, testTenantID, "acme", nil)
 
-		_, err := svc.CreateTenant(ctx, service.CreateTenantParams{Slug: "acme", Name: "Acme again"})
+		_, err := svc.CreateOrganization(ctx, service.CreateOrganizationParams{TenantID: testTenantID, Slug: "acme", Name: "Acme again"})
 		if !errors.Is(err, port.ErrAlreadyExists) {
 			t.Errorf("error: got %v, want %v", err, port.ErrAlreadyExists)
 		}
 	})
 
 	t.Run("invalid input is refused", func(t *testing.T) {
-		svc, _ := newTestService(t)
+		svc, _, testTenantID := newTestService(t)
 
-		for name, params := range map[string]service.CreateTenantParams{
+		for name, params := range map[string]service.CreateOrganizationParams{
 			"malformed slug":   {Slug: "Acme Corp", Name: "Acme"},
 			"empty slug":       {Slug: "", Name: "Acme"},
 			"trailing dash":    {Slug: "acme-", Name: "Acme"},
@@ -214,90 +227,93 @@ func TestCreateTenant(t *testing.T) {
 			"owner no subject": {Slug: "acme", Name: "Acme", Owner: &service.UserIdentityParams{Provider: "openid-connect"}},
 		} {
 			t.Run(name, func(t *testing.T) {
-				if _, err := svc.CreateTenant(ctx, params); !errors.Is(err, port.ErrInvalid) {
+				params.TenantID = testTenantID
+				if _, err := svc.CreateOrganization(ctx, params); !errors.Is(err, port.ErrInvalid) {
 					t.Errorf("error: got %v, want %v", err, port.ErrInvalid)
 				}
 			})
 		}
 	})
 
-	t.Run("invalid owner leaves no tenant behind", func(t *testing.T) {
-		svc, store := newTestService(t)
+	t.Run("invalid owner leaves no organization behind", func(t *testing.T) {
+		svc, store, testTenantID := newTestService(t)
 
-		_, err := svc.CreateTenant(ctx, service.CreateTenantParams{
-			Slug:  "acme",
-			Name:  "Acme",
-			Owner: &service.UserIdentityParams{Provider: "openid-connect", Subject: "sub-1", Email: strPtr("dup@acme.tld")},
+		_, err := svc.CreateOrganization(ctx, service.CreateOrganizationParams{
+			TenantID: testTenantID,
+			Slug:     "acme",
+			Name:     "Acme",
+			Owner:    &service.UserIdentityParams{Provider: "openid-connect", Subject: "sub-1", Email: strPtr("dup@acme.tld")},
 		})
 		if err != nil {
-			t.Fatalf("create first tenant: %v", err)
+			t.Fatalf("create first organization: %v", err)
 		}
 
 		// The email is already taken by the first owner: provisioning must fail
-		// and the half-created tenant must be rolled back.
-		_, err = svc.CreateTenant(ctx, service.CreateTenantParams{
-			Slug:  "other",
-			Name:  "Other",
-			Owner: &service.UserIdentityParams{Provider: "openid-connect", Subject: "sub-2", Email: strPtr("dup@acme.tld")},
+		// and the half-created organization must be rolled back.
+		_, err = svc.CreateOrganization(ctx, service.CreateOrganizationParams{
+			TenantID: testTenantID,
+			Slug:     "other",
+			Name:     "Other",
+			Owner:    &service.UserIdentityParams{Provider: "openid-connect", Subject: "sub-2", Email: strPtr("dup@acme.tld")},
 		})
 		if !errors.Is(err, port.ErrAlreadyExists) {
 			t.Fatalf("error: got %v, want %v", err, port.ErrAlreadyExists)
 		}
 
-		if _, err := store.GetOrgBySlug(ctx, "other"); !errors.Is(err, port.ErrNotFound) {
-			t.Errorf("tenant should have been rolled back, got %v", err)
+		if _, err := store.GetOrgBySlug(ctx, testTenantID, "other"); !errors.Is(err, port.ErrNotFound) {
+			t.Errorf("organization should have been rolled back, got %v", err)
 		}
-		if _, err := store.GetUserByIdentity(ctx, "openid-connect", "sub-2"); !errors.Is(err, port.ErrNotFound) {
+		if _, err := store.GetUserByIdentity(ctx, testTenantID, "openid-connect", "sub-2"); !errors.Is(err, port.ErrNotFound) {
 			t.Errorf("user should have been rolled back, got %v", err)
 		}
 	})
 }
 
-func TestTenantLifecycle(t *testing.T) {
+func TestOrganizationLifecycle(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("update applies only the provided fields", func(t *testing.T) {
-		svc, _ := newTestService(t)
+		svc, _, testTenantID := newTestService(t)
 
-		tenant := createTenant(t, svc, "acme", nil)
+		org := createOrganization(t, svc, testTenantID, "acme", nil)
 
 		active := false
-		updated, err := svc.UpdateTenant(ctx, tenant.Org.ID(), service.UpdateTenantParams{
+		updated, err := svc.UpdateOrganization(ctx, testTenantID, org.Org.ID(), service.UpdateOrganizationParams{
 			Name:   strPtr("Acme Corporation"),
 			Active: &active,
 		})
 		if err != nil {
-			t.Fatalf("update tenant: %v", err)
+			t.Fatalf("update organization: %v", err)
 		}
 
 		if updated.Name() != "Acme Corporation" {
 			t.Errorf("name: got %q", updated.Name())
 		}
 		if updated.Active() {
-			t.Error("tenant should be inactive")
+			t.Error("organization should be inactive")
 		}
 		if updated.Slug() != "acme" {
 			t.Errorf("slug must be immutable, got %q", updated.Slug())
 		}
 	})
 
-	t.Run("delete removes the tenant and its dependents", func(t *testing.T) {
-		svc, store := newTestService(t)
+	t.Run("delete removes the organization and its dependents", func(t *testing.T) {
+		svc, store, testTenantID := newTestService(t)
 
-		tenant := createTenant(t, svc, "acme", ownerParams())
+		org := createOrganization(t, svc, testTenantID, "acme", ownerParams())
 
-		if err := svc.DeleteTenant(ctx, tenant.Org.ID()); err != nil {
-			t.Fatalf("delete tenant: %v", err)
+		if err := svc.DeleteOrganization(ctx, testTenantID, org.Org.ID()); err != nil {
+			t.Fatalf("delete organization: %v", err)
 		}
 
-		if _, err := store.GetOrgByID(ctx, tenant.Org.ID()); !errors.Is(err, port.ErrNotFound) {
-			t.Errorf("tenant: got %v, want %v", err, port.ErrNotFound)
+		if _, err := store.GetOrgByID(ctx, org.Org.ID()); !errors.Is(err, port.ErrNotFound) {
+			t.Errorf("organization: got %v, want %v", err, port.ErrNotFound)
 		}
-		if _, err := store.GetMembership(ctx, tenant.OwnerMembership.ID()); !errors.Is(err, port.ErrNotFound) {
+		if _, err := store.GetMembership(ctx, org.OwnerMembership.ID()); !errors.Is(err, port.ErrNotFound) {
 			t.Errorf("membership: got %v, want %v", err, port.ErrNotFound)
 		}
 
-		roles, err := store.ListOrgRoles(ctx, tenant.Org.ID())
+		roles, err := store.ListOrgRoles(ctx, org.Org.ID())
 		if err != nil {
 			t.Fatalf("list org roles: %v", err)
 		}
@@ -306,16 +322,16 @@ func TestTenantLifecycle(t *testing.T) {
 		}
 	})
 
-	t.Run("unknown tenant is reported as not found", func(t *testing.T) {
-		svc, _ := newTestService(t)
+	t.Run("unknown organization is reported as not found", func(t *testing.T) {
+		svc, _, testTenantID := newTestService(t)
 
-		if _, err := svc.GetTenant(ctx, model.OrgID("does-not-exist")); !errors.Is(err, port.ErrNotFound) {
+		if _, err := svc.GetOrganization(ctx, testTenantID, model.OrgID("does-not-exist")); !errors.Is(err, port.ErrNotFound) {
 			t.Errorf("get: got %v, want %v", err, port.ErrNotFound)
 		}
-		if _, err := svc.UpdateTenant(ctx, model.OrgID("does-not-exist"), service.UpdateTenantParams{}); !errors.Is(err, port.ErrNotFound) {
+		if _, err := svc.UpdateOrganization(ctx, testTenantID, model.OrgID("does-not-exist"), service.UpdateOrganizationParams{}); !errors.Is(err, port.ErrNotFound) {
 			t.Errorf("update: got %v, want %v", err, port.ErrNotFound)
 		}
-		if err := svc.DeleteTenant(ctx, model.OrgID("does-not-exist")); !errors.Is(err, port.ErrNotFound) {
+		if err := svc.DeleteOrganization(ctx, testTenantID, model.OrgID("does-not-exist")); !errors.Is(err, port.ErrNotFound) {
 			t.Errorf("delete: got %v, want %v", err, port.ErrNotFound)
 		}
 	})
@@ -334,11 +350,11 @@ func TestMembers(t *testing.T) {
 	}
 
 	t.Run("adds a member with builtin roles", func(t *testing.T) {
-		svc, _ := newTestService(t)
+		svc, _, testTenantID := newTestService(t)
 
-		tenant := createTenant(t, svc, "acme", ownerParams())
+		org := createOrganization(t, svc, testTenantID, "acme", ownerParams())
 
-		membership, err := svc.AddMember(ctx, tenant.Org.ID(), service.AddMemberParams{
+		membership, err := svc.AddMember(ctx, org.Org.ID(), service.AddMemberParams{
 			User:         memberParams("sub-member"),
 			BuiltinRoles: []string{model.BuiltinKindMember},
 		})
@@ -352,42 +368,42 @@ func TestMembers(t *testing.T) {
 	})
 
 	t.Run("refuses a duplicate membership", func(t *testing.T) {
-		svc, _ := newTestService(t)
+		svc, _, testTenantID := newTestService(t)
 
-		tenant := createTenant(t, svc, "acme", ownerParams())
+		org := createOrganization(t, svc, testTenantID, "acme", ownerParams())
 
-		if _, err := svc.AddMember(ctx, tenant.Org.ID(), service.AddMemberParams{User: memberParams("sub-member")}); err != nil {
+		if _, err := svc.AddMember(ctx, org.Org.ID(), service.AddMemberParams{User: memberParams("sub-member")}); err != nil {
 			t.Fatalf("add member: %v", err)
 		}
 
-		_, err := svc.AddMember(ctx, tenant.Org.ID(), service.AddMemberParams{User: memberParams("sub-member")})
+		_, err := svc.AddMember(ctx, org.Org.ID(), service.AddMemberParams{User: memberParams("sub-member")})
 		if !errors.Is(err, port.ErrAlreadyExists) {
 			t.Errorf("error: got %v, want %v", err, port.ErrAlreadyExists)
 		}
 	})
 
-	t.Run("refuses an unknown tenant or user", func(t *testing.T) {
-		svc, _ := newTestService(t)
+	t.Run("refuses an unknown organization or user", func(t *testing.T) {
+		svc, _, testTenantID := newTestService(t)
 
-		tenant := createTenant(t, svc, "acme", ownerParams())
+		org := createOrganization(t, svc, testTenantID, "acme", ownerParams())
 
 		if _, err := svc.AddMember(ctx, model.OrgID("nope"), service.AddMemberParams{User: memberParams("sub-member")}); !errors.Is(err, port.ErrNotFound) {
-			t.Errorf("unknown tenant: got %v, want %v", err, port.ErrNotFound)
+			t.Errorf("unknown organization: got %v, want %v", err, port.ErrNotFound)
 		}
-		if _, err := svc.AddMember(ctx, tenant.Org.ID(), service.AddMemberParams{UserID: model.UserID("nope")}); !errors.Is(err, port.ErrNotFound) {
+		if _, err := svc.AddMember(ctx, org.Org.ID(), service.AddMemberParams{UserID: model.UserID("nope")}); !errors.Is(err, port.ErrNotFound) {
 			t.Errorf("unknown user: got %v, want %v", err, port.ErrNotFound)
 		}
-		if _, err := svc.AddMember(ctx, tenant.Org.ID(), service.AddMemberParams{}); !errors.Is(err, port.ErrInvalid) {
+		if _, err := svc.AddMember(ctx, org.Org.ID(), service.AddMemberParams{}); !errors.Is(err, port.ErrInvalid) {
 			t.Errorf("missing identity: got %v, want %v", err, port.ErrInvalid)
 		}
 	})
 
 	t.Run("replaces member roles", func(t *testing.T) {
-		svc, _ := newTestService(t)
+		svc, _, testTenantID := newTestService(t)
 
-		tenant := createTenant(t, svc, "acme", ownerParams())
+		org := createOrganization(t, svc, testTenantID, "acme", ownerParams())
 
-		membership, err := svc.AddMember(ctx, tenant.Org.ID(), service.AddMemberParams{
+		membership, err := svc.AddMember(ctx, org.Org.ID(), service.AddMemberParams{
 			User:         memberParams("sub-member"),
 			BuiltinRoles: []string{model.BuiltinKindMember},
 		})
@@ -395,7 +411,7 @@ func TestMembers(t *testing.T) {
 			t.Fatalf("add member: %v", err)
 		}
 
-		updated, err := svc.SetMemberRoles(ctx, tenant.Org.ID(), membership.ID(), nil, []string{model.BuiltinKindAdmin})
+		updated, err := svc.SetMemberRoles(ctx, org.Org.ID(), membership.ID(), nil, []string{model.BuiltinKindAdmin})
 		if err != nil {
 			t.Fatalf("set member roles: %v", err)
 		}
@@ -405,11 +421,11 @@ func TestMembers(t *testing.T) {
 		}
 	})
 
-	t.Run("refuses a role belonging to another tenant", func(t *testing.T) {
-		svc, _ := newTestService(t)
+	t.Run("refuses a role belonging to another organization", func(t *testing.T) {
+		svc, _, testTenantID := newTestService(t)
 
-		acme := createTenant(t, svc, "acme", ownerParams())
-		other := createTenant(t, svc, "other", nil)
+		acme := createOrganization(t, svc, testTenantID, "acme", ownerParams())
+		other := createOrganization(t, svc, testTenantID, "other", nil)
 
 		otherRoles, err := svc.ListRoles(ctx, other.Org.ID())
 		if err != nil {
@@ -439,43 +455,43 @@ func TestMembers(t *testing.T) {
 	})
 
 	t.Run("refuses to drop the last owner", func(t *testing.T) {
-		svc, _ := newTestService(t)
+		svc, _, testTenantID := newTestService(t)
 
-		tenant := createTenant(t, svc, "acme", ownerParams())
-		ownerMembership := tenant.OwnerMembership
+		org := createOrganization(t, svc, testTenantID, "acme", ownerParams())
+		ownerMembership := org.OwnerMembership
 
-		_, err := svc.SetMemberRoles(ctx, tenant.Org.ID(), ownerMembership.ID(), nil, []string{model.BuiltinKindMember})
+		_, err := svc.SetMemberRoles(ctx, org.Org.ID(), ownerMembership.ID(), nil, []string{model.BuiltinKindMember})
 		if !errors.Is(err, port.ErrNotAllowed) {
 			t.Errorf("downgrade: got %v, want %v", err, port.ErrNotAllowed)
 		}
 
-		if err := svc.RemoveMember(ctx, tenant.Org.ID(), ownerMembership.ID()); !errors.Is(err, port.ErrNotAllowed) {
+		if err := svc.RemoveMember(ctx, org.Org.ID(), ownerMembership.ID()); !errors.Is(err, port.ErrNotAllowed) {
 			t.Errorf("removal: got %v, want %v", err, port.ErrNotAllowed)
 		}
 	})
 
 	t.Run("allows dropping an owner when another one remains", func(t *testing.T) {
-		svc, _ := newTestService(t)
+		svc, _, testTenantID := newTestService(t)
 
-		tenant := createTenant(t, svc, "acme", ownerParams())
+		org := createOrganization(t, svc, testTenantID, "acme", ownerParams())
 
-		if _, err := svc.AddMember(ctx, tenant.Org.ID(), service.AddMemberParams{
+		if _, err := svc.AddMember(ctx, org.Org.ID(), service.AddMemberParams{
 			User:         memberParams("sub-second-owner"),
 			BuiltinRoles: []string{model.BuiltinKindOwner},
 		}); err != nil {
 			t.Fatalf("add second owner: %v", err)
 		}
 
-		if err := svc.RemoveMember(ctx, tenant.Org.ID(), tenant.OwnerMembership.ID()); err != nil {
+		if err := svc.RemoveMember(ctx, org.Org.ID(), org.OwnerMembership.ID()); err != nil {
 			t.Fatalf("remove first owner: %v", err)
 		}
 	})
 
-	t.Run("hides a membership belonging to another tenant", func(t *testing.T) {
-		svc, _ := newTestService(t)
+	t.Run("hides a membership belonging to another organization", func(t *testing.T) {
+		svc, _, testTenantID := newTestService(t)
 
-		acme := createTenant(t, svc, "acme", ownerParams())
-		other := createTenant(t, svc, "other", nil)
+		acme := createOrganization(t, svc, testTenantID, "acme", ownerParams())
+		other := createOrganization(t, svc, testTenantID, "other", nil)
 
 		if _, err := svc.GetMember(ctx, other.Org.ID(), acme.OwnerMembership.ID()); !errors.Is(err, port.ErrNotFound) {
 			t.Errorf("get: got %v, want %v", err, port.ErrNotFound)
@@ -493,11 +509,11 @@ func TestRoles(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("creates and updates a custom role", func(t *testing.T) {
-		svc, _ := newTestService(t)
+		svc, _, testTenantID := newTestService(t)
 
-		tenant := createTenant(t, svc, "acme", nil)
+		org := createOrganization(t, svc, testTenantID, "acme", nil)
 
-		role, err := svc.CreateRole(ctx, tenant.Org.ID(), service.RoleParams{
+		role, err := svc.CreateRole(ctx, org.Org.ID(), service.RoleParams{
 			Name:        strPtr("auditor"),
 			Description: strPtr("Read-only access"),
 			Permissions: []string{string(rbac.PermUsageRead)},
@@ -506,7 +522,7 @@ func TestRoles(t *testing.T) {
 			t.Fatalf("create role: %v", err)
 		}
 
-		updated, err := svc.UpdateRole(ctx, tenant.Org.ID(), role.ID(), service.RoleParams{
+		updated, err := svc.UpdateRole(ctx, org.Org.ID(), role.ID(), service.RoleParams{
 			Permissions: []string{string(rbac.PermUsageRead), string(rbac.PermMembersRead)},
 		})
 		if err != nil {
@@ -516,17 +532,17 @@ func TestRoles(t *testing.T) {
 			t.Errorf("permissions: got %v", updated.Permissions())
 		}
 
-		if err := svc.DeleteRole(ctx, tenant.Org.ID(), role.ID()); err != nil {
+		if err := svc.DeleteRole(ctx, org.Org.ID(), role.ID()); err != nil {
 			t.Fatalf("delete role: %v", err)
 		}
 	})
 
 	t.Run("refuses an unknown permission or grant kind", func(t *testing.T) {
-		svc, _ := newTestService(t)
+		svc, _, testTenantID := newTestService(t)
 
-		tenant := createTenant(t, svc, "acme", nil)
+		org := createOrganization(t, svc, testTenantID, "acme", nil)
 
-		_, err := svc.CreateRole(ctx, tenant.Org.ID(), service.RoleParams{
+		_, err := svc.CreateRole(ctx, org.Org.ID(), service.RoleParams{
 			Name:        strPtr("bogus"),
 			Permissions: []string{"not:a:permission"},
 		})
@@ -534,7 +550,7 @@ func TestRoles(t *testing.T) {
 			t.Errorf("permission: got %v, want %v", err, port.ErrInvalid)
 		}
 
-		_, err = svc.CreateRole(ctx, tenant.Org.ID(), service.RoleParams{
+		_, err = svc.CreateRole(ctx, org.Org.ID(), service.RoleParams{
 			Name:        strPtr("bogus"),
 			ModelGrants: []model.ModelGrant{{ModelID: "m1", Kind: "wat"}},
 		})
@@ -544,26 +560,26 @@ func TestRoles(t *testing.T) {
 	})
 
 	t.Run("refuses a duplicate role name", func(t *testing.T) {
-		svc, _ := newTestService(t)
+		svc, _, testTenantID := newTestService(t)
 
-		tenant := createTenant(t, svc, "acme", nil)
+		org := createOrganization(t, svc, testTenantID, "acme", nil)
 
-		if _, err := svc.CreateRole(ctx, tenant.Org.ID(), service.RoleParams{Name: strPtr("auditor")}); err != nil {
+		if _, err := svc.CreateRole(ctx, org.Org.ID(), service.RoleParams{Name: strPtr("auditor")}); err != nil {
 			t.Fatalf("create role: %v", err)
 		}
 
-		_, err := svc.CreateRole(ctx, tenant.Org.ID(), service.RoleParams{Name: strPtr("auditor")})
+		_, err := svc.CreateRole(ctx, org.Org.ID(), service.RoleParams{Name: strPtr("auditor")})
 		if !errors.Is(err, port.ErrAlreadyExists) {
 			t.Errorf("error: got %v, want %v", err, port.ErrAlreadyExists)
 		}
 	})
 
 	t.Run("refuses to modify or delete a builtin role", func(t *testing.T) {
-		svc, _ := newTestService(t)
+		svc, _, testTenantID := newTestService(t)
 
-		tenant := createTenant(t, svc, "acme", nil)
+		org := createOrganization(t, svc, testTenantID, "acme", nil)
 
-		roles, err := svc.ListRoles(ctx, tenant.Org.ID())
+		roles, err := svc.ListRoles(ctx, org.Org.ID())
 		if err != nil {
 			t.Fatalf("list roles: %v", err)
 		}
@@ -578,19 +594,19 @@ func TestRoles(t *testing.T) {
 			t.Fatal("no builtin owner role found")
 		}
 
-		if _, err := svc.UpdateRole(ctx, tenant.Org.ID(), builtin.ID(), service.RoleParams{Name: strPtr("hacked")}); !errors.Is(err, port.ErrNotAllowed) {
+		if _, err := svc.UpdateRole(ctx, org.Org.ID(), builtin.ID(), service.RoleParams{Name: strPtr("hacked")}); !errors.Is(err, port.ErrNotAllowed) {
 			t.Errorf("update: got %v, want %v", err, port.ErrNotAllowed)
 		}
-		if err := svc.DeleteRole(ctx, tenant.Org.ID(), builtin.ID()); !errors.Is(err, port.ErrNotAllowed) {
+		if err := svc.DeleteRole(ctx, org.Org.ID(), builtin.ID()); !errors.Is(err, port.ErrNotAllowed) {
 			t.Errorf("delete: got %v, want %v", err, port.ErrNotAllowed)
 		}
 	})
 
 	t.Run("hides a role belonging to another tenant", func(t *testing.T) {
-		svc, _ := newTestService(t)
+		svc, _, testTenantID := newTestService(t)
 
-		acme := createTenant(t, svc, "acme", nil)
-		other := createTenant(t, svc, "other", nil)
+		acme := createOrganization(t, svc, testTenantID, "acme", nil)
+		other := createOrganization(t, svc, testTenantID, "other", nil)
 
 		otherRoles, err := svc.ListRoles(ctx, other.Org.ID())
 		if err != nil {
@@ -607,9 +623,9 @@ func TestProvisionUser(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("is idempotent on the provider/subject tuple", func(t *testing.T) {
-		svc, _ := newTestService(t)
+		svc, _, testTenantID := newTestService(t)
 
-		first, created, err := svc.ProvisionUser(ctx, *ownerParams())
+		first, created, err := svc.ProvisionUser(ctx, testTenantID, *ownerParams())
 		if err != nil {
 			t.Fatalf("provision: %v", err)
 		}
@@ -617,7 +633,7 @@ func TestProvisionUser(t *testing.T) {
 			t.Error("first call should report a creation")
 		}
 
-		second, created, err := svc.ProvisionUser(ctx, *ownerParams())
+		second, created, err := svc.ProvisionUser(ctx, testTenantID, *ownerParams())
 		if err != nil {
 			t.Fatalf("provision again: %v", err)
 		}
@@ -630,15 +646,15 @@ func TestProvisionUser(t *testing.T) {
 	})
 
 	t.Run("reconciles profile fields without touching platform roles", func(t *testing.T) {
-		svc, store := newTestService(t)
+		svc, store, testTenantID := newTestService(t)
 
-		user, _, err := svc.ProvisionUser(ctx, *ownerParams())
+		user, _, err := svc.ProvisionUser(ctx, testTenantID, *ownerParams())
 		if err != nil {
 			t.Fatalf("provision: %v", err)
 		}
 
 		active := false
-		if _, _, err := svc.ProvisionUser(ctx, service.UserIdentityParams{
+		if _, _, err := svc.ProvisionUser(ctx, testTenantID, service.UserIdentityParams{
 			Provider:    "openid-connect",
 			Subject:     "sub-owner",
 			DisplayName: strPtr("Renamed"),
@@ -669,23 +685,29 @@ func TestProvisionUser(t *testing.T) {
 		}
 
 		store := xologorm.NewStore(db)
-		svc := service.NewProvisioningService(store, store, store,
+		svc := service.NewProvisioningService(store, store, store, store,
 			service.WithReservedEmails("boss@corp.tld"),
 		)
+
+		tenant, err := store.GetTenantBySlug(ctx, model.DefaultTenantSlug)
+		if err != nil {
+			t.Fatalf("get default tenant: %v", err)
+		}
+		testTenantID := tenant.ID()
 
 		params := *ownerParams()
 		params.Email = strPtr("Boss@Corp.tld")
 
-		if _, _, err := svc.ProvisionUser(ctx, params); !errors.Is(err, port.ErrInvalid) {
+		if _, _, err := svc.ProvisionUser(ctx, testTenantID, params); !errors.Is(err, port.ErrInvalid) {
 			t.Errorf("provision with reserved email: got %v, want port.ErrInvalid", err)
 		}
 
-		user, _, err := svc.ProvisionUser(ctx, *ownerParams())
+		user, _, err := svc.ProvisionUser(ctx, testTenantID, *ownerParams())
 		if err != nil {
 			t.Fatalf("provision: %v", err)
 		}
 
-		if _, err := svc.UpdateUser(ctx, user.ID(), service.UpdateUserParams{
+		if _, err := svc.UpdateUser(ctx, testTenantID, user.ID(), service.UpdateUserParams{
 			Email: strPtr("boss@corp.tld"),
 		}); !errors.Is(err, port.ErrInvalid) {
 			t.Errorf("update with reserved email: got %v, want port.ErrInvalid", err)

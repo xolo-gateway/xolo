@@ -6,6 +6,16 @@ L'**organisation** est l'entité centrale de Xolo : elle regroupe des **membres*
 
 Un même utilisateur peut appartenir à plusieurs organisations ; il bascule de l'une à l'autre depuis le menu de l'interface.
 
+## Le tenant
+
+Au-dessus de l'organisation se trouve le **tenant**, la frontière d'isolation la plus externe : il possède des organisations et des utilisateurs. Rien ne franchit cette frontière — ni un compte, ni un jeton d'API, ni une session.
+
+**Vous n'avez normalement pas à vous en soucier.** Par défaut, Xolo fonctionne avec un tenant unique nommé `default`, créé automatiquement : aucun sous-domaine n'est nécessaire, aucune URL ne change, et le tenant n'apparaît nulle part dans l'interface.
+
+Il ne devient visible que sur une instance mutualisée, où plusieurs clients cohabitent. Le multi-tenant s'active alors par configuration (`XOLO_MULTITENANCY_ENABLED`), et chaque tenant est identifié par son sous-domaine selon un modèle configurable, par exemple `acme.xolo.example.com`. Un sous-domaine qui ne correspond à aucun tenant actif renvoie une erreur 404.
+
+Deux tenants peuvent héberger une organisation portant le même slug, et une même identité peut y disposer de deux comptes distincts, sans aucune collision. La gestion des tenants passe exclusivement par l'[API de provisioning](../administration/provisioning/provisioning.md) ; il n'existe pas d'interface dédiée.
+
 ## Rôles
 
 Un **rôle** est un ensemble de permissions attribué à un ou plusieurs membres. Xolo distingue deux catégories de rôles :

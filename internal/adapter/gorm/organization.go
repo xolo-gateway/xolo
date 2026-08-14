@@ -10,7 +10,8 @@ type Organization struct {
 	ID          string `gorm:"primaryKey;autoIncrement:false"`
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
-	Slug        string `gorm:"uniqueIndex;not null"`
+	TenantID    string `gorm:"index;uniqueIndex:idx_org_tenant_slug;not null"`
+	Slug        string `gorm:"uniqueIndex:idx_org_tenant_slug;not null"`
 	Name        string `gorm:"not null"`
 	Description string
 	// No `default` on the flag columns below: GORM omits a zero-valued field
@@ -30,6 +31,7 @@ type wrappedOrganization struct {
 }
 
 func (w *wrappedOrganization) ID() model.OrgID          { return model.OrgID(w.o.ID) }
+func (w *wrappedOrganization) TenantID() model.TenantID  { return model.TenantID(w.o.TenantID) }
 func (w *wrappedOrganization) Slug() string              { return w.o.Slug }
 func (w *wrappedOrganization) Name() string              { return w.o.Name }
 func (w *wrappedOrganization) Description() string       { return w.o.Description }
@@ -55,6 +57,7 @@ func fromOrganization(org model.Organization) *Organization {
 	}
 	return &Organization{
 		ID:          string(org.ID()),
+		TenantID:    string(org.TenantID()),
 		Slug:        org.Slug(),
 		Name:        org.Name(),
 		Description: org.Description(),
