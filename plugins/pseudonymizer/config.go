@@ -62,6 +62,13 @@ const configSchemaJSON = `{
       "default": 0,
       "minimum": 0
     },
+    "min_runes": {
+      "type": "integer",
+      "title": "Caractères min par entité",
+      "description": "Les entités comptant moins de caractères que ce seuil sont ignorées. Écarte les fragments d'un ou deux signes produits par un texte disloqué. 0 = pas de limite.",
+      "default": 0,
+      "minimum": 0
+    },
     "skip_types": {
       "type": "array",
       "title": "Types à ignorer",
@@ -110,6 +117,39 @@ const configSchemaJSON = `{
       "description": "Détecte automatiquement JWT, clés API (OpenAI, AWS, GitHub, Slack…) via regex.",
       "default": true
     },
+    "siren_contextual": {
+      "type": "boolean",
+      "title": "SIREN contextuel",
+      "description": "N'accepte un numéro SIREN que précédé d'un marqueur textuel (« SIREN 123456782 »). Réduit les faux positifs sur les identifiants à neuf chiffres au prix de quelques oublis.",
+      "default": false
+    },
+    "process_attachments": {
+      "type": "boolean",
+      "title": "Traiter les pièces jointes documentaires",
+      "description": "Extrait le texte des documents joints (PDF, DOCX, ODT, CSV/TSV, texte), le pseudonymise et le transmet au LLM à la place du fichier. Le fichier d'origine n'est jamais transmis.",
+      "default": true
+    },
+    "unsupported_attachments": {
+      "type": "string",
+      "title": "Pièces jointes non traitables",
+      "description": "Comportement face à un fichier dont le contenu ne peut pas être pseudonymisé (image, PDF scanné, format inconnu, fichier référencé à distance). block = refus de la requête, remove = retrait de la pièce jointe et avertissement dans la réponse.",
+      "default": "block",
+      "enum": ["block", "remove"]
+    },
+    "max_attachment_bytes": {
+      "type": "integer",
+      "title": "Taille max par pièce jointe (octets)",
+      "description": "Les fichiers plus volumineux sont traités comme non traitables. 0 = pas de limite.",
+      "default": 10485760,
+      "minimum": 0
+    },
+    "max_attachment_chars": {
+      "type": "integer",
+      "title": "Caractères max extraits par pièce jointe",
+      "description": "Le texte extrait au-delà de ce seuil est tronqué, et la troncature signalée au LLM. 0 = valeur par défaut (200 000).",
+      "default": 200000,
+      "minimum": 0
+    },
     "inject_instruction": {
       "type": "boolean",
       "title": "Instruction de préservation des jetons",
@@ -156,6 +196,7 @@ type Config struct {
 	Strategy              string              `json:"strategy"`
 	MinConfidence         float64             `json:"min_confidence"`
 	MaxTokens             int                 `json:"max_tokens"`
+	MinRunes              int                 `json:"min_runes"`
 	SkipTypes             []string            `json:"skip_types"`
 	Blocklist             map[string][]string `json:"blocklist"`
 	FirstNameReclassify   bool                `json:"first_name_reclassify"`
@@ -163,7 +204,28 @@ type Config struct {
 	NameCompletion        bool                `json:"name_completion"`
 	BuiltinRegexPatterns  bool                `json:"builtin_regex_patterns"`
 	BuiltinSecretPatterns bool                `json:"builtin_secret_patterns"`
-	InjectInstruction     bool                `json:"inject_instruction"`
+	// SirenContextual remplace le pattern SIREN intégré par sa variante
+	// contextuelle : le numéro n'est retenu que précédé d'un marqueur textuel.
+	// Sans effet si BuiltinRegexPatterns est désactivé.
+	SirenContextual   bool `json:"siren_contextual"`
+	InjectInstruction bool `json:"inject_instruction"`
+
+	// Pièces jointes documentaires
+	// ProcessAttachments active l'extraction du texte des documents joints :
+	// le texte est pseudonymisé puis transmis à la place du fichier, qui n'est
+	// jamais relayé au LLM.
+	ProcessAttachments bool `json:"process_attachments"`
+	// UnsupportedAttachments pilote le sort d'un fichier dont le contenu ne
+	// peut pas être pseudonymisé : "block" refuse la requête, "remove" retire
+	// la pièce jointe et le signale dans la réponse.
+	// Valeurs autorisées : "block", "remove". Défaut : "block".
+	UnsupportedAttachments string `json:"unsupported_attachments"`
+	// MaxAttachmentBytes borne la taille d'un fichier traité (0 = illimité).
+	// Au-delà, la pièce jointe est considérée non traitable.
+	MaxAttachmentBytes int `json:"max_attachment_bytes"`
+	// MaxAttachmentChars borne le texte extrait d'un fichier (0 = illimité).
+	// Au-delà, le texte est tronqué et la troncature signalée au LLM.
+	MaxAttachmentChars int `json:"max_attachment_chars"`
 
 	// Vérification de la sortie (go-anon v0.1+)
 	// Verification active WithVerification : toute fuite résiduelle est
@@ -207,6 +269,14 @@ func parseConfig(configJSON string) (Config, error) {
 	default:
 		return Config{}, fmt.Errorf("verification_on_leak invalide : %q (attendu : allow|block)", cfg.VerificationOnLeak)
 	}
+	if cfg.UnsupportedAttachments == "" {
+		cfg.UnsupportedAttachments = "block"
+	}
+	switch cfg.UnsupportedAttachments {
+	case "block", "remove":
+	default:
+		return Config{}, fmt.Errorf("unsupported_attachments invalide : %q (attendu : block|remove)", cfg.UnsupportedAttachments)
+	}
 	return cfg, nil
 }
 
@@ -221,8 +291,22 @@ func defaultConfig() Config {
 		InjectInstruction:     true,
 		Verification:          true,
 		VerificationOnLeak:    "allow",
+
+		ProcessAttachments:     true,
+		UnsupportedAttachments: "block",
+		MaxAttachmentBytes:     defaultMaxAttachmentBytes,
+		MaxAttachmentChars:     defaultMaxAttachmentChars,
 	}
 }
+
+const (
+	// defaultMaxAttachmentBytes borne le fichier décodé à 10 Mio : au-delà,
+	// l'extraction coûte plus que ce qu'un contexte de LLM peut absorber.
+	defaultMaxAttachmentBytes = 10 * 1024 * 1024
+	// defaultMaxAttachmentChars borne le texte extrait, un ordre de grandeur
+	// au-dessus de ce qu'une fenêtre de contexte courante accepte.
+	defaultMaxAttachmentChars = 200_000
+)
 
 // strategyFromString converts the string strategy name to goanon.Strategy.
 func strategyFromString(s string) goanon.Strategy {

@@ -17,6 +17,7 @@ import (
 	goanon "github.com/bornholm/go-anon"
 	"github.com/bornholm/go-anon/pkg/anonymizer"
 	"github.com/bornholm/go-anon/pkg/modelstore"
+	"github.com/bornholm/go-anon/pkg/ner"
 	"github.com/xolo-gateway/xolo/pkg/pluginsdk"
 	proto "github.com/xolo-gateway/xolo/pkg/pluginsdk/proto"
 )
@@ -191,7 +192,10 @@ func (p *Plugin) PreRequest(ctx context.Context, in *proto.PreRequestInput) (*pr
 	// Non-anonymizable attachments (documents, files…) are removed and tracked.
 	session := anonymizer.NewSession()
 	anonymOpts, _ := buildAnonymizeOptions(ctx, cfg, in.GetCtx(), p.getHostClient())
-	var removedParts []removedPart
+	var (
+		removedParts         []removedPart
+		processedAttachments int
+	)
 
 	filtered := make([]map[string]any, 0, len(messages))
 	for i, msg := range messages {
@@ -241,17 +245,57 @@ func (p *Plugin) PreRequest(ctx context.Context, in *proto.PreRequestInput) (*pr
 						kept = append(kept, updated)
 					}
 				default:
-					// Document, file, or unknown attachment: remove and track.
-					name := partName(partMap)
-					removedParts = append(removedParts, removedPart{
-						Role: role,
-						Type: partType,
-						Name: name,
+					// Attachment: read it as text when the format allows,
+					// anonymize that text and send it in place of the file.
+					// The bytes themselves never reach the LLM.
+					att := extractAttachment(partMap, cfg.MaxAttachmentBytes)
+					text, truncated, err := attachmentText(cfg, att)
+					if err != nil {
+						removedParts = append(removedParts, removedPart{
+							Role:   role,
+							Type:   partType,
+							Name:   partName(partMap),
+							Reason: attachmentReason(err),
+						})
+						slog.DebugContext(ctx, "pseudonymizer: attachment cannot be pseudonymized",
+							slog.String("role", role),
+							slog.String("type", partType),
+							slog.String("name", att.Name),
+							slog.Any("error", err),
+						)
+						continue
+					}
+
+					result, err := anon.Anonymize(text, append(anonymOpts, anonymizer.WithSession(session))...)
+					if err != nil {
+						if out := handleVerificationError(in, err, cfg, p.getHostClient()); out != nil {
+							return out, nil
+						}
+						// An attachment whose text could not be anonymized must
+						// not be forwarded in any shape.
+						slog.WarnContext(ctx, "pseudonymizer: failed to anonymize attachment text",
+							slog.String("name", att.Name),
+							slog.Any("error", err),
+						)
+						removedParts = append(removedParts, removedPart{
+							Role:   role,
+							Type:   partType,
+							Name:   partName(partMap),
+							Reason: reasonAnonymizeFailed,
+						})
+						continue
+					}
+
+					kept = append(kept, map[string]any{
+						"type": "text",
+						"text": attachmentTextPart(att, partType, result.Text, truncated),
 					})
-					slog.DebugContext(ctx, "pseudonymizer: removed non-anonymizable attachment",
+					processedAttachments++
+					slog.DebugContext(ctx, "pseudonymizer: attachment pseudonymized",
 						slog.String("role", role),
 						slog.String("type", partType),
-						slog.String("name", name),
+						slog.String("name", att.Name),
+						slog.Bool("truncated", truncated),
 					)
 				}
 			}
@@ -263,6 +307,20 @@ func (p *Plugin) PreRequest(ctx context.Context, in *proto.PreRequestInput) (*pr
 		default:
 			filtered = append(filtered, messages[i])
 		}
+	}
+
+	// An attachment the plugin cannot vouch for is a file the user believes was
+	// analyzed. Under the "block" policy the request is refused rather than
+	// answered from a silently amputated prompt.
+	if len(removedParts) > 0 && cfg.UnsupportedAttachments == "block" {
+		p.emitBlockedAttachmentsEvent(in, removedParts)
+		slog.InfoContext(ctx, "pseudonymizer: request blocked, attachments cannot be pseudonymized",
+			slog.Int("attachments", len(removedParts)),
+		)
+		return &proto.PreRequestOutput{
+			Allowed:         false,
+			RejectionReason: blockedAttachmentsReason(removedParts),
+		}, nil
 	}
 
 	// Inject an instruction asking the LLM to keep placeholder tokens verbatim,
@@ -301,6 +359,7 @@ func (p *Plugin) PreRequest(ctx context.Context, in *proto.PreRequestInput) (*pr
 
 	slog.DebugContext(ctx, "pseudonymizer: anonymization done",
 		slog.Int("entities", len(session.Mapping)),
+		slog.Int("processed_attachments", processedAttachments),
 		slog.Int("removed_attachments", len(removedParts)),
 	)
 
@@ -316,10 +375,11 @@ func (p *Plugin) PreRequest(ctx context.Context, in *proto.PreRequestInput) (*pr
 			Severity:   "warning",
 			Message:    fmt.Sprintf("Données sensibles détectées et pseudonymisées (%d entité(s))", total),
 			Attributes: map[string]string{
-				"entities":            strconv.Itoa(total),
-				"types":               types,
-				"removed_attachments": strconv.Itoa(len(removedParts)),
-				"language":            language,
+				"entities":              strconv.Itoa(total),
+				"types":                 types,
+				"processed_attachments": strconv.Itoa(processedAttachments),
+				"removed_attachments":   strconv.Itoa(len(removedParts)),
+				"language":              language,
 			},
 		})
 	}
@@ -456,6 +516,28 @@ func handleVerificationError(in *proto.PreRequestInput, err error, cfg Config, h
 	return passthroughOutput()
 }
 
+// emitBlockedAttachmentsEvent signale le refus d'une requête portant des
+// pièces jointes non pseudonymisables. Comme les autres événements, il ne
+// transporte que des noms de fichiers et des motifs, jamais de contenu.
+func (p *Plugin) emitBlockedAttachmentsEvent(in *proto.PreRequestInput, parts []removedPart) {
+	reasons := make([]string, 0, len(parts))
+	for _, part := range parts {
+		reasons = append(reasons, part.Reason)
+	}
+	p.emitEvent(pluginsdk.Event{
+		PluginName: "pseudonymizer",
+		OrgID:      in.GetCtx().GetOrgId(),
+		UserID:     in.GetCtx().GetUserId(),
+		Type:       "attachment.blocked",
+		Severity:   "warning",
+		Message:    fmt.Sprintf("Requête refusée : %d pièce(s) jointe(s) non pseudonymisable(s)", len(parts)),
+		Attributes: map[string]string{
+			"attachments": strconv.Itoa(len(parts)),
+			"reasons":     strings.Join(reasons, ", "),
+		},
+	})
+}
+
 // emitLeakEvent publie un événement décrivant la fuite détectée. Le rapport
 // est sérialisé sans texte source (offsets et types seulement).
 func emitLeakEvent(in *proto.PreRequestInput, verr *anonymizer.VerificationError, host pluginsdk.HostClient) {
@@ -495,9 +577,113 @@ type pluginState struct {
 // removedPart describes a content part that was stripped from the request
 // because the plugin cannot anonymize it.
 type removedPart struct {
-	Role string `json:"role"`
-	Type string `json:"type"`
-	Name string `json:"name,omitempty"`
+	Role   string `json:"role"`
+	Type   string `json:"type"`
+	Name   string `json:"name,omitempty"`
+	Reason string `json:"reason,omitempty"`
+}
+
+// Reasons an attachment could not be pseudonymized. They are shown to the end
+// user, so they say what happened, never what the file contained.
+const (
+	reasonDisabled        = "traitement des pièces jointes désactivé"
+	reasonNoInlineData    = "fichier transmis par référence, contenu illisible pour le filtre"
+	reasonUnsupported     = "format non pris en charge"
+	reasonNoText          = "aucun texte extractible (document scanné ou vide)"
+	reasonTooLarge        = "fichier trop volumineux"
+	reasonUnreadable      = "fichier illisible ou corrompu"
+	reasonAnonymizeFailed = "échec de la pseudonymisation du contenu"
+)
+
+// attachmentText resolves the text of an attachment to send in place of the
+// file, or an error stating why it cannot be pseudonymized.
+func attachmentText(cfg Config, att attachment) (text string, truncated bool, err error) {
+	if !cfg.ProcessAttachments {
+		return "", false, errors.New(reasonDisabled)
+	}
+	if att.Oversized {
+		return "", false, fmt.Errorf("%w: above %d bytes", errTooLarge, cfg.MaxAttachmentBytes)
+	}
+	if len(att.Data) == 0 {
+		return "", false, errors.New(reasonNoInlineData)
+	}
+	maxChars := cfg.MaxAttachmentChars
+	if maxChars <= 0 {
+		maxChars = defaultMaxAttachmentChars
+	}
+	return extractText(att, cfg.MaxAttachmentBytes, maxChars)
+}
+
+// attachmentReason maps an extraction failure to the wording shown to the user.
+func attachmentReason(err error) string {
+	switch {
+	case err == nil:
+		return ""
+	case errors.Is(err, errNoText):
+		return reasonNoText
+	case errors.Is(err, errTooLarge):
+		return reasonTooLarge
+	case strings.HasPrefix(err.Error(), "unsupported format"):
+		return reasonUnsupported
+	case strings.Contains(err.Error(), reasonDisabled),
+		strings.Contains(err.Error(), reasonNoInlineData):
+		return err.Error()
+	default:
+		return reasonUnreadable
+	}
+}
+
+// attachmentTextPart wraps the pseudonymized text of a document in a text part,
+// labelled so the LLM knows it is reading an attachment rather than a message,
+// and told when the text is only the beginning of it.
+func attachmentTextPart(att attachment, partType, text string, truncated bool) string {
+	name := att.Name
+	if name == "" {
+		name = "sans nom"
+	}
+
+	var b strings.Builder
+	fmt.Fprintf(&b, "[Contenu de la pièce jointe « %s »", name)
+	if att.MediaType != "" {
+		fmt.Fprintf(&b, ", type %s", att.MediaType)
+	} else if partType != "" {
+		fmt.Fprintf(&b, ", part %s", partType)
+	}
+	b.WriteString(", pseudonymisé")
+	if truncated {
+		b.WriteString(", tronqué")
+	}
+	b.WriteString("]\n")
+	b.WriteString(text)
+	if truncated {
+		b.WriteString("\n[…] (document tronqué : la suite n'a pas été transmise)")
+	}
+	return b.String()
+}
+
+// blockedAttachmentsReason builds the rejection message listing the
+// attachments that made the request fail.
+func blockedAttachmentsReason(parts []removedPart) string {
+	var b strings.Builder
+	b.WriteString("Requête refusée par le pseudonymiseur : ")
+	if len(parts) == 1 {
+		b.WriteString("une pièce jointe ne peut pas être pseudonymisée")
+	} else {
+		fmt.Fprintf(&b, "%d pièces jointes ne peuvent pas être pseudonymisées", len(parts))
+	}
+	b.WriteString(" et ne peut donc pas être transmise au modèle.\n")
+	for _, p := range parts {
+		name := p.Name
+		if name == "" {
+			name = "pièce jointe sans nom"
+		}
+		fmt.Fprintf(&b, "- %s", name)
+		if p.Reason != "" {
+			fmt.Fprintf(&b, " : %s", p.Reason)
+		}
+		b.WriteString("\n")
+	}
+	return b.String()
 }
 
 // partName extracts a human-readable name from a content part map, checking
@@ -540,6 +726,9 @@ func removedPartsWarning(parts []removedPart) string {
 		}
 		if p.Role != "" {
 			fmt.Fprintf(&b, ", rôle : %s", p.Role)
+		}
+		if p.Reason != "" {
+			fmt.Fprintf(&b, ", motif : %s", p.Reason)
 		}
 		b.WriteString(")\n")
 	}
@@ -698,7 +887,7 @@ func (p *Plugin) buildAnonymizer(ctx context.Context, cfg Config, language strin
 	recOpts = append(recOpts, goanon.WithLanguage(language))
 
 	if cfg.BuiltinRegexPatterns {
-		recOpts = append(recOpts, goanon.WithBuiltinRegexPatterns())
+		recOpts = append(recOpts, goanon.WithRegexPatterns(builtinRegexPatterns(cfg)...))
 	}
 	if cfg.BuiltinSecretPatterns {
 		recOpts = append(recOpts, goanon.WithBuiltinSecretPatterns())
@@ -706,22 +895,12 @@ func (p *Plugin) buildAnonymizer(ctx context.Context, cfg Config, language strin
 	if len(loadedGazs) > 0 {
 		recOpts = append(recOpts, goanon.WithGazetteers(loadedGazs))
 	}
+	if clusters := loadClusters(ctx, p.store, language); clusters != nil {
+		recOpts = append(recOpts, goanon.WithBrownClusters(clusters))
+	}
 
-	// Post-filters: pruning first, then structural passes.
-	var postFilters []goanon.EntityFilter
-	if cfg.MinConfidence > 0 {
-		postFilters = append(postFilters, goanon.MinConfidenceFilter(cfg.MinConfidence))
-	}
-	if cfg.MaxTokens > 0 {
-		postFilters = append(postFilters, goanon.MaxTokensFilter(cfg.MaxTokens))
-	}
-	for typeStr, words := range cfg.Blocklist {
-		if len(words) > 0 {
-			postFilters = append(postFilters, goanon.BlocklistFilter(goanon.EntityType(typeStr), words...))
-		}
-	}
-	if len(postFilters) > 0 {
-		recOpts = append(recOpts, goanon.WithPostFilters(postFilters...))
+	if filters := postFilters(cfg); len(filters) > 0 {
+		recOpts = append(recOpts, goanon.WithPostFilters(filters...))
 	}
 	if cfg.FirstNameReclassify && firstnamesGaz != nil {
 		recOpts = append(recOpts, goanon.WithFirstNameReclassify(firstnamesGaz))
@@ -772,6 +951,78 @@ func (p *Plugin) buildAnonymizer(ctx context.Context, cfg Config, language strin
 	}
 
 	return goanon.NewAnonymizer(rec, anonCfg), nil
+}
+
+// postFilters builds the entity filters pruning the recognizer output, in
+// application order: confidence first, then span size, then blocklists.
+func postFilters(cfg Config) []goanon.EntityFilter {
+	var filters []goanon.EntityFilter
+	if cfg.MinConfidence > 0 {
+		filters = append(filters, goanon.MinConfidenceFilter(cfg.MinConfidence))
+	}
+	if cfg.MinRunes > 0 {
+		filters = append(filters, ner.MinRunesFilter(cfg.MinRunes))
+	}
+	if cfg.MaxTokens > 0 {
+		filters = append(filters, goanon.MaxTokensFilter(cfg.MaxTokens))
+	}
+	for typeStr, words := range cfg.Blocklist {
+		if len(words) > 0 {
+			filters = append(filters, goanon.BlocklistFilter(goanon.EntityType(typeStr), words...))
+		}
+	}
+	return filters
+}
+
+// builtinRegexPatterns returns the builtin regex patterns to feed the
+// recognizer with. IBAN, SIRET and SIREN are already validated against their
+// control key by go-anon, which is what keeps a nine-digit reference number
+// from being mistaken for a SIREN. SirenContextual goes one step further and
+// swaps the SIREN pattern for the variant that also demands a textual marker
+// upstream of the number.
+func builtinRegexPatterns(cfg Config) []goanon.RegexPattern {
+	patterns := make([]goanon.RegexPattern, 0, len(goanon.BuiltinRegexPatterns))
+	for _, p := range goanon.BuiltinRegexPatterns {
+		if cfg.SirenContextual && p.EntityType == goanon.TypeSIREN {
+			p = ner.SIRENContextualPattern
+		}
+		patterns = append(patterns, p)
+	}
+	return patterns
+}
+
+// loadClusters fetches the Brown clusters published for language, if any.
+//
+// Missing clusters are not an error: a model published before the store
+// started distributing them still works, only with a degraded feature set —
+// Recognizer.Warnings() then reports the mismatch, which buildAnonymizer
+// already relays.
+func loadClusters(ctx context.Context, store *modelstore.Store, language string) *goanon.BrownClusters {
+	path, err := store.GetClusters(ctx, language)
+	if err != nil {
+		slog.WarnContext(ctx, "pseudonymizer: failed to get brown clusters",
+			slog.String("language", language),
+			slog.Any("error", err),
+		)
+		return nil
+	}
+	if path == "" {
+		return nil
+	}
+
+	f, err := os.Open(path)
+	if err != nil {
+		slog.WarnContext(ctx, "pseudonymizer: failed to open brown clusters", slog.Any("error", err))
+		return nil
+	}
+	defer f.Close()
+
+	clusters, err := goanon.LoadBrownClusters(f)
+	if err != nil {
+		slog.WarnContext(ctx, "pseudonymizer: failed to load brown clusters", slog.Any("error", err))
+		return nil
+	}
+	return clusters
 }
 
 // loadGazetteers opens and parses gazetteer files from the given path map.

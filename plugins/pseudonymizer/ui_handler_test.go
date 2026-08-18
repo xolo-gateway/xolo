@@ -104,6 +104,109 @@ func TestHandleSaveHashKey_Invalid(t *testing.T) {
 	}
 }
 
+func TestPageRendersConfigFields(t *testing.T) {
+	pd := uiPageData{
+		BasePath:  "/",
+		Config:    defaultConfig(),
+		Languages: []string{"fr", "en"},
+	}
+	pd.Config.MinRunes = 2
+
+	var out strings.Builder
+	if err := page(pd).Render(context.Background(), &out); err != nil {
+		t.Fatalf("render page: %v", err)
+	}
+
+	html := out.String()
+	for _, name := range []string{
+		"min_runes", "siren_contextual", "verification", "verification_strict",
+		"process_attachments", "unsupported_attachments", "max_attachment_bytes", "max_attachment_chars",
+	} {
+		if !strings.Contains(html, `name="`+name+`"`) {
+			t.Errorf("field %q missing from the rendered form", name)
+		}
+	}
+	if !strings.Contains(html, `value="2"`) {
+		t.Errorf("min_runes value not rendered")
+	}
+}
+
+func TestConfigFromForm_PreservesFieldsAbsentFromTheForm(t *testing.T) {
+	base := defaultConfig()
+	base.SkipTypes = []string{"MISC"}
+	base.Blocklist = map[string][]string{"PER": {"Monsieur"}}
+	base.HashScope = "equipe-rh"
+	base.VerificationOnLeak = "block"
+
+	r := uiRequest(http.MethodPost, "/api/config",
+		"language=fr&fallback_language=fr&strategy=tag&min_runes=2&siren_contextual=on&verification=on",
+		"org-1", "node-1", newFakeUIHost())
+	if err := r.ParseForm(); err != nil {
+		t.Fatalf("ParseForm: %v", err)
+	}
+
+	cfg := configFromForm(r, base)
+
+	if len(cfg.SkipTypes) != 1 || cfg.SkipTypes[0] != "MISC" {
+		t.Errorf("SkipTypes = %v, want [MISC]", cfg.SkipTypes)
+	}
+	if len(cfg.Blocklist["PER"]) != 1 {
+		t.Errorf("Blocklist = %v, want the base one", cfg.Blocklist)
+	}
+	if cfg.HashScope != "equipe-rh" {
+		t.Errorf("HashScope = %q, want equipe-rh", cfg.HashScope)
+	}
+	if cfg.VerificationOnLeak != "block" {
+		t.Errorf("VerificationOnLeak = %q, want block", cfg.VerificationOnLeak)
+	}
+	if cfg.MinRunes != 2 {
+		t.Errorf("MinRunes = %d, want 2", cfg.MinRunes)
+	}
+	if !cfg.SirenContextual {
+		t.Errorf("SirenContextual = false, want true")
+	}
+	if !cfg.Verification {
+		t.Errorf("Verification = false, want true")
+	}
+}
+
+func TestConfigFromForm_UncheckedBoxesAndClearedNumbers(t *testing.T) {
+	base := defaultConfig()
+	base.Verification = true
+	base.SirenContextual = true
+	base.MinRunes = 3
+	base.MaxTokens = 5
+	base.MinConfidence = 0.5
+
+	// Neither an unchecked box nor an emptied number field is submitted.
+	r := uiRequest(http.MethodPost, "/api/config",
+		"language=fr&fallback_language=fr&strategy=tag", "org-1", "node-1", newFakeUIHost())
+	if err := r.ParseForm(); err != nil {
+		t.Fatalf("ParseForm: %v", err)
+	}
+
+	cfg := configFromForm(r, base)
+
+	if cfg.Verification || cfg.SirenContextual {
+		t.Errorf("unchecked boxes kept their base value: %+v", cfg)
+	}
+	if cfg.MinRunes != 0 || cfg.MaxTokens != 0 || cfg.MinConfidence != 0 {
+		t.Errorf("cleared numbers kept their base value: min_runes=%d max_tokens=%d min_confidence=%v",
+			cfg.MinRunes, cfg.MaxTokens, cfg.MinConfidence)
+	}
+	// Attachment limits are guardrails, not thresholds to disable: an empty
+	// field falls back to the default rather than lifting the limit.
+	if cfg.MaxAttachmentBytes != defaultMaxAttachmentBytes || cfg.MaxAttachmentChars != defaultMaxAttachmentChars {
+		t.Errorf("cleared attachment limits did not fall back to the defaults: bytes=%d chars=%d",
+			cfg.MaxAttachmentBytes, cfg.MaxAttachmentChars)
+	}
+	// An absent policy must land on the safe side, never on an empty value the
+	// request loop would read as "do not block".
+	if cfg.UnsupportedAttachments != "block" {
+		t.Errorf("UnsupportedAttachments = %q, want block", cfg.UnsupportedAttachments)
+	}
+}
+
 func TestHandleDeleteHashKey(t *testing.T) {
 	host := newFakeUIHost()
 	host.secrets["node-1:hash_key"] = uiHexKey

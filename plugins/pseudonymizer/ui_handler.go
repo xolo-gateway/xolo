@@ -144,7 +144,17 @@ func (ui *pluginUI) handleSaveConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cfg := configFromForm(r)
+	// La configuration courante sert de base : le formulaire ne couvre pas tous
+	// les réglages du schéma (skip_types, blocklist, hash_scope…), et repartir
+	// d'une Config vide les effacerait à chaque sauvegarde.
+	base := defaultConfig()
+	if raw, err := host.GetConfig(ctx, orgID, pluginName); err != nil {
+		slog.WarnContext(ctx, "pseudonymizer/ui: failed to load config before save", slog.Any("error", err))
+	} else if parsed, err := parseConfig(raw); err == nil {
+		base = parsed
+	}
+
+	cfg := configFromForm(r, base)
 
 	cfgJSON, err := json.Marshal(cfg)
 	if err != nil {
@@ -213,23 +223,33 @@ func (ui *pluginUI) handleDeleteHashKey(w http.ResponseWriter, r *http.Request) 
 	http.Redirect(w, r, "/?saved=1", http.StatusFound)
 }
 
-// configFromForm builds a Config from form values.
-func configFromForm(r *http.Request) Config {
-	cfg := Config{
-		CacheDir:              r.FormValue("cache_dir"),
-		ManifestURL:           r.FormValue("manifest_url"),
-		Offline:               r.FormValue("offline") == "on",
-		Language:              r.FormValue("language"),
-		FallbackLanguage:      r.FormValue("fallback_language"),
-		Strategy:              r.FormValue("strategy"),
-		FirstNameReclassify:   r.FormValue("first_name_reclassify") == "on",
-		Merge:                 r.FormValue("merge") == "on",
-		NameCompletion:        r.FormValue("name_completion") == "on",
-		BuiltinRegexPatterns:  r.FormValue("builtin_regex_patterns") == "on",
-		BuiltinSecretPatterns: r.FormValue("builtin_secret_patterns") == "on",
-		InjectInstruction:     r.FormValue("inject_instruction") == "on",
-	}
+// configFromForm applies the form values on top of base, which carries the
+// settings the form does not expose.
+func configFromForm(r *http.Request, base Config) Config {
+	cfg := base
+	cfg.CacheDir = r.FormValue("cache_dir")
+	cfg.ManifestURL = r.FormValue("manifest_url")
+	cfg.Offline = r.FormValue("offline") == "on"
+	cfg.Language = r.FormValue("language")
+	cfg.FallbackLanguage = r.FormValue("fallback_language")
+	cfg.Strategy = r.FormValue("strategy")
+	cfg.FirstNameReclassify = r.FormValue("first_name_reclassify") == "on"
+	cfg.Merge = r.FormValue("merge") == "on"
+	cfg.NameCompletion = r.FormValue("name_completion") == "on"
+	cfg.BuiltinRegexPatterns = r.FormValue("builtin_regex_patterns") == "on"
+	cfg.BuiltinSecretPatterns = r.FormValue("builtin_secret_patterns") == "on"
+	cfg.SirenContextual = r.FormValue("siren_contextual") == "on"
+	cfg.InjectInstruction = r.FormValue("inject_instruction") == "on"
+	cfg.Verification = r.FormValue("verification") == "on"
+	cfg.VerificationStrict = r.FormValue("verification_strict") == "on"
+	cfg.ProcessAttachments = r.FormValue("process_attachments") == "on"
+	cfg.UnsupportedAttachments = r.FormValue("unsupported_attachments")
 
+	// Un champ nombre laissé vide n'est pas transmis : le seuil doit alors
+	// revenir à 0 plutôt que conserver la valeur de base.
+	cfg.MinConfidence = 0
+	cfg.MaxTokens = 0
+	cfg.MinRunes = 0
 	if minConf := r.FormValue("min_confidence"); minConf != "" {
 		var f float64
 		if err := json.Unmarshal([]byte(minConf), &f); err == nil {
@@ -241,6 +261,19 @@ func configFromForm(r *http.Request) Config {
 		if err := json.Unmarshal([]byte(maxTok), &n); err == nil {
 			cfg.MaxTokens = n
 		}
+	}
+	if minRunes := r.FormValue("min_runes"); minRunes != "" {
+		var n int
+		if err := json.Unmarshal([]byte(minRunes), &n); err == nil {
+			cfg.MinRunes = n
+		}
+	}
+
+	cfg.MaxAttachmentBytes = formInt(r, "max_attachment_bytes", defaultMaxAttachmentBytes)
+	cfg.MaxAttachmentChars = formInt(r, "max_attachment_chars", defaultMaxAttachmentChars)
+
+	if cfg.UnsupportedAttachments != "block" && cfg.UnsupportedAttachments != "remove" {
+		cfg.UnsupportedAttachments = "block"
 	}
 
 	if cfg.Language == "" {
@@ -257,6 +290,20 @@ func configFromForm(r *http.Request) Config {
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
+
+// formInt reads an integer form field, falling back to fallback when the field
+// is absent — an emptied limit means "back to the default", not "unlimited".
+func formInt(r *http.Request, name string, fallback int) int {
+	raw := r.FormValue(name)
+	if raw == "" {
+		return fallback
+	}
+	var n int
+	if err := json.Unmarshal([]byte(raw), &n); err != nil {
+		return fallback
+	}
+	return n
+}
 
 func httpError(w http.ResponseWriter, err error) {
 	http.Error(w, err.Error(), http.StatusInternalServerError)
