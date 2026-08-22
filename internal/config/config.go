@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding/hex"
 	"os"
 	"strings"
 
@@ -84,9 +85,33 @@ func parseOIDCProviders() ([]NamedOIDCProvider, error) {
 	return providers, nil
 }
 
-func (c *Config) Validate() error {
-	if c.SecretKey == "" {
+// secretKeyBytes is the key length AES-GCM is used with throughout the
+// codebase. Anything shorter silently downgrades the cipher; anything invalid
+// only surfaces at the first encryption, long after start-up.
+const secretKeyBytes = 32
+
+// validateSecretKey asserts the secret key decodes to exactly the key length
+// the AES-GCM helpers expect.
+func validateSecretKey(secretKey string) error {
+	if secretKey == "" {
 		return errors.New("XOLO_SECRET_KEY is required but not set (must be a 32-byte hex string, e.g. generated with: openssl rand -hex 32)")
+	}
+
+	key, err := hex.DecodeString(secretKey)
+	if err != nil {
+		return errors.New("XOLO_SECRET_KEY must be a hex-encoded string (e.g. generated with: openssl rand -hex 32)")
+	}
+
+	if len(key) != secretKeyBytes {
+		return errors.Errorf("XOLO_SECRET_KEY must decode to %d bytes, got %d (e.g. generated with: openssl rand -hex 32)", secretKeyBytes, len(key))
+	}
+
+	return nil
+}
+
+func (c *Config) Validate() error {
+	if err := validateSecretKey(c.SecretKey); err != nil {
+		return errors.WithStack(err)
 	}
 
 	if err := c.ProvisionningAPI.Validate(); err != nil {

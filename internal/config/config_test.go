@@ -89,3 +89,31 @@ func TestParse_AutoCreateUsers(t *testing.T) {
 		}
 	})
 }
+
+// TestValidate_SecretKey covers the key format: a short but valid hex string
+// would silently downgrade AES-256 to a weaker cipher, and a malformed one
+// would only fail at the first encryption instead of at start-up.
+func TestValidate_SecretKey(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		key     string
+		wantErr bool
+	}{
+		{"valid 32-byte key", testSecretKey, false},
+		{"empty", "", true},
+		{"not hex", "zzzz000000000000000000000000000000000000000000000000000000000000", true},
+		{"16 bytes", "00000000000000000000000000000000", true},
+		{"odd length", "000", true},
+		{"64 bytes", testSecretKey + testSecretKey, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			err := validateSecretKey(tc.key)
+			if tc.wantErr && err == nil {
+				t.Errorf("key %q: expected an error, got none", tc.key)
+			}
+			if !tc.wantErr && err != nil {
+				t.Errorf("key %q: unexpected error: %v", tc.key, err)
+			}
+		})
+	}
+}
