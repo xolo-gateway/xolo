@@ -7,6 +7,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/xolo-gateway/xolo/internal/core/model"
 	"github.com/xolo-gateway/xolo/internal/core/port"
+	"github.com/xolo-gateway/xolo/internal/crypto"
 )
 
 type UserStore struct {
@@ -36,7 +37,9 @@ func (s *UserStore) DeleteAuthToken(ctx context.Context, tokenID model.AuthToken
 // otherwise keep authenticating until the cache TTL elapsed — up to an hour
 // with the default configuration.
 func (s *UserStore) FindAuthToken(ctx context.Context, token string) (model.AuthToken, error) {
-	if authToken, exists := s.authTokenCache.Get(token); exists {
+	lookupKey := crypto.HashToken(token)
+
+	if authToken, exists := s.authTokenCache.Get(lookupKey); exists {
 		if isExpired(authToken) {
 			s.authTokenCache.Remove(string(authToken.ID()))
 			return nil, errors.WithStack(port.ErrNotFound)
@@ -50,7 +53,7 @@ func (s *UserStore) FindAuthToken(ctx context.Context, token string) (model.Auth
 		return nil, err
 	}
 
-	s.authTokenCache.Add(NewCacheableAuthToken(authToken))
+	s.authTokenCache.Add(NewCacheableAuthToken(authToken, lookupKey))
 
 	return authToken, nil
 }

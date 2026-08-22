@@ -5,9 +5,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/pkg/errors"
 	"github.com/xolo-gateway/xolo/internal/core/model"
 	"github.com/xolo-gateway/xolo/internal/core/port"
-	"github.com/pkg/errors"
+	"github.com/xolo-gateway/xolo/internal/crypto"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -21,10 +22,12 @@ func fromAuthToken(t model.AuthToken) *AuthToken {
 	}
 
 	return &AuthToken{
-		ID:        string(t.ID()),
-		OwnerID:   ownerID,
-		Label:     t.Label(),
-		Value:     t.Value(),
+		ID:      string(t.ID()),
+		OwnerID: ownerID,
+		Label:   t.Label(),
+		// Only the hash is persisted: the clear-text key exists once, in the
+		// response that follows its creation.
+		Value:     crypto.HashToken(t.Value()),
 		OrgID:     string(t.OrgID()),
 		ExpiresAt: t.ExpiresAt(),
 	}
@@ -164,7 +167,7 @@ func (s *Store) FindAuthToken(ctx context.Context, token string) (model.AuthToke
 	var authToken AuthToken
 
 	err := s.withRetry(ctx, false, func(ctx context.Context, db *gorm.DB) error {
-		if err := db.Preload("Owner").Preload("Application").First(&authToken, "value = ?", token).Error; err != nil {
+		if err := db.Preload("Owner").Preload("Application").First(&authToken, "value = ?", crypto.HashToken(token)).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				return errors.WithStack(port.ErrNotFound)
 			}

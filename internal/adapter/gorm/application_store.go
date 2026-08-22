@@ -4,9 +4,10 @@ import (
 	"context"
 	"time"
 
+	"github.com/pkg/errors"
 	"github.com/xolo-gateway/xolo/internal/core/model"
 	"github.com/xolo-gateway/xolo/internal/core/port"
-	"github.com/pkg/errors"
+	"github.com/xolo-gateway/xolo/internal/crypto"
 	"gorm.io/gorm"
 )
 
@@ -37,7 +38,7 @@ func fromAuthTokenForApplication(t model.AuthToken) *AuthToken {
 		OwnerID:       ownerID,
 		ApplicationID: applicationID,
 		Label:         t.Label(),
-		Value:         t.Value(),
+		Value:         crypto.HashToken(t.Value()),
 		OrgID:         string(t.OrgID()),
 		ExpiresAt:     t.ExpiresAt(),
 	}
@@ -165,7 +166,7 @@ func (s *Store) FindApplicationAuthToken(ctx context.Context, token string) (mod
 	var authToken AuthToken
 
 	err := s.withRetry(ctx, false, func(ctx context.Context, db *gorm.DB) error {
-		if err := db.Preload("Application").First(&authToken, "value = ?", token).Error; err != nil {
+		if err := db.Preload("Application").First(&authToken, "value = ?", crypto.HashToken(token)).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				return errors.WithStack(port.ErrNotFound)
 			}

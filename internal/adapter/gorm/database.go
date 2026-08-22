@@ -245,6 +245,18 @@ func createGetDatabase(db *gorm.DB) func(ctx context.Context) (*gorm.DB, error) 
 						})
 					},
 				},
+				{
+					// Replace clear-text API keys by their SHA-256 hash.
+					ID: "202608220001",
+					Migrate: func(tx *gorm.DB) error {
+						return migrateAuthTokensToHashes(tx)
+					},
+					Rollback: func(tx *gorm.DB) error {
+						// A hash cannot be reversed: rolling back would have to
+						// invalidate every key, which is worse than staying put.
+						return errors.New("auth token hashing cannot be rolled back")
+					},
+				},
 			})
 
 			m.InitSchema(func(tx *gorm.DB) error {

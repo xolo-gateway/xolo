@@ -2,7 +2,6 @@ package component
 
 import (
 	"strconv"
-	"strings"
 
 	"github.com/xolo-gateway/xolo/internal/core/model"
 	"github.com/xolo-gateway/xolo/internal/core/rbac"
@@ -402,9 +401,6 @@ templ applicationTokensSection(vmodel ApplicationFormVModel, readonly bool) {
 								Libellé
 							}
 							@table.Head() {
-								Jeton
-							}
-							@table.Head() {
 								Expiration
 							}
 							@table.Head(table.HeadProps{Class: "text-right"}) {
@@ -416,9 +412,6 @@ templ applicationTokensSection(vmodel ApplicationFormVModel, readonly bool) {
 								@table.Row() {
 									@table.Cell() {
 										{ token.Label() }
-									}
-									@table.Cell() {
-										@common.Mono(maskedToken(token.Value()))
 									}
 									@table.Cell() {
 										if token.ExpiresAt() != nil {
@@ -463,21 +456,4 @@ func applicationDescription(vmodel ApplicationFormVModel) string {
 		return ""
 	}
 	return vmodel.App.Description()
-}
-
-// maskedToken renders a stored API key as its prefix and last characters only.
-// Enough to tell two keys apart in the list, never enough to use one: the full
-// value is displayed once at creation and never read back from the page.
-func maskedToken(value string) string {
-	const (
-		prefix = "xapp_"
-		tail   = 4
-	)
-
-	body := strings.TrimPrefix(value, prefix)
-	if len(body) <= tail {
-		return prefix + strings.Repeat("•", 8)
-	}
-
-	return prefix + strings.Repeat("•", 8) + body[len(body)-tail:]
 }
