@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/pkg/errors"
 	"github.com/xolo-gateway/xolo/internal/core/model"
 	"github.com/xolo-gateway/xolo/internal/core/port"
 )
@@ -29,8 +30,18 @@ func (s *UserStore) DeleteAuthToken(ctx context.Context, tokenID model.AuthToken
 }
 
 // FindAuthToken implements [port.UserStore].
+//
+// Expiry is re-checked on the cached entry. The backend treats an expired token
+// as absent, but an entry cached while the token was still valid would
+// otherwise keep authenticating until the cache TTL elapsed — up to an hour
+// with the default configuration.
 func (s *UserStore) FindAuthToken(ctx context.Context, token string) (model.AuthToken, error) {
 	if authToken, exists := s.authTokenCache.Get(token); exists {
+		if isExpired(authToken) {
+			s.authTokenCache.Remove(string(authToken.ID()))
+			return nil, errors.WithStack(port.ErrNotFound)
+		}
+
 		return authToken, nil
 	}
 
@@ -42,6 +53,13 @@ func (s *UserStore) FindAuthToken(ctx context.Context, token string) (model.Auth
 	s.authTokenCache.Add(NewCacheableAuthToken(authToken))
 
 	return authToken, nil
+}
+
+// isExpired reports whether the token is past its expiry date. A token without
+// an expiry date never expires.
+func isExpired(token model.AuthToken) bool {
+	expiresAt := token.ExpiresAt()
+	return expiresAt != nil && time.Now().After(*expiresAt)
 }
 
 // FindOrCreateUser implements [port.UserStore].
