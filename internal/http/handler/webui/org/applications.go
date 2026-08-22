@@ -259,6 +259,14 @@ func (h *Handler) selectedOrgRoleIDs(ctx context.Context, orgID model.OrgID, raw
 }
 
 func (h *Handler) getEditApplicationPage(w http.ResponseWriter, r *http.Request) {
+	h.renderEditApplicationPage(w, r, "")
+}
+
+// renderEditApplicationPage renders the application form. createdToken carries
+// the clear-text value of a key that was just created, and is the only moment
+// it is ever displayed: stored keys are rendered masked, so a value not copied
+// here cannot be recovered afterwards.
+func (h *Handler) renderEditApplicationPage(w http.ResponseWriter, r *http.Request, createdToken string) {
 	ctx := r.Context()
 	orgSlug := r.PathValue("orgSlug")
 	appID := r.PathValue("appID")
@@ -300,6 +308,7 @@ func (h *Handler) getEditApplicationPage(w http.ResponseWriter, r *http.Request)
 		Org:             org,
 		App:             app,
 		Tokens:          tokens,
+		CreatedToken:    createdToken,
 		OrgRoles:        orgRoles,
 		AssignedRoleIDs: assigned,
 		IsNew:           false,
@@ -429,7 +438,10 @@ func (h *Handler) createApplicationToken(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	http.Redirect(w, r, "/orgs/"+orgSlug+"/admin/applications/"+appID+"/edit?success=token-created", http.StatusSeeOther)
+	// The value is rendered straight into the response rather than carried by a
+	// redirect: a query string would leak the key into access logs, browser
+	// history and Referer headers.
+	h.renderEditApplicationPage(w, r, tokenValue)
 }
 
 func (h *Handler) deleteApplicationToken(w http.ResponseWriter, r *http.Request) {
