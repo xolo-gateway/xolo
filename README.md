@@ -24,4 +24,8 @@ See [`docs/`](./docs/)
 
 ## License
 
-[AGPL-3.0](LICENSE.md)
+Xolo is distributed under the [AGPL-3.0](LICENSE.md) license, and will remain
+so: no proprietary edition, no dual licensing. Contributors keep their
+copyright; the project uses the [DCO](DCO), not a CLA.
+
+See [GOVERNANCE.md](GOVERNANCE.md) and [CONTRIBUTING.md](CONTRIBUTING.md).
