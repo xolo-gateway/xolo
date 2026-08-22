@@ -7,17 +7,58 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"slices"
 	"time"
 
 	"github.com/a-h/templ"
 	"github.com/bornholm/go-x/slogx"
+	"github.com/pkg/errors"
 	"github.com/xolo-gateway/xolo/internal/core/model"
 	"github.com/xolo-gateway/xolo/internal/core/port"
 	httpCtx "github.com/xolo-gateway/xolo/internal/http/context"
 	common "github.com/xolo-gateway/xolo/internal/http/handler/webui/common/component"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/org/component"
-	"github.com/pkg/errors"
 )
+
+// resolveOrgAndApplication loads the organization designated by orgSlug and the
+// application designated by appID, and asserts the application belongs to that
+// organization.
+//
+// Every application handler goes through it. port.ApplicationStore.GetApplication
+// is keyed by application id alone, so without this check the permission
+// assertion on the URL org — which the caller legitimately holds — would be
+// enough to reach an application of any other organization, and any other
+// tenant. A mismatch is reported as ErrNotFound so callers answer 404 rather
+// than confirming the application exists elsewhere.
+func (h *Handler) resolveOrgAndApplication(ctx context.Context, orgSlug, appID string) (model.Organization, model.Application, error) {
+	org, err := h.orgStore.GetOrgBySlug(ctx, httpCtx.TenantID(ctx), orgSlug)
+	if err != nil {
+		return nil, nil, errors.WithStack(err)
+	}
+
+	app, err := h.applicationStore.GetApplication(ctx, model.ApplicationID(appID))
+	if err != nil {
+		return nil, nil, errors.WithStack(err)
+	}
+
+	if app.OrgID() != org.ID() {
+		return nil, nil, errors.WithStack(port.ErrNotFound)
+	}
+
+	return org, app, nil
+}
+
+// writeApplicationLookupError maps a resolveOrgAndApplication failure to a
+// response. Both the unknown and the out-of-scope case answer 404.
+func writeApplicationLookupError(ctx context.Context, w http.ResponseWriter, err error) {
+	if errors.Is(err, port.ErrNotFound) {
+		http.Error(w, "Application not found", http.StatusNotFound)
+		return
+	}
+
+	slog.ErrorContext(ctx, "could not resolve application", slogx.Error(err))
+	http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+}
 
 func (h *Handler) getApplicationsPage(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
@@ -223,23 +264,9 @@ func (h *Handler) getEditApplicationPage(w http.ResponseWriter, r *http.Request)
 	appID := r.PathValue("appID")
 	user := httpCtx.User(ctx)
 
-	org, err := h.orgStore.GetOrgBySlug(ctx, httpCtx.TenantID(ctx), orgSlug)
+	org, app, err := h.resolveOrgAndApplication(ctx, orgSlug, appID)
 	if err != nil {
-		if errors.Is(err, port.ErrNotFound) {
-			http.Error(w, "Organization not found", http.StatusNotFound)
-			return
-		}
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-		return
-	}
-
-	app, err := h.applicationStore.GetApplication(ctx, model.ApplicationID(appID))
-	if err != nil {
-		if errors.Is(err, port.ErrNotFound) {
-			http.Error(w, "Application not found", http.StatusNotFound)
-			return
-		}
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		writeApplicationLookupError(ctx, w, err)
 		return
 	}
 
@@ -308,13 +335,9 @@ func (h *Handler) updateApplication(w http.ResponseWriter, r *http.Request) {
 	description := r.FormValue("description")
 	active := r.FormValue("active") == "on"
 
-	app, err := h.applicationStore.GetApplication(ctx, model.ApplicationID(appID))
+	_, app, err := h.resolveOrgAndApplication(ctx, orgSlug, appID)
 	if err != nil {
-		if errors.Is(err, port.ErrNotFound) {
-			http.Error(w, "Application not found", http.StatusNotFound)
-			return
-		}
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		writeApplicationLookupError(ctx, w, err)
 		return
 	}
 
@@ -351,6 +374,11 @@ func (h *Handler) deleteApplication(w http.ResponseWriter, r *http.Request) {
 	orgSlug := r.PathValue("orgSlug")
 	appID := r.PathValue("appID")
 
+	if _, _, err := h.resolveOrgAndApplication(ctx, orgSlug, appID); err != nil {
+		writeApplicationLookupError(ctx, w, err)
+		return
+	}
+
 	if err := h.applicationStore.DeleteApplication(ctx, model.ApplicationID(appID)); err != nil {
 		slog.ErrorContext(ctx, "could not delete application", slogx.Error(err))
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
@@ -378,23 +406,9 @@ func (h *Handler) createApplicationToken(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	app, err := h.applicationStore.GetApplication(ctx, model.ApplicationID(appID))
+	org, app, err := h.resolveOrgAndApplication(ctx, orgSlug, appID)
 	if err != nil {
-		if errors.Is(err, port.ErrNotFound) {
-			http.Error(w, "Application not found", http.StatusNotFound)
-			return
-		}
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-		return
-	}
-
-	org, err := h.orgStore.GetOrgBySlug(ctx, httpCtx.TenantID(ctx), orgSlug)
-	if err != nil {
-		if errors.Is(err, port.ErrNotFound) {
-			http.Error(w, "Organization not found", http.StatusNotFound)
-			return
-		}
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		writeApplicationLookupError(ctx, w, err)
 		return
 	}
 
@@ -423,6 +437,29 @@ func (h *Handler) deleteApplicationToken(w http.ResponseWriter, r *http.Request)
 	orgSlug := r.PathValue("orgSlug")
 	appID := r.PathValue("appID")
 	tokenID := r.PathValue("tokenID")
+
+	_, app, err := h.resolveOrgAndApplication(ctx, orgSlug, appID)
+	if err != nil {
+		writeApplicationLookupError(ctx, w, err)
+		return
+	}
+
+	// DeleteApplicationAuthToken deletes by token id alone, so the token has to
+	// be tied back to the application of the URL before the call.
+	tokens, err := h.applicationStore.GetApplicationAuthTokens(ctx, app.ID())
+	if err != nil {
+		slog.ErrorContext(ctx, "could not list tokens", slogx.Error(err))
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+
+	owned := slices.ContainsFunc(tokens, func(t model.AuthToken) bool {
+		return string(t.ID()) == tokenID
+	})
+	if !owned {
+		http.Error(w, "Token not found", http.StatusNotFound)
+		return
+	}
 
 	if err := h.applicationStore.DeleteApplicationAuthToken(ctx, model.AuthTokenID(tokenID)); err != nil {
 		slog.ErrorContext(ctx, "could not delete token", slogx.Error(err))
