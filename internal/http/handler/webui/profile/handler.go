@@ -95,6 +95,15 @@ func (h *Handler) getProfilePage(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) getTokensPage(w http.ResponseWriter, r *http.Request) {
+	h.renderTokensPage(w, r, "")
+}
+
+// renderTokensPage renders the API keys page. createdToken carries the
+// clear-text value of a key that was just created, and is the only moment it is
+// ever displayed. It is passed in rather than read from the query string: a
+// redirect would leak the key into access logs, browser history and Referer
+// headers of every third party the page loads.
+func (h *Handler) renderTokensPage(w http.ResponseWriter, r *http.Request, createdToken string) {
 	ctx := r.Context()
 	user := httpCtx.User(ctx)
 
@@ -114,8 +123,6 @@ func (h *Handler) getTokensPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Check for success messages
-	createdToken := r.URL.Query().Get("token_created")
 	deletedToken := r.URL.Query().Get("token_deleted")
 
 	vmodel := component.TokensPageVModel{
@@ -182,8 +189,7 @@ func (h *Handler) createToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Redirect back to tokens page with success message
-	http.Redirect(w, r, "/profile/tokens?token_created="+tokenValue, http.StatusSeeOther)
+	h.renderTokensPage(w, r, tokenValue)
 }
 
 func (h *Handler) deleteToken(w http.ResponseWriter, r *http.Request) {
