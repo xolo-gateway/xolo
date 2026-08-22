@@ -1,0 +1,36 @@
+name: dco
+
+on:
+  pull_request:
+    branches: ["main"]
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      # Every commit in the PR must carry a Signed-off-by trailer
+      # (git commit -s). See CONTRIBUTING.md and the DCO file.
+      - name: Check DCO sign-off
+        run: |
+          base="${{ github.event.pull_request.base.sha }}"
+          head="${{ github.event.pull_request.head.sha }}"
+          missing=0
+          for commit in $(git rev-list --no-merges "$base".."$head"); do
+            if ! git log -1 --format=%B "$commit" | grep -Eq '^Signed-off-by: .+ <.+@.+>$'; then
+              echo "::error::Commit $commit is missing a valid 'Signed-off-by' trailer (use 'git commit -s')."
+              git log -1 --oneline "$commit"
+              missing=1
+            fi
+          done
+          if [ "$missing" -ne 0 ]; then
+            echo ""
+            echo "See CONTRIBUTING.md ('If you forgot to sign off') to fix this."
+            exit 1
+          fi
