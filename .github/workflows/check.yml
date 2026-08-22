@@ -28,6 +28,11 @@ jobs:
       - name: Test
         run: go test ./...
 
+      # pkg/pluginsdk is a nested Go module: the root ./... pattern does not
+      # reach it, so it gets its own step.
+      - name: Test plugin SDK
+        run: cd pkg/pluginsdk && go test ./...
+
       - uses: goreleaser/goreleaser-action@v6
         with:
           distribution: goreleaser

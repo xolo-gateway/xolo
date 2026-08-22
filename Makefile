@@ -59,6 +59,7 @@ purge:
 .PHONY: test
 test:
 	go test ./...
+	cd pkg/pluginsdk && go test ./...
 
 # Runs the store suite against both backends. PostgreSQL is provided by a
 # throwaway testcontainers instance, so a running Docker daemon is required.
