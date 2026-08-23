@@ -1,4 +1,4 @@
-FROM golang:1.26 AS build
+FROM golang:1.27.0 AS build
 
 RUN apt-get update \
   && apt-get install -y make git
