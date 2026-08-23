@@ -59,3 +59,37 @@ jobs:
 
       - name: Integration tests
         run: make test-integration
+
+  # Generated files are committed (see .gitattributes for why). Nothing else in
+  # the pipeline regenerates them, so without this job a `.templ` edit shipped
+  # without its `_templ.go` would build and pass tests against the stale output.
+  # Re-runs the generators and fails if the result differs from what is checked
+  # in. Excludes the protobuf output, which needs a system protoc whose version
+  # would itself become a source of spurious diffs; `make generate-proto` stays
+  # a manual step.
+  generated:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.27.0"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Regenerate templ output and Tailwind stylesheet
+        run: make generate
+
+      - name: Rebuild the pipeline editor bundle
+        run: make build-frontend
+
+      - name: Check for stale generated files
+        run: |
+          if ! git diff --exit-code; then
+            echo "::error::Generated files are out of date. Run 'make generate build-frontend' and commit the result."
+            exit 1
+          fi

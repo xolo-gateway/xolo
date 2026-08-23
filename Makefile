@@ -11,6 +11,12 @@ ASMFLAGS ?= -trimpath=$(PWD) \
 
 CI_EVENT ?= push
 
+# Pinned so `make generate` is reproducible: an unpinned `npx @tailwindcss/cli`
+# resolves to whatever is latest on npm, which makes the `generated` CI job
+# fail on a Tailwind release rather than on an actual stale file. Keep in sync
+# with the `tailwindcss` version in package.json.
+TAILWIND_VERSION ?= 4.2.1
+
 RELEASE_CHANNEL ?= $(shell git rev-parse --abbrev-ref HEAD)
 COMMIT_TIMESTAMP = $(shell git show -s --format=%ct)
 RELEASE_VERSION ?= $(shell TZ=Europe/Paris date -d "@$(COMMIT_TIMESTAMP)" +%Y.%-m.%-d)-$(RELEASE_CHANNEL).$(shell date -d "@${COMMIT_TIMESTAMP}" +%-H%M).$(shell git rev-parse --short HEAD)
@@ -74,7 +80,7 @@ build-frontend:
 
 generate: tools/templ/bin/templ
 	tools/templ/bin/templ generate
-	npx @tailwindcss/cli -i misc/tailwind/templui.css -o internal/http/handler/webui/common/assets/templui.css
+	npx @tailwindcss/cli@$(TAILWIND_VERSION) -i misc/tailwind/templui.css -o internal/http/handler/webui/common/assets/templui.css
 
 bin/templ: tools/templ/bin/templ
 	mkdir -p bin

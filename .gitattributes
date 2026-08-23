@@ -1,0 +1,27 @@
+# Generated files.
+#
+# These are committed on purpose: `pkg/pluginsdk` is a public Go module surface
+# (a `go get` of the plugin SDK compiles what the module ships, it never runs
+# protoc), the templ output is what makes `go build ./...` work without a
+# toolchain, and `assets/` is consumed through //go:embed.
+#
+# `linguist-generated` collapses them by default in GitHub diffs and keeps them
+# out of the language statistics. `-diff` does the same locally.
+#
+# `merge=ours` needs a one-off local opt-in, otherwise git warns and falls back
+# to the default driver:
+#
+#     git config merge.ours.driver true
+#
+# The right fix for a conflict on a generated file is to re-run `make generate`
+# anyway, so keeping "ours" and regenerating loses nothing.
+
+*_templ.go                 linguist-generated=true -diff merge=ours
+*.pb.go                    linguist-generated=true -diff merge=ours
+internal/http/handler/webui/common/assets/templui.css        linguist-generated=true -diff merge=ours
+internal/http/handler/webui/pipeline/assets/dist/**          linguist-generated=true -diff merge=ours
+
+# Vendored third-party assets: not ours, no point diffing them either.
+internal/http/handler/webui/common/assets/js/*.min.js        linguist-vendored=true -diff
+internal/http/handler/webui/common/assets/*.min.js           linguist-vendored=true -diff
+internal/http/handler/webui/common/assets/vendor/**          linguist-vendored=true -diff
