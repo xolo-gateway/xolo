@@ -1,6 +1,6 @@
 module github.com/xolo-gateway/xolo
 
-go 1.25.5
+go 1.26.0
 
 require (
 	github.com/Oudwins/tailwind-merge-go v0.2.1
