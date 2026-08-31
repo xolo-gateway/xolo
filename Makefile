@@ -78,9 +78,15 @@ seed:
 build-frontend:
 	cd frontend && npm ci && npm run build
 
-generate: tools/templ/bin/templ
+generate: tools/templ/bin/templ node_modules
 	tools/templ/bin/templ generate
 	npx @tailwindcss/cli@$(TAILWIND_VERSION) -i misc/tailwind/templui.css -o internal/http/handler/webui/common/assets/templui.css
+
+# `@import "tailwindcss"` dans misc/tailwind/templui.css est résolu depuis
+# node_modules : le CLI récupéré par `npx` n'embarque pas le paquet lui-même.
+node_modules: package.json package-lock.json
+	npm ci
+	touch node_modules
 
 bin/templ: tools/templ/bin/templ
 	mkdir -p bin
