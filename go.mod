@@ -4,7 +4,7 @@ go 1.26.0
 
 require (
 	github.com/Oudwins/tailwind-merge-go v0.2.1
-	github.com/bornholm/genai v0.33.1
+	github.com/bornholm/genai v0.36.0
 	github.com/bornholm/go-anon v0.3.0
 	github.com/bornholm/go-fuzzy v0.0.0-20250815131223-76b121e8632d
 	github.com/bornholm/go-x v0.0.0-20260127104343-c6737ea35324

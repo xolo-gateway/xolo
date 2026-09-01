@@ -18,8 +18,8 @@ github.com/abadojack/whatlanggo v1.0.1 h1:19N6YogDnf71CTHm3Mp2qhYfkRdyvbgwWdd2EP
 github.com/abadojack/whatlanggo v1.0.1/go.mod h1:66WiQbSbJBIlOZMsvbKe5m6pzQovxCH9B/K8tQB2uoc=
 github.com/beorn7/perks v1.0.1 h1:VlbKKnNfV8bJzeqoa4cOKqO6bYr3WgKZxO8Z16+hsOM=
 github.com/beorn7/perks v1.0.1/go.mod h1:G2ZrVWU2WbWT9wwq4/hrbKbnv/1ERSJQ0ibhJ6rlkpw=
-github.com/bornholm/genai v0.33.1 h1:rrXzuBIytduy0edIsBH6/CiQV+iW0ZkxuvmZHBdFzI4=
-github.com/bornholm/genai v0.33.1/go.mod h1:ajuzZJvHAhy2SOsjxVNI1WUZaYKvGfabRE9UnLWirr0=
+github.com/bornholm/genai v0.36.0 h1:F7TWlvM1+9PPVDgQmkaVcbK4G32+pw8x9y0MzHLaOCI=
+github.com/bornholm/genai v0.36.0/go.mod h1:ajuzZJvHAhy2SOsjxVNI1WUZaYKvGfabRE9UnLWirr0=
 github.com/bornholm/go-anon v0.3.0 h1:VjPZFF2T+eRiy5z7RYtDoRIJ/g88nh52BymEtrr5InE=
 github.com/bornholm/go-anon v0.3.0/go.mod h1:q9EiQH9IdPYxfcj3+Htua+WgR0Us4GIJ5uV5j3LZRRA=
 github.com/bornholm/go-fuzzy v0.0.0-20250815131223-76b121e8632d h1:IUrWuFur+t1DKOMt49Np0vzF/9WcX1A1H9kWpiyMhPA=
