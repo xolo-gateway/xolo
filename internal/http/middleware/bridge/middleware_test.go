@@ -2,11 +2,15 @@ package bridge_test
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"slices"
 	"testing"
 
+	_ "github.com/ncruces/go-sqlite3/embed"
+	"github.com/ncruces/go-sqlite3/gormlite"
+	"github.com/pkg/errors"
 	xologorm "github.com/xolo-gateway/xolo/internal/adapter/gorm"
 	"github.com/xolo-gateway/xolo/internal/core/model"
 	"github.com/xolo-gateway/xolo/internal/core/port"
@@ -14,9 +18,6 @@ import (
 	"github.com/xolo-gateway/xolo/internal/http/middleware/authn"
 	"github.com/xolo-gateway/xolo/internal/http/middleware/authz"
 	"github.com/xolo-gateway/xolo/internal/http/middleware/bridge"
-	_ "github.com/ncruces/go-sqlite3/embed"
-	"github.com/ncruces/go-sqlite3/gormlite"
-	"github.com/pkg/errors"
 	gormpkg "gorm.io/gorm"
 )
 
@@ -282,3 +283,39 @@ type stubTenant struct {
 }
 
 func (t *stubTenant) ID() model.TenantID { return t.id }
+
+// An application's shadow user is a platform artefact whose lifecycle is the
+// application's own: the account-provisioning policy must not leave it
+// inactive or refuse to create it.
+func TestApplicationIdentity(t *testing.T) {
+	ctx := context.Background()
+
+	identity := &authn.User{
+		Provider:    model.ApplicationProvider,
+		Subject:     "app-1",
+		DisplayName: "Automata",
+	}
+
+	for _, opts := range []bridge.Options{
+		{AutoCreateUsers: true, ActiveByDefault: false},
+		{AutoCreateUsers: false, ActiveByDefault: false},
+	} {
+		t.Run(fmt.Sprintf("auto-create=%v active-by-default=%v", opts.AutoCreateUsers, opts.ActiveByDefault), func(t *testing.T) {
+			store := newStore(t)
+
+			result := call(t, store, opts, identity)
+
+			if !result.served {
+				t.Fatalf("request should have been served, got status %d", result.status)
+			}
+
+			user, err := store.GetUserByIdentity(ctx, testTenantID, model.ApplicationProvider, "app-1")
+			if err != nil {
+				t.Fatalf("get user: %v", err)
+			}
+			if !user.Active() {
+				t.Error("application shadow user should have been created active")
+			}
+		})
+	}
+}

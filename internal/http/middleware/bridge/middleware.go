@@ -66,6 +66,14 @@ func Middleware(userStore port.UserStore, emitter port.EventEmitter, opts Option
 
 			isDefaultAdmin := slices.Contains(opts.DefaultAdmins, authnUser.Email)
 
+			// An application authenticates through a shadow user that is
+			// created lazily on its first request. Its lifecycle is governed by
+			// the application itself (the token authenticator already refuses a
+			// deactivated application), so the account-provisioning policy
+			// (AutoCreateUsers, ActiveByDefault) must not apply to it: a shadow
+			// user created inactive would answer 403 on every API call.
+			isApplication := authnUser.Provider == model.ApplicationProvider
+
 			user, err := userStore.GetUserByIdentity(ctx, tenant.ID(), authnUser.Provider, authnUser.Subject)
 			if err != nil {
 				if !errors.Is(err, port.ErrNotFound) {
@@ -76,7 +84,7 @@ func Middleware(userStore port.UserStore, emitter port.EventEmitter, opts Option
 				// The identity authenticated successfully but Xolo knows
 				// nothing about it. Default admins are the exception: they are
 				// the only way to bootstrap an instance that has no user yet.
-				if !opts.AutoCreateUsers && !isDefaultAdmin {
+				if !opts.AutoCreateUsers && !isDefaultAdmin && !isApplication {
 					emitLoginFailed(ctx, authnUser, "aucun compte ne correspond à cette identité et la création automatique est désactivée")
 					common.HandleError(w, r, common.NewError(
 						"user account auto-creation is disabled",
@@ -89,7 +97,7 @@ func Middleware(userStore port.UserStore, emitter port.EventEmitter, opts Option
 				user = model.NewUser(
 					tenant.ID(),
 					authnUser.Provider, authnUser.Subject, authnUser.Email, authnUser.DisplayName,
-					opts.ActiveByDefault || isDefaultAdmin,
+					opts.ActiveByDefault || isDefaultAdmin || isApplication,
 					authz.RoleUser,
 				)
 
