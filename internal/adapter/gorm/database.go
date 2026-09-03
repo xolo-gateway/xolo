@@ -257,6 +257,19 @@ func createGetDatabase(db *gorm.DB) func(ctx context.Context) (*gorm.DB, error) 
 						return errors.New("auth token hashing cannot be rolled back")
 					},
 				},
+				{
+					// Covering index for the PAYG cost sums the quota enforcer runs on
+					// every proxy request: (org_id, plan_covered, created_at, user_id,
+					// currency, cost) answers SumCostSince* from the index alone instead
+					// of visiting every row of the org over the budget period.
+					ID: "202609040001",
+					Migrate: func(tx *gorm.DB) error {
+						return errors.WithStack(tx.AutoMigrate(&UsageRecord{}))
+					},
+					Rollback: func(tx *gorm.DB) error {
+						return errors.WithStack(tx.Migrator().DropIndex(&UsageRecord{}, "idx_usage_org_payg_cost"))
+					},
+				},
 			})
 
 			m.InitSchema(func(tx *gorm.DB) error {
