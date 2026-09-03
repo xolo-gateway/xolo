@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/pkg/errors"
 	"github.com/rs/cors"
@@ -76,6 +77,10 @@ func (s *Server) Run(ctx context.Context) error {
 	server := http.Server{
 		Addr:    s.opts.Address,
 		Handler: handler,
+		// Bounds the time a client may take to send its headers so a stalled
+		// or malicious connection cannot hold a goroutine for ever. Bodies and
+		// responses stay unbounded: completions legitimately run for minutes.
+		ReadHeaderTimeout: 30 * time.Second,
 	}
 
 	shutdownDone := make(chan struct{})

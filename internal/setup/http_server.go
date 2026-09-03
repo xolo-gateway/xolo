@@ -166,7 +166,9 @@ func NewHTTPServerFromConfig(ctx context.Context, conf *config.Config) (*http.Se
 
 	subscriptionState := proxyAdapter.NewSubscriptionState()
 
-	orgModelRouter := proxyAdapter.NewOrgModelRouter(providerStore, orgStore, conf.SecretKey)
+	orgModelRouter := proxyAdapter.NewOrgModelRouter(providerStore, orgStore, conf.SecretKey,
+		proxyAdapter.WithUpstreamTimeout(conf.Proxy.UpstreamTimeout),
+	)
 
 	pipelineHookAdapter := proxyAdapter.NewPipelineHookAdapter(
 		pluginManager,

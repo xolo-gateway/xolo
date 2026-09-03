@@ -16,6 +16,7 @@ type Config struct {
 	TaskRunner       TaskRunner         `envPrefix:"TASK_RUNNER_"`
 	ExchangeRate     ExchangeRateConfig `envPrefix:"EXCHANGE_RATE_"`
 	Plugins          PluginsConfig      `envPrefix:"PLUGINS_"`
+	Proxy            ProxyConfig        `envPrefix:"PROXY_"`
 	Events           EventsConfig       `envPrefix:"EVENTS_"`
 	ProvisionningAPI ProvisionningAPI   `envPrefix:"PROVISIONNING_API_"`
 	Multitenancy     Multitenancy       `envPrefix:"MULTITENANCY_"`

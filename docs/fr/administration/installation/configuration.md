@@ -75,6 +75,12 @@ Le schéma est créé et migré automatiquement au démarrage. Il n'existe pas d
 | `XOLO_PLUGINS_MEM_LIMIT` | _(désactivé)_ | Limite mémoire (`GOMEMLIMIT`) appliquée à chaque sous-processus plugin, ex. `512MiB`. |
 | `XOLO_PLUGINS_RESTART_COOLDOWN` | `30s` | Délai minimum entre deux redémarrages d'un même plugin, pour éviter les redémarrages en boucle. |
 
+## Proxy
+
+| Variable | Défaut | Description |
+| --- | --- | --- |
+| `XOLO_PROXY_UPSTREAM_TIMEOUT` | `5m` | Délai maximal accordé à un fournisseur. Pour une complétion non streamée ou un calcul d'embeddings, il borne l'appel complet, tentatives de retry comprises. Pour une complétion streamée, il borne l'attente du premier fragment puis le silence entre deux fragments, sans jamais couper une réponse longue qui continue d'arriver. À expiration le client reçoit une erreur 504 explicite au lieu d'une coupure opaque du reverse proxy. Le timeout du reverse proxy placé devant Xolo doit rester strictement supérieur à cette valeur. `0` désactive la borne. |
+
 ## Événements
 
 | Variable | Défaut | Description |

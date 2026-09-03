@@ -42,6 +42,9 @@ type OrgModelRouter struct {
 	// instead of being recreated — and thus reset — on every call.
 	clientsMu sync.Mutex
 	clients   *expirable.LRU[model.LLMModelID, *cachedClient]
+
+	// upstreamTimeout bounds each provider call; zero leaves it unbounded.
+	upstreamTimeout time.Duration
 }
 
 // cachedClient associates a built client with a fingerprint of the model and
@@ -51,13 +54,28 @@ type cachedClient struct {
 	fingerprint string
 }
 
-func NewOrgModelRouter(providerStore port.ProviderStore, orgStore port.OrgStore, secretKey string) *OrgModelRouter {
-	return &OrgModelRouter{
+// OrgModelRouterOption tunes an OrgModelRouter at construction.
+type OrgModelRouterOption func(r *OrgModelRouter)
+
+// WithUpstreamTimeout bounds every call to an upstream provider (see
+// timeoutClient); zero disables the bound.
+func WithUpstreamTimeout(timeout time.Duration) OrgModelRouterOption {
+	return func(r *OrgModelRouter) {
+		r.upstreamTimeout = timeout
+	}
+}
+
+func NewOrgModelRouter(providerStore port.ProviderStore, orgStore port.OrgStore, secretKey string, funcs ...OrgModelRouterOption) *OrgModelRouter {
+	r := &OrgModelRouter{
 		providerStore: providerStore,
 		orgStore:      orgStore,
 		secretKey:     secretKey,
 		clients:       expirable.NewLRU[model.LLMModelID, *cachedClient](256, nil, time.Hour),
 	}
+	for _, fn := range funcs {
+		fn(r)
+	}
+	return r
 }
 
 func (r *OrgModelRouter) Name() string  { return "xolo.org-model-router" }
@@ -197,6 +215,10 @@ func (r *OrgModelRouter) clientForModel(ctx context.Context, llmModel model.LLMM
 	if cfg := p.RetryConfig(); cfg != nil && cfg.Enabled {
 		client = llmretry.NewClient(client, cfg.Delay, cfg.MaxAttempts)
 	}
+
+	// Timeout wraps the whole chain so the bound covers retries too and a
+	// timeout is never retried.
+	client = newTimeoutClient(client, r.upstreamTimeout)
 
 	r.clients.Add(llmModel.ID(), &cachedClient{client: client, fingerprint: fingerprint})
 
