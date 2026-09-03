@@ -78,15 +78,41 @@ func (s *Server) Run(ctx context.Context) error {
 		Handler: handler,
 	}
 
+	shutdownDone := make(chan struct{})
+	// serveDone releases the watcher when serving stops on its own (a failed
+	// bind, typically) instead of leaving it parked on ctx.
+	serveDone := make(chan struct{})
+	defer close(serveDone)
+
 	go func() {
-		<-ctx.Done()
-		if err := server.Close(); err != nil {
-			slog.ErrorContext(ctx, "could not close server", slog.Any("error", errors.WithStack(err)))
+		defer close(shutdownDone)
+
+		select {
+		case <-ctx.Done():
+		case <-serveDone:
+			return
+		}
+
+		// Shutdown stops accepting connections at once, then waits for the
+		// in-flight requests — long streamed completions included — up to the
+		// configured timeout. Detached from ctx, which is already canceled.
+		shutdownCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), s.opts.ShutdownTimeout)
+		defer cancel()
+
+		if err := server.Shutdown(shutdownCtx); err != nil {
+			slog.WarnContext(ctx, "graceful shutdown timed out, closing remaining connections", slog.Any("error", errors.WithStack(err)))
+			if err := server.Close(); err != nil {
+				slog.ErrorContext(ctx, "could not close server", slog.Any("error", errors.WithStack(err)))
+			}
 		}
 	}()
 
 	if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		return errors.WithStack(err)
+	}
+
+	if ctx.Err() != nil {
+		<-shutdownDone
 	}
 
 	return nil

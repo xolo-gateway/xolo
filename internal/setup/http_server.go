@@ -272,6 +272,7 @@ func NewHTTPServerFromConfig(ctx context.Context, conf *config.Config) (*http.Se
 
 	options := []http.OptionFunc{
 		http.WithAddress(conf.HTTP.Address),
+		http.WithShutdownTimeout(conf.HTTP.ShutdownTimeout),
 		http.WithBaseURL(conf.HTTP.BaseURL),
 		http.WithMiddleware(tenantMiddleware),
 		http.WithMount("/assets/", assets),

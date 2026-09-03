@@ -5,11 +5,12 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"syscall"
 
 	"github.com/bornholm/go-x/slogx"
+	"github.com/pkg/errors"
 	"github.com/xolo-gateway/xolo/internal/config"
 	"github.com/xolo-gateway/xolo/internal/setup"
-	"github.com/pkg/errors"
 
 	// Adapters
 	_ "github.com/xolo-gateway/xolo/internal/adapter/memory"
@@ -40,11 +41,15 @@ func main() {
 	slog.DebugContext(ctx, "using configuration", slog.Any("config", conf))
 
 	sig := make(chan os.Signal, 1)
-	signal.Notify(sig, os.Interrupt)
+	// Docker and systemd stop the process with SIGTERM: without it here the
+	// process is killed at the end of the grace period with every in-flight
+	// request cut short.
+	signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
 
 	go func() {
 		slog.InfoContext(ctx, "use ctrl+c to interrupt")
-		<-sig
+		received := <-sig
+		slog.InfoContext(ctx, "signal received, shutting down", slog.String("signal", received.String()))
 		cancel()
 	}()
 

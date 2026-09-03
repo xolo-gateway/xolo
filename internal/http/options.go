@@ -2,16 +2,20 @@ package http
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/rs/cors"
 )
 
 type Options struct {
 	Address string
-	BaseURL string
-	Mounts  map[string]http.Handler
-	Routes  map[string]http.Handler
-	CORS    cors.Options
+	// ShutdownTimeout is how long in-flight requests may run once the context
+	// is canceled before the server closes their connections.
+	ShutdownTimeout time.Duration
+	BaseURL         string
+	Mounts          map[string]http.Handler
+	Routes          map[string]http.Handler
+	CORS            cors.Options
 
 	// Middlewares wrap the whole mux, outside every mount. The first one is the
 	// outermost. Tenant resolution lives here: authentication resolves a user
@@ -23,10 +27,11 @@ type OptionFunc func(opts *Options)
 
 func NewOptions(funcs ...OptionFunc) *Options {
 	opts := &Options{
-		Address: ":3002",
-		BaseURL: "",
-		Mounts:  map[string]http.Handler{},
-		Routes:  map[string]http.Handler{},
+		Address:         ":3002",
+		ShutdownTimeout: 30 * time.Second,
+		BaseURL:         "",
+		Mounts:          map[string]http.Handler{},
+		Routes:          map[string]http.Handler{},
 		CORS: cors.Options{
 			AllowedOrigins:   []string{"*"},
 			AllowCredentials: true,
@@ -51,6 +56,12 @@ func WithMount(prefix string, handler http.Handler) OptionFunc {
 func WithRoute(pattern string, handler http.Handler) OptionFunc {
 	return func(opts *Options) {
 		opts.Routes[pattern] = handler
+	}
+}
+
+func WithShutdownTimeout(timeout time.Duration) OptionFunc {
+	return func(opts *Options) {
+		opts.ShutdownTimeout = timeout
 	}
 }
 

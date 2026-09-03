@@ -3,11 +3,17 @@ package config
 import "time"
 
 type HTTP struct {
-	BaseURL   string        `env:"BASE_URL,expand" envDefault:"/"`
-	Address   string        `env:"ADDRESS,expand" envDefault:":3002"`
-	Authn     Authn         `envPrefix:"AUTHN_"`
-	Session   Session       `envPrefix:"SESSION_"`
-	RateLimit HTTPRateLimit `envPrefix:"RATE_LIMIT_"`
+	BaseURL string `env:"BASE_URL,expand" envDefault:"/"`
+	Address string `env:"ADDRESS,expand" envDefault:":3002"`
+	// ShutdownTimeout bounds the graceful shutdown: on SIGTERM/SIGINT the
+	// listener closes at once and in-flight requests (streamed completions
+	// included) get up to this long to finish before being cut. Keep the
+	// container stop grace period (docker `stop_grace_period`, systemd
+	// `TimeoutStopSec`) above this value.
+	ShutdownTimeout time.Duration `env:"SHUTDOWN_TIMEOUT,expand" envDefault:"30s"`
+	Authn           Authn         `envPrefix:"AUTHN_"`
+	Session         Session       `envPrefix:"SESSION_"`
+	RateLimit       HTTPRateLimit `envPrefix:"RATE_LIMIT_"`
 }
 type Authn struct {
 	Providers       AuthProviders `envPrefix:"PROVIDERS_"`

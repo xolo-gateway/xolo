@@ -15,6 +15,7 @@ Xolo se configure entièrement par variables d'environnement, préfixées `XOLO_
 | --- | --- | --- |
 | `XOLO_HTTP_ADDRESS` | `:3002` | Adresse d'écoute du serveur. |
 | `XOLO_HTTP_BASE_URL` | `/` | URL publique de l'instance (utilisée pour construire les liens absolus, les redirections OIDC…). |
+| `XOLO_HTTP_SHUTDOWN_TIMEOUT` | `30s` | Délai d'arrêt gracieux : sur SIGTERM/SIGINT le serveur cesse d'accepter des connexions puis laisse ce délai aux requêtes en cours (complétions streamées comprises) avant de les couper. Le délai de grâce du conteneur (`stop_grace_period` Docker, `TimeoutStopSec` systemd) doit lui être supérieur. |
 | `XOLO_HTTP_SESSION_COOKIE_SECURE` | `false` | Passez à `true` derrière HTTPS. |
 | `XOLO_HTTP_RATE_LIMIT_*` | — | Limitation de débit HTTP par IP. |
 
