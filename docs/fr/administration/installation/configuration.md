@@ -110,7 +110,7 @@ Le schéma est créé et migré automatiquement au démarrage. Il n'existe pas d
 | `XOLO_EXCHANGE_RATE_PROVIDER` | `frankfurter` | Source des taux de change (`frankfurter` ou `file`). |
 | `XOLO_EXCHANGE_RATE_TTL` / `_REFRESH_INTERVAL` | `24h` | Fraîcheur et fréquence de rafraîchissement des taux. |
 | `XOLO_TASK_RUNNER_URI` | `memory://taskrunner?parallelism=5&cleanupInterval=10m&cleanupDelay=1h` | Configuration du planificateur de tâches de fond. |
-| `XOLO_LOGGER_LEVEL` | `0` | Niveau de log (`slog`, valeurs négatives = debug). |
+| `XOLO_LOGGER_LEVEL` | `0` | Niveau de log (`slog`, valeurs négatives = debug). Au niveau `0` (info) seules les requêtes SQL en erreur ou lentes sont journalisées ; le niveau debug (`-4`) trace chaque requête SQL. |
 
 ## Vérification
 

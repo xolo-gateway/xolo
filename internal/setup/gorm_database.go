@@ -48,14 +48,16 @@ var getGormDatabaseFromConfig = createFromConfigOnce(func(ctx context.Context, c
 		dialector = gormlite.Open(dsn)
 	}
 
+	// GORM's Info level prints every statement: at the default XOLO_LOGGER_LEVEL
+	// that flooded production logs with tens of thousands of lines a day and
+	// rotated the useful ones away within days. Statements are only worth it
+	// while debugging; Info keeps errors and slow queries.
 	var logLevel logger.LogLevel
-	switch slog.Level(conf.Logger.Level) {
-	case slog.LevelError:
-		logLevel = logger.Error
-	case slog.LevelWarn:
-		logLevel = logger.Warn
-	case slog.LevelInfo:
+	switch {
+	case slog.Level(conf.Logger.Level) <= slog.LevelDebug:
 		logLevel = logger.Info
+	case slog.Level(conf.Logger.Level) <= slog.LevelInfo:
+		logLevel = logger.Warn
 	default:
 		logLevel = logger.Error
 	}

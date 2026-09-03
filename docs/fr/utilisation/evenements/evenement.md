@@ -11,6 +11,7 @@ Un événement est une entrée de journalisation relative à une action survenue
 | Type             | Description                             |
 | ---------------- | --------------------------------------- |
 | `proxy.request`  | Requête API vers un modèle              |
+| `proxy.request.failed` | Requête API en échec (fournisseur, timeout, hook) avec le statut HTTP et la cause |
 | `auth.login.*`   | Tentatives de connexion (succès, échec) |
 | `quota.exceeded` | Dépassement de budget                   |
 | `middleware.*`   | Événements des middlewares              |

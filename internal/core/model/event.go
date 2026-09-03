@@ -28,8 +28,9 @@ const EventSourcePlatform = "platform"
 // Well-known platform event types. Plugin event types are namespaced
 // "plugin.<name>.<type>" server-side and are not listed here.
 const (
-	EventTypeProxyRequest    = "proxy.request"
-	EventTypeAuthLoginFailed = "auth.login.failed"
+	EventTypeProxyRequest       = "proxy.request"
+	EventTypeProxyRequestFailed = "proxy.request.failed"
+	EventTypeAuthLoginFailed    = "auth.login.failed"
 
 	EventTypeProviderCreated = "provider.created"
 	EventTypeProviderUpdated = "provider.updated"
@@ -78,6 +79,7 @@ type EventTypeDef struct {
 func PlatformEventTypes() []EventTypeDef {
 	return []EventTypeDef{
 		{EventTypeProxyRequest, "Requête proxy", SeverityInfo},
+		{EventTypeProxyRequestFailed, "Requête proxy en échec", SeverityWarning},
 		{EventTypeAuthLoginFailed, "Échec de connexion", SeverityWarning},
 
 		{EventTypeProviderCreated, "Fournisseur créé", SeverityInfo},
