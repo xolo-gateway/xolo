@@ -44,10 +44,10 @@ Chaque application peut disposer de plusieurs tokens API.
 
 1. Ouvrez l'application en modification
    ![Modification application](./screenshots/image4.png)
-2. Dans la section **Tokens API**, remplissez :
-   - **Label du token** : nom descriptif (ex: "Token production")
+2. Dans la section **Jetons d'API**, remplissez :
+   - **Libellé** : nom descriptif (ex: "Jeton production")
    - **Expiration (jours)** : durée de validité (ex: 365 pour 1 an)
-3. Cliquez sur **Générer un token**
+3. Cliquez sur **Générer un jeton**
    ![Générer un token](./screenshots/image5.png)
 4. Résultat :
    ![Résultat](./screenshots/image6.png)
@@ -56,7 +56,7 @@ Chaque application peut disposer de plusieurs tokens API.
 
 Pour révoquer un token (le rendre invalide immédiatement) :
 
-- Cliquez sur **Révoquer** sur la ligne du token concerné
+- Cliquez sur l'icône **Révoquer** (corbeille) sur la ligne du token concerné, puis confirmez
   ![Révoquer](./screenshots/image7.png)
 
 > **Attention** : Un token révoqué ne peut pas être récupéré. Vous devez en générer un nouveau.
@@ -81,7 +81,7 @@ Pour révoquer un token (le rendre invalide immédiatement) :
 ## Supprimer une application
 
 1. Ouvrez l'application en modification
-2. Cliquez sur **Supprimer l'application** en bas du formulaire
+2. Dans la **Zone de danger**, cliquez sur **Supprimer l'application**
 
 > **Attention** : Cette action supprime également tous les tokens associés. Les services utilisant ces tokens perdront immédiatement leur accès.
 

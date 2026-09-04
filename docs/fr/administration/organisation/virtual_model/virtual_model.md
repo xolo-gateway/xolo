@@ -33,32 +33,32 @@ La liste des plugins intégrés et le fonctionnement du pipeline sont détaillé
 
 Voici comment configurer le plugin `system-prompt` pour ajouter un prompt système personnalisé :
 
-1. Cliquez sur le plugin `system-prompt` dans l'éditeur
+1. Dans la palette de gauche, cliquez sur le plugin `system-prompt` pour l'ajouter au graphe
    ![system-prompt](./screenshots/system-prompt-plugin.png)
-2. Cliquez sur les nœuds pour les relier entre eux
+2. Reliez les ports des nœuds en faisant glisser un port de sortie vers un port d'entrée
    ![nodes](./screenshots/image7.png)
-3. Cliquez sur `Configurer`
-   ![Configurer](./screenshots/system-prompt-config.png)
-4. Saisissez votre prompt système. Vous pouvez :
-   - L'ajouter au prompt existant
-   - Le remplacer entièrement
-     ![system-prompt](./screenshots/promptsystemedit.png)
-5. Cliquez sur `Sauvegarder` TODO FAIRE UNE REDIRECTION À LA SAUVEGARDE ???
-6. Fermez la page de configuration du plugin
-7. Cliquez sur `Modèle LLM`
-8. Reliez les nœuds comme indiqué :
+3. Sélectionnez le nœud du plugin : son panneau de configuration s'ouvre à droite de l'éditeur
+   ![Configuration du plugin](./screenshots/system-prompt-config.png)
+4. Saisissez votre prompt système. La case **Ajouter au prompt système existant** détermine si le
+   prompt complète celui de la requête ou le remplace entièrement
+   ![system-prompt](./screenshots/promptsystemedit.png)
+5. Cliquez sur `Sauvegarder` pour valider la configuration du nœud
+6. Ajoutez un nœud `model` depuis la palette, reliez-le, puis sélectionnez-le : renseignez le
+   **Modèle appelé** dans son panneau de configuration
    ![Modèle LLM](./screenshots/image10.png)
-9. Cliquez sur `Valeur`
+7. Pour rendre ce nom dynamique, ajoutez un nœud `value` depuis la palette
    ![Valeur](./screenshots/image11.png)
-10. Saisissez le nom du modèle sous-jacent à utiliser
-    ![modele](./screenshots/image12.png)
-11. Votre modèle virtuel est maintenant configuré avec le pipeline complet
-    ![modele](./screenshots/image13.png)
+8. Saisissez le nom du modèle sous-jacent à utiliser, puis reliez la sortie du nœud `value` au
+   port `model_name` du nœud `model`
+   ![modele](./screenshots/image12.png)
+9. Le bandeau bas indique **Graphe valide** lorsque tous les ports requis sont connectés. Cliquez
+   sur `Enregistrer` pour publier le pipeline
+   ![modele](./screenshots/image13.png)
 
 ### Résultat
 
-Dans cet exemple, `demo/MonModelVirtuel` utilise le modèle `minimax-2.7` et répondra uniquement en espagnol (grâce au plugin `system_prompt` configuré).
+Dans cet exemple, `acme/assistant-espagnol` s'appuie sur le modèle `acme/gpt-4o-mini` et répond uniquement en espagnol, grâce au plugin `system-prompt` configuré.
 
-Le modèle virtuel est exposé aux utilisateurs sous la forme : `nom-de-l'organisation/nom_du_modele`. Dans notre exemple : `demo/MonModelVirtuel`
+Le modèle virtuel est exposé aux utilisateurs sous la forme : `nom-de-l'organisation/nom_du_modele`. Dans notre exemple : `acme/assistant-espagnol`
 
 Pour l'utilisateur final, ce modèle fonctionne comme n'importe quel autre modèle. Toute la personnalisation reste transparente, gérée en arrière-plan.
