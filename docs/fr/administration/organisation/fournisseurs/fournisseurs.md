@@ -35,6 +35,18 @@ Un fournisseur est une connexion vers un service LLM externe (OpenAI, Mistral, O
 
 3. Cliquez sur **Enregistrer**.
 
+## Serveurs locaux : Ollama, vLLM et compatibles OpenAI
+
+Xolo n'a pas de type de connexion propre à Ollama ou à vLLM, et n'en a pas besoin : ces serveurs exposent l'API au format OpenAI. Déclarez-les avec le type `openai` :
+
+| Champ           | Ollama                                   | vLLM                                   |
+| --------------- | ---------------------------------------- | -------------------------------------- |
+| **Type**        | `openai`                                 | `openai`                               |
+| **URL de base** | `http://localhost:11434/v1`              | `http://localhost:8000/v1`             |
+| **Clé API**     | vide, sauf si vous en avez configuré une | celle passée à `--api-key`, sinon vide |
+
+Adaptez l'hôte et le port à votre déploiement. Pour l'estimation énergétique, choisissez le niveau d'infrastructure **Small Provider** : c'est celui qui correspond le mieux à une machine que vous opérez vous-même. La même recette vaut pour tout serveur qui parle le format OpenAI (LM Studio, llama.cpp en mode serveur, LocalAI…).
+
 ## Tester la connexion
 
 Après avoir créé un fournisseur, utilisez le bouton **Tester la connexion** pour vérifier que Xolo peut communiquer avec le fournisseur.

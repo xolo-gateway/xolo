@@ -4,7 +4,7 @@ Xolo s'intercale entre les utilisateurs et les services LLM. Cette page explique
 
 ## Fournisseur → modèle
 
-Un **fournisseur** est une connexion vers un service LLM externe (OpenAI, Mistral, OpenRouter, un déploiement `yzma` interne…). Il porte les informations de connexion (URL, clé API), le mode de facturation (pay-as-you-go ou abonnement) et un **niveau d'infrastructure** (Hyperscaler, Major Cloud, Small Provider) utilisé pour l'[estimation énergétique](./estimation-energetique.md).
+Un **fournisseur** est une connexion vers un service LLM externe (OpenAI, Mistral, OpenRouter, ou un serveur que vous opérez comme Ollama ou vLLM…). Il porte les informations de connexion (URL, clé API), le mode de facturation (pay-as-you-go ou abonnement) et un **niveau d'infrastructure** (Hyperscaler, Major Cloud, Small Provider) utilisé pour l'[estimation énergétique](./estimation-energetique.md).
 
 Un fournisseur expose un ou plusieurs **modèles**. Chaque modèle est décrit par :
 
