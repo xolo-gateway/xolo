@@ -45,11 +45,51 @@ builds:
     ldflags:
       - -w -s
 
-  - id: xolo-plugin-request-evaluator
+  - id: xolo-plugin-request-inspector
     targets: [go_first_class]
     mod_timestamp: "{{ .CommitTimestamp }}"
-    dir: ./plugins/request-evaluator
-    binary: xolo-plugin-request-evaluator
+    dir: ./plugins/request-inspector
+    binary: xolo-plugin-request-inspector
+    flags:
+      - -trimpath
+    ldflags:
+      - -w -s
+
+  - id: xolo-plugin-complexity-scorer
+    targets: [go_first_class]
+    mod_timestamp: "{{ .CommitTimestamp }}"
+    dir: ./plugins/complexity-scorer
+    binary: xolo-plugin-complexity-scorer
+    flags:
+      - -trimpath
+    ldflags:
+      - -w -s
+
+  - id: xolo-plugin-text-classifier
+    targets: [go_first_class]
+    mod_timestamp: "{{ .CommitTimestamp }}"
+    dir: ./plugins/text-classifier
+    binary: xolo-plugin-text-classifier
+    flags:
+      - -trimpath
+    ldflags:
+      - -w -s
+
+  - id: xolo-plugin-energy-estimator
+    targets: [go_first_class]
+    mod_timestamp: "{{ .CommitTimestamp }}"
+    dir: ./plugins/energy-estimator
+    binary: xolo-plugin-energy-estimator
+    flags:
+      - -trimpath
+    ldflags:
+      - -w -s
+
+  - id: xolo-plugin-budget-pressure
+    targets: [go_first_class]
+    mod_timestamp: "{{ .CommitTimestamp }}"
+    dir: ./plugins/budget-pressure
+    binary: xolo-plugin-budget-pressure
     flags:
       - -trimpath
     ldflags:
@@ -116,7 +156,11 @@ dockers:
       - xolo-plugin-time-restriction
       - xolo-plugin-dummy-model
       - xolo-plugin-fuzzy-evaluator
-      - xolo-plugin-request-evaluator
+      - xolo-plugin-request-inspector
+      - xolo-plugin-complexity-scorer
+      - xolo-plugin-text-classifier
+      - xolo-plugin-energy-estimator
+      - xolo-plugin-budget-pressure
       - xolo-plugin-script-processor
       - xolo-plugin-pseudonymizer
       - xolo-plugin-mcp-bridge

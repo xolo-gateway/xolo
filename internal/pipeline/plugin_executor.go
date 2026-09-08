@@ -149,6 +149,7 @@ func (e *PluginExecutor) forwardPreRequest(
 		Model:        ec.RequestJSON,
 		MessagesJson: messagesJSON,
 		InputsJson:   inputsJSON,
+		Quota:        ec.quotaInfo(ctx),
 	})
 	if err != nil {
 		return nil, errors.Wrap(err, "plugin PreRequest failed")
@@ -195,7 +196,7 @@ func (e *PluginExecutor) forwardResolveModel(
 		AvailableModels: ec.ProtoModels,
 		MessagesJson:    messagesJSON,
 		VirtualModels:   ec.ProtoVMs,
-		Quota:           ec.ProtoQuota,
+		Quota:           ec.quotaInfo(ctx),
 		BodyJson:        ec.BodyJSON,
 	})
 	if err != nil {

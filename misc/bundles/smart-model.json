@@ -8,21 +8,81 @@
       {
         "id": "gen",
         "type": "generator",
-        "position": { "x": 0, "y": 400 },
+        "position": {
+          "x": 0,
+          "y": 400
+        },
         "data": null
       },
       {
-        "id": "req-eval",
+        "id": "inspector",
         "type": "plugin",
-        "position": { "x": 300, "y": 400 },
+        "position": {
+          "x": 300,
+          "y": 140
+        },
         "data": {
-          "pluginName": "request-evaluator"
+          "pluginName": "request-inspector"
+        }
+      },
+      {
+        "id": "scorer",
+        "type": "plugin",
+        "position": {
+          "x": 300,
+          "y": 400
+        },
+        "data": {
+          "pluginName": "complexity-scorer"
+        }
+      },
+      {
+        "id": "budget",
+        "type": "plugin",
+        "position": {
+          "x": 300,
+          "y": 640
+        },
+        "data": {
+          "pluginName": "budget-pressure"
+        }
+      },
+      {
+        "id": "energy-params",
+        "type": "value",
+        "position": {
+          "x": 300,
+          "y": 840
+        },
+        "data": {
+          "portType": "number",
+          "value": "70"
+        }
+      },
+      {
+        "id": "energy",
+        "type": "plugin",
+        "position": {
+          "x": 700,
+          "y": 730
+        },
+        "data": {
+          "pluginName": "energy-estimator",
+          "config": {
+            "tier": "major_cloud",
+            "default_model_params_b": 70,
+            "default_output_tokens": 512,
+            "reference_kwh": 0.001
+          }
         }
       },
       {
         "id": "energy-sens",
         "type": "value",
-        "position": { "x": 700, "y": 820 },
+        "position": {
+          "x": 700,
+          "y": 820
+        },
         "data": {
           "portType": "number",
           "value": "0.6"
@@ -31,19 +91,32 @@
       {
         "id": "fuzzy",
         "type": "plugin",
-        "position": { "x": 700, "y": 400 },
+        "position": {
+          "x": 700,
+          "y": 400
+        },
         "data": {
           "pluginName": "fuzzy-evaluator",
           "config": {
             "rules_dsl": "\nDEFINE complexity (\n    TERM very_low  LINEAR(0.25, 0.0),\n    TERM low       TRIANGULAR(0.0, 0.25, 0.5),\n    TERM medium    TRIANGULAR(0.25, 0.5, 0.75),\n    TERM high      TRIANGULAR(0.5, 0.75, 1.0),\n    TERM very_high LINEAR(0.75, 1.0)\n);\n\nDEFINE budget_pressure (\n    TERM low    LINEAR(0.4, 0.0),\n    TERM medium TRIANGULAR(0.0, 0.5, 1.0),\n    TERM high   LINEAR(0.6, 1.0)\n);\n\nDEFINE energy_sensitivity (\n    TERM low    LINEAR(0.4, 0.0),\n    TERM medium TRIANGULAR(0.0, 0.5, 1.0),\n    TERM high   LINEAR(0.6, 1.0)\n);\n\nDEFINE energy_cost (\n    TERM low    LINEAR(0.4, 0.0),\n    TERM medium TRIANGULAR(0.0, 0.5, 1.0),\n    TERM high   LINEAR(0.6, 1.0)\n);\n\nDEFINE power_level (\n    TERM very_low  LINEAR(0.25, 0.0),\n    TERM low       TRIANGULAR(0.0, 0.25, 0.5),\n    TERM medium    TRIANGULAR(0.25, 0.5, 0.75),\n    TERM high      TRIANGULAR(0.5, 0.75, 1.0),\n    TERM very_high LINEAR(0.75, 1.0)\n);\n\nIF complexity IS very_low THEN power_level IS very_low;\nIF complexity IS low THEN power_level IS low;\nIF complexity IS medium THEN power_level IS medium;\nIF complexity IS high THEN power_level IS high;\nIF complexity IS very_high THEN power_level IS very_high;\n\nIF budget_pressure IS high THEN power_level IS very_low;\nIF budget_pressure IS medium AND complexity IS low THEN power_level IS low;\nIF budget_pressure IS medium AND complexity IS very_low THEN power_level IS very_low;\n\nIF energy_sensitivity IS high AND complexity IS very_low THEN power_level IS very_low;\nIF energy_sensitivity IS high AND complexity IS low THEN power_level IS very_low;\nIF energy_sensitivity IS high AND complexity IS medium THEN power_level IS low;\nIF energy_sensitivity IS medium AND complexity IS very_low THEN power_level IS very_low;\nIF energy_sensitivity IS medium AND complexity IS low THEN power_level IS low;\n\nIF energy_cost IS high AND complexity IS very_low THEN power_level IS very_low;\nIF energy_cost IS high AND complexity IS low THEN power_level IS very_low;\nIF energy_cost IS high AND complexity IS medium THEN power_level IS low;\nIF energy_cost IS medium AND complexity IS very_low THEN power_level IS very_low;\n\nIF complexity IS high AND budget_pressure IS low AND energy_sensitivity IS low THEN power_level IS high;\nIF complexity IS very_high AND budget_pressure IS low AND energy_sensitivity IS low THEN power_level IS very_high;\nIF complexity IS very_high AND energy_sensitivity IS medium THEN power_level IS high;\n",
             "inputs": [
-              { "name": "complexity" },
-              { "name": "budget_pressure" },
-              { "name": "energy_cost" },
-              { "name": "energy_sensitivity" }
+              {
+                "name": "complexity"
+              },
+              {
+                "name": "budget_pressure"
+              },
+              {
+                "name": "energy_cost"
+              },
+              {
+                "name": "energy_sensitivity"
+              }
             ],
             "outputs": [
-              { "name": "power_level" }
+              {
+                "name": "power_level"
+              }
             ]
           }
         }
@@ -51,7 +124,10 @@
       {
         "id": "model-vision",
         "type": "value",
-        "position": { "x": 1100, "y": 0 },
+        "position": {
+          "x": 1100,
+          "y": 0
+        },
         "data": {
           "portType": "string",
           "value": "modele-vision"
@@ -60,7 +136,10 @@
       {
         "id": "model-reasoning",
         "type": "value",
-        "position": { "x": 1100, "y": 160 },
+        "position": {
+          "x": 1100,
+          "y": 160
+        },
         "data": {
           "portType": "string",
           "value": "modele-reasoning"
@@ -69,7 +148,10 @@
       {
         "id": "model-leger",
         "type": "value",
-        "position": { "x": 1100, "y": 320 },
+        "position": {
+          "x": 1100,
+          "y": 320
+        },
         "data": {
           "portType": "string",
           "value": "modele-leger"
@@ -78,7 +160,10 @@
       {
         "id": "model-moyen",
         "type": "value",
-        "position": { "x": 1100, "y": 480 },
+        "position": {
+          "x": 1100,
+          "y": 480
+        },
         "data": {
           "portType": "string",
           "value": "modele-moyen"
@@ -87,7 +172,10 @@
       {
         "id": "model-puissant",
         "type": "value",
-        "position": { "x": 1100, "y": 640 },
+        "position": {
+          "x": 1100,
+          "y": 640
+        },
         "data": {
           "portType": "string",
           "value": "modele-puissant"
@@ -96,23 +184,53 @@
       {
         "id": "router",
         "type": "plugin",
-        "position": { "x": 1450, "y": 400 },
+        "position": {
+          "x": 1450,
+          "y": 400
+        },
         "data": {
           "pluginName": "script-processor",
           "config": {
             "script": "export func(ctx) {\n    inputs := ctx.inputs\n    if inputs[\"has_vision\"] {\n        return { outputs: { model_name: inputs[\"model_vision\"] } }\n    } else if inputs[\"has_reasoning\"] {\n        return { outputs: { model_name: inputs[\"model_reasoning\"] } }\n    } else if inputs[\"power_level\"] > 0.75 {\n        return { outputs: { model_name: inputs[\"model_puissant\"] } }\n    } else if inputs[\"power_level\"] > 0.35 {\n        return { outputs: { model_name: inputs[\"model_moyen\"] } }\n    }\n    return { outputs: { model_name: inputs[\"model_leger\"] } }\n}",
             "inputs": [
-              { "name": "has_vision",    "portType": "boolean" },
-              { "name": "has_reasoning", "portType": "boolean" },
-              { "name": "power_level",   "portType": "number"  },
-              { "name": "model_vision",    "portType": "string" },
-              { "name": "model_reasoning", "portType": "string" },
-              { "name": "model_leger",     "portType": "string" },
-              { "name": "model_moyen",     "portType": "string" },
-              { "name": "model_puissant",  "portType": "string" }
+              {
+                "name": "has_vision",
+                "portType": "boolean"
+              },
+              {
+                "name": "has_reasoning",
+                "portType": "boolean"
+              },
+              {
+                "name": "power_level",
+                "portType": "number"
+              },
+              {
+                "name": "model_vision",
+                "portType": "string"
+              },
+              {
+                "name": "model_reasoning",
+                "portType": "string"
+              },
+              {
+                "name": "model_leger",
+                "portType": "string"
+              },
+              {
+                "name": "model_moyen",
+                "portType": "string"
+              },
+              {
+                "name": "model_puissant",
+                "portType": "string"
+              }
             ],
             "outputs": [
-              { "name": "model_name", "portType": "string" }
+              {
+                "name": "model_name",
+                "portType": "string"
+              }
             ]
           }
         }
@@ -120,7 +238,10 @@
       {
         "id": "model",
         "type": "model",
-        "position": { "x": 1750, "y": 400 },
+        "position": {
+          "x": 1750,
+          "y": 400
+        },
         "data": {
           "proxyName": ""
         }
@@ -128,27 +249,161 @@
       {
         "id": "sink",
         "type": "sink",
-        "position": { "x": 2050, "y": 400 },
+        "position": {
+          "x": 2050,
+          "y": 400
+        },
         "data": null
       }
     ],
     "edges": [
-      { "id": "e1",  "source": "gen",            "sourcePort": "request",        "target": "req-eval", "targetPort": "request"           },
-      { "id": "e2",  "source": "req-eval",        "sourcePort": "complexity",     "target": "fuzzy",    "targetPort": "complexity"        },
-      { "id": "e3",  "source": "req-eval",        "sourcePort": "budget_pressure","target": "fuzzy",    "targetPort": "budget_pressure"   },
-      { "id": "e4",  "source": "req-eval",        "sourcePort": "energy_cost",    "target": "fuzzy",    "targetPort": "energy_cost"       },
-      { "id": "e5",  "source": "energy-sens",     "sourcePort": "value",          "target": "fuzzy",    "targetPort": "energy_sensitivity" },
-      { "id": "e6",  "source": "req-eval",        "sourcePort": "has_vision",     "target": "router",   "targetPort": "has_vision"        },
-      { "id": "e7",  "source": "req-eval",        "sourcePort": "has_reasoning",  "target": "router",   "targetPort": "has_reasoning"     },
-      { "id": "e8",  "source": "fuzzy",           "sourcePort": "power_level",    "target": "router",   "targetPort": "power_level"       },
-      { "id": "e9",  "source": "model-vision",    "sourcePort": "value",          "target": "router",   "targetPort": "model_vision"      },
-      { "id": "e10", "source": "model-reasoning", "sourcePort": "value",          "target": "router",   "targetPort": "model_reasoning"   },
-      { "id": "e11", "source": "model-leger",     "sourcePort": "value",          "target": "router",   "targetPort": "model_leger"       },
-      { "id": "e12", "source": "model-moyen",     "sourcePort": "value",          "target": "router",   "targetPort": "model_moyen"       },
-      { "id": "e13", "source": "model-puissant",  "sourcePort": "value",          "target": "router",   "targetPort": "model_puissant"    },
-      { "id": "e14", "source": "router",          "sourcePort": "model_name",     "target": "model",    "targetPort": "model_name"        },
-      { "id": "e15", "source": "gen",             "sourcePort": "request",        "target": "model",    "targetPort": "request"           },
-      { "id": "e16", "source": "model",           "sourcePort": "response",       "target": "sink",     "targetPort": "response"          }
+      {
+        "id": "e1a",
+        "source": "gen",
+        "sourcePort": "request",
+        "target": "inspector",
+        "targetPort": "request"
+      },
+      {
+        "id": "e1b",
+        "source": "gen",
+        "sourcePort": "request",
+        "target": "scorer",
+        "targetPort": "request"
+      },
+      {
+        "id": "e1c",
+        "source": "gen",
+        "sourcePort": "request",
+        "target": "budget",
+        "targetPort": "request"
+      },
+      {
+        "id": "e1d",
+        "source": "inspector",
+        "sourcePort": "input_tokens",
+        "target": "energy",
+        "targetPort": "input_tokens"
+      },
+      {
+        "id": "e1e",
+        "source": "scorer",
+        "sourcePort": "estimated_output_tokens",
+        "target": "energy",
+        "targetPort": "output_tokens"
+      },
+      {
+        "id": "e1f",
+        "source": "energy-params",
+        "sourcePort": "value",
+        "target": "energy",
+        "targetPort": "model_params_b"
+      },
+      {
+        "id": "e2",
+        "source": "scorer",
+        "sourcePort": "complexity",
+        "target": "fuzzy",
+        "targetPort": "complexity"
+      },
+      {
+        "id": "e3",
+        "source": "budget",
+        "sourcePort": "budget_pressure",
+        "target": "fuzzy",
+        "targetPort": "budget_pressure"
+      },
+      {
+        "id": "e4",
+        "source": "energy",
+        "sourcePort": "energy_cost",
+        "target": "fuzzy",
+        "targetPort": "energy_cost"
+      },
+      {
+        "id": "e5",
+        "source": "energy-sens",
+        "sourcePort": "value",
+        "target": "fuzzy",
+        "targetPort": "energy_sensitivity"
+      },
+      {
+        "id": "e6",
+        "source": "inspector",
+        "sourcePort": "has_vision",
+        "target": "router",
+        "targetPort": "has_vision"
+      },
+      {
+        "id": "e7",
+        "source": "inspector",
+        "sourcePort": "has_reasoning",
+        "target": "router",
+        "targetPort": "has_reasoning"
+      },
+      {
+        "id": "e8",
+        "source": "fuzzy",
+        "sourcePort": "power_level",
+        "target": "router",
+        "targetPort": "power_level"
+      },
+      {
+        "id": "e9",
+        "source": "model-vision",
+        "sourcePort": "value",
+        "target": "router",
+        "targetPort": "model_vision"
+      },
+      {
+        "id": "e10",
+        "source": "model-reasoning",
+        "sourcePort": "value",
+        "target": "router",
+        "targetPort": "model_reasoning"
+      },
+      {
+        "id": "e11",
+        "source": "model-leger",
+        "sourcePort": "value",
+        "target": "router",
+        "targetPort": "model_leger"
+      },
+      {
+        "id": "e12",
+        "source": "model-moyen",
+        "sourcePort": "value",
+        "target": "router",
+        "targetPort": "model_moyen"
+      },
+      {
+        "id": "e13",
+        "source": "model-puissant",
+        "sourcePort": "value",
+        "target": "router",
+        "targetPort": "model_puissant"
+      },
+      {
+        "id": "e14",
+        "source": "router",
+        "sourcePort": "model_name",
+        "target": "model",
+        "targetPort": "model_name"
+      },
+      {
+        "id": "e15",
+        "source": "gen",
+        "sourcePort": "request",
+        "target": "model",
+        "targetPort": "request"
+      },
+      {
+        "id": "e16",
+        "source": "model",
+        "sourcePort": "response",
+        "target": "sink",
+        "targetPort": "response"
+      }
     ]
   }
 }

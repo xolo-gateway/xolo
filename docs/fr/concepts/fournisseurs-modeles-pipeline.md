@@ -28,7 +28,11 @@ Xolo est livré avec plusieurs plugins intégrés :
 | `system-prompt` | PRE_REQUEST | Injecte un prompt système personnalisé |
 | `pseudonymizer` | PRE_REQUEST | Anonymisation des données sensibles |
 | `time-restriction` | PRE_REQUEST | Restreint l'accès selon des plages horaires |
-| `request-evaluator` | PRE_REQUEST | Évalue la complexité, la vision, le raisonnement et le coût énergétique d'une requête |
+| `request-inspector` | PRE_REQUEST | Détecte la structure de la requête : images, raisonnement, outils, taille du contexte |
+| `complexity-scorer` | PRE_REQUEST | Évalue la complexité lexicale et structurelle de la requête |
+| `text-classifier` | PRE_REQUEST | Classe la requête dans une catégorie thématique (code, rédaction, analyse…) |
+| `energy-estimator` | PRE_REQUEST | Estime l'énergie consommée par l'inférence à partir des tokens et de la taille du modèle |
+| `budget-pressure` | PRE_REQUEST | Mesure la part du budget de l'utilisateur déjà consommée |
 | `fuzzy-evaluator` | PRE_REQUEST | Inférence par logique floue sur des valeurs numériques |
 | `script-processor` | PRE_REQUEST | Exécute un script [Tengo](https://github.com/d5/tengo) avec des ports d'entrée/sortie personnalisés |
 | `mcp-bridge` | — | Pont vers des serveurs MCP |

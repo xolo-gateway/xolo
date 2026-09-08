@@ -31,7 +31,7 @@ run-with-env: .env
 
 build: build-server build-frontend all-plugins
 
-all-plugins: cleanup-plugins $(foreach plugin,$(shell find ./plugins/ -mindepth 1  -maxdepth 1 -type d -printf '%f\n'), plugin-$(plugin))
+all-plugins: cleanup-plugins $(foreach plugin,$(shell find ./plugins/ -mindepth 1 -maxdepth 1 -type d -not -name internal -printf '%f\n'), plugin-$(plugin))
 
 cleanup-plugins:
 	rm -rf bin/plugins/*

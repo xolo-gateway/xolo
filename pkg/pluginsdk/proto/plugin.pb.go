@@ -1509,7 +1509,10 @@ type PreRequestInput struct {
 	MessagesJson string                 `protobuf:"bytes,3,opt,name=messages_json,json=messagesJson,proto3" json:"messages_json,omitempty"`
 	// inputs_json contains the values of connected input ports as a JSON object
 	// {portName: value}. Populated by the pipeline engine from upstream node outputs.
-	InputsJson    string `protobuf:"bytes,4,opt,name=inputs_json,json=inputsJson,proto3" json:"inputs_json,omitempty"`
+	InputsJson string `protobuf:"bytes,4,opt,name=inputs_json,json=inputsJson,proto3" json:"inputs_json,omitempty"`
+	// quota describes the remaining budget of the requesting user/org. It is
+	// unset when no quota applies or when the host could not resolve it.
+	Quota         *QuotaInfo `protobuf:"bytes,5,opt,name=quota,proto3" json:"quota,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1570,6 +1573,13 @@ func (x *PreRequestInput) GetInputsJson() string {
 		return x.InputsJson
 	}
 	return ""
+}
+
+func (x *PreRequestInput) GetQuota() *QuotaInfo {
+	if x != nil {
+		return x.Quota
+	}
+	return nil
 }
 
 type PreRequestOutput struct {
@@ -2465,13 +2475,14 @@ const file_pkg_pluginsdk_proto_plugin_proto_rawDesc = "" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x15\n" +
 	"\x06org_id\x18\x03 \x01(\tR\x05orgId\x12 \n" +
-	"\vdescription\x18\x04 \x01(\tR\vdescription\"\x9f\x01\n" +
+	"\vdescription\x18\x04 \x01(\tR\vdescription\"\xd0\x01\n" +
 	"\x0fPreRequestInput\x120\n" +
 	"\x03ctx\x18\x01 \x01(\v2\x1e.xolo.plugin.v1.RequestContextR\x03ctx\x12\x14\n" +
 	"\x05model\x18\x02 \x01(\tR\x05model\x12#\n" +
 	"\rmessages_json\x18\x03 \x01(\tR\fmessagesJson\x12\x1f\n" +
 	"\vinputs_json\x18\x04 \x01(\tR\n" +
-	"inputsJson\"\xa4\x02\n" +
+	"inputsJson\x12/\n" +
+	"\x05quota\x18\x05 \x01(\v2\x19.xolo.plugin.v1.QuotaInfoR\x05quota\"\xa4\x02\n" +
 	"\x10PreRequestOutput\x12\x18\n" +
 	"\aallowed\x18\x01 \x01(\bR\aallowed\x12)\n" +
 	"\x10rejection_reason\x18\x02 \x01(\tR\x0frejectionReason\x12#\n" +
@@ -2610,51 +2621,52 @@ var file_pkg_pluginsdk_proto_plugin_proto_depIdxs = []int32{
 	18, // 3: xolo.plugin.v1.PluginDescriptor.input_ports:type_name -> xolo.plugin.v1.PortDescriptor
 	18, // 4: xolo.plugin.v1.PluginDescriptor.output_ports:type_name -> xolo.plugin.v1.PortDescriptor
 	20, // 5: xolo.plugin.v1.PreRequestInput.ctx:type_name -> xolo.plugin.v1.RequestContext
-	20, // 6: xolo.plugin.v1.PostResponseInput.ctx:type_name -> xolo.plugin.v1.RequestContext
-	20, // 7: xolo.plugin.v1.ResolveModelInput.ctx:type_name -> xolo.plugin.v1.RequestContext
-	21, // 8: xolo.plugin.v1.ResolveModelInput.available_models:type_name -> xolo.plugin.v1.ModelInfo
-	23, // 9: xolo.plugin.v1.ResolveModelInput.virtual_models:type_name -> xolo.plugin.v1.VirtualModelInfo
-	22, // 10: xolo.plugin.v1.ResolveModelInput.quota:type_name -> xolo.plugin.v1.QuotaInfo
-	20, // 11: xolo.plugin.v1.ListModelsInput.ctx:type_name -> xolo.plugin.v1.RequestContext
-	21, // 12: xolo.plugin.v1.ListModelsInput.available_models:type_name -> xolo.plugin.v1.ModelInfo
-	20, // 13: xolo.plugin.v1.ListToolsInput.ctx:type_name -> xolo.plugin.v1.RequestContext
-	32, // 14: xolo.plugin.v1.ListToolsOutput.tools:type_name -> xolo.plugin.v1.ToolDescriptor
-	20, // 15: xolo.plugin.v1.CallToolInput.ctx:type_name -> xolo.plugin.v1.RequestContext
-	17, // 16: xolo.plugin.v1.XoloPlugin.Describe:input_type -> xolo.plugin.v1.DescribeRequest
-	5,  // 17: xolo.plugin.v1.XoloPlugin.Initialize:input_type -> xolo.plugin.v1.InitializeRequest
-	24, // 18: xolo.plugin.v1.XoloPlugin.PreRequest:input_type -> xolo.plugin.v1.PreRequestInput
-	26, // 19: xolo.plugin.v1.XoloPlugin.PostResponse:input_type -> xolo.plugin.v1.PostResponseInput
-	28, // 20: xolo.plugin.v1.XoloPlugin.ResolveModel:input_type -> xolo.plugin.v1.ResolveModelInput
-	30, // 21: xolo.plugin.v1.XoloPlugin.ListModels:input_type -> xolo.plugin.v1.ListModelsInput
-	33, // 22: xolo.plugin.v1.XoloPlugin.ListTools:input_type -> xolo.plugin.v1.ListToolsInput
-	35, // 23: xolo.plugin.v1.XoloPlugin.CallTool:input_type -> xolo.plugin.v1.CallToolInput
-	7,  // 24: xolo.plugin.v1.XoloHostService.GetConfig:input_type -> xolo.plugin.v1.GetConfigRequest
-	9,  // 25: xolo.plugin.v1.XoloHostService.SaveConfig:input_type -> xolo.plugin.v1.SaveConfigRequest
-	3,  // 26: xolo.plugin.v1.XoloHostService.ListModels:input_type -> xolo.plugin.v1.ListModelsForOrgRequest
-	11, // 27: xolo.plugin.v1.XoloHostService.GetSecret:input_type -> xolo.plugin.v1.GetSecretRequest
-	13, // 28: xolo.plugin.v1.XoloHostService.SetSecret:input_type -> xolo.plugin.v1.SetSecretRequest
-	15, // 29: xolo.plugin.v1.XoloHostService.DeleteSecret:input_type -> xolo.plugin.v1.DeleteSecretRequest
-	1,  // 30: xolo.plugin.v1.XoloHostService.EmitEvent:input_type -> xolo.plugin.v1.EmitEventRequest
-	19, // 31: xolo.plugin.v1.XoloPlugin.Describe:output_type -> xolo.plugin.v1.PluginDescriptor
-	6,  // 32: xolo.plugin.v1.XoloPlugin.Initialize:output_type -> xolo.plugin.v1.InitializeResponse
-	25, // 33: xolo.plugin.v1.XoloPlugin.PreRequest:output_type -> xolo.plugin.v1.PreRequestOutput
-	27, // 34: xolo.plugin.v1.XoloPlugin.PostResponse:output_type -> xolo.plugin.v1.PostResponseOutput
-	29, // 35: xolo.plugin.v1.XoloPlugin.ResolveModel:output_type -> xolo.plugin.v1.ResolveModelOutput
-	31, // 36: xolo.plugin.v1.XoloPlugin.ListModels:output_type -> xolo.plugin.v1.ListModelsOutput
-	34, // 37: xolo.plugin.v1.XoloPlugin.ListTools:output_type -> xolo.plugin.v1.ListToolsOutput
-	36, // 38: xolo.plugin.v1.XoloPlugin.CallTool:output_type -> xolo.plugin.v1.CallToolOutput
-	8,  // 39: xolo.plugin.v1.XoloHostService.GetConfig:output_type -> xolo.plugin.v1.GetConfigResponse
-	10, // 40: xolo.plugin.v1.XoloHostService.SaveConfig:output_type -> xolo.plugin.v1.SaveConfigResponse
-	4,  // 41: xolo.plugin.v1.XoloHostService.ListModels:output_type -> xolo.plugin.v1.ListModelsForOrgResponse
-	12, // 42: xolo.plugin.v1.XoloHostService.GetSecret:output_type -> xolo.plugin.v1.GetSecretResponse
-	14, // 43: xolo.plugin.v1.XoloHostService.SetSecret:output_type -> xolo.plugin.v1.SetSecretResponse
-	16, // 44: xolo.plugin.v1.XoloHostService.DeleteSecret:output_type -> xolo.plugin.v1.DeleteSecretResponse
-	2,  // 45: xolo.plugin.v1.XoloHostService.EmitEvent:output_type -> xolo.plugin.v1.EmitEventResponse
-	31, // [31:46] is the sub-list for method output_type
-	16, // [16:31] is the sub-list for method input_type
-	16, // [16:16] is the sub-list for extension type_name
-	16, // [16:16] is the sub-list for extension extendee
-	0,  // [0:16] is the sub-list for field type_name
+	22, // 6: xolo.plugin.v1.PreRequestInput.quota:type_name -> xolo.plugin.v1.QuotaInfo
+	20, // 7: xolo.plugin.v1.PostResponseInput.ctx:type_name -> xolo.plugin.v1.RequestContext
+	20, // 8: xolo.plugin.v1.ResolveModelInput.ctx:type_name -> xolo.plugin.v1.RequestContext
+	21, // 9: xolo.plugin.v1.ResolveModelInput.available_models:type_name -> xolo.plugin.v1.ModelInfo
+	23, // 10: xolo.plugin.v1.ResolveModelInput.virtual_models:type_name -> xolo.plugin.v1.VirtualModelInfo
+	22, // 11: xolo.plugin.v1.ResolveModelInput.quota:type_name -> xolo.plugin.v1.QuotaInfo
+	20, // 12: xolo.plugin.v1.ListModelsInput.ctx:type_name -> xolo.plugin.v1.RequestContext
+	21, // 13: xolo.plugin.v1.ListModelsInput.available_models:type_name -> xolo.plugin.v1.ModelInfo
+	20, // 14: xolo.plugin.v1.ListToolsInput.ctx:type_name -> xolo.plugin.v1.RequestContext
+	32, // 15: xolo.plugin.v1.ListToolsOutput.tools:type_name -> xolo.plugin.v1.ToolDescriptor
+	20, // 16: xolo.plugin.v1.CallToolInput.ctx:type_name -> xolo.plugin.v1.RequestContext
+	17, // 17: xolo.plugin.v1.XoloPlugin.Describe:input_type -> xolo.plugin.v1.DescribeRequest
+	5,  // 18: xolo.plugin.v1.XoloPlugin.Initialize:input_type -> xolo.plugin.v1.InitializeRequest
+	24, // 19: xolo.plugin.v1.XoloPlugin.PreRequest:input_type -> xolo.plugin.v1.PreRequestInput
+	26, // 20: xolo.plugin.v1.XoloPlugin.PostResponse:input_type -> xolo.plugin.v1.PostResponseInput
+	28, // 21: xolo.plugin.v1.XoloPlugin.ResolveModel:input_type -> xolo.plugin.v1.ResolveModelInput
+	30, // 22: xolo.plugin.v1.XoloPlugin.ListModels:input_type -> xolo.plugin.v1.ListModelsInput
+	33, // 23: xolo.plugin.v1.XoloPlugin.ListTools:input_type -> xolo.plugin.v1.ListToolsInput
+	35, // 24: xolo.plugin.v1.XoloPlugin.CallTool:input_type -> xolo.plugin.v1.CallToolInput
+	7,  // 25: xolo.plugin.v1.XoloHostService.GetConfig:input_type -> xolo.plugin.v1.GetConfigRequest
+	9,  // 26: xolo.plugin.v1.XoloHostService.SaveConfig:input_type -> xolo.plugin.v1.SaveConfigRequest
+	3,  // 27: xolo.plugin.v1.XoloHostService.ListModels:input_type -> xolo.plugin.v1.ListModelsForOrgRequest
+	11, // 28: xolo.plugin.v1.XoloHostService.GetSecret:input_type -> xolo.plugin.v1.GetSecretRequest
+	13, // 29: xolo.plugin.v1.XoloHostService.SetSecret:input_type -> xolo.plugin.v1.SetSecretRequest
+	15, // 30: xolo.plugin.v1.XoloHostService.DeleteSecret:input_type -> xolo.plugin.v1.DeleteSecretRequest
+	1,  // 31: xolo.plugin.v1.XoloHostService.EmitEvent:input_type -> xolo.plugin.v1.EmitEventRequest
+	19, // 32: xolo.plugin.v1.XoloPlugin.Describe:output_type -> xolo.plugin.v1.PluginDescriptor
+	6,  // 33: xolo.plugin.v1.XoloPlugin.Initialize:output_type -> xolo.plugin.v1.InitializeResponse
+	25, // 34: xolo.plugin.v1.XoloPlugin.PreRequest:output_type -> xolo.plugin.v1.PreRequestOutput
+	27, // 35: xolo.plugin.v1.XoloPlugin.PostResponse:output_type -> xolo.plugin.v1.PostResponseOutput
+	29, // 36: xolo.plugin.v1.XoloPlugin.ResolveModel:output_type -> xolo.plugin.v1.ResolveModelOutput
+	31, // 37: xolo.plugin.v1.XoloPlugin.ListModels:output_type -> xolo.plugin.v1.ListModelsOutput
+	34, // 38: xolo.plugin.v1.XoloPlugin.ListTools:output_type -> xolo.plugin.v1.ListToolsOutput
+	36, // 39: xolo.plugin.v1.XoloPlugin.CallTool:output_type -> xolo.plugin.v1.CallToolOutput
+	8,  // 40: xolo.plugin.v1.XoloHostService.GetConfig:output_type -> xolo.plugin.v1.GetConfigResponse
+	10, // 41: xolo.plugin.v1.XoloHostService.SaveConfig:output_type -> xolo.plugin.v1.SaveConfigResponse
+	4,  // 42: xolo.plugin.v1.XoloHostService.ListModels:output_type -> xolo.plugin.v1.ListModelsForOrgResponse
+	12, // 43: xolo.plugin.v1.XoloHostService.GetSecret:output_type -> xolo.plugin.v1.GetSecretResponse
+	14, // 44: xolo.plugin.v1.XoloHostService.SetSecret:output_type -> xolo.plugin.v1.SetSecretResponse
+	16, // 45: xolo.plugin.v1.XoloHostService.DeleteSecret:output_type -> xolo.plugin.v1.DeleteSecretResponse
+	2,  // 46: xolo.plugin.v1.XoloHostService.EmitEvent:output_type -> xolo.plugin.v1.EmitEventResponse
+	32, // [32:47] is the sub-list for method output_type
+	17, // [17:32] is the sub-list for method input_type
+	17, // [17:17] is the sub-list for extension type_name
+	17, // [17:17] is the sub-list for extension extendee
+	0,  // [0:17] is the sub-list for field type_name
 }
 
 func init() { file_pkg_pluginsdk_proto_plugin_proto_init() }

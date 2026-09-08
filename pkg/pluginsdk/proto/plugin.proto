@@ -168,6 +168,9 @@ message PreRequestInput {
   // inputs_json contains the values of connected input ports as a JSON object
   // {portName: value}. Populated by the pipeline engine from upstream node outputs.
   string inputs_json = 4;
+  // quota describes the remaining budget of the requesting user/org. It is
+  // unset when no quota applies or when the host could not resolve it.
+  QuotaInfo quota = 5;
 }
 
 message PreRequestOutput {

@@ -164,21 +164,32 @@ func (p *Plugin) PreRequest(_ context.Context, in *proto.PreRequestInput) (*prot
 }
 ```
 
-**Example — producing output port values (request-evaluator):**
+**Example — producing output port values (request-inspector):**
 
 ```go
 func (p *Plugin) PreRequest(_ context.Context, in *proto.PreRequestInput) (*proto.PreRequestOutput, error) {
-    vars := scoreRequest(in.MessagesJson, in.Model, in.GetCtx().GetConfigJson())
     outputs := map[string]interface{}{
-        "complexity":    vars.Complexity,
-        "has_vision":    vars.HasVision,
-        "energy_cost":   vars.EnergyCost,
+        "has_vision":   requesttext.HasImage(in.MessagesJson),
+        "input_tokens": requesttext.EstimateTokens(requesttext.Context(in.MessagesJson)),
     }
     b, _ := json.Marshal(outputs)
     return &proto.PreRequestOutput{
         Allowed:     true,
         OutputsJson: string(b),
     }, nil
+}
+```
+
+**Example — reading the requester's quota (budget-pressure):** `in.Quota` is set by
+the host when the user has at least one budget; it carries the total and the
+remaining amount for the day, month and year (see `QuotaInfo`). It is `nil`
+otherwise, so always go through the `GetXxx()` accessors.
+
+```go
+q := in.GetQuota()
+pressure := 0.0
+if q.GetMonthlyTotal() > 0 {
+    pressure = 1 - q.GetMonthlyRemaining()/q.GetMonthlyTotal()
 }
 ```
 
@@ -549,7 +560,11 @@ Or alert on them, e.g. `count(1h) > 0` over
 | Plugin              | Capabilities              | Description                                                       |
 | ------------------- | ------------------------- | ----------------------------------------------------------------- |
 | `time-restriction`  | PRE_REQUEST               | Denies requests outside configured time windows                   |
-| `request-evaluator` | PRE_REQUEST               | Scores a request (complexity, vision, reasoning, energy) for routing |
+| `request-inspector` | PRE_REQUEST               | Structural facts about a request (vision, reasoning, tools, context size) |
+| `complexity-scorer` | PRE_REQUEST               | Lexical and structural complexity score of a request               |
+| `text-classifier`   | PRE_REQUEST               | Thematic category of a request (Naive Bayes)                       |
+| `energy-estimator`  | PRE_REQUEST               | Energy estimate from token counts and target model size            |
+| `budget-pressure`   | PRE_REQUEST               | Share of the requesting user's budget already spent                |
 | `fuzzy-evaluator`   | PRE_REQUEST               | Fuzzy logic inference on numeric port values                      |
 | `script-processor`  | PRE_REQUEST               | Executes a Tengo script with arbitrary input/output ports          |
 | `dummy-model`       | RESOLVE_MODEL             | Returns synthetic responses for designated virtual models         |

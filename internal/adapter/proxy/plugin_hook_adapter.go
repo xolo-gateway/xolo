@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/bornholm/genai/llm"
@@ -31,6 +32,15 @@ type PipelineHookAdapter struct {
 	orgStore          port.OrgStore
 	providerStore     port.ProviderStore
 	middlewareStore   port.MiddlewareStore
+	quotaInfo         *QuotaInfoResolver
+}
+
+// WithQuotaInfo enables the resolution of the requesting user's remaining
+// budget, exposed to plugins through PreRequestInput.quota and
+// ResolveModelInput.quota. Without it plugins receive no quota.
+func (a *PipelineHookAdapter) WithQuotaInfo(r *QuotaInfoResolver) *PipelineHookAdapter {
+	a.quotaInfo = r
+	return a
 }
 
 // NewPipelineHookAdapter creates a PipelineHookAdapter and wires the pipeline engine.
@@ -559,7 +569,7 @@ func (a *PipelineHookAdapter) buildEC(ctx context.Context, req *genaiProxy.Proxy
 		BodyJSON:        string(req.Body),
 		ProtoModels:     protoModels,
 		ProtoVMs:        protoVMs,
-		ProtoQuota:      nil,
+		QuotaInfo:       a.quotaInfoFunc(model.UserID(userID), orgID),
 		VisitedVMs:      map[model.VirtualModelID]struct{}{vm.ID(): {}},
 		PersonalVMStore: a.personalVMStore,
 	}
@@ -670,3 +680,21 @@ var (
 	_ genaiProxy.PreRequestHook  = (*PipelineHookAdapter)(nil)
 	_ genaiProxy.ModelListerHook = (*PipelineHookAdapter)(nil)
 )
+
+// quotaInfoFunc returns a memoised resolver of the user's remaining quota, or
+// nil when quota resolution is not configured. The memo guarantees that the
+// underlying store queries run at most once per pipeline execution, however
+// many plugin nodes ask for the quota.
+func (a *PipelineHookAdapter) quotaInfoFunc(userID model.UserID, orgID model.OrgID) func(context.Context) *proto.QuotaInfo {
+	if a.quotaInfo == nil || userID == "" || orgID == "" {
+		return nil
+	}
+	var (
+		once sync.Once
+		info *proto.QuotaInfo
+	)
+	return func(ctx context.Context) *proto.QuotaInfo {
+		once.Do(func() { info = a.quotaInfo.Resolve(ctx, userID, orgID) })
+		return info
+	}
+}

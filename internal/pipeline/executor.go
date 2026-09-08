@@ -25,8 +25,10 @@ type ExecutionContext struct {
 	ProtoModels []*proto.ModelInfo
 	// ProtoVMs is the list of virtual models visible to the org.
 	ProtoVMs []*proto.VirtualModelInfo
-	// ProtoQuota contains the remaining quota for the user/org.
-	ProtoQuota *proto.QuotaInfo
+	// QuotaInfo lazily resolves the remaining budget of the requesting
+	// user/org. It is handed to plugins (PreRequest and ResolveModel) and is
+	// only evaluated when a plugin node actually runs. May be nil.
+	QuotaInfo func(ctx context.Context) *proto.QuotaInfo
 	// VisitedVMs tracks VirtualModelIDs already resolved to detect cycles.
 	VisitedVMs map[model.VirtualModelID]struct{}
 	// PersonalVMStore is used by ModelExecutor to resolve personal virtual models (~/name).
@@ -45,6 +47,14 @@ type ExecutionContext struct {
 	// that still have to wrap the target model. A passthrough model node pops the
 	// next one and runs its graph; when empty, it resolves TargetModelName.
 	PendingMiddlewares []model.Middleware
+}
+
+// quotaInfo returns the resolved quota, or nil when no resolver is configured.
+func (ec ExecutionContext) quotaInfo(ctx context.Context) *proto.QuotaInfo {
+	if ec.QuotaInfo == nil {
+		return nil
+	}
+	return ec.QuotaInfo(ctx)
 }
 
 // ForwardResult is the output of a node's Forward execution.

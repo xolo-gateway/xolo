@@ -178,7 +178,7 @@ func NewHTTPServerFromConfig(ctx context.Context, conf *config.Config) (*http.Se
 		orgStore,
 		middlewareStore,
 		orgModelRouter,
-	)
+	).WithQuotaInfo(proxyAdapter.NewQuotaInfoResolver(quotaService, usageStore))
 
 	withMemberships := membershipsMiddleware.Middleware(orgStore, roleStore)
 

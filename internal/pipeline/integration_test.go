@@ -16,9 +16,8 @@ import (
 func TestPipeline_SmartModel(t *testing.T) {
 	requestEval := pipelinetest.JSONPreRequest(func(_ map[string]any) map[string]any {
 		return map[string]any{
-			"complexity":      0.8,
-			"category":        "code",
-			"budget_pressure": 0.1,
+			"complexity": 0.8,
+			"level":      "high",
 		}
 	})
 
@@ -38,7 +37,7 @@ func TestPipeline_SmartModel(t *testing.T) {
 	})
 
 	plugins := pipelinetest.NewPluginProvider().
-		Register("request-evaluator", pipelinetest.PreRequestDescriptor("request-evaluator"), requestEval).
+		Register("complexity-scorer", pipelinetest.PreRequestDescriptor("complexity-scorer"), requestEval).
 		Register("fuzzy-evaluator", pipelinetest.PreRequestDescriptor("fuzzy-evaluator"), fuzzyEval).
 		Register("script-processor", pipelinetest.PreRequestDescriptor("script-processor"), router)
 
@@ -48,7 +47,7 @@ func TestPipeline_SmartModel(t *testing.T) {
 
 	graph := pipelinetest.NewGraph().
 		Generator("gen").
-		Plugin("req-eval", "request-evaluator").
+		Plugin("req-eval", "complexity-scorer").
 		Plugin("fuzzy", "fuzzy-evaluator").
 		Plugin("router", "script-processor").
 		Model("mdl").

@@ -13,7 +13,11 @@ RUN mkdir -p /plugins
 COPY xolo-plugin-time-restriction /plugins/time-restriction
 COPY xolo-plugin-dummy-model /plugins/dummy-model
 COPY xolo-plugin-fuzzy-evaluator /plugins/fuzzy-evaluator
-COPY xolo-plugin-request-evaluator /plugins/request-evaluator
+COPY xolo-plugin-request-inspector /plugins/request-inspector
+COPY xolo-plugin-complexity-scorer /plugins/complexity-scorer
+COPY xolo-plugin-text-classifier /plugins/text-classifier
+COPY xolo-plugin-energy-estimator /plugins/energy-estimator
+COPY xolo-plugin-budget-pressure /plugins/budget-pressure
 COPY xolo-plugin-script-processor /plugins/script-processor
 COPY xolo-plugin-pseudonymizer /plugins/pseudonymizer
 COPY xolo-plugin-mcp-bridge /plugins/mcp-bridge
