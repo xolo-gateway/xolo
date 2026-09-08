@@ -19,9 +19,11 @@ Les utilisateurs consomment un modèle sous la forme `{org-slug}/{nom-proxy}`.
 
 Un **modèle virtuel** est un modèle personnalisé, exposé exactement comme un modèle classique, mais qui applique un **pipeline de traitement** aux requêtes/réponses avant/après l'appel au modèle réel. L'utilisateur final ne voit jamais ces traitements : toute la personnalisation reste transparente.
 
-Le pipeline est un graphe de nœuds **plugins** connectés entre eux par des **ports** typés (`request`, `response`, `string`, `number`, `boolean`). Le moteur de pipeline trie le graphe topologiquement et fait circuler les valeurs d'un nœud à l'autre. Composer plusieurs traitements ne demande aucune ligne de code, juste du câblage dans l'interface.
+Le pipeline est un graphe de nœuds connectés entre eux par des **ports** typés (`request`, `response`, `string`, `number`, `boolean`). Le moteur de pipeline trie le graphe topologiquement et fait circuler les valeurs d'un nœud à l'autre. Composer plusieurs traitements ne demande aucune ligne de code, juste du câblage dans l'interface.
 
-Xolo est livré avec plusieurs plugins intégrés :
+Les nœuds sont de deux sortes. Les nœuds **intégrés** font partie du serveur : requête entrante, réponse, appel de modèle, modèle avec repli, référence de modèle, valeur fixe, comparaison, sélection, calcul, échantillonnage, contexte de la requête, trace et note. Les **plugins** sont des binaires séparés chargés au démarrage. La page [Nœuds de pipeline](./noeuds-pipeline.md) décrit chacun d'eux, ports et configuration compris.
+
+Plugins livrés avec Xolo :
 
 | Plugin | Capacité | Description |
 | --- | --- | --- |
@@ -30,7 +32,8 @@ Xolo est livré avec plusieurs plugins intégrés :
 | `time-restriction` | PRE_REQUEST | Restreint l'accès selon des plages horaires |
 | `request-inspector` | PRE_REQUEST | Détecte la structure de la requête : images, raisonnement, outils, taille du contexte |
 | `complexity-scorer` | PRE_REQUEST | Évalue la complexité lexicale et structurelle de la requête |
-| `text-classifier` | PRE_REQUEST | Classe la requête dans une catégorie thématique (code, rédaction, analyse…) |
+| `text-classifier` | PRE_REQUEST | Classe la requête dans une catégorie thématique par règles lexicales et modèle bayésien embarqué, sans appel LLM |
+| `llm-classifier` | PRE_REQUEST | Classe la requête en interrogeant un modèle de l'organisation, selon des catégories décrites dans la configuration |
 | `energy-estimator` | PRE_REQUEST | Estime l'énergie consommée par l'inférence à partir des tokens et de la taille du modèle |
 | `budget-pressure` | PRE_REQUEST | Mesure la part du budget de l'utilisateur déjà consommée |
 | `fuzzy-evaluator` | PRE_REQUEST | Inférence par logique floue sur des valeurs numériques |

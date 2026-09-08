@@ -25,9 +25,8 @@ Pour créer un modèle virtuel :
 ![pipeline_editor](./screenshots/image5.png)
 
 Cet éditeur permet de configurer des traitements qui seront appliqués automatiquement aux requêtes et aux réponses du modèle.
-TODO UPDATE LISTE DES PLUGINS + DESCRIPTION DES PLUGINS
 
-La liste des plugins intégrés et le fonctionnement du pipeline sont détaillés dans le concept [Fournisseurs, modèles et pipelines](../../../concepts/fournisseurs-modeles-pipeline.md).
+La palette de gauche liste d'abord les nœuds intégrés, puis les plugins chargés sur cette installation. Le panneau de droite configure le nœud sélectionné. Chaque nœud, ses ports et sa configuration sont décrits dans [Nœuds de pipeline](../../../concepts/noeuds-pipeline.md) ; le fonctionnement général du pipeline dans [Fournisseurs, modèles et pipelines](../../../concepts/fournisseurs-modeles-pipeline.md).
 
 ## Exemple : configuration du plugin `system-prompt`
 
@@ -46,9 +45,10 @@ Voici comment configurer le plugin `system-prompt` pour ajouter un prompt systè
 6. Ajoutez un nœud `model` depuis la palette, reliez-le, puis sélectionnez-le : renseignez le
    **Modèle appelé** dans son panneau de configuration
    ![Modèle LLM](./screenshots/image10.png)
-7. Pour rendre ce nom dynamique, ajoutez un nœud `value` depuis la palette
+7. Pour rendre ce nom dynamique, ajoutez un nœud `model_ref` depuis la palette. Un nœud `value` de
+   type `string` fonctionne aussi, mais il faut alors taper le nom sans se tromper
    ![Valeur](./screenshots/image11.png)
-8. Saisissez le nom du modèle sous-jacent à utiliser, puis reliez la sortie du nœud `value` au
+8. Choisissez le modèle sous-jacent dans la liste, puis reliez la sortie `model_name` du nœud au
    port `model_name` du nœud `model`
    ![modele](./screenshots/image12.png)
 9. Le bandeau bas indique **Graphe valide** lorsque tous les ports requis sont connectés. Cliquez

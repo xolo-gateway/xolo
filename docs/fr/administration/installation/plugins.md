@@ -180,6 +180,32 @@ func (p *Plugin) PreRequest(_ context.Context, in *proto.PreRequestInput) (*prot
 }
 ```
 
+**Calling a model from a plugin (llm-classifier):** the host exposes
+`HostClient.ChatCompletion`, which resolves the model like a proxied request
+(real or virtual model of the org) and runs one non-streaming completion. The
+call is made outside of the request's hook chain: it is neither quota-checked
+nor recorded as usage, so point it at cheap models. A plugin gets the host
+client by implementing `pluginsdk.HostClientSetter`, with or without a UI.
+
+```go
+resp, err := host.ChatCompletion(ctx, &proto.HostChatCompletionRequest{
+    OrgId:        in.GetCtx().GetOrgId(),
+    UserId:       in.GetCtx().GetUserId(),
+    Model:        "org/small-model",
+    Messages:     []*proto.ChatMessage{{Role: "user", Content: "Classify: ..."}},
+    JsonResponse: true,
+})
+```
+
+**Configuration without a UI:** a plugin that declares `ConfigSchema` in its
+descriptor but serves no UI gets a form generated from the schema in the
+pipeline editor (strings, numbers, booleans, enums, arrays of flat objects).
+
+**Retraining the text-classifier model:** the corpus lives in
+`plugins/internal/complexity/data/corpus.jsonl`; run
+`go run ./plugins/internal/cmd/train-classifier` to cross-validate and
+regenerate `model.json`.
+
 **Example — reading the requester's quota (budget-pressure):** `in.Quota` is set by
 the host when the user has at least one budget; it carries the total and the
 remaining amount for the day, month and year (see `QuotaInfo`). It is `nil`
@@ -562,7 +588,8 @@ Or alert on them, e.g. `count(1h) > 0` over
 | `time-restriction`  | PRE_REQUEST               | Denies requests outside configured time windows                   |
 | `request-inspector` | PRE_REQUEST               | Structural facts about a request (vision, reasoning, tools, context size) |
 | `complexity-scorer` | PRE_REQUEST               | Lexical and structural complexity score of a request               |
-| `text-classifier`   | PRE_REQUEST               | Thematic category of a request (Naive Bayes)                       |
+| `text-classifier`   | PRE_REQUEST               | Thematic category of a request (lexical rules + Naive Bayes, no LLM call) |
+| `llm-classifier`    | PRE_REQUEST               | Category chosen by an org model called through the gateway (`HostService.ChatCompletion`) |
 | `energy-estimator`  | PRE_REQUEST               | Energy estimate from token counts and target model size            |
 | `budget-pressure`   | PRE_REQUEST               | Share of the requesting user's budget already spent                |
 | `fuzzy-evaluator`   | PRE_REQUEST               | Fuzzy logic inference on numeric port values                      |
