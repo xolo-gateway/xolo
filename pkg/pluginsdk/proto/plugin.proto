@@ -21,6 +21,9 @@ service XoloHostService {
   rpc SetSecret(SetSecretRequest) returns (SetSecretResponse);
   rpc DeleteSecret(DeleteSecretRequest) returns (DeleteSecretResponse);
   rpc EmitEvent(EmitEventRequest) returns (EmitEventResponse);
+  // ChatCompletion lets a plugin call a model of the requesting org through
+  // the gateway itself (real or virtual model, resolved like any request).
+  rpc ChatCompletion(HostChatCompletionRequest) returns (HostChatCompletionResponse);
 }
 
 message EmitEventRequest {
@@ -39,6 +42,31 @@ message ListModelsForOrgRequest {
 }
 message ListModelsForOrgResponse {
   repeated ModelInfo models = 1;
+}
+
+message ChatMessage {
+  string role = 1;    // system | user | assistant
+  string content = 2;
+}
+
+message HostChatCompletionRequest {
+  string org_id = 1;
+  string user_id = 2;
+  // model is the proxy name to call, as a user of the org would name it.
+  string model = 3;
+  repeated ChatMessage messages = 4;
+  double temperature = 5;
+  int32 max_tokens = 6;
+  // json_response asks the model for a JSON object (response_format).
+  bool json_response = 7;
+}
+
+message HostChatCompletionResponse {
+  string content = 1;
+  int64 prompt_tokens = 2;
+  int64 completion_tokens = 3;
+  // resolved_model is the real model that answered.
+  string resolved_model = 4;
 }
 
 message InitializeRequest {

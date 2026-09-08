@@ -40,3 +40,22 @@ export function pluginPorts(
 function fromDescriptors(ports: PortDescriptor[] | undefined): ResolvedPort[] {
   return (ports ?? []).map(p => ({ name: p.name, port_type: p.port_type, required: p.required }))
 }
+
+/**
+ * builtinPorts resolves the ports of a built-in node. Most built-in kinds have
+ * a fixed shape declared in the catalog; a few (trace) let the user declare
+ * their input ports in the node data, the way script-processor does through
+ * its config. When the data declares ports they win.
+ */
+export function builtinPorts(
+  data: Record<string, unknown>,
+  desc: NodeTypeDescriptor | undefined
+): { inputs: ResolvedPort[]; outputs: ResolvedPort[] } {
+  const declared = data.inputs as Array<{ name?: string; portType?: string }> | undefined
+  const inputs = Array.isArray(declared)
+    ? declared
+        .filter(i => i && typeof i.name === 'string' && i.name !== '')
+        .map(i => ({ name: i.name as string, port_type: i.portType ?? 'string' }))
+    : fromDescriptors(desc?.inputPorts)
+  return { inputs, outputs: fromDescriptors(desc?.outputPorts) }
+}

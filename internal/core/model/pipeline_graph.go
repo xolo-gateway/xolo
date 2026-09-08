@@ -29,6 +29,17 @@ const (
 	NodeTypeSink      PipelineNodeType = "sink"       // sink: inputs response
 	NodeTypeModel     PipelineNodeType = "model"      // calls a real LLM
 	NodeTypeValue     PipelineNodeType = "value"      // static value emitter
+	NodeTypeModelRef  PipelineNodeType = "model_ref"  // emits the name of a model chosen from the catalog
+
+	// Built-in logic and utility nodes (no gRPC binary).
+	NodeTypeCompare       PipelineNodeType = "compare"        // number vs threshold -> boolean
+	NodeTypeSelect        PipelineNodeType = "select"         // boolean ? string : string
+	NodeTypeMath          PipelineNodeType = "math"           // combines numbers
+	NodeTypeSample        PipelineNodeType = "sample"         // percentage split -> boolean
+	NodeTypeContext       PipelineNodeType = "context"        // exposes request context (user, org, time)
+	NodeTypeTrace         PipelineNodeType = "trace"          // records connected values as an event
+	NodeTypeNote          PipelineNodeType = "note"           // free text, editor only
+	NodeTypeModelFallback PipelineNodeType = "model_fallback" // ordered list of models, next on failure
 
 	// gRPC plugin node.
 	NodeTypePlugin PipelineNodeType = "plugin"
@@ -103,3 +114,71 @@ type ValueNodeData struct {
 	Value string `json:"value"`
 }
 
+
+// ModelRefNodeData is the Data payload for NodeTypeModelRef.
+// The node emits ProxyName, chosen in the editor among the models and virtual
+// models the organisation exposes, on its "model_name" string output port. It
+// spares the user from typing a model name and lets the editor show a picker
+// wherever a pipeline needs one: a model node, a router, a classifier.
+type ModelRefNodeData struct {
+	ProxyName string `json:"proxyName"`
+}
+
+// CompareNodeData is the Data payload for NodeTypeCompare.
+type CompareNodeData struct {
+	// Op is one of gt, gte, lt, lte, eq, ne.
+	Op string `json:"op"`
+	// Threshold is used when the threshold port is not connected.
+	Threshold float64 `json:"threshold"`
+}
+
+// MathNodeData is the Data payload for NodeTypeMath.
+type MathNodeData struct {
+	// Op is one of sum, avg, min, max, product, weighted.
+	Op string `json:"op"`
+	// Weights apply to inputs a, b, c, d for the weighted op.
+	Weights []float64 `json:"weights,omitempty"`
+}
+
+// SampleNodeData is the Data payload for NodeTypeSample.
+type SampleNodeData struct {
+	// Percent of requests selected, 0 to 100.
+	Percent float64 `json:"percent"`
+	// Key decides what the split is stable on: random, user or token.
+	Key string `json:"key"`
+	// Salt changes the assignment without changing the percentage.
+	Salt string `json:"salt,omitempty"`
+}
+
+// ContextNodeData is the Data payload for NodeTypeContext.
+type ContextNodeData struct {
+	// Timezone (IANA) used for hour and weekday; defaults to UTC.
+	Timezone string `json:"timezone,omitempty"`
+}
+
+// TraceNodeData is the Data payload for NodeTypeTrace.
+// Inputs declares the ports the node offers; each connected value is recorded
+// under its port name. The list is free so a trace can capture exactly the
+// values a pipeline author wants to see, whatever their number and type.
+type TraceNodeData struct {
+	Label    string          `json:"label,omitempty"`
+	Severity string          `json:"severity,omitempty"`
+	Inputs   []TraceInputDef `json:"inputs,omitempty"`
+}
+
+// TraceInputDef names one input port of a trace node.
+type TraceInputDef struct {
+	Name     string `json:"name"`
+	PortType string `json:"portType"`
+}
+
+// NoteNodeData is the Data payload for NodeTypeNote.
+type NoteNodeData struct {
+	Text string `json:"text"`
+}
+
+// ModelFallbackNodeData is the Data payload for NodeTypeModelFallback.
+type ModelFallbackNodeData struct {
+	// Models are tried in order; the next one is called when the previous fails.
+	Models []string `json:"models"`
+}

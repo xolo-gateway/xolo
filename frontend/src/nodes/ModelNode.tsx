@@ -17,7 +17,8 @@ export function ModelNode({ data }: NodeProps) {
 
   // A passthrough node has no fixed model: naming one would be a lie, since the
   // model is whatever the caller asked for.
-  const title = passthrough ? 'modèle demandé' : (nodeData.proxyName || 'non configuré')
+  const label = typeof nodeData.label === 'string' ? nodeData.label.trim() : ''
+  const title = label || (passthrough ? 'modèle demandé' : (nodeData.proxyName || 'non configuré'))
   const subtitle = passthrough ? 'passthrough' : 'proxyName'
 
   const inputs = [{ name: 'request', port_type: 'request', label: 'request' }]

@@ -2,6 +2,7 @@ package component
 
 import (
 	"encoding/json"
+	"fmt"
 	"sort"
 	"strconv"
 
@@ -115,6 +116,86 @@ func pipelineCard(n model.PipelineNode) PipelineNodeCard {
 			card.Name = "non configuré"
 		}
 		return card
+
+	case model.NodeTypeModelRef:
+		var data model.ModelRefNodeData
+		_ = json.Unmarshal(n.Data, &data)
+		name := data.ProxyName
+		if name == "" {
+			name = "non configuré"
+		}
+		return PipelineNodeCard{
+			Kind:      "Modèle (référence)",
+			Name:      name,
+			Detail:    "Nom de modèle émis",
+			Icon:      icon.BrainCircuit,
+			TintClass: "bg-primary-tint text-primary",
+		}
+
+	case model.NodeTypeModelFallback:
+		var data model.ModelFallbackNodeData
+		_ = json.Unmarshal(n.Data, &data)
+		name := "non configuré"
+		if len(data.Models) > 0 {
+			name = data.Models[0]
+		}
+		return PipelineNodeCard{
+			Kind:      "Modèle avec repli",
+			Name:      name,
+			Detail:    fmt.Sprintf("%d modèle(s) en cascade", len(data.Models)),
+			Icon:      icon.BrainCircuit,
+			TintClass: "bg-primary-tint text-primary",
+		}
+
+	case model.NodeTypeCompare, model.NodeTypeSelect, model.NodeTypeMath, model.NodeTypeSample, model.NodeTypeContext:
+		var data struct {
+			Label string `json:"label"`
+		}
+		_ = json.Unmarshal(n.Data, &data)
+		name := data.Label
+		if name == "" {
+			name = string(n.Type)
+		}
+		return PipelineNodeCard{
+			Kind:      "Logique",
+			Name:      name,
+			Detail:    "Nœud intégré",
+			Icon:      icon.Hash,
+			TintClass: "bg-chart-4/15 text-chart-4",
+		}
+
+	case model.NodeTypeTrace:
+		var data model.TraceNodeData
+		_ = json.Unmarshal(n.Data, &data)
+		name := data.Label
+		if name == "" {
+			name = "trace"
+		}
+		return PipelineNodeCard{
+			Kind:      "Trace",
+			Name:      name,
+			Detail:    "Événement pipeline.trace",
+			Icon:      icon.Hash,
+			TintClass: "bg-muted text-muted-foreground",
+		}
+
+	case model.NodeTypeNote:
+		var data model.NoteNodeData
+		_ = json.Unmarshal(n.Data, &data)
+		name := data.Text
+		if len(name) > 40 {
+			name = name[:40] + "…"
+		}
+		if name == "" {
+			name = "(vide)"
+		}
+		return PipelineNodeCard{
+			Kind:      "Note",
+			Name:      name,
+			Detail:    "Sans effet à l'exécution",
+			Icon:      icon.Hash,
+			TintClass: "bg-muted text-muted-foreground",
+		}
 
 	case model.NodeTypeValue:
 		var data model.ValueNodeData

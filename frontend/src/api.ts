@@ -1,4 +1,4 @@
-import type { VirtualModel, NodeTypeDescriptor, PipelineGraph, PipelineBundle } from './types'
+import type { VirtualModel, NodeTypeDescriptor, PipelineGraph, PipelineBundle, PipelineModelOption } from './types'
 
 function getBase(): string {
   const root = document.getElementById('pipeline-editor-root')
@@ -98,6 +98,30 @@ export function updateVirtualModel(
 
 export function fetchNodeTypes(): Promise<NodeTypeDescriptor[]> {
   return request(nodeTypesBase())
+}
+
+// pipelineModelsBase returns the base path listing what a model_name port can
+// name in the current context.
+function pipelineModelsBase(): string {
+  if (isPersonalContext()) return `/api/personal-models/pipeline-models`
+  return `/api/orgs/${orgSlug()}/pipeline-models`
+}
+
+let pipelineModelsCache: Promise<PipelineModelOption[]> | null = null
+
+/**
+ * fetchPipelineModels lists the models a picker can offer. The list is fetched
+ * once per editor session: every model node and model reference shares it, and
+ * the catalog does not change while a pipeline is being wired.
+ */
+export function fetchPipelineModels(): Promise<PipelineModelOption[]> {
+  if (!pipelineModelsCache) {
+    pipelineModelsCache = request<PipelineModelOption[]>(pipelineModelsBase()).catch(err => {
+      pipelineModelsCache = null
+      throw err
+    })
+  }
+  return pipelineModelsCache
 }
 
 export function exportVirtualModelURL(id: string): string {

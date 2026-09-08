@@ -35,6 +35,7 @@ COPY --from=build /src/dist/xolo-plugin-fuzzy-evaluator_linux_amd64_v1/xolo-plug
 COPY --from=build /src/dist/xolo-plugin-request-inspector_linux_amd64_v1/xolo-plugin-request-inspector /plugins/request-inspector
 COPY --from=build /src/dist/xolo-plugin-complexity-scorer_linux_amd64_v1/xolo-plugin-complexity-scorer /plugins/complexity-scorer
 COPY --from=build /src/dist/xolo-plugin-text-classifier_linux_amd64_v1/xolo-plugin-text-classifier /plugins/text-classifier
+COPY --from=build /src/dist/xolo-plugin-llm-classifier_linux_amd64_v1/xolo-plugin-llm-classifier /plugins/llm-classifier
 COPY --from=build /src/dist/xolo-plugin-energy-estimator_linux_amd64_v1/xolo-plugin-energy-estimator /plugins/energy-estimator
 COPY --from=build /src/dist/xolo-plugin-budget-pressure_linux_amd64_v1/xolo-plugin-budget-pressure /plugins/budget-pressure
 COPY --from=build /src/dist/xolo-plugin-script-processor_linux_amd64_v1/xolo-plugin-script-processor /plugins/script-processor

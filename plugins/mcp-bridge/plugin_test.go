@@ -41,6 +41,9 @@ func (c *fakeHostClient) DeleteSecret(_ context.Context, _, _, nodeID, key strin
 }
 
 func (c *fakeHostClient) EmitEvent(_ context.Context, _ pluginsdk.Event) error { return nil }
+func (c *fakeHostClient) ChatCompletion(_ context.Context, _ *proto.HostChatCompletionRequest) (*proto.HostChatCompletionResponse, error) {
+	return nil, nil
+}
 
 var _ pluginsdk.HostClient = (*fakeHostClient)(nil)
 

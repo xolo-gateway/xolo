@@ -25,6 +25,7 @@ import (
 // appear in the pipeline graph's visible JSON.
 type XoloHostService struct {
 	proto.UnimplementedXoloHostServiceServer
+	completer         ModelCompleter
 	providerStore     port.ProviderStore
 	virtualModelStore port.VirtualModelStore
 	secretStore       port.SecretStore
@@ -50,6 +51,85 @@ func NewXoloHostService(
 		secretKey:         secretKey,
 		configs:           make(map[string]string),
 	}
+}
+
+// ModelCompleter runs a chat completion against a model of an org on behalf
+// of a plugin. It is implemented by the pipeline hook adapter, which resolves
+// virtual models the same way a proxied request would.
+type ModelCompleter interface {
+	Complete(ctx context.Context, req ModelCompletionRequest) (*ModelCompletionResult, error)
+}
+
+// ModelCompletionRequest is the host-side form of HostChatCompletionRequest.
+type ModelCompletionRequest struct {
+	OrgID        model.OrgID
+	UserID       model.UserID
+	ProxyName    string
+	Messages     []ChatMessage
+	Temperature  *float64
+	MaxTokens    *int
+	JSONResponse bool
+}
+
+// ChatMessage is a plain role/content pair.
+type ChatMessage struct {
+	Role    string
+	Content string
+}
+
+// ModelCompletionResult is what the model answered.
+type ModelCompletionResult struct {
+	Content          string
+	PromptTokens     int64
+	CompletionTokens int64
+	ResolvedModel    string
+}
+
+// SetModelCompleter enables the ChatCompletion RPC. Without it the RPC answers
+// Unavailable, which plugins must treat as "no model access on this host".
+func (s *XoloHostService) SetModelCompleter(c ModelCompleter) { s.completer = c }
+
+// ChatCompletion calls a model of the org for a plugin.
+func (s *XoloHostService) ChatCompletion(ctx context.Context, req *proto.HostChatCompletionRequest) (*proto.HostChatCompletionResponse, error) {
+	if s.completer == nil {
+		return nil, status.Error(codes.Unavailable, "chat completion is not available on this host")
+	}
+	if req.GetOrgId() == "" || req.GetModel() == "" {
+		return nil, status.Error(codes.InvalidArgument, "org_id and model are required")
+	}
+	if len(req.GetMessages()) == 0 {
+		return nil, status.Error(codes.InvalidArgument, "at least one message is required")
+	}
+
+	mreq := ModelCompletionRequest{
+		OrgID:        model.OrgID(req.OrgId),
+		UserID:       model.UserID(req.UserId),
+		ProxyName:    req.Model,
+		JSONResponse: req.JsonResponse,
+	}
+	for _, m := range req.Messages {
+		mreq.Messages = append(mreq.Messages, ChatMessage{Role: m.Role, Content: m.Content})
+	}
+	if req.Temperature > 0 {
+		t := req.Temperature
+		mreq.Temperature = &t
+	}
+	if req.MaxTokens > 0 {
+		n := int(req.MaxTokens)
+		mreq.MaxTokens = &n
+	}
+
+	res, err := s.completer.Complete(ctx, mreq)
+	if err != nil {
+		slog.WarnContext(ctx, "host service: chat completion failed", slog.String("model", req.Model), slog.Any("error", err))
+		return nil, status.Errorf(codes.Internal, "chat completion: %v", err)
+	}
+	return &proto.HostChatCompletionResponse{
+		Content:          res.Content,
+		PromptTokens:     res.PromptTokens,
+		CompletionTokens: res.CompletionTokens,
+		ResolvedModel:    res.ResolvedModel,
+	}, nil
 }
 
 func (s *XoloHostService) configKey(orgID, pluginName string) string {

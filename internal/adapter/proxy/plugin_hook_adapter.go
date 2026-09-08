@@ -27,12 +27,45 @@ const metaPipelineExecution = "pipeline.execution"
 // and ModelListerHook (returns the pre-resolved client to the proxy chain).
 type PipelineHookAdapter struct {
 	engine            *pipeline.Engine
+	registry          *pipeline.Registry
+	modelExecutor     *pipeline.ModelExecutor
 	virtualModelStore port.VirtualModelStore
 	personalVMStore   port.PersonalVirtualModelStore
 	orgStore          port.OrgStore
 	providerStore     port.ProviderStore
 	middlewareStore   port.MiddlewareStore
 	quotaInfo         *QuotaInfoResolver
+}
+
+// WithEventEmitter lets trace nodes record events; without it they only log.
+func (a *PipelineHookAdapter) WithEventEmitter(emitter port.EventEmitter) *PipelineHookAdapter {
+	a.registry.Register(model.NodeTypeTrace, pipeline.NewTraceExecutor(emitter))
+	return a
+}
+
+// PostResponse attributes the usage to the model that actually answered when
+// the terminal node may switch models (fallback chain). It runs before the
+// usage tracker (priority 100), which reads the metadata set here.
+func (a *PipelineHookAdapter) PostResponse(ctx context.Context, req *genaiProxy.ProxyRequest, _ *genaiProxy.ProxyResponse) (*genaiProxy.HookResult, error) {
+	forwardExec, ok := req.Metadata[metaPipelineExecution].(*pipeline.ForwardExecution)
+	if !ok || forwardExec == nil || forwardExec.ModelOutcome == nil {
+		return nil, nil
+	}
+	realModel, modelID, used := forwardExec.ModelOutcome.UsedModel()
+	if !used {
+		return nil, nil
+	}
+	if modelID != "" && modelID != ModelIDFromMeta(req.Metadata) {
+		slog.InfoContext(ctx, "pipeline: request answered by a fallback model",
+			slog.String("primary", forwardExec.ResolvedModel), slog.String("used", realModel))
+	}
+	if modelID != "" {
+		req.Metadata[MetaModelID] = string(modelID)
+	}
+	if realModel != "" {
+		req.Metadata[MetaResolvedModel] = realModel
+	}
+	return nil, nil
 }
 
 // WithQuotaInfo enables the resolution of the requesting user's remaining
@@ -59,12 +92,24 @@ func NewPipelineHookAdapter(
 	reg.Register(model.NodeTypeGenerator, pipeline.NewGeneratorExecutor())
 	reg.Register(model.NodeTypeSink, pipeline.NewSinkExecutor())
 	reg.Register(model.NodeTypeValue, pipeline.NewValueExecutor())
+	reg.Register(model.NodeTypeModelRef, pipeline.NewModelRefExecutor())
+	reg.Register(model.NodeTypeCompare, pipeline.NewCompareExecutor())
+	reg.Register(model.NodeTypeSelect, pipeline.NewSelectExecutor())
+	reg.Register(model.NodeTypeMath, pipeline.NewMathExecutor())
+	reg.Register(model.NodeTypeSample, pipeline.NewSampleExecutor())
+	reg.Register(model.NodeTypeContext, pipeline.NewContextExecutor())
+	reg.Register(model.NodeTypeNote, pipeline.NewNoteExecutor())
+	reg.Register(model.NodeTypeTrace, pipeline.NewTraceExecutor(nil))
+	reg.Register(model.NodeTypeModelFallback, pipeline.NewModelFallbackExecutor(orgModelRouter))
 	reg.Register(model.NodeTypePlugin, pipeline.NewPluginExecutor(pluginProvider))
 	// ModelExecutor needs the engine for recursive VirtualModel resolution.
-	reg.Register(model.NodeTypeModel, pipeline.NewModelExecutor(orgModelRouter, virtualModelStore, eng))
+	modelExecutor := pipeline.NewModelExecutor(orgModelRouter, virtualModelStore, eng)
+	reg.Register(model.NodeTypeModel, modelExecutor)
 
 	return &PipelineHookAdapter{
 		engine:            eng,
+		registry:          reg,
+		modelExecutor:     modelExecutor,
 		virtualModelStore: virtualModelStore,
 		personalVMStore:   personalVMStore,
 		orgStore:          orgStore,
@@ -698,3 +743,5 @@ func (a *PipelineHookAdapter) quotaInfoFunc(userID model.UserID, orgID model.Org
 		return info
 	}
 }
+
+var _ genaiProxy.PostResponseHook = &PipelineHookAdapter{}

@@ -3,6 +3,15 @@ export type PipelineNodeType =
   | 'generator'
   | 'sink'
   | 'model'
+  | 'model_ref'
+  | 'model_fallback'
+  | 'compare'
+  | 'select'
+  | 'math'
+  | 'sample'
+  | 'context'
+  | 'trace'
+  | 'note'
   | 'value'
   | 'plugin'
 
@@ -97,3 +106,28 @@ export interface ValueNodeData {
   value?: string
 }
 
+
+export interface ModelRefNodeData {
+  [key: string]: unknown
+  /** Proxy name of the chosen model, emitted on the model_name port. */
+  proxyName?: string
+}
+
+/** One entry of the model picker (mirrors Go api.pipelineModelOption). */
+export interface PipelineModelOption {
+  proxyName: string
+  kind: 'model' | 'virtual' | 'personal'
+  description?: string
+  group?: string
+}
+
+/** Node kinds whose configuration lives at the root of `data` and is edited
+ *  through the form generated from the catalog's configSchema. */
+export const SCHEMA_CONFIGURED_KINDS: ReadonlySet<PipelineNodeType> = new Set<PipelineNodeType>([
+  'compare',
+  'select',
+  'math',
+  'sample',
+  'context',
+  'trace',
+])

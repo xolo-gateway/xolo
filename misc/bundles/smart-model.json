@@ -123,62 +123,57 @@
       },
       {
         "id": "model-vision",
-        "type": "value",
+        "type": "model_ref",
         "position": {
           "x": 1100,
           "y": 0
         },
         "data": {
-          "portType": "string",
-          "value": "modele-vision"
+          "proxyName": "modele-vision"
         }
       },
       {
         "id": "model-reasoning",
-        "type": "value",
+        "type": "model_ref",
         "position": {
           "x": 1100,
           "y": 160
         },
         "data": {
-          "portType": "string",
-          "value": "modele-reasoning"
+          "proxyName": "modele-reasoning"
         }
       },
       {
         "id": "model-leger",
-        "type": "value",
+        "type": "model_ref",
         "position": {
           "x": 1100,
           "y": 320
         },
         "data": {
-          "portType": "string",
-          "value": "modele-leger"
+          "proxyName": "modele-leger"
         }
       },
       {
         "id": "model-moyen",
-        "type": "value",
+        "type": "model_ref",
         "position": {
           "x": 1100,
           "y": 480
         },
         "data": {
-          "portType": "string",
-          "value": "modele-moyen"
+          "proxyName": "modele-moyen"
         }
       },
       {
         "id": "model-puissant",
-        "type": "value",
+        "type": "model_ref",
         "position": {
           "x": 1100,
           "y": 640
         },
         "data": {
-          "portType": "string",
-          "value": "modele-puissant"
+          "proxyName": "modele-puissant"
         }
       },
       {
@@ -351,35 +346,35 @@
       {
         "id": "e9",
         "source": "model-vision",
-        "sourcePort": "value",
+        "sourcePort": "model_name",
         "target": "router",
         "targetPort": "model_vision"
       },
       {
         "id": "e10",
         "source": "model-reasoning",
-        "sourcePort": "value",
+        "sourcePort": "model_name",
         "target": "router",
         "targetPort": "model_reasoning"
       },
       {
         "id": "e11",
         "source": "model-leger",
-        "sourcePort": "value",
+        "sourcePort": "model_name",
         "target": "router",
         "targetPort": "model_leger"
       },
       {
         "id": "e12",
         "source": "model-moyen",
-        "sourcePort": "value",
+        "sourcePort": "model_name",
         "target": "router",
         "targetPort": "model_moyen"
       },
       {
         "id": "e13",
         "source": "model-puissant",
-        "sourcePort": "value",
+        "sourcePort": "model_name",
         "target": "router",
         "targetPort": "model_puissant"
       },

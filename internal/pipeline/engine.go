@@ -38,6 +38,9 @@ type ForwardExecution struct {
 	// (e.g. TOOL_PROVIDER plugins). Informational: ResolvedClient is already
 	// wrapped with whatever decorator needs these tools.
 	Tools []llm.Tool
+	// ModelOutcome reports, after the call, which model actually answered when
+	// the terminal node may switch models (fallback). Nil otherwise.
+	ModelOutcome UsedModelReporter
 }
 
 // ExecutedNode pairs a node with the opaque state returned by its Forward call.
@@ -135,6 +138,7 @@ func (e *Engine) RunForward(ctx context.Context, graph *model.PipelineGraph, ec 
 				ExecutedNodes:     executed,
 				FinalMessagesJSON: currentMessagesJSON,
 				Tools:             tools,
+				ModelOutcome:      result.ModelOutcome,
 			}, nil
 		}
 	}

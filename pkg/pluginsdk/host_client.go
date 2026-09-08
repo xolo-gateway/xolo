@@ -25,6 +25,9 @@ type HostClient interface {
 	// event source to the plugin name and namespaces the type under
 	// "plugin.<name>.". orgID/userID may be empty for platform-global events.
 	EmitEvent(ctx context.Context, event Event) error
+	// ChatCompletion calls a model of the org through the gateway (real or
+	// virtual, resolved like any request) and returns the answer.
+	ChatCompletion(ctx context.Context, req *proto.HostChatCompletionRequest) (*proto.HostChatCompletionResponse, error)
 }
 
 // Event is a plugin-emitted event. Severity should be one of "info", "warning"
@@ -136,4 +139,12 @@ func (c *grpcHostClient) DeleteSecret(ctx context.Context, orgID, pluginName, no
 		return fmt.Errorf("DeleteSecret gRPC: %w", err)
 	}
 	return nil
+}
+
+func (c *grpcHostClient) ChatCompletion(ctx context.Context, req *proto.HostChatCompletionRequest) (*proto.HostChatCompletionResponse, error) {
+	resp, err := c.client.ChatCompletion(ctx, req)
+	if err != nil {
+		return nil, fmt.Errorf("ChatCompletion gRPC: %w", err)
+	}
+	return resp, nil
 }

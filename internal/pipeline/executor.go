@@ -57,8 +57,19 @@ func (ec ExecutionContext) quotaInfo(ctx context.Context) *proto.QuotaInfo {
 	return ec.QuotaInfo(ctx)
 }
 
+// UsedModelReporter is implemented by clients that may answer with a model
+// other than the one resolved up front (fallback chains). The hook adapter
+// reads it after the call to attribute usage to the model that actually
+// answered.
+type UsedModelReporter interface {
+	UsedModel() (realModel string, modelID model.LLMModelID, ok bool)
+}
+
 // ForwardResult is the output of a node's Forward execution.
 type ForwardResult struct {
+	// ModelOutcome, when set by a terminal node, reports after the call which
+	// model actually answered.
+	ModelOutcome UsedModelReporter
 	// OutputValues are the typed values produced on output ports.
 	OutputValues map[string]interface{}
 	// NodeState is an opaque byte blob the pipeline engine stores and passes

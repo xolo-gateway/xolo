@@ -44,6 +44,9 @@ func (h *fakeUIHost) EmitEvent(_ context.Context, e pluginsdk.Event) error {
 	h.emit = e
 	return nil
 }
+func (h *fakeUIHost) ChatCompletion(_ context.Context, _ *proto.HostChatCompletionRequest) (*proto.HostChatCompletionResponse, error) {
+	return nil, nil
+}
 
 var _ pluginsdk.HostClient = (*fakeUIHost)(nil)
 

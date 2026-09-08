@@ -2,6 +2,7 @@ package pluginsdk
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -11,20 +12,32 @@ import (
 	proto "github.com/xolo-gateway/xolo/pkg/pluginsdk/proto"
 )
 
-// noopInitWrapper wraps any XoloPluginServer and adds a no-op Initialize
-// that returns http_ui_port: 0. This ensures plugins using Serve() never
-// return UNIMPLEMENTED for Initialize.
+// noopInitWrapper wraps any XoloPluginServer and adds an Initialize that
+// returns http_ui_port: 0, so plugins using Serve() never answer UNIMPLEMENTED.
+// When the wrapped plugin implements HostClientSetter, Initialize also dials
+// the XoloHostService and hands it the client, exactly as ServeWithUI does: a
+// plugin does not need a configuration UI to need the host.
 type noopInitWrapper struct {
 	proto.XoloPluginServer
+	broker *plugin.GRPCBroker
 }
 
-func (w *noopInitWrapper) Initialize(_ context.Context, _ *proto.InitializeRequest) (*proto.InitializeResponse, error) {
+func (w *noopInitWrapper) setBroker(broker *plugin.GRPCBroker) { w.broker = broker }
+
+func (w *noopInitWrapper) Initialize(_ context.Context, req *proto.InitializeRequest) (*proto.InitializeResponse, error) {
+	if setter, ok := w.XoloPluginServer.(HostClientSetter); ok && w.broker != nil && req.GetHostServiceBrokerId() != 0 {
+		conn, err := w.broker.Dial(req.HostServiceBrokerId)
+		if err != nil {
+			return nil, fmt.Errorf("dial XoloHostService: %w", err)
+		}
+		setter.SetHostClient(newGRPCHostClient(conn))
+	}
 	return &proto.InitializeResponse{HttpUiPort: 0}, nil
 }
 
 // WrapWithNoopInit wraps impl with a no-op Initialize. Exported for testing.
 func WrapWithNoopInit(impl proto.XoloPluginServer) proto.XoloPluginServer {
-	return &noopInitWrapper{impl}
+	return &noopInitWrapper{XoloPluginServer: impl}
 }
 
 // configureSlogFromEnv sets the default slog logger level from the

@@ -23,7 +23,7 @@ export function ValueNode({ data }: NodeProps) {
   return (
     <NodeCard
       kind="value"
-      title={value !== '' ? value : '—'}
+      title={(typeof nodeData.label === 'string' && nodeData.label.trim()) || (value !== '' ? value : '—')}
       subtitle={portType}
       outputs={[{ name: 'value', port_type: portType, label: TYPE_LABELS[portType] ?? 'value' }]}
     />

@@ -99,6 +99,7 @@ func NewHandler(providerStore port.ProviderStore, orgStore port.OrgStore, virtua
 	h.mux.HandleFunc("PUT /api/orgs/{orgSlug}/virtual-models/{vmID}", h.handleUpdateVirtualModel)
 	h.mux.HandleFunc("DELETE /api/orgs/{orgSlug}/virtual-models/{vmID}", h.handleDeleteVirtualModel)
 	h.mux.HandleFunc("GET /api/orgs/{orgSlug}/pipeline-node-types", h.handlePipelineNodeTypes)
+	h.mux.HandleFunc("GET /api/orgs/{orgSlug}/pipeline-models", h.handlePipelineModels)
 	// Org middleware pipeline CRUD (shares the generic graph handlers)
 	h.mux.HandleFunc("GET /api/orgs/{orgSlug}/middlewares", h.handleListMiddlewares)
 	h.mux.HandleFunc("POST /api/orgs/{orgSlug}/middlewares", h.handleCreateMiddleware)
@@ -115,6 +116,7 @@ func NewHandler(providerStore port.ProviderStore, orgStore port.OrgStore, virtua
 	h.mux.HandleFunc("PUT /api/personal-models/{vmID}", h.handleUpdatePersonalVM)
 	h.mux.HandleFunc("DELETE /api/personal-models/{vmID}", h.handleDeletePersonalVM)
 	h.mux.HandleFunc("GET /api/personal-models/pipeline-node-types", h.handlePersonalPipelineNodeTypes)
+	h.mux.HandleFunc("GET /api/personal-models/pipeline-models", h.handlePersonalPipelineModels)
 	return h
 }
 

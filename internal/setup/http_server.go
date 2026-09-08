@@ -179,6 +179,9 @@ func NewHTTPServerFromConfig(ctx context.Context, conf *config.Config) (*http.Se
 		middlewareStore,
 		orgModelRouter,
 	).WithQuotaInfo(proxyAdapter.NewQuotaInfoResolver(quotaService, usageStore))
+	// Plugins may ask the host for a completion (e.g. llm-classifier); it goes
+	// through the same model resolution as a proxied request.
+	pluginManager.HostService().SetModelCompleter(pipelineHookAdapter)
 
 	withMemberships := membershipsMiddleware.Middleware(orgStore, roleStore)
 
@@ -196,6 +199,7 @@ func NewHTTPServerFromConfig(ctx context.Context, conf *config.Config) (*http.Se
 	if err != nil {
 		return nil, errors.Wrap(err, "could not create event emitter from config")
 	}
+	pipelineHookAdapter.WithEventEmitter(eventEmitter)
 
 	eventStore, err := getEventStoreFromConfig(ctx, conf)
 	if err != nil {
@@ -304,6 +308,7 @@ func NewHTTPServerFromConfig(ctx context.Context, conf *config.Config) (*http.Se
 		http.WithRoute("PUT /api/orgs/{orgSlug}/virtual-models/{vmID}", rateLimiter(apiAuthChain(apiHandler))),
 		http.WithRoute("DELETE /api/orgs/{orgSlug}/virtual-models/{vmID}", rateLimiter(apiAuthChain(apiHandler))),
 		http.WithRoute("GET /api/orgs/{orgSlug}/pipeline-node-types", rateLimiter(apiAuthChain(apiHandler))),
+		http.WithRoute("GET /api/orgs/{orgSlug}/pipeline-models", rateLimiter(apiAuthChain(apiHandler))),
 
 		http.WithRoute("GET /api/orgs/{orgSlug}/middlewares", rateLimiter(apiAuthChain(apiHandler))),
 		http.WithRoute("POST /api/orgs/{orgSlug}/middlewares", rateLimiter(apiAuthChain(apiHandler))),
@@ -320,6 +325,7 @@ func NewHTTPServerFromConfig(ctx context.Context, conf *config.Config) (*http.Se
 		http.WithRoute("PUT /api/personal-models/{vmID}", rateLimiter(apiAuthChain(apiHandler))),
 		http.WithRoute("DELETE /api/personal-models/{vmID}", rateLimiter(apiAuthChain(apiHandler))),
 		http.WithRoute("GET /api/personal-models/pipeline-node-types", rateLimiter(apiAuthChain(apiHandler))),
+		http.WithRoute("GET /api/personal-models/pipeline-models", rateLimiter(apiAuthChain(apiHandler))),
 		http.WithMount("/", authChain(withMemberships(webuiHandler))),
 	}
 

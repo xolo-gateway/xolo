@@ -16,6 +16,9 @@ import '@xyflow/react/dist/style.css'
 import { GeneratorNode } from './nodes/GeneratorNode'
 import { SinkNode } from './nodes/SinkNode'
 import { ModelNode } from './nodes/ModelNode'
+import { ModelRefNode } from './nodes/ModelRefNode'
+import { BuiltinNode } from './nodes/BuiltinNode'
+import { NoteNode } from './nodes/NoteNode'
 import { ValueNode } from './nodes/ValueNode'
 import { PluginNode } from './nodes/PluginNode'
 import { NodePalette } from './components/NodePalette'
@@ -30,6 +33,15 @@ const nodeTypes = {
   generator: GeneratorNode,
   sink: SinkNode,
   model: ModelNode,
+  model_ref: ModelRefNode,
+  model_fallback: BuiltinNode,
+  compare: BuiltinNode,
+  select: BuiltinNode,
+  math: BuiltinNode,
+  sample: BuiltinNode,
+  context: BuiltinNode,
+  trace: BuiltinNode,
+  note: NoteNode,
   value: ValueNode,
   plugin: PluginNode,
 }
@@ -43,6 +55,28 @@ const PORT_LEGEND: Array<{ type: string; label: string }> = [
   { type: 'number', label: 'number' },
   { type: 'boolean', label: 'boolean' },
 ]
+
+/** defaultNodeData seeds a new node so its card reads sensibly before any edit. */
+function defaultNodeData(desc: NodeTypeDescriptor): Record<string, unknown> {
+  switch (desc.type) {
+    case 'plugin':
+      return { pluginName: desc.pluginName }
+    case 'compare':
+      return { op: 'gt', threshold: 0.5 }
+    case 'math':
+      return { op: 'sum' }
+    case 'sample':
+      return { percent: 10, key: 'user' }
+    case 'model_fallback':
+      return { models: [] }
+    case 'trace':
+      return { severity: 'info', inputs: [{ name: 'value', portType: 'number' }] }
+    case 'note':
+      return { text: '' }
+    default:
+      return {}
+  }
+}
 
 let idCounter = 1
 function nextId() {
@@ -62,14 +96,17 @@ function graphToFlow(graph: PipelineGraph | undefined, descriptors: NodeTypeDesc
 
   const descMap = new Map(descriptors.map(d => [d.pluginName ?? d.type, d]))
 
+  // Every node carries its catalog descriptor, so cards can draw their ports
+  // without a lookup and built-in kinds need no dedicated component.
   const nodes: Node[] = graph.nodes.map(n => ({
     id: n.id,
     type: n.type,
     position: n.position,
     deletable: n.type !== 'generator' && n.type !== 'sink',
-    data: n.type === 'plugin'
-      ? { ...(n.data ?? {}), __descriptor: descMap.get((n.data as PluginNodeData)?.pluginName) }
-      : (n.data ?? {}),
+    data: {
+      ...(n.data ?? {}),
+      __descriptor: descMap.get(n.type === 'plugin' ? (n.data as PluginNodeData)?.pluginName : n.type),
+    },
   }))
 
   const edges: Edge[] = graph.edges.map(e => ({
@@ -88,9 +125,7 @@ function flowToGraph(nodes: Node[], edges: Edge[]): PipelineGraph {
     id: n.id,
     type: n.type as PipelineNode['type'],
     position: n.position,
-    data: n.type === 'plugin'
-      ? (({ __descriptor: _d, ...rest }) => rest)(n.data as Record<string, unknown>)
-      : n.data,
+    data: (({ __descriptor: _d, ...rest }) => rest)(n.data as Record<string, unknown>),
   }))
 
   const pEdges: PipelineEdge[] = edges.map(e => ({
@@ -163,9 +198,7 @@ export function VirtualModelEditor() {
       type: desc.type,
       position: { x: 300 + Math.random() * 100, y: 200 + Math.random() * 100 },
       deletable: true,
-      data: desc.type === 'plugin'
-        ? { pluginName: desc.pluginName, __descriptor: desc }
-        : {},
+      data: { ...defaultNodeData(desc), __descriptor: desc },
     }
     setNodes(nds => [...nds, newNode])
   }

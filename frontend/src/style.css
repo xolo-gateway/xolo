@@ -232,7 +232,16 @@
 /* La teinte de la pastille porte le genre du nœud, comme sur le canevas. */
 .pipeline-palette__icon--generator,
 .pipeline-palette__icon--sink { background: var(--muted); color: var(--muted-foreground); }
-.pipeline-palette__icon--model { background: color-mix(in oklab, var(--primary) 12%, transparent); color: var(--primary); }
+.pipeline-palette__icon--trace,
+.pipeline-palette__icon--note { background: var(--muted); color: var(--muted-foreground); }
+.pipeline-palette__icon--compare,
+.pipeline-palette__icon--select,
+.pipeline-palette__icon--math,
+.pipeline-palette__icon--sample,
+.pipeline-palette__icon--context { background: color-mix(in oklab, var(--chart-4) 16%, transparent); color: var(--chart-4); }
+.pipeline-palette__icon--model,
+.pipeline-palette__icon--model_fallback,
+.pipeline-palette__icon--model_ref { background: color-mix(in oklab, var(--primary) 12%, transparent); color: var(--primary); }
 .pipeline-palette__icon--value { background: color-mix(in oklab, var(--chart-4) 16%, transparent); color: var(--chart-4); }
 .pipeline-palette__icon--plugin { background: color-mix(in oklab, var(--chart-3) 16%, transparent); color: var(--chart-3); }
 
@@ -298,7 +307,16 @@
   color: var(--muted-foreground);
 }
 
-.pipeline-node--model .pipeline-node__kind { color: var(--primary); }
+.pipeline-node--model .pipeline-node__kind,
+.pipeline-node--model_fallback .pipeline-node__kind,
+.pipeline-node--model_ref .pipeline-node__kind { color: var(--primary); }
+.pipeline-node--compare .pipeline-node__kind,
+.pipeline-node--select .pipeline-node__kind,
+.pipeline-node--math .pipeline-node__kind,
+.pipeline-node--sample .pipeline-node__kind,
+.pipeline-node--context .pipeline-node__kind { color: var(--chart-4); }
+.pipeline-node--note { background: color-mix(in oklab, var(--chart-4) 8%, var(--card)); min-width: 180px; max-width: 280px; }
+.pipeline-node__note-text { font-size: 12px; white-space: pre-wrap; color: var(--foreground); padding: 4px 0; }
 .pipeline-node--value .pipeline-node__kind { color: var(--chart-4); }
 .pipeline-node--plugin .pipeline-node__kind { color: var(--chart-3); }
 
@@ -414,7 +432,18 @@
   letter-spacing: var(--tracking-caps);
   color: var(--muted-foreground);
 }
-.pipeline-inspector__kind--model { color: var(--primary); }
+.pipeline-inspector__kind--model,
+.pipeline-inspector__kind--model_fallback,
+.pipeline-inspector__kind--model_ref { color: var(--primary); }
+.pipeline-inspector__kind--compare,
+.pipeline-inspector__kind--select,
+.pipeline-inspector__kind--math,
+.pipeline-inspector__kind--sample,
+.pipeline-inspector__kind--context { color: var(--chart-4); }
+.pipeline-fallback-list { display: flex; flex-direction: column; gap: 8px; }
+.pipeline-fallback-list__row { display: flex; gap: 6px; align-items: flex-start; }
+.pipeline-fallback-list__row > .pipeline-picker { flex: 1; }
+.pipeline-fallback-list__rank { font-size: 11px; color: var(--muted-foreground); padding-top: 8px; width: 16px; }
 .pipeline-inspector__kind--value { color: var(--chart-4); }
 .pipeline-inspector__kind--plugin { color: var(--chart-3); }
 
@@ -590,3 +619,58 @@
   height: 200px;
   color: var(--muted-foreground);
 }
+
+/* ─── Model picker ─────────────────────────────────────────────────────── */
+
+.pipeline-picker { display: flex; flex-direction: column; gap: 6px; }
+.pipeline-picker__meta {
+  font-size: 11px;
+  color: var(--muted-foreground);
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.pipeline-picker__kind {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: color-mix(in oklab, var(--primary) 12%, transparent);
+  color: var(--primary);
+}
+.pipeline-picker__kind--virtual { background: color-mix(in oklab, var(--chart-3) 16%, transparent); color: var(--chart-3); }
+.pipeline-picker__kind--personal { background: color-mix(in oklab, var(--chart-4) 16%, transparent); color: var(--chart-4); }
+
+/* ─── Schema-driven configuration form ─────────────────────────────────── */
+
+.schema-form { display: flex; flex-direction: column; gap: 12px; }
+.schema-form__field { display: flex; flex-direction: column; gap: 4px; }
+.schema-form__label { font-size: 12px; font-weight: 500; }
+.schema-form__desc { font-size: 11px; color: var(--muted-foreground); }
+.schema-form__textarea {
+  font: inherit;
+  font-size: 12px;
+  min-height: 80px;
+  resize: vertical;
+}
+.schema-form__switch { display: flex; gap: 8px; align-items: flex-start; font-size: 12px; }
+.schema-form__table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.schema-form__table th { text-align: left; font-weight: 500; color: var(--muted-foreground); padding: 2px 4px; }
+.schema-form__table td { padding: 2px 4px; vertical-align: top; }
+.schema-form__table .pipeline-inspector__input { width: 100%; box-sizing: border-box; }
+.schema-form__row-remove,
+.schema-form__add {
+  font: inherit;
+  font-size: 11px;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 2px 8px;
+  cursor: pointer;
+  color: var(--foreground);
+}
+.schema-form__add { align-self: flex-start; margin-top: 4px; }
+.schema-form__row-remove:hover,
+.schema-form__add:hover { background: var(--muted); }
+.schema-form__raw summary { font-size: 11px; color: var(--muted-foreground); cursor: pointer; }

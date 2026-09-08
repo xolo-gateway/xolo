@@ -387,13 +387,14 @@ var XoloPlugin_ServiceDesc = grpc.ServiceDesc{
 }
 
 const (
-	XoloHostService_GetConfig_FullMethodName    = "/xolo.plugin.v1.XoloHostService/GetConfig"
-	XoloHostService_SaveConfig_FullMethodName   = "/xolo.plugin.v1.XoloHostService/SaveConfig"
-	XoloHostService_ListModels_FullMethodName   = "/xolo.plugin.v1.XoloHostService/ListModels"
-	XoloHostService_GetSecret_FullMethodName    = "/xolo.plugin.v1.XoloHostService/GetSecret"
-	XoloHostService_SetSecret_FullMethodName    = "/xolo.plugin.v1.XoloHostService/SetSecret"
-	XoloHostService_DeleteSecret_FullMethodName = "/xolo.plugin.v1.XoloHostService/DeleteSecret"
-	XoloHostService_EmitEvent_FullMethodName    = "/xolo.plugin.v1.XoloHostService/EmitEvent"
+	XoloHostService_GetConfig_FullMethodName      = "/xolo.plugin.v1.XoloHostService/GetConfig"
+	XoloHostService_SaveConfig_FullMethodName     = "/xolo.plugin.v1.XoloHostService/SaveConfig"
+	XoloHostService_ListModels_FullMethodName     = "/xolo.plugin.v1.XoloHostService/ListModels"
+	XoloHostService_GetSecret_FullMethodName      = "/xolo.plugin.v1.XoloHostService/GetSecret"
+	XoloHostService_SetSecret_FullMethodName      = "/xolo.plugin.v1.XoloHostService/SetSecret"
+	XoloHostService_DeleteSecret_FullMethodName   = "/xolo.plugin.v1.XoloHostService/DeleteSecret"
+	XoloHostService_EmitEvent_FullMethodName      = "/xolo.plugin.v1.XoloHostService/EmitEvent"
+	XoloHostService_ChatCompletion_FullMethodName = "/xolo.plugin.v1.XoloHostService/ChatCompletion"
 )
 
 // XoloHostServiceClient is the client API for XoloHostService service.
@@ -407,6 +408,9 @@ type XoloHostServiceClient interface {
 	SetSecret(ctx context.Context, in *SetSecretRequest, opts ...grpc.CallOption) (*SetSecretResponse, error)
 	DeleteSecret(ctx context.Context, in *DeleteSecretRequest, opts ...grpc.CallOption) (*DeleteSecretResponse, error)
 	EmitEvent(ctx context.Context, in *EmitEventRequest, opts ...grpc.CallOption) (*EmitEventResponse, error)
+	// ChatCompletion lets a plugin call a model of the requesting org through
+	// the gateway itself (real or virtual model, resolved like any request).
+	ChatCompletion(ctx context.Context, in *HostChatCompletionRequest, opts ...grpc.CallOption) (*HostChatCompletionResponse, error)
 }
 
 type xoloHostServiceClient struct {
@@ -487,6 +491,16 @@ func (c *xoloHostServiceClient) EmitEvent(ctx context.Context, in *EmitEventRequ
 	return out, nil
 }
 
+func (c *xoloHostServiceClient) ChatCompletion(ctx context.Context, in *HostChatCompletionRequest, opts ...grpc.CallOption) (*HostChatCompletionResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(HostChatCompletionResponse)
+	err := c.cc.Invoke(ctx, XoloHostService_ChatCompletion_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // XoloHostServiceServer is the server API for XoloHostService service.
 // All implementations must embed UnimplementedXoloHostServiceServer
 // for forward compatibility.
@@ -498,6 +512,9 @@ type XoloHostServiceServer interface {
 	SetSecret(context.Context, *SetSecretRequest) (*SetSecretResponse, error)
 	DeleteSecret(context.Context, *DeleteSecretRequest) (*DeleteSecretResponse, error)
 	EmitEvent(context.Context, *EmitEventRequest) (*EmitEventResponse, error)
+	// ChatCompletion lets a plugin call a model of the requesting org through
+	// the gateway itself (real or virtual model, resolved like any request).
+	ChatCompletion(context.Context, *HostChatCompletionRequest) (*HostChatCompletionResponse, error)
 	mustEmbedUnimplementedXoloHostServiceServer()
 }
 
@@ -528,6 +545,9 @@ func (UnimplementedXoloHostServiceServer) DeleteSecret(context.Context, *DeleteS
 }
 func (UnimplementedXoloHostServiceServer) EmitEvent(context.Context, *EmitEventRequest) (*EmitEventResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method EmitEvent not implemented")
+}
+func (UnimplementedXoloHostServiceServer) ChatCompletion(context.Context, *HostChatCompletionRequest) (*HostChatCompletionResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ChatCompletion not implemented")
 }
 func (UnimplementedXoloHostServiceServer) mustEmbedUnimplementedXoloHostServiceServer() {}
 func (UnimplementedXoloHostServiceServer) testEmbeddedByValue()                         {}
@@ -676,6 +696,24 @@ func _XoloHostService_EmitEvent_Handler(srv interface{}, ctx context.Context, de
 	return interceptor(ctx, in, info, handler)
 }
 
+func _XoloHostService_ChatCompletion_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(HostChatCompletionRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(XoloHostServiceServer).ChatCompletion(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: XoloHostService_ChatCompletion_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(XoloHostServiceServer).ChatCompletion(ctx, req.(*HostChatCompletionRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // XoloHostService_ServiceDesc is the grpc.ServiceDesc for XoloHostService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -710,6 +748,10 @@ var XoloHostService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "EmitEvent",
 			Handler:    _XoloHostService_EmitEvent_Handler,
+		},
+		{
+			MethodName: "ChatCompletion",
+			Handler:    _XoloHostService_ChatCompletion_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

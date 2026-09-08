@@ -73,6 +73,22 @@ func (e *ModelExecutor) Forward(ctx context.Context, node model.PipelineNode, in
 	return e.resolveByName(ctx, proxyName, ec)
 }
 
+// ResolveClient resolves a proxy model name to the llm.Client that would serve
+// it for the given execution context, recursing into virtual models exactly
+// like a model node does. It is the entry point for host-side callers that
+// need a model outside of a proxied request, such as plugins asking the host
+// for a completion. It also returns the real model name.
+func (e *ModelExecutor) ResolveClient(ctx context.Context, proxyName string, ec ExecutionContext) (llm.Client, string, error) {
+	res, err := e.resolveByName(ctx, proxyName, ec)
+	if err != nil {
+		return nil, "", err
+	}
+	if res.ResolvedClient == nil {
+		return nil, "", errors.Errorf("model %q did not resolve to a client", proxyName)
+	}
+	return res.ResolvedClient, res.ResolvedModel, nil
+}
+
 // resolveByName resolves a proxy model name to an llm.Client, recursing into
 // personal or org virtual models when the name matches one (with cycle detection).
 func (e *ModelExecutor) resolveByName(ctx context.Context, proxyName string, ec ExecutionContext) (*ForwardResult, error) {
