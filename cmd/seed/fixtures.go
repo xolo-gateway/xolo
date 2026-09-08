@@ -458,6 +458,10 @@ func (s *seeder) seedAuthTokens(ctx context.Context) error {
 
 	strptr := func(v string) *string { return &v }
 
+	// The store only ever persists the SHA-256 of a key (see
+	// migrateAuthTokensToHashes and UserStore.CreateAuthToken). The fixture
+	// documents the clear values so tests can send them; what goes in the
+	// table must be their hash, or no login with them can succeed.
 	tokens := []*gormadapter.AuthToken{
 		{
 			ID: "tok-alice-acme", CreatedAt: now.AddDate(0, -3, 0), UpdatedAt: now.AddDate(0, -3, 0),
@@ -491,6 +495,7 @@ func (s *seeder) seedAuthTokens(ctx context.Context) error {
 	}
 
 	for _, token := range tokens {
+		token.Value = crypto.HashToken(token.Value)
 		if err := s.create(token); err != nil {
 			return errors.WithStack(err)
 		}

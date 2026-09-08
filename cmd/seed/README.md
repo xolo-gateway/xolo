@@ -75,6 +75,10 @@ et n'accorde l'accès qu'à `gpt-4o-mini` et `mistral-small`.
 
 ### Jetons d'API
 
+Les valeurs ci-dessous sont celles à envoyer (`Authorization: Bearer …` ou
+formulaire `/auth/token/login`). En base, la colonne `value` contient leur
+hachage SHA-256, comme pour tout jeton créé par l'application.
+
 | Valeur | Porteur | Organisation | État |
 |---|---|---|---|
 | `xolo-e2e-alice-acme` | alice | acme | valide, sans expiration |
