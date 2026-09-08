@@ -7,6 +7,7 @@ import (
 	"os"
 	"sort"
 	"strings"
+	"unicode"
 )
 
 // --------------------------------------------------------------------------
@@ -125,7 +126,21 @@ func (nb *NaiveBayes) PredictTopK(text string, k int) []Prediction {
 		return nil
 	}
 
+	// Features never seen in training carry no information about the class;
+	// keeping them would only reward the classes with the smallest vocabulary,
+	// whose smoothed probability for an unknown feature is the highest.
 	tokens := nb.extractFeatures(text)
+	known := tokens[:0]
+	for _, t := range tokens {
+		if _, ok := nb.Vocab[t]; ok {
+			known = append(known, t)
+		}
+	}
+	tokens = known
+	if len(tokens) == 0 {
+		// Nothing to go on: no prediction is better than the class prior.
+		return nil
+	}
 	logProbs := make(map[string]float64)
 
 	for _, class := range nb.Classes {
@@ -145,10 +160,15 @@ func (nb *NaiveBayes) PredictTopK(text string, k int) []Prediction {
 			logLikelihood += math.Log((float64(count) + nb.Alpha) / denom)
 		}
 
-		logProbs[class] = logPrior + logLikelihood
+		// Average the evidence over the features instead of summing it. A sum
+		// grows with document length and, through the softmax below, yields
+		// probabilities of 1.0 on any text longer than a sentence, right or
+		// wrong. The average keeps the ranking and makes the probabilities a
+		// usable measure of how clearly one class stands out.
+		logProbs[class] = (logPrior + logLikelihood) / float64(max(len(tokens), 1))
 	}
 
-	// Convert log-probs to normalized probabilities via log-sum-exp
+	// Convert scores to normalized probabilities via log-sum-exp
 	preds := logProbsToProbs(logProbs, nb.Classes)
 
 	sort.Slice(preds, func(i, j int) bool {
@@ -169,24 +189,110 @@ func (nb *NaiveBayes) PredictAll(text string) []Prediction {
 // ---------- Feature extraction ----------
 
 func (nb *NaiveBayes) extractFeatures(text string) []string {
-	words := tokenize(text) // reuse from complexity.go
+	words := informativeTokens(text)
 
+	// Binary features: each unigram or bigram counts once per document, so a
+	// long text repeating one word does not drown the rest of its vocabulary.
+	seen := make(map[string]struct{}, len(words)*2)
 	features := make([]string, 0, len(words)*2)
-
-	// Unigrams
-	for _, w := range words {
-		features = append(features, w)
+	add := func(f string) {
+		if _, dup := seen[f]; dup {
+			return
+		}
+		seen[f] = struct{}{}
+		features = append(features, f)
 	}
 
-	// Bigrams
+	for _, w := range words {
+		add(w)
+	}
 	if nb.UseNgrams >= 2 && len(words) > 1 {
 		for i := 0; i < len(words)-1; i++ {
-			features = append(features, words[i]+"_"+words[i+1])
+			add(words[i] + "_" + words[i+1])
 		}
 	}
 
 	return features
 }
+
+// informativeTokens tokenizes the text, folds accents (so "résume" and
+// "resume" are one feature) and drops French and English function words,
+// which carry no topical signal and otherwise dominate the vocabulary.
+func informativeTokens(text string) []string {
+	raw := tokenize(text)
+	out := make([]string, 0, len(raw))
+	for _, w := range raw {
+		w = foldAccents(w)
+		if _, stop := stopwords[w]; stop {
+			continue
+		}
+		if len(w) == 1 && !unicode.IsDigit(rune(w[0])) {
+			continue
+		}
+		out = append(out, stem(w))
+	}
+	return out
+}
+
+// stem truncates a word to its first runes, a crude but language-neutral
+// stemmer that maps "traduis", "traduire" and "traduction" onto one feature.
+// Short words are kept whole.
+func stem(w string) string {
+	const keep = 6
+	runes := []rune(w)
+	if len(runes) <= keep {
+		return w
+	}
+	return string(runes[:keep])
+}
+
+func foldAccents(s string) string {
+	var b strings.Builder
+	b.Grow(len(s))
+	for _, r := range s {
+		if folded, ok := accentFold[r]; ok {
+			b.WriteRune(folded)
+		} else {
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
+}
+
+var accentFold = map[rune]rune{
+	'à': 'a', 'â': 'a', 'ä': 'a', 'á': 'a', 'ã': 'a',
+	'é': 'e', 'è': 'e', 'ê': 'e', 'ë': 'e',
+	'î': 'i', 'ï': 'i', 'í': 'i',
+	'ô': 'o', 'ö': 'o', 'ó': 'o', 'õ': 'o',
+	'ù': 'u', 'û': 'u', 'ü': 'u', 'ú': 'u',
+	'ç': 'c', 'ñ': 'n', 'ÿ': 'y',
+	'œ': 'o', 'æ': 'a',
+}
+
+var stopwords = func() map[string]struct{} {
+	list := strings.Fields(`
+		le la les l un une des du de d au aux et ou mais donc or ni car ne pas plus moins
+		je tu il elle on nous vous ils elles me te se lui leur y en ce cet cette ces cela ca
+		mon ma mes ton ta tes son sa ses notre nos votre vos leurs
+		qui que quoi dont ou quand comme si est sont suis es sommes etes etait etaient ete etre
+		ai as a avons avez ont avait avaient avoir fait faire fais faites peux peut pouvez pouvoir veux veut voulez
+		dans sur sous avec sans pour par vers chez entre pendant depuis avant apres
+		tres bien aussi meme tout tous toute toutes autre autres quelque quelques
+		stp svp please
+		the a an and or but nor so yet of to in on at by for from with without about into onto over under
+		i you he she it we they me him her us them my your his its our their mine yours
+		this that these those what which who whom whose where when how
+		is are was were be been being am do does did doing have has had having
+		can could will would shall should may might must
+		not no yes very also just only too more most some any all each every both few
+		s t ll re ve d m
+	`)
+	m := make(map[string]struct{}, len(list))
+	for _, w := range list {
+		m[w] = struct{}{}
+	}
+	return m
+}()
 
 // ---------- Log-sum-exp conversion ----------
 

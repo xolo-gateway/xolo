@@ -71,6 +71,22 @@ func Prompt(messagesJSON string) string {
 	return string(out)
 }
 
+// LastUserTurn returns the text of the most recent user message, which is
+// what the requester is asking right now. On a conversation without user
+// message it falls back to Prompt.
+func LastUserTurn(messagesJSON string) string {
+	messages, ok := parse(messagesJSON)
+	if !ok {
+		return messagesJSON
+	}
+	for i := len(messages) - 1; i >= 0; i-- {
+		if messages[i].Role == "user" {
+			return textOf(messages[i].Content)
+		}
+	}
+	return Prompt(messagesJSON)
+}
+
 // Context returns everything the model will have to read: system, user and
 // tool messages plus the arguments of assistant tool calls. It approximates
 // the prompt size seen by the provider.

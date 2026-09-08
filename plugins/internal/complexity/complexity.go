@@ -1,12 +1,21 @@
+// Package complexity scores how demanding a prompt is for a language model,
+// from its text alone, so that a router can pick a model of matching power.
+//
+// The score is built from seven signals that each answer a concrete question:
+// how long is the request, how varied is its vocabulary, how much structure
+// does it carry (lists, nesting, several questions), how dense is its prose,
+// how many explicit constraints does it impose, does it contain code, and how
+// much reasoning does it call for (proving, comparing, designing).
+// Each signal is normalised to [0, 1] with a curve that starts at exactly 0,
+// so an empty or trivial prompt scores 0 and nothing else. The weighted sum
+// is then stretched so that a demanding request lands in the upper quarter
+// of the scale, where downstream fuzzy rules expect it.
 package complexity
 
 import (
-	"bytes"
-	"compress/gzip"
 	"math"
 	"regexp"
 	"strings"
-	"sync"
 	"unicode"
 )
 
@@ -14,12 +23,12 @@ import (
 type Score struct {
 	// Individual metrics (each normalized 0–1)
 	LengthScore      float64 `json:"length_score"`
-	EntropyScore     float64 `json:"entropy_score"`
 	LexicalRichness  float64 `json:"lexical_richness"`
-	CompressionScore float64 `json:"compression_score"`
 	StructuralScore  float64 `json:"structural_score"`
 	ReadabilityScore float64 `json:"readability_score"`
 	ConstraintScore  float64 `json:"constraint_score"`
+	CodeScore        float64 `json:"code_score"`
+	DemandScore      float64 `json:"demand_score"`
 
 	// Final composite score (0–1)
 	Composite float64 `json:"composite"`
@@ -36,38 +45,51 @@ type Stats struct {
 	SentenceCount    int     `json:"sentence_count"`
 	UniqueTokens     int     `json:"unique_tokens"`
 	AvgWordLength    float64 `json:"avg_word_length"`
+	WordsPerSentence float64 `json:"words_per_sentence"`
 	MaxNestingDepth  int     `json:"max_nesting_depth"`
 	ConstraintCount  int     `json:"constraint_count"`
+	DemandCount      int     `json:"demand_count"`
 	QuestionCount    int     `json:"question_count"`
-	ShannonEntropy   float64 `json:"shannon_entropy"`
-	CompressionRatio float64 `json:"compression_ratio"`
-	FleschKincaid    float64 `json:"flesch_kincaid_grade"`
 	MarkdownElements int     `json:"markdown_elements"`
+	CodeBlocks       int     `json:"code_blocks"`
+	CodeSignals      int     `json:"code_signals"`
+	HasCode          bool    `json:"has_code"`
 }
 
-// Weights controls the relative importance of each metric.
+// Weights controls the relative importance of each metric. They should sum to 1.
 type Weights struct {
 	Length      float64
-	Entropy     float64
 	Lexical     float64
-	Compression float64
 	Structural  float64
 	Readability float64
 	Constraint  float64
+	Code        float64
+	Demand      float64
 }
 
-// DefaultWeights returns sensible defaults calibrated for LLM prompt routing.
+// DefaultWeights returns the weights calibrated for LLM prompt routing.
+//
+// Constraints, code and cognitive demand lead: they are the signals that most
+// reliably separate "answer this" from "produce something that has to satisfy
+// rules" or "reason about this". Length matters less than it looks, since a
+// long pasted document can carry a trivial question.
 func DefaultWeights() Weights {
 	return Weights{
 		Length:      0.10,
-		Entropy:     0.15,
-		Lexical:     0.15,
-		Compression: 0.10,
-		Structural:  0.20,
-		Readability: 0.10,
-		Constraint:  0.20,
+		Lexical:     0.05,
+		Structural:  0.10,
+		Readability: 0.05,
+		Constraint:  0.25,
+		Code:        0.20,
+		Demand:      0.25,
 	}
 }
+
+// stretch is the gain applied to the weighted sum before clamping. With the
+// default weights a request that saturates constraints, structure and code
+// reaches 1.0; a substantive analytical request scores about 0.8; a one-line
+// factual question stays under 0.2.
+const stretch = 1.8
 
 // ---------- Package-level compiled regexes (compiled once at startup) ----------
 
@@ -79,44 +101,67 @@ var (
 	constraintPatterns = []*regexp.Regexp{
 		// Format constraints
 		regexp.MustCompile(`(?i)\b(en|au|in)\s+(format|JSON|CSV|XML|YAML|markdown|HTML)\b`),
-		regexp.MustCompile(`(?i)\b(moins de|plus de|maximum|minimum|at most|at least|no more than|between)\s+\d+`),
-		regexp.MustCompile(`(?i)\b(mot[s]?|word[s]?|ligne[s]?|line[s]?|caractère[s]?|character[s]?|token[s]?|paragraph[s]?)\b`),
+		regexp.MustCompile(`(?i)\b(moins de|plus de|maximum|minimum|au plus|au moins|at most|at least|no more than|between|exactement|exactly)\s+\d+`),
+		regexp.MustCompile(`(?i)\b\d+\s+(mots?|words?|lignes?|lines?|caractères?|characters?|tokens?|paragraphes?|paragraphs?|phrases?|sentences?|points?|bullets?|vers|étapes?|steps?)\b`),
 		// Conditional logic
 		regexp.MustCompile(`(?i)\b(si|if|lorsque|when|unless|sauf si|à condition)\b.*\b(alors|then|sinon|else|otherwise)\b`),
-		// Explicit instructions
-		regexp.MustCompile(`(?i)\b(tu dois|you must|il faut|ensure|make sure|assure|n'utilise pas|do not use|don't use|avoid)\b`),
+		// Explicit instructions and prohibitions
+		regexp.MustCompile(`(?i)\b(tu dois|vous devez|you must|il faut|ensure|make sure|assure-toi|veille à|n'utilise pas|ne pas utiliser|do not|don't|never|jamais|avoid|évite|interdit|obligatoire|respecte|respect|en respectant|respecting|conform|conforme)\b`),
 		// Enumerations / multi-step ((?m) so ^ matches each line)
 		regexp.MustCompile(`(?im)(^\s*[\-\*]\s|^\s*\d+[\.\)]\s)`),
+		// Inline enumerations: "1) ... 2) ... 3)"
+		regexp.MustCompile(`\b\d\)\s`),
 		// Role assignment
-		regexp.MustCompile(`(?i)\b(agis comme|act as|tu es|you are|behave as|play the role)\b`),
+		regexp.MustCompile(`(?i)\b(agis comme|act as|tu es un|tu es une|you are a|you are an|behave as|play the role|en tant que|as a senior|as an expert)\b`),
 		// Output structure
-		regexp.MustCompile(`(?i)\b(tableau|table|liste|list|bullet|headers?|titre[s]?|section[s]?)\b`),
-		// Language constraint
-		regexp.MustCompile(`(?i)\b(en français|en anglais|in english|in french|in spanish|en español)\b`),
+		regexp.MustCompile(`(?i)\b(tableau|table|liste|list|bullet|headers?|titres?|sections?|schéma|diagram|template|plan détaillé|outline)\b`),
+		// Language, tone and audience
+		regexp.MustCompile(`(?i)\b(en français|en anglais|in english|in french|in spanish|en español|ton formel|ton neutre|formal tone|informal|tutoiement|vouvoiement|pour un public|for an audience|for beginners|pour débutants)\b`),
+		// Justification and sourcing
+		regexp.MustCompile(`(?i)\b(cite|citer|sources?|références?|references?|justifie|justify|argumenté|argumentée|explique pourquoi|explain why|compare|comparatif|comparative|recommandations?|recommendations?|chiffré|chiffrées|quantified)\b`),
+	}
+
+	// demandPatterns detect verbs and nouns that call for reasoning rather than
+	// recall: proving, comparing, designing, justifying. Each pattern counts
+	// once, so a text is measured on how many kinds of demand it makes.
+	demandPatterns = []*regexp.Regexp{
+		regexp.MustCompile(`(?i)\b(prouve|prouver|démontre|démontrer|prove|demonstrate|induction|théorème|theorem|lemma)\b`),
+		regexp.MustCompile(`(?i)\b(compare|comparer|comparaison|comparatif|comparative|versus|vs\.?|compromis|trade-?offs?|avantages et inconvénients|pros and cons)\b`),
+		regexp.MustCompile(`(?i)\b(analyse|analyser|analyze|analysis|évalue|évaluer|evaluate|assess|critique|critically|audit|diagnostic|diagnose)\b`),
+		regexp.MustCompile(`(?i)\b(explique pourquoi|explain why|pourquoi|why|justifie|justify|argumente|argue|argumentée?|raisonnement|reasoning|implications?|conséquences|consequences)\b`),
+		regexp.MustCompile(`(?i)\b(conçois|concevoir|design|architecture|architecte|spécification|specification|cahier des charges|rédige|rédiger|write a (report|spec|essay|proposal|plan)|stratégie|strategy|roadmap|plan détaillé)\b`),
+		regexp.MustCompile(`(?i)\b(optimise|optimiser|optimize|améliore|improve|refactor|generali[sz]e[sd]?|généralis(e|er|ez)|extrapole|extrapolate|modélise|model the|simulate|simule)\b`),
+		regexp.MustCompile(`(?i)\b(synthétise|synthèse|synthesize|synthesis|résume et compare|discuss|discute|débat|debate|nuance|limites|limitations|edge cases|cas limites)\b`),
 	}
 
 	// reMarkdownHeader matches ATX-style Markdown headers (# to ######) at line start.
 	reMarkdownHeader = regexp.MustCompile(`(?m)^#{1,6}\s+\S`)
 	// reMarkdownListItem matches bullet and numbered list items at line start.
 	reMarkdownListItem = regexp.MustCompile(`(?m)^\s*[\-\*\+]\s|^\s*\d+[\.\)]\s`)
+
+	// reCodeFence matches fenced code blocks (``` or ~~~).
+	reCodeFence = regexp.MustCompile("(?s)(```|~~~).*?(```|~~~)")
+	// codeSignalPatterns are constructs that almost never occur in prose: they
+	// catch code pasted without fences, stack traces, shell commands and paths.
+	codeSignalPatterns = []*regexp.Regexp{
+		regexp.MustCompile(`(?m)^\s*(func|def|class|import|from|package|public|private|static|const|let|var|return|async|await|fn|impl|struct|enum|interface|SELECT|INSERT|UPDATE|DELETE|CREATE TABLE)\b`),
+		regexp.MustCompile(`\b(if|for|while|switch|catch)\s*\(`),
+		regexp.MustCompile(`[A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*\([^)]*\)`), // obj.method(args)
+		regexp.MustCompile(`(?m)^\s*[}\]);]\s*$`),                                     // closing line
+		regexp.MustCompile(`[=!<>]==?|&&|\|\||->|=>|::|:=`),
+		regexp.MustCompile(`(?m)^\s*(\$|#|>>>|>)\s+\S`), // shell / REPL prompt
+		regexp.MustCompile(`\b(Traceback|Exception|Error|panic|stack trace|at [a-zA-Z_.]+\([A-Za-z]+\.[a-z]+:\d+\))\b`),
+		regexp.MustCompile(`(?i)\b(ne compile pas|does not compile|doesn't compile|erreur de compilation|compile error|segfault|null pointer|undefined is not|stacktrace|bug|debug|refactor|unit test|tests? unitaires?)\b`),
+		regexp.MustCompile(`(?i)\b(golang|python|javascript|typescript|rust|java|kotlin|swift|c\+\+|c#|php|ruby|sql|bash|html|css|json|yaml|regex|api|sdk|npm|pip|cargo|docker|kubernetes|git)\b`),
+	}
 )
-
-// ---------- Object pools to avoid per-call allocations ----------
-
-var gzipBufPool = sync.Pool{
-	New: func() any { return new(bytes.Buffer) },
-}
-
-var gzipWriterPool = sync.Pool{
-	New: func() any {
-		w, _ := gzip.NewWriterLevel(nil, gzip.BestCompression)
-		return w
-	},
-}
 
 // Analyze computes the full complexity score for a given prompt.
 func Analyze(text string, w Weights) Score {
 	tokens := tokenize(text)
+	if len(tokens) == 0 {
+		return Score{Level: label(0), Stats: Stats{SentenceCount: 1}}
+	}
 	sentences := splitSentences(text)
 
 	stats := Stats{
@@ -125,74 +170,63 @@ func Analyze(text string, w Weights) Score {
 		UniqueTokens:  countUnique(tokens),
 		AvgWordLength: avgLength(tokens),
 	}
-
-	// --- Shannon entropy on character bigrams ---
-	stats.ShannonEntropy = shannonEntropy(text)
-
-	// --- Compression ratio (Kolmogorov proxy) ---
-	stats.CompressionRatio = compressionRatio(text)
-
-	// --- Nesting depth (parentheses, brackets, quotes) ---
+	stats.WordsPerSentence = float64(stats.TokenCount) / float64(stats.SentenceCount)
 	stats.MaxNestingDepth = nestingDepth(text)
-
-	// --- Constraint detection ---
 	stats.ConstraintCount = countConstraints(text)
-
-	// --- Question count ---
+	stats.DemandCount = countDemands(text)
 	stats.QuestionCount = countQuestions(text)
-
-	// --- Markdown structure (headers + list items) ---
 	stats.MarkdownElements = countMarkdownElements(text)
+	stats.CodeBlocks = len(reCodeFence.FindAllString(text, -1))
+	stats.CodeSignals = countCodeSignals(text)
+	stats.HasCode = stats.CodeBlocks > 0 || stats.CodeSignals >= 3
 
-	// --- Flesch-Kincaid grade level ---
-	stats.FleschKincaid = fleschKincaid(tokens, sentences)
-
-	// ---- Normalize each metric to 0–1 ----
 	s := Score{Stats: stats}
 
-	// Length: sigmoid-like scaling, 500 tokens ≈ 0.5
-	s.LengthScore = sigmoid(float64(stats.TokenCount), 500, 0.005)
+	// Length: 400 words score 0.5, 1500 words saturate. Read on the whole
+	// request, a long pasted document counts for what it is: more to process.
+	s.LengthScore = rise(float64(stats.TokenCount), 400, 0.008)
 
-	// Entropy: meaningful only for texts of at least 50 chars; below that threshold all bigrams
-	// tend to be unique (artificially high entropy on short texts like "Bonjour !").
-	if len(text) >= 50 {
-		s.EntropyScore = clamp(stats.ShannonEntropy/5.0, 0, 1)
-	}
-
-	// Lexical richness: type-token ratio, dampened by token count to avoid TTR bias on short texts.
-	// A 1-token text has TTR=1 by definition; the dampener scales it to near-zero until 20+ tokens.
+	// Lexical richness: type-token ratio, dampened by token count so that a
+	// three-word prompt (TTR = 1 by construction) does not look rich.
 	if len(tokens) > 0 {
 		ttr := float64(stats.UniqueTokens) / float64(len(tokens))
-		dampener := clamp(float64(len(tokens))/20.0, 0, 1)
+		dampener := clamp(float64(len(tokens))/30.0, 0, 1)
 		s.LexicalRichness = clamp(ttr*dampener, 0, 1)
 	}
 
-	// Compression: meaningful only for texts of at least 50 bytes (avoids gzip header overhead).
-	// Higher ratio = harder to compress = more complex.
-	s.CompressionScore = clamp(stats.CompressionRatio, 0, 1)
-
-	// Structural: nesting + questions + sentence count + markdown structure
-	nestNorm := sigmoid(float64(stats.MaxNestingDepth), 3, 0.8)
-	questNorm := sigmoid(float64(stats.QuestionCount), 3, 0.5)
-	sentNorm := sigmoid(float64(stats.SentenceCount), 10, 0.15)
-	mdNorm := sigmoid(float64(stats.MarkdownElements), 8, 0.25)
+	// Structural: nesting, several questions, many sentences, markdown layout.
+	nestNorm := rise(float64(stats.MaxNestingDepth), 2, 1.0)
+	questNorm := rise(float64(stats.QuestionCount), 2, 0.9)
+	sentNorm := rise(float64(stats.SentenceCount), 6, 0.35)
+	mdNorm := rise(float64(stats.MarkdownElements), 3, 0.7)
 	s.StructuralScore = clamp((nestNorm+questNorm+sentNorm+mdNorm)/4.0, 0, 1)
 
-	// Readability: FK grade level, ~16 = very complex
-	s.ReadabilityScore = clamp(stats.FleschKincaid/16.0, 0, 1)
+	// Readability, language-agnostic: long words and long sentences both make
+	// a text denser. 6 characters per word and 20 words per sentence each mark
+	// the midpoint; the two are averaged.
+	if stats.TokenCount > 0 {
+		wordNorm := rise(stats.AvgWordLength, 6, 1.2)
+		sentLenNorm := rise(stats.WordsPerSentence, 20, 0.15)
+		s.ReadabilityScore = clamp((wordNorm+sentLenNorm)/2, 0, 1)
+	}
 
-	// Constraints: 5+ constraints = saturated
-	s.ConstraintScore = sigmoid(float64(stats.ConstraintCount), 3, 0.6)
+	// Constraints: three explicit constraints reach the midpoint, six saturate.
+	s.ConstraintScore = rise(float64(stats.ConstraintCount), 3, 0.9)
 
-	// ---- Composite ----
-	s.Composite = clamp(
-		w.Length*s.LengthScore+
-			w.Entropy*s.EntropyScore+
-			w.Lexical*s.LexicalRichness+
-			w.Compression*s.CompressionScore+
-			w.Structural*s.StructuralScore+
-			w.Readability*s.ReadabilityScore+
-			w.Constraint*s.ConstraintScore,
+	// Code: a fenced block alone is a strong signal; scattered signals add up.
+	codeUnits := float64(stats.CodeBlocks)*3 + float64(stats.CodeSignals)
+	s.CodeScore = rise(codeUnits, 3, 0.8)
+
+	// Demand: two kinds of reasoning demand score about 0.6, three about 0.9.
+	s.DemandScore = rise(float64(stats.DemandCount), 1.5, 1.4)
+
+	s.Composite = clamp(stretch*(w.Length*s.LengthScore+
+		w.Lexical*s.LexicalRichness+
+		w.Structural*s.StructuralScore+
+		w.Readability*s.ReadabilityScore+
+		w.Constraint*s.ConstraintScore+
+		w.Code*s.CodeScore+
+		w.Demand*s.DemandScore),
 		0, 1,
 	)
 
@@ -248,59 +282,12 @@ func avgLength(tokens []string) float64 {
 	}
 	total := 0
 	for _, t := range tokens {
-		total += len(t)
+		total += len([]rune(t))
 	}
 	return float64(total) / float64(len(tokens))
 }
 
-// shannonEntropy computes the Shannon entropy on character bigrams.
-func shannonEntropy(text string) float64 {
-	if len(text) < 2 {
-		return 0
-	}
-	lower := strings.ToLower(text)
-	freq := make(map[string]int)
-	total := 0
-	runes := []rune(lower)
-	for i := 0; i < len(runes)-1; i++ {
-		bg := string(runes[i : i+2])
-		freq[bg]++
-		total++
-	}
-	if total == 0 {
-		return 0
-	}
-	entropy := 0.0
-	ft := float64(total)
-	for _, c := range freq {
-		p := float64(c) / ft
-		if p > 0 {
-			entropy -= p * math.Log2(p)
-		}
-	}
-	return entropy
-}
-
-// compressionRatio returns the gzip compressed/original size ratio (0–1).
-// A higher ratio means the text is harder to compress (more random/complex).
-// Returns 0 for texts shorter than 50 bytes where gzip header overhead is misleading.
-func compressionRatio(text string) float64 {
-	if len(text) < 50 {
-		return 0
-	}
-	buf := gzipBufPool.Get().(*bytes.Buffer)
-	buf.Reset()
-	gz := gzipWriterPool.Get().(*gzip.Writer)
-	gz.Reset(buf)
-	gz.Write([]byte(text))
-	gz.Close()
-	ratio := float64(buf.Len()) / float64(len(text))
-	gzipBufPool.Put(buf)
-	gzipWriterPool.Put(gz)
-	return clamp(ratio, 0, 1)
-}
-
-// nestingDepth measures max depth of (), [], {}, «», and markdown code blocks.
+// nestingDepth measures max depth of (), [], {}, «».
 func nestingDepth(text string) int {
 	maxD, cur := 0, 0
 	openers := map[rune]rune{'(': ')', '[': ']', '{': '}', '«': '»'}
@@ -332,6 +319,30 @@ func countConstraints(text string) int {
 	return count
 }
 
+// countDemands counts how many distinct kinds of reasoning demand the text
+// makes (proving, comparing, designing…), one point per matching pattern.
+func countDemands(text string) int {
+	count := 0
+	for _, re := range demandPatterns {
+		if re.MatchString(text) {
+			count++
+		}
+	}
+	return count
+}
+
+// countCodeSignals counts code-like constructs outside of fenced blocks, each
+// pattern contributing at most a few hits so one repeated construct does not
+// dominate.
+func countCodeSignals(text string) int {
+	unfenced := reCodeFence.ReplaceAllString(text, " ")
+	count := 0
+	for _, re := range codeSignalPatterns {
+		count += min(len(re.FindAllString(unfenced, -1)), 4)
+	}
+	return count
+}
+
 // countMarkdownElements counts ATX headers and list items as structural signals.
 func countMarkdownElements(text string) int {
 	headers := len(reMarkdownHeader.FindAllString(text, -1))
@@ -343,52 +354,19 @@ func countQuestions(text string) int {
 	return len(reQuestion.FindAllString(text, -1))
 }
 
-// fleschKincaid computes the Flesch-Kincaid grade level.
-func fleschKincaid(tokens, sentences []string) float64 {
-	if len(tokens) == 0 || len(sentences) == 0 {
+// rise is a logistic curve rescaled so that rise(0) = 0 and rise(+inf) = 1,
+// with the given midpoint (where the raw logistic is 0.5) and steepness. It
+// replaces plain sigmoids, whose non-zero value at 0 gave every prompt a
+// floor score whatever its content.
+func rise(x, midpoint, steepness float64) float64 {
+	if x <= 0 {
 		return 0
 	}
-	syllables := 0
-	for _, t := range tokens {
-		syllables += countSyllables(t)
-	}
-	wps := float64(len(tokens)) / float64(len(sentences))
-	spw := float64(syllables) / float64(len(tokens))
-	grade := 0.39*wps + 11.8*spw - 15.59
-	if grade < 0 {
-		grade = 0
-	}
-	return grade
+	at0 := logistic(0, midpoint, steepness)
+	return clamp((logistic(x, midpoint, steepness)-at0)/(1-at0), 0, 1)
 }
 
-// countSyllables provides a rough syllable count for a word.
-func countSyllables(word string) int {
-	word = strings.ToLower(word)
-	if len(word) <= 2 {
-		return 1
-	}
-	vowels := "aeiouyàâéèêëïîôùûü"
-	count := 0
-	prev := false
-	runes := []rune(word)
-	for _, r := range runes {
-		isV := strings.ContainsRune(vowels, r)
-		if isV && !prev {
-			count++
-		}
-		prev = isV
-	}
-	// Silent 'e' heuristic
-	if strings.HasSuffix(word, "e") && count > 1 {
-		count--
-	}
-	if count == 0 {
-		count = 1
-	}
-	return count
-}
-
-func sigmoid(x, midpoint, steepness float64) float64 {
+func logistic(x, midpoint, steepness float64) float64 {
 	return 1.0 / (1.0 + math.Exp(-steepness*(x-midpoint)))
 }
 
@@ -404,11 +382,11 @@ func clamp(v, lo, hi float64) float64 {
 
 func label(score float64) string {
 	switch {
-	case score < 0.25:
+	case score < 0.20:
 		return "trivial"
-	case score < 0.45:
+	case score < 0.40:
 		return "simple"
-	case score < 0.65:
+	case score < 0.60:
 		return "moderate"
 	case score < 0.80:
 		return "complex"

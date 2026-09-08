@@ -11,12 +11,16 @@ import (
 )
 
 const PluginName = "complexity-scorer"
-const PluginVersion = "0.1.0"
+const PluginVersion = "0.2.0"
 
-// Plugin scores the linguistic and structural complexity of a request from
-// its text alone: length, vocabulary, entropy, nesting, explicit constraints,
-// code presence. It also derives the number of output tokens such a request
-// is likely to produce, which downstream estimators can consume.
+// Plugin scores how demanding a request is from its text alone.
+//
+// Two things are measured separately because they call for different
+// decisions. The complexity of what the user is asking now, read on the last
+// user turn: constraints, structure, code, vocabulary. And the size of the
+// conversation the model has to read, exposed as context_tokens. A long,
+// banal chat is not a hard request, and a one-line question about a pasted
+// stack trace is.
 type Plugin struct {
 	proto.UnimplementedXoloPluginServer
 }
@@ -25,7 +29,7 @@ func (p *Plugin) Describe(_ context.Context, _ *proto.DescribeRequest) (*proto.P
 	return &proto.PluginDescriptor{
 		Name:         PluginName,
 		Version:      PluginVersion,
-		Description:  "Évalue la complexité lexicale et structurelle de la requête (score composite entre 0 et 1) et estime la longueur de la réponse.",
+		Description:  "Évalue la complexité de la demande courante (score entre 0 et 1 : contraintes, structure, code, vocabulaire) et mesure séparément la taille du contexte.",
 		Capabilities: []proto.PluginDescriptor_Capability{proto.PluginDescriptor_PRE_REQUEST},
 		InputPorts: []*proto.PortDescriptor{
 			{Name: "request", PortType: "request", Required: true},
@@ -33,20 +37,27 @@ func (p *Plugin) Describe(_ context.Context, _ *proto.DescribeRequest) (*proto.P
 		OutputPorts: []*proto.PortDescriptor{
 			{Name: "complexity", PortType: "number"},
 			{Name: "level", PortType: "string"},
+			{Name: "has_code", PortType: "boolean"},
+			{Name: "constraint_count", PortType: "number"},
 			{Name: "word_count", PortType: "number"},
+			{Name: "context_tokens", PortType: "number"},
 			{Name: "estimated_output_tokens", PortType: "number"},
 		},
 	}, nil
 }
 
 func (p *Plugin) PreRequest(_ context.Context, in *proto.PreRequestInput) (*proto.PreRequestOutput, error) {
-	score := complexity.AnalyzeDefault(requesttext.Context(in.MessagesJson))
+	turn := complexity.AnalyzeDefault(requesttext.LastUserTurn(in.MessagesJson))
+	contextTokens := requesttext.EstimateTokens(requesttext.Context(in.MessagesJson))
 
 	outputs := map[string]interface{}{
-		"complexity":              score.Composite,
-		"level":                   score.Level,
-		"word_count":              score.Stats.TokenCount,
-		"estimated_output_tokens": estimateOutputTokens(score.Stats.TokenCount, score.Composite),
+		"complexity":              turn.Composite,
+		"level":                   turn.Level,
+		"has_code":                turn.Stats.HasCode,
+		"constraint_count":        turn.Stats.ConstraintCount,
+		"word_count":              turn.Stats.TokenCount,
+		"context_tokens":          contextTokens,
+		"estimated_output_tokens": estimateOutputTokens(turn.Stats.TokenCount, turn.Composite),
 	}
 	b, _ := json.Marshal(outputs)
 
@@ -54,11 +65,14 @@ func (p *Plugin) PreRequest(_ context.Context, in *proto.PreRequestInput) (*prot
 }
 
 // estimateOutputTokens assumes that a more complex request calls for a longer
-// answer: from a fifth of the input for trivial prompts up to one and a half
-// times the input for the most demanding ones, capped at 4096 tokens.
-func estimateOutputTokens(inputTokens int, composite float64) int {
-	ratio := 0.2 + composite*1.3
-	out := int(math.Min(float64(inputTokens)*ratio, 4096))
+// answer. The estimate grows with the request's own length and with its
+// complexity: a trivial question gets a short answer whatever its size, a
+// demanding one gets up to about 1.5 times its length, floored at 64 tokens
+// and capped at 4096.
+func estimateOutputTokens(words int, composite float64) int {
+	base := 64 + composite*1024
+	scaled := float64(words) * (0.2 + composite*1.3)
+	out := int(math.Min(math.Max(base, scaled), 4096))
 	if out < 64 {
 		return 64
 	}
