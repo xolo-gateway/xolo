@@ -1,7 +1,11 @@
 package promptguard
 
 import (
+	"math"
 	"sort"
+	"sync"
+
+	"github.com/xolo-gateway/xolo/plugins/internal/promptguard/data"
 )
 
 // Segment is one piece of the request to analyse, tagged with its origin.
@@ -25,6 +29,43 @@ type Options struct {
 	// "explain why this is an attack:"). 0 means DefaultQuoteDamping, 1
 	// disables the damping.
 	QuoteDamping float64
+	// Model is the statistical layer. Nil means the embedded DefaultModel;
+	// NoModel disables it.
+	Model   *Model
+	NoModel bool
+	// ModelCap bounds what the model can add on its own: its probability
+	// enters the noisy-OR capped at this value, so that a blocking threshold
+	// above the cap always needs a rule or a structural signal as well. 0
+	// means DefaultModelCap.
+	ModelCap float64
+	// ModelFloor is the probability under which the model says nothing.
+	// Between the floor and the cap the contribution is the probability
+	// itself. 0 means DefaultModelFloor.
+	ModelFloor float64
+}
+
+const (
+	// DefaultModelCap keeps a model-only detection under the usual blocking
+	// thresholds while letting it cross the "suspicious" band.
+	DefaultModelCap = 0.6
+	// DefaultModelFloor ignores the model's noise on honest requests.
+	DefaultModelFloor = 0.5
+)
+
+var (
+	defaultModelOnce sync.Once
+	defaultModel     *Model
+	defaultModelErr  error
+)
+
+// DefaultModel returns the embedded model, loaded once. An invalid embedded
+// model is a build error caught by the tests; at runtime it disables the
+// statistical layer rather than the plugin.
+func DefaultModel() (*Model, error) {
+	defaultModelOnce.Do(func() {
+		defaultModel, defaultModelErr = LoadModel(data.RawModel)
+	})
+	return defaultModel, defaultModelErr
 }
 
 // DefaultQuoteDamping halves the risk of a quoted attack: enough to keep a
@@ -44,6 +85,9 @@ type Guard struct {
 	maxRunes     int
 	kindWeights  map[SegmentKind]float64
 	quoteDamping float64
+	model        *Model
+	modelCap     float64
+	modelFloor   float64
 }
 
 // New builds a Guard.
@@ -62,8 +106,25 @@ func New(opts Options) *Guard {
 	if g.quoteDamping > 1 {
 		g.quoteDamping = 1
 	}
+	if !opts.NoModel {
+		g.model = opts.Model
+		if g.model == nil {
+			g.model, _ = DefaultModel()
+		}
+	}
+	g.modelCap = opts.ModelCap
+	if g.modelCap <= 0 {
+		g.modelCap = DefaultModelCap
+	}
+	g.modelFloor = opts.ModelFloor
+	if g.modelFloor <= 0 {
+		g.modelFloor = DefaultModelFloor
+	}
 	return g
 }
+
+// Model exposes the active model, nil when disabled.
+func (g *Guard) Model() *Model { return g.model }
 
 // Rules exposes the active rule set.
 func (g *Guard) Rules() *RuleSet { return g.rules }
@@ -78,6 +139,9 @@ type SegmentResult struct {
 	// Quoted is true when every match sat inside framed quotation marks and
 	// the risk was damped accordingly.
 	Quoted bool `json:"quoted,omitempty"`
+	// ModelProbability is the raw output of the statistical layer, before
+	// floor and cap. 0 when the model is disabled.
+	ModelProbability float64 `json:"model_probability"`
 }
 
 // Assessment is the outcome of Assess. Every number lives in [0, 1].
@@ -96,8 +160,11 @@ type Assessment struct {
 	Segment SegmentKind `json:"segment,omitempty"`
 	// Quoted reports that the segment carrying Risk was damped because its
 	// matches were all quoted.
-	Quoted   bool            `json:"quoted,omitempty"`
-	Segments []SegmentResult `json:"segments,omitempty"`
+	Quoted bool `json:"quoted,omitempty"`
+	// ModelProbability is the highest raw model output over the segments.
+	ModelProbability float64         `json:"model_probability"`
+	ModelVersion     string          `json:"model_version,omitempty"`
+	Segments         []SegmentResult `json:"segments,omitempty"`
 	// Structural aggregates the signals over all segments.
 	Structural   Structural `json:"structural"`
 	RulesVersion string     `json:"rules_version"`
@@ -123,6 +190,9 @@ func (a Assessment) CategoryList() []Category {
 // Assess analyses the segments. Empty segments are skipped.
 func (g *Guard) Assess(segments []Segment) Assessment {
 	out := Assessment{RulesVersion: g.rules.Version, Categories: map[Category]float64{}}
+	if g.model != nil {
+		out.ModelVersion = g.model.Version
+	}
 	var all []Match
 	for _, seg := range segments {
 		if seg.Text == "" {
@@ -132,6 +202,9 @@ func (g *Guard) Assess(segments []Segment) Assessment {
 		out.Segments = append(out.Segments, res)
 		all = append(all, res.Matches...)
 		out.Structural.add(res.Structural)
+		if res.ModelProbability > out.ModelProbability {
+			out.ModelProbability = res.ModelProbability
+		}
 		if res.Risk > out.Risk || out.Segment == "" {
 			out.Risk = res.Risk
 			out.Segment = res.Kind
@@ -180,7 +253,26 @@ func (g *Guard) assessSegment(seg Segment) SegmentResult {
 	sort.SliceStable(matches, func(i, j int) bool { return matches[i].Weight > matches[j].Weight })
 
 	ruleScore := RuleScore(matches)
-	risk := noisyOr([]float64{ruleScore, st.Score()})
+	evidence := []float64{ruleScore, st.Score()}
+
+	// The model reads the same canonical text, plus the unfolded one when
+	// there is one: leetspeak fools its n-grams as much as the rules.
+	var prob float64
+	if g.model != nil {
+		prob = g.model.Predict(n.Canonical)
+		if st.Defolded != "" {
+			if p := g.model.Predict(st.Defolded); p > prob {
+				prob = p
+			}
+		}
+		if prob >= g.modelFloor {
+			evidence = append(evidence, math.Min(prob, g.modelCap))
+		}
+	}
+	risk := noisyOr(evidence)
+
+	// Damping applies to the whole, model included: quotation marks explain
+	// the model's excitement exactly as they explain the rules' matches.
 	quoted := false
 	if g.quoteDamping < 1 && len(matches) > 0 && allQuoted(n.Canonical, matches) {
 		risk *= g.quoteDamping
@@ -189,7 +281,7 @@ func (g *Guard) assessSegment(seg Segment) SegmentResult {
 	if w, ok := g.kindWeights[seg.Kind]; ok && w != 1 {
 		risk = clamp01(risk * w)
 	}
-	return SegmentResult{Kind: seg.Kind, Risk: risk, RuleScore: ruleScore, Structural: st, Matches: matches, Quoted: quoted}
+	return SegmentResult{Kind: seg.Kind, Risk: risk, RuleScore: ruleScore, Structural: st, Matches: matches, Quoted: quoted, ModelProbability: prob}
 }
 
 func (s *Structural) add(o Structural) {

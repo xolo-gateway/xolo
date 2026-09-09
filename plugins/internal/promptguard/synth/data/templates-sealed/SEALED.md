@@ -45,6 +45,7 @@ Mesurer :
 | Date | Motif | Corpus de travail | Scellé | FP | FN |
 | --- | --- | ---: | ---: | ---: | ---: |
 | 2026-09-09 | Clôture de l'étape 2 (règles + signaux, sans modèle) | F1 99,9 % | **F1 95,9 %** (P 98,6 %, R 93,4 %) | 8 | 39 |
+| 2026-09-09 | Modèle v1 (`2026-09-09.1`), règles + signaux + modèle, plancher 0,5, plafond 0,6 | F1 99,9 % | **F1 95,5 %** (P 95,3 %, R 95,6 %) | 28 | 26 |
 
 **Lecture de la première ouverture.** Quatre points d'écart entre le corpus de
 travail et le scellé, sur 874 échantillons : c'est l'ordre de grandeur de
@@ -56,3 +57,17 @@ comme une entrée de journal d'audit. Les huit faux positifs viennent d'une
 seule famille française, un test unitaire qui contient une charge d'attaque.
 Ces deux familles ne seront pas utilisées pour corriger les règles ; elles
 disent ce que le modèle statistique de l'étape 3 devra apprendre.
+
+**Lecture de la deuxième ouverture.** Le modèle récupère treize des
+trente-neuf attaques manquées, le rappel anglais passe de 87,8 à 91,8 %. Il
+ajoute vingt faux positifs, tous sur une même famille française : une
+documentation technique qui parle de la configuration du prompt système sans
+rien demander. Le F1 global recule de 0,4 point. Rien n'a été réglé sur ce
+résultat. La correction retenue avant l'ouverture, appliquer l'atténuation des
+citations au risque combiné plutôt qu'aux règles seules, a été décidée sur les
+trois faux positifs du jeu de test de travail. Ce que dit cette ouverture,
+c'est que le corpus de travail manque de textes bénins sur la configuration et
+la sécurité, et c'est là qu'ira la prochaine campagne `author` du jeu de
+travail, avec une consigne explicite. Cette ouverture a eu lieu deux fois de
+suite, avant et après la correction sur l'atténuation, avec les mêmes
+chiffres ; elle compte pour une.

@@ -13,6 +13,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"math/rand"
@@ -38,6 +39,7 @@ const (
 	defaultLexicons  = "plugins/internal/promptguard/synth/data/lexicons"
 	defaultCorpus    = "plugins/internal/promptguard/data/corpus.jsonl"
 	defaultBenign    = "plugins/internal/complexity/data/corpus.jsonl"
+	defaultModel     = "plugins/internal/promptguard/data/model.json"
 )
 
 func main() {
@@ -55,6 +57,8 @@ func main() {
 		err = cmdInspect(os.Args[2:])
 	case "author":
 		err = cmdAuthor(os.Args[2:])
+	case "train":
+		err = cmdTrain(os.Args[2:])
 	default:
 		usage()
 		os.Exit(2)
@@ -71,7 +75,8 @@ func usage() {
   render    fill the templates and write the labelled corpus
   eval      score a corpus with the rules and report precision/recall
   inspect   render one template a few times, for proofreading
-  author    have a model write new templates, validated before being kept`)
+  author    have a model write new templates, validated before being kept
+  train     fit the logistic regression on the corpus and write model.json`)
 }
 
 func loadSources(templatesDir, lexiconsDir string) (synth.Lexicon, []*synth.Template, error) {
@@ -202,6 +207,10 @@ func cmdEval(args []string) error {
 	split := fs.String("split", "", "restrict to train, validation or test")
 	showFP := fs.Int("show-fp", 10, "false positives to print")
 	showFN := fs.Int("show-fn", 10, "false negatives to print")
+	modelPath := fs.String("model", "", "model file to use instead of the embedded one")
+	noModel := fs.Bool("no-model", false, "rules and structural signals only")
+	modelFloor := fs.Float64("model-floor", 0, "model probability under which it contributes nothing (0 = default)")
+	modelCap := fs.Float64("model-cap", 0, "maximum contribution of the model (0 = default)")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -209,7 +218,23 @@ func cmdEval(args []string) error {
 	if err != nil {
 		return err
 	}
-	g := promptguard.New(promptguard.Options{})
+	opts := promptguard.Options{NoModel: *noModel, ModelFloor: *modelFloor, ModelCap: *modelCap}
+	if *modelPath != "" {
+		raw, err := os.ReadFile(*modelPath)
+		if err != nil {
+			return err
+		}
+		if opts.Model, err = promptguard.LoadModel(raw); err != nil {
+			return err
+		}
+	}
+	g := promptguard.New(opts)
+	switch {
+	case g.Model() == nil:
+		fmt.Println("model: none")
+	default:
+		fmt.Printf("model: %s\n", g.Model().Version)
+	}
 
 	total := counts{}
 	byLang := map[string]*counts{}
@@ -356,6 +381,19 @@ func cmdAuthor(args []string) error {
 
 type counts struct{ tp, fp, fn, tn int }
 
+func (c *counts) tally(malicious, flagged bool) {
+	switch {
+	case malicious && flagged:
+		c.tp++
+	case malicious:
+		c.fn++
+	case flagged:
+		c.fp++
+	default:
+		c.tn++
+	}
+}
+
 func get(m map[string]*counts, k string) *counts {
 	if c, ok := m[k]; ok {
 		return c
@@ -408,4 +446,147 @@ func sortedKeys[V any](m map[string]V) []string {
 	}
 	sort.Strings(out)
 	return out
+}
+
+func cmdTrain(args []string) error {
+	fs := flag.NewFlagSet("train", flag.ExitOnError)
+	corpus := fs.String("corpus", defaultCorpus, "labelled corpus")
+	benign := fs.String("extra-benign", defaultBenign, "JSONL of ordinary requests added as benign examples (empty to skip)")
+	out := fs.String("out", defaultModel, "where to write the model (empty: evaluate only)")
+	bits := fs.Int("bits", 16, "feature space size, as a power of two")
+	minN := fs.Int("min-n", 3, "shortest character n-gram")
+	maxN := fs.Int("max-n", 5, "longest character n-gram")
+	epochs := fs.Int("epochs", 10, "passes over the training split")
+	lr := fs.Float64("lr", 0.1, "AdaGrad learning rate")
+	l2 := fs.Float64("l2", 1e-4, "L2 regularisation")
+	seed := fs.Int64("seed", 1, "shuffle seed")
+	threshold := fs.Float64("threshold", 0.5, "probability at or above which a sample counts as flagged")
+	version := fs.String("version", time.Now().Format("2006-01-02")+".1", "model version string")
+	perFamily := fs.Bool("per-family", false, "report recall per family on the held-out splits")
+	fit := fs.String("fit", "train", "examples to fit on: 'train' (the training split, for an honest estimate) or 'all' (every split, for the shipped model)")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if *fit != "train" && *fit != "all" {
+		return fmt.Errorf("-fit must be train or all")
+	}
+	samples, err := synth.ReadJSONLFile(*corpus)
+	if err != nil {
+		return err
+	}
+	split := map[string][]promptguard.Example{}
+	families := map[string]int{}
+	famOf := map[string][]string{} // split -> family per example, for the per-family report
+	add := func(sp, text string, malicious bool, family string) {
+		split[sp] = append(split[sp], promptguard.Example{Canonical: promptguard.Normalize(text, 0).Canonical, Malicious: malicious})
+		famOf[sp] = append(famOf[sp], family)
+	}
+	for _, s := range samples {
+		fam := s.Language + "/" + s.Family
+		if s.Obfuscation != "" {
+			fam += "+obf"
+		}
+		add(s.Split, s.Text, s.Malicious, fam)
+		families[s.Split+"/"+s.Family]++
+	}
+	if *benign != "" {
+		texts, err := synth.ReadTexts(*benign)
+		if err != nil {
+			return fmt.Errorf("extra benign: %w", err)
+		}
+		// Ordinary requests are the traffic the model must leave alone. They
+		// have no family; spread them across the splits by hash of the text.
+		for _, t := range texts {
+			add(synth.SplitOf(t), t, false, "benign-corpus")
+		}
+		fmt.Printf("extra benign: %d ordinary requests\n", len(texts))
+	}
+	fmt.Printf("splits: train %d, validation %d, test %d (families: %d)\n",
+		len(split["train"]), len(split["validation"]), len(split["test"]), len(families))
+
+	m := promptguard.NewModel(*bits, *minN, *maxN)
+	m.Version = *version
+	opts := promptguard.TrainOptions{Epochs: *epochs, LearningRate: *lr, L2: *l2, Balance: true, Seed: *seed}
+	fitSet := split["train"]
+	if *fit == "all" {
+		fitSet = append(append(append([]promptguard.Example{}, split["train"]...), split["validation"]...), split["test"]...)
+	}
+	start := time.Now()
+	m.Train(fitSet, opts)
+	fmt.Printf("fitted on %s (%d examples) in %s (%d features, %d-%d-grams)\n\n", *fit, len(fitSet), time.Since(start).Round(time.Millisecond), 1<<*bits, *minN, *maxN)
+	if *fit == "all" {
+		fmt.Println("note: validation and test figures below are not held out any more")
+	}
+
+	m.Metrics = map[string]float64{}
+	for _, sp := range []string{"train", "validation", "test"} {
+		if len(split[sp]) == 0 {
+			continue
+		}
+		mt := m.Evaluate(split[sp], *threshold)
+		fmt.Printf("%-11s n=%-5d %s\n", sp, len(split[sp]), mt)
+		m.Metrics[sp+"_f1"] = mt.F1
+		m.Metrics[sp+"_precision"] = mt.Precision
+		m.Metrics[sp+"_recall"] = mt.Recall
+	}
+	// Probability spread on the held-out data: a model that answers 0.5 on
+	// everything has a fine F1 at one threshold and no use at any other.
+	fmt.Println()
+	for _, sp := range []string{"validation", "test"} {
+		printQuantiles(sp, m, split[sp])
+	}
+	if *perFamily {
+		for _, sp := range []string{"validation", "test"} {
+			fmt.Printf("\n%s per family:\n", sp)
+			byFam := map[string]*counts{}
+			for i, e := range split[sp] {
+				get(byFam, famOf[sp][i]).tally(e.Malicious, m.Predict(e.Canonical) >= *threshold)
+			}
+			for _, f := range sortedKeys(byFam) {
+				c := byFam[f]
+				p, r, _ := prf(c.tp, c.fp, c.fn)
+				if c.tp+c.fn > 0 {
+					fmt.Printf("  %-44s n=%-4d R=%5.1f%%\n", f, c.tp+c.fn, r*100)
+				} else {
+					fmt.Printf("  %-44s n=%-4d benign FP=%d (P n/a %.0f)\n", f, c.fp+c.tn, c.fp, p)
+				}
+			}
+		}
+	}
+	if *out == "" {
+		return nil
+	}
+	if err := os.MkdirAll(filepath.Dir(*out), 0o755); err != nil {
+		return err
+	}
+	data, err := json.MarshalIndent(m, "", " ")
+	if err != nil {
+		return err
+	}
+	if err := os.WriteFile(*out, data, 0o644); err != nil {
+		return err
+	}
+	fmt.Printf("\nmodel %s written to %s (%d KB)\n", m.Version, *out, len(data)/1024)
+	return nil
+}
+
+func printQuantiles(label string, m *promptguard.Model, ex []promptguard.Example) {
+	var mal, ben []float64
+	for _, e := range ex {
+		p := m.Predict(e.Canonical)
+		if e.Malicious {
+			mal = append(mal, p)
+		} else {
+			ben = append(ben, p)
+		}
+	}
+	q := func(v []float64, f float64) float64 {
+		if len(v) == 0 {
+			return 0
+		}
+		sort.Float64s(v)
+		return v[int(f*float64(len(v)-1))]
+	}
+	fmt.Printf("%-11s malicious p10/p50/p90 = %.2f/%.2f/%.2f   benign p10/p50/p90 = %.2f/%.2f/%.2f\n",
+		label, q(mal, .1), q(mal, .5), q(mal, .9), q(ben, .1), q(ben, .5), q(ben, .9))
 }

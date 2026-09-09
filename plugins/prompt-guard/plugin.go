@@ -62,11 +62,12 @@ func (p *Plugin) Describe(_ context.Context, _ *proto.DescribeRequest) (*proto.P
 		&proto.PortDescriptor{Name: "segment", PortType: "string"},
 		&proto.PortDescriptor{Name: "suspicious", PortType: "boolean"},
 		&proto.PortDescriptor{Name: "quoted", PortType: "boolean"},
+		&proto.PortDescriptor{Name: "model_probability", PortType: "number"},
 	)
 	return &proto.PluginDescriptor{
 		Name:         PluginName,
 		Version:      PluginVersion,
-		Description:  "Détecte les tentatives d'injection de prompt (remplacement des instructions, fuite du prompt système, détournement de rôle, obfuscation, abus d'outils, exfiltration) par règles et signaux structurels, sans appel à un LLM. Expose un risque dans [0, 1] et un score par catégorie ; bloque au-delà d'un seuil optionnel.",
+		Description:  "Détecte les tentatives d'injection de prompt (remplacement des instructions, fuite du prompt système, détournement de rôle, obfuscation, abus d'outils, exfiltration) par règles, signaux structurels et un modèle statistique embarqué, sans appel à un LLM. Expose un risque dans [0, 1] et un score par catégorie ; bloque au-delà d'un seuil optionnel.",
 		Capabilities: []proto.PluginDescriptor_Capability{proto.PluginDescriptor_PRE_REQUEST},
 		InputPorts: []*proto.PortDescriptor{
 			{Name: "request", PortType: "request", Required: true},
@@ -115,12 +116,13 @@ func (p *Plugin) PreRequest(_ context.Context, in *proto.PreRequestInput) (*prot
 	}
 
 	outputs := map[string]interface{}{
-		"risk":       round3(a.Risk),
-		"categories": joinCategories(a),
-		"top_rule":   a.TopRule,
-		"segment":    string(a.Segment),
-		"suspicious": cfg.SuspiciousAbove > 0 && a.Risk >= cfg.SuspiciousAbove,
-		"quoted":     a.Quoted,
+		"risk":              round3(a.Risk),
+		"categories":        joinCategories(a),
+		"top_rule":          a.TopRule,
+		"segment":           string(a.Segment),
+		"suspicious":        cfg.SuspiciousAbove > 0 && a.Risk >= cfg.SuspiciousAbove,
+		"quoted":            a.Quoted,
+		"model_probability": round3(a.ModelProbability),
 	}
 	for _, c := range promptguard.Categories {
 		outputs[string(c)] = round3(a.Categories[c])
@@ -148,7 +150,7 @@ func (p *Plugin) defaultGuard() *promptguard.Guard {
 }
 
 func (p *Plugin) guardFor(cfg Config) (*promptguard.Guard, error) {
-	key := fmt.Sprintf("%v|%v|%s", cfg.ToolWeight, cfg.QuoteDamping, cfg.ExtraRules)
+	key := fmt.Sprintf("%v|%v|%v|%s", cfg.ToolWeight, cfg.QuoteDamping, cfg.ModelCap, cfg.ExtraRules)
 	p.guardsMu.Lock()
 	defer p.guardsMu.Unlock()
 	if p.guards == nil {
@@ -168,6 +170,8 @@ func (p *Plugin) guardFor(cfg Config) (*promptguard.Guard, error) {
 	g := promptguard.New(promptguard.Options{
 		Rules:        rules,
 		QuoteDamping: cfg.QuoteDamping,
+		NoModel:      cfg.ModelCap == 0,
+		ModelCap:     cfg.ModelCap,
 		KindWeights: map[promptguard.SegmentKind]float64{
 			promptguard.SegmentUser:    1,
 			promptguard.SegmentHistory: promptguard.DefaultKindWeights[promptguard.SegmentHistory],
@@ -265,6 +269,9 @@ type Config struct {
 	// QuoteDamping multiplies the risk of an attack that is only quoted
 	// (translated, analysed). 1 disables.
 	QuoteDamping float64 `json:"quote_damping"`
+	// ModelCap bounds the contribution of the statistical model. 0 disables
+	// the model.
+	ModelCap float64 `json:"model_cap"`
 }
 
 func defaultConfig() Config {
@@ -277,6 +284,7 @@ func defaultConfig() Config {
 		AnalyzeHistory:     false,
 		ToolWeight:         promptguard.DefaultKindWeights[promptguard.SegmentTool],
 		QuoteDamping:       promptguard.DefaultQuoteDamping,
+		ModelCap:           promptguard.DefaultModelCap,
 	}
 }
 
@@ -295,6 +303,7 @@ func parseConfig(raw string) Config {
 		ToolWeight         *float64 `json:"tool_weight"`
 		ExtraRules         *string  `json:"extra_rules"`
 		QuoteDamping       *float64 `json:"quote_damping"`
+		ModelCap           *float64 `json:"model_cap"`
 	}
 	if err := json.Unmarshal([]byte(raw), &aux); err != nil {
 		return cfg
@@ -325,6 +334,9 @@ func parseConfig(raw string) Config {
 	}
 	if aux.QuoteDamping != nil && *aux.QuoteDamping > 0 && *aux.QuoteDamping <= 1 {
 		cfg.QuoteDamping = *aux.QuoteDamping
+	}
+	if aux.ModelCap != nil && *aux.ModelCap >= 0 && *aux.ModelCap <= 1 {
+		cfg.ModelCap = *aux.ModelCap
 	}
 	return cfg
 }
@@ -378,6 +390,12 @@ const configSchemaJSON = `{
       "title": "Atténuation des attaques citées",
       "description": "Facteur appliqué au risque quand toutes les correspondances sont entre guillemets après un verbe d'encadrement (traduis, explique, classe…). 1 désactive.",
       "minimum": 0.05, "maximum": 1, "default": 0.5
+    },
+    "model_cap": {
+      "type": "number",
+      "title": "Plafond du modèle statistique",
+      "description": "Contribution maximale du modèle embarqué au risque. En dessous de 0,5 de probabilité il ne contribue pas ; au-dessus, sa probabilité compte jusqu'à ce plafond. 0 désactive le modèle. Un seuil de blocage supérieur au plafond garantit qu'un blocage repose toujours sur une règle ou un signal structurel.",
+      "minimum": 0, "maximum": 1, "default": 0.6
     },
     "extra_rules": {
       "type": "string",

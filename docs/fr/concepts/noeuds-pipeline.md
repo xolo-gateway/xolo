@@ -182,7 +182,9 @@ Par défaut le nœud ne bloque rien. Il expose ses scores, émet un événement 
 
 Le champ `extra_rules` accepte un fichier YAML au même format que les règles embarquées. Une règle portant l'identifiant d'une règle par défaut la remplace, `enabled: false` la désactive. C'est là qu'on ajoute le vocabulaire propre à l'organisation, un nom de projet confidentiel par exemple. Une règle ne coûte rien tant qu'aucun de ses mots déclencheurs n'apparaît dans le texte, ce qui maintient l'analyse d'un document de 10 Ko sous les 5 ms.
 
-Ce que le nœud ne fait pas : comprendre. Une attaque reformulée sans aucun des mots attendus passe. Un modèle statistique entraîné sur un corpus de variantes est prévu pour compléter les règles, pas pour les remplacer. Et un `allow` ne dispense pas de vérifier les paramètres des outils côté serveur.
+Une troisième couche complète les deux premières : une régression logistique embarquée, entraînée sur le corpus du dépôt à partir de n-grammes de caractères et de mots. Elle sort une probabilité, visible sur le port `model_probability`, qui n'entre dans le risque qu'au-dessus de 0,5 et plafonnée à `model_cap`, 0,6 par défaut. Le plafond est une décision : le modèle peut rendre une requête suspecte, il ne peut pas la faire bloquer seul, un blocage à 0,7 ou plus exige toujours une règle ou un signal structurel que l'événement pourra nommer. `model_cap` à 0 désactive le modèle.
+
+Ce que le nœud ne fait pas : comprendre. Une attaque reformulée sans aucun des mots attendus passe, et le modèle rattrape une partie de ces cas au prix de faux positifs sur les textes qui parlent de configuration ou de sécurité sans rien demander. Un `allow` ne dispense pas de vérifier les paramètres des outils côté serveur.
 
 ### Décision
 

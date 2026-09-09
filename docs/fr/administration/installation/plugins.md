@@ -226,7 +226,12 @@ by family and the `author` command. `synth/data/templates-sealed/` holds
 twenty templates reserved for that measurement; `SEALED.md` there states the
 rules and logs every opening. `corpus.jsonl` is git-ignored like every JSONL
 file: `render` regenerates it deterministically from the templates and
-lexicons, which are the source.
+lexicons, which are the source. `... train -fit train` fits the logistic
+regression on the training families and reports precision and recall on the
+families it has not seen; `... train -fit all` fits the shipped model on
+everything and writes `plugins/internal/promptguard/data/model.json`, which
+the plugin embeds. `... eval -no-model` and `eval -model <file>` compare the
+rules alone with rules plus a given model.
 
 **Example — reading the requester's quota (budget-pressure):** `in.Quota` is set by
 the host when the user has at least one budget; it carries the total and the

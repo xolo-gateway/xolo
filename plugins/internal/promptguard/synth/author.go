@@ -21,9 +21,9 @@ type AuthorOptions struct {
 	MaxSimilarity float64
 	// Focus is an extra instruction appended to every request, to steer a
 	// campaign towards what the corpus lacks.
-	Focus string
-	Verbose       bool
-	Debug         bool
+	Focus   string
+	Verbose bool
+	Debug   bool
 	// Emit is called for every accepted template, before the campaign goes
 	// on, so that an interrupted run keeps what it has.
 	Emit func(*Template) error
