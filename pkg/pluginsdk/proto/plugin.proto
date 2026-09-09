@@ -11,6 +11,7 @@ service XoloPlugin {
   rpc ListModels(ListModelsInput) returns (ListModelsOutput);
   rpc ListTools(ListToolsInput) returns (ListToolsOutput);
   rpc CallTool(CallToolInput) returns (CallToolOutput);
+  rpc InspectToolResult(InspectToolResultInput) returns (InspectToolResultOutput);
 }
 
 service XoloHostService {
@@ -137,6 +138,7 @@ message PluginDescriptor {
     RESOLVE_MODEL = 3;
     LIST_MODELS = 4;
     TOOL_PROVIDER = 5;
+    TOOL_RESULT_INSPECTOR = 6;
   }
   string config_schema = 5;
   string user_config_schema = 6;
@@ -296,4 +298,25 @@ message CallToolInput {
 message CallToolOutput {
   string result_text = 1;
   bool is_error = 2;
+}
+
+// InspectToolResultInput carries a single tool result (a tool message the
+// gateway fetched itself, e.g. from an MCP server) for inspection before it
+// is fed back to the model. This is the indirect-injection surface that
+// PreRequest never sees, because the gateway resolves these calls inside the
+// model loop.
+message InspectToolResultInput {
+  RequestContext ctx = 1;
+  string tool_name = 2;
+  string content = 3;
+}
+
+message InspectToolResultOutput {
+  // blocked asks the gateway to abort the request rather than feed this
+  // result to the model.
+  bool blocked = 1;
+  // reason is returned to the client when blocked.
+  string reason = 2;
+  // risk is the assessed injection risk in [0, 1], for logging.
+  double risk = 3;
 }

@@ -717,6 +717,23 @@ slog.InfoContext(ctx, "my-plugin: selected model",
 
 **Never block the request on non-critical errors** — always return `Allowed: true` and log the problem rather than denying access due to a monitoring failure.
 
+### TOOL_RESULT_INSPECTOR
+
+A plugin that declares `TOOL_RESULT_INSPECTOR` implements `InspectToolResult`.
+When the gateway runs a tool loop itself (a `TOOL_PROVIDER` node such as
+`mcp-bridge`), it fetches tool results inside the model loop, after the
+`PRE_REQUEST` pass has already run: those results never reach `PreRequest`,
+which is the indirect-injection surface OWASP LLM01 flags for MCP output. Each
+inspector node registers itself for the execution, and `ToolLoopClient` calls
+every registered inspector on each fetched tool result before feeding it back
+to the model. An inspector may block, which aborts the request with its reason;
+an inspector that errors fails open, so a broken inspector never takes the
+gateway down. The result text is passed to the plugin but must not be logged
+by it. `prompt-guard` implements this, scoring the result as a tool segment
+and reusing the same node config (`block_above`, `event_above`, `extra_rules`)
+as its `PreRequest` path, so one node governs both entry points and emits a
+second `security.prompt_injection` event carrying the tool name.
+
 ## Capability Summary
 
 | Capability      | When Called  | Primary Use Cases                         |
@@ -725,5 +742,7 @@ slog.InfoContext(ctx, "my-plugin: selected model",
 | `POST_RESPONSE` | After proxy  | Logging, quotas, response transformation  |
 | `RESOLVE_MODEL` | Model lookup | Synthetic responses, legacy routing       |
 | `LIST_MODELS`   | Model list   | Dynamic model activation                  |
+| `TOOL_PROVIDER` | Tool loop    | Exposing MCP or built-in tools to the model |
+| `TOOL_RESULT_INSPECTOR` | Each gateway-fetched tool result | Scanning tool/MCP output for indirect injection, before it reaches the model |
 
 Plugins are **stateless** (configuration comes via `ConfigJson`), **isolated** (each runs in its own process), **composable** (multiple plugins stack in the pipeline graph), and **optional** (Xolo works without any).

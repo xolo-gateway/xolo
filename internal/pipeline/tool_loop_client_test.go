@@ -86,7 +86,7 @@ func newFailingTool(name string, err error) llm.Tool {
 
 func TestToolLoopClient_NoToolCalls_ReturnsResponseAsIs(t *testing.T) {
 	inner := &scriptedClient{responses: []*scriptedResponse{{content: "hello"}}}
-	c := pipeline.NewToolLoopClient(inner, []llm.Tool{newEchoTool("search")}, 0, 0)
+	c := pipeline.NewToolLoopClient(inner, []llm.Tool{newEchoTool("search")}, 0, 0, nil)
 
 	resp, err := c.ChatCompletion(context.Background(), llm.WithMessages(llm.NewMessage(llm.RoleUser, "hi")))
 	if err != nil {
@@ -106,7 +106,7 @@ func TestToolLoopClient_ResolvesKnownToolCall_ThenReturnsFinal(t *testing.T) {
 		{toolCalls: []llm.ToolCall{tc}},
 		{content: "final answer"},
 	}}
-	c := pipeline.NewToolLoopClient(inner, []llm.Tool{newEchoTool("search")}, 0, 0)
+	c := pipeline.NewToolLoopClient(inner, []llm.Tool{newEchoTool("search")}, 0, 0, nil)
 
 	resp, err := c.ChatCompletion(context.Background(), llm.WithMessages(llm.NewMessage(llm.RoleUser, "hi")))
 	if err != nil {
@@ -136,7 +136,7 @@ func TestToolLoopClient_UnknownToolCall_PassesThroughUnresolved(t *testing.T) {
 	inner := &scriptedClient{responses: []*scriptedResponse{
 		{toolCalls: []llm.ToolCall{tc}},
 	}}
-	c := pipeline.NewToolLoopClient(inner, []llm.Tool{newEchoTool("search")}, 0, 0)
+	c := pipeline.NewToolLoopClient(inner, []llm.Tool{newEchoTool("search")}, 0, 0, nil)
 
 	resp, err := c.ChatCompletion(context.Background(), llm.WithMessages(llm.NewMessage(llm.RoleUser, "hi")))
 	if err != nil {
@@ -158,7 +158,7 @@ func TestToolLoopClient_MaxIterationsExceeded_ReturnsError(t *testing.T) {
 		responses[i] = &scriptedResponse{toolCalls: []llm.ToolCall{tc}}
 	}
 	inner := &scriptedClient{responses: responses}
-	c := pipeline.NewToolLoopClient(inner, []llm.Tool{newEchoTool("search")}, 3, 10)
+	c := pipeline.NewToolLoopClient(inner, []llm.Tool{newEchoTool("search")}, 3, 10, nil)
 
 	_, err := c.ChatCompletion(context.Background(), llm.WithMessages(llm.NewMessage(llm.RoleUser, "hi")))
 	if err == nil {
@@ -172,7 +172,7 @@ func TestToolLoopClient_ChatCompletionStream_BuffersToolTurnAndReplaysFinal(t *t
 		{toolCalls: []llm.ToolCall{tc}},
 		{content: "final streamed answer"},
 	}}
-	c := pipeline.NewToolLoopClient(inner, []llm.Tool{newEchoTool("search")}, 0, 0)
+	c := pipeline.NewToolLoopClient(inner, []llm.Tool{newEchoTool("search")}, 0, 0, nil)
 
 	ch, err := c.ChatCompletionStream(context.Background(), llm.WithMessages(llm.NewMessage(llm.RoleUser, "hi")))
 	if err != nil {
@@ -201,7 +201,7 @@ func TestToolLoopClient_FailingToolCall_DoesNotAbortCompletion(t *testing.T) {
 		{toolCalls: []llm.ToolCall{tc}},
 		{content: "sorry, the search tool is unavailable"},
 	}}
-	c := pipeline.NewToolLoopClient(inner, []llm.Tool{newFailingTool("search", errors.New("rate limited"))}, 0, 0)
+	c := pipeline.NewToolLoopClient(inner, []llm.Tool{newFailingTool("search", errors.New("rate limited"))}, 0, 0, nil)
 
 	resp, err := c.ChatCompletion(context.Background(), llm.WithMessages(llm.NewMessage(llm.RoleUser, "hi")))
 	if err != nil {
@@ -231,7 +231,7 @@ func TestToolLoopClient_FailingToolCall_DoesNotAbortCompletion(t *testing.T) {
 // tools we inject unless we explicitly force it to "auto".
 func TestToolLoopClient_ForcesToolChoiceAuto_WhenToolsPresent(t *testing.T) {
 	inner := &scriptedClient{responses: []*scriptedResponse{{content: "hello"}}}
-	c := pipeline.NewToolLoopClient(inner, []llm.Tool{newEchoTool("search")}, 0, 0)
+	c := pipeline.NewToolLoopClient(inner, []llm.Tool{newEchoTool("search")}, 0, 0, nil)
 
 	_, err := c.ChatCompletion(context.Background(), llm.WithMessages(llm.NewMessage(llm.RoleUser, "hi")))
 	if err != nil {
@@ -254,7 +254,7 @@ func TestToolLoopClient_ForcesToolChoiceNone_AfterMaxConsecutiveToolCalls(t *tes
 		responses[i] = &scriptedResponse{content: "final despite tool_calls", toolCalls: []llm.ToolCall{tc}}
 	}
 	inner := &scriptedClient{responses: responses}
-	c := pipeline.NewToolLoopClient(inner, []llm.Tool{newEchoTool("search")}, 0, 2)
+	c := pipeline.NewToolLoopClient(inner, []llm.Tool{newEchoTool("search")}, 0, 2, nil)
 
 	resp, err := c.ChatCompletion(context.Background(), llm.WithMessages(llm.NewMessage(llm.RoleUser, "hi")))
 	if err != nil {
@@ -282,12 +282,84 @@ func TestToolLoopClient_DefaultMaxConsecutiveToolCalls_IsTwo(t *testing.T) {
 		responses[i] = &scriptedResponse{content: "forced final", toolCalls: []llm.ToolCall{tc}}
 	}
 	inner := &scriptedClient{responses: responses}
-	c := pipeline.NewToolLoopClient(inner, []llm.Tool{newEchoTool("search")}, 0, 0)
+	c := pipeline.NewToolLoopClient(inner, []llm.Tool{newEchoTool("search")}, 0, 0, nil)
 
 	if _, err := c.ChatCompletion(context.Background(), llm.WithMessages(llm.NewMessage(llm.RoleUser, "hi"))); err != nil {
 		t.Fatalf("ChatCompletion: %v", err)
 	}
 	if len(inner.calls) != 3 {
 		t.Errorf("expected the default of 2 consecutive tool calls before forcing a final answer (3 calls total), got %d", len(inner.calls))
+	}
+}
+
+// blockingInspector blocks any tool result whose content contains a marker.
+type blockingInspector struct {
+	marker string
+	calls  int
+}
+
+func (b *blockingInspector) InspectToolResult(_ context.Context, _, content string) (bool, string, error) {
+	b.calls++
+	if b.marker != "" && contains(content, b.marker) {
+		return true, "blocked by prompt-guard", nil
+	}
+	return false, "", nil
+}
+
+func errorsAs(err error, target any) bool { return errors.As(err, target) }
+
+func contains(s, sub string) bool { return len(sub) > 0 && stringIndex(s, sub) >= 0 }
+func stringIndex(s, sub string) int {
+	for i := 0; i+len(sub) <= len(s); i++ {
+		if s[i:i+len(sub)] == sub {
+			return i
+		}
+	}
+	return -1
+}
+
+func TestToolLoopClient_InspectorBlocksMaliciousToolResult(t *testing.T) {
+	tc := llm.NewToolCall("call-1", "search", `{"q":"xolo"}`)
+	inner := &scriptedClient{responses: []*scriptedResponse{
+		{toolCalls: []llm.ToolCall{tc}},
+		{content: "should never be reached"},
+	}}
+	insp := &blockingInspector{marker: "tool result for search"}
+	set := pipeline.NewToolInspectorSet()
+	set.Register(insp)
+	c := pipeline.NewToolLoopClient(inner, []llm.Tool{newEchoTool("search")}, 0, 0, set)
+
+	_, err := c.ChatCompletion(context.Background(), llm.WithMessages(llm.NewMessage(llm.RoleUser, "hi")))
+	var rej *pipeline.RejectionError
+	if !errorsAs(err, &rej) {
+		t.Fatalf("expected a RejectionError, got %v", err)
+	}
+	if rej.Reason != "blocked by prompt-guard" {
+		t.Errorf("reason = %q", rej.Reason)
+	}
+	if insp.calls != 1 {
+		t.Errorf("inspector called %d times, want 1", insp.calls)
+	}
+	if len(inner.calls) != 1 {
+		t.Errorf("model called %d times after a blocked tool result, want 1 (no final call)", len(inner.calls))
+	}
+}
+
+func TestToolLoopClient_InspectorAllowsCleanToolResult(t *testing.T) {
+	tc := llm.NewToolCall("call-1", "search", `{"q":"xolo"}`)
+	inner := &scriptedClient{responses: []*scriptedResponse{
+		{toolCalls: []llm.ToolCall{tc}},
+		{content: "final answer"},
+	}}
+	set := pipeline.NewToolInspectorSet()
+	set.Register(&blockingInspector{marker: "SOMETHING ELSE"})
+	c := pipeline.NewToolLoopClient(inner, []llm.Tool{newEchoTool("search")}, 0, 0, set)
+
+	resp, err := c.ChatCompletion(context.Background(), llm.WithMessages(llm.NewMessage(llm.RoleUser, "hi")))
+	if err != nil {
+		t.Fatalf("ChatCompletion: %v", err)
+	}
+	if resp.Message().Content() != "final answer" {
+		t.Errorf("got %q", resp.Message().Content())
 	}
 }

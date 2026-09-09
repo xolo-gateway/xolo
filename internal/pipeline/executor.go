@@ -34,6 +34,12 @@ type ExecutionContext struct {
 	// PersonalVMStore is used by ModelExecutor to resolve personal virtual models (~/name).
 	PersonalVMStore port.PersonalVirtualModelStore
 
+	// ToolInspectors collects the tool-result inspectors contributed by the
+	// nodes of this execution. It is shared by pointer so a node running
+	// early can register an inspector that the tool loop, built later on the
+	// resolved client, will consult. May be nil (no inspection).
+	ToolInspectors *ToolInspectorSet
+
 	// TargetModelName is the model name originally requested by the caller. It
 	// is resolved by "passthrough" model nodes (used in Middleware pipelines),
 	// once the middleware chain has been fully applied.

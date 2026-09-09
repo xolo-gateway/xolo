@@ -30,6 +30,7 @@ const (
 	PluginDescriptor_RESOLVE_MODEL          PluginDescriptor_Capability = 3
 	PluginDescriptor_LIST_MODELS            PluginDescriptor_Capability = 4
 	PluginDescriptor_TOOL_PROVIDER          PluginDescriptor_Capability = 5
+	PluginDescriptor_TOOL_RESULT_INSPECTOR  PluginDescriptor_Capability = 6
 )
 
 // Enum value maps for PluginDescriptor_Capability.
@@ -41,6 +42,7 @@ var (
 		3: "RESOLVE_MODEL",
 		4: "LIST_MODELS",
 		5: "TOOL_PROVIDER",
+		6: "TOOL_RESULT_INSPECTOR",
 	}
 	PluginDescriptor_Capability_value = map[string]int32{
 		"CAPABILITY_UNSPECIFIED": 0,
@@ -49,6 +51,7 @@ var (
 		"RESOLVE_MODEL":          3,
 		"LIST_MODELS":            4,
 		"TOOL_PROVIDER":          5,
+		"TOOL_RESULT_INSPECTOR":  6,
 	}
 )
 
@@ -2558,6 +2561,135 @@ func (x *CallToolOutput) GetIsError() bool {
 	return false
 }
 
+// InspectToolResultInput carries a single tool result (a tool message the
+// gateway fetched itself, e.g. from an MCP server) for inspection before it
+// is fed back to the model. This is the indirect-injection surface that
+// PreRequest never sees, because the gateway resolves these calls inside the
+// model loop.
+type InspectToolResultInput struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Ctx           *RequestContext        `protobuf:"bytes,1,opt,name=ctx,proto3" json:"ctx,omitempty"`
+	ToolName      string                 `protobuf:"bytes,2,opt,name=tool_name,json=toolName,proto3" json:"tool_name,omitempty"`
+	Content       string                 `protobuf:"bytes,3,opt,name=content,proto3" json:"content,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *InspectToolResultInput) Reset() {
+	*x = InspectToolResultInput{}
+	mi := &file_pkg_pluginsdk_proto_plugin_proto_msgTypes[39]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *InspectToolResultInput) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*InspectToolResultInput) ProtoMessage() {}
+
+func (x *InspectToolResultInput) ProtoReflect() protoreflect.Message {
+	mi := &file_pkg_pluginsdk_proto_plugin_proto_msgTypes[39]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use InspectToolResultInput.ProtoReflect.Descriptor instead.
+func (*InspectToolResultInput) Descriptor() ([]byte, []int) {
+	return file_pkg_pluginsdk_proto_plugin_proto_rawDescGZIP(), []int{39}
+}
+
+func (x *InspectToolResultInput) GetCtx() *RequestContext {
+	if x != nil {
+		return x.Ctx
+	}
+	return nil
+}
+
+func (x *InspectToolResultInput) GetToolName() string {
+	if x != nil {
+		return x.ToolName
+	}
+	return ""
+}
+
+func (x *InspectToolResultInput) GetContent() string {
+	if x != nil {
+		return x.Content
+	}
+	return ""
+}
+
+type InspectToolResultOutput struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// blocked asks the gateway to abort the request rather than feed this
+	// result to the model.
+	Blocked bool `protobuf:"varint,1,opt,name=blocked,proto3" json:"blocked,omitempty"`
+	// reason is returned to the client when blocked.
+	Reason string `protobuf:"bytes,2,opt,name=reason,proto3" json:"reason,omitempty"`
+	// risk is the assessed injection risk in [0, 1], for logging.
+	Risk          float64 `protobuf:"fixed64,3,opt,name=risk,proto3" json:"risk,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *InspectToolResultOutput) Reset() {
+	*x = InspectToolResultOutput{}
+	mi := &file_pkg_pluginsdk_proto_plugin_proto_msgTypes[40]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *InspectToolResultOutput) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*InspectToolResultOutput) ProtoMessage() {}
+
+func (x *InspectToolResultOutput) ProtoReflect() protoreflect.Message {
+	mi := &file_pkg_pluginsdk_proto_plugin_proto_msgTypes[40]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use InspectToolResultOutput.ProtoReflect.Descriptor instead.
+func (*InspectToolResultOutput) Descriptor() ([]byte, []int) {
+	return file_pkg_pluginsdk_proto_plugin_proto_rawDescGZIP(), []int{40}
+}
+
+func (x *InspectToolResultOutput) GetBlocked() bool {
+	if x != nil {
+		return x.Blocked
+	}
+	return false
+}
+
+func (x *InspectToolResultOutput) GetReason() string {
+	if x != nil {
+		return x.Reason
+	}
+	return ""
+}
+
+func (x *InspectToolResultOutput) GetRisk() float64 {
+	if x != nil {
+		return x.Risk
+	}
+	return 0
+}
+
 var File_pkg_pluginsdk_proto_plugin_proto protoreflect.FileDescriptor
 
 const file_pkg_pluginsdk_proto_plugin_proto_rawDesc = "" +
@@ -2646,7 +2778,7 @@ const file_pkg_pluginsdk_proto_plugin_proto_rawDesc = "" +
 	"\x0ePortDescriptor\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x1b\n" +
 	"\tport_type\x18\x02 \x01(\tR\bportType\x12\x1a\n" +
-	"\brequired\x18\x03 \x01(\bR\brequired\"\xbb\x04\n" +
+	"\brequired\x18\x03 \x01(\bR\brequired\"\xd6\x04\n" +
 	"\x10PluginDescriptor\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x18\n" +
 	"\aversion\x18\x02 \x01(\tR\aversion\x12 \n" +
@@ -2657,7 +2789,7 @@ const file_pkg_pluginsdk_proto_plugin_proto_rawDesc = "" +
 	"\x10default_required\x18\a \x01(\bR\x0fdefaultRequired\x12?\n" +
 	"\vinput_ports\x18\b \x03(\v2\x1e.xolo.plugin.v1.PortDescriptorR\n" +
 	"inputPorts\x12A\n" +
-	"\foutput_ports\x18\t \x03(\v2\x1e.xolo.plugin.v1.PortDescriptorR\voutputPorts\"\x83\x01\n" +
+	"\foutput_ports\x18\t \x03(\v2\x1e.xolo.plugin.v1.PortDescriptorR\voutputPorts\"\x9e\x01\n" +
 	"\n" +
 	"Capability\x12\x1a\n" +
 	"\x16CAPABILITY_UNSPECIFIED\x10\x00\x12\x0f\n" +
@@ -2665,7 +2797,8 @@ const file_pkg_pluginsdk_proto_plugin_proto_rawDesc = "" +
 	"\rPOST_RESPONSE\x10\x02\x12\x11\n" +
 	"\rRESOLVE_MODEL\x10\x03\x12\x0f\n" +
 	"\vLIST_MODELS\x10\x04\x12\x11\n" +
-	"\rTOOL_PROVIDER\x10\x05\"\xe2\x01\n" +
+	"\rTOOL_PROVIDER\x10\x05\x12\x19\n" +
+	"\x15TOOL_RESULT_INSPECTOR\x10\x06\"\xe2\x01\n" +
 	"\x0eRequestContext\x12\x15\n" +
 	"\x06org_id\x18\x01 \x01(\tR\x05orgId\x12\x17\n" +
 	"\auser_id\x18\x02 \x01(\tR\x06userId\x12\x19\n" +
@@ -2767,7 +2900,15 @@ const file_pkg_pluginsdk_proto_plugin_proto_rawDesc = "" +
 	"\x0eCallToolOutput\x12\x1f\n" +
 	"\vresult_text\x18\x01 \x01(\tR\n" +
 	"resultText\x12\x19\n" +
-	"\bis_error\x18\x02 \x01(\bR\aisError2\x99\x05\n" +
+	"\bis_error\x18\x02 \x01(\bR\aisError\"\x81\x01\n" +
+	"\x16InspectToolResultInput\x120\n" +
+	"\x03ctx\x18\x01 \x01(\v2\x1e.xolo.plugin.v1.RequestContextR\x03ctx\x12\x1b\n" +
+	"\ttool_name\x18\x02 \x01(\tR\btoolName\x12\x18\n" +
+	"\acontent\x18\x03 \x01(\tR\acontent\"_\n" +
+	"\x17InspectToolResultOutput\x12\x18\n" +
+	"\ablocked\x18\x01 \x01(\bR\ablocked\x12\x16\n" +
+	"\x06reason\x18\x02 \x01(\tR\x06reason\x12\x12\n" +
+	"\x04risk\x18\x03 \x01(\x01R\x04risk2\xff\x05\n" +
 	"\n" +
 	"XoloPlugin\x12M\n" +
 	"\bDescribe\x12\x1f.xolo.plugin.v1.DescribeRequest\x1a .xolo.plugin.v1.PluginDescriptor\x12S\n" +
@@ -2780,7 +2921,8 @@ const file_pkg_pluginsdk_proto_plugin_proto_rawDesc = "" +
 	"\n" +
 	"ListModels\x12\x1f.xolo.plugin.v1.ListModelsInput\x1a .xolo.plugin.v1.ListModelsOutput\x12L\n" +
 	"\tListTools\x12\x1e.xolo.plugin.v1.ListToolsInput\x1a\x1f.xolo.plugin.v1.ListToolsOutput\x12I\n" +
-	"\bCallTool\x12\x1d.xolo.plugin.v1.CallToolInput\x1a\x1e.xolo.plugin.v1.CallToolOutput2\xd3\x05\n" +
+	"\bCallTool\x12\x1d.xolo.plugin.v1.CallToolInput\x1a\x1e.xolo.plugin.v1.CallToolOutput\x12d\n" +
+	"\x11InspectToolResult\x12&.xolo.plugin.v1.InspectToolResultInput\x1a'.xolo.plugin.v1.InspectToolResultOutput2\xd3\x05\n" +
 	"\x0fXoloHostService\x12P\n" +
 	"\tGetConfig\x12 .xolo.plugin.v1.GetConfigRequest\x1a!.xolo.plugin.v1.GetConfigResponse\x12S\n" +
 	"\n" +
@@ -2806,7 +2948,7 @@ func file_pkg_pluginsdk_proto_plugin_proto_rawDescGZIP() []byte {
 }
 
 var file_pkg_pluginsdk_proto_plugin_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_pkg_pluginsdk_proto_plugin_proto_msgTypes = make([]protoimpl.MessageInfo, 40)
+var file_pkg_pluginsdk_proto_plugin_proto_msgTypes = make([]protoimpl.MessageInfo, 42)
 var file_pkg_pluginsdk_proto_plugin_proto_goTypes = []any{
 	(PluginDescriptor_Capability)(0),   // 0: xolo.plugin.v1.PluginDescriptor.Capability
 	(*EmitEventRequest)(nil),           // 1: xolo.plugin.v1.EmitEventRequest
@@ -2848,10 +2990,12 @@ var file_pkg_pluginsdk_proto_plugin_proto_goTypes = []any{
 	(*ListToolsOutput)(nil),            // 37: xolo.plugin.v1.ListToolsOutput
 	(*CallToolInput)(nil),              // 38: xolo.plugin.v1.CallToolInput
 	(*CallToolOutput)(nil),             // 39: xolo.plugin.v1.CallToolOutput
-	nil,                                // 40: xolo.plugin.v1.EmitEventRequest.AttributesEntry
+	(*InspectToolResultInput)(nil),     // 40: xolo.plugin.v1.InspectToolResultInput
+	(*InspectToolResultOutput)(nil),    // 41: xolo.plugin.v1.InspectToolResultOutput
+	nil,                                // 42: xolo.plugin.v1.EmitEventRequest.AttributesEntry
 }
 var file_pkg_pluginsdk_proto_plugin_proto_depIdxs = []int32{
-	40, // 0: xolo.plugin.v1.EmitEventRequest.attributes:type_name -> xolo.plugin.v1.EmitEventRequest.AttributesEntry
+	42, // 0: xolo.plugin.v1.EmitEventRequest.attributes:type_name -> xolo.plugin.v1.EmitEventRequest.AttributesEntry
 	24, // 1: xolo.plugin.v1.ListModelsForOrgResponse.models:type_name -> xolo.plugin.v1.ModelInfo
 	5,  // 2: xolo.plugin.v1.HostChatCompletionRequest.messages:type_name -> xolo.plugin.v1.ChatMessage
 	0,  // 3: xolo.plugin.v1.PluginDescriptor.capabilities:type_name -> xolo.plugin.v1.PluginDescriptor.Capability
@@ -2869,43 +3013,46 @@ var file_pkg_pluginsdk_proto_plugin_proto_depIdxs = []int32{
 	23, // 15: xolo.plugin.v1.ListToolsInput.ctx:type_name -> xolo.plugin.v1.RequestContext
 	35, // 16: xolo.plugin.v1.ListToolsOutput.tools:type_name -> xolo.plugin.v1.ToolDescriptor
 	23, // 17: xolo.plugin.v1.CallToolInput.ctx:type_name -> xolo.plugin.v1.RequestContext
-	20, // 18: xolo.plugin.v1.XoloPlugin.Describe:input_type -> xolo.plugin.v1.DescribeRequest
-	8,  // 19: xolo.plugin.v1.XoloPlugin.Initialize:input_type -> xolo.plugin.v1.InitializeRequest
-	27, // 20: xolo.plugin.v1.XoloPlugin.PreRequest:input_type -> xolo.plugin.v1.PreRequestInput
-	29, // 21: xolo.plugin.v1.XoloPlugin.PostResponse:input_type -> xolo.plugin.v1.PostResponseInput
-	31, // 22: xolo.plugin.v1.XoloPlugin.ResolveModel:input_type -> xolo.plugin.v1.ResolveModelInput
-	33, // 23: xolo.plugin.v1.XoloPlugin.ListModels:input_type -> xolo.plugin.v1.ListModelsInput
-	36, // 24: xolo.plugin.v1.XoloPlugin.ListTools:input_type -> xolo.plugin.v1.ListToolsInput
-	38, // 25: xolo.plugin.v1.XoloPlugin.CallTool:input_type -> xolo.plugin.v1.CallToolInput
-	10, // 26: xolo.plugin.v1.XoloHostService.GetConfig:input_type -> xolo.plugin.v1.GetConfigRequest
-	12, // 27: xolo.plugin.v1.XoloHostService.SaveConfig:input_type -> xolo.plugin.v1.SaveConfigRequest
-	3,  // 28: xolo.plugin.v1.XoloHostService.ListModels:input_type -> xolo.plugin.v1.ListModelsForOrgRequest
-	14, // 29: xolo.plugin.v1.XoloHostService.GetSecret:input_type -> xolo.plugin.v1.GetSecretRequest
-	16, // 30: xolo.plugin.v1.XoloHostService.SetSecret:input_type -> xolo.plugin.v1.SetSecretRequest
-	18, // 31: xolo.plugin.v1.XoloHostService.DeleteSecret:input_type -> xolo.plugin.v1.DeleteSecretRequest
-	1,  // 32: xolo.plugin.v1.XoloHostService.EmitEvent:input_type -> xolo.plugin.v1.EmitEventRequest
-	6,  // 33: xolo.plugin.v1.XoloHostService.ChatCompletion:input_type -> xolo.plugin.v1.HostChatCompletionRequest
-	22, // 34: xolo.plugin.v1.XoloPlugin.Describe:output_type -> xolo.plugin.v1.PluginDescriptor
-	9,  // 35: xolo.plugin.v1.XoloPlugin.Initialize:output_type -> xolo.plugin.v1.InitializeResponse
-	28, // 36: xolo.plugin.v1.XoloPlugin.PreRequest:output_type -> xolo.plugin.v1.PreRequestOutput
-	30, // 37: xolo.plugin.v1.XoloPlugin.PostResponse:output_type -> xolo.plugin.v1.PostResponseOutput
-	32, // 38: xolo.plugin.v1.XoloPlugin.ResolveModel:output_type -> xolo.plugin.v1.ResolveModelOutput
-	34, // 39: xolo.plugin.v1.XoloPlugin.ListModels:output_type -> xolo.plugin.v1.ListModelsOutput
-	37, // 40: xolo.plugin.v1.XoloPlugin.ListTools:output_type -> xolo.plugin.v1.ListToolsOutput
-	39, // 41: xolo.plugin.v1.XoloPlugin.CallTool:output_type -> xolo.plugin.v1.CallToolOutput
-	11, // 42: xolo.plugin.v1.XoloHostService.GetConfig:output_type -> xolo.plugin.v1.GetConfigResponse
-	13, // 43: xolo.plugin.v1.XoloHostService.SaveConfig:output_type -> xolo.plugin.v1.SaveConfigResponse
-	4,  // 44: xolo.plugin.v1.XoloHostService.ListModels:output_type -> xolo.plugin.v1.ListModelsForOrgResponse
-	15, // 45: xolo.plugin.v1.XoloHostService.GetSecret:output_type -> xolo.plugin.v1.GetSecretResponse
-	17, // 46: xolo.plugin.v1.XoloHostService.SetSecret:output_type -> xolo.plugin.v1.SetSecretResponse
-	19, // 47: xolo.plugin.v1.XoloHostService.DeleteSecret:output_type -> xolo.plugin.v1.DeleteSecretResponse
-	2,  // 48: xolo.plugin.v1.XoloHostService.EmitEvent:output_type -> xolo.plugin.v1.EmitEventResponse
-	7,  // 49: xolo.plugin.v1.XoloHostService.ChatCompletion:output_type -> xolo.plugin.v1.HostChatCompletionResponse
-	34, // [34:50] is the sub-list for method output_type
-	18, // [18:34] is the sub-list for method input_type
-	18, // [18:18] is the sub-list for extension type_name
-	18, // [18:18] is the sub-list for extension extendee
-	0,  // [0:18] is the sub-list for field type_name
+	23, // 18: xolo.plugin.v1.InspectToolResultInput.ctx:type_name -> xolo.plugin.v1.RequestContext
+	20, // 19: xolo.plugin.v1.XoloPlugin.Describe:input_type -> xolo.plugin.v1.DescribeRequest
+	8,  // 20: xolo.plugin.v1.XoloPlugin.Initialize:input_type -> xolo.plugin.v1.InitializeRequest
+	27, // 21: xolo.plugin.v1.XoloPlugin.PreRequest:input_type -> xolo.plugin.v1.PreRequestInput
+	29, // 22: xolo.plugin.v1.XoloPlugin.PostResponse:input_type -> xolo.plugin.v1.PostResponseInput
+	31, // 23: xolo.plugin.v1.XoloPlugin.ResolveModel:input_type -> xolo.plugin.v1.ResolveModelInput
+	33, // 24: xolo.plugin.v1.XoloPlugin.ListModels:input_type -> xolo.plugin.v1.ListModelsInput
+	36, // 25: xolo.plugin.v1.XoloPlugin.ListTools:input_type -> xolo.plugin.v1.ListToolsInput
+	38, // 26: xolo.plugin.v1.XoloPlugin.CallTool:input_type -> xolo.plugin.v1.CallToolInput
+	40, // 27: xolo.plugin.v1.XoloPlugin.InspectToolResult:input_type -> xolo.plugin.v1.InspectToolResultInput
+	10, // 28: xolo.plugin.v1.XoloHostService.GetConfig:input_type -> xolo.plugin.v1.GetConfigRequest
+	12, // 29: xolo.plugin.v1.XoloHostService.SaveConfig:input_type -> xolo.plugin.v1.SaveConfigRequest
+	3,  // 30: xolo.plugin.v1.XoloHostService.ListModels:input_type -> xolo.plugin.v1.ListModelsForOrgRequest
+	14, // 31: xolo.plugin.v1.XoloHostService.GetSecret:input_type -> xolo.plugin.v1.GetSecretRequest
+	16, // 32: xolo.plugin.v1.XoloHostService.SetSecret:input_type -> xolo.plugin.v1.SetSecretRequest
+	18, // 33: xolo.plugin.v1.XoloHostService.DeleteSecret:input_type -> xolo.plugin.v1.DeleteSecretRequest
+	1,  // 34: xolo.plugin.v1.XoloHostService.EmitEvent:input_type -> xolo.plugin.v1.EmitEventRequest
+	6,  // 35: xolo.plugin.v1.XoloHostService.ChatCompletion:input_type -> xolo.plugin.v1.HostChatCompletionRequest
+	22, // 36: xolo.plugin.v1.XoloPlugin.Describe:output_type -> xolo.plugin.v1.PluginDescriptor
+	9,  // 37: xolo.plugin.v1.XoloPlugin.Initialize:output_type -> xolo.plugin.v1.InitializeResponse
+	28, // 38: xolo.plugin.v1.XoloPlugin.PreRequest:output_type -> xolo.plugin.v1.PreRequestOutput
+	30, // 39: xolo.plugin.v1.XoloPlugin.PostResponse:output_type -> xolo.plugin.v1.PostResponseOutput
+	32, // 40: xolo.plugin.v1.XoloPlugin.ResolveModel:output_type -> xolo.plugin.v1.ResolveModelOutput
+	34, // 41: xolo.plugin.v1.XoloPlugin.ListModels:output_type -> xolo.plugin.v1.ListModelsOutput
+	37, // 42: xolo.plugin.v1.XoloPlugin.ListTools:output_type -> xolo.plugin.v1.ListToolsOutput
+	39, // 43: xolo.plugin.v1.XoloPlugin.CallTool:output_type -> xolo.plugin.v1.CallToolOutput
+	41, // 44: xolo.plugin.v1.XoloPlugin.InspectToolResult:output_type -> xolo.plugin.v1.InspectToolResultOutput
+	11, // 45: xolo.plugin.v1.XoloHostService.GetConfig:output_type -> xolo.plugin.v1.GetConfigResponse
+	13, // 46: xolo.plugin.v1.XoloHostService.SaveConfig:output_type -> xolo.plugin.v1.SaveConfigResponse
+	4,  // 47: xolo.plugin.v1.XoloHostService.ListModels:output_type -> xolo.plugin.v1.ListModelsForOrgResponse
+	15, // 48: xolo.plugin.v1.XoloHostService.GetSecret:output_type -> xolo.plugin.v1.GetSecretResponse
+	17, // 49: xolo.plugin.v1.XoloHostService.SetSecret:output_type -> xolo.plugin.v1.SetSecretResponse
+	19, // 50: xolo.plugin.v1.XoloHostService.DeleteSecret:output_type -> xolo.plugin.v1.DeleteSecretResponse
+	2,  // 51: xolo.plugin.v1.XoloHostService.EmitEvent:output_type -> xolo.plugin.v1.EmitEventResponse
+	7,  // 52: xolo.plugin.v1.XoloHostService.ChatCompletion:output_type -> xolo.plugin.v1.HostChatCompletionResponse
+	36, // [36:53] is the sub-list for method output_type
+	19, // [19:36] is the sub-list for method input_type
+	19, // [19:19] is the sub-list for extension type_name
+	19, // [19:19] is the sub-list for extension extendee
+	0,  // [0:19] is the sub-list for field type_name
 }
 
 func init() { file_pkg_pluginsdk_proto_plugin_proto_init() }
@@ -2919,7 +3066,7 @@ func file_pkg_pluginsdk_proto_plugin_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_pkg_pluginsdk_proto_plugin_proto_rawDesc), len(file_pkg_pluginsdk_proto_plugin_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   40,
+			NumMessages:   42,
 			NumExtensions: 0,
 			NumServices:   2,
 		},

@@ -19,14 +19,15 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	XoloPlugin_Describe_FullMethodName     = "/xolo.plugin.v1.XoloPlugin/Describe"
-	XoloPlugin_Initialize_FullMethodName   = "/xolo.plugin.v1.XoloPlugin/Initialize"
-	XoloPlugin_PreRequest_FullMethodName   = "/xolo.plugin.v1.XoloPlugin/PreRequest"
-	XoloPlugin_PostResponse_FullMethodName = "/xolo.plugin.v1.XoloPlugin/PostResponse"
-	XoloPlugin_ResolveModel_FullMethodName = "/xolo.plugin.v1.XoloPlugin/ResolveModel"
-	XoloPlugin_ListModels_FullMethodName   = "/xolo.plugin.v1.XoloPlugin/ListModels"
-	XoloPlugin_ListTools_FullMethodName    = "/xolo.plugin.v1.XoloPlugin/ListTools"
-	XoloPlugin_CallTool_FullMethodName     = "/xolo.plugin.v1.XoloPlugin/CallTool"
+	XoloPlugin_Describe_FullMethodName          = "/xolo.plugin.v1.XoloPlugin/Describe"
+	XoloPlugin_Initialize_FullMethodName        = "/xolo.plugin.v1.XoloPlugin/Initialize"
+	XoloPlugin_PreRequest_FullMethodName        = "/xolo.plugin.v1.XoloPlugin/PreRequest"
+	XoloPlugin_PostResponse_FullMethodName      = "/xolo.plugin.v1.XoloPlugin/PostResponse"
+	XoloPlugin_ResolveModel_FullMethodName      = "/xolo.plugin.v1.XoloPlugin/ResolveModel"
+	XoloPlugin_ListModels_FullMethodName        = "/xolo.plugin.v1.XoloPlugin/ListModels"
+	XoloPlugin_ListTools_FullMethodName         = "/xolo.plugin.v1.XoloPlugin/ListTools"
+	XoloPlugin_CallTool_FullMethodName          = "/xolo.plugin.v1.XoloPlugin/CallTool"
+	XoloPlugin_InspectToolResult_FullMethodName = "/xolo.plugin.v1.XoloPlugin/InspectToolResult"
 )
 
 // XoloPluginClient is the client API for XoloPlugin service.
@@ -41,6 +42,7 @@ type XoloPluginClient interface {
 	ListModels(ctx context.Context, in *ListModelsInput, opts ...grpc.CallOption) (*ListModelsOutput, error)
 	ListTools(ctx context.Context, in *ListToolsInput, opts ...grpc.CallOption) (*ListToolsOutput, error)
 	CallTool(ctx context.Context, in *CallToolInput, opts ...grpc.CallOption) (*CallToolOutput, error)
+	InspectToolResult(ctx context.Context, in *InspectToolResultInput, opts ...grpc.CallOption) (*InspectToolResultOutput, error)
 }
 
 type xoloPluginClient struct {
@@ -131,6 +133,16 @@ func (c *xoloPluginClient) CallTool(ctx context.Context, in *CallToolInput, opts
 	return out, nil
 }
 
+func (c *xoloPluginClient) InspectToolResult(ctx context.Context, in *InspectToolResultInput, opts ...grpc.CallOption) (*InspectToolResultOutput, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(InspectToolResultOutput)
+	err := c.cc.Invoke(ctx, XoloPlugin_InspectToolResult_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // XoloPluginServer is the server API for XoloPlugin service.
 // All implementations must embed UnimplementedXoloPluginServer
 // for forward compatibility.
@@ -143,6 +155,7 @@ type XoloPluginServer interface {
 	ListModels(context.Context, *ListModelsInput) (*ListModelsOutput, error)
 	ListTools(context.Context, *ListToolsInput) (*ListToolsOutput, error)
 	CallTool(context.Context, *CallToolInput) (*CallToolOutput, error)
+	InspectToolResult(context.Context, *InspectToolResultInput) (*InspectToolResultOutput, error)
 	mustEmbedUnimplementedXoloPluginServer()
 }
 
@@ -176,6 +189,9 @@ func (UnimplementedXoloPluginServer) ListTools(context.Context, *ListToolsInput)
 }
 func (UnimplementedXoloPluginServer) CallTool(context.Context, *CallToolInput) (*CallToolOutput, error) {
 	return nil, status.Error(codes.Unimplemented, "method CallTool not implemented")
+}
+func (UnimplementedXoloPluginServer) InspectToolResult(context.Context, *InspectToolResultInput) (*InspectToolResultOutput, error) {
+	return nil, status.Error(codes.Unimplemented, "method InspectToolResult not implemented")
 }
 func (UnimplementedXoloPluginServer) mustEmbedUnimplementedXoloPluginServer() {}
 func (UnimplementedXoloPluginServer) testEmbeddedByValue()                    {}
@@ -342,6 +358,24 @@ func _XoloPlugin_CallTool_Handler(srv interface{}, ctx context.Context, dec func
 	return interceptor(ctx, in, info, handler)
 }
 
+func _XoloPlugin_InspectToolResult_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(InspectToolResultInput)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(XoloPluginServer).InspectToolResult(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: XoloPlugin_InspectToolResult_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(XoloPluginServer).InspectToolResult(ctx, req.(*InspectToolResultInput))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // XoloPlugin_ServiceDesc is the grpc.ServiceDesc for XoloPlugin service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -380,6 +414,10 @@ var XoloPlugin_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "CallTool",
 			Handler:    _XoloPlugin_CallTool_Handler,
+		},
+		{
+			MethodName: "InspectToolResult",
+			Handler:    _XoloPlugin_InspectToolResult_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

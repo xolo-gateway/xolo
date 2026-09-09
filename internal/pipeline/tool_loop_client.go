@@ -35,12 +35,13 @@ type ToolLoopClient struct {
 	tools                   []llm.Tool
 	maxIterations           int
 	maxConsecutiveToolCalls int
+	inspectors              *ToolInspectorSet
 }
 
 // NewToolLoopClient creates a ToolLoopClient. maxIterations <= 0 falls back
 // to DefaultToolLoopMaxIterations; maxConsecutiveToolCalls <= 0 falls back
 // to DefaultMaxConsecutiveToolCalls.
-func NewToolLoopClient(inner llm.Client, tools []llm.Tool, maxIterations int, maxConsecutiveToolCalls int) *ToolLoopClient {
+func NewToolLoopClient(inner llm.Client, tools []llm.Tool, maxIterations int, maxConsecutiveToolCalls int, inspectors *ToolInspectorSet) *ToolLoopClient {
 	if maxIterations <= 0 {
 		maxIterations = DefaultToolLoopMaxIterations
 	}
@@ -52,6 +53,7 @@ func NewToolLoopClient(inner llm.Client, tools []llm.Tool, maxIterations int, ma
 		tools:                   tools,
 		maxIterations:           maxIterations,
 		maxConsecutiveToolCalls: maxConsecutiveToolCalls,
+		inspectors:              inspectors,
 	}
 }
 
@@ -128,11 +130,23 @@ func (c *ToolLoopClient) ChatCompletion(ctx context.Context, funcs ...llm.ChatCo
 
 		messages = append(messages, llm.NewToolCallsMessage(toolCalls...))
 		for _, tc := range toolCalls {
-			messages = append(messages, executeToolCallResilient(ctx, tc, c.tools))
+			toolMsg := executeToolCallResilient(ctx, tc, c.tools)
+			if blocked, reason := c.inspectToolResult(ctx, tc.Name(), toolMsg.Content()); blocked {
+				return nil, &RejectionError{Reason: reason}
+			}
+			messages = append(messages, toolMsg)
 		}
 	}
 
 	return nil, errTooManyToolIterations
+}
+
+// inspectToolResult runs the registered inspectors on a fetched tool result.
+func (c *ToolLoopClient) inspectToolResult(ctx context.Context, toolName, content string) (bool, string) {
+	if c.inspectors == nil || content == "" {
+		return false, ""
+	}
+	return c.inspectors.Inspect(ctx, toolName, content)
 }
 
 // executeToolCallResilient runs the tool call and always returns a tool
@@ -188,8 +202,18 @@ func (c *ToolLoopClient) ChatCompletionStream(ctx context.Context, funcs ...llm.
 			}
 
 			messages = append(messages, llm.NewToolCallsMessage(toolCalls...))
+			blockedInLoop := false
 			for _, tc := range toolCalls {
-				messages = append(messages, executeToolCallResilient(ctx, tc, c.tools))
+				toolMsg := executeToolCallResilient(ctx, tc, c.tools)
+				if blocked, reason := c.inspectToolResult(ctx, tc.Name(), toolMsg.Content()); blocked {
+					outCh <- llm.NewErrorStreamChunk(&RejectionError{Reason: reason})
+					blockedInLoop = true
+					break
+				}
+				messages = append(messages, toolMsg)
+			}
+			if blockedInLoop {
+				return
 			}
 		}
 

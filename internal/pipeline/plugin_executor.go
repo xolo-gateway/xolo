@@ -6,9 +6,9 @@ import (
 	"log/slog"
 
 	"github.com/bornholm/genai/llm"
+	"github.com/pkg/errors"
 	"github.com/xolo-gateway/xolo/internal/core/model"
 	proto "github.com/xolo-gateway/xolo/pkg/pluginsdk/proto"
-	"github.com/pkg/errors"
 )
 
 // PluginProvider resolves plugin gRPC clients dynamically, restarting dead processes as needed.
@@ -53,6 +53,12 @@ func (e *PluginExecutor) Forward(ctx context.Context, node model.PipelineNode, i
 
 	inputsJSON := InputsJSON(inputs)
 
+	// A node whose plugin inspects tool results registers itself for the
+	// tool loop, in addition to whatever else it does this pass.
+	if hasCapability(desc, proto.PluginDescriptor_TOOL_RESULT_INSPECTOR) && ec.ToolInspectors != nil {
+		ec.ToolInspectors.Register(&pluginToolInspector{client: client, reqCtx: reqCtx})
+	}
+
 	// Dispatch based on capability.
 	if hasCapability(desc, proto.PluginDescriptor_PRE_REQUEST) {
 		return e.forwardPreRequest(ctx, client, reqCtx, node, inputs, inputsJSON, ec)
@@ -61,7 +67,7 @@ func (e *PluginExecutor) Forward(ctx context.Context, node model.PipelineNode, i
 		return e.forwardResolveModel(ctx, client, reqCtx, node, inputs, inputsJSON, ec)
 	}
 	if hasCapability(desc, proto.PluginDescriptor_TOOL_PROVIDER) {
-		return e.forwardToolProvider(ctx, client, reqCtx, node, inputs)
+		return e.forwardToolProvider(ctx, client, reqCtx, node, inputs, ec)
 	}
 
 	// No relevant capability: pass through.
@@ -81,6 +87,7 @@ func (e *PluginExecutor) forwardToolProvider(
 	reqCtx *proto.RequestContext,
 	node model.PipelineNode,
 	inputs map[string]interface{},
+	ec ExecutionContext,
 ) (*ForwardResult, error) {
 	out, err := client.ListTools(ctx, &proto.ListToolsInput{Ctx: reqCtx})
 	if err != nil {
@@ -98,7 +105,7 @@ func (e *PluginExecutor) forwardToolProvider(
 		OutputValues: inputs,
 		Tools:        tools,
 		ClientDecorator: func(inner llm.Client) llm.Client {
-			return NewToolLoopClient(inner, tools, 0, maxConsecutiveToolCalls)
+			return NewToolLoopClient(inner, tools, 0, maxConsecutiveToolCalls, ec.ToolInspectors)
 		},
 	}, nil
 }
@@ -259,12 +266,12 @@ func (e *PluginExecutor) Backward(ctx context.Context, node model.PipelineNode, 
 	}
 
 	out, err := client.PostResponse(ctx, &proto.PostResponseInput{
-		Model:           "",
-		PromptTokens:    prompt,
+		Model:            "",
+		PromptTokens:     prompt,
 		CompletionTokens: completion,
-		HadError:        hadError,
-		ResponseContent: responseContent,
-		NodeState:       state,
+		HadError:         hadError,
+		ResponseContent:  responseContent,
+		NodeState:        state,
 	})
 	if err != nil {
 		slog.WarnContext(ctx, "plugin PostResponse failed",
@@ -309,4 +316,24 @@ func modelFromInputs(inputs map[string]interface{}) string {
 		}
 	}
 	return ""
+}
+
+// pluginToolInspector adapts a plugin's InspectToolResult RPC to the
+// ToolResultInspector interface. It carries the node's RequestContext so the
+// plugin sees the same org, user and node config as during PreRequest.
+type pluginToolInspector struct {
+	client proto.XoloPluginClient
+	reqCtx *proto.RequestContext
+}
+
+func (p *pluginToolInspector) InspectToolResult(ctx context.Context, toolName, content string) (bool, string, error) {
+	out, err := p.client.InspectToolResult(ctx, &proto.InspectToolResultInput{
+		Ctx:      p.reqCtx,
+		ToolName: toolName,
+		Content:  content,
+	})
+	if err != nil {
+		return false, "", err
+	}
+	return out.GetBlocked(), out.GetReason(), nil
 }

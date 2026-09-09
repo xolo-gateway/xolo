@@ -373,6 +373,7 @@ func (a *PipelineHookAdapter) buildMiddlewareEC(ctx context.Context, req *genaiP
 		ProtoVMs:        buildProtoVMs(ctx, a.virtualModelStore, orgID),
 		VisitedVMs:      map[model.VirtualModelID]struct{}{},
 		PersonalVMStore: a.personalVMStore,
+		ToolInspectors:  pipeline.NewToolInspectorSet(),
 		// Every model node in a middleware chain is a passthrough: it wraps the
 		// requested model, never a fixed one.
 		ForcePassthrough: true,
@@ -617,6 +618,7 @@ func (a *PipelineHookAdapter) buildEC(ctx context.Context, req *genaiProxy.Proxy
 		QuotaInfo:       a.quotaInfoFunc(model.UserID(userID), orgID),
 		VisitedVMs:      map[model.VirtualModelID]struct{}{vm.ID(): {}},
 		PersonalVMStore: a.personalVMStore,
+		ToolInspectors:  pipeline.NewToolInspectorSet(),
 	}
 }
 

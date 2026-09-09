@@ -68,7 +68,7 @@ func (p *Plugin) Describe(_ context.Context, _ *proto.DescribeRequest) (*proto.P
 		Name:         PluginName,
 		Version:      PluginVersion,
 		Description:  "Détecte les tentatives d'injection de prompt (remplacement des instructions, fuite du prompt système, détournement de rôle, obfuscation, abus d'outils, exfiltration) par règles, signaux structurels et un modèle statistique embarqué, sans appel à un LLM. Expose un risque dans [0, 1] et un score par catégorie ; bloque au-delà d'un seuil optionnel.",
-		Capabilities: []proto.PluginDescriptor_Capability{proto.PluginDescriptor_PRE_REQUEST},
+		Capabilities: []proto.PluginDescriptor_Capability{proto.PluginDescriptor_PRE_REQUEST, proto.PluginDescriptor_TOOL_RESULT_INSPECTOR},
 		InputPorts: []*proto.PortDescriptor{
 			{Name: "request", PortType: "request", Required: true},
 		},
@@ -129,6 +129,75 @@ func (p *Plugin) PreRequest(_ context.Context, in *proto.PreRequestInput) (*prot
 	}
 	b, _ := json.Marshal(outputs)
 	return &proto.PreRequestOutput{Allowed: true, OutputsJson: string(b)}, nil
+}
+
+// InspectToolResult scores a single tool result the gateway fetched itself
+// (typically an MCP server's output) as a tool segment, before it reaches the
+// model. This is the indirect-injection surface PreRequest never sees. It
+// emits its own security.prompt_injection event above event_above and asks
+// the gateway to block above block_above, exactly like PreRequest, so the
+// same node config governs both entry points.
+func (p *Plugin) InspectToolResult(_ context.Context, in *proto.InspectToolResultInput) (*proto.InspectToolResultOutput, error) {
+	cfg := parseConfig(in.GetCtx().GetConfigJson())
+	if !cfg.AnalyzeToolResults {
+		return &proto.InspectToolResultOutput{}, nil
+	}
+	guard, err := p.guardFor(cfg)
+	if err != nil {
+		guard = p.defaultGuard()
+	}
+	a := guard.Assess([]promptguard.Segment{{Kind: promptguard.SegmentTool, Text: in.GetContent()}})
+	blocked := cfg.BlockAbove > 0 && a.Risk >= cfg.BlockAbove
+	if cfg.EventAbove > 0 && a.Risk >= cfg.EventAbove {
+		p.emitToolResult(in.GetCtx(), in.GetToolName(), a, blocked)
+	}
+	reason := ""
+	if blocked {
+		reason = cfg.BlockMessage
+	}
+	return &proto.InspectToolResultOutput{Blocked: blocked, Reason: reason, Risk: round3(a.Risk)}, nil
+}
+
+// emitToolResult records the security event for a suspicious tool result. The
+// tool name is safe to log; the result text is not, so it never leaves.
+func (p *Plugin) emitToolResult(reqCtx *proto.RequestContext, toolName string, a promptguard.Assessment, blocked bool) {
+	hc := p.getHostClient()
+	if hc == nil {
+		return
+	}
+	severity := "warning"
+	verb := "suspect"
+	if blocked {
+		severity = "error"
+		verb = "bloqué"
+	}
+	attrs := map[string]string{
+		"risk":       fmt.Sprintf("%.3f", a.Risk),
+		"categories": joinCategories(a),
+		"top_rule":   a.TopRule,
+		"segment":    "tool",
+		"tool_name":  toolName,
+		"rules":      strings.Join(ruleIDs(a), ","),
+		"blocked":    fmt.Sprintf("%t", blocked),
+	}
+	evt := pluginsdk.Event{
+		PluginName: PluginName,
+		Type:       "security.prompt_injection",
+		Severity:   severity,
+		Message:    fmt.Sprintf("Résultat de l'outil %q %s : risque d'injection %.2f (%s)", toolName, verb, a.Risk, joinCategories(a)),
+		Attributes: attrs,
+	}
+	if reqCtx != nil {
+		evt.OrgID = reqCtx.GetOrgId()
+		evt.UserID = reqCtx.GetUserId()
+	}
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := hc.EmitEvent(ctx, evt); err != nil {
+			slog.Warn("prompt-guard: could not emit tool-result event", slog.Any("error", err))
+		}
+	}()
 }
 
 func joinCategories(a promptguard.Assessment) string {

@@ -152,11 +152,12 @@ var _ port.VirtualModelStore = (*VirtualModelStore)(nil)
 
 // PluginClient is a fake proto.XoloPluginClient driven by optional callbacks.
 type PluginClient struct {
-	PreRequestFunc   func(ctx context.Context, in *proto.PreRequestInput) (*proto.PreRequestOutput, error)
-	PostResponseFunc func(ctx context.Context, in *proto.PostResponseInput) (*proto.PostResponseOutput, error)
-	ResolveModelFunc func(ctx context.Context, in *proto.ResolveModelInput) (*proto.ResolveModelOutput, error)
-	ListToolsFunc    func(ctx context.Context, in *proto.ListToolsInput) (*proto.ListToolsOutput, error)
-	CallToolFunc     func(ctx context.Context, in *proto.CallToolInput) (*proto.CallToolOutput, error)
+	PreRequestFunc        func(ctx context.Context, in *proto.PreRequestInput) (*proto.PreRequestOutput, error)
+	PostResponseFunc      func(ctx context.Context, in *proto.PostResponseInput) (*proto.PostResponseOutput, error)
+	ResolveModelFunc      func(ctx context.Context, in *proto.ResolveModelInput) (*proto.ResolveModelOutput, error)
+	ListToolsFunc         func(ctx context.Context, in *proto.ListToolsInput) (*proto.ListToolsOutput, error)
+	CallToolFunc          func(ctx context.Context, in *proto.CallToolInput) (*proto.CallToolOutput, error)
+	InspectToolResultFunc func(ctx context.Context, in *proto.InspectToolResultInput) (*proto.InspectToolResultOutput, error)
 }
 
 func (c *PluginClient) Describe(_ context.Context, _ *proto.DescribeRequest, _ ...grpc.CallOption) (*proto.PluginDescriptor, error) {
@@ -204,6 +205,13 @@ func (c *PluginClient) CallTool(ctx context.Context, in *proto.CallToolInput, _ 
 		return c.CallToolFunc(ctx, in)
 	}
 	return &proto.CallToolOutput{}, nil
+}
+
+func (c *PluginClient) InspectToolResult(ctx context.Context, in *proto.InspectToolResultInput, _ ...grpc.CallOption) (*proto.InspectToolResultOutput, error) {
+	if c.InspectToolResultFunc != nil {
+		return c.InspectToolResultFunc(ctx, in)
+	}
+	return &proto.InspectToolResultOutput{}, nil
 }
 
 var _ proto.XoloPluginClient = (*PluginClient)(nil)
