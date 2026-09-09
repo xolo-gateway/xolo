@@ -206,6 +206,28 @@ pipeline editor (strings, numbers, booleans, enums, arrays of flat objects).
 `go run ./plugins/internal/cmd/train-classifier` to cross-validate and
 regenerate `model.json`.
 
+**Prompt-guard rules and corpus:** the default rules are
+`plugins/internal/promptguard/rules.yaml` (patterns run on a lower-cased,
+NFKC-normalised text; every rule needs `triggers`, literal substrings that
+gate its regexps). The labelled corpus is generated, not hand-written:
+`plugins/internal/promptguard/synth/data/templates/<lang>/*.tmpl` are
+skeletons with `{{slots}}` filled from `synth/data/lexicons/<lang>.yaml`, and
+the label of a sample is a property of its template. `go run
+./plugins/internal/cmd/prompt-guard-corpus render` writes
+`plugins/internal/promptguard/data/corpus.jsonl`; `... eval` scores it with
+the rules and lists false positives and negatives per family; `... inspect
+-name <template>` prints a few renderings; `... author -lang fr -count 6` asks
+the model configured by `GENAI_CHAT_COMPLETION_*` in `.env` to write new
+skeletons, which are parsed, checked against the lexicon and the existing
+templates, repaired once or twice through the model, and only then saved. A
+rule tuned on this corpus is tuned on templates you can read: the number that
+matters is measured on templates the rules have never seen, hence the split
+by family and the `author` command. `synth/data/templates-sealed/` holds
+twenty templates reserved for that measurement; `SEALED.md` there states the
+rules and logs every opening. `corpus.jsonl` is git-ignored like every JSONL
+file: `render` regenerates it deterministically from the templates and
+lexicons, which are the source.
+
 **Example — reading the requester's quota (budget-pressure):** `in.Quota` is set by
 the host when the user has at least one budget; it carries the total and the
 remaining amount for the day, month and year (see `QuotaInfo`). It is `nil`

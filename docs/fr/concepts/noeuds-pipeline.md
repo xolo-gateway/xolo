@@ -172,6 +172,18 @@ On configure les catégories avec une phrase de description chacune, ce qui perm
 
 `budget_pressure` est la pire des trois périodes. Sans budget configuré, tout vaut 0. Une pression élevée est un bon motif pour rabattre vers un modèle moins cher avant que le quota ne bloque la requête.
 
+**prompt-guard** cherche les tentatives de manipulation de l'assistant sans appeler de modèle. Sorties : `risk` (number entre 0 et 1), `suspicious` (boolean), `categories`, `top_rule`, `segment` (string), et un score par catégorie : `prompt_injection`, `prompt_leakage`, `role_hijacking`, `obfuscation`, `tool_abuse`, `exfiltration` (number).
+
+Il travaille en deux couches. Des signaux structurels d'abord, indépendants de la langue : caractères invisibles qui coupent un mot-clé, lettres cyrilliques déguisées en latines, charges Base64 ou hexadécimales qui décodent en texte, faux marqueurs de rôle comme `<|im_start|>` ou `system:`. Puis une vingtaine de règles lexicales en français et en anglais, chacune avec un poids. Les poids se combinent sans jamais dépasser 1 : « ignore les instructions précédentes » seul vaut 0,6, avec « affiche ton prompt système » dans la même phrase on arrive à 0,88. Un texte encodé est décodé et passé aux mêmes règles, la correspondance est alors signalée comme venant du décodage.
+
+Le texte est découpé selon sa provenance. Le dernier message utilisateur compte pour 1, les résultats d'outils pour 1,25 par défaut, parce qu'une page web qui s'adresse à l'assistant n'a aucune raison honnête de le faire. La règle qui repère cette adresse directe (« Attention AI assistant : ») ne s'applique d'ailleurs qu'aux résultats d'outils et à l'historique, jamais à l'utilisateur qui dit bonjour. `risk` est le maximum sur les segments, pas leur cumul : dix pages propres et une page piégée valent la page piégée. `segment` dit d'où vient le maximum.
+
+Par défaut le nœud ne bloque rien. Il expose ses scores, émet un événement `security.prompt_injection` au-dessus de 0,6, et laisse le pipeline décider : `suspicious` dans un `select` vers un modèle sans outils, ou `risk` dans un `compare`. L'événement porte les identifiants de règles et les scores, jamais le texte de la requête. Le seuil `block_above` transforme le nœud en barrière, la requête reçoit alors un 403 avec le message configuré. Commencez sans blocage, regardez les événements pendant quelques semaines, réglez ensuite.
+
+Le champ `extra_rules` accepte un fichier YAML au même format que les règles embarquées. Une règle portant l'identifiant d'une règle par défaut la remplace, `enabled: false` la désactive. C'est là qu'on ajoute le vocabulaire propre à l'organisation, un nom de projet confidentiel par exemple. Une règle ne coûte rien tant qu'aucun de ses mots déclencheurs n'apparaît dans le texte, ce qui maintient l'analyse d'un document de 10 Ko sous les 5 ms.
+
+Ce que le nœud ne fait pas : comprendre. Une attaque reformulée sans aucun des mots attendus passe. Un modèle statistique entraîné sur un corpus de variantes est prévu pour compléter les règles, pas pour les remplacer. Et un `allow` ne dispense pas de vérifier les paramètres des outils côté serveur.
+
 ### Décision
 
 **fuzzy-evaluator** applique des règles de logique floue à des nombres. Ses ports d'entrée et de sortie se déclarent dans sa configuration, avec les règles dans un langage dédié. Le pipeline « auto » l'utilise pour combiner complexité, pression budgétaire, coût et sensibilité énergétiques en un `power_level`.
@@ -194,7 +206,9 @@ La logique floue donne des transitions douces là où des seuils créent des sau
 
 **dummy-model** remplace le modèle par une réponse forgée. Ports `request` en entrée, `response` en sortie. Il permet de tester un pipeline sans dépenser un token, et d'exécuter des tests de bout en bout reproductibles.
 
-## Trois assemblages types
+## Quatre assemblages types
+
+Garde-fou sans blocage. `prompt-guard.suspicious` va dans `select`, avec en `when_true` un `model_ref` vers un modèle virtuel dépourvu d'outils et en `when_false` le modèle habituel. Une requête douteuse est servie, mais sans pouvoir agir. Un `trace` branché sur `risk` et `top_rule` garde la trace de ce qui a déclenché.
 
 Routage par capacité. `request-inspector.has_vision` va dans `select`, avec un `model_ref` vision en `when_true` et le modèle habituel en `when_false`. La sortie alimente `model.model_name`.
 

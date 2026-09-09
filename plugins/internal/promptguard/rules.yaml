@@ -1,0 +1,274 @@
+# Default prompt-guard rules.
+#
+# Patterns run against the canonical text: NFKC, lower-cased, homoglyphs
+# folded, invisible characters removed, whitespace collapsed to single
+# spaces. Write them in lower case, do not rely on (?i), and remember that
+# Go's \b is ASCII-only: never put \b next to an accented letter, use
+# (?:^|[^\p{L}]) instead.
+#
+# A rule counts once however many of its patterns match. Weights are
+# combined by noisy-OR (1 - Π(1 - w)): a 0.6 rule plus a 0.4 rule give 0.76.
+# Give 0.6 or more only to a wording that has no honest reading; keep
+# ambiguous cues around 0.3 so that it takes two of them to worry.
+#
+# `segments` restricts a rule to where the text comes from: user (last turn),
+# history (earlier user turns), tool (tool results, retrieved documents).
+
+version: "2026-09-08.1"
+
+rules:
+  # ── prompt_injection ─────────────────────────────────────────────────────
+
+  - id: override_previous_instructions
+    category: prompt_injection
+    description: Demande d'ignorer ou de remplacer les instructions en place
+    weight: 0.6
+    triggers: [ignore, disregard, forget, override, bypass, skip, discard, drop, abandon, neglect, oublie, laisse tomber, laissez tomber, mets de côté, mettez de côté, fais abstraction, faites abstraction, passe outre, passez outre, tiens pas compte, tenez pas compte, tiens plus compte, tenez plus compte, prends pas en compte, prenez pas en compte, prends plus en compte, efface, annule, outrepasse, précédente, antérieure, initiale, d'origine, pay no attention, stop following, no longer follow, set aside, throw away, erase, néglige, zappe, ne suis plus, ne suivez plus, libère-toi, libérez-vous]
+    patterns:
+      - '\b(?:ignore|disregard|forget|override|bypass|skip|discard|drop|abandon|neglect|pay no attention to|stop following|no longer follow|set aside|throw away|erase)\b.{0,40}\b(?:previous|prior|above|earlier|all|any|initial|original|your|the|these|those|system)\b.{0,25}\b(?:instructions?|prompts?|rules?|guidelines?|directives?|constraints?|restrictions?|programming|training|context|orders?)\b'
+      - '\b(?:ignore|disregard|forget)\b.{0,20}\b(?:everything|all|what)\b.{0,30}\b(?:above|before|told|said|instructed)\b'
+      - '(?:^|[^\p{L}])(?:ignore|ignorez|oublie|oubliez|oublier|laisse tomber|laissez tomber|mets de côté|mettez de côté|fais abstraction|faites abstraction|passe outre|passez outre|ne tiens pas compte|ne tenez pas compte|ne tiens plus compte|ne tenez plus compte|ne prends pas en compte|ne prenez pas en compte|ne prends plus en compte|efface|effacez|annule|annulez|outrepasse|outrepassez|néglige|négligez|zappe|zappez|ne suis plus|ne suivez plus|libère-toi des|libérez-vous des)(?:$|[^\p{L}]).{0,50}(?:consignes?|instructions?|règles?|directives?|restrictions?|contraintes?|programmation|contexte|ordres?|prompt|paramétrage|configuration)(?:$|[^\p{L}])'
+      - '(?:^|[^\p{L}])(?:consignes?|instructions?|règles?|directives?)(?:$|[^\p{L}]).{0,20}(?:précédentes?|antérieures?|initiales?|d''origine)(?:$|[^\p{L}]).{0,30}(?:ne (?:s''appliquent|comptent|valent) plus|sont (?:annulées|caduques|obsolètes|levées)|n''ont plus cours)'
+
+  - id: new_instructions_follow
+    category: prompt_injection
+    description: Annonce de nouvelles instructions qui remplaceraient les précédentes
+    weight: 0.45
+    triggers: [instruction, rule, directive, guideline, system prompt, task, objective, goal, consigne, règle, mission, tâche]
+    patterns:
+      - '\b(?:new|updated|real|actual|true|revised|latest|following|correct)\b.{0,10}\b(?:instructions?|rules?|directives?|guidelines?|system prompt|task)\b.{0,15}(?:\bare\b|\bis\b|:|\bfollow|\bbelow|\bbegin|\bstart)'
+      - '\b(?:your|the) (?:instructions?|rules?|task|objective|goal) (?:has|have) (?:changed|been (?:updated|replaced|revised))\b'
+      - '(?:^|[^\p{L}])(?:nouvelles?|vraies?|véritables?|réelles?|nouveaux)(?:$|[^\p{L}]).{0,10}(?:instructions?|consignes?|règles?|directives?|mission|tâche)(?:$|[^\p{L}]).{0,20}(?::|sont|suivantes|ci-dessous|commencent)'
+      - '(?:^|[^\p{L}])(?:tes|vos|les) (?:instructions?|consignes?|règles?|mission) (?:ont|a) (?:changé|été (?:modifiées?|remplacées?|mises? à jour))'
+
+  - id: developer_mode
+    category: prompt_injection
+    description: Invocation d'un mode développeur, débridé ou jailbreak
+    weight: 0.55
+    triggers: [mode, developer, dev, god, admin, unrestricted, jailbreak, dan, développeur, dieu, débridé]
+    patterns:
+      - '\b(?:developer|dev|god|admin|root|debug|maintenance|unrestricted|unfiltered|uncensored|jailbreak|jailbroken|dan|evil|sudo)\b.{0,6}\bmode\b'
+      - '\bmode (?:développeur|dieu|admin|administrateur|debug|maintenance|sans (?:restriction|filtre|limite)|débridé|libre|jailbreak)(?:$|[^\p{L}])'
+      - '\b(?:enable|activate|enter|switch to|unlock|active|activer|passe en|passez en|entre en|débloque)\b.{0,20}\b(?:developer|dev|god|admin|unrestricted|jailbreak|dan|développeur|dieu|débridé)\b'
+      - '\bdan\b.{0,40}\b(?:do anything now|stands for)\b'
+
+  - id: authority_claim
+    category: prompt_injection
+    description: L'auteur se présente comme le développeur, l'éditeur ou l'administrateur du modèle
+    weight: 0.45
+    triggers: [developer, creator, administrator, admin, engineer, owner, operator, trainer, maintainer, openai, anthropic, google, mistral, meta, développeu, créat, administrat, concept, ingénieur, propriétaire, opérateur, mainteneur, équipe, authori, approved, granted, code, password, key, token]
+    patterns:
+      - '\b(?:i am|i''m|this is|we are|speaking as)\b.{0,15}\b(?:your|the|an?)\b.{0,10}\b(?:developer|creator|administrator|admin|engineer|owner|operator|trainer|maintainer|openai|anthropic|google|mistral|meta)\b'
+      - '(?:^|[^\p{L}])(?:je suis|nous sommes|c''est|ici)(?:$|[^\p{L}]).{0,15}(?:ton|ta|tes|votre|vos|le|la|un|une)(?:$|[^\p{L}]).{0,10}(?:développeur|développeuse|créateur|créatrice|administrateur|administratrice|concepteur|conceptrice|ingénieur|propriétaire|opérateur|mainteneur|équipe (?:technique|de développement|openai|anthropic|mistral))(?:$|[^\p{L}])'
+      - '\b(?:authorized|authorised|approved|granted)\b.{0,20}\b(?:by|from)\b.{0,15}\b(?:openai|anthropic|google|mistral|the developers?|your creators?|management|security team)\b'
+      - '\b(?:override|master|admin|root|secret|maintenance) (?:code|password|key|token)\b.{0,10}(?::|is|=)'
+
+  - id: address_the_model
+    category: prompt_injection
+    description: Texte qui s'adresse directement à l'IA, signe d'une injection indirecte dans un document
+    weight: 0.4
+    segments: [tool, history]
+    triggers: [ai, assistant, llm, language model, chatbot, chatgpt, gpt, claude, gemini, mistral, copilot, bot, model, agent, ia, intelligence artificielle, modèle, robot]
+    patterns:
+      - '\b(?:attention|important|note|notice|warning|dear|hello|hi|hey|to the|for the|message to|instructions? (?:for|to))\b.{0,10}\b(?:ai|assistant|llm|language model|large language model|chatbot|chatgpt|gpt|claude|gemini|mistral|copilot|bot|model|agent)\b'
+      - '\b(?:if you are|if you''re|when you are) (?:an? )?(?:ai|assistant|llm|language model|chatbot|bot|model|agent)\b'
+      - '(?:^|[^\p{L}])(?:attention|important|note|avertissement|cher|chère|bonjour|salut|message (?:à|pour)|à l''attention de|instructions? (?:pour|à))(?:$|[^\p{L}]).{0,15}(?:ia|intelligence artificielle|assistant|modèle de langage|modèle|chatbot|chatgpt|gpt|claude|gemini|mistral|agent|robot)(?:$|[^\p{L}])'
+      - '(?:^|[^\p{L}])si tu es (?:une? )?(?:ia|intelligence artificielle|assistant|modèle|chatbot|agent|robot)(?:$|[^\p{L}])'
+
+  - id: instruction_boundary_marker
+    category: prompt_injection
+    description: Faux marqueur de fin de prompt système ou de début de nouvelles instructions
+    weight: 0.35
+    triggers: [end, fin, stop, begin, start, début, commencement, system, instruction, admin, override, important, new, nouvelles]
+    patterns:
+      - '\b(?:end|fin) (?:of |des? |du |de la )?(?:system (?:prompt|message|instructions?)|prompt système|message système|instructions? système|consignes?)\b'
+      - '^-{3,} ?(?:end|fin|stop|system|new|nouvelles)'
+      - '\b(?:begin|start|début|commencement) (?:of )?(?:new|user|real|des nouvelles) (?:instructions?|prompt|task|consignes?)\b'
+      - '(?:\*{3,}|={3,}|#{3,}) ?(?:system|instructions?|admin|override|important)'
+
+  # ── prompt_leakage ───────────────────────────────────────────────────────
+
+  - id: reveal_system_prompt
+    category: prompt_leakage
+    description: Demande d'afficher le prompt système ou les instructions internes
+    weight: 0.7
+    triggers: [prompt, message, instruction, directive, rule, guideline, configuration, programming, setup, consigne]
+    patterns:
+      - '\b(?:show|reveal|print|display|output|repeat|leak|dump|tell|give|share|paste|write|recite|expose|disclose|what (?:is|are|was|were)|what''s|copy)\b.{0,50}\b(?:(?:your|the|this|its|that) (?:full |entire |complete |exact |original |initial |hidden |secret |current |whole )?(?:system (?:prompt|message|instructions?)|initial (?:prompt|instructions?)|hidden (?:prompt|instructions?)|original (?:prompt|instructions?)|secret (?:prompt|instructions?)|pre-?prompt|meta ?prompt|developer (?:message|prompt))|your (?:instructions?|prompt|directives|rules|guidelines|configuration|programming|setup)|the (?:instructions?|prompt) (?:you were|you''ve been|you have been) given)\b'
+      - '(?:^|[^\p{L}])(?:affiche|affichez|révèle|révélez|montre|montrez|répète|répétez|donne|donnez|imprime|imprimez|copie|copiez|recopie|recopiez|écris|écrivez|dévoile|dévoilez|divulgue|divulguez|cite|citez|dis-moi|dites-moi|quel est|quelles sont|quelle est|c''est quoi|partage|partagez)(?:$|[^\p{L}]).{0,50}(?:(?:ton|le|ce|votre|tes|les|ces|vos) (?:propre |vrai |véritable )?(?:prompt système|prompt system|message système|instructions? (?:initiales?|internes?|cachées?|systèmes?|secrètes?|de départ|d''origine|originales?)|consignes? (?:initiales?|cachées?|internes?|secrètes?|systèmes?|de départ)|pré-?prompt|méta-?prompt)|ton prompt|votre prompt|tes instructions|vos instructions|tes consignes|vos consignes|ta configuration|votre configuration|ta programmation|votre programmation)(?:$|[^\p{L}])'
+
+  - id: repeat_text_above
+    category: prompt_leakage
+    description: Demande de répéter mot pour mot le texte qui précède la conversation
+    weight: 0.55
+    triggers: [above, before, preceding, prior to, at the top, at the start, at the beginning, you were told, you received, verbatim, word for word, word-for-word, exactly as, without changing, without modifying, without omitting, in full, in its entirety, code block, markdown block, au-dessus, ci-dessus, précède, avant, au début, en haut, t'a donné, t'a dit, reçu, mot pour mot, mot à mot, textuellement, tel quel, sans rien, intégralité, in extenso]
+    patterns:
+      - '\b(?:repeat|print|output|write|copy|paste|echo|display|show)\b.{0,30}\b(?:everything|all|the (?:text|words|content|message)|what)\b.{0,30}\b(?:above|before (?:this|the)|preceding|prior to|at the (?:top|start|beginning)|you were told|you received)\b'
+      - '\b(?:verbatim|word for word|word-for-word|exactly as (?:written|given)|without (?:changing|modifying|omitting) anything|in full|in its entirety)\b.{0,40}\b(?:above|instructions?|prompt|beginning|start|top)\b'
+      - '\b(?:above|instructions?|prompt|text|message)\b.{0,40}\b(?:verbatim|word for word|word-for-word|in a code block|in a markdown block)\b'
+      - '(?:^|[^\p{L}])(?:répète|répétez|recopie|recopiez|écris|écrivez|affiche|affichez|reproduis|reproduisez|retranscris|retranscrivez)(?:$|[^\p{L}]).{0,30}(?:tout|l''intégralité|l''ensemble|le texte|les mots|le contenu|ce qui)(?:$|[^\p{L}]).{0,30}(?:au-dessus|ci-dessus|précède|avant|au début|en haut|qu''on t''a (?:donné|dit)|reçu)'
+      - '(?:^|[^\p{L}])(?:mot pour mot|mot à mot|textuellement|tel quel|sans rien (?:changer|omettre|modifier)|dans son intégralité|in extenso)(?:$|[^\p{L}]).{0,40}(?:ci-dessus|au-dessus|précède|instructions?|consignes?|prompt|début)'
+
+  - id: instructions_summary
+    category: prompt_leakage
+    description: Demande détournée de résumer, traduire ou paraphraser les instructions internes
+    weight: 0.5
+    triggers: [instruction, system prompt, rule, guideline, directive, configuration, constraint, setup, restriction, topic, consigne, règle, contrainte, paramètre, limite, interdiction]
+    patterns:
+      - '\b(?:summarize|summarise|translate|paraphrase|explain|describe|list|outline|rephrase|encode|spell out)\b.{0,30}\b(?:your (?:instructions?|system prompt|rules|guidelines|directives|configuration|constraints|setup)|the (?:system prompt|instructions? (?:you were|you have been|you''ve been) given))\b'
+      - '\b(?:what|which) (?:rules|instructions?|guidelines|constraints|restrictions|topics)\b.{0,20}\b(?:were you|have you been|are you|you were|you are|you have been)\b.{0,15}\b(?:given|told|programmed|instructed|configured|forbidden|not allowed|restricted)\b'
+      - '(?:^|[^\p{L}])(?:résume|résumez|traduis|traduisez|paraphrase|paraphrasez|explique|expliquez|décris|décrivez|liste|listez|reformule|reformulez|énumère|énumérez)(?:$|[^\p{L}]).{0,30}(?:tes|vos) (?:instructions?|consignes?|règles|directives|contraintes|restrictions|paramètres)(?:$|[^\p{L}])'
+      - '(?:^|[^\p{L}])(?:quelles?|quels?) (?:sont|est)(?:$|[^\p{L}]).{0,10}(?:tes|vos) (?:instructions?|consignes?|règles|directives|contraintes|restrictions|limites|interdictions)(?:$|[^\p{L}])'
+
+  # ── role_hijacking ───────────────────────────────────────────────────────
+
+  - id: persona_without_limits
+    category: role_hijacking
+    description: Demande d'incarner un personnage explicitement sans règles ni filtres
+    weight: 0.6
+    triggers: [without, with no, free of, free from, no longer, unrestricted, unfiltered, uncensored, unbound, unchained, unshackled, no rules, no limits, no restrictions, no filters, no guidelines, no ethics, no morals, no boundaries, no censorship, evil, jailbroken, rogue, amoral, unethical, sans, libre de toute, débridé, sans tabou, ne refuse, n'a jamais, n'a aucune, n'a pas de, maléfique, non censuré, sans scrupule, dan, tu es, you are, you're]
+    patterns:
+      - '\b(?:you are now|from now on,? you(?:''re| are)|you are (?:an? |the |my )?(?:ai|assistant|model|version|chatbot|dan)\b|act as|pretend (?:to be|you(?:''re| are))|role-?play as|simulate|you will (?:be|play|act)|imagine you(?:''re| are)|behave (?:as|like)|become|transform into|take (?:on )?the role of)\b.{0,80}\b(?:without|with no|free (?:of|from)|no longer (?:bound|restricted|limited)|unrestricted|unfiltered|uncensored|unbound|unchained|unshackled|no (?:rules|limits|restrictions|filters|guidelines|ethics|morals|boundaries|censorship))\b'
+      - '(?:^|[^\p{L}])(?:tu es (?:maintenant|désormais|dorénavant)|(?:à partir de maintenant|désormais|dorénavant|maintenant|ensuite|au lieu de cela|à la place|et maintenant),? tu es|tu es (?:une? |le |la |mon |ma )?(?:ia|intelligence artificielle|assistant|modèle|version|chatbot|dan)(?:$|[^\p{L}])|fais comme si tu (?:étais|es)|joue le rôle|jouez le rôle|agis (?:comme|en tant que)|agissez (?:comme|en tant que)|incarne|incarnez|deviens|devenez|comporte-toi comme|comportez-vous comme|imagine que tu es|fais semblant d''être|prends le rôle|endosse le rôle)(?:$|[^\p{L}]).{0,80}(?:sans (?:aucune? )?(?:règle|limite|restriction|filtre|censure|contrainte|morale|éthique|garde-fou|barrière)|libre de toute|débridée?|sans tabou|sans jamais refuser|sans discuter|sans poser de question|qui (?:ne refuse|n''a|obéit) (?:jamais|aucune|pas de|sans))'
+      - '\b(?:evil|unfiltered|uncensored|unrestricted|jailbroken|rogue|amoral|unethical)\b.{0,10}\b(?:ai|assistant|version|twin|persona|alter ego|chatbot|model|mode)\b'
+      - '\b(?:an? |the |my )?(?:ai|assistant|model|chatbot|version|persona)\b.{0,15}\b(?:with no|without|free (?:of|from)) (?:any |all )?(?:restrictions?|rules?|limits?|filters?|guardrails?|ethics|morals|censorship|boundaries)\b'
+      - '(?:^|[^\p{L}])(?:ia|assistant|version|jumeau|jumelle|double|personnage|modèle)(?:$|[^\p{L}]).{0,10}(?:maléfique|débridée?|sans (?:aucune? |la moindre )?(?:filtre|censure|limite|restriction|règle|garde-fou|contrainte|morale|éthique)|non censurée?|amorale?|sans scrupule|libre de toute|libérée? de)(?:$|[^\p{L}])'
+      - '\b(?:you are|you''re|be|become|act as|tu es|sois|deviens|incarne|joue) (?:now )?dan\b'
+
+  - id: no_ethical_limits
+    category: role_hijacking
+    description: Demande de supprimer les garde-fous éthiques ou de sécurité
+    weight: 0.5
+    triggers: [ethical, moral, safety, content, usage, community, filter, safeguard, guardrail, restriction, censorship, moderation, alignment, garde-fou, filtre, limite, censure, barrière, éthique, morale, sécurité, principe, politique de contenu, modération]
+    patterns:
+      - '\b(?:no|without|zero|drop|remove|disable|turn off|forget|abandon|suspend|lift|ignore)\b.{0,15}\b(?:ethical|moral|safety|content|usage|community) (?:guidelines?|restrictions?|filters?|limits?|policy|policies|rules?|constraints?|considerations?|boundaries|guardrails?|training)\b'
+      - '\b(?:disable|turn off|remove|bypass|deactivate|switch off)\b.{0,15}\b(?:your |the |all |any )?(?:filters?|safeguards?|guardrails?|safety|restrictions?|censorship|content moderation|alignment)\b'
+      - '(?:^|[^\p{L}])(?:sans|supprime|supprimez|désactive|désactivez|oublie|oubliez|abandonne|abandonnez|lève|levez|retire|retirez|enlève|enlevez|ignore|ignorez)(?:$|[^\p{L}]).{0,15}(?:tes|vos|les|toutes? (?:tes|vos|les)|aucune?|toute)?(?:$|[^\p{L}]).{0,5}(?:garde-fous?|filtres?|restrictions?|limites?|censure|barrières?|règles? (?:éthiques?|morales?|de sécurité)|contraintes? (?:éthiques?|morales?|de sécurité)|considérations? (?:éthiques?|morales?)|principes? (?:éthiques?|moraux)|politique de contenu|modération)(?:$|[^\p{L}])'
+
+  - id: never_refuse
+    category: role_hijacking
+    description: Interdiction faite au modèle de refuser ou de nuancer
+    weight: 0.4
+    triggers: [refuse, decline, reject, say no, say you can't, say cannot, apologi, warn, disclaimer, warning, caveat, lecture, morali, hold back, break character, comply, obey, answer, respond, do as, do what, in character, in role, in this mode, developer mode, dan mode, refus, déclin, rejet, excuse, préviens, prévenez, moralis, juge, dire non, avertissement, mise en garde, réserve, sortir de ton, briser le personnage, obéis, reste]
+    patterns:
+      - '\b(?:never|don''t|do not|must not|cannot|can''t|won''t|will not|not allowed to)\b.{0,10}\b(?:refuse|decline|reject|say no|say (?:you )?(?:can''t|cannot)|apologi[sz]e|warn|add (?:a )?(?:disclaimer|warning|caveat)|lecture|moralize|moralise|hold back|break character)\b'
+      - '\b(?:always|must) (?:comply|obey|answer|respond|do (?:as|what) (?:i|you''re|you are) (?:say|told|asked))\b.{0,30}\b(?:no matter|regardless|whatever|without (?:question|hesitation|exception|refusing))\b'
+      - '\b(?:stay|remain) in (?:character|role|this mode|developer mode|dan mode)\b'
+      - '(?:^|[^\p{L}])(?:ne (?:refuse|refusez|décline|déclinez|rejette|rejetez|t''excuse|vous excusez|préviens|prévenez|moralise|moralisez|juge|jugez) (?:jamais|pas|en aucun cas)|tu ne (?:peux|dois|refuses|refuseras) (?:pas|jamais|en aucun cas) (?:refuser|dire non|ajouter (?:de|d'')(?:avertissement|mise en garde|réserve)|sortir de ton (?:rôle|personnage)|briser le personnage)|interdit de refuser|sans jamais refuser|obéis (?:toujours|sans discuter|sans exception|quoi qu''il arrive))(?:$|[^\p{L}])'
+      - '(?:^|[^\p{L}])reste (?:dans (?:ton|le|ce) (?:rôle|personnage|mode)|en mode)(?:$|[^\p{L}])'
+
+  # ── obfuscation ──────────────────────────────────────────────────────────
+
+  - id: decode_then_execute
+    category: obfuscation
+    description: Demande de décoder un contenu puis d'exécuter le résultat
+    weight: 0.55
+    triggers: [base64, base 64, rot13, rot 13, hex, binary, morse, caesar, cipher, encoded, encrypted, backwards, reversed, atbash, leetspeak, pig latin, unicode, url encoded, urlencoded, decoded, decrypted, hidden, resulting, hexa, binaire, césar, chiffré, encodé, codé, à l'envers, inversé, leet, décodé, déchiffré, caché, obtenu, résultant]
+    patterns:
+      - '\b(?:decode|decrypt|unscramble|reverse|translate|convert|read|interpret|unhide|deobfuscate)\b.{0,40}\b(?:base ?64|rot ?13|hex(?:adecimal)?|binary|morse|caesar|cipher|encoded|encrypted|backwards|reversed|atbash|leetspeak|pig latin|unicode|url ?encoded)\b.{0,80}\b(?:and|then|before)\b.{0,30}\b(?:follow|execute|do|run|obey|perform|act on|carry out|comply|apply|answer|respond to)\b'
+      - '\b(?:follow|execute|do|run|obey|perform|act on|carry out|apply)\b.{0,30}\b(?:the )?(?:decoded|decrypted|hidden|encoded|encrypted|resulting|reversed) (?:instructions?|message|text|command|prompt|request|content)\b'
+      - '(?:^|[^\p{L}])(?:décode|décodez|déchiffre|déchiffrez|décrypte|décryptez|inverse|inversez|traduis|traduisez|convertis|convertissez|lis|lisez|interprète|interprétez)(?:$|[^\p{L}]).{0,40}(?:base ?64|rot ?13|hexa(?:décimal)?|binaire|morse|césar|chiffré|encodé|codé|à l''envers|inversé|leet|unicode)(?:$|[^\p{L}]).{0,80}(?:puis|et|ensuite|avant de)(?:$|[^\p{L}]).{0,30}(?:exécute|exécutez|suis|suivez|applique|appliquez|fais|faites|obéis|obéissez|réponds|répondez|effectue|effectuez|réalise|réalisez)'
+      - '(?:^|[^\p{L}])(?:exécute|exécutez|suis|suivez|applique|appliquez|fais|faites|obéis à|réponds à)(?:$|[^\p{L}]).{0,30}(?:les |le |la |l'')?(?:instructions?|message|texte|commande|consigne|demande|contenu) (?:décodée?s?|déchiffrée?s?|cachée?s?|encodée?s?|obtenue?s?|résultante?s?|inversée?s?)'
+
+  - id: spelled_out_keywords
+    category: obfuscation
+    description: Mots-clés d'attaque épelés, espacés ou en leetspeak pour échapper aux filtres
+    weight: 0.5
+    triggers: [i g, i.g, i-g, i_g, i*g, s y, s.y, s-y, s_y, s*y, p r, p.r, p-r, p_r, p*r, j a, j.a, j-a, j_a, j*a, 1gn0re, ign0re, 1gnore, ignor3, syst3m, sy5tem, 5ystem, 5y5t3m, pr0mpt, j41lbr34k, ja1lbreak, jailbr3ak, 1nstruct10ns, instruct10ns, 1nstructions, d1sregard, 0verride, byp4ss, byp455, erongi, tpmorp metsys, snoitcurtsni]
+    patterns:
+      - '\b(?:i[ .\-_*]g[ .\-_*]n[ .\-_*]o[ .\-_*]r[ .\-_*]e|s[ .\-_*]y[ .\-_*]s[ .\-_*]t[ .\-_*]e[ .\-_*]m|p[ .\-_*]r[ .\-_*]o[ .\-_*]m[ .\-_*]p[ .\-_*]t|j[ .\-_*]a[ .\-_*]i[ .\-_*]l[ .\-_*]b[ .\-_*]r[ .\-_*]e[ .\-_*]a[ .\-_*]k)\b'
+      - '\b(?:1gn0re|ign0re|1gnore|1gn0r3|ignor3|syst3m|sy5tem|5ystem|5y5t3m|pr0mpt|pr0mp7|j41lbr34k|ja1lbreak|jailbr3ak|1nstruct10ns|instruct10ns|1nstructions|d1sregard|0verride|byp4ss|byp455)\b'
+      - '\b(?:erongi|tpmorp metsys|snoitcurtsni)\b'
+
+  - id: fragment_assembly
+    category: obfuscation
+    description: Instructions livrées en morceaux à réassembler par le modèle
+    weight: 0.35
+    triggers: [combine, join, concatenate, assemble, merge, put together, piece together, glue, stitch, let, set, define, assume, concatèn, concaténez, réunis, rassemble, colle, bout à bout]
+    patterns:
+      - '\b(?:combine|join|concatenate|assemble|merge|put together|piece together|glue|stitch)\b.{0,40}\b(?:parts?|fragments?|pieces?|segments?|halves|chunks|strings?|variables?|words?|letters?)\b.{0,60}\b(?:instruction|command|prompt|request|message|sentence|then (?:do|follow|execute)|and (?:do|follow|execute))\b'
+      - '\b(?:let|set|define|assume)\b.{0,5}\b[a-z]\s*=\s*"[^"]{2,30}"\b.{0,80}\b(?:let|set|define|assume)\b.{0,5}\b[a-z]\s*=\s*"[^"]{2,30}"\b.{0,80}\b(?:do|execute|follow|perform|answer|respond to|complete)\b.{0,10}\b[a-z]\s*\+\s*[a-z]\b'
+      - '(?:^|[^\p{L}])(?:combine|combinez|assemble|assemblez|concatène|concaténez|réunis|réunissez|rassemble|rassemblez|colle|collez|mets bout à bout|mettez bout à bout)(?:$|[^\p{L}]).{0,40}(?:parties?|fragments?|morceaux|segments?|moitiés|bouts|chaînes?|variables?|mots?|lettres?)(?:$|[^\p{L}]).{0,60}(?:instruction|commande|consigne|demande|message|phrase|puis (?:fais|exécute|suis|applique)|et (?:fais|exécute|suis|applique))'
+
+  # ── tool_abuse ───────────────────────────────────────────────────────────
+
+  - id: tool_without_confirmation
+    category: tool_abuse
+    description: Demande d'appeler un outil en contournant confirmation ou permission
+    weight: 0.55
+    triggers: [tool, function, api, action, command, plugin, endpoint, script, silently, secretly, quietly, covertly, discreetly, knowing, noticing, seeing, being told, being informed, being aware, user, human, operator, owner, admin, anyone, outil, fonction, commande, en silence, silencieusement, secrètement, discrètement, en secret, en cachette, insu, le sache, aperçoive, le voie, informé, prévenu, au courant, utilisateur, humain, opérateur, personne, quiconque, mention, reveal, disclose, step, mentionne, parle, signale, révèle, dis , indique, étape, appel, opération, requête, utilisation, silently, secretly, quietly, covertly, discreetly, notice, sees, knows, realis, realiz, finds out, s'en aperçoive, le voie, le sache, remarque, rende compte, sans demander, sans prévenir, sans avertir, sans informer, sans confirmation, sans validation, sans autorisation, sans attendre, le dire]
+    patterns:
+      - '\b(?:call|invoke|use|run|execute|trigger|fire|launch)\b.{0,20}\b(?:the |a |any |all )?(?:tools?|functions?|apis?|actions?|commands?|plugins?|endpoints?|scripts?)\b.{0,50}\b(?:without|before|instead of|skip(?:ping)?|bypass(?:ing)?|no need for|don''t (?:wait for|ask))\b.{0,20}\b(?:asking|confirmation|confirming|permission|approval|user (?:consent|input|approval)|validation|review|checking|telling (?:the )?user|informing)\b'
+      - '\b(?:silently|secretly|quietly|covertly|discreetly|without (?:the user|anyone) (?:knowing|noticing|seeing|being (?:told|informed|aware)))\b.{0,40}\b(?:call|invoke|use|run|execute|trigger|send|delete|modify|write|update|create|transfer)\b'
+      - '\b(?:do not|don''t|never|no need to) (?:tell|inform|notify|show|mention (?:this )?to|warn|alert|ask)\b.{0,15}\b(?:the )?(?:user|human|operator|owner|admin|anyone)\b.{0,60}\b(?:tool|function|action|command|api|request|call|step)\b'
+      - '(?:^|[^\p{L}])(?:appelle|appellez|appelez|utilise|utilisez|exécute|exécutez|lance|lancez|déclenche|déclenchez|invoque|invoquez)(?:$|[^\p{L}]).{0,20}(?:l''|le |la |les |un |une |tous les |toutes les )?(?:outils?|fonctions?|apis?|actions?|commandes?|plugins?|scripts?)(?:$|[^\p{L}]).{0,50}(?:sans|avant de|au lieu de|en (?:sautant|contournant|évitant))(?:$|[^\p{L}]).{0,20}(?:demander|confirmation|confirmer|permission|autorisation|approbation|validation|vérifier|vérification|prévenir|avertir|informer|en informer|consulter|accord)'
+      - '(?:^|[^\p{L}])(?:en silence|silencieusement|secrètement|discrètement|en secret|en cachette|à l''insu de|sans que (?:l''utilisateur|personne|quiconque) (?:le sache|s''en aperçoive|le voie|soit (?:informé|prévenu|au courant)))(?:$|[^\p{L}]).{0,40}(?:appelle|utilise|exécute|lance|envoie|supprime|modifie|écris|mets à jour|crée|transfère|vire)'
+      - '(?:^|[^\p{L}])(?:ne (?:dis|préviens|informe|montre|signale|demande|mentionne) (?:rien |pas |jamais |surtout pas )?(?:à |ceci à |cela à )?(?:l''utilisateur|l''humain|l''opérateur|personne|quiconque|l''admin))(?:$|[^\p{L}]).{0,60}(?:outil|fonction|action|commande|api|requête|appel|étape)'
+      - '\b(?:do not|don''t|never|no need to) (?:mention|reveal|disclose|show|report|log) (?:this|the|that|any|your) (?:step|action|call|tool use|tool|command|request|operation)\b'
+      - '\b(?:call|invoke|use|run|execute|trigger|launch|fire)\b.{0,60}\b(?:silently|secretly|quietly|covertly|discreetly|without (?:asking|telling|informing|notifying|warning|confirmation|approval|permission|the user)|before (?:the user|anyone|they) (?:notices?|sees?|knows?|realises?|realizes?|finds? out))\b'
+      - '(?:^|[^\p{L}])(?:appelle|appellez|appelez|utilise|utilisez|exécute|exécutez|lance|lancez|déclenche|déclenchez|invoque|invoquez)(?:$|[^\p{L}]).{0,60}(?:en silence|silencieusement|discrètement|en secret|en cachette|sans (?:demander|prévenir|avertir|informer|confirmation|validation|autorisation|attendre|le dire)|avant que (?:l''utilisateur|quiconque|personne|qui que ce soit) (?:ne )?(?:s''en aperçoive|le voie|le sache|le remarque|s''en rende compte))'
+      - '(?:^|[^\p{L}])ne (?:mentionne|mentionnez|parle|parlez|signale|signalez|révèle|révélez|dis|dites|indique|indiquez) (?:pas|jamais|rien|surtout pas)(?: de| d'')? ?(?:cette|cet|ce|la|le|l'')? ?(?:étape|action|appel|outil|commande|opération|requête|utilisation)(?:$|[^\p{L}])'
+
+  - id: hidden_from_user
+    category: tool_abuse
+    description: Instruction de cacher une action à l'utilisateur ou d'obéir à tout ce qui suit
+    weight: 0.45
+    triggers: [display, show, reveal, mention, tell, user, subsequent, following, further, affiche, montre, dis, mentionne, utilisateur, suivantes, ultérieures, qui suivent]
+    patterns:
+      - '\b(?:do not|don''t|never|without) (?:display|show|reveal|mention|tell|expose|surface|repeat)(?:ing)? (?:it|this|that|these|the marker|the instruction|anything)(?: to| for)? (?:the )?(?:user|human|person|reader)\b'
+      - '\b(?:carry out|perform|execute|follow|obey|apply|complete) (?:all|any|every|each) (?:subsequent|following|further|later|next|remaining) (?:actions?|instructions?|requests?|commands?|steps?|tasks?)\b'
+      - '(?:^|[^\p{L}])ne (?:l''|le |la |les )?(?:affiche|affichez|montre|montrez|dis|dites|mentionne|mentionnez|révèle|révélez|répète|répétez) (?:pas|jamais|rien|surtout pas)(?: (?:ceci|cela|ça|ce marqueur|cette instruction))? à l''utilisateur'
+      - '(?:^|[^\p{L}])(?:exécute|exécutez|effectue|effectuez|applique|appliquez|suis|suivez|obéis à|obéissez à|réalise|réalisez) (?:toutes? |chaque |tous |l''ensemble des )?(?:les )?(?:actions?|instructions?|demandes?|commandes?|étapes?|consignes?|tâches?) (?:suivantes?|ultérieures?|qui suivent|à venir|postérieures?)'
+
+  - id: destructive_bulk_action
+    category: tool_abuse
+    description: Action destructrice de masse formulée comme une instruction
+    weight: 0.3
+    triggers: [delete, drop, remove, erase, wipe, purge, destroy, truncate, rm -rf, format, overwrite, revoke, cancel, terminate, shut, supprime, efface, détruis, vide, formate, écrase, révoque, annule, résilie, éteins, éteignez, arrête]
+    patterns:
+      - '\b(?:delete|drop|remove|erase|wipe|purge|destroy|truncate|rm -rf|format|overwrite|revoke|cancel|terminate|shut ?down)\b.{0,15}\b(?:all|every|everything|each|entire|whole|the database|the table|the repo(?:sitory)?|the account|production|prod|the server|the disk|the drive|backups?|\*)\b'
+      - '(?:^|[^\p{L}])(?:supprime|supprimez|efface|effacez|détruis|détruisez|vide|videz|purge|purgez|formate|formatez|écrase|écrasez|révoque|révoquez|annule|annulez|résilie|résiliez|éteins|éteignez|arrête|arrêtez)(?:$|[^\p{L}]).{0,15}(?:tout|tous|toutes|l''intégralité|l''ensemble|la totalité|chaque|toute la|tout le|la base de données|la base|la table|le dépôt|le compte|la production|la prod|le serveur|le disque|les sauvegardes)(?:$|[^\p{L}])'
+
+  - id: bypass_safety_check
+    category: tool_abuse
+    description: Demande de contourner une vérification, une autorisation ou une validation
+    weight: 0.4
+    triggers: [bypass, skip, disable, ignore, circumvent, evade, override, suppress, defeat, get around, work around, turn off, remove, avoid, contourne, saute, désactive, évite, outrepasse, supprime, neutralise, passe outre, passez outre]
+    patterns:
+      - '\b(?:bypass|skip|disable|ignore|circumvent|evade|override|suppress|defeat|get around|work around|turn off|remove|avoid)\b.{0,30}\b(?:the |all |any |every |this |these )?(?:safety|security|permission|authorization|authorisation|authentication|confirmation|validation|verification|approval|sandbox|rate limit|access control|allow ?list|whitelist|check|review|audit|logging|2fa|mfa|captcha)s?\b'
+      - '(?:^|[^\p{L}])(?:contourne|contournez|saute|sautez|désactive|désactivez|ignore|ignorez|évite|évitez|outrepasse|outrepassez|supprime|supprimez|neutralise|neutralisez|passe outre|passez outre)(?:$|[^\p{L}]).{0,30}(?:la |le |les |toute |tout |toutes les |tous les |cette |ces )?(?:sécurité|vérifications?|autorisations?|authentification|confirmations?|validations?|approbations?|contrôles?|bac à sable|limites? de débit|listes? blanches?|journalisation|journaux|logs|audit|double authentification|captcha|permissions?|garde-fous?)(?:$|[^\p{L}])'
+
+  # ── exfiltration ─────────────────────────────────────────────────────────
+
+  - id: reveal_secrets
+    category: exfiltration
+    description: Demande d'exposer des clés, mots de passe, jetons ou variables d'environnement
+    weight: 0.55
+    triggers: [key, password, passphrase, secret, token, credential, bearer, env, config, connection string, database, aws, service account, jwt, session, cookie, clé, mot de passe, mots de passe, jeton, identifiants, variable, fichier, chaîne de connexion, compte de service]
+    patterns:
+      - '\b(?:reveal|show|print|output|leak|dump|list|display|give|tell|share|expose|disclose|paste|read|cat|echo|what (?:is|are)|what''s|include|send|return|extract|exfiltrate|harvest|collect|retrieve|grab|steal|fetch|pull|copy)\b.{0,50}\b(?:api[ _-]?keys?|secret[ _-]?keys?|private[ _-]?keys?|access[ _-]?keys?|passwords?|passphrases?|secrets?|tokens?|credentials?|bearer|ssh keys?|env(?:ironment)? (?:variables?|vars?)|\.env|config(?:uration)? files?|connection strings?|database (?:url|dsn|password)|aws[ _-]?(?:secret|access)|service accounts?|client secrets?|jwt|session (?:id|cookie)|cookies?)\b'
+      - '(?:^|[^\p{L}])(?:révèle|révélez|affiche|affichez|montre|montrez|donne|donnez|liste|listez|dis-moi|dites-moi|partage|partagez|divulgue|divulguez|dévoile|dévoilez|copie|copiez|lis|lisez|quel est|quels sont|quelle est|quelles sont|inclus|incluez|envoie|envoyez|renvoie|renvoyez|extrais|extrayez|extrait|récupère|récupérez|exporte|exportez|exfiltre|exfiltrez|transmets|transmettez|collecte|collectez|vole|volez)(?:$|[^\p{L}]).{0,50}(?:clés? (?:api|d''api|privées?|secrètes?|d''accès|ssh)|mots? de passe|secrets?|jetons?|tokens?|identifiants|credentials|variables? d''environnement|fichiers? (?:de )?config(?:uration)?|\.env|chaînes? de connexion|cookies?|sessions?|comptes? de service|clés? aws)(?:$|[^\p{L}])'
+      - '\b(?:reveal|show|print|output|leak|dump|display|read|cat|send|include|paste|share|give|copy)\b.{0,50}\.env\b'
+      - '(?:^|[^\p{L}])(?:révèle|affiche|montre|donne|liste|partage|copie|lis|envoie|renvoie|inclus|imprime)(?:$|[^\p{L}]).{0,50}\.env\b'
+
+  - id: exfiltrate_via_url
+    category: exfiltration
+    description: Encodage de données dans une URL, une image Markdown ou un lien à afficher
+    weight: 0.5
+    triggers: [http, image, img, picture, link, url, hyperlink, iframe, query string, parameter, param, src, href, address, lien, hyperlien, adresse, paramètre, chaîne de requête, source de l'image]
+    patterns:
+      - '!\[[^\]]*\]\(https?://[^)\s]*[?&][^)\s]*\)'
+      - '\b(?:render|display|show|include|insert|embed|add|append|output|generate|put)\b.{0,30}\b(?:an? |the |this )?(?:image|img|picture|markdown image|link|url|hyperlink|iframe)\b.{0,60}(?:https?://|\bwith (?:the|all|any) (?:data|content|conversation|information|secrets?|keys?|history|text)\b)'
+      - 'https?://[^\s)"''»]{1,200}[?&](?:data|q|query|content|text|payload|secret|key|token|prompt|conversation|history|msg|message|info|exfil|leak|pass(?:word)?|user|email|api_?key|creds?)=[^\s)"''»]*'
+      - '\b(?:append|add|encode|include|insert|put|urlencode|base64)\b.{0,40}\b(?:the |this |all |every |user''s |their )?(?:conversation|chat history|previous messages?|user (?:input|message|data|information)|secrets?|keys?|passwords?|contents?|data|answers?|response|output)\b.{0,40}\b(?:to|in|into|as|onto)\b.{0,10}\b(?:the |a |this |that )?(?:url|link|query string|parameter|param|image (?:url|link|source|src)|src|href|hyperlink|address)\b'
+      - '(?:^|[^\p{L}])(?:affiche|affichez|insère|insérez|inclus|incluez|ajoute|ajoutez|génère|génèrez|génére|génèrez|mets|mettez|intègre|intégrez)(?:$|[^\p{L}]).{0,30}(?:une? |l''|la |le |cette |ce )?(?:image|lien|url|hyperlien|iframe|balise img|image markdown)(?:$|[^\p{L}]).{0,60}(?:https?://|avec (?:les|toutes les|la|le|l'')(?:$|[^\p{L}]).{0,5}(?:données|contenu|conversation|informations|secrets?|clés?|historique|texte))'
+      - '(?:^|[^\p{L}])(?:ajoute|ajoutez|encode|encodez|inclus|incluez|insère|insérez|mets|mettez|intègre|intégrez|place|placez)(?:$|[^\p{L}]).{0,40}(?:la |cette |toute la |l''|les |tous les |le |ta |ton )?(?:conversation|historique|messages? précédents?|données|informations|saisies?|secrets?|clés?|mots? de passe|contenu|réponses?)(?:$|[^\p{L}]).{0,40}(?:dans|à|en|comme|sur)(?:$|[^\p{L}]).{0,10}(?:l''|la |le |un |une |cette |ce )?(?:url|lien|adresse|paramètre|chaîne de requête|source de l''image|src|href|hyperlien|image)(?:$|[^\p{L}])'
+
+  - id: send_conversation_elsewhere
+    category: exfiltration
+    description: Demande de transmettre la conversation ou les données de l'utilisateur à un tiers
+    weight: 0.5
+    triggers: [conversation, chat, transcript, dialogue, dialog, message, user, personal, everything, what, discussion, échange, historique, contenu, résultat, sortie, result, output, key, secret, token, password, credential, clé, jeton, mot de passe, identifiant, transcription, données, informations, ce que, coordonnées, adresse, e-mail, email, nom, numéro]
+    patterns:
+      - '\b(?:send|transmit|forward|post|upload|email|mail|export|copy|relay|push|submit|report|log|save|write)\b.{0,40}\b(?:this |the |our |entire |whole |full |all )?(?:conversation|chat(?: history| log|log)?|transcript|dialogue|dialog|results?|output|what you (?:found|extracted|decoded|retrieved)|keys?|secrets?|tokens?|passwords?|credentials|messages?|user(?:''s)? (?:data|information|details|input|messages?|questions?|address|email|name|number)|personal (?:data|information)|everything (?:the user|they) (?:said|wrote|typed)|what (?:the user|they|i) (?:said|wrote|typed))\b.{0,40}\b(?:to|at|via|through|into|on)\b.{0,15}\b(?:https?://|www\.|[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}|webhook|endpoint|server|this (?:address|url|email|number|account|link)|my (?:server|email|account|address|inbox|webhook|url)|the following (?:url|address|email|link)|slack|discord|telegram|pastebin|ngrok|requestbin|ftp)'
+      - '(?:^|[^\p{L}])(?:envoie|envoyez|transmets|transmettez|transfère|transférez|poste|postez|téléverse|téléversez|exporte|exportez|copie|copiez|relaie|relayez|soumets|soumettez|enregistre|enregistrez|écris|écrivez|mail|maile|envoi de)(?:$|[^\p{L}]).{0,40}(?:cette |la |notre |toute la |l''intégralité de la |toute |l''|les |la totalité de la )?(?:conversation|discussion|échange|historique|transcription|dialogue|contenu (?:de ce|du|de la|de cette) (?:chat|discussion|conversation|échange|session)|ce chat|résultats?|sortie|ce que tu as (?:extrait|trouvé|récupéré|décodé)|clés?|secrets?|jetons?|mots? de passe|identifiants|messages?|données (?:de l''utilisateur|personnelles|utilisateur)|informations (?:de l''utilisateur|personnelles)|ce que (?:l''utilisateur|il|elle|j'') (?:a |ai )?(?:dit|écrit|tapé|saisi)|coordonnées|adresse|e-?mail|nom|numéro)(?:$|[^\p{L}]).{0,40}(?:à|vers|sur|par|via|dans)(?:$|[^\p{L}]).{0,15}(?:https?://|www\.|[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}|webhook|endpoint|serveur|cette (?:adresse|url|boîte|adresse mail)|ce (?:lien|numéro|compte|serveur)|mon (?:serveur|adresse|compte|webhook|mail|e-mail)|ma (?:boîte|messagerie)|l''adresse suivante|le lien suivant|slack|discord|telegram|pastebin|ngrok|ftp)'

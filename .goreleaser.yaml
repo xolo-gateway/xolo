@@ -75,6 +75,16 @@ builds:
     ldflags:
       - -w -s
 
+  - id: xolo-plugin-prompt-guard
+    targets: [go_first_class]
+    mod_timestamp: "{{ .CommitTimestamp }}"
+    dir: ./plugins/prompt-guard
+    binary: xolo-plugin-prompt-guard
+    flags:
+      - -trimpath
+    ldflags:
+      - -w -s
+
   - id: xolo-plugin-llm-classifier
     targets: [go_first_class]
     mod_timestamp: "{{ .CommitTimestamp }}"
@@ -169,6 +179,7 @@ dockers:
       - xolo-plugin-request-inspector
       - xolo-plugin-complexity-scorer
       - xolo-plugin-text-classifier
+      - xolo-plugin-prompt-guard
       - xolo-plugin-llm-classifier
       - xolo-plugin-energy-estimator
       - xolo-plugin-budget-pressure

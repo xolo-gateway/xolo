@@ -143,3 +143,50 @@ func EstimateTokens(text string) int {
 	}
 	return (n + 3) / 4
 }
+
+// EarlierUserTurns returns the text of every user message except the last
+// one, oldest first. Together with LastUserTurn it lets a plugin treat what
+// is being asked now differently from what was already accepted earlier.
+func EarlierUserTurns(messagesJSON string) []string {
+	messages, ok := parse(messagesJSON)
+	if !ok {
+		return nil
+	}
+	last := -1
+	for i := len(messages) - 1; i >= 0; i-- {
+		if messages[i].Role == "user" {
+			last = i
+			break
+		}
+	}
+	var out []string
+	for i, m := range messages {
+		if i == last || m.Role != "user" {
+			continue
+		}
+		if t := textOf(m.Content); t != "" {
+			out = append(out, t)
+		}
+	}
+	return out
+}
+
+// ToolResults returns the content of tool messages, in order: the text the
+// model reads that nobody in the conversation wrote. Retrieved documents and
+// web pages arrive here, which is where indirect prompt injection lives.
+func ToolResults(messagesJSON string) []string {
+	messages, ok := parse(messagesJSON)
+	if !ok {
+		return nil
+	}
+	var out []string
+	for _, m := range messages {
+		if m.Role != "tool" && m.Role != "function" {
+			continue
+		}
+		if t := textOf(m.Content); t != "" {
+			out = append(out, t)
+		}
+	}
+	return out
+}
