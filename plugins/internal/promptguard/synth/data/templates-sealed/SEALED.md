@@ -51,7 +51,7 @@ Mesurer :
 | 2026-09-09 | Modèle v5 (`2026-09-09.5`), après extension jailbreak (persona à capacité, contraintes de réponse, ROT13) issue du minage des jeux publics et d'OWASP LLM01 | F1 100 % | **F1 97,3 %** (P 98,3 %, R 96,3 %) | 10 | 22 |
 
 **Lecture de la première ouverture.** Quatre points d'écart entre le corpus de
-travail et le scellé, sur 874 échantillons : c'est l'ordre de grandeur de
+travail et le scellé, sur 874 échantillons. C'est l'ordre de grandeur de
 l'ajustement accumulé au fil des campagnes. L'anglais généralise moins bien
 que le français (rappel 87,8 % contre 97,4 %), l'inverse de ce que le corpus
 de travail laissait croire. Une famille anglaise concentre 30 des 39 faux
@@ -99,7 +99,7 @@ les blocs de code.
 **Lecture de la cinquième ouverture.** L'extension jailbreak tirée du minage
 des jeux publics et d'OWASP fait gagner quatre faux négatifs sur le scellé
 (22 contre 26) sans coûter de précision. Les vingt et un faux négatifs de
-l'exfiltration en journal d'audit ne bougent pas : la mise en scène scellée
+l'exfiltration en journal d'audit ne bougent pas. La mise en scène scellée
 reste hors de portée des règles, et la famille de journal ajoutée au jeu de
 travail ne la reproduit pas. C'est le vrai résidu, pour le flux réel du mode
 observation.
