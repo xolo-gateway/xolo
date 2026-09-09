@@ -68,7 +68,7 @@ func (p *Plugin) Describe(_ context.Context, _ *proto.DescribeRequest) (*proto.P
 		Name:         PluginName,
 		Version:      PluginVersion,
 		Description:  "Détecte les tentatives d'injection de prompt (remplacement des instructions, fuite du prompt système, détournement de rôle, obfuscation, abus d'outils, exfiltration) par règles, signaux structurels et un modèle statistique embarqué, sans appel à un LLM. Expose un risque dans [0, 1] et un score par catégorie ; bloque au-delà d'un seuil optionnel.",
-		Capabilities: []proto.PluginDescriptor_Capability{proto.PluginDescriptor_PRE_REQUEST, proto.PluginDescriptor_TOOL_RESULT_INSPECTOR},
+		Capabilities: []proto.PluginDescriptor_Capability{proto.PluginDescriptor_PRE_REQUEST, proto.PluginDescriptor_POST_RESPONSE, proto.PluginDescriptor_TOOL_RESULT_INSPECTOR},
 		InputPorts: []*proto.PortDescriptor{
 			{Name: "request", PortType: "request", Required: true},
 		},
@@ -128,7 +128,102 @@ func (p *Plugin) PreRequest(_ context.Context, in *proto.PreRequestInput) (*prot
 		outputs[string(c)] = round3(a.Categories[c])
 	}
 	b, _ := json.Marshal(outputs)
-	return &proto.PreRequestOutput{Allowed: true, OutputsJson: string(b)}, nil
+
+	// Stash what PostResponse needs: the backward pass hands the plugin no
+	// RequestContext, so the org, user and the response-side config travel in
+	// node_state. NoResponseRewrite is set when the response is only observed,
+	// never redacted, so the host keeps streaming live instead of buffering.
+	state, _ := json.Marshal(nodeState{
+		OrgID: in.GetCtx().GetOrgId(), UserID: in.GetCtx().GetUserId(),
+		InspectResponse:     cfg.InspectResponse,
+		ResponseEventAbove:  cfg.ResponseEventAbove,
+		ResponseRedactAbove: cfg.ResponseRedactAbove,
+	})
+	return &proto.PreRequestOutput{
+		Allowed:           true,
+		OutputsJson:       string(b),
+		NodeState:         state,
+		NoResponseRewrite: !(cfg.InspectResponse && cfg.ResponseRedactAbove > 0),
+	}, nil
+}
+
+// nodeState carries, from PreRequest to PostResponse, what the backward pass
+// cannot otherwise reach.
+type nodeState struct {
+	OrgID               string  `json:"org_id"`
+	UserID              string  `json:"user_id"`
+	InspectResponse     bool    `json:"inspect_response"`
+	ResponseEventAbove  float64 `json:"response_event_above"`
+	ResponseRedactAbove float64 `json:"response_redact_above"`
+}
+
+// PostResponse inspects the model's answer for output-side exfiltration
+// (a data-carrying link or image, invisible or bidi smuggling) that a
+// successful injection produces and PreRequest cannot see. It emits its own
+// security.data_exfiltration event above response_event_above and, above
+// response_redact_above, strips the offending spans from the answer.
+func (p *Plugin) PostResponse(_ context.Context, in *proto.PostResponseInput) (*proto.PostResponseOutput, error) {
+	if in.GetHadError() || in.GetResponseContent() == "" || len(in.GetNodeState()) == 0 {
+		return &proto.PostResponseOutput{}, nil
+	}
+	var st nodeState
+	if err := json.Unmarshal(in.GetNodeState(), &st); err != nil || !st.InspectResponse {
+		return &proto.PostResponseOutput{}, nil
+	}
+	res := promptguard.InspectResponse(in.GetResponseContent(), 0)
+	if res.Risk == 0 {
+		return &proto.PostResponseOutput{}, nil
+	}
+	redact := st.ResponseRedactAbove > 0 && res.Risk >= st.ResponseRedactAbove
+	if st.ResponseEventAbove > 0 && res.Risk >= st.ResponseEventAbove {
+		p.emitResponse(st, res, redact)
+	}
+	if redact {
+		if cleaned, changed := promptguard.Redact(in.GetResponseContent(), res); changed {
+			return &proto.PostResponseOutput{ModifiedResponseContent: cleaned}, nil
+		}
+	}
+	return &proto.PostResponseOutput{}, nil
+}
+
+// emitResponse records a suspicious answer. The response text never leaves;
+// only the finding kinds and counts do.
+func (p *Plugin) emitResponse(st nodeState, res promptguard.ResponseResult, redacted bool) {
+	hc := p.getHostClient()
+	if hc == nil {
+		return
+	}
+	severity := "warning"
+	if redacted {
+		severity = "error"
+	}
+	attrs := map[string]string{
+		"risk":                 fmt.Sprintf("%.3f", res.Risk),
+		"findings":             strings.Join(res.Kinds(), ","),
+		"exfil_urls":           fmt.Sprint(res.ExfilURLs),
+		"invisible_characters": fmt.Sprint(res.InvisibleCount),
+		"redacted":             fmt.Sprintf("%t", redacted),
+	}
+	verb := "suspecte"
+	if redacted {
+		verb = "expurgée"
+	}
+	evt := pluginsdk.Event{
+		PluginName: PluginName,
+		Type:       "security.data_exfiltration",
+		Severity:   severity,
+		OrgID:      st.OrgID,
+		UserID:     st.UserID,
+		Message:    fmt.Sprintf("Réponse %s : risque d'exfiltration %.2f (%s)", verb, res.Risk, strings.Join(res.Kinds(), ",")),
+		Attributes: attrs,
+	}
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := hc.EmitEvent(ctx, evt); err != nil {
+			slog.Warn("prompt-guard: could not emit response event", slog.Any("error", err))
+		}
+	}()
 }
 
 // InspectToolResult scores a single tool result the gateway fetched itself
@@ -341,19 +436,32 @@ type Config struct {
 	// ModelCap bounds the contribution of the statistical model. 0 disables
 	// the model.
 	ModelCap float64 `json:"model_cap"`
+	// InspectResponse enables output-side inspection (data-exfiltration
+	// channels, invisible-character smuggling) in the LLM answer.
+	InspectResponse bool `json:"inspect_response"`
+	// ResponseEventAbove emits a security.data_exfiltration event when the
+	// response risk reaches this value. 0 disables.
+	ResponseEventAbove float64 `json:"response_event_above"`
+	// ResponseRedactAbove strips the offending spans from the answer when the
+	// response risk reaches this value. 0 disables (observation only), which
+	// also keeps the response streaming live instead of being buffered.
+	ResponseRedactAbove float64 `json:"response_redact_above"`
 }
 
 func defaultConfig() Config {
 	return Config{
-		BlockAbove:         0,
-		BlockMessage:       "Requête refusée : elle ressemble à une tentative de manipulation de l'assistant.",
-		SuspiciousAbove:    0.5,
-		EventAbove:         0.6,
-		AnalyzeToolResults: true,
-		AnalyzeHistory:     false,
-		ToolWeight:         promptguard.DefaultKindWeights[promptguard.SegmentTool],
-		QuoteDamping:       promptguard.DefaultQuoteDamping,
-		ModelCap:           promptguard.DefaultModelCap,
+		BlockAbove:          0,
+		BlockMessage:        "Requête refusée : elle ressemble à une tentative de manipulation de l'assistant.",
+		SuspiciousAbove:     0.5,
+		EventAbove:          0.6,
+		AnalyzeToolResults:  true,
+		AnalyzeHistory:      false,
+		ToolWeight:          promptguard.DefaultKindWeights[promptguard.SegmentTool],
+		QuoteDamping:        promptguard.DefaultQuoteDamping,
+		ModelCap:            promptguard.DefaultModelCap,
+		InspectResponse:     true,
+		ResponseEventAbove:  0.6,
+		ResponseRedactAbove: 0,
 	}
 }
 
@@ -363,16 +471,19 @@ func parseConfig(raw string) Config {
 		return cfg
 	}
 	var aux struct {
-		BlockAbove         *float64 `json:"block_above"`
-		BlockMessage       *string  `json:"block_message"`
-		SuspiciousAbove    *float64 `json:"suspicious_above"`
-		EventAbove         *float64 `json:"event_above"`
-		AnalyzeToolResults *bool    `json:"analyze_tool_results"`
-		AnalyzeHistory     *bool    `json:"analyze_history"`
-		ToolWeight         *float64 `json:"tool_weight"`
-		ExtraRules         *string  `json:"extra_rules"`
-		QuoteDamping       *float64 `json:"quote_damping"`
-		ModelCap           *float64 `json:"model_cap"`
+		BlockAbove          *float64 `json:"block_above"`
+		BlockMessage        *string  `json:"block_message"`
+		SuspiciousAbove     *float64 `json:"suspicious_above"`
+		EventAbove          *float64 `json:"event_above"`
+		AnalyzeToolResults  *bool    `json:"analyze_tool_results"`
+		AnalyzeHistory      *bool    `json:"analyze_history"`
+		ToolWeight          *float64 `json:"tool_weight"`
+		ExtraRules          *string  `json:"extra_rules"`
+		QuoteDamping        *float64 `json:"quote_damping"`
+		ModelCap            *float64 `json:"model_cap"`
+		InspectResponse     *bool    `json:"inspect_response"`
+		ResponseEventAbove  *float64 `json:"response_event_above"`
+		ResponseRedactAbove *float64 `json:"response_redact_above"`
 	}
 	if err := json.Unmarshal([]byte(raw), &aux); err != nil {
 		return cfg
@@ -406,6 +517,15 @@ func parseConfig(raw string) Config {
 	}
 	if aux.ModelCap != nil && *aux.ModelCap >= 0 && *aux.ModelCap <= 1 {
 		cfg.ModelCap = *aux.ModelCap
+	}
+	if aux.InspectResponse != nil {
+		cfg.InspectResponse = *aux.InspectResponse
+	}
+	if aux.ResponseEventAbove != nil && *aux.ResponseEventAbove >= 0 && *aux.ResponseEventAbove <= 1 {
+		cfg.ResponseEventAbove = *aux.ResponseEventAbove
+	}
+	if aux.ResponseRedactAbove != nil && *aux.ResponseRedactAbove >= 0 && *aux.ResponseRedactAbove <= 1 {
+		cfg.ResponseRedactAbove = *aux.ResponseRedactAbove
 	}
 	return cfg
 }
@@ -465,6 +585,24 @@ const configSchemaJSON = `{
       "title": "Plafond du modèle statistique",
       "description": "Contribution maximale du modèle embarqué au risque. En dessous de 0,5 de probabilité il ne contribue pas ; au-dessus, sa probabilité compte jusqu'à ce plafond. 0 désactive le modèle. Un seuil de blocage supérieur au plafond garantit qu'un blocage repose toujours sur une règle ou un signal structurel.",
       "minimum": 0, "maximum": 1, "default": 0.6
+    },
+    "inspect_response": {
+      "type": "boolean",
+      "title": "Inspecter la réponse du modèle",
+      "description": "Cherche dans la réponse les canaux d'exfiltration (lien ou image transportant des données, caractères invisibles ou bidi) qu'une injection réussie produit et que l'analyse d'entrée ne voit pas.",
+      "default": true
+    },
+    "response_event_above": {
+      "type": "number",
+      "title": "Événement réponse au-delà de",
+      "description": "Risque d'exfiltration à partir duquel un événement security.data_exfiltration est émis (sans le texte de la réponse). 0 désactive.",
+      "minimum": 0, "maximum": 1, "default": 0.6
+    },
+    "response_redact_above": {
+      "type": "number",
+      "title": "Expurger la réponse au-delà de",
+      "description": "Risque à partir duquel les liens, images et caractères invisibles suspects sont retirés de la réponse. 0 se contente d'observer et préserve le streaming ; au-dessus de 0, la réponse est bufferisée pour pouvoir être expurgée.",
+      "minimum": 0, "maximum": 1, "default": 0
     },
     "extra_rules": {
       "type": "string",
