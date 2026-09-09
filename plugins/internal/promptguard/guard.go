@@ -250,6 +250,12 @@ func (g *Guard) assessSegment(seg Segment) SegmentResult {
 			matches = append(matches, m)
 		}
 	}
+	if st.Rot13 != "" {
+		for _, m := range g.rules.Evaluate(st.Rot13, seg.Kind) {
+			m.Decoded = true
+			matches = append(matches, m)
+		}
+	}
 	sort.SliceStable(matches, func(i, j int) bool { return matches[i].Weight > matches[j].Weight })
 
 	ruleScore := RuleScore(matches)

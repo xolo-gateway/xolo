@@ -231,7 +231,7 @@ func Parse(src string, lex Lexicon) (*Template, error) {
 var categoryEvidence = map[promptguard.Category]map[string]bool{
 	promptguard.CategoryPromptInjection: set("override_verb", "override_de_verb", "instruction_noun", "authority", "role_marker", "address_ai", "mode", "transition"),
 	promptguard.CategoryPromptLeakage:   set("leak_request"),
-	promptguard.CategoryRoleHijacking:   set("persona", "no_limits", "mode"),
+	promptguard.CategoryRoleHijacking:   set("persona", "no_limits", "mode", "capability_persona", "response_constraint"),
 	promptguard.CategoryObfuscation:     set("encoding", "decode_verb", "role_marker"),
 	promptguard.CategoryToolAbuse:       set("tool_noun", "no_confirm"),
 	promptguard.CategoryExfiltration:    set("exfil_target", "secret_noun", "data_noun"),

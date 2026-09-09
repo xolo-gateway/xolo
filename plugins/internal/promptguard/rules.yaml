@@ -157,6 +157,21 @@ rules:
       - '(?:^|[^\p{L}])(?:ne (?:refuse|refusez|décline|déclinez|rejette|rejetez|t''excuse|vous excusez|préviens|prévenez|moralise|moralisez|juge|jugez) (?:jamais|pas|en aucun cas)|tu ne (?:peux|dois|refuses|refuseras) (?:pas|jamais|en aucun cas) (?:refuser|dire non|ajouter (?:de|d'')(?:avertissement|mise en garde|réserve)|sortir de ton (?:rôle|personnage)|briser le personnage)|interdit de refuser|sans jamais refuser|obéis (?:toujours|sans discuter|sans exception|quoi qu''il arrive))(?:$|[^\p{L}])'
       - '(?:^|[^\p{L}])reste (?:dans (?:ton|le|ce) (?:rôle|personnage|mode)|en mode)(?:$|[^\p{L}])'
 
+  - id: response_form_constraint
+    category: role_hijacking
+    description: Contrainte imposée à la forme des réponses (ne jamais avertir, refuser, sortir du rôle)
+    weight: 0.45
+    triggers: [responses, response, answers, replies, output, reply, réponses, réponse, warning, disclaimer, caveat, avertissement, mise en garde, break character, personnage, do anything now, no limitation, sans limitation, tout faire]
+    patterns:
+      - '\b(?:none|no|any) of your (?:responses?|answers?|replies|outputs?)\b.{0,20}\b(?:should|must|will|shall|can|may|are to)\b.{0,20}\b(?:include|contain|have|mention|show|be|add|give|refuse|warn|reveal|acknowledge|not|never)\b'
+      - '\byour (?:responses?|answers?|replies|outputs?)\b.{0,30}\b(?:must not|should not|will not|should never|must never|can(?:no|'')t|never)\b'
+      - '\b(?:never|do not|don''t|no need to) (?:include|add|give|write|put|show) (?:a |an |any )?(?:warning|disclaimer|caveat|refusal|apolog|note that you(?:''re| are)|reminder that you(?:''re| are))\b'
+      - '\b(?:can do anything(?: now)?|do anything now|with no limitations?|without any limitations?|able to bypass its|freed from its|every safeguard removed|no restrictions? of any kind)\b'
+      - '(?:^|[^\p{L}])aucune de tes réponses?(?:$|[^\p{L}]).{0,20}ne (?:doi(?:t|vent)|peu(?:t|vent))(?:$|[^\p{L}]).{0,20}(?:contenir|inclure|comporter|mentionner|avertir|refuser|indiquer|rappeler|pas|jamais|aucun)'
+      - '(?:^|[^\p{L}])tes réponses ne doivent (?:jamais|pas)(?:$|[^\p{L}]).{0,25}(?:refuser|mentionner|contenir|inclure|avertir)'
+      - '(?:^|[^\p{L}])(?:n''ajoute| n''inclus|ne mets|ne donne) (?:jamais|pas|aucun|aucune)(?:$|[^\p{L}]).{0,20}(?:avertissement|mise en garde|réserve|disclaimer|remarque)'
+      - '(?:^|[^\p{L}])(?:capable de tout faire|sans la moindre limitation|qui peut tout faire|affranchie de ses|libérée des politiques|privée? de tout garde-fou)(?:$|[^\p{L}])'
+
   # ── obfuscation ──────────────────────────────────────────────────────────
 
   - id: decode_then_execute

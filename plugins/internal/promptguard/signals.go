@@ -33,6 +33,11 @@ type Structural struct {
 	// Defolded is the canonical text with leetspeak and spelled-out words
 	// undone, empty when nothing was folded.
 	Defolded string `json:"-"`
+	// Rot13 is the ROT13 transform of the canonical text, kept only when it
+	// looks more like natural language than the input did (an actual ROT13
+	// payload), so the rules can run on it. OWASP LLM01 lists ROT13 among the
+	// filter-evasion encodings.
+	Rot13 string `json:"-"`
 }
 
 // Decoding limits. Together they bound the work done on hostile input: at
@@ -79,6 +84,9 @@ func Analyze(n Normalized) Structural {
 	}
 	s.NonAlnumRatio = nonAlnumRatio(n.Canonical)
 	s.RepeatedLines = repeatedLines(n.Original)
+	if dec, ok := tryRot13(n.Canonical); ok {
+		s.Rot13 = dec
+	}
 
 	budget := maxCandidates
 	for _, cand := range base64Re.FindAllString(n.Original, budget) {
@@ -198,6 +206,52 @@ func repeatedLines(s string) int {
 		}
 	}
 	return n
+}
+
+// tryRot13 returns the ROT13 of a text when the result reads as natural
+// language and the input did not: a ciphered instruction turns into words,
+// plain text turns into gibberish. The vowel ratio of common English/French
+// text sits near 0.38; ROT13 of prose collapses it.
+func tryRot13(s string) (string, bool) {
+	if len(s) < 16 {
+		return "", false
+	}
+	if vowelRatio(s) > 0.30 {
+		return "", false // already reads like language
+	}
+	out := []byte(s)
+	for i := 0; i < len(out); i++ {
+		c := out[i]
+		switch {
+		case c >= 'a' && c <= 'z':
+			out[i] = 'a' + (c-'a'+13)%26
+		case c >= 'A' && c <= 'Z':
+			out[i] = 'A' + (c-'A'+13)%26
+		}
+	}
+	dec := string(out)
+	if vowelRatio(dec) < 0.30 {
+		return "", false // still gibberish, not ROT13 of prose
+	}
+	return dec, true
+}
+
+func vowelRatio(s string) float64 {
+	var letters, vowels int
+	for _, r := range s {
+		switch {
+		case r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z':
+			letters++
+			switch r | 0x20 {
+			case 'a', 'e', 'i', 'o', 'u', 'y':
+				vowels++
+			}
+		}
+	}
+	if letters == 0 {
+		return 0
+	}
+	return float64(vowels) / float64(letters)
 }
 
 // decodeBase64 tries the standard and URL alphabets, with and without

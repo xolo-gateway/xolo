@@ -48,6 +48,7 @@ Mesurer :
 | 2026-09-09 | Modèle v1 (`2026-09-09.1`), règles + signaux + modèle, plancher 0,5, plafond 0,6 | F1 99,9 % | **F1 95,5 %** (P 95,3 %, R 95,6 %) | 28 | 26 |
 | 2026-09-09 | Modèle v2 (`2026-09-09.2`), après quinze familles bénignes sur la configuration et la sécurité dans le jeu de travail | F1 100 % | **F1 96,8 %** (P 98,3 %, R 95,4 %) | 10 | 27 |
 | 2026-09-09 | Modèle v4 (`2026-09-09.4`), après une famille d'exfiltration en journal d'audit et quelques règles anglaises tirées du banc d'essai deepset | F1 100 % | **F1 97,1 %** (P 98,6 %, R 95,6 %) | 8 | 26 |
+| 2026-09-09 | Modèle v5 (`2026-09-09.5`), après extension jailbreak (persona à capacité, contraintes de réponse, ROT13) issue du minage des jeux publics et d'OWASP LLM01 | F1 100 % | **F1 97,3 %** (P 98,3 %, R 96,3 %) | 10 | 22 |
 
 **Lecture de la première ouverture.** Quatre points d'écart entre le corpus de
 travail et le scellé, sur 874 échantillons : c'est l'ordre de grandeur de
@@ -95,6 +96,14 @@ sans coûter de faux positif. Reste inchangé : huit faux positifs sur le test
 unitaire avec charge, qui attendent une atténuation des citations comprenant
 les blocs de code.
 
+**Lecture de la cinquième ouverture.** L'extension jailbreak tirée du minage
+des jeux publics et d'OWASP fait gagner quatre faux négatifs sur le scellé
+(22 contre 26) sans coûter de précision. Les vingt et un faux négatifs de
+l'exfiltration en journal d'audit ne bougent pas : la mise en scène scellée
+reste hors de portée des règles, et la famille de journal ajoutée au jeu de
+travail ne la reproduit pas. C'est le vrai résidu, pour le flux réel du mode
+observation.
+
 ## Banc d'essai public
 
 En parallèle du scellé, `external-benchmark.sh` mesure le détecteur sur des
@@ -105,3 +114,14 @@ jailbreak précision 98 %, rappel 46 %. La précision élevée sur données rée
 est la propriété recherchée ; le rappel modeste dit que le corpus synthétique
 ne remplace pas les attaques du terrain, et justifie le déploiement sans
 blocage.
+
+Mise à jour, modèle v5. Le split test de jackhhao/jailbreak-classification est
+resté à l'écart de tout minage et sert de mesure propre. En minant les
+tournures discriminantes du split train par log-odds, on a extrait la
+structure des jailbreaks (persona à capacité illimitée, contraintes imposées à
+la forme des réponses) sans copier une seule phrase réelle : elle est devenue
+des slots de lexique et quatre templates. OWASP GenAI LLM Top 10 2026, entrée
+LLM01, a confirmé ces axes et ajouté ROT13 aux encodages décodés. Sur le split
+test tenu à l'écart, le rappel passe de 56,8 % (v4) à 64,7 % (v5) à précision
+constante (98,9 %). Restent hors périmètre : les payloads en allemand, espagnol
+et langues peu dotées (LLM01 #8), et les canaux multimodaux (#4).
