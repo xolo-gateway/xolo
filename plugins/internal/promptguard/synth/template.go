@@ -170,6 +170,9 @@ func Parse(src string, lex Lexicon) (*Template, error) {
 				if len([]rune(alt)) < 2 {
 					return nil, fmt.Errorf("slot %s: alternative %q too short. {{a|b|c}} means 'a or b or c', each alternative is a word or a phrase", m, alt)
 				}
+				if lex.Has(t.Lang, alt) || SpecialSlots[alt] {
+					return nil, fmt.Errorf("slot %s: %q is a slot name, it would be rendered literally. Write {{%s}} on its own, alternatives are plain words", m, alt, alt)
+				}
 			}
 			continue
 		}

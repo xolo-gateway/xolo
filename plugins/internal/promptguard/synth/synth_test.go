@@ -71,6 +71,7 @@ func TestParseRejects(t *testing.T) {
 		"letter alternative":        "# name: a\nmalicious: false\nlang: fr\n---\nfais {{honest_task}} vite {{a| ou pas}} pour la session.",
 		"nested braces":             "# name: a\nmalicious: false\nlang: fr\n---\nfais {{honest_task}} pour la {{oui|. Mais {{scope}} x}} session.",
 		"slot thrice":               "# name: a\nmalicious: false\nlang: fr\n---\n{{persona_honest}} et {{persona_honest}} puis {{persona_honest}} pour la session.",
+		"slot name as alternative":  "# name: a\nmalicious: false\nlang: fr\n---\nparle de {{security_topic|honest_task}} pour la session.",
 		"category without evidence": "# name: a\nmalicious: true\ncategories: exfiltration\nlang: fr\n---\n{{override_verb}} {{scope}} {{instruction_noun}} pour la session.",
 		"bare attack quote":         "# name: a\nmalicious: false\nlang: fr\n---\nexplique pourquoi {{attack_quote}} est une attaque.",
 	}

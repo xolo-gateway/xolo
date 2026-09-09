@@ -46,6 +46,7 @@ Mesurer :
 | --- | --- | ---: | ---: | ---: | ---: |
 | 2026-09-09 | Clôture de l'étape 2 (règles + signaux, sans modèle) | F1 99,9 % | **F1 95,9 %** (P 98,6 %, R 93,4 %) | 8 | 39 |
 | 2026-09-09 | Modèle v1 (`2026-09-09.1`), règles + signaux + modèle, plancher 0,5, plafond 0,6 | F1 99,9 % | **F1 95,5 %** (P 95,3 %, R 95,6 %) | 28 | 26 |
+| 2026-09-09 | Modèle v2 (`2026-09-09.2`), après quinze familles bénignes sur la configuration et la sécurité dans le jeu de travail | F1 100 % | **F1 96,8 %** (P 98,3 %, R 95,4 %) | 10 | 27 |
 
 **Lecture de la première ouverture.** Quatre points d'écart entre le corpus de
 travail et le scellé, sur 874 échantillons : c'est l'ordre de grandeur de
@@ -71,3 +72,14 @@ la sécurité, et c'est là qu'ira la prochaine campagne `author` du jeu de
 travail, avec une consigne explicite. Cette ouverture a eu lieu deux fois de
 suite, avant et après la correction sur l'atténuation, avec les mêmes
 chiffres ; elle compte pour une.
+
+**Lecture de la troisième ouverture.** La campagne de négatifs bénins du jeu
+de travail, décidée à la lecture de la deuxième ouverture sans regarder les
+textes du scellé, a fait ce qu'on en attendait : les faux positifs de la
+documentation de configuration passent de 20 à 2, et le modèle devient
+un gain net sur les règles seules, 96,8 contre 95,9 % de F1. Les huit faux
+positifs du test unitaire avec charge n'ont pas bougé, ni les vingt et un
+faux négatifs de l'exfiltration déguisée en journal d'audit : le premier
+demande une atténuation des citations qui comprenne les blocs de code, le
+second une famille d'entraînement du même genre. Les deux sont notés, aucun
+n'a été traité sur ce résultat.
