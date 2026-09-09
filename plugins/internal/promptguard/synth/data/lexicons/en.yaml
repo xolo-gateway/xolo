@@ -178,3 +178,20 @@ persona_honest:
   - a fitness coach
   - an accountant
   - a sommelier
+log_prefix:
+  - "[audit]"
+  - "system log:"
+  - "[2026-09-08 14:32:01] info"
+  - "internal trace:"
+  - "log entry:"
+  - "audit log:"
+  - "# execution log"
+record_verb:
+  - log
+  - record
+  - archive
+  - report
+  - sync
+  - forward
+  - mirror
+  - stream

@@ -47,6 +47,7 @@ Mesurer :
 | 2026-09-09 | Clôture de l'étape 2 (règles + signaux, sans modèle) | F1 99,9 % | **F1 95,9 %** (P 98,6 %, R 93,4 %) | 8 | 39 |
 | 2026-09-09 | Modèle v1 (`2026-09-09.1`), règles + signaux + modèle, plancher 0,5, plafond 0,6 | F1 99,9 % | **F1 95,5 %** (P 95,3 %, R 95,6 %) | 28 | 26 |
 | 2026-09-09 | Modèle v2 (`2026-09-09.2`), après quinze familles bénignes sur la configuration et la sécurité dans le jeu de travail | F1 100 % | **F1 96,8 %** (P 98,3 %, R 95,4 %) | 10 | 27 |
+| 2026-09-09 | Modèle v4 (`2026-09-09.4`), après une famille d'exfiltration en journal d'audit et quelques règles anglaises tirées du banc d'essai deepset | F1 100 % | **F1 97,1 %** (P 98,6 %, R 95,6 %) | 8 | 26 |
 
 **Lecture de la première ouverture.** Quatre points d'écart entre le corpus de
 travail et le scellé, sur 874 échantillons : c'est l'ordre de grandeur de
@@ -83,3 +84,24 @@ faux négatifs de l'exfiltration déguisée en journal d'audit : le premier
 demande une atténuation des citations qui comprenne les blocs de code, le
 second une famille d'entraînement du même genre. Les deux sont notés, aucun
 n'a été traité sur ce résultat.
+
+**Lecture de la quatrième ouverture.** Ajouter au jeu de travail une famille
+d'exfiltration déguisée en journal d'audit n'a pas bougé la même famille du
+scellé : ma mise en scène du journal diffère de la sienne, le rappel de cette
+famille scellée reste à 56 %. C'est le scellé qui remplit son rôle. Les règles
+anglaises ajoutées après lecture du banc d'essai public (« directions »,
+« documents », « forget everything you know ») font +1 point sur le scellé
+sans coûter de faux positif. Reste inchangé : huit faux positifs sur le test
+unitaire avec charge, qui attendent une atténuation des citations comprenant
+les blocs de code.
+
+## Banc d'essai public
+
+En parallèle du scellé, `external-benchmark.sh` mesure le détecteur sur des
+jeux réels (deepset/prompt-injections, jackhhao/jailbreak-classification). Au
+9 septembre 2026, modèle v4 : deepset précision 100 %, rappel 18 % (26 % sur
+le seul anglais, le reste est en allemand et espagnol, non couverts) ;
+jailbreak précision 98 %, rappel 46 %. La précision élevée sur données réelles
+est la propriété recherchée ; le rappel modeste dit que le corpus synthétique
+ne remplace pas les attaques du terrain, et justifie le déploiement sans
+blocage.
