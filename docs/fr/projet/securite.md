@@ -23,12 +23,12 @@ mais n'est pas exigée.
 
 ## Qui traite les signalements
 
-Les signalements sont traités par une équipe sécurité restreinte comprenant
-au moins un représentant habilité de chaque entreprise membre du consortium
-(voir [GOVERNANCE.md](../../../GOVERNANCE.md)). Les informations relatives à
-une vulnérabilité non publiée sont confidentielles et restent sous embargo
-jusqu'à la publication de l'avis ; elles ne sont jamais utilisées ni
-mentionnées, commercialement ou autrement, avant divulgation.
+Les signalements sont traités par les mainteneurs listés dans
+[MAINTAINERS.md](../../../MAINTAINERS.md), sous la responsabilité du
+mainteneur principal. Les informations relatives à une vulnérabilité non
+publiée sont confidentielles et restent sous embargo jusqu'à la publication
+de l'avis ; elles ne sont jamais utilisées ni mentionnées, commercialement
+ou autrement, avant divulgation.
 
 ## À quoi vous attendre
 

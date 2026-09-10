@@ -19,12 +19,11 @@ as you understand it. A proof of concept helps but is not required.
 
 ## Who handles reports
 
-Reports are handled by a restricted security team that includes at least one
-authorized representative of each consortium member company (see
-[GOVERNANCE.md](GOVERNANCE.md)). Information about an unpublished
-vulnerability is confidential and stays under embargo until the advisory is
-published; it is never used or referenced, commercially or otherwise, before
-disclosure.
+Reports are handled by the maintainers listed in
+[MAINTAINERS.md](MAINTAINERS.md), under the responsibility of the lead
+maintainer. Information about an unpublished vulnerability is confidential
+and stays under embargo until the advisory is published; it is never used or
+referenced, commercially or otherwise, before disclosure.
 
 ## What to expect
 
