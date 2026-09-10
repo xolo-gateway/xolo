@@ -5,8 +5,8 @@ import (
 	"fmt"
 
 	"github.com/bornholm/genai/llm"
-	"github.com/xolo-gateway/xolo/internal/core/model"
 	"github.com/pkg/errors"
+	"github.com/xolo-gateway/xolo/internal/core/model"
 )
 
 // Engine executes pipeline graphs.
@@ -269,8 +269,10 @@ func topoSort(g *model.PipelineGraph) ([]string, error) {
 		inDegree[e.Target]++
 	}
 
+	terminal := make(map[string]bool, len(g.Nodes))
 	queue := make([]string, 0, len(g.Nodes))
 	for _, n := range g.Nodes {
+		terminal[n.ID] = isTerminalNodeType(n.Type)
 		if inDegree[n.ID] == 0 {
 			queue = append(queue, n.ID)
 		}
@@ -278,8 +280,19 @@ func topoSort(g *model.PipelineGraph) ([]string, error) {
 
 	var order []string
 	for len(queue) > 0 {
-		cur := queue[0]
-		queue = queue[1:]
+		// The forward pass stops at the first node resolving a client. Among
+		// the nodes ready to run, take the non-terminal ones first so that a
+		// trace, a guard or any node not feeding the model still runs,
+		// whatever the order in which the edges were drawn.
+		pick := 0
+		for i, id := range queue {
+			if !terminal[id] {
+				pick = i
+				break
+			}
+		}
+		cur := queue[pick]
+		queue = append(queue[:pick], queue[pick+1:]...)
 		order = append(order, cur)
 		for _, next := range adj[cur] {
 			inDegree[next]--
@@ -293,6 +306,12 @@ func topoSort(g *model.PipelineGraph) ([]string, error) {
 		return nil, errors.New("cycle detected in pipeline graph")
 	}
 	return order, nil
+}
+
+// isTerminalNodeType reports whether a node of that type resolves the LLM
+// client and thereby ends the forward pass.
+func isTerminalNodeType(t model.PipelineNodeType) bool {
+	return t == model.NodeTypeModel || t == model.NodeTypeModelFallback
 }
 
 func nodeByID(g *model.PipelineGraph, id string) *model.PipelineNode {
