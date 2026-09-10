@@ -67,6 +67,14 @@ test:
 test-integration:
 	go test -tags integration -timeout 15m ./internal/adapter/gorm/...
 
+# End-to-end suite: builds the server and the pseudonymizer plugin from the
+# working tree, seeds a throwaway SQLite database, starts the server against a
+# fake OpenAI-compatible provider and drives it over HTTP. Needs network access
+# the first time to fetch the go-anon NER model (cached under ~/.cache/go-anon).
+.PHONY: test-e2e
+test-e2e:
+	go test -tags e2e -timeout 20m -count=1 ./test/e2e/...
+
 # Generates a SQLite database populated with coherent fake data for E2E tests.
 # See cmd/seed/README.md for the catalog of the generated fixture.
 SEED_DSN ?= e2e.sqlite

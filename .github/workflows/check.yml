@@ -60,6 +60,33 @@ jobs:
       - name: Integration tests
         run: make test-integration
 
+  # Drives a real server, built from the working tree, over HTTP against a fake
+  # provider: built-in pipeline nodes, the shipped plugins and the events they
+  # record (see test/e2e/README.md for the scenario list). The pseudonymizer
+  # plugin downloads its NER model on first use; the cache keeps that download
+  # out of the test timeout on later runs.
+  e2e:
+    env:
+      CGO_ENABLED: 0
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.27.0"
+
+      - name: Cache go-anon models
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/go-anon
+          key: go-anon-models-${{ runner.os }}-v1
+
+      - name: End-to-end tests
+        run: make test-e2e
+
   # Generated files are committed (see .gitattributes for why). Nothing else in
   # the pipeline regenerates them, so without this job a `.templ` edit shipped
   # without its `_templ.go` would build and pass tests against the stale output.
