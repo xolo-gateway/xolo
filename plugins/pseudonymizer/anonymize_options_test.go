@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	proto "github.com/xolo-gateway/xolo/pkg/pluginsdk/proto"
@@ -65,10 +66,10 @@ func TestBuildAnonymizeOptions_HashKey_Missing(t *testing.T) {
 
 	host := &anonOptsHost{secretFound: false}
 
-	opts, _ := buildAnonymizeOptions(context.Background(), cfg, &proto.RequestContext{}, host)
+	_, err := buildAnonymizeOptions(context.Background(), cfg, &proto.RequestContext{}, host)
 
-	if len(opts) != 0 {
-		t.Fatalf("expected 0 options when no HMAC key is configured, got %d", len(opts))
+	if !errors.Is(err, errHashKeyMissing) {
+		t.Fatalf("expected errHashKeyMissing when no HMAC key is configured, got %v", err)
 	}
 }
 
@@ -79,10 +80,10 @@ func TestBuildAnonymizeOptions_HashKey_Invalid(t *testing.T) {
 
 	host := &anonOptsHost{secretValue: "not-a-valid-key-too-short", secretFound: true}
 
-	opts, _ := buildAnonymizeOptions(context.Background(), cfg, &proto.RequestContext{}, host)
+	_, err := buildAnonymizeOptions(context.Background(), cfg, &proto.RequestContext{}, host)
 
-	if len(opts) != 0 {
-		t.Fatalf("expected 0 options when HMAC key is malformed, got %d", len(opts))
+	if !errors.Is(err, errHashKeyMissing) {
+		t.Fatalf("expected errHashKeyMissing when HMAC key is malformed, got %v", err)
 	}
 }
 

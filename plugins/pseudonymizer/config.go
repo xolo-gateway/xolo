@@ -43,7 +43,7 @@ const configSchemaJSON = `{
     "strategy": {
       "type": "string",
       "title": "Stratégie d'anonymisation",
-      "description": "Mode de remplacement des entités : tag=[PERSON_1], redact=████, hash=[PER_a1b2], consistent=numérotation cohérente.",
+      "description": "Mode de remplacement des entités : tag=[PERSON_1], redact=████, hash=[PER_a1b2], consistent=numérotation cohérente. La stratégie hash exige une clé HMAC enregistrée sur le nœud : sans clé, les requêtes sont refusées.",
       "default": "tag",
       "enum": ["tag", "redact", "hash", "consistent"]
     },

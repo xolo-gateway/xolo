@@ -218,7 +218,29 @@ func (p *Plugin) PreRequest(ctx context.Context, in *proto.PreRequestInput) (*pr
 	// Anonymize all text content using a shared session for consistent numbering.
 	// Non-anonymizable attachments (documents, files…) are removed and tracked.
 	session := anonymizer.NewSession()
-	anonymOpts, _ := buildAnonymizeOptions(ctx, cfg, in.GetCtx(), p.getHostClient())
+	anonymOpts, err := buildAnonymizeOptions(ctx, cfg, in.GetCtx(), p.getHostClient())
+	if err != nil {
+		// Fail-closed: a hash strategy without a usable key cannot protect
+		// anything, so the request is refused rather than forwarded in clear.
+		slog.WarnContext(ctx, "pseudonymizer: request blocked, anonymization options unavailable", slog.Any("error", err))
+		p.emitEvent(pluginsdk.Event{
+			PluginName: "pseudonymizer",
+			OrgID:      in.GetCtx().GetOrgId(),
+			UserID:     in.GetCtx().GetUserId(),
+			Type:       "request.blocked",
+			Severity:   "error",
+			Message:    "Requête refusée : " + err.Error(),
+			Attributes: map[string]string{
+				"reason":   "hash_key_missing",
+				"error":    err.Error(),
+				"strategy": cfg.Strategy,
+			},
+		})
+		return &proto.PreRequestOutput{
+			Allowed:         false,
+			RejectionReason: "Requête refusée par le pseudonymiseur : " + err.Error() + ". Contactez l'administrateur de l'organisation.",
+		}, nil
+	}
 	var (
 		removedParts         []removedPart
 		processedAttachments int

@@ -71,23 +71,23 @@ func TestPreRequest_AnonymizerUnavailable_EmitsPassthroughEvent(t *testing.T) {
 	}
 }
 
-func TestPreRequest_HashWithoutKey_EmitsPassthroughEvent(t *testing.T) {
-	// The hash strategy without a HMAC key makes every Anonymize call fail:
-	// the message is forwarded as is, which must be reported.
+func TestPreRequest_HashWithoutKey_BlocksRequest(t *testing.T) {
+	// The hash strategy without a HMAC key cannot protect anything: the
+	// request is refused (fail-closed) and the refusal is reported.
 	out, host := preRequestFR(t, `{"strategy":"hash","language":"fr"}`, "Bonjour, je m'appelle Jean Dupont.")
 
-	if !out.Allowed || !out.NoResponseRewrite {
-		t.Fatalf("expected an allowed passthrough, got allowed=%v norewrite=%v", out.Allowed, out.NoResponseRewrite)
+	if out.Allowed {
+		t.Fatalf("expected the request to be rejected, got %+v", out)
+	}
+	if out.RejectionReason == "" {
+		t.Error("rejection reason missing")
 	}
 	evt := host.waitForEvent(t)
-	if evt.Type != "passthrough" {
-		t.Fatalf("event type = %q, want passthrough", evt.Type)
+	if evt.Type != "request.blocked" {
+		t.Fatalf("event type = %q, want request.blocked", evt.Type)
 	}
-	if evt.Attributes["reason"] != reasonAnonymizeFailed {
-		t.Errorf("reason = %q, want %q", evt.Attributes["reason"], reasonAnonymizeFailed)
-	}
-	if evt.Attributes["contents"] != "1" {
-		t.Errorf("contents = %q, want 1", evt.Attributes["contents"])
+	if evt.Attributes["reason"] != "hash_key_missing" {
+		t.Errorf("reason = %q, want hash_key_missing", evt.Attributes["reason"])
 	}
 }
 
