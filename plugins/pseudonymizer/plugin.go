@@ -67,17 +67,16 @@ func (p *Plugin) emitEvent(evt pluginsdk.Event) {
 	}()
 }
 
-// summarizeEntities compte les entités détectées par type à partir des
-// placeholders "[TYPE_N]" du mapping d'anonymisation.
-func summarizeEntities(mapping map[string]string) (int, string) {
-	counts := map[string]int{}
-	for placeholder := range mapping {
-		name := strings.Trim(placeholder, "[]")
-		if idx := strings.LastIndex(name, "_"); idx > 0 {
-			name = name[:idx]
-		}
-		counts[name]++
+// countEntities accumule dans counts le nombre d'entités détectées par type.
+func countEntities(counts map[string]int, entities []ner.Entity) {
+	for _, e := range entities {
+		counts[string(e.Type)]++
 	}
+}
+
+// summarizeEntities met en forme le décompte par type ("LOC:1,PER:2"), trié
+// pour rester stable d'un événement à l'autre.
+func summarizeEntities(counts map[string]int) string {
 	keys := make([]string, 0, len(counts))
 	for k := range counts {
 		keys = append(keys, k)
@@ -87,7 +86,39 @@ func summarizeEntities(mapping map[string]string) (int, string) {
 	for _, k := range keys {
 		parts = append(parts, fmt.Sprintf("%s:%d", k, counts[k]))
 	}
-	return len(mapping), strings.Join(parts, ",")
+	return strings.Join(parts, ",")
+}
+
+// Motifs d'un passage en passe-plat, publiés dans l'événement associé.
+const (
+	passthroughConfigError     = "configuration invalide"
+	passthroughRequestParse    = "corps de requête illisible"
+	passthroughMessagesParse   = "messages illisibles"
+	passthroughAnonymizerInit  = "anonymiseur indisponible"
+	passthroughMarshalMessages = "sérialisation des messages impossible"
+)
+
+// passthroughOnError laisse la requête passer sans pseudonymisation et le
+// signale par un événement : un passe-plat silencieux ne laisserait aucune
+// trace du fait que des données personnelles ont pu atteindre le modèle. Le
+// message d'erreur est publié tel quel, il ne contient jamais de contenu
+// utilisateur.
+func (p *Plugin) passthroughOnError(ctx context.Context, in *proto.PreRequestInput, reason string, err error) *proto.PreRequestOutput {
+	slog.WarnContext(ctx, "pseudonymizer: "+reason+", passing through", slog.Any("error", err))
+	attrs := map[string]string{"reason": reason}
+	if err != nil {
+		attrs["error"] = err.Error()
+	}
+	p.emitEvent(pluginsdk.Event{
+		PluginName: "pseudonymizer",
+		OrgID:      in.GetCtx().GetOrgId(),
+		UserID:     in.GetCtx().GetUserId(),
+		Type:       "passthrough",
+		Severity:   "error",
+		Message:    "Requête transmise sans pseudonymisation : " + reason,
+		Attributes: attrs,
+	})
+	return passthroughOutput()
 }
 
 func newPlugin() *Plugin {
@@ -126,8 +157,7 @@ func passthroughOutput() *proto.PreRequestOutput {
 func (p *Plugin) PreRequest(ctx context.Context, in *proto.PreRequestInput) (*proto.PreRequestOutput, error) {
 	cfg, err := parseConfig(in.GetCtx().GetConfigJson())
 	if err != nil {
-		slog.WarnContext(ctx, "pseudonymizer: config error, passing through", slog.Any("error", err))
-		return passthroughOutput(), nil
+		return p.passthroughOnError(ctx, in, passthroughConfigError, err), nil
 	}
 
 	// Resolve request body: prefer from input port, fall back to Model (full request body JSON).
@@ -148,8 +178,7 @@ func (p *Plugin) PreRequest(ctx context.Context, in *proto.PreRequestInput) (*pr
 	var requestBody map[string]any
 	if requestJSON != "" {
 		if err := json.Unmarshal([]byte(requestJSON), &requestBody); err != nil {
-			slog.WarnContext(ctx, "pseudonymizer: failed to parse request body, passing through", slog.Any("error", err))
-			return passthroughOutput(), nil
+			return p.passthroughOnError(ctx, in, passthroughRequestParse, err), nil
 		}
 	}
 
@@ -168,8 +197,7 @@ func (p *Plugin) PreRequest(ctx context.Context, in *proto.PreRequestInput) (*pr
 
 	var messages []map[string]any
 	if err := json.Unmarshal([]byte(messagesJSON), &messages); err != nil {
-		slog.WarnContext(ctx, "pseudonymizer: failed to parse messages, passing through", slog.Any("error", err))
-		return passthroughOutput(), nil
+		return p.passthroughOnError(ctx, in, passthroughMessagesParse, err), nil
 	}
 
 	// Resolve the language of the conversation (explicit config or automatic
@@ -177,8 +205,7 @@ func (p *Plugin) PreRequest(ctx context.Context, in *proto.PreRequestInput) (*pr
 	// anonymizer.
 	language, anon, err := p.resolveAnonymizer(ctx, cfg, messages)
 	if err != nil {
-		slog.WarnContext(ctx, "pseudonymizer: failed to initialize anonymizer, passing through", slog.Any("error", err))
-		return passthroughOutput(), nil
+		return p.passthroughOnError(ctx, in, passthroughAnonymizerInit, err), nil
 	}
 
 	slog.DebugContext(ctx, "pseudonymizer: anonymizing messages",
@@ -195,6 +222,13 @@ func (p *Plugin) PreRequest(ctx context.Context, in *proto.PreRequestInput) (*pr
 	var (
 		removedParts         []removedPart
 		processedAttachments int
+		// typeCounts compte les entités détectées par type, pour l'événement.
+		typeCounts = map[string]int{}
+		// anonymizeFailures compte les contenus transmis tels quels parce que
+		// leur anonymisation a échoué : ils ont pu porter des données
+		// personnelles jusqu'au modèle.
+		anonymizeFailures int
+		lastAnonymizeErr  error
 	)
 
 	filtered := make([]map[string]any, 0, len(messages))
@@ -213,7 +247,10 @@ func (p *Plugin) PreRequest(ctx context.Context, in *proto.PreRequestInput) (*pr
 					return out, nil
 				}
 				slog.WarnContext(ctx, "pseudonymizer: failed to anonymize string content", slog.Any("error", err))
+				anonymizeFailures++
+				lastAnonymizeErr = err
 			} else {
+				countEntities(typeCounts, result.Entities)
 				messages[i]["content"] = result.Text
 			}
 			filtered = append(filtered, messages[i])
@@ -235,8 +272,11 @@ func (p *Plugin) PreRequest(ctx context.Context, in *proto.PreRequestInput) (*pr
 							return out, nil
 						}
 						slog.WarnContext(ctx, "pseudonymizer: failed to anonymize text part", slog.Any("error", err))
+						anonymizeFailures++
+						lastAnonymizeErr = err
 						kept = append(kept, part)
 					} else {
+						countEntities(typeCounts, result.Entities)
 						updated := make(map[string]any, len(partMap))
 						for k, v := range partMap {
 							updated[k] = v
@@ -286,6 +326,7 @@ func (p *Plugin) PreRequest(ctx context.Context, in *proto.PreRequestInput) (*pr
 						continue
 					}
 
+					countEntities(typeCounts, result.Entities)
 					kept = append(kept, map[string]any{
 						"type": "text",
 						"text": attachmentTextPart(att, partType, result.Text, truncated),
@@ -330,8 +371,7 @@ func (p *Plugin) PreRequest(ctx context.Context, in *proto.PreRequestInput) (*pr
 	// Serialize anonymized+filtered messages.
 	modifiedMessagesJSON, err := json.Marshal(filtered)
 	if err != nil {
-		slog.WarnContext(ctx, "pseudonymizer: failed to marshal anonymized messages, passing through", slog.Any("error", err))
-		return passthroughOutput(), nil
+		return p.passthroughOnError(ctx, in, passthroughMarshalMessages, err), nil
 	}
 
 	// Rebuild the full request body with filtered messages for the output port.
@@ -366,20 +406,38 @@ func (p *Plugin) PreRequest(ctx context.Context, in *proto.PreRequestInput) (*pr
 	// Emit an event whenever sensitive data was detected (and pseudonymized) or
 	// a non-anonymizable attachment had to be removed.
 	if len(session.Mapping) > 0 || len(removedParts) > 0 {
-		total, types := summarizeEntities(session.Mapping)
 		p.emitEvent(pluginsdk.Event{
 			PluginName: "pseudonymizer",
 			OrgID:      in.GetCtx().GetOrgId(),
 			UserID:     in.GetCtx().GetUserId(),
 			Type:       "sensitive-data.detected",
 			Severity:   "warning",
-			Message:    fmt.Sprintf("Données sensibles détectées et pseudonymisées (%d entité(s))", total),
+			Message:    fmt.Sprintf("Données sensibles détectées et pseudonymisées (%d entité(s))", len(session.Mapping)),
 			Attributes: map[string]string{
-				"entities":              strconv.Itoa(total),
-				"types":                 types,
+				"entities":              strconv.Itoa(len(session.Mapping)),
+				"types":                 summarizeEntities(typeCounts),
 				"processed_attachments": strconv.Itoa(processedAttachments),
 				"removed_attachments":   strconv.Itoa(len(removedParts)),
 				"language":              language,
+			},
+		})
+	}
+
+	// A content whose anonymization failed was forwarded as is: say so, since
+	// nothing in the request itself tells the administrator the filter gave up.
+	if anonymizeFailures > 0 {
+		p.emitEvent(pluginsdk.Event{
+			PluginName: "pseudonymizer",
+			OrgID:      in.GetCtx().GetOrgId(),
+			UserID:     in.GetCtx().GetUserId(),
+			Type:       "passthrough",
+			Severity:   "error",
+			Message:    fmt.Sprintf("%d contenu(s) transmis sans pseudonymisation : échec de l'anonymisation", anonymizeFailures),
+			Attributes: map[string]string{
+				"reason":   reasonAnonymizeFailed,
+				"error":    lastAnonymizeErr.Error(),
+				"contents": strconv.Itoa(anonymizeFailures),
+				"language": language,
 			},
 		})
 	}

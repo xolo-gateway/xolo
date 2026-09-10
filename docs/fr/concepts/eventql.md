@@ -226,7 +226,10 @@ par `plugin.<nom>.` (voir le tutoriel plugin, section _Emitting Events_).
 
 | `type` | `severity` | Émis quand | Attributs |
 |--------|-----------|------------|-----------|
-| `plugin.pseudonymizer.sensitive-data.detected` | `warning` | Le plugin `pseudonymizer` détecte/pseudonymise des données sensibles | `entities`, `types` (ex. `EMAIL:2,PERSON:1`), `removed_attachments` |
+| `plugin.pseudonymizer.sensitive-data.detected` | `warning` | Le plugin `pseudonymizer` détecte/pseudonymise des données sensibles | `entities`, `types` (ex. `EMAIL:2,PER:1`), `removed_attachments`, `language` |
+| `plugin.pseudonymizer.sensitive-data.leak` | `error` | Le mode strict du plugin `pseudonymizer` détecte une fuite résiduelle après anonymisation | `leak_count`, `leak_<type>` |
+| `plugin.pseudonymizer.attachment.blocked` | `warning` | Le plugin `pseudonymizer` refuse une requête portant une pièce jointe non pseudonymisable | `attachments`, `reasons` |
+| `plugin.pseudonymizer.passthrough` | `error` | Le plugin `pseudonymizer` laisse passer une requête **sans** la pseudonymiser : configuration invalide, modèle NER indisponible (hors-ligne, cache vide), stratégie `hash` sans clé HMAC, échec d'anonymisation d'un contenu | `reason`, `error`, `contents` |
 | `plugin.time-restriction.request.blocked` | `warning` | Le plugin `time-restriction` bloque une requête hors des plages autorisées | `reason` |
 
 Pour cibler l'ensemble des événements de plugins : `{type=~"plugin\\..*"}` (ou
