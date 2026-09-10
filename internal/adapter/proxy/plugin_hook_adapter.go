@@ -371,6 +371,7 @@ func (a *PipelineHookAdapter) buildMiddlewareEC(ctx context.Context, req *genaiP
 		BodyJSON:        string(req.Body),
 		ProtoModels:     buildProtoModels(ctx, a.providerStore, orgID),
 		ProtoVMs:        buildProtoVMs(ctx, a.virtualModelStore, orgID),
+		QuotaInfo:       a.quotaInfoFunc(model.UserID(userID), orgID),
 		VisitedVMs:      map[model.VirtualModelID]struct{}{},
 		PersonalVMStore: a.personalVMStore,
 		ToolInspectors:  pipeline.NewToolInspectorSet(),
