@@ -1,3 +1,6 @@
+// Copyright The Xolo Authors
+// SPDX-License-Identifier: Apache-2.0
+
 package pluginsdk
 
 import "github.com/hashicorp/go-plugin"

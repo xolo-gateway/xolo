@@ -16,6 +16,7 @@ make CMD='bin/server' run-with-env
 # Test
 go test ./...                  # unit tests, SQLite only, no Docker needed
 go test ./internal/adapter/memory/...  # single package
+make test                      # root module + pkg/pluginsdk (nested Go module, not covered by ./...)
 make test-integration         # store suite on BOTH backends (PostgreSQL via testcontainers, needs Docker; run by the `integration` CI job)
 make test-e2e                 # real server + fake provider over HTTP (see test/e2e/README.md; run by the `e2e` CI job)
 make seed                     # generates e2e.sqlite, a deterministic E2E fixture (see cmd/seed/README.md)

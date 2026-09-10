@@ -1,0 +1,40 @@
+name: Bug report
+description: Something does not work as documented
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Issues may be written in English or French. / Les tickets peuvent être rédigés en anglais ou en français.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What did you do, what did you expect, what happened instead?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Configure ...
+        2. Call ...
+        3. Observe ...
+  - type: input
+    id: version
+    attributes:
+      label: Xolo version
+      description: Release tag, or commit hash if built from source.
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, storage backend (SQLite/PostgreSQL), deployment mode, relevant XOLO_* configuration (redact secrets).
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      render: text
