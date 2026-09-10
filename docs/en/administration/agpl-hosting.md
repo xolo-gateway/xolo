@@ -24,6 +24,8 @@ configuration change, a theme, a three-line integration patch.
 2. Show a visible link in the interface (footer, "About" page).
 3. Make sure the published code matches **exactly** the deployed version (a
    precise tag or commit).
+4. Do not present the modified instance as Xolo itself: the name and logo
+   are trademarks, see [TRADEMARK.md](../../../TRADEMARK.md).
 
 ### How to avoid the constraint
 

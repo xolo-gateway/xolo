@@ -30,6 +30,10 @@ distributed under the Apache License 2.0, and [LICENSE-EXCEPTION](LICENSE-EXCEPT
 lets plugins that talk to Xolo through its gRPC interface ship under any
 license. The core stays copyleft; the plugin boundary is open.
 
+The Xolo name and logo are trademarks, held by the lead maintainer until an
+association is created to carry the project. Their use is governed by
+[TRADEMARK.md](TRADEMARK.md).
+
 Contributors keep the copyright on their contributions. The project uses the
 [Developer Certificate of Origin](DCO), not a contributor license agreement:
 nobody is asked to assign or exclusively license their rights to the project.

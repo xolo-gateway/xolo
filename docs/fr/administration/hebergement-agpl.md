@@ -26,6 +26,8 @@ compilée, un thème, un patch d'intégration de trois lignes.
 2. Affichez un lien visible dans l'interface (pied de page, page « À propos »).
 3. Assurez-vous que le code publié correspond **exactement** à la version
    déployée (tag ou commit précis).
+4. Ne présentez pas l'instance modifiée comme Xolo lui-même : le nom et le
+   logo sont des marques, voir [TRADEMARK.md](../../../TRADEMARK.md).
 
 ### Comment éviter la contrainte
 

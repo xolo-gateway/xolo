@@ -30,6 +30,10 @@ dialoguent avec Xolo via son interface gRPC d'être diffusés sous n'importe
 quelle licence. Le cœur reste copyleft ; la frontière des plugins est
 ouverte.
 
+Le nom et le logo Xolo sont des marques, détenues par le mainteneur principal
+jusqu'à la création d'une association destinée à porter le projet. Leur usage
+est régi par [TRADEMARK.md](../../../TRADEMARK.md).
+
 Les contributeurs conservent le droit d'auteur sur leurs contributions. Le
 projet utilise le [Developer Certificate of Origin](../../../DCO), pas un
 accord de contribution (CLA) : personne ne se voit demander de céder ses

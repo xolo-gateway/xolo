@@ -32,4 +32,7 @@ Plugins are the exception: they may be distributed under any license, as
 granted by [LICENSE-EXCEPTION](LICENSE-EXCEPTION), and the plugin SDK
 (`pkg/pluginsdk`) is under Apache-2.0.
 
+The Xolo name and logo are registered trademarks; [TRADEMARK.md](TRADEMARK.md)
+says what you may do with them.
+
 See [GOVERNANCE.md](GOVERNANCE.md) and [CONTRIBUTING.md](CONTRIBUTING.md).
