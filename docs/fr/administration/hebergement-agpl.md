@@ -32,7 +32,11 @@ compilée, un thème, un patch d'intégration de trois lignes.
 Faites passer vos spécificités par des **plugins** plutôt que par des
 modifications du cœur. Les plugins s'exécutent dans des processus séparés et
 communiquent avec Xolo via l'interface gRPC définie dans
-`pkg/pluginsdk/proto/plugin.proto` ; l'article 13 ne les atteint pas.
+`pkg/pluginsdk/proto/plugin.proto` ; l'article 13 ne les atteint pas. Ce
+n'est pas qu'une interprétation : le fichier
+[LICENSE-EXCEPTION](../../../LICENSE-EXCEPTION) accorde, au titre de
+l'article 7 de l'AGPL, la permission de diffuser ces plugins sous n'importe
+quelle licence, et le SDK sur lequel ils s'appuient est sous Apache-2.0.
 
 C'est aussi le bon choix technique : vos adaptations survivent aux mises à
 jour.

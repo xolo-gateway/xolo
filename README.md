@@ -28,4 +28,8 @@ Xolo is distributed under the [AGPL-3.0](LICENSE.md) license, and will remain
 so: no proprietary edition, no dual licensing. Contributors keep their
 copyright; the project uses the [DCO](DCO), not a CLA.
 
+Plugins are the exception: they may be distributed under any license, as
+granted by [LICENSE-EXCEPTION](LICENSE-EXCEPTION), and the plugin SDK
+(`pkg/pluginsdk`) is under Apache-2.0.
+
 See [GOVERNANCE.md](GOVERNANCE.md) and [CONTRIBUTING.md](CONTRIBUTING.md).

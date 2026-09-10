@@ -141,6 +141,11 @@ confère aucun droit automatique à son intégration.
 Les plugins s'exécutent dans des processus séparés et dialoguent avec Xolo via
 l'interface gRPC définie dans `pkg/pluginsdk/proto/plugin.proto`. Les
 contributions de nouveaux plugins embarqués (sous `plugins/`) sont bienvenues ;
-discutez-en d'abord dans une issue. Le régime de licence de l'interface et du
-SDK pour les auteurs de plugins tiers est en cours de finalisation et sera
-documenté séparément.
+discutez-en d'abord dans une issue.
+
+Les plugins tiers ne sont pas liés par l'AGPL : le SDK plugins
+(`pkg/pluginsdk`) est sous Apache-2.0, et
+[LICENSE-EXCEPTION](../../../LICENSE-EXCEPTION) permet à un plugin qui ne
+dialogue avec Xolo que via l'interface gRPC d'être diffusé sous n'importe
+quelle licence. Les plugins embarqués contribués à ce dépôt sont sous
+AGPL-3.0 comme le reste du cœur.

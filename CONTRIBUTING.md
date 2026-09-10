@@ -133,6 +133,10 @@ integration.
 
 Plugins run as separate processes and talk to Xolo over the gRPC interface
 defined in `pkg/pluginsdk/proto/plugin.proto`. Contributions of new bundled
-plugins (under `plugins/`) are welcome; discuss them in an issue first. The
-licensing regime of the plugin interface and SDK for third-party plugin
-authors is being finalized and will be documented separately.
+plugins (under `plugins/`) are welcome; discuss them in an issue first.
+
+Third-party plugins are not bound by the AGPL: the plugin SDK
+(`pkg/pluginsdk`) is under Apache-2.0, and [LICENSE-EXCEPTION](LICENSE-EXCEPTION)
+lets a plugin that talks to Xolo only through the gRPC interface ship under
+any license. Bundled plugins contributed to this repository are under the
+AGPL-3.0 like the rest of the core.

@@ -51,6 +51,9 @@ through the RFC process described in [GOVERNANCE.md](../../GOVERNANCE.md).
 
 ## License
 
-The licensing regime of this module for third-party plugin authors is being
-finalized. Until then it is covered by the repository license
-([AGPL-3.0](../../LICENSE.md)).
+This module is distributed under the Apache License 2.0 ([LICENSE](LICENSE)),
+unlike the rest of the repository, which is under the AGPL-3.0. A plugin that
+communicates with Xolo only through the gRPC interface defined here may be
+distributed under any license, including a proprietary one: see
+[LICENSE-EXCEPTION](../../LICENSE-EXCEPTION) at the repository root for the
+exact scope of that permission and its limits.

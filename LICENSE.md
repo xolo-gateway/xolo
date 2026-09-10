@@ -1,3 +1,12 @@
+Xolo is distributed under the GNU Affero General Public License version 3,
+reproduced below, with one additional permission granted under its section 7:
+plugins that talk to Xolo through its gRPC interface may be distributed under
+any license. See [LICENSE-EXCEPTION](LICENSE-EXCEPTION). The plugin SDK
+(`pkg/pluginsdk`) is distributed under the Apache License 2.0
+([pkg/pluginsdk/LICENSE](pkg/pluginsdk/LICENSE)).
+
+---
+
 # GNU AFFERO GENERAL PUBLIC LICENSE
 
 Version 3, 19 November 2007

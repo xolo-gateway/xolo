@@ -30,7 +30,10 @@ configuration change, a theme, a three-line integration patch.
 Put your specific behavior into **plugins** rather than modifications of the
 core. Plugins run as separate processes and communicate with Xolo over the
 gRPC interface defined in `pkg/pluginsdk/proto/plugin.proto`; article 13 does
-not reach them.
+not reach them. This is not only an interpretation: the
+[LICENSE-EXCEPTION](../../../LICENSE-EXCEPTION) file grants, under section 7
+of the AGPL, the permission to distribute such plugins under any license,
+and the SDK they build on is under Apache-2.0.
 
 It is also the better engineering choice: your adaptations survive upgrades.
 

@@ -1,0 +1,48 @@
+Additional permission for plugins — Xolo
+
+Xolo is distributed under the GNU Affero General Public License version 3
+(AGPLv3, see LICENSE.md). Pursuant to section 7 of the AGPLv3, the copyright
+holders of Xolo grant the following additional permission.
+
+SCOPE
+
+Xolo plugins are programs that run in a process separate from Xolo and
+communicate with it exclusively through the gRPC interface defined in the
+plugin SDK module (github.com/xolo-gateway/xolo/pkg/pluginsdk).
+
+Notwithstanding any other provision of the AGPLv3, you may convey a plugin,
+in source or object form, under terms of your choice, including proprietary
+terms, without the obligation to license it under the AGPLv3 or to make its
+source code available. Conveying Xolo together with such a plugin, or
+arranging for them to be run together, does not by itself make the plugin
+subject to the AGPLv3.
+
+CONDITIONS
+
+This permission applies to a program that:
+
+  a) runs in a process separate from Xolo;
+  b) communicates with Xolo only through the gRPC services defined in the
+     .proto files of the plugin SDK module;
+  c) incorporates no portion of the source code of Xolo, other than the
+     plugin SDK module itself, which is distributed under the Apache
+     License, Version 2.0 (see pkg/pluginsdk/LICENSE).
+
+LIMITS
+
+This permission does not extend to:
+
+  - modifications to Xolo itself, including patches required to integrate a
+    plugin, however small;
+  - programs using other forms of interaction, in particular dynamic library
+    loading, direct database access, or undocumented internal interfaces;
+  - forks or modified redistributions of Xolo.
+
+Everything outside the scope of this permission remains governed by the
+AGPLv3 alone.
+
+This permission is irrevocable for the versions of Xolo to which it is
+attached. It may be omitted or changed for future versions, subject to the
+agreement of the rights holders.
+
+Xolo project — 10 September 2026
