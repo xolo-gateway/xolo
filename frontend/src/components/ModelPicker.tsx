@@ -4,6 +4,12 @@ import type { PipelineModelOption } from '../types'
 
 const FREE_TEXT = '__free__'
 
+/**
+ * Which view the user asked for. `auto` lets the value decide: a proxy name
+ * the catalog knows is edited through the select, anything else as free text.
+ */
+type PickerMode = 'auto' | 'free' | 'catalog'
+
 interface ModelPickerProps {
   value: string
   disabled?: boolean
@@ -19,7 +25,7 @@ interface ModelPickerProps {
 export function ModelPicker({ value, disabled, onChange }: ModelPickerProps) {
   const [options, setOptions] = useState<PipelineModelOption[] | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [freeText, setFreeText] = useState(false)
+  const [mode, setMode] = useState<PickerMode>('auto')
 
   useEffect(() => {
     let cancelled = false
@@ -36,7 +42,8 @@ export function ModelPicker({ value, disabled, onChange }: ModelPickerProps) {
   }, [])
 
   const known = options?.some(o => o.proxyName === value) ?? false
-  const showFree = freeText || (options !== null && value !== '' && !known) || error !== null
+  const unknownValue = options !== null && value !== '' && !known
+  const showFree = error !== null || mode === 'free' || (mode === 'auto' && unknownValue)
 
   if (showFree) {
     return (
@@ -55,7 +62,7 @@ export function ModelPicker({ value, disabled, onChange }: ModelPickerProps) {
             <>
               <span>Saisie libre.</span>
               {options && options.length > 0 && !disabled && (
-                <button type="button" className="schema-form__add" onClick={() => setFreeText(false)}>
+                <button type="button" className="schema-form__add" onClick={() => setMode('catalog')}>
                   Choisir dans le catalogue
                 </button>
               )}
@@ -81,9 +88,10 @@ export function ModelPicker({ value, disabled, onChange }: ModelPickerProps) {
         disabled={disabled}
         onChange={e => {
           if (e.target.value === FREE_TEXT) {
-            setFreeText(true)
+            setMode('free')
             return
           }
+          setMode('auto')
           onChange(e.target.value)
         }}
       >
@@ -99,6 +107,16 @@ export function ModelPicker({ value, disabled, onChange }: ModelPickerProps) {
         ))}
         <option value={FREE_TEXT}>Autre (saisie libre)…</option>
       </select>
+      {unknownValue && (
+        <div className="pipeline-picker__meta">
+          <span>
+            Valeur actuelle : <code>{value}</code> (hors catalogue, conservée tant qu'aucun modèle n'est choisi).
+          </span>
+          <button type="button" className="schema-form__add" onClick={() => setMode('free')}>
+            Revenir à la saisie libre
+          </button>
+        </div>
+      )}
       {selected && (
         <div className="pipeline-picker__meta">
           <span className={`pipeline-picker__kind pipeline-picker__kind--${selected.kind}`}>
