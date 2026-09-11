@@ -210,10 +210,17 @@ export function VirtualModelEditor() {
    * The inspector reads a plugin's config back when the selection moves away,
    * but the node being edited at the moment Save is pressed has never been
    * deselected — without this its last changes would be dropped.
+   *
+   * Only plugins with an embedded UI go through that server-side exchange. A
+   * plugin configured by the generated schema form writes straight into the
+   * node, and the server-side slot for it is empty or stale: reading it back
+   * would overwrite the form's edits with `{}` or an older configuration.
    */
   async function flushPluginConfigs(current: Node[]): Promise<Node[]> {
     const selected = current.find(n => n.id === selectedId && n.type === 'plugin')
     if (!selected) return current
+    const descriptor = (selected.data as { __descriptor?: NodeTypeDescriptor }).__descriptor
+    if (descriptor?.hasUI !== true) return current
 
     const cfg = await readPluginConfig((selected.data as PluginNodeData).pluginName, baseUrl)
     if (!cfg) return current
