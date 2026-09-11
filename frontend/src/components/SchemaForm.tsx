@@ -12,6 +12,8 @@
  * ever locked away.
  */
 
+import { useEffect, useState } from 'react'
+
 interface JSONSchema {
   type?: string
   title?: string
@@ -121,19 +123,13 @@ function SchemaField({ name, schema, value, disabled, onChange }: SchemaFieldPro
     case 'integer':
       return (
         <Field label={label} description={schema.description}>
-          <input
-            className="pipeline-inspector__input"
-            type="number"
-            step={schema.type === 'integer' ? 1 : 'any'}
+          <NumberInput
+            integer={schema.type === 'integer'}
             min={schema.minimum}
             max={schema.maximum}
-            value={current === undefined || current === null ? '' : String(current)}
+            value={current}
             disabled={disabled}
-            onChange={e => {
-              if (e.target.value === '') return onChange(undefined)
-              const n = Number(e.target.value)
-              onChange(Number.isNaN(n) ? undefined : n)
-            }}
+            onChange={onChange}
           />
         </Field>
       )
@@ -232,18 +228,27 @@ function ArrayField({ schema, value, disabled, onChange }: ArrayFieldProps) {
                         </td>
                       )
                     }
+                    if (col.type === 'number' || col.type === 'integer') {
+                      return (
+                        <td key={key}>
+                          <NumberInput
+                            integer={col.type === 'integer'}
+                            min={col.minimum}
+                            max={col.maximum}
+                            value={obj[key]}
+                            disabled={disabled}
+                            onChange={v => update(idx, { ...obj, [key]: v })}
+                          />
+                        </td>
+                      )
+                    }
                     return (
                       <td key={key}>
                         <input
                           className="pipeline-inspector__input"
-                          type={col.type === 'number' || col.type === 'integer' ? 'number' : 'text'}
                           value={obj[key] === undefined || obj[key] === null ? '' : String(obj[key])}
                           disabled={disabled}
-                          onChange={e => {
-                            const raw = e.target.value
-                            const v = col.type === 'number' || col.type === 'integer' ? (raw === '' ? undefined : Number(raw)) : raw
-                            update(idx, { ...obj, [key]: v })
-                          }}
+                          onChange={e => update(idx, { ...obj, [key]: e.target.value })}
                         />
                       </td>
                     )
@@ -276,6 +281,58 @@ function ArrayField({ schema, value, disabled, onChange }: ArrayFieldProps) {
         </button>
       )}
     </div>
+  )
+}
+
+interface NumberInputProps {
+  integer?: boolean
+  min?: number
+  max?: number
+  value: unknown
+  disabled?: boolean
+  onChange: (v: number | undefined) => void
+}
+
+/**
+ * NumberInput keeps the text as typed while the field has focus. A controlled
+ * <input type="number"> bound straight to the parsed value cannot take a
+ * decimal: the browser reports "" for an incomplete "0.", the parent stores
+ * undefined, the field falls back to its default and the dot is lost, so
+ * "0.5" can never be entered. The parsed number is propagated on every
+ * keystroke that yields one; the text is only resynced from the value when the
+ * field is not being edited.
+ */
+function NumberInput({ integer, min, max, value, disabled, onChange }: NumberInputProps) {
+  const fromValue = value === undefined || value === null ? '' : String(value)
+  const [text, setText] = useState(fromValue)
+  const [focused, setFocused] = useState(false)
+
+  useEffect(() => {
+    if (!focused) setText(fromValue)
+  }, [fromValue, focused])
+
+  return (
+    <input
+      className="pipeline-inspector__input"
+      type="number"
+      step={integer ? 1 : 'any'}
+      min={min}
+      max={max}
+      value={text}
+      disabled={disabled}
+      onFocus={() => setFocused(true)}
+      onBlur={() => {
+        setFocused(false)
+        setText(fromValue)
+      }}
+      onChange={e => {
+        const raw = e.target.value
+        setText(raw)
+        if (raw === '') return onChange(undefined)
+        const n = Number(raw)
+        if (!Number.isNaN(n)) onChange(n)
+      }}
+    />
   )
 }
 
