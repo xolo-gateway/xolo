@@ -161,6 +161,7 @@ snapshot:
   version_template: "{{ incpatch .Version }}-next"
 changelog:
   sort: asc
+  abbrev: 7
   filters:
     exclude:
       - "^docs:"

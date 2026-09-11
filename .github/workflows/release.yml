@@ -38,3 +38,13 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO_OWNER: ${{ github.repository_owner }}
+      - name: Announce on Matrix
+        # Only for real tags, and only once the room token is configured.
+        if: ${{ startsWith(github.ref, 'refs/tags/v') && secrets.MATRIX_ACCESS_TOKEN != '' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          MATRIX_ACCESS_TOKEN: ${{ secrets.MATRIX_ACCESS_TOKEN }}
+          MATRIX_HOMESERVER: ${{ vars.MATRIX_HOMESERVER || 'https://matrix.org' }}
+          MATRIX_ROOM: ${{ vars.MATRIX_ROOM || '#xolo-announces:matrix.org' }}
+          MATRIX_TXN_ID: ${{ github.ref_name }}-${{ github.run_id }}-${{ github.run_attempt }}
+        run: .github/scripts/announce-matrix.sh "${{ github.ref_name }}"
