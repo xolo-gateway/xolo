@@ -34,6 +34,7 @@ Plugins livrés avec Xolo :
 | `complexity-scorer` | PRE_REQUEST | Évalue la complexité lexicale et structurelle de la requête |
 | `text-classifier` | PRE_REQUEST | Classe la requête dans une catégorie thématique par règles lexicales et modèle bayésien embarqué, sans appel LLM |
 | `llm-classifier` | PRE_REQUEST | Classe la requête en interrogeant un modèle de l'organisation, selon des catégories décrites dans la configuration |
+| `prompt-guard` | PRE_REQUEST, POST_RESPONSE, TOOL_RESULT_INSPECTOR | Risque d'injection de prompt sans appel LLM, pression accumulée sur la conversation, inspection des résultats d'outils et de la réponse, canaris |
 | `energy-estimator` | PRE_REQUEST | Estime l'énergie consommée par l'inférence à partir des tokens et de la taille du modèle |
 | `budget-pressure` | PRE_REQUEST | Mesure la part du budget de l'utilisateur déjà consommée |
 | `fuzzy-evaluator` | PRE_REQUEST | Inférence par logique floue sur des valeurs numériques |

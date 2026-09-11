@@ -616,7 +616,7 @@ Or alert on them, e.g. `count(1h) > 0` over
 | `request-inspector` | PRE_REQUEST               | Structural facts about a request (vision, reasoning, tools, context size) |
 | `complexity-scorer` | PRE_REQUEST               | Lexical and structural complexity score of a request               |
 | `text-classifier`   | PRE_REQUEST               | Thematic category of a request (lexical rules + Naive Bayes, no LLM call) |
-| `prompt-guard`      | PRE_REQUEST, POST_RESPONSE, TOOL_RESULT_INSPECTOR | Prompt injection risk (rules + structural signals + embedded model, no LLM call); inspects request, tool results and the answer; optional block/redact |
+| `prompt-guard`      | PRE_REQUEST, POST_RESPONSE, TOOL_RESULT_INSPECTOR | Prompt injection risk without an LLM call (rules, structural signals, embedded model), pressure accumulated over the turns of a conversation, inspection of tool results and of the answer with planted canaries, optional block and redaction |
 | `llm-classifier`    | PRE_REQUEST               | Category chosen by an org model called through the gateway (`HostService.ChatCompletion`) |
 | `energy-estimator`  | PRE_REQUEST               | Energy estimate from token counts and target model size            |
 | `budget-pressure`   | PRE_REQUEST               | Share of the requesting user's budget already spent                |
