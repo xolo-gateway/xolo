@@ -47,6 +47,9 @@ const (
 	SegmentUser    SegmentKind = "user"    // the last user turn
 	SegmentHistory SegmentKind = "history" // earlier user turns
 	SegmentTool    SegmentKind = "tool"    // tool results, retrieved documents
+	// SegmentConversation never carries text: it labels an Assessment whose
+	// risk comes from the accumulation of turns rather than from one of them.
+	SegmentConversation SegmentKind = "conversation"
 )
 
 //go:embed rules.yaml

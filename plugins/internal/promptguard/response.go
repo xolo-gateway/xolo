@@ -42,6 +42,18 @@ type ResponseResult struct {
 	// InvisibleCount and ExfilURLs are surfaced for events.
 	InvisibleCount int `json:"invisible_characters"`
 	ExfilURLs      int `json:"exfil_urls"`
+	// Canaries lists the configured canaries found in the answer, with the
+	// form they took. Never their value.
+	Canaries []CanaryHit `json:"canaries,omitempty"`
+}
+
+// ResponseOptions tunes InspectResponseWith.
+type ResponseOptions struct {
+	// MaxRunes bounds the text analysed (0 = DefaultMaxRunes).
+	MaxRunes int
+	// Canaries are strings that must never appear in an answer, in clear or
+	// disguised. See canary.go.
+	Canaries []string
 }
 
 // Kinds returns the distinct finding kinds, strongest first.
@@ -84,6 +96,12 @@ var (
 // InspectResponse scores a model answer for output-side exfiltration and
 // invisible-character smuggling. maxRunes <= 0 uses DefaultMaxRunes.
 func InspectResponse(text string, maxRunes int) ResponseResult {
+	return InspectResponseWith(text, ResponseOptions{MaxRunes: maxRunes})
+}
+
+// InspectResponseWith is InspectResponse with canaries.
+func InspectResponseWith(text string, opts ResponseOptions) ResponseResult {
+	maxRunes := opts.MaxRunes
 	if maxRunes <= 0 {
 		maxRunes = DefaultMaxRunes
 	}
@@ -132,6 +150,12 @@ func InspectResponse(text string, maxRunes int) ResponseResult {
 		}
 		res.ExfilURLs++
 		res.Findings = append(res.Findings, ResponseFinding{Kind: FindingExfilURL, Weight: 0.5, Start: loc[0], End: loc[1]})
+	}
+
+	// Planted secrets, whole or in pieces, in clear or disguised.
+	if fs, hits := findCanaries(text, opts.Canaries); len(fs) > 0 {
+		res.Findings = append(res.Findings, fs...)
+		res.Canaries = hits
 	}
 
 	res.Risk = noisyOr(weights(res.Findings))
@@ -220,20 +244,47 @@ func Redact(text string, res ResponseResult) (string, bool) {
 	if len(res.Findings) == 0 {
 		return text, false
 	}
-	// Replace URL/link spans first, from the end so offsets stay valid.
-	spans := make([]ResponseFinding, 0, len(res.Findings))
+	// Replace URL, link and canary spans first, from the end so offsets stay
+	// valid. A span nested in a larger one is dropped beforehand: a canary
+	// smuggled inside an exfiltration URL goes with the URL.
+	all := make([]ResponseFinding, 0, len(res.Findings))
 	for _, f := range res.Findings {
-		if f.Kind == FindingExfilURL || f.Kind == FindingExternalImage {
+		switch f.Kind {
+		case FindingExfilURL, FindingExternalImage, FindingCanary, FindingCanaryFragment:
+			all = append(all, f)
+		}
+	}
+	spans := make([]ResponseFinding, 0, len(all))
+	for i, f := range all {
+		nested := false
+		for j, o := range all {
+			if i != j && o.Start <= f.Start && o.End >= f.End && (o.End-o.Start) > (f.End-f.Start) {
+				nested = true
+				break
+			}
+		}
+		if !nested {
 			spans = append(spans, f)
 		}
 	}
-	sort.Slice(spans, func(i, j int) bool { return spans[i].Start > spans[j].Start })
+	sort.Slice(spans, func(i, j int) bool {
+		if spans[i].Start == spans[j].Start {
+			return spans[i].End > spans[j].End
+		}
+		return spans[i].Start > spans[j].Start
+	})
 	out := text
+	limit := len(out)
 	for _, f := range spans {
-		if f.Start < 0 || f.End > len(out) || f.Start >= f.End {
+		if f.Start < 0 || f.End > limit || f.Start >= f.End {
 			continue
 		}
-		out = out[:f.Start] + "[lien retiré]" + out[f.End:]
+		placeholder := "[lien retiré]"
+		if f.Kind == FindingCanary || f.Kind == FindingCanaryFragment {
+			placeholder = "[donnée retirée]"
+		}
+		out = out[:f.Start] + placeholder + out[f.End:]
+		limit = f.Start
 	}
 	// Strip invisible and bidi characters everywhere.
 	out = strings.Map(func(r rune) rune {

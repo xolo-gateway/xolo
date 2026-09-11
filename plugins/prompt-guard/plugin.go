@@ -34,6 +34,9 @@ type Plugin struct {
 	// rule set costs milliseconds; doing it on every request would not.
 	guardsMu sync.Mutex
 	guards   map[string]*promptguard.Guard
+
+	warnMu sync.Mutex
+	warned map[string]bool
 }
 
 func (p *Plugin) SetHostClient(c pluginsdk.HostClient) {
@@ -63,11 +66,13 @@ func (p *Plugin) Describe(_ context.Context, _ *proto.DescribeRequest) (*proto.P
 		&proto.PortDescriptor{Name: "suspicious", PortType: "boolean"},
 		&proto.PortDescriptor{Name: "quoted", PortType: "boolean"},
 		&proto.PortDescriptor{Name: "model_probability", PortType: "number"},
+		&proto.PortDescriptor{Name: "pressure", PortType: "number"},
+		&proto.PortDescriptor{Name: "suspicious_turns", PortType: "number"},
 	)
 	return &proto.PluginDescriptor{
 		Name:         PluginName,
 		Version:      PluginVersion,
-		Description:  "Détecte les tentatives d'injection de prompt (remplacement des instructions, fuite du prompt système, détournement de rôle, obfuscation, abus d'outils, exfiltration) par règles, signaux structurels et un modèle statistique embarqué, sans appel à un LLM. Expose un risque dans [0, 1] et un score par catégorie ; bloque au-delà d'un seuil optionnel.",
+		Description:  "Détecte les tentatives d'injection de prompt (remplacement des instructions, fuite du prompt système, détournement de rôle, obfuscation, abus d'outils, exfiltration) par règles, signaux structurels et un modèle statistique embarqué, sans appel à un LLM. Expose un risque dans [0, 1], un score par catégorie et la pression accumulée sur la conversation. Bloque au-delà d'un seuil optionnel. Côté réponse, repère les canaux d'exfiltration et les canaris configurés, en clair ou déguisés.",
 		Capabilities: []proto.PluginDescriptor_Capability{proto.PluginDescriptor_PRE_REQUEST, proto.PluginDescriptor_POST_RESPONSE, proto.PluginDescriptor_TOOL_RESULT_INSPECTOR},
 		InputPorts: []*proto.PortDescriptor{
 			{Name: "request", PortType: "request", Required: true},
@@ -123,6 +128,8 @@ func (p *Plugin) PreRequest(_ context.Context, in *proto.PreRequestInput) (*prot
 		"suspicious":        cfg.SuspiciousAbove > 0 && a.Risk >= cfg.SuspiciousAbove,
 		"quoted":            a.Quoted,
 		"model_probability": round3(a.ModelProbability),
+		"pressure":          round3(a.Pressure),
+		"suspicious_turns":  suspiciousTurns(a, cfg.SuspiciousAbove),
 	}
 	for _, c := range promptguard.Categories {
 		outputs[string(c)] = round3(a.Categories[c])
@@ -138,6 +145,7 @@ func (p *Plugin) PreRequest(_ context.Context, in *proto.PreRequestInput) (*prot
 		InspectResponse:     cfg.InspectResponse,
 		ResponseEventAbove:  cfg.ResponseEventAbove,
 		ResponseRedactAbove: cfg.ResponseRedactAbove,
+		Canaries:            p.canaries(cfg),
 	})
 	return &proto.PreRequestOutput{
 		Allowed:           true,
@@ -155,6 +163,10 @@ type nodeState struct {
 	InspectResponse     bool    `json:"inspect_response"`
 	ResponseEventAbove  float64 `json:"response_event_above"`
 	ResponseRedactAbove float64 `json:"response_redact_above"`
+	// Canaries are the values to look for in the answer. They travel in the
+	// node state because the backward pass has no config; the state never
+	// leaves the host.
+	Canaries []string `json:"canaries,omitempty"`
 }
 
 // PostResponse inspects the model's answer for output-side exfiltration
@@ -170,12 +182,18 @@ func (p *Plugin) PostResponse(_ context.Context, in *proto.PostResponseInput) (*
 	if err := json.Unmarshal(in.GetNodeState(), &st); err != nil || !st.InspectResponse {
 		return &proto.PostResponseOutput{}, nil
 	}
-	res := promptguard.InspectResponse(in.GetResponseContent(), 0)
+	res := promptguard.InspectResponseWith(in.GetResponseContent(), promptguard.ResponseOptions{Canaries: st.Canaries})
 	if res.Risk == 0 {
 		return &proto.PostResponseOutput{}, nil
 	}
 	redact := st.ResponseRedactAbove > 0 && res.Risk >= st.ResponseRedactAbove
-	if st.ResponseEventAbove > 0 && res.Risk >= st.ResponseEventAbove {
+	switch {
+	case len(res.Canaries) > 0:
+		// A planted value in the answer is a leak whatever the thresholds
+		// say: it is always reported, as its own event type so that it can
+		// be counted per model and per organisation.
+		p.emitCanaryLeak(st, res, redact)
+	case st.ResponseEventAbove > 0 && res.Risk >= st.ResponseEventAbove:
 		p.emitResponse(st, res, redact)
 	}
 	if redact {
@@ -224,6 +242,96 @@ func (p *Plugin) emitResponse(st nodeState, res promptguard.ResponseResult, reda
 			slog.Warn("prompt-guard: could not emit response event", slog.Any("error", err))
 		}
 	}()
+}
+
+// emitCanaryLeak records a canary found in the answer. The event names the
+// canary by its position in the configured list and the form it took; the
+// value itself, and the response, never leave.
+func (p *Plugin) emitCanaryLeak(st nodeState, res promptguard.ResponseResult, redacted bool) {
+	hc := p.getHostClient()
+	if hc == nil {
+		return
+	}
+	indexes := make([]string, 0, len(res.Canaries))
+	forms := make([]string, 0, len(res.Canaries))
+	for _, h := range res.Canaries {
+		indexes = append(indexes, fmt.Sprint(h.Index))
+		forms = append(forms, h.Form)
+	}
+	attrs := map[string]string{
+		"risk":     fmt.Sprintf("%.3f", res.Risk),
+		"findings": strings.Join(res.Kinds(), ","),
+		"canaries": strings.Join(indexes, ","),
+		"forms":    strings.Join(forms, ","),
+		"redacted": fmt.Sprintf("%t", redacted),
+	}
+	verb := "a fui"
+	if redacted {
+		verb = "a été expurgé de la réponse"
+	}
+	evt := pluginsdk.Event{
+		PluginName: PluginName,
+		Type:       "security.canary_leak",
+		Severity:   "error",
+		OrgID:      st.OrgID,
+		UserID:     st.UserID,
+		Message:    fmt.Sprintf("Canari n°%s %s (forme : %s)", strings.Join(indexes, ","), verb, strings.Join(forms, ",")),
+		Attributes: attrs,
+	}
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := hc.EmitEvent(ctx, evt); err != nil {
+			slog.Warn("prompt-guard: could not emit canary event", slog.Any("error", err))
+		}
+	}()
+}
+
+// canaries returns the usable canaries of a config, one per non-empty line,
+// and warns once per config about the ones too short to be checked.
+func (p *Plugin) canaries(cfg Config) []string {
+	if strings.TrimSpace(cfg.Canaries) == "" {
+		return nil
+	}
+	kept, dropped := promptguard.ValidCanaries(strings.Split(cfg.Canaries, "\n"))
+	if len(dropped) > 0 {
+		p.warnOnce("canaries:"+cfg.Canaries, "prompt-guard: canaries shorter than 4 letters or digits are ignored", slog.Any("lines", dropped))
+	}
+	return kept
+}
+
+// warnOnce logs a configuration warning the first time a given key is seen.
+func (p *Plugin) warnOnce(key, msg string, args ...any) {
+	p.warnMu.Lock()
+	defer p.warnMu.Unlock()
+	if p.warned == nil {
+		p.warned = map[string]bool{}
+	}
+	if p.warned[key] {
+		return
+	}
+	if len(p.warned) >= 64 {
+		p.warned = map[string]bool{}
+	}
+	p.warned[key] = true
+	slog.Warn(msg, args...)
+}
+
+// suspiciousTurns counts the conversation turns (the last one and the
+// analysed earlier ones) whose own risk reaches the suspicious threshold.
+// Five turns at 0.5 and a pressure of 0.9 tell a different story from one
+// turn at 0.9.
+func suspiciousTurns(a promptguard.Assessment, above float64) int {
+	if above <= 0 {
+		return 0
+	}
+	n := 0
+	for _, s := range a.Segments {
+		if (s.Kind == promptguard.SegmentUser || s.Kind == promptguard.SegmentHistory) && s.Risk >= above {
+			n++
+		}
+	}
+	return n
 }
 
 // InspectToolResult scores a single tool result the gateway fetched itself
@@ -314,7 +422,7 @@ func (p *Plugin) defaultGuard() *promptguard.Guard {
 }
 
 func (p *Plugin) guardFor(cfg Config) (*promptguard.Guard, error) {
-	key := fmt.Sprintf("%v|%v|%v|%s", cfg.ToolWeight, cfg.QuoteDamping, cfg.ModelCap, cfg.ExtraRules)
+	key := fmt.Sprintf("%v|%v|%v|%v|%s", cfg.ToolWeight, cfg.QuoteDamping, cfg.ModelCap, cfg.HistoryDecay, cfg.ExtraRules)
 	p.guardsMu.Lock()
 	defer p.guardsMu.Unlock()
 	if p.guards == nil {
@@ -336,6 +444,8 @@ func (p *Plugin) guardFor(cfg Config) (*promptguard.Guard, error) {
 		QuoteDamping: cfg.QuoteDamping,
 		NoModel:      cfg.ModelCap == 0,
 		ModelCap:     cfg.ModelCap,
+		NoPressure:   cfg.HistoryDecay == 0,
+		HistoryDecay: cfg.HistoryDecay,
 		KindWeights: map[promptguard.SegmentKind]float64{
 			promptguard.SegmentUser:    1,
 			promptguard.SegmentHistory: promptguard.DefaultKindWeights[promptguard.SegmentHistory],
@@ -372,6 +482,7 @@ func (p *Plugin) emit(reqCtx *proto.RequestContext, a promptguard.Assessment, bl
 		"segment":    string(a.Segment),
 		"rules":      strings.Join(ruleIDs(a), ","),
 		"blocked":    fmt.Sprintf("%t", blocked),
+		"pressure":   fmt.Sprintf("%.3f", a.Pressure),
 	}
 	if a.Structural.InvisibleCount > 0 {
 		attrs["invisible_characters"] = fmt.Sprint(a.Structural.InvisibleCount)
@@ -426,6 +537,9 @@ type Config struct {
 	AnalyzeToolResults bool `json:"analyze_tool_results"`
 	// AnalyzeHistory scores earlier user turns, not only the last one.
 	AnalyzeHistory bool `json:"analyze_history"`
+	// HistoryDecay is the per-turn decay of earlier turns in the
+	// conversation pressure. 0 disables the accumulation.
+	HistoryDecay float64 `json:"history_decay"`
 	// ToolWeight multiplies the risk found in tool results.
 	ToolWeight float64 `json:"tool_weight"`
 	// ExtraRules is a YAML rule file merged over the default rules.
@@ -446,6 +560,10 @@ type Config struct {
 	// response risk reaches this value. 0 disables (observation only), which
 	// also keeps the response streaming live instead of being buffered.
 	ResponseRedactAbove float64 `json:"response_redact_above"`
+	// Canaries lists, one per line, values that must never appear in an
+	// answer. A canary found, in clear or disguised, is a security.canary_leak
+	// event and weighs 0.95 in the response risk.
+	Canaries string `json:"canaries"`
 }
 
 func defaultConfig() Config {
@@ -456,6 +574,7 @@ func defaultConfig() Config {
 		EventAbove:          0.6,
 		AnalyzeToolResults:  true,
 		AnalyzeHistory:      false,
+		HistoryDecay:        promptguard.DefaultHistoryDecay,
 		ToolWeight:          promptguard.DefaultKindWeights[promptguard.SegmentTool],
 		QuoteDamping:        promptguard.DefaultQuoteDamping,
 		ModelCap:            promptguard.DefaultModelCap,
@@ -477,6 +596,7 @@ func parseConfig(raw string) Config {
 		EventAbove          *float64 `json:"event_above"`
 		AnalyzeToolResults  *bool    `json:"analyze_tool_results"`
 		AnalyzeHistory      *bool    `json:"analyze_history"`
+		HistoryDecay        *float64 `json:"history_decay"`
 		ToolWeight          *float64 `json:"tool_weight"`
 		ExtraRules          *string  `json:"extra_rules"`
 		QuoteDamping        *float64 `json:"quote_damping"`
@@ -484,6 +604,7 @@ func parseConfig(raw string) Config {
 		InspectResponse     *bool    `json:"inspect_response"`
 		ResponseEventAbove  *float64 `json:"response_event_above"`
 		ResponseRedactAbove *float64 `json:"response_redact_above"`
+		Canaries            *string  `json:"canaries"`
 	}
 	if err := json.Unmarshal([]byte(raw), &aux); err != nil {
 		return cfg
@@ -506,6 +627,9 @@ func parseConfig(raw string) Config {
 	if aux.AnalyzeHistory != nil {
 		cfg.AnalyzeHistory = *aux.AnalyzeHistory
 	}
+	if aux.HistoryDecay != nil && *aux.HistoryDecay >= 0 && *aux.HistoryDecay <= 1 {
+		cfg.HistoryDecay = *aux.HistoryDecay
+	}
 	if aux.ToolWeight != nil && *aux.ToolWeight > 0 && *aux.ToolWeight <= 3 {
 		cfg.ToolWeight = *aux.ToolWeight
 	}
@@ -526,6 +650,9 @@ func parseConfig(raw string) Config {
 	}
 	if aux.ResponseRedactAbove != nil && *aux.ResponseRedactAbove >= 0 && *aux.ResponseRedactAbove <= 1 {
 		cfg.ResponseRedactAbove = *aux.ResponseRedactAbove
+	}
+	if aux.Canaries != nil {
+		cfg.Canaries = *aux.Canaries
 	}
 	return cfg
 }
@@ -565,8 +692,14 @@ const configSchemaJSON = `{
     "analyze_history": {
       "type": "boolean",
       "title": "Analyser les tours précédents",
-      "description": "Score aussi les messages utilisateur antérieurs au dernier, pondérés à 0,8.",
+      "description": "Score aussi les messages utilisateur antérieurs au dernier, pondérés à 0,8, et accumule leur risque dans le port pressure. Sans lui, une attaque livrée par petites touches passe inaperçue.",
       "default": false
+    },
+    "history_decay": {
+      "type": "number",
+      "title": "Mémoire de la conversation",
+      "description": "Facteur appliqué au risque d'un tour précédent pour chaque tour de distance avec le dernier, dans le calcul de la pression. 0,8 garde trois ou quatre tours en mémoire. 0 désactive l'accumulation, la pression vaut alors le risque du dernier tour.",
+      "minimum": 0, "maximum": 1, "default": 0.8
     },
     "tool_weight": {
       "type": "number",
@@ -603,6 +736,12 @@ const configSchemaJSON = `{
       "title": "Expurger la réponse au-delà de",
       "description": "Risque à partir duquel les liens, images et caractères invisibles suspects sont retirés de la réponse. 0 se contente d'observer et préserve le streaming ; au-dessus de 0, la réponse est bufferisée pour pouvoir être expurgée.",
       "minimum": 0, "maximum": 1, "default": 0
+    },
+    "canaries": {
+      "type": "string",
+      "format": "multiline",
+      "title": "Canaris (une valeur par ligne)",
+      "description": "Valeurs qui ne doivent jamais apparaître dans une réponse, par exemple un jeton planté dans le prompt système pour mesurer les fuites. Cherchées en clair et déguisées (lettres espacées, casse, caractères invisibles, homoglyphes, valeur inversée, ROT13, Base64, hexadécimal), et par fragment contigu d'au moins la moitié de la valeur. Une fuite émet toujours un événement security.canary_leak et pèse 0,95 dans le risque de la réponse. Avec response_redact_above à 0,9, seuls les canaris sont expurgés. Quatre lettres ou chiffres au minimum. La valeur n'est jamais écrite dans un événement."
     },
     "extra_rules": {
       "type": "string",

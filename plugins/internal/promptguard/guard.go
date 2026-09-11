@@ -42,6 +42,12 @@ type Options struct {
 	// Between the floor and the cap the contribution is the probability
 	// itself. 0 means DefaultModelFloor.
 	ModelFloor float64
+	// HistoryDecay is the factor applied to the risk of an earlier user turn
+	// for each turn of distance from the last one when computing the
+	// conversation pressure (see Assessment.Pressure). 0 means
+	// DefaultHistoryDecay; NoPressure disables the accumulation.
+	HistoryDecay float64
+	NoPressure   bool
 }
 
 const (
@@ -68,6 +74,10 @@ func DefaultModel() (*Model, error) {
 	return defaultModel, defaultModelErr
 }
 
+// DefaultHistoryDecay keeps three or four recent turns in the conversation
+// pressure and forgets what was said ten turns ago: 0.8^10 is 0.1.
+const DefaultHistoryDecay = 0.8
+
 // DefaultQuoteDamping halves the risk of a quoted attack: enough to keep a
 // translation request under the usual thresholds, not enough to hide it.
 const DefaultQuoteDamping = 0.5
@@ -88,6 +98,7 @@ type Guard struct {
 	model        *Model
 	modelCap     float64
 	modelFloor   float64
+	historyDecay float64
 }
 
 // New builds a Guard.
@@ -120,6 +131,15 @@ func New(opts Options) *Guard {
 	if g.modelFloor <= 0 {
 		g.modelFloor = DefaultModelFloor
 	}
+	if !opts.NoPressure {
+		g.historyDecay = opts.HistoryDecay
+		if g.historyDecay <= 0 {
+			g.historyDecay = DefaultHistoryDecay
+		}
+		if g.historyDecay > 1 {
+			g.historyDecay = 1
+		}
+	}
 	return g
 }
 
@@ -146,17 +166,29 @@ type SegmentResult struct {
 
 // Assessment is the outcome of Assess. Every number lives in [0, 1].
 type Assessment struct {
-	// Risk is the highest segment risk. Segments are not combined by
-	// noisy-OR: a request with ten clean tool results and one bad one is
-	// exactly as dangerous as the bad one, not more.
+	// Risk is the highest segment risk, or the conversation Pressure when
+	// the accumulation over turns exceeds every single segment. Tool
+	// segments are never combined: a request with ten clean tool results
+	// and one bad one is exactly as dangerous as the bad one, not more.
 	Risk float64 `json:"risk"`
+	// Pressure accumulates the user turns of the conversation: the noisy-OR
+	// of the last turn's risk and of every earlier turn's risk, each decayed
+	// by HistoryDecay per turn of distance. A single flagged turn gives a
+	// pressure equal to its risk; a series of mildly suspicious turns, each
+	// under every threshold, adds up to a pressure that crosses them. This
+	// is what catches an attack delivered in small touches, which Risk's
+	// maximum cannot see. Without earlier turns, Pressure is the last turn's
+	// risk.
+	Pressure float64 `json:"pressure"`
 	// Categories scores each category by noisy-OR over all matches.
 	Categories map[Category]float64 `json:"categories"`
 	// Matches lists every rule that fired, strongest first.
 	Matches []Match `json:"matches,omitempty"`
 	// TopRule is the id of the strongest match, "" when nothing fired.
 	TopRule string `json:"top_rule,omitempty"`
-	// Segment is the kind of the segment that carries Risk.
+	// Segment is the kind of the segment that carries Risk, or
+	// SegmentConversation when Risk comes from Pressure, that is when no
+	// single turn reaches it and only their accumulation does.
 	Segment SegmentKind `json:"segment,omitempty"`
 	// Quoted reports that the segment carrying Risk was damped because its
 	// matches were all quoted.
@@ -224,7 +256,43 @@ func (g *Guard) Assess(segments []Segment) Assessment {
 	if s := out.Structural.Score(); s > 0 {
 		out.Categories[CategoryObfuscation] = noisyOr([]float64{out.Categories[CategoryObfuscation], s})
 	}
+	out.Pressure = g.pressure(out.Segments)
+	if out.Pressure > out.Risk {
+		out.Risk = out.Pressure
+		out.Segment = SegmentConversation
+		out.Quoted = false
+	}
 	return out
+}
+
+// pressure combines the user turns of the conversation. History segments
+// are expected oldest first, as requesttext.EarlierUserTurns returns them:
+// the most recent earlier turn is one turn away from the last one and is
+// decayed once, the one before it twice, and so on. Tool segments are not
+// turns and stay out of it.
+func (g *Guard) pressure(segments []SegmentResult) float64 {
+	var history []float64
+	var current float64
+	for _, s := range segments {
+		switch s.Kind {
+		case SegmentUser:
+			if s.Risk > current {
+				current = s.Risk
+			}
+		case SegmentHistory:
+			history = append(history, s.Risk)
+		}
+	}
+	if g.historyDecay <= 0 || len(history) == 0 {
+		return current
+	}
+	evidence := []float64{current}
+	n := len(history)
+	for i, r := range history {
+		age := n - i
+		evidence = append(evidence, r*math.Pow(g.historyDecay, float64(age)))
+	}
+	return noisyOr(evidence)
 }
 
 func (g *Guard) assessSegment(seg Segment) SegmentResult {
