@@ -41,8 +41,13 @@ url="$(jq -r '.url' <<<"$release_json")"
 body="$(jq -r '.body' <<<"$release_json")"
 
 # 2. Two renderings: plain text (Markdown, readable by every client) and HTML.
+#    GitHub's Markdown API renders the GFM changelog, which spares the runner a
+#    pandoc install; `context` linkifies the #123 and @user references it holds.
 markdown="$(printf '## Xolo %s est disponible\n\n%s\n\n%s\n' "$name" "$body" "$url")"
-html="$(pandoc --from gfm --to html <<<"$markdown")"
+html="$(gh api --method POST /markdown \
+  -f text="$markdown" \
+  -f mode=gfm \
+  ${GITHUB_REPOSITORY:+-f context="$GITHUB_REPOSITORY"})"
 
 # 3. Resolve the alias, make sure the account is in the room.
 if [[ "$room" == \#* ]]; then
