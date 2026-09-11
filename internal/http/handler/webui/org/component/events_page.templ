@@ -90,7 +90,7 @@ templ EventsExplorerPage(vmodel EventsExplorerVModel) {
 						}
 						@table.Body() {
 							for _, e := range vmodel.Events {
-								@eventRow(e)
+								@eventRow(e, vmodel.Actors)
 							}
 						}
 					}
@@ -153,7 +153,7 @@ func scopeSegments(base, query, current, view string) []common.Segment {
 	return segments
 }
 
-templ eventRow(e model.Event) {
+templ eventRow(e model.Event, actors map[model.UserID]EventActor) {
 	@table.Row() {
 		@table.Cell(table.CellProps{Class: "whitespace-nowrap text-xs text-muted-foreground"}) {
 			{ formatEventTime(e.CreatedAt()) }
@@ -169,7 +169,13 @@ templ eventRow(e model.Event) {
 		}
 		@table.Cell(table.CellProps{Class: "text-xs"}) {
 			if e.UserID() != "" {
-				{ string(e.UserID()) }
+				{{ actor := eventActor(e, actors) }}
+				<span class="inline-flex items-center gap-1" title={ string(e.UserID()) }>
+					if actor.IsApplication {
+						@icon.AppWindow(icon.Props{Size: 12, Class: "shrink-0 text-muted-foreground"})
+					}
+					{ actor.Label }
+				</span>
 			} else {
 				<span class="text-muted-foreground">global</span>
 			}

@@ -80,6 +80,16 @@ func alertsSubtitle(vmodel AlertsPageVModel) string {
 	}
 }
 
+// eventActor returns the displayable identity behind an event's user id,
+// falling back to the raw id when the user could not be resolved (deleted
+// account, or a lookup error already logged server-side).
+func eventActor(e model.Event, actors map[model.UserID]EventActor) EventActor {
+	if actor, ok := actors[e.UserID()]; ok {
+		return actor
+	}
+	return EventActor{Label: string(e.UserID())}
+}
+
 type kv struct {
 	Key   string
 	Value string

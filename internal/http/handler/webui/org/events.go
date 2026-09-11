@@ -1,6 +1,7 @@
 package org
 
 import (
+	"context"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -153,6 +154,7 @@ func (h *Handler) getEventsExplorerPage(w http.ResponseWriter, r *http.Request) 
 	personal := personalView(r)
 	vmodel := component.EventsExplorerVModel{
 		Org:             org,
+		Actors:          h.eventActors(ctx, events),
 		Query:           queryStr,
 		Scope:           scope,
 		CanReadAll:      canReadAll,
@@ -167,6 +169,46 @@ func (h *Handler) getEventsExplorerPage(w http.ResponseWriter, r *http.Request) 
 	}
 
 	templ.Handler(component.EventsExplorerPage(vmodel)).ServeHTTP(w, r)
+}
+
+// eventActors resolves the user ids of a page of events to displayable
+// identities. Only the distinct ids of the page are looked up (at most
+// eventsExplorerPageSize), and the user store is LRU-cached, so the cost stays
+// negligible next to the event query itself.
+func (h *Handler) eventActors(ctx context.Context, events []model.Event) map[model.UserID]component.EventActor {
+	actors := make(map[model.UserID]component.EventActor, len(events))
+	for _, e := range events {
+		uid := e.UserID()
+		if uid == "" {
+			continue
+		}
+		if _, ok := actors[uid]; ok {
+			continue
+		}
+		u, err := h.userStore.GetUserByID(ctx, uid)
+		if err != nil {
+			slog.WarnContext(ctx, "could not fetch user for event", slogx.Error(err), slog.String("userID", string(uid)))
+			continue
+		}
+		actors[uid] = component.EventActor{
+			Label:         userDisplayLabel(u),
+			IsApplication: u.Provider() == model.ApplicationProvider,
+		}
+	}
+	return actors
+}
+
+// userDisplayLabel picks the most meaningful name available for a user. An
+// application's shadow user carries the application name as display name, kept
+// in sync on every authenticated request.
+func userDisplayLabel(u model.User) string {
+	if name := u.DisplayName(); name != "" {
+		return name
+	}
+	if email := u.Email(); email != "" {
+		return email
+	}
+	return string(u.ID())
 }
 
 func (h *Handler) getIncidentsPage(w http.ResponseWriter, r *http.Request) {
