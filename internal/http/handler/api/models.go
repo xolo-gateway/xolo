@@ -253,6 +253,16 @@ func (h *Handler) handleModels(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// baseSupportedParams lists the OpenAI chat parameters every model accepts:
+// the ones the proxy maps explicitly plus those it forwards verbatim.
+func baseSupportedParams() []string {
+	return []string{
+		"max_tokens", "max_completion_tokens", "temperature", "top_p", "stop",
+		"seed", "frequency_penalty", "presence_penalty", "logit_bias", "user",
+		"response_format", "structured_outputs",
+	}
+}
+
 func (h *Handler) personalVMToOpenRouterModel(pvm model.PersonalVirtualModel) openRouterModel {
 	return openRouterModel{
 		ID:          "~/" + pvm.Name(),
@@ -268,7 +278,7 @@ func (h *Handler) personalVMToOpenRouterModel(pvm model.PersonalVirtualModel) op
 		},
 		DefaultParameters: nil,
 		Pricing:           modelPricing{Prompt: 0, Completion: 0},
-		SupportedParams:   []string{"max_tokens", "temperature", "top_p"},
+		SupportedParams:   baseSupportedParams(),
 	}
 }
 
@@ -288,7 +298,7 @@ func (h *Handler) llmModelToOpenRouterModel(orgSlug string, m model.LLMModel) op
 		outputModalities = append(outputModalities, "audio")
 	}
 
-	supportedParams := []string{"max_tokens", "temperature", "top_p"}
+	supportedParams := baseSupportedParams()
 	if caps.Tools {
 		supportedParams = append(supportedParams, "tools", "tool_choice", "parallel_tool_calls")
 	}
@@ -350,7 +360,7 @@ func (h *Handler) virtualModelToOpenRouterModel(orgSlug string, vm model.Virtual
 		},
 		DefaultParameters: nil,
 		Pricing:           modelPricing{Prompt: 0, Completion: 0},
-		SupportedParams:   []string{"max_tokens", "temperature", "top_p"},
+		SupportedParams:   baseSupportedParams(),
 	}
 }
 
