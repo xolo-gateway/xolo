@@ -5,6 +5,18 @@ const (
 	partTypeToolResult = "tool_result"
 )
 
+// nonTextToolPayloadNotice replaces a tool payload the plugin cannot read.
+//
+// A REPLACEMENT AND NOT A REMOVAL, because a `tool_result` is half of a pair.
+// Dropping it leaves the matching `tool_use` alone in the previous assistant
+// message, and the Messages API answers 400 on the unpaired id — so an image
+// returned by one tool would break the whole session rather than that one call.
+// The notice keeps the pairing and tells the agent what happened, which is more
+// useful to it than a block that silently vanished.
+//
+// In English because its reader is the model, not the operator.
+const nonTextToolPayloadNotice = "[non-textual content removed by the pseudonymizer]"
+
 // isToolPart reports whether a message part is an agent tool block rather than
 // a document attached by a human.
 //
@@ -21,12 +33,10 @@ func isToolPart(partType string) bool {
 // anonymizeToolPart returns a copy of an agent tool block with its textual
 // leaves rewritten by anonymize.
 //
-// The second return value reports whether the block could be handled as text at
-// all. It is false when the block carries a non-textual payload — an image
-// returned by a screenshot tool, say. Such a block keeps the attachment policy:
-// the plugin cannot vouch for what it contains, and this function does not
-// pretend otherwise.
-func anonymizeToolPart(part map[string]any, anonymize func(string) (string, error)) (map[string]any, bool, error) {
+// Nothing is ever dropped here: what cannot be read is replaced by
+// nonTextToolPayloadNotice, so the block keeps its shape and its place in the
+// call/result pairing.
+func anonymizeToolPart(part map[string]any, anonymize func(string) (string, error)) (map[string]any, error) {
 	updated := make(map[string]any, len(part))
 	for k, v := range part {
 		updated[k] = v
@@ -40,57 +50,80 @@ func anonymizeToolPart(part map[string]any, anonymize func(string) (string, erro
 		// relies on to read its own history.
 		input, ok := part["input"]
 		if !ok {
-			return updated, true, nil
+			return updated, nil
 		}
 		walked, err := anonymizeLeaves(input, anonymize)
 		if err != nil {
-			return nil, true, err
+			return nil, err
 		}
 		updated["input"] = walked
-		return updated, true, nil
+		return updated, nil
 
 	case partTypeToolResult:
 		switch c := part["content"].(type) {
 		case nil:
-			return updated, true, nil
+			return updated, nil
 		case string:
 			text, err := anonymize(c)
 			if err != nil {
-				return nil, true, err
+				return nil, err
 			}
 			updated["content"] = text
-			return updated, true, nil
+			return updated, nil
 		case []any:
 			out := make([]any, 0, len(c))
 			for _, sub := range c {
-				subMap, ok := sub.(map[string]any)
-				if !ok {
-					out = append(out, sub)
-					continue
-				}
-				if subType, _ := subMap["type"].(string); subType != "text" {
-					return nil, false, nil
-				}
-				text, _ := subMap["text"].(string)
-				anonText, err := anonymize(text)
+				replaced, err := anonymizeToolResultBlock(sub, anonymize)
 				if err != nil {
-					return nil, true, err
+					return nil, err
 				}
-				copied := make(map[string]any, len(subMap))
-				for k, v := range subMap {
-					copied[k] = v
-				}
-				copied["text"] = anonText
-				out = append(out, copied)
+				out = append(out, replaced)
 			}
 			updated["content"] = out
-			return updated, true, nil
+			return updated, nil
 		default:
-			return nil, false, nil
+			// An object, a number — not a shape the spec describes. It is not
+			// read, so it is not forwarded either.
+			updated["content"] = nonTextToolPayloadNotice
+			return updated, nil
 		}
 	}
 
-	return nil, false, nil
+	return updated, nil
+}
+
+// anonymizeToolResultBlock handles one element of a `tool_result` content list.
+//
+// A bare string is not valid per the spec but costs nothing to handle, and it
+// sits next to the case below: both are elements of the same list, and leaving
+// one untouched while replacing the other would be two opposite answers to the
+// same question.
+func anonymizeToolResultBlock(sub any, anonymize func(string) (string, error)) (any, error) {
+	switch block := sub.(type) {
+	case string:
+		return anonymize(block)
+	case map[string]any:
+		if subType, _ := block["type"].(string); subType != "text" {
+			return textBlock(nonTextToolPayloadNotice), nil
+		}
+		text, _ := block["text"].(string)
+		anonText, err := anonymize(text)
+		if err != nil {
+			return nil, err
+		}
+		copied := make(map[string]any, len(block))
+		for k, v := range block {
+			copied[k] = v
+		}
+		copied["text"] = anonText
+		return copied, nil
+	default:
+		return textBlock(nonTextToolPayloadNotice), nil
+	}
+}
+
+func textBlock(text string) map[string]any {
+	return map[string]any{"type": "text", "text": text}
 }
 
 // anonymizeLeaves walks a decoded JSON value and rewrites every string it

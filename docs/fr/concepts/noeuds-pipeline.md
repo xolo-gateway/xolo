@@ -204,6 +204,10 @@ La logique floue donne des transitions douces là où des seuils créent des sau
 
 **pseudonymizer** remplace les données personnelles par des pseudonymes avant l'appel au modèle, puis rétablit les valeurs d'origine dans la réponse. Il agit dans les deux sens, ce qui oblige Xolo à attendre la fin de la réponse avant de la renvoyer quand il a effectivement remplacé quelque chose. Il émet un événement quand il détecte une donnée sensible.
 
+Devant un client agentique, il traite aussi les blocs d'outils du format Messages d'Anthropic : le contenu d'un `tool_result` et les arguments d'un `tool_use`. Ce qui apparie un appel à son résultat — `id`, `tool_use_id`, `name` — et les noms d'arguments sont laissés intacts ; un contenu qu'il ne sait pas lire, l'image d'une capture d'écran par exemple, est remplacé par une note et non retiré, sous peine de laisser l'appel correspondant orphelin.
+
+Deux limites à connaître. Les appels d'outils **au format OpenAI** ne sont pas couverts : leurs arguments vivent dans `tool_calls[].function.arguments`, en dehors du contenu du message, et partent donc tels quels. Et comme une conversation agentique fait presque toujours remplacer quelque chose, ces échanges perdent le streaming — la réponse n'est renvoyée qu'une fois complète.
+
 **time-restriction** refuse les requêtes hors des plages horaires hebdomadaires configurées, avec un fuseau horaire. La requête refusée reçoit une réponse 403 et le pipeline s'arrête là.
 
 ### Outils et test

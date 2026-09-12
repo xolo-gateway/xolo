@@ -312,7 +312,11 @@ func (p *Plugin) PreRequest(ctx context.Context, in *proto.PreRequestInput) (*pr
 					// either, so the attachment path below would declare it
 					// unreadable and drop it — leaving an agent whose read
 					// tools return nothing, working blind.
-					updated, handled, err := anonymizeToolPart(partMap, func(s string) (string, error) {
+					//
+					// Nothing here ever reaches removedParts: a tool block is
+					// half of a pair, and dropping it would answer 400 on the
+					// unpaired id. What cannot be read is replaced in place.
+					updated, err := anonymizeToolPart(partMap, func(s string) (string, error) {
 						result, anonErr := anon.Anonymize(s, append(anonymOpts, anonymizer.WithSession(session))...)
 						if anonErr != nil {
 							return "", anonErr
@@ -331,18 +335,6 @@ func (p *Plugin) PreRequest(ctx context.Context, in *proto.PreRequestInput) (*pr
 						anonymizeFailures++
 						lastAnonymizeErr = err
 						kept = append(kept, part)
-						continue
-					}
-					if !handled {
-						// A non-textual payload inside a tool block — an image
-						// returned by a screenshot tool, say. The plugin cannot
-						// vouch for it, so it keeps the attachment policy.
-						removedParts = append(removedParts, removedPart{
-							Role:   role,
-							Type:   partType,
-							Name:   partName(partMap),
-							Reason: reasonNonTextToolPart,
-						})
 						continue
 					}
 					kept = append(kept, updated)
@@ -714,7 +706,6 @@ const (
 	reasonTooLarge        = "fichier trop volumineux"
 	reasonUnreadable      = "fichier illisible ou corrompu"
 	reasonAnonymizeFailed = "échec de la pseudonymisation du contenu"
-	reasonNonTextToolPart = "bloc d'outil au contenu non textuel"
 )
 
 // attachmentText resolves the text of an attachment to send in place of the
