@@ -33,7 +33,7 @@ templ ModelForm(vmodel ModelFormVModel) {
 				})
 				if !vmodel.IsNew && vmodel.Model != nil {
 					@form.ItemFlex() {
-						@switchcomp.Switch(switchcomp.Props{ID: "enabled", Name: "enabled", Checked: vmodel.Model.Enabled(), Disabled: readonly})
+						@switchcomp.Switch(switchcomp.Props{ID: "enabled", Name: "enabled", Checked: vmodel.Model.Enabled(), Disabled: readonly, Form: "model-form"})
 						@form.Label(form.LabelProps{For: "enabled"}) {
 							Activé 
 						}
@@ -45,7 +45,7 @@ templ ModelForm(vmodel ModelFormVModel) {
 					{ vmodel.Error }
 				}
 			}
-			<form method="POST" action={ templ.SafeURL(action) } class="space-y-4">
+			<form id="model-form" method="POST" action={ templ.SafeURL(action) } class="space-y-4">
 				<!-- ── Ligne 1: Identité + Capacités (gauche, empilés) | Tarification + Estimation écologique (droite, empilés) ─── -->
 				<div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
 					<!-- Cards gauche: Identité + Capacités (empilées) -->
