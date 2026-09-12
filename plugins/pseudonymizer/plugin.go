@@ -306,6 +306,39 @@ func (p *Plugin) PreRequest(ctx context.Context, in *proto.PreRequestInput) (*pr
 						updated["text"] = result.Text
 						kept = append(kept, updated)
 					}
+				case isToolPart(partType):
+					// An agent tool block is text the model asked for, not a
+					// document someone attached. It carries no inline bytes
+					// either, so the attachment path below would declare it
+					// unreadable and drop it — leaving an agent whose read
+					// tools return nothing, working blind.
+					//
+					// Nothing here ever reaches removedParts: a tool block is
+					// half of a pair, and dropping it would answer 400 on the
+					// unpaired id. What cannot be read is replaced in place.
+					updated, err := anonymizeToolPart(partMap, func(s string) (string, error) {
+						result, anonErr := anon.Anonymize(s, append(anonymOpts, anonymizer.WithSession(session))...)
+						if anonErr != nil {
+							return "", anonErr
+						}
+						countEntities(typeCounts, result.Entities)
+						return result.Text, nil
+					})
+					if err != nil {
+						if out := handleVerificationError(in, err, cfg, p.getHostClient()); out != nil {
+							return out, nil
+						}
+						slog.WarnContext(ctx, "pseudonymizer: failed to anonymize tool part",
+							slog.String("type", partType),
+							slog.Any("error", err),
+						)
+						anonymizeFailures++
+						lastAnonymizeErr = err
+						kept = append(kept, part)
+						continue
+					}
+					kept = append(kept, updated)
+
 				default:
 					// Attachment: read it as text when the format allows,
 					// anonymize that text and send it in place of the file.
