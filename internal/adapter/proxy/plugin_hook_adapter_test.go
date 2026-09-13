@@ -137,7 +137,7 @@ func TestApplyModifiedMessages_AnthropicSystemBlocks(t *testing.T) {
 	}
 }
 
-func TestExtractAnthropicSystemMessages_Absent(t *testing.T) {
+func TestRequestSystemMessages_Absent(t *testing.T) {
 	for name, body := range map[string]string{
 		"empty body":   "",
 		"no system":    `{"model":"m","messages":[]}`,
@@ -145,7 +145,7 @@ func TestExtractAnthropicSystemMessages_Absent(t *testing.T) {
 		"empty string": `{"model":"m","system":""}`,
 	} {
 		t.Run(name, func(t *testing.T) {
-			msgs, err := extractAnthropicSystemMessages([]byte(body))
+			msgs, err := requestSystemMessages([]byte(body))
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
@@ -156,8 +156,8 @@ func TestExtractAnthropicSystemMessages_Absent(t *testing.T) {
 	}
 }
 
-func TestExtractAnthropicSystemMessages_UnsupportedType(t *testing.T) {
-	if _, err := extractAnthropicSystemMessages([]byte(`{"system":42}`)); err == nil {
+func TestRequestSystemMessages_UnsupportedType(t *testing.T) {
+	if _, err := requestSystemMessages([]byte(`{"system":42}`)); err == nil {
 		t.Error("expected an error for a numeric system prompt")
 	}
 }

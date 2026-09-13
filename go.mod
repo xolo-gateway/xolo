@@ -147,7 +147,7 @@ require (
 	google.golang.org/protobuf v1.36.11 // indirect
 )
 
-// replace github.com/bornholm/genai => ../genai
+replace github.com/bornholm/genai => ../genai
 
 // replace github.com/bornholm/go-fuzzy => ../go-fuzzy
 
