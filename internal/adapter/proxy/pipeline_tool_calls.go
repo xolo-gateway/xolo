@@ -58,8 +58,9 @@ func toolCallArguments(params any) string {
 // decodeToolCalls turns the backward pass's rewritten tool calls back into
 // llm.ToolCall values, returning nil when nothing was rewritten.
 //
-// The id and the name are taken from the original calls, matched by id: they
-// pair a call with its result and are not a node's to change.
+// The id and the name always come from the original calls: they pair a call
+// with its result and are not a node's to change. Only the arguments are read
+// back, position by position.
 func decodeToolCalls(ctx context.Context, rewrittenJSON string, original []llm.ToolCall) []llm.ToolCall {
 	if rewrittenJSON == "" || len(original) == 0 {
 		return nil
@@ -72,20 +73,38 @@ func decodeToolCalls(ctx context.Context, rewrittenJSON string, original []llm.T
 		return nil
 	}
 
-	byID := make(map[string]string, len(wire))
-	for _, w := range wire {
-		byID[w.ID] = w.Arguments
-	}
-
 	out := make([]llm.ToolCall, 0, len(original))
-	for _, tc := range original {
-		args, ok := byID[tc.ID()]
-		if !ok {
-			args = toolCallArguments(tc.Parameters())
+	for i, tc := range original {
+		args := toolCallArguments(tc.Parameters())
+		if rewritten, ok := rewrittenArgumentsAt(wire, i, tc.ID()); ok {
+			args = rewritten
 		}
 		out = append(out, llm.NewToolCall(tc.ID(), tc.Name(), args))
 	}
 	return out
+}
+
+// rewrittenArgumentsAt reads back the arguments a node rewrote for the call at
+// position i.
+//
+// The match is positional, not by id. A node is handed the array as encodeToolCalls
+// built it and gives it back in the same order, whereas ids are not the key they
+// look like: two parallel calls to the same tool can both arrive with an empty
+// id from an OpenAI-compatible provider, and matching on that would give both
+// of them the arguments of the last one -- a client reading the wrong file, with
+// nothing in the logs to say why.
+//
+// The id is still used, as a guard rather than a key: when both sides carry one
+// and they disagree, the node reordered or dropped something and the provider's
+// arguments are kept.
+func rewrittenArgumentsAt(wire []wireToolCall, i int, originalID string) (string, bool) {
+	if i >= len(wire) {
+		return "", false
+	}
+	if w := wire[i]; w.ID == "" || originalID == "" || w.ID == originalID {
+		return w.Arguments, true
+	}
+	return "", false
 }
 
 // streamedToolCalls reassembles the tool calls of a streamed response, whose
@@ -125,7 +144,7 @@ func (s *streamedToolCalls) json() string {
 	}
 
 	wire := make([]wireToolCall, 0, len(s.order))
-	for _, idx := range s.order {
+	for _, idx := range s.sortedIndexes() {
 		wire = append(wire, *s.byIdx[idx])
 	}
 
@@ -152,22 +171,25 @@ func (s *streamedToolCalls) rewritten(ctx context.Context, rewrittenJSON string)
 		return nil
 	}
 
-	byID := make(map[string]string, len(wire))
-	for _, w := range wire {
-		byID[w.ID] = w.Arguments
-	}
-
-	indexes := append([]int(nil), s.order...)
-	sort.Ints(indexes)
+	indexes := s.sortedIndexes()
 
 	out := make([]llm.ToolCallDelta, 0, len(indexes))
-	for _, idx := range indexes {
+	for i, idx := range indexes {
 		call := s.byIdx[idx]
 		args := call.Arguments
-		if rewritten, ok := byID[call.ID]; ok {
+		if rewritten, ok := rewrittenArgumentsAt(wire, i, call.ID); ok {
 			args = rewritten
 		}
 		out = append(out, llm.NewToolCallDelta(idx, call.ID, call.Name, args))
 	}
 	return out
+}
+
+// sortedIndexes returns the collected call indexes in provider order, which is
+// the order json() serializes them in and therefore the order rewritten() must
+// read them back in.
+func (s *streamedToolCalls) sortedIndexes() []int {
+	indexes := append([]int(nil), s.order...)
+	sort.Ints(indexes)
+	return indexes
 }

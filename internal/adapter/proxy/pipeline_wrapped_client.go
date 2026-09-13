@@ -200,6 +200,12 @@ func (c *PipelineWrappedClient) streamPassthrough(ctx context.Context, sourceCh 
 
 		// The response was already delivered: a rewrite here would be ignored,
 		// which is exactly why this path was chosen.
+		//
+		// The tool calls are not accumulated here and the backward pass sees
+		// none. That costs nothing to a node that rewrites them, since a
+		// rewrite is ignored on this path anyway, but a node that only observes
+		// them — audit, metrics — sees them on the two other paths and not on
+		// this one. Worth revisiting the day such a node exists.
 		c.runBackward(ctx, buf.String(), lastTokens, false)
 	}()
 
@@ -243,11 +249,36 @@ type wrappedChatCompletionResponse struct {
 }
 
 func (r *wrappedChatCompletionResponse) Message() llm.Message {
-	return &modifiedMessage{
-		original:  r.inner.Message(),
-		content:   r.modifiedContent,
-		toolCalls: r.ToolCalls(),
+	msg := &modifiedMessage{
+		original: r.inner.Message(),
+		content:  r.modifiedContent,
 	}
+	// Only a response that actually carries calls hands them to the message.
+	// Attaching an empty slice would make every wrapped message answer to a
+	// tool-calls type assertion, including plain text ones, which is a change
+	// of shape nothing here asked for.
+	if calls := r.ToolCalls(); len(calls) > 0 {
+		msg.toolCalls = calls
+	}
+	return msg
+}
+
+// Reasoning and ReasoningDetails are delegated so that wrapping a response
+// does not drop its reasoning: genai only fills reasoning_content when the
+// response satisfies llm.ReasoningChatCompletionResponse, and a pure tool turn
+// now gets wrapped even when its text was left alone.
+func (r *wrappedChatCompletionResponse) Reasoning() string {
+	if rr, ok := r.inner.(llm.ReasoningChatCompletionResponse); ok {
+		return rr.Reasoning()
+	}
+	return ""
+}
+
+func (r *wrappedChatCompletionResponse) ReasoningDetails() []llm.ReasoningDetail {
+	if rr, ok := r.inner.(llm.ReasoningChatCompletionResponse); ok {
+		return rr.ReasoningDetails()
+	}
+	return nil
 }
 
 func (r *wrappedChatCompletionResponse) ToolCalls() []llm.ToolCall {
@@ -269,7 +300,9 @@ func (m *modifiedMessage) Role() llm.Role  { return m.original.Role() }
 func (m *modifiedMessage) Content() string { return m.content }
 
 // ToolCalls keeps the message a llm.ToolCallsMessage when the original was one,
-// carrying the rewritten calls rather than the ones the provider sent.
+// carrying the rewritten calls rather than the ones the provider sent. It is
+// left nil for a message that carried none, so such a message keeps the
+// interface shape it had.
 func (m *modifiedMessage) ToolCalls() []llm.ToolCall { return m.toolCalls }
 func (m *modifiedMessage) Attachments() []llm.Attachment {
 	if a, ok := m.original.(interface{ Attachments() []llm.Attachment }); ok {

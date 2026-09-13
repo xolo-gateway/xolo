@@ -133,7 +133,8 @@ type BackwardResult struct {
 	// ModifiedResponseContent, when non-empty, replaces the response sent to the client.
 	ModifiedResponseContent string
 	// ModifiedToolCallsJSON, when non-empty, replaces the response tool calls.
-	// Same shape as BackwardInput.ToolCallsJSON.
+	// Same shape as BackwardInput.ToolCallsJSON, in the same order: calls are
+	// matched back by position, an id being optional on the wire.
 	ModifiedToolCallsJSON string
 }
 

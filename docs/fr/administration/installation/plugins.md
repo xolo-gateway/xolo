@@ -308,6 +308,10 @@ func (p *Plugin) PostResponse(ctx context.Context, in *proto.PostResponseInput) 
 
 A plugin that rewrites the request must undo its rewriting on the tool calls too: a placeholder the model copied into a call reaches the client verbatim, which then runs the call against a value that does not exist.
 
+Return the array in the order it was received. The host restarts from the provider's calls and only takes the `arguments` back, matching them by position, so a plugin can never add a call, remove one, or change the order in which they run. Omitting an entry is legal and leaves that call as the provider sent it. Matching is positional rather than by id because an id is not always on the wire: two parallel calls to the same tool can both arrive without one, and keying on that would give them both the same arguments.
+
+The `arguments` of a call are themselves a JSON document. Restore the values inside the decoded document and re-encode it, rather than substituting text into the encoded form: a value carrying a backslash or a newline, a Windows path or a two-line postal address, would otherwise produce arguments the client can no longer parse.
+
 **Example — response transformation using node_state:**
 
 ```go

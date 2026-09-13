@@ -154,3 +154,133 @@ func TestDecodeToolCalls(t *testing.T) {
 		}
 	})
 }
+
+// Two parallel calls to the same tool can both arrive with an empty id from an
+// OpenAI-compatible provider. Matching the rewritten arguments on that id gives
+// both calls the arguments of the last one, so the client reads the wrong file
+// and nothing in the logs says why.
+func TestDecodeToolCalls_EmptyIDsDoNotCollide(t *testing.T) {
+	original := []llm.ToolCall{
+		llm.NewToolCall("", "Read", `{"path":"/a"}`),
+		llm.NewToolCall("", "Read", `{"path":"/b"}`),
+	}
+
+	out := decodeToolCalls(context.Background(),
+		`[{"id":"","name":"Read","arguments":"{\"path\":\"/A\"}"},{"id":"","name":"Read","arguments":"{\"path\":\"/B\"}"}]`,
+		original,
+	)
+
+	if len(out) != 2 {
+		t.Fatalf("calls = %d, want 2", len(out))
+	}
+	if got := out[0].Parameters(); got != `{"path":"/A"}` {
+		t.Errorf("first call arguments = %v", got)
+	}
+	if got := out[1].Parameters(); got != `{"path":"/B"}` {
+		t.Errorf("second call arguments = %v", got)
+	}
+}
+
+// The id is still a guard: when both sides carry one and they disagree, the
+// node reordered or dropped something, and the provider's arguments are kept
+// rather than pinned onto the wrong call.
+func TestDecodeToolCalls_MismatchedIDKeepsTheProvidersArguments(t *testing.T) {
+	original := []llm.ToolCall{llm.NewToolCall("call_1", "Read", `{"path":"/a"}`)}
+
+	out := decodeToolCalls(context.Background(),
+		`[{"id":"call_9","name":"Read","arguments":"{\"path\":\"/Z\"}"}]`,
+		original,
+	)
+
+	if len(out) != 1 {
+		t.Fatalf("calls = %d, want 1", len(out))
+	}
+	if got := out[0].Parameters(); got != `{"path":"/a"}` {
+		t.Errorf("arguments = %v, want the provider's", got)
+	}
+}
+
+// A node that returns fewer calls than it was given leaves the missing ones
+// alone instead of truncating the response.
+func TestDecodeToolCalls_ShorterAnswerLeavesTheRestAlone(t *testing.T) {
+	original := []llm.ToolCall{
+		llm.NewToolCall("call_1", "Read", `{"path":"/a"}`),
+		llm.NewToolCall("call_2", "Read", `{"path":"/b"}`),
+	}
+
+	out := decodeToolCalls(context.Background(),
+		`[{"id":"call_1","name":"Read","arguments":"{\"path\":\"/A\"}"}]`,
+		original,
+	)
+
+	if len(out) != 2 {
+		t.Fatalf("calls = %d, want 2", len(out))
+	}
+	if got := out[1].Parameters(); got != `{"path":"/b"}` {
+		t.Errorf("second call arguments = %v, want the provider's", got)
+	}
+}
+
+// mixedChunkClient puts content and tool call deltas on the same chunk, which
+// is the ordinary shape of a streamed OpenAI response and the one case the
+// re-emission has to get right twice over.
+type mixedChunkClient struct{}
+
+func (c *mixedChunkClient) ChatCompletion(_ context.Context, _ ...llm.ChatCompletionOptionFunc) (llm.ChatCompletionResponse, error) {
+	return nil, nil
+}
+
+func (c *mixedChunkClient) ChatCompletionStream(_ context.Context, _ ...llm.ChatCompletionOptionFunc) (<-chan llm.StreamChunk, error) {
+	ch := make(chan llm.StreamChunk, 4)
+	go func() {
+		defer close(ch)
+		ch <- llm.NewStreamChunk(llm.NewStreamDelta(llm.RoleAssistant, "Je lis le fichier de PERSON_1", llm.NewToolCallDelta(0, "call_1", "Read", `{"path":"/home/PERSON_1`)))
+		ch <- llm.NewStreamChunk(llm.NewStreamDelta(llm.RoleAssistant, ".", llm.NewToolCallDelta(0, "", "", `/notes.md"}`)))
+		ch <- llm.NewCompleteStreamChunk(llm.NewChatCompletionUsage(0, 0, 0))
+	}()
+	return ch, nil
+}
+
+func (c *mixedChunkClient) Embeddings(_ context.Context, _ []string, _ ...llm.EmbeddingsOptionFunc) (llm.EmbeddingsResponse, error) {
+	return nil, nil
+}
+
+func (c *mixedChunkClient) Transcription(_ context.Context, _ []byte, _ ...llm.TranscriptionOptionFunc) (llm.TranscriptionResponse, error) {
+	return nil, nil
+}
+
+var _ llm.Client = (*mixedChunkClient)(nil)
+
+func TestPipelineWrappedClient_StreamRewritesContentAndToolCallsOnTheSameChunk(t *testing.T) {
+	engine := newTestEngine("PERSON_1", "Jean Dupont")
+	client := NewPipelineWrappedClient(&mixedChunkClient{}, engine, newTestForwardExecution(), pipeline.ExecutionContext{})
+
+	ch, err := client.ChatCompletionStream(context.Background())
+	if err != nil {
+		t.Fatalf("ChatCompletionStream() error = %v", err)
+	}
+
+	var content, arguments string
+	var seenCalls int
+	for chunk := range ch {
+		d := chunk.Delta()
+		if d == nil {
+			continue
+		}
+		content += d.Content()
+		for _, tc := range d.ToolCalls() {
+			seenCalls++
+			arguments += tc.ParametersDelta()
+		}
+	}
+
+	if want := "Je lis le fichier de Jean Dupont."; content != want {
+		t.Errorf("content = %q, want %q", content, want)
+	}
+	if seenCalls != 1 {
+		t.Errorf("the call was emitted %d times, want once", seenCalls)
+	}
+	if want := `{"path":"/home/Jean Dupont/notes.md"}`; arguments != want {
+		t.Errorf("arguments = %q, want %q", arguments, want)
+	}
+}

@@ -265,7 +265,9 @@ message PostResponseOutput {
   string modified_response_content = 1;
   // modified_tool_calls_json, when non-empty, replaces the response tool calls.
   // Same shape as response_tool_calls_json; only `arguments` is read back, the
-  // id and the name of a call are never taken from the plugin.
+  // id and the name of a call are never taken from the plugin. Return the array
+  // in the order it was received: calls are matched back by position, because
+  // an id is not always there to match on.
   string modified_tool_calls_json = 2;
 }
 

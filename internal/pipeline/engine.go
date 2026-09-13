@@ -3,6 +3,7 @@ package pipeline
 import (
 	"context"
 	"fmt"
+	"log/slog"
 
 	"github.com/bornholm/genai/llm"
 	"github.com/pkg/errors"
@@ -202,7 +203,13 @@ func (e *Engine) RunBackwardWithToolCalls(
 			HadError:        hadError,
 		})
 		if err != nil {
-			// Non-fatal: log and continue.
+			// Non-fatal: the response is still worth sending, just without
+			// whatever this node was going to change.
+			slog.WarnContext(ctx, "pipeline: backward pass failed for a node, keeping the response as it stands",
+				slog.String("node", en.Node.ID),
+				slog.String("type", string(en.Node.Type)),
+				slog.Any("error", err),
+			)
 			continue
 		}
 		if result.ModifiedResponseContent != "" {
