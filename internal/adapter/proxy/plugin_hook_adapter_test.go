@@ -123,7 +123,7 @@ func TestApplyModifiedMessages_AnthropicSystemBlocks(t *testing.T) {
 	}
 	req := &genaiProxy.ProxyRequest{
 		Type: genaiProxy.RequestTypeMessage,
-		Body: []byte(`{"model":"m","system":[{"type":"text","text":"first"},{"type":"text","text":"second","cache_control":{"type":"ephemeral"}}]}`),
+		Body: []byte(`{"model":"m","system":[{"type":"text","text":"first"},{"type":"text","text":"second","cache_control":{"type":"ephemeral","ttl":"1h"}}]}`),
 	}
 
 	applyModifiedMessages(context.Background(), req, ec, forwardExec)
@@ -133,7 +133,28 @@ func TestApplyModifiedMessages_AnthropicSystemBlocks(t *testing.T) {
 		t.Fatalf("messages = %d, want 3", len(opts.Messages))
 	}
 	if opts.Messages[0].Content() != "first" || opts.Messages[1].Content() != "second" {
-		t.Errorf("system blocks = (%q, %q), want (first, second)", opts.Messages[0].Content(), opts.Messages[1].Content())
+		t.Fatalf("system blocks = (%q, %q), want (first, second)", opts.Messages[0].Content(), opts.Messages[1].Content())
+	}
+	if opts.Messages[0].Role() != llm.RoleSystem || opts.Messages[1].Role() != llm.RoleSystem {
+		t.Errorf("system block roles = (%q, %q), want system", opts.Messages[0].Role(), opts.Messages[1].Role())
+	}
+
+	// A client that set a cache breakpoint on its system prompt keeps it.
+	cached, ok := opts.Messages[1].(llm.CacheControlMessage)
+	if !ok {
+		t.Fatal("a system block should implement CacheControlMessage")
+	}
+	cc := cached.CacheControl()
+	if cc == nil || cc.Type != "ephemeral" {
+		t.Fatalf("cache control = %+v, want ephemeral", cc)
+	}
+	if cc.TTL == nil || *cc.TTL != "1h" {
+		t.Errorf("cache control ttl = %v, want 1h", cc.TTL)
+	}
+
+	// And a block without one does not get invented a breakpoint.
+	if first, ok := opts.Messages[0].(llm.CacheControlMessage); ok && first.CacheControl() != nil {
+		t.Errorf("first block carries no cache_control, got %+v", first.CacheControl())
 	}
 }
 

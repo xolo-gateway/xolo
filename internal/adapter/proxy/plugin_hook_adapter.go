@@ -656,6 +656,11 @@ func applyModifiedMessages(ctx context.Context, req *genaiProxy.ProxyRequest, ec
 	if req.Type == genaiProxy.RequestTypeMessage {
 		systemMsgs, sysErr := requestSystemMessages(req.Body)
 		if sysErr != nil {
+			// Not reachable on this route: the Messages handler runs
+			// ParseMessagesRequest on the same body before any hook, and answers
+			// 400 on a malformed body or a system prompt that is neither a string
+			// nor an array. Kept so a future caller that skips that parsing loses
+			// the prompt loudly rather than silently.
 			slog.WarnContext(ctx, "pipeline: could not carry the top-level system prompt over the rewritten messages",
 				slog.String("model", req.Model),
 				slog.Any("error", sysErr))
