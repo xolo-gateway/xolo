@@ -199,15 +199,18 @@ func anonymizeToolCalls(raw any, anonymize func(string) (string, error)) ([]any,
 			out = append(out, call)
 			continue
 		}
-		args, ok := fn["arguments"].(string)
-		if !ok || args == "" {
+		rewritten, err := anonymizeArgumentsValue(fn["arguments"], anonymize)
+		if err != nil {
+			// The calls already rewritten are handed back with the error: their
+			// values are in the session mapping either way, so dropping them
+			// here would send them in clear under a placeholder the model is
+			// told to reuse.
+			out = append(out, calls[len(out):]...)
+			return out, true, err
+		}
+		if rewritten == nil {
 			out = append(out, call)
 			continue
-		}
-
-		rewritten, err := anonymizeToolArguments(args, anonymize)
-		if err != nil {
-			return nil, false, err
 		}
 
 		copiedFn := make(map[string]any, len(fn))
@@ -233,7 +236,15 @@ func anonymizeToolCalls(raw any, anonymize func(string) (string, error)) ([]any,
 // forwarded untouched.
 func anonymizeToolArguments(args string, anonymize func(string) (string, error)) (string, error) {
 	var decoded any
-	if err := json.Unmarshal([]byte(args), &decoded); err != nil {
+	dec := json.NewDecoder(strings.NewReader(args))
+	// Without this, every number becomes a float64 and is re-encoded from it.
+	// A 19-digit identifier or a nanosecond timestamp does not survive that
+	// trip: 9223372036854775807 comes back as 9223372036854776000, and the tool
+	// runs against something the model never asked for. json.Number keeps the
+	// literal as it was written, and being a named type it falls through the
+	// `case string` of anonymizeLeaves untouched.
+	dec.UseNumber()
+	if err := dec.Decode(&decoded); err != nil {
 		return anonymize(args)
 	}
 
@@ -251,4 +262,25 @@ func anonymizeToolArguments(args string, anonymize func(string) (string, error))
 		return "", err
 	}
 	return strings.TrimRight(buf.String(), "\n"), nil
+}
+
+// anonymizeArgumentsValue rewrites the `arguments` of one call, whatever shape
+// it arrived in, and returns nil when there is nothing to rewrite.
+//
+// The spec says a string, and that is what the field holds in practice. An SDK
+// that pre-parses it into an object is the other shape seen in the wild, and
+// forwarding that one untouched would be the very leak this file exists to
+// close, so it is walked in place instead.
+func anonymizeArgumentsValue(raw any, anonymize func(string) (string, error)) (any, error) {
+	switch args := raw.(type) {
+	case nil:
+		return nil, nil
+	case string:
+		if args == "" {
+			return nil, nil
+		}
+		return anonymizeToolArguments(args, anonymize)
+	default:
+		return anonymizeLeaves(args, anonymize)
+	}
 }

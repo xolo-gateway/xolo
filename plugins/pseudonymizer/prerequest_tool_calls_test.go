@@ -216,3 +216,88 @@ func TestAnonymizeToolCalls_Shapes(t *testing.T) {
 		}
 	})
 }
+
+// Decoding the arguments into `any` turns every number into a float64, and
+// re-encoding from that loses the exact value: a 19-digit identifier comes back
+// as something the tool was never asked to act on, and nothing anywhere says so.
+func TestAnonymizeToolArguments_LargeNumbersKeepTheirValue(t *testing.T) {
+	identity := func(s string) (string, error) { return s, nil }
+
+	out, err := anonymizeToolArguments(
+		`{"user_id":9223372036854775807,"ts":1760000000000000000,"ratio":1.0}`, identity)
+	if err != nil {
+		t.Fatalf("anonymizeToolArguments() error = %v", err)
+	}
+
+	for _, want := range []string{"9223372036854775807", "1760000000000000000", "1.0"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("%s is missing from the re-encoded arguments: %s", want, out)
+		}
+	}
+}
+
+// An SDK that pre-parses `arguments` into an object is the other shape seen in
+// the wild. Forwarding it untouched would be the leak this file closes.
+func TestAnonymizeToolCalls_ObjectArgumentsAreRewritten(t *testing.T) {
+	calls := []any{
+		map[string]any{
+			"id":   "call_1",
+			"type": "function",
+			"function": map[string]any{
+				"name":      "send_mail",
+				"arguments": map[string]any{"to": "sophie.guerin@exemple.fr"},
+			},
+		},
+	}
+
+	out, changed, err := anonymizeToolCalls(calls, func(string) (string, error) { return "[EMAIL_1]", nil })
+	if err != nil {
+		t.Fatalf("anonymizeToolCalls() error = %v", err)
+	}
+	if !changed {
+		t.Fatal("the call was left untouched")
+	}
+
+	fn := out[0].(map[string]any)["function"].(map[string]any)
+	args, ok := fn["arguments"].(map[string]any)
+	if !ok {
+		t.Fatalf("arguments changed shape: %#v", fn["arguments"])
+	}
+	if args["to"] != "[EMAIL_1]" {
+		t.Errorf("to = %#v, want the placeholder", args["to"])
+	}
+}
+
+// A failure on the second call must not throw away the first: its value is in
+// the session mapping either way, so sending it in clear under a placeholder
+// the model is told to reuse is the worst of both.
+func TestAnonymizeToolCalls_AFailureKeepsWhatWasAlreadyRewritten(t *testing.T) {
+	calls := []any{
+		map[string]any{"id": "call_1", "function": map[string]any{"name": "a", "arguments": `{"to":"premier"}`}},
+		map[string]any{"id": "call_2", "function": map[string]any{"name": "b", "arguments": `{"to":"second"}`}},
+	}
+
+	seen := 0
+	out, changed, err := anonymizeToolCalls(calls, func(s string) (string, error) {
+		seen++
+		if seen > 1 {
+			return "", errors.New("anonymizer is gone")
+		}
+		return "[NAME_1]", nil
+	})
+	if err == nil {
+		t.Fatal("the error was swallowed")
+	}
+	if !changed {
+		t.Fatal("the partial result was dropped")
+	}
+
+	first := out[0].(map[string]any)["function"].(map[string]any)["arguments"].(string)
+	if !strings.Contains(first, "[NAME_1]") {
+		t.Errorf("the first call lost its rewriting: %s", first)
+	}
+	second := out[1].(map[string]any)["function"].(map[string]any)["arguments"].(string)
+	if !strings.Contains(second, "second") {
+		t.Errorf("the failing call should be forwarded as it came: %s", second)
+	}
+}

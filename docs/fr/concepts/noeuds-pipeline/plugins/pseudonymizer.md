@@ -45,6 +45,8 @@ Le **prompt système de haut niveau** de la route Messages n'est pas pseudonymis
 
 Les appels d'outils **au format OpenAI** sont couverts eux aussi : leurs arguments vivent dans `tool_calls[].function.arguments`, en dehors du contenu du message, sous la forme d'un document JSON encodé dans une chaîne ; il est décodé, ses feuilles textuelles sont remplacées, puis il est ré-encodé. L'`id` de l'appel, son `type` et le nom de la fonction sont préservés, comme pour un `tool_use`.
 
+Le champ `function_call`, l'ancêtre déprécié de `tool_calls` que quelques clients anciens émettent encore, n'est pas traité : ses arguments partent tels quels.
+
 Deux limites à connaître. Comme une conversation agentique fait presque toujours remplacer quelque chose, ces échanges perdent le streaming — la réponse n'est renvoyée qu'une fois complète. Et en mode strict avec `verification_on_leak` à `allow`, une fuite détectée fait passer la requête **entière** en passe-plat : l'événement `sensitive-data.leak` le signale, mais du trafic d'outils transporte un fichier là où un message ordinaire transporte une phrase. `block` refuse plutôt que de transmettre.
 
 L'écran du plugin expose d'autres réglages fins (fusion des entités adjacentes, complétion des noms, reclassification des prénoms, SIREN contextuel, limites par entité). Les valeurs par défaut conviennent à un déploiement français.

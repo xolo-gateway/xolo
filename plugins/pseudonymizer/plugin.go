@@ -273,7 +273,13 @@ func (p *Plugin) PreRequest(ctx context.Context, in *proto.PreRequestInput) (*pr
 		// `tool_calls`, outside `content`. They are handled first because a
 		// message holding them usually has a null `content`, which the switch
 		// below passes through untouched.
-		if calls, changed, err := anonymizeToolCalls(msg[fieldToolCalls], anonymizeText); err != nil {
+		calls, changed, err := anonymizeToolCalls(msg[fieldToolCalls], anonymizeText)
+		if changed {
+			// Assigned even when err is non-nil: anonymizeToolCalls hands back
+			// what it managed to rewrite before failing.
+			messages[i][fieldToolCalls] = calls
+		}
+		if err != nil {
 			if out := handleVerificationError(in, err, cfg, p.getHostClient()); out != nil {
 				return out, nil
 			}
@@ -283,8 +289,6 @@ func (p *Plugin) PreRequest(ctx context.Context, in *proto.PreRequestInput) (*pr
 			)
 			anonymizeFailures++
 			lastAnonymizeErr = err
-		} else if changed {
-			messages[i][fieldToolCalls] = calls
 		}
 
 		content, ok := msg["content"]
