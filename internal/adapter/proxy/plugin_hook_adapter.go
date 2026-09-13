@@ -648,7 +648,89 @@ func applyModifiedMessages(ctx context.Context, req *genaiProxy.ProxyRequest, ec
 		return
 	}
 
+	// On the Messages route the system prompt is a top-level field, outside the
+	// messages array the pipeline rewrites. ConvertAnthropicMessagesJSON does not
+	// handle it and llm.WithMessages replaces opts.Messages wholesale, so without
+	// this the client's system prompt is dropped as soon as a node rewrites the
+	// conversation.
+	if req.Type == genaiProxy.RequestTypeMessage {
+		systemMsgs, sysErr := extractAnthropicSystemMessages(req.Body)
+		if sysErr != nil {
+			slog.WarnContext(ctx, "pipeline: could not carry the top-level system prompt over the rewritten messages",
+				slog.String("model", req.Model),
+				slog.Any("error", sysErr))
+		} else if len(systemMsgs) > 0 {
+			convertedMsgs = append(systemMsgs, convertedMsgs...)
+		}
+	}
+
 	req.ChatOptions = append(req.ChatOptions, llm.WithMessages(convertedMsgs...))
+}
+
+// extractAnthropicSystemMessages turns the top-level "system" field of an
+// Anthropic Messages request body into system messages, mirroring what
+// genai/proxy's ParseMessagesRequest does with it. The field is either a plain
+// string or an array of text blocks, each of which may carry a cache_control
+// breakpoint.
+func extractAnthropicSystemMessages(body []byte) ([]llm.Message, error) {
+	if len(body) == 0 {
+		return nil, nil
+	}
+
+	var envelope struct {
+		System any `json:"system"`
+	}
+	if err := json.Unmarshal(body, &envelope); err != nil {
+		return nil, errors.Wrap(err, "could not parse request body")
+	}
+
+	switch v := envelope.System.(type) {
+	case nil:
+		return nil, nil
+	case string:
+		if v == "" {
+			return nil, nil
+		}
+		return []llm.Message{llm.NewMessage(llm.RoleSystem, v)}, nil
+	case []any:
+		out := make([]llm.Message, 0, len(v))
+		for _, item := range v {
+			block, ok := item.(map[string]any)
+			if !ok {
+				continue
+			}
+			text, _ := block["text"].(string)
+			if text == "" {
+				continue
+			}
+			if cc := anthropicCacheControl(block["cache_control"]); cc != nil {
+				out = append(out, llm.NewMessageWithCacheControl(llm.RoleSystem, text, cc))
+			} else {
+				out = append(out, llm.NewMessage(llm.RoleSystem, text))
+			}
+		}
+		return out, nil
+	default:
+		return nil, errors.Errorf("unsupported system prompt type %T", envelope.System)
+	}
+}
+
+// anthropicCacheControl decodes a cache_control breakpoint attached to a system
+// block, so a client's cache breakpoints survive the rebuild.
+func anthropicCacheControl(raw any) *llm.CacheControl {
+	ccMap, ok := raw.(map[string]any)
+	if !ok {
+		return nil
+	}
+	ccType, ok := ccMap["type"].(string)
+	if !ok || ccType == "" {
+		return nil
+	}
+	cc := &llm.CacheControl{Type: ccType}
+	if ttl, ok := ccMap["ttl"].(string); ok && ttl != "" {
+		cc.TTL = &ttl
+	}
+	return cc
 }
 
 // extractMessagesJSON extracts the "messages" JSON array from a chat completions request body.
