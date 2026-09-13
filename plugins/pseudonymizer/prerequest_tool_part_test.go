@@ -287,13 +287,13 @@ func TestAnonymizeToolPart_PropagatesAnonymizerFailure(t *testing.T) {
 func TestAnonymizeLeaves_KeepsShapeAndKeys(t *testing.T) {
 	upper := func(s string) (string, error) { return strings.ToUpper(s), nil }
 
-	walked, err := anonymizeLeaves(map[string]any{
+	walked, err := rewriteLeaves(map[string]any{
 		"chemin": "a",
 		"liste":  []any{"b", map[string]any{"imbrique": "c"}},
 		"nombre": float64(42),
 	}, upper)
 	if err != nil {
-		t.Fatalf("anonymizeLeaves: %v", err)
+		t.Fatalf("rewriteLeaves: %v", err)
 	}
 
 	encoded, err := json.Marshal(walked)

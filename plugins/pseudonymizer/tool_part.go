@@ -58,7 +58,7 @@ func anonymizeToolPart(part map[string]any, anonymize func(string) (string, erro
 		if !ok {
 			return updated, nil
 		}
-		walked, err := anonymizeLeaves(input, anonymize)
+		walked, err := rewriteLeaves(input, anonymize)
 		if err != nil {
 			return nil, err
 		}
@@ -132,20 +132,20 @@ func textBlock(text string) map[string]any {
 	return map[string]any{"type": "text", "text": text}
 }
 
-// anonymizeLeaves walks a decoded JSON value and rewrites every string it
+// rewriteLeaves walks a decoded JSON value and rewrites every string it
 // contains, leaving the shape untouched.
 //
 // Map KEYS are left alone on purpose: they are the tool's parameter names, part
 // of a schema the model and the client agreed on. Rewriting them would produce
 // a call the client cannot execute.
-func anonymizeLeaves(v any, anonymize func(string) (string, error)) (any, error) {
+func rewriteLeaves(v any, anonymize func(string) (string, error)) (any, error) {
 	switch value := v.(type) {
 	case string:
 		return anonymize(value)
 	case map[string]any:
 		out := make(map[string]any, len(value))
 		for k, sub := range value {
-			walked, err := anonymizeLeaves(sub, anonymize)
+			walked, err := rewriteLeaves(sub, anonymize)
 			if err != nil {
 				return nil, err
 			}
@@ -155,7 +155,7 @@ func anonymizeLeaves(v any, anonymize func(string) (string, error)) (any, error)
 	case []any:
 		out := make([]any, 0, len(value))
 		for _, sub := range value {
-			walked, err := anonymizeLeaves(sub, anonymize)
+			walked, err := rewriteLeaves(sub, anonymize)
 			if err != nil {
 				return nil, err
 			}
@@ -230,11 +230,17 @@ func anonymizeToolCalls(raw any, anonymize func(string) (string, error)) ([]any,
 	return out, true, nil
 }
 
-// anonymizeToolArguments rewrites the string leaves of a tool call's
-// `arguments`, which is a JSON document carried as a string. A payload that
-// does not parse is rewritten as the plain text it then is, rather than
-// forwarded untouched.
-func anonymizeToolArguments(args string, anonymize func(string) (string, error)) (string, error) {
+// rewriteToolArguments rewrites the string leaves of a tool call's `arguments`,
+// which is a JSON document carried as a string.
+//
+// Both directions go through here. Pseudonymizing on the way to the provider
+// and restoring on the way back are the same walk with a different rewrite, and
+// they were written twice before, which is how one of them ended up keeping a
+// precision fix the other had not received yet.
+//
+// A payload that does not parse is handed to rewrite as the plain text it then
+// is, rather than forwarded untouched.
+func rewriteToolArguments(args string, rewrite func(string) (string, error)) (string, error) {
 	var decoded any
 	dec := json.NewDecoder(strings.NewReader(args))
 	// Without this, every number becomes a float64 and is re-encoded from it.
@@ -242,23 +248,28 @@ func anonymizeToolArguments(args string, anonymize func(string) (string, error))
 	// trip: 9223372036854775807 comes back as 9223372036854776000, and the tool
 	// runs against something the model never asked for. json.Number keeps the
 	// literal as it was written, and being a named type it falls through the
-	// `case string` of anonymizeLeaves untouched.
+	// `case string` of rewriteLeaves untouched.
 	dec.UseNumber()
 	if err := dec.Decode(&decoded); err != nil {
-		return anonymize(args)
+		return rewrite(args)
 	}
 
-	walked, err := anonymizeLeaves(decoded, anonymize)
+	walked, err := rewriteLeaves(decoded, rewrite)
 	if err != nil {
 		return "", err
 	}
 
+	return encodeToolJSON(walked)
+}
+
+// encodeToolJSON marshals a value without escaping HTML characters: the result
+// is read by a tool, not by a browser, and turning `<`, `>` or `&` into an
+// escape would alter a payload the client has to execute verbatim.
+func encodeToolJSON(v any) (string, error) {
 	var buf bytes.Buffer
 	enc := json.NewEncoder(&buf)
-	// The arguments are read by the tool, not by a browser: escaping `<`, `>`
-	// and `&` would alter a payload the client has to execute verbatim.
 	enc.SetEscapeHTML(false)
-	if err := enc.Encode(walked); err != nil {
+	if err := enc.Encode(v); err != nil {
 		return "", err
 	}
 	return strings.TrimRight(buf.String(), "\n"), nil
@@ -279,8 +290,8 @@ func anonymizeArgumentsValue(raw any, anonymize func(string) (string, error)) (a
 		if args == "" {
 			return nil, nil
 		}
-		return anonymizeToolArguments(args, anonymize)
+		return rewriteToolArguments(args, anonymize)
 	default:
-		return anonymizeLeaves(args, anonymize)
+		return rewriteLeaves(args, anonymize)
 	}
 }

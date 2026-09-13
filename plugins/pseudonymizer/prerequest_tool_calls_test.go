@@ -220,13 +220,13 @@ func TestAnonymizeToolCalls_Shapes(t *testing.T) {
 // Decoding the arguments into `any` turns every number into a float64, and
 // re-encoding from that loses the exact value: a 19-digit identifier comes back
 // as something the tool was never asked to act on, and nothing anywhere says so.
-func TestAnonymizeToolArguments_LargeNumbersKeepTheirValue(t *testing.T) {
+func TestRewriteToolArguments_LargeNumbersKeepTheirValue(t *testing.T) {
 	identity := func(s string) (string, error) { return s, nil }
 
-	out, err := anonymizeToolArguments(
+	out, err := rewriteToolArguments(
 		`{"user_id":9223372036854775807,"ts":1760000000000000000,"ratio":1.0}`, identity)
 	if err != nil {
-		t.Fatalf("anonymizeToolArguments() error = %v", err)
+		t.Fatalf("rewriteToolArguments() error = %v", err)
 	}
 
 	for _, want := range []string{"9223372036854775807", "1760000000000000000", "1.0"} {

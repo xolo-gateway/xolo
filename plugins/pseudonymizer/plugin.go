@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -611,14 +610,14 @@ func deanonymizeToolCalls(toolCallsJSON string, mapping map[string]string) (stri
 			// The host always sends `arguments` pre-serialized, but a decoded
 			// object is the other reasonable reading of the field and skipping
 			// it would leave placeholders in a call nobody can see went wrong.
-			restored, err := anonymizeLeaves(args, func(s string) (string, error) {
+			restored, err := rewriteLeaves(args, func(s string) (string, error) {
 				return deanonymize(s, mapping), nil
 			})
 			if err != nil {
 				continue
 			}
-			before, beforeErr := encodeJSON(args)
-			after, afterErr := encodeJSON(restored)
+			before, beforeErr := encodeToolJSON(args)
+			after, afterErr := encodeToolJSON(restored)
 			if beforeErr != nil || afterErr != nil || before == after {
 				continue
 			}
@@ -630,7 +629,7 @@ func deanonymizeToolCalls(toolCallsJSON string, mapping map[string]string) (stri
 		return "", nil
 	}
 
-	return encodeJSON(calls)
+	return encodeToolJSON(calls)
 }
 
 // deanonymizeArguments restores the placeholders inside one call's arguments.
@@ -645,43 +644,16 @@ func deanonymizeToolCalls(toolCallsJSON string, mapping map[string]string) (stri
 // nothing can be lost that way, and a provider is free to send something else
 // there.
 func deanonymizeArguments(args string, mapping map[string]string) string {
-	var decoded any
-	dec := json.NewDecoder(strings.NewReader(args))
-	// Without this, every number becomes a float64 and is re-encoded from it.
-	// A 19-digit identifier or a nanosecond timestamp does not survive that
-	// trip: 9223372036854775807 comes back as 9223372036854776000, and the
-	// client runs the call against something the model never asked for.
-	// json.Number keeps the literal as it was written, and being a named type
-	// it falls through the `case string` of anonymizeLeaves untouched.
-	dec.UseNumber()
-	if err := dec.Decode(&decoded); err != nil {
-		return deanonymize(args, mapping)
-	}
-
-	restored, err := anonymizeLeaves(decoded, func(s string) (string, error) {
+	restored, err := rewriteToolArguments(args, func(s string) (string, error) {
 		return deanonymize(s, mapping), nil
 	})
 	if err != nil {
+		// The rewrite itself never fails here, so this is the encoder giving
+		// up on a value it cannot represent. Plain substitution is the answer
+		// that loses the least.
 		return deanonymize(args, mapping)
 	}
-
-	out, err := encodeJSON(restored)
-	if err != nil {
-		return deanonymize(args, mapping)
-	}
-	return out
-}
-
-// encodeJSON marshals a value without escaping HTML characters, which have no
-// business being escaped inside a tool call argument the client will read back.
-func encodeJSON(v any) (string, error) {
-	var buf bytes.Buffer
-	enc := json.NewEncoder(&buf)
-	enc.SetEscapeHTML(false)
-	if err := enc.Encode(v); err != nil {
-		return "", err
-	}
-	return strings.TrimRight(buf.String(), "\n"), nil
+	return restored
 }
 
 // injectPlaceholderInstruction prepends an instruction to the conversation's
