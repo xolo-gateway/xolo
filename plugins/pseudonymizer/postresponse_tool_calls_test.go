@@ -93,3 +93,73 @@ func TestDeanonymizeToolCalls_Shapes(t *testing.T) {
 		})
 	}
 }
+
+// A restored value is not always JSON-safe. Substituting it into the encoded
+// arguments would leave a document the client can no longer parse, so the call
+// it was supposed to fix fails anyway, just later and with a worse error.
+func TestPostResponse_RestoredValueWithABackslashKeepsTheArgumentsParseable(t *testing.T) {
+	mapping := map[string]string{"⟦PERSON_1⟧": `C:\Users\sophie`}
+
+	out := postResponseWithToolCalls(t, mapping, "ok",
+		`[{"id":"call_1","name":"Read","arguments":"{\"path\":\"⟦PERSON_1⟧/notes.md\"}"}]`,
+	)
+
+	if got := toolCallArgumentValue(t, out.ModifiedToolCallsJson, "path"); got != `C:\Users\sophie/notes.md` {
+		t.Errorf("path = %q, want %q", got, `C:\Users\sophie/notes.md`)
+	}
+}
+
+// A postal address spanning two lines is the everyday version of the same
+// problem: a raw newline inside a JSON string is not valid JSON.
+func TestPostResponse_MultilineRestoredValueKeepsTheArgumentsParseable(t *testing.T) {
+	mapping := map[string]string{"⟦ADDRESS_1⟧": "12 rue des Lilas\n75011 Paris"}
+
+	out := postResponseWithToolCalls(t, mapping, "ok",
+		`[{"id":"call_1","name":"Send","arguments":"{\"to\":\"⟦ADDRESS_1⟧\"}"}]`,
+	)
+
+	if got := toolCallArgumentValue(t, out.ModifiedToolCallsJson, "to"); got != "12 rue des Lilas\n75011 Paris" {
+		t.Errorf("to = %q", got)
+	}
+}
+
+// Arguments that are not a JSON document at all still get their placeholders
+// back: the substitution simply happens on the text.
+func TestPostResponse_NonJSONArgumentsAreStillRestored(t *testing.T) {
+	mapping := map[string]string{"⟦PERSON_1⟧": "Jean Dupont"}
+
+	out := postResponseWithToolCalls(t, mapping, "ok",
+		`[{"id":"call_1","name":"Search","arguments":"cherche ⟦PERSON_1⟧"}]`,
+	)
+
+	var calls []map[string]any
+	if err := json.Unmarshal([]byte(out.ModifiedToolCallsJson), &calls); err != nil {
+		t.Fatalf("modified tool calls are not valid JSON (%v): %q", err, out.ModifiedToolCallsJson)
+	}
+	if args, _ := calls[0]["arguments"].(string); args != "cherche Jean Dupont" {
+		t.Errorf("arguments = %q", args)
+	}
+}
+
+// toolCallArgumentValue decodes the arguments of the first call and returns one
+// of its fields, failing the test if the arguments stopped being valid JSON.
+func toolCallArgumentValue(t *testing.T, toolCallsJSON, field string) string {
+	t.Helper()
+
+	var calls []map[string]any
+	if err := json.Unmarshal([]byte(toolCallsJSON), &calls); err != nil {
+		t.Fatalf("modified tool calls are not valid JSON (%v): %q", err, toolCallsJSON)
+	}
+	if len(calls) == 0 {
+		t.Fatal("no tool call in the output")
+	}
+
+	args, _ := calls[0]["arguments"].(string)
+	var decoded map[string]any
+	if err := json.Unmarshal([]byte(args), &decoded); err != nil {
+		t.Fatalf("the arguments are no longer valid JSON (%v): %q", err, args)
+	}
+
+	value, _ := decoded[field].(string)
+	return value
+}
