@@ -109,10 +109,32 @@ type ForwardResult struct {
 	NestedExecutedNodes []ExecutedNode
 }
 
+// BackwardInput is what a node's Backward execution is given.
+type BackwardInput struct {
+	Node model.PipelineNode
+	// NodeState is the blob Forward returned for the same node in the same
+	// execution.
+	NodeState []byte
+	// ResponseContent is the response text as the previous backward nodes left
+	// it.
+	ResponseContent string
+	// ToolCallsJSON carries the tool calls the model emitted, as a JSON array
+	// of {"id","name","arguments"} objects. It is empty when the response
+	// carries none. A node that rewrote the request must be able to undo its
+	// rewriting here too: a placeholder left inside a tool call reaches the
+	// client verbatim, which then runs the call against it.
+	ToolCallsJSON string
+	Tokens        *TokensUsed
+	HadError      bool
+}
+
 // BackwardResult is the output of a node's Backward execution.
 type BackwardResult struct {
 	// ModifiedResponseContent, when non-empty, replaces the response sent to the client.
 	ModifiedResponseContent string
+	// ModifiedToolCallsJSON, when non-empty, replaces the response tool calls.
+	// Same shape as BackwardInput.ToolCallsJSON.
+	ModifiedToolCallsJSON string
 }
 
 // TokensUsed holds token counts reported by the LLM.
@@ -126,9 +148,8 @@ type NodeExecutor interface {
 	// Forward is called during the request phase (before the LLM call).
 	Forward(ctx context.Context, node model.PipelineNode, inputs map[string]interface{}, ec ExecutionContext) (*ForwardResult, error)
 	// Backward is called during the response phase (after the LLM call) in
-	// reverse order. state is the NodeState returned by Forward for the same
-	// node in the same execution.
-	Backward(ctx context.Context, node model.PipelineNode, state []byte, responseContent string, tokens *TokensUsed, hadError bool) (*BackwardResult, error)
+	// reverse order.
+	Backward(ctx context.Context, in BackwardInput) (*BackwardResult, error)
 }
 
 // ResponseModifier is implemented by executors whose Backward pass may replace
@@ -149,6 +170,6 @@ type ResponseModifier interface {
 }
 
 // noopBackward is a helper that returns an empty BackwardResult without error.
-func noopBackward(_ context.Context, _ model.PipelineNode, _ []byte, _ string, _ *TokensUsed, _ bool) (*BackwardResult, error) {
+func noopBackward(_ context.Context, _ BackwardInput) (*BackwardResult, error) {
 	return &BackwardResult{}, nil
 }

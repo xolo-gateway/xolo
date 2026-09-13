@@ -296,6 +296,7 @@ func (p *Plugin) PostResponse(ctx context.Context, in *proto.PostResponseInput) 
 | `CompletionTokens`  | `int64`           | Tokens generated                                                   |
 | `HadError`          | `bool`            | Whether the LLM call failed                                        |
 | `ResponseContent`   | `string`          | Full LLM response text                                             |
+| `ResponseToolCallsJson` | `string`      | Tool calls emitted by the model, as a JSON array of `{"id","name","arguments"}`; empty when the response carries none |
 | `NodeState`         | `[]byte`          | Opaque blob returned by `PreRequest` for the same pipeline execution |
 
 **Output (`PostResponseOutput`):**
@@ -303,6 +304,9 @@ func (p *Plugin) PostResponse(ctx context.Context, in *proto.PostResponseInput) 
 | Field                     | Type     | Description                                                                     |
 | ------------------------- | -------- | ------------------------------------------------------------------------------- |
 | `ModifiedResponseContent` | `string` | If non-empty, replaces the response sent to the client (e.g. de-anonymisation)  |
+| `ModifiedToolCallsJson`   | `string` | If non-empty, replaces the response tool calls. Same shape as the input; only `arguments` is read back, the id and the name of a call always come from the provider |
+
+A plugin that rewrites the request must undo its rewriting on the tool calls too: a placeholder the model copied into a call reaches the client verbatim, which then runs the call against a value that does not exist.
 
 **Example — response transformation using node_state:**
 

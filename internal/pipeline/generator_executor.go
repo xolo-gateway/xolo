@@ -25,6 +25,6 @@ func (e *GeneratorExecutor) Forward(_ context.Context, _ model.PipelineNode, inp
 // ModifiesResponse is always false: a generator node never rewrites the response.
 func (e *GeneratorExecutor) ModifiesResponse(context.Context, model.PipelineNode) bool { return false }
 
-func (e *GeneratorExecutor) Backward(ctx context.Context, node model.PipelineNode, state []byte, responseContent string, tokens *TokensUsed, hadError bool) (*BackwardResult, error) {
-	return noopBackward(ctx, node, state, responseContent, tokens, hadError)
+func (e *GeneratorExecutor) Backward(ctx context.Context, in BackwardInput) (*BackwardResult, error) {
+	return noopBackward(ctx, in)
 }

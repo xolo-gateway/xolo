@@ -42,14 +42,19 @@ func (c *PipelineWrappedClient) ChatCompletion(ctx context.Context, funcs ...llm
 	}
 	tokens := extractResponseTokens(resp)
 
-	modified, backErr := c.engine.RunBackward(ctx, c.forwardExec, content, tokens, false)
+	outcome, backErr := c.engine.RunBackwardWithToolCalls(ctx, c.forwardExec, content, encodeToolCalls(resp.ToolCalls()), tokens, false)
 	if backErr != nil {
 		slog.WarnContext(ctx, "pipeline backward pass failed", slog.Any("error", backErr))
 		return resp, nil
 	}
 
-	if modified != content {
-		return &wrappedChatCompletionResponse{inner: resp, modifiedContent: modified}, nil
+	rewrittenCalls := decodeToolCalls(ctx, outcome.ToolCallsJSON, resp.ToolCalls())
+	if outcome.ResponseContent != content || rewrittenCalls != nil {
+		return &wrappedChatCompletionResponse{
+			inner:             resp,
+			modifiedContent:   outcome.ResponseContent,
+			modifiedToolCalls: rewrittenCalls,
+		}, nil
 	}
 	return resp, nil
 }
@@ -80,11 +85,13 @@ func (c *PipelineWrappedClient) ChatCompletionStream(ctx context.Context, funcs 
 		var chunks []llm.StreamChunk
 		var buf bytes.Buffer
 		var lastTokens *pipeline.TokensUsed
+		calls := &streamedToolCalls{}
 
 		for chunk := range sourceCh {
 			chunks = append(chunks, chunk)
 			if d := chunk.Delta(); d != nil {
 				buf.WriteString(d.Content())
+				calls.collect(d.ToolCalls())
 			}
 			if u := chunk.Usage(); u != nil {
 				lastTokens = &pipeline.TokensUsed{
@@ -95,13 +102,17 @@ func (c *PipelineWrappedClient) ChatCompletionStream(ctx context.Context, funcs 
 		}
 
 		content := buf.String()
-		modified, backErr := c.engine.RunBackward(ctx, c.forwardExec, content, lastTokens, false)
+		outcome, backErr := c.engine.RunBackwardWithToolCalls(ctx, c.forwardExec, content, calls.json(), lastTokens, false)
+		modified := content
+		rewrittenCalls := []llm.ToolCallDelta(nil)
 		if backErr != nil {
 			slog.WarnContext(ctx, "pipeline backward pass (stream) failed", slog.Any("error", backErr))
-			modified = content
+		} else {
+			modified = outcome.ResponseContent
+			rewrittenCalls = calls.rewritten(ctx, outcome.ToolCallsJSON)
 		}
 
-		if modified == content {
+		if modified == content && rewrittenCalls == nil {
 			for _, ch := range chunks {
 				outCh <- ch
 			}
@@ -110,21 +121,42 @@ func (c *PipelineWrappedClient) ChatCompletionStream(ctx context.Context, funcs 
 
 		// Re-emit chunks with the modified content: the full modified text is
 		// placed on the first delta chunk carrying content, and subsequent
-		// content deltas are emptied. Other chunk types (usage, tool calls,
+		// content deltas are emptied. Rewritten tool calls follow the same rule
+		// — the whole argument payload rides on the first chunk that carried
+		// tool call deltas, which the Anthropic and OpenAI stream writers both
+		// accept, and the later ones carry none. Other chunk types (usage,
 		// reasoning, complete…) are passed through unchanged.
 		replaced := false
+		toolCallsEmitted := false
 		for _, ch := range chunks {
 			d := ch.Delta()
-			if d == nil || d.Content() == "" {
+			if d == nil {
 				outCh <- ch
 				continue
 			}
-			if !replaced {
-				outCh <- &contentOverrideChunk{StreamChunk: ch, delta: &contentOverrideDelta{StreamDelta: d, content: modified}}
-				replaced = true
+			hasToolCalls := rewrittenCalls != nil && len(d.ToolCalls()) > 0
+			if d.Content() == "" && !hasToolCalls {
+				outCh <- ch
 				continue
 			}
-			outCh <- &contentOverrideChunk{StreamChunk: ch, delta: &contentOverrideDelta{StreamDelta: d, content: ""}}
+
+			override := &contentOverrideDelta{StreamDelta: d, content: d.Content()}
+			if d.Content() != "" {
+				if !replaced {
+					override.content = modified
+					replaced = true
+				} else {
+					override.content = ""
+				}
+			}
+			if hasToolCalls {
+				override.overrideToolCalls = true
+				if !toolCallsEmitted {
+					override.toolCalls = rewrittenCalls
+					toolCallsEmitted = true
+				}
+			}
+			outCh <- &contentOverrideChunk{StreamChunk: ch, delta: override}
 		}
 	}()
 
@@ -205,25 +237,40 @@ func extractResponseTokens(resp llm.ChatCompletionResponse) *pipeline.TokensUsed
 // wrappedChatCompletionResponse replaces the message content while keeping
 // everything else from the original response.
 type wrappedChatCompletionResponse struct {
-	inner           llm.ChatCompletionResponse
-	modifiedContent string
+	inner             llm.ChatCompletionResponse
+	modifiedContent   string
+	modifiedToolCalls []llm.ToolCall
 }
 
 func (r *wrappedChatCompletionResponse) Message() llm.Message {
-	return &modifiedMessage{original: r.inner.Message(), content: r.modifiedContent}
+	return &modifiedMessage{
+		original:  r.inner.Message(),
+		content:   r.modifiedContent,
+		toolCalls: r.ToolCalls(),
+	}
 }
 
-func (r *wrappedChatCompletionResponse) ToolCalls() []llm.ToolCall { return r.inner.ToolCalls() }
+func (r *wrappedChatCompletionResponse) ToolCalls() []llm.ToolCall {
+	if r.modifiedToolCalls != nil {
+		return r.modifiedToolCalls
+	}
+	return r.inner.ToolCalls()
+}
 func (r *wrappedChatCompletionResponse) Usage() llm.ChatCompletionUsage { return r.inner.Usage() }
 
 // modifiedMessage replaces Content() while delegating everything else.
 type modifiedMessage struct {
-	original llm.Message
-	content  string
+	original  llm.Message
+	content   string
+	toolCalls []llm.ToolCall
 }
 
-func (m *modifiedMessage) Role() llm.Role         { return m.original.Role() }
-func (m *modifiedMessage) Content() string        { return m.content }
+func (m *modifiedMessage) Role() llm.Role  { return m.original.Role() }
+func (m *modifiedMessage) Content() string { return m.content }
+
+// ToolCalls keeps the message a llm.ToolCallsMessage when the original was one,
+// carrying the rewritten calls rather than the ones the provider sent.
+func (m *modifiedMessage) ToolCalls() []llm.ToolCall { return m.toolCalls }
 func (m *modifiedMessage) Attachments() []llm.Attachment {
 	if a, ok := m.original.(interface{ Attachments() []llm.Attachment }); ok {
 		return a.Attachments()
@@ -245,9 +292,21 @@ func (c *contentOverrideChunk) Delta() llm.StreamDelta { return c.delta }
 type contentOverrideDelta struct {
 	llm.StreamDelta
 	content string
+	// overrideToolCalls tells ToolCalls to answer with toolCalls — possibly
+	// none — instead of delegating. A nil slice and "do not override" are two
+	// different answers here.
+	overrideToolCalls bool
+	toolCalls         []llm.ToolCallDelta
 }
 
 func (d *contentOverrideDelta) Content() string { return d.content }
+
+func (d *contentOverrideDelta) ToolCalls() []llm.ToolCallDelta {
+	if d.overrideToolCalls {
+		return d.toolCalls
+	}
+	return d.StreamDelta.ToolCalls()
+}
 
 func (d *contentOverrideDelta) Reasoning() string {
 	if r, ok := d.StreamDelta.(llm.ReasoningStreamDelta); ok {

@@ -244,8 +244,8 @@ func (e *PluginExecutor) ModifiesResponse(ctx context.Context, node model.Pipeli
 	return hasCapability(desc, proto.PluginDescriptor_POST_RESPONSE)
 }
 
-func (e *PluginExecutor) Backward(ctx context.Context, node model.PipelineNode, state []byte, responseContent string, tokens *TokensUsed, hadError bool) (*BackwardResult, error) {
-	data, err := parsePluginNodeData(node)
+func (e *PluginExecutor) Backward(ctx context.Context, in BackwardInput) (*BackwardResult, error) {
+	data, err := parsePluginNodeData(in.Node)
 	if err != nil {
 		return &BackwardResult{}, nil
 	}
@@ -260,18 +260,19 @@ func (e *PluginExecutor) Backward(ctx context.Context, node model.PipelineNode, 
 	}
 
 	var prompt, completion int64
-	if tokens != nil {
-		prompt = tokens.Prompt
-		completion = tokens.Completion
+	if in.Tokens != nil {
+		prompt = in.Tokens.Prompt
+		completion = in.Tokens.Completion
 	}
 
 	out, err := client.PostResponse(ctx, &proto.PostResponseInput{
-		Model:            "",
-		PromptTokens:     prompt,
-		CompletionTokens: completion,
-		HadError:         hadError,
-		ResponseContent:  responseContent,
-		NodeState:        state,
+		Model:                 "",
+		PromptTokens:          prompt,
+		CompletionTokens:      completion,
+		HadError:              in.HadError,
+		ResponseContent:       in.ResponseContent,
+		ResponseToolCallsJson: in.ToolCallsJSON,
+		NodeState:             in.NodeState,
 	})
 	if err != nil {
 		slog.WarnContext(ctx, "plugin PostResponse failed",
@@ -280,7 +281,10 @@ func (e *PluginExecutor) Backward(ctx context.Context, node model.PipelineNode, 
 		return &BackwardResult{}, nil
 	}
 
-	return &BackwardResult{ModifiedResponseContent: out.ModifiedResponseContent}, nil
+	return &BackwardResult{
+		ModifiedResponseContent: out.ModifiedResponseContent,
+		ModifiedToolCallsJSON:   out.ModifiedToolCallsJson,
+	}, nil
 }
 
 func parsePluginNodeData(node model.PipelineNode) (*model.PluginNodeData, error) {

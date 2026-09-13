@@ -19,8 +19,8 @@ type noopBackwardExecutor struct{}
 
 func (noopBackwardExecutor) ModifiesResponse(context.Context, model.PipelineNode) bool { return false }
 
-func (noopBackwardExecutor) Backward(ctx context.Context, node model.PipelineNode, state []byte, responseContent string, tokens *TokensUsed, hadError bool) (*BackwardResult, error) {
-	return noopBackward(ctx, node, state, responseContent, tokens, hadError)
+func (noopBackwardExecutor) Backward(ctx context.Context, in BackwardInput) (*BackwardResult, error) {
+	return noopBackward(ctx, in)
 }
 
 func decodeNodeData(node model.PipelineNode, into interface{}) error {

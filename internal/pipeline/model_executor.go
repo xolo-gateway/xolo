@@ -164,8 +164,8 @@ func (e *ModelExecutor) resolveByName(ctx context.Context, proxyName string, ec 
 // ModifiesResponse is always false: a model node never rewrites the response.
 func (e *ModelExecutor) ModifiesResponse(context.Context, model.PipelineNode) bool { return false }
 
-func (e *ModelExecutor) Backward(ctx context.Context, node model.PipelineNode, state []byte, responseContent string, tokens *TokensUsed, hadError bool) (*BackwardResult, error) {
-	return noopBackward(ctx, node, state, responseContent, tokens, hadError)
+func (e *ModelExecutor) Backward(ctx context.Context, in BackwardInput) (*BackwardResult, error) {
+	return noopBackward(ctx, in)
 }
 
 // nestedForwardResult builds the ForwardResult a model node returns when it

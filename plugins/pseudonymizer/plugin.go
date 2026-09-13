@@ -531,7 +531,61 @@ func (p *Plugin) PostResponse(_ context.Context, in *proto.PostResponseInput) (*
 		restored = removedPartsWarning(state.RemovedParts) + restored
 	}
 
-	return &proto.PostResponseOutput{ModifiedResponseContent: restored}, nil
+	// The model reads pseudonymized arguments in its own history and derives new
+	// calls from what it read — Read(path="/home/⟦PERSON_1⟧/notes.md"). Left
+	// alone, the placeholder reaches the client, which runs the call against a
+	// path that does not exist.
+	restoredToolCalls, err := deanonymizeToolCalls(in.ResponseToolCallsJson, state.Mapping)
+	if err != nil {
+		slog.Warn("pseudonymizer: could not restore the response tool calls",
+			slog.Any("error", err),
+		)
+		restoredToolCalls = ""
+	}
+
+	return &proto.PostResponseOutput{
+		ModifiedResponseContent: restored,
+		ModifiedToolCallsJson:   restoredToolCalls,
+	}, nil
+}
+
+// deanonymizeToolCalls restores the placeholders inside the arguments of the
+// response tool calls, returning the rewritten JSON array or an empty string
+// when there was nothing to restore.
+//
+// Only `arguments` is touched: the id and the name of a call pair it with its
+// result, exactly as on the request side.
+func deanonymizeToolCalls(toolCallsJSON string, mapping map[string]string) (string, error) {
+	if toolCallsJSON == "" || len(mapping) == 0 {
+		return "", nil
+	}
+
+	var calls []map[string]any
+	if err := json.Unmarshal([]byte(toolCallsJSON), &calls); err != nil {
+		return "", err
+	}
+
+	changed := false
+	for _, call := range calls {
+		args, ok := call["arguments"].(string)
+		if !ok || args == "" {
+			continue
+		}
+		restored := deanonymize(args, mapping)
+		if restored != args {
+			call["arguments"] = restored
+			changed = true
+		}
+	}
+	if !changed {
+		return "", nil
+	}
+
+	out, err := json.Marshal(calls)
+	if err != nil {
+		return "", err
+	}
+	return string(out), nil
 }
 
 // injectPlaceholderInstruction prepends an instruction to the conversation's

@@ -48,8 +48,8 @@ func (e *ValueExecutor) Forward(_ context.Context, node model.PipelineNode, _ ma
 // ModifiesResponse is always false: a value node never rewrites the response.
 func (e *ValueExecutor) ModifiesResponse(context.Context, model.PipelineNode) bool { return false }
 
-func (e *ValueExecutor) Backward(ctx context.Context, node model.PipelineNode, state []byte, responseContent string, tokens *TokensUsed, hadError bool) (*BackwardResult, error) {
-	return noopBackward(ctx, node, state, responseContent, tokens, hadError)
+func (e *ValueExecutor) Backward(ctx context.Context, in BackwardInput) (*BackwardResult, error) {
+	return noopBackward(ctx, in)
 }
 
 func parseValueNodeData(node model.PipelineNode) (*model.ValueNodeData, error) {

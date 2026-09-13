@@ -251,12 +251,22 @@ message PostResponseInput {
   // node_state is the opaque blob returned by the plugin's PreRequest call
   // for the same pipeline execution.
   bytes node_state = 7;
+  // response_tool_calls_json carries the tool calls the model emitted, as a
+  // JSON array of {"id","name","arguments"} objects, `arguments` being the
+  // JSON document the client will execute. A node that rewrote the request
+  // has to be able to undo its own rewriting here too: a placeholder left in
+  // a tool call reaches the client verbatim and the call runs against it.
+  string response_tool_calls_json = 8;
 }
 
 message PostResponseOutput {
   // modified_response_content, when non-empty, replaces the LLM response
   // sent back to the client (enables response transformation e.g. de-pseudonymisation).
   string modified_response_content = 1;
+  // modified_tool_calls_json, when non-empty, replaces the response tool calls.
+  // Same shape as response_tool_calls_json; only `arguments` is read back, the
+  // id and the name of a call are never taken from the plugin.
+  string modified_tool_calls_json = 2;
 }
 
 message ResolveModelInput {

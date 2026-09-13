@@ -37,7 +37,7 @@ Ce plugin ouvre son propre écran de configuration dans le panneau de droite.
 
 ## En pratique
 
-Il agit dans les deux sens, ce qui oblige Xolo à attendre la fin de la réponse avant de la renvoyer quand il a effectivement remplacé quelque chose. Il émet un événement quand il détecte une donnée sensible.
+Il agit dans les deux sens, ce qui oblige Xolo à attendre la fin de la réponse avant de la renvoyer quand il a effectivement remplacé quelque chose. Il émet un événement quand il détecte une donnée sensible. Au retour, les jetons sont restitués dans le texte de la réponse **et dans les arguments des appels d'outils qu'elle contient** : le modèle dérive ses nouveaux appels de l'historique pseudonymisé qu'il vient de lire, et un jeton laissé dans un `Read(path=…)` ferait exécuter l'appel sur un chemin qui n'existe pas.
 
 Devant un client agentique, il traite aussi les blocs d'outils du format Messages d'Anthropic : le contenu d'un `tool_result` et les arguments d'un `tool_use`. Ce qui apparie un appel à son résultat — `id`, `tool_use_id`, `name` — et les noms d'arguments sont laissés intacts ; un contenu qu'il ne sait pas lire, l'image d'une capture d'écran par exemple, est remplacé par une note et non retiré, sous peine de laisser l'appel correspondant orphelin.
 

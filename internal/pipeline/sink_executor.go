@@ -23,6 +23,6 @@ func (e *SinkExecutor) Forward(_ context.Context, _ model.PipelineNode, inputs m
 // ModifiesResponse is always false: a sink node never rewrites the response.
 func (e *SinkExecutor) ModifiesResponse(context.Context, model.PipelineNode) bool { return false }
 
-func (e *SinkExecutor) Backward(ctx context.Context, node model.PipelineNode, state []byte, responseContent string, tokens *TokensUsed, hadError bool) (*BackwardResult, error) {
-	return noopBackward(ctx, node, state, responseContent, tokens, hadError)
+func (e *SinkExecutor) Backward(ctx context.Context, in BackwardInput) (*BackwardResult, error) {
+	return noopBackward(ctx, in)
 }

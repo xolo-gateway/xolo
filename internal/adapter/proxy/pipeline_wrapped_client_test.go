@@ -22,8 +22,11 @@ func (e *rewriteExecutor) Forward(_ context.Context, _ model.PipelineNode, _ map
 	return &pipeline.ForwardResult{}, nil
 }
 
-func (e *rewriteExecutor) Backward(_ context.Context, _ model.PipelineNode, _ []byte, responseContent string, _ *pipeline.TokensUsed, _ bool) (*pipeline.BackwardResult, error) {
-	return &pipeline.BackwardResult{ModifiedResponseContent: strings.ReplaceAll(responseContent, e.from, e.to)}, nil
+func (e *rewriteExecutor) Backward(_ context.Context, in pipeline.BackwardInput) (*pipeline.BackwardResult, error) {
+	return &pipeline.BackwardResult{
+		ModifiedResponseContent: strings.ReplaceAll(in.ResponseContent, e.from, e.to),
+		ModifiedToolCallsJSON:   strings.ReplaceAll(in.ToolCallsJSON, e.from, e.to),
+	}, nil
 }
 
 func newTestForwardExecution() *pipeline.ForwardExecution {
@@ -96,11 +99,11 @@ func (e *observerExecutor) Forward(_ context.Context, _ model.PipelineNode, _ ma
 
 func (e *observerExecutor) ModifiesResponse(context.Context, model.PipelineNode) bool { return false }
 
-func (e *observerExecutor) Backward(_ context.Context, _ model.PipelineNode, _ []byte, responseContent string, _ *pipeline.TokensUsed, _ bool) (*pipeline.BackwardResult, error) {
+func (e *observerExecutor) Backward(_ context.Context, in pipeline.BackwardInput) (*pipeline.BackwardResult, error) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	e.called = true
-	e.content = responseContent
+	e.content = in.ResponseContent
 	return &pipeline.BackwardResult{}, nil
 }
 

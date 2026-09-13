@@ -34,6 +34,6 @@ func (e *ModelRefExecutor) Forward(_ context.Context, node model.PipelineNode, _
 // ModifiesResponse is always false: a model reference never rewrites the response.
 func (e *ModelRefExecutor) ModifiesResponse(context.Context, model.PipelineNode) bool { return false }
 
-func (e *ModelRefExecutor) Backward(ctx context.Context, node model.PipelineNode, state []byte, responseContent string, tokens *TokensUsed, hadError bool) (*BackwardResult, error) {
-	return noopBackward(ctx, node, state, responseContent, tokens, hadError)
+func (e *ModelRefExecutor) Backward(ctx context.Context, in BackwardInput) (*BackwardResult, error) {
+	return noopBackward(ctx, in)
 }
