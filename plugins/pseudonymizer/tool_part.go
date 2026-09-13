@@ -1,5 +1,11 @@
 package main
 
+import (
+	"bytes"
+	"encoding/json"
+	"strings"
+)
+
 const (
 	partTypeToolUse    = "tool_use"
 	partTypeToolResult = "tool_result"
@@ -159,4 +165,90 @@ func anonymizeLeaves(v any, anonymize func(string) (string, error)) (any, error)
 	default:
 		return v, nil
 	}
+}
+
+// fieldToolCalls is where an OpenAI-compatible client puts the assistant's tool
+// calls: a sibling of `content`, not one of its parts.
+const fieldToolCalls = "tool_calls"
+
+// anonymizeToolCalls rewrites the arguments of OpenAI-shaped tool calls,
+// returning the rewritten list and whether anything was there to rewrite.
+//
+// The Anthropic equivalent (`tool_use.input`) is a JSON object inside the
+// message content, which the part loop reaches. `tool_calls` sits outside
+// `content` entirely and would otherwise travel in clear — the same data, one
+// shape protected and the other not.
+//
+// `id`, `type` and the function `name` are left alone for the same reason as in
+// a `tool_use` block: they pair the call with its result.
+func anonymizeToolCalls(raw any, anonymize func(string) (string, error)) ([]any, bool, error) {
+	calls, ok := raw.([]any)
+	if !ok || len(calls) == 0 {
+		return nil, false, nil
+	}
+
+	out := make([]any, 0, len(calls))
+	for _, call := range calls {
+		callMap, ok := call.(map[string]any)
+		if !ok {
+			out = append(out, call)
+			continue
+		}
+		fn, ok := callMap["function"].(map[string]any)
+		if !ok {
+			out = append(out, call)
+			continue
+		}
+		args, ok := fn["arguments"].(string)
+		if !ok || args == "" {
+			out = append(out, call)
+			continue
+		}
+
+		rewritten, err := anonymizeToolArguments(args, anonymize)
+		if err != nil {
+			return nil, false, err
+		}
+
+		copiedFn := make(map[string]any, len(fn))
+		for k, v := range fn {
+			copiedFn[k] = v
+		}
+		copiedFn["arguments"] = rewritten
+
+		copiedCall := make(map[string]any, len(callMap))
+		for k, v := range callMap {
+			copiedCall[k] = v
+		}
+		copiedCall["function"] = copiedFn
+		out = append(out, copiedCall)
+	}
+
+	return out, true, nil
+}
+
+// anonymizeToolArguments rewrites the string leaves of a tool call's
+// `arguments`, which is a JSON document carried as a string. A payload that
+// does not parse is rewritten as the plain text it then is, rather than
+// forwarded untouched.
+func anonymizeToolArguments(args string, anonymize func(string) (string, error)) (string, error) {
+	var decoded any
+	if err := json.Unmarshal([]byte(args), &decoded); err != nil {
+		return anonymize(args)
+	}
+
+	walked, err := anonymizeLeaves(decoded, anonymize)
+	if err != nil {
+		return "", err
+	}
+
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	// The arguments are read by the tool, not by a browser: escaping `<`, `>`
+	// and `&` would alter a payload the client has to execute verbatim.
+	enc.SetEscapeHTML(false)
+	if err := enc.Encode(walked); err != nil {
+		return "", err
+	}
+	return strings.TrimRight(buf.String(), "\n"), nil
 }

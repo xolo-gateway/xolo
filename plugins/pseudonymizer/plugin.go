@@ -253,9 +253,40 @@ func (p *Plugin) PreRequest(ctx context.Context, in *proto.PreRequestInput) (*pr
 		lastAnonymizeErr  error
 	)
 
+	// anonymizeText is the one entry point to the anonymizer for this request:
+	// it shares the session, so a value always gets the same placeholder, and
+	// counts the entities it finds for the event.
+	anonymizeText := func(s string) (string, error) {
+		result, err := anon.Anonymize(s, append(anonymOpts, anonymizer.WithSession(session))...)
+		if err != nil {
+			return "", err
+		}
+		countEntities(typeCounts, result.Entities)
+		return result.Text, nil
+	}
+
 	filtered := make([]map[string]any, 0, len(messages))
 	for i, msg := range messages {
 		role, _ := msg["role"].(string)
+
+		// An OpenAI-compatible client carries the assistant's tool arguments in
+		// `tool_calls`, outside `content`. They are handled first because a
+		// message holding them usually has a null `content`, which the switch
+		// below passes through untouched.
+		if calls, changed, err := anonymizeToolCalls(msg[fieldToolCalls], anonymizeText); err != nil {
+			if out := handleVerificationError(in, err, cfg, p.getHostClient()); out != nil {
+				return out, nil
+			}
+			slog.WarnContext(ctx, "pseudonymizer: failed to anonymize tool calls",
+				slog.String("role", role),
+				slog.Any("error", err),
+			)
+			anonymizeFailures++
+			lastAnonymizeErr = err
+		} else if changed {
+			messages[i][fieldToolCalls] = calls
+		}
+
 		content, ok := msg["content"]
 		if !ok {
 			filtered = append(filtered, messages[i])
@@ -316,14 +347,7 @@ func (p *Plugin) PreRequest(ctx context.Context, in *proto.PreRequestInput) (*pr
 					// Nothing here ever reaches removedParts: a tool block is
 					// half of a pair, and dropping it would answer 400 on the
 					// unpaired id. What cannot be read is replaced in place.
-					updated, err := anonymizeToolPart(partMap, func(s string) (string, error) {
-						result, anonErr := anon.Anonymize(s, append(anonymOpts, anonymizer.WithSession(session))...)
-						if anonErr != nil {
-							return "", anonErr
-						}
-						countEntities(typeCounts, result.Entities)
-						return result.Text, nil
-					})
+					updated, err := anonymizeToolPart(partMap, anonymizeText)
 					if err != nil {
 						if out := handleVerificationError(in, err, cfg, p.getHostClient()); out != nil {
 							return out, nil
