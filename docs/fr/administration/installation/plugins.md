@@ -145,6 +145,8 @@ func (p *Plugin) PreRequest(ctx context.Context, in *proto.PreRequestInput) (*pr
 | `OutputsJson`          | `string` | JSON object `{portName: value}` of produced output port values      |
 | `NodeState`            | `[]byte` | Opaque blob passed back to `PostResponse` for the same execution    |
 
+> **Note:** on the Anthropic Messages route, the top-level `system` field is not part of `MessagesJson`, and the host prepends it to the messages a node returns. A node must therefore never add that prompt to its own `ModifiedMessagesJson`: the provider would receive it twice. Injecting a system message of the node's own making, as the pseudonymizer does with its placeholder instruction, is fine and is what the field is for.
+
 **Example — access control (time-restriction):**
 
 ```go
