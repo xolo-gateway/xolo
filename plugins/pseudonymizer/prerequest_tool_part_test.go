@@ -284,7 +284,7 @@ func TestAnonymizeToolPart_PropagatesAnonymizerFailure(t *testing.T) {
 	}
 }
 
-func TestAnonymizeLeaves_KeepsShapeAndKeys(t *testing.T) {
+func TestRewriteLeaves_KeepsShapeAndKeys(t *testing.T) {
 	upper := func(s string) (string, error) { return strings.ToUpper(s), nil }
 
 	walked, err := rewriteLeaves(map[string]any{

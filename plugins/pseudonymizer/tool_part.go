@@ -138,14 +138,14 @@ func textBlock(text string) map[string]any {
 // Map KEYS are left alone on purpose: they are the tool's parameter names, part
 // of a schema the model and the client agreed on. Rewriting them would produce
 // a call the client cannot execute.
-func rewriteLeaves(v any, anonymize func(string) (string, error)) (any, error) {
+func rewriteLeaves(v any, rewrite func(string) (string, error)) (any, error) {
 	switch value := v.(type) {
 	case string:
-		return anonymize(value)
+		return rewrite(value)
 	case map[string]any:
 		out := make(map[string]any, len(value))
 		for k, sub := range value {
-			walked, err := rewriteLeaves(sub, anonymize)
+			walked, err := rewriteLeaves(sub, rewrite)
 			if err != nil {
 				return nil, err
 			}
@@ -155,7 +155,7 @@ func rewriteLeaves(v any, anonymize func(string) (string, error)) (any, error) {
 	case []any:
 		out := make([]any, 0, len(value))
 		for _, sub := range value {
-			walked, err := rewriteLeaves(sub, anonymize)
+			walked, err := rewriteLeaves(sub, rewrite)
 			if err != nil {
 				return nil, err
 			}
