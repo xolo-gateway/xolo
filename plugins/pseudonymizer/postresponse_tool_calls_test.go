@@ -163,3 +163,26 @@ func toolCallArgumentValue(t *testing.T, toolCallsJSON, field string) string {
 	value, _ := decoded[field].(string)
 	return value
 }
+
+// Restoring inside the decoded document means re-encoding it, and re-encoding
+// from a float64 loses the exact value: a 19-digit identifier comes back as
+// something the client was never asked to act on.
+func TestPostResponse_LargeNumbersInArgumentsKeepTheirValue(t *testing.T) {
+	mapping := map[string]string{"⟦PERSON_1⟧": "Jean Dupont"}
+
+	out := postResponseWithToolCalls(t, mapping, "ok",
+		`[{"id":"call_1","name":"Fetch","arguments":"{\"user_id\":9223372036854775807,\"ts\":1760000000000000000,\"who\":\"⟦PERSON_1⟧\"}"}]`,
+	)
+
+	var calls []map[string]any
+	if err := json.Unmarshal([]byte(out.ModifiedToolCallsJson), &calls); err != nil {
+		t.Fatalf("modified tool calls are not valid JSON (%v): %q", err, out.ModifiedToolCallsJson)
+	}
+	args, _ := calls[0]["arguments"].(string)
+
+	for _, want := range []string{"9223372036854775807", "1760000000000000000", "Jean Dupont"} {
+		if !strings.Contains(args, want) {
+			t.Errorf("%s is missing from the restored arguments: %s", want, args)
+		}
+	}
+}

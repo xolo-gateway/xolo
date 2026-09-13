@@ -618,7 +618,15 @@ func deanonymizeToolCalls(toolCallsJSON string, mapping map[string]string) (stri
 // there.
 func deanonymizeArguments(args string, mapping map[string]string) string {
 	var decoded any
-	if err := json.Unmarshal([]byte(args), &decoded); err != nil {
+	dec := json.NewDecoder(strings.NewReader(args))
+	// Without this, every number becomes a float64 and is re-encoded from it.
+	// A 19-digit identifier or a nanosecond timestamp does not survive that
+	// trip: 9223372036854775807 comes back as 9223372036854776000, and the
+	// client runs the call against something the model never asked for.
+	// json.Number keeps the literal as it was written, and being a named type
+	// it falls through the `case string` of anonymizeLeaves untouched.
+	dec.UseNumber()
+	if err := dec.Decode(&decoded); err != nil {
 		return deanonymize(args, mapping)
 	}
 
