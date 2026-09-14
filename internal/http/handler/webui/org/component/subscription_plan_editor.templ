@@ -28,6 +28,10 @@ import (
 //   - plan_c{i}_token_budget         (number of tokens, empty = no limit)
 //   - plan_c{i}_value_budget         (dollars, empty = no limit)
 //   - plan_c{i}_max_concurrent       (integer, empty = no limit)
+//   - plan_c{i}_reserve_ratio        (percent 0-100, empty = allocator default)
+//   - plan_c{i}_pace_slack           (percent 0-100, empty = allocator default)
+//   - plan_c{i}_happy_hour_start     (percent 1-100, empty = allocator default; 100 disables)
+//   - plan_c{i}_happy_hour_max_lead  (duration, e.g. "1h", "2d"; empty = allocator default)
 templ SubscriptionPlanEditor(plan *model.SubscriptionPlan, readonly bool) {
 	{{ constraints := []model.PlanConstraint(nil) }}
 	{{ planLabel := "" }}
@@ -334,7 +338,7 @@ templ planConstraintRow(idx int, c model.PlanConstraint, readonly bool) {
 									Ouverture de fin de fenêtre (%, défaut 90)
 								}
 								@form.Description() {
-									Fraction de la fenêtre passée laquelle le reliquat, qui serait perdu au reset, est réparti entre les actifs. 100 désactive.
+									Fraction de la fenêtre au-delà de laquelle le reliquat, qui serait perdu au reset, est réparti entre les actifs. 100 désactive l'ouverture.
 								}
 								@input.Input(input.Props{
 									Name:        happyStartName,
@@ -342,7 +346,7 @@ templ planConstraintRow(idx int, c model.PlanConstraint, readonly bool) {
 									Value:       happyStartStr,
 									Placeholder: "90",
 									Disabled:    readonly,
-									Attributes:  templ.Attributes{"data-xolo-name": "plan_c{i}_happy_hour_start", "min": "0", "max": "100", "step": "any"},
+									Attributes:  templ.Attributes{"data-xolo-name": "plan_c{i}_happy_hour_start", "min": "1", "max": "100", "step": "any"},
 								})
 							</div>
 							<div class="space-y-1">
@@ -355,7 +359,7 @@ templ planConstraintRow(idx int, c model.PlanConstraint, readonly bool) {
 								@input.Input(input.Props{
 									Name:        happyLeadName,
 									Value:       happyLeadStr,
-									Placeholder: "ex : 1h",
+									Placeholder: "ex : 1h, 2d",
 									Disabled:    readonly,
 									Attributes:  templ.Attributes{"data-xolo-name": "plan_c{i}_happy_hour_max_lead"},
 								})

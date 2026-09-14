@@ -270,6 +270,21 @@ func createGetDatabase(db *gorm.DB) func(ctx context.Context) (*gorm.DB, error) 
 						return errors.WithStack(tx.Migrator().DropIndex(&UsageRecord{}, "idx_usage_org_payg_cost"))
 					},
 				},
+				{
+					// Subscription counterpart of the index above: (org_id, provider_id,
+					// plan_covered, created_at, user_id) serves the fair-share allocator's
+					// plan-wide aggregations, the DISTINCT count of active users from the
+					// index alone. Without it that count, which runs on every proxy request
+					// of a subscription provider, scans every row of the org over the
+					// window and filters provider and plan afterwards.
+					ID: "202609150001",
+					Migrate: func(tx *gorm.DB) error {
+						return errors.WithStack(tx.AutoMigrate(&UsageRecord{}))
+					},
+					Rollback: func(tx *gorm.DB) error {
+						return errors.WithStack(tx.Migrator().DropIndex(&UsageRecord{}, "idx_usage_org_prov_plan"))
+					},
+				},
 			})
 
 			m.InitSchema(func(tx *gorm.DB) error {

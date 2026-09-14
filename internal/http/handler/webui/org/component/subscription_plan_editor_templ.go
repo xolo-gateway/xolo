@@ -36,6 +36,10 @@ import (
 //   - plan_c{i}_token_budget         (number of tokens, empty = no limit)
 //   - plan_c{i}_value_budget         (dollars, empty = no limit)
 //   - plan_c{i}_max_concurrent       (integer, empty = no limit)
+//   - plan_c{i}_reserve_ratio        (percent 0-100, empty = allocator default)
+//   - plan_c{i}_pace_slack           (percent 0-100, empty = allocator default)
+//   - plan_c{i}_happy_hour_start     (percent 1-100, empty = allocator default; 100 disables)
+//   - plan_c{i}_happy_hour_max_lead  (duration, e.g. "1h", "2d"; empty = allocator default)
 func SubscriptionPlanEditor(plan *model.SubscriptionPlan, readonly bool) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
@@ -196,7 +200,7 @@ func SubscriptionPlanEditor(plan *model.SubscriptionPlan, readonly bool) templ.C
 				var templ_7745c5c3_Var8 string
 				templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("%d", len(constraints)))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/subscription_plan_editor.templ`, Line: 67, Col: 123}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/subscription_plan_editor.templ`, Line: 71, Col: 123}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var8))
 				if templ_7745c5c3_Err != nil {
@@ -365,7 +369,7 @@ func planConstraintRow(idx int, c model.PlanConstraint, readonly bool) templ.Com
 		var templ_7745c5c3_Var12 string
 		templ_7745c5c3_Var12, templ_7745c5c3_Err = templ.JoinStringErrs("plan-kind-" + idxKey)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/subscription_plan_editor.templ`, Line: 158, Col: 31}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/subscription_plan_editor.templ`, Line: 162, Col: 31}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var12))
 		if templ_7745c5c3_Err != nil {
@@ -378,7 +382,7 @@ func planConstraintRow(idx int, c model.PlanConstraint, readonly bool) templ.Com
 		var templ_7745c5c3_Var13 string
 		templ_7745c5c3_Var13, templ_7745c5c3_Err = templ.JoinStringErrs(kindName)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/subscription_plan_editor.templ`, Line: 159, Col: 20}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/subscription_plan_editor.templ`, Line: 163, Col: 20}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var13))
 		if templ_7745c5c3_Err != nil {
@@ -391,7 +395,7 @@ func planConstraintRow(idx int, c model.PlanConstraint, readonly bool) templ.Com
 		var templ_7745c5c3_Var14 string
 		templ_7745c5c3_Var14, templ_7745c5c3_Err = templ.JoinStringErrs("plan_c{i}_kind")
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/subscription_plan_editor.templ`, Line: 160, Col: 38}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/subscription_plan_editor.templ`, Line: 164, Col: 38}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var14))
 		if templ_7745c5c3_Err != nil {
@@ -946,7 +950,7 @@ func planConstraintRow(idx int, c model.PlanConstraint, readonly bool) templ.Com
 						}()
 					}
 					ctx = templ.InitializeContext(ctx)
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 52, "Fraction de la fenêtre passée laquelle le reliquat, qui serait perdu au reset, est réparti entre les actifs. 100 désactive.")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 52, "Fraction de la fenêtre au-delà de laquelle le reliquat, qui serait perdu au reset, est réparti entre les actifs. 100 désactive l'ouverture.")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
@@ -962,7 +966,7 @@ func planConstraintRow(idx int, c model.PlanConstraint, readonly bool) templ.Com
 					Value:       happyStartStr,
 					Placeholder: "90",
 					Disabled:    readonly,
-					Attributes:  templ.Attributes{"data-xolo-name": "plan_c{i}_happy_hour_start", "min": "0", "max": "100", "step": "any"},
+					Attributes:  templ.Attributes{"data-xolo-name": "plan_c{i}_happy_hour_start", "min": "1", "max": "100", "step": "any"},
 				}).Render(ctx, templ_7745c5c3_Buffer)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
@@ -1018,7 +1022,7 @@ func planConstraintRow(idx int, c model.PlanConstraint, readonly bool) templ.Com
 				templ_7745c5c3_Err = input.Input(input.Props{
 					Name:        happyLeadName,
 					Value:       happyLeadStr,
-					Placeholder: "ex : 1h",
+					Placeholder: "ex : 1h, 2d",
 					Disabled:    readonly,
 					Attributes:  templ.Attributes{"data-xolo-name": "plan_c{i}_happy_hour_max_lead"},
 				}).Render(ctx, templ_7745c5c3_Buffer)

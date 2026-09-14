@@ -92,7 +92,9 @@ Deux mécanismes complètent cette répartition :
   consommation rejoint son rythme ;
 - l'**ouverture de fin de fenêtre** : dans les derniers instants avant la
   réinitialisation, le reliquat serait détruit ; il est alors réparti entre les
-  utilisateurs actifs plutôt que réservé aux membres absents.
+  utilisateurs actifs plutôt que réservé aux membres absents. Cette ouverture ne
+  peut qu'élargir une part : si la répartition du reliquat donnait moins que la
+  part courante, c'est la part courante qui s'applique.
 
 Ces quatre réglages sont facultatifs et se trouvent sous « Répartition entre
 utilisateurs » dans le formulaire de la contrainte. Laissés vides, ils prennent
@@ -102,8 +104,13 @@ leurs valeurs par défaut.
 | ---------------------------------- | ------ | -------------------------------------------------------------------------------------------- |
 | **Réserve garantie**               | 30 %   | Part du budget réservée à parts égales entre tous les membres                                 |
 | **Tolérance de rythme**            | 15 %   | Avance de consommation tolérée avant que les parts ne se resserrent                           |
-| **Ouverture de fin de fenêtre**    | 90 %   | Fraction de la fenêtre passée laquelle le reliquat est réparti entre les actifs ; 100 désactive |
+| **Ouverture de fin de fenêtre**    | 90 %   | Fraction de la fenêtre au-delà de laquelle le reliquat est réparti entre les actifs ; 100 désactive |
 | **Avance maximale de l'ouverture** | 1h     | Borne absolue de cette ouverture, pour qu'une fenêtre longue ne s'ouvre pas des heures avant  |
+
+Une valeur illisible ou hors bornes est refusée à l'enregistrement, avec un
+message nommant la contrainte concernée : un réglage affiché doit être celui que
+le moteur applique. L'ouverture de fin de fenêtre doit être strictement
+supérieure à 0 — c'est 100 qui la désactive.
 
 La part d'un utilisateur dépend du nombre d'utilisateurs actifs au moment de la
 requête : elle peut donc varier au cours d'une même fenêtre, à la hausse comme à

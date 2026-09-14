@@ -552,8 +552,6 @@ func parsePlanRatioField(value string) (*float64, error) {
 	return &fraction, nil
 }
 
-
-
 // parseSubscriptionPlanFromForm reads the structured subscription plan fields
 // submitted by the SubscriptionPlanEditor component. It returns an error the
 // caller is expected to show, rather than dropping a field it cannot read: a
@@ -611,10 +609,19 @@ func parseSubscriptionPlanFromForm(r *http.Request) (*model.SubscriptionPlan, er
 			if c.HappyHourStart, err = parsePlanRatioField(r.FormValue(prefix + "happy_hour_start")); err != nil {
 				return nil, errors.Wrapf(err, "contrainte « %s » : ouverture de fin de fenêtre", c.Label)
 			}
+			// 0 % ouvrirait la fenêtre entière, ce que l'allocateur refuse de faire :
+			// il retomberait sur son défaut, et l'éditeur réafficherait un réglage
+			// que le moteur n'applique pas. C'est 100 qui désactive l'ouverture.
+			if c.HappyHourStart != nil && *c.HappyHourStart <= 0 {
+				return nil, errors.Errorf("contrainte « %s » : l'ouverture de fin de fenêtre doit être strictement supérieure à 0 (100 désactive l'ouverture)", c.Label)
+			}
 			if lead := strings.TrimSpace(r.FormValue(prefix + "happy_hour_max_lead")); lead != "" {
-				d, parseErr := time.ParseDuration(lead)
-				if parseErr != nil || d <= 0 {
-					return nil, errors.Errorf("contrainte « %s » : l'avance maximale de l'ouverture doit être une durée positive (ex : 1h)", c.Label)
+				// Same parser as the "reset dans" field above: a form that accepts
+				// "4d13h" in one duration field and refuses "1d" in the next is a
+				// trap, and a weekly window makes days the natural unit.
+				d, ok := parseResetIn(lead)
+				if !ok || d <= 0 {
+					return nil, errors.Errorf("contrainte « %s » : l'avance maximale de l'ouverture doit être une durée positive (ex : 1h, 2d)", c.Label)
 				}
 				pd := model.PlanDuration(d)
 				c.HappyHourMaxLead = &pd

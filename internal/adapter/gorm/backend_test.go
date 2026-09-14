@@ -63,9 +63,16 @@ func sqliteBackend() backend {
 			if err != nil {
 				t.Fatalf("open db: %v", err)
 			}
-			return xologorm.NewStore(db)
+			return newStoreOn(t, db)
 		},
 	}
+}
+
+// newStoreOn binds a store to a database the caller keeps a handle on, for the
+// few tests that assert on the schema itself rather than on stored data.
+func newStoreOn(t *testing.T, db *gormpkg.DB) *xologorm.Store {
+	t.Helper()
+	return xologorm.NewStore(db)
 }
 
 // newPostgresBackend builds a backend that isolates each test in its own

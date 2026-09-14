@@ -167,7 +167,14 @@ func (e *rollingWindowEvaluator) Acquire(ctx context.Context, scope planScope, c
 // as a measurement instead of a fallback.
 func shareBasis(share *service.FairShareResult, mode model.FairShareMode, memberCount int) string {
 	if share.CountDegraded {
-		return fmt.Sprintf("%s allocation, active-user count unavailable, static share applied", mode)
+		// The count is what the share is split by; pacing still applies on top of
+		// it, so the allocation is the static share at best and narrower when the
+		// plan runs ahead of its window. Saying "static share applied" next to a
+		// throttled mode would contradict itself.
+		if mode == model.FairShareModeThrottled {
+			return "active-user count unavailable, share split across every member and narrowed by the plan's pace"
+		}
+		return "active-user count unavailable, share split across every member"
 	}
 	return fmt.Sprintf("%s allocation, %d of %d members active", mode, share.ActiveUsers, memberCount)
 }

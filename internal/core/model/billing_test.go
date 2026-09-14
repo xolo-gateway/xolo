@@ -506,3 +506,43 @@ func TestPlanConstraint_ElapsedFraction(t *testing.T) {
 		}
 	}
 }
+
+func TestComputeFairShare_StaleActiveCountDoesNotChangeTheAllocation(t *testing.T) {
+	// A count above the membership (members removed mid-window keep their usage
+	// records) is clamped, and both branches of the allocation divide by the same
+	// clamped number — the happy hour included, even in the window's last
+	// minutes. Past the clamp, only the membership sizes the share.
+	p := sharedHappyHourParams()
+	p.ActiveUsers = p.TotalMembers
+
+	atMembership := ComputeFairShare(p)
+
+	p.ActiveUsers = 50 // stale count, well above the 20 members
+	stale := ComputeFairShare(p)
+
+	if stale.Allowance != atMembership.Allowance || stale.Mode != atMembership.Mode {
+		t.Errorf("stale count gave (%d, %q), want the membership's (%d, %q)",
+			stale.Allowance, stale.Mode, atMembership.Allowance, atMembership.Mode)
+	}
+}
+
+func TestComputeFairShare_NonPositiveHappyHourStartNeverOpensTheWindow(t *testing.T) {
+	// Params built by hand, bypassing FairShareParamsFor: a zero threshold read
+	// literally would put every anchored window in permanent happy hour and
+	// disable the allocation entirely.
+	p := FairShareParams{
+		Budget:           1000,
+		TotalMembers:     20,
+		ActiveUsers:      1,
+		Elapsed:          0.1,
+		WindowDuration:   30 * time.Minute,
+		Reserve:          DefaultReserveRatio,
+		Slack:            DefaultPaceSlack,
+		HappyHourStart:   0,
+		HappyHourMaxLead: DefaultHappyHourMaxLead,
+	}
+
+	if got := ComputeFairShare(p); got.Mode == FairShareModeHappyHour {
+		t.Errorf("mode = %q, want the nominal allocation", got.Mode)
+	}
+}

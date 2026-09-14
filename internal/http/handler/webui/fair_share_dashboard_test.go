@@ -50,7 +50,7 @@ func TestApplyFairShare_ReplacesTheDenominatorAndReportsTheBasis(t *testing.T) {
 	c := planConstraint(1000)
 	cu := orgcomponent.SubscriptionConstraintUsage{Constraint: fairShareConstraint(c, 20)}
 
-	if !applyFairShare(context.Background(), service.NewFairShareService(reader), &cu, c, "org-1", "prov-1", "user-1", 20, time.Now()) {
+	if !applyFairShare(context.Background(), service.NewFairShareService(reader), &cu, c, "org-1", "prov-1", "user-1", 20, time.Now(), nil) {
 		t.Fatal("applyFairShare reported failure, want success")
 	}
 
@@ -79,7 +79,7 @@ func TestApplyFairShare_KeepsTheStaticShareWhenTheAllocationFails(t *testing.T) 
 	c := planConstraint(1000)
 	cu := orgcomponent.SubscriptionConstraintUsage{Constraint: fairShareConstraint(c, 20)}
 
-	if applyFairShare(context.Background(), service.NewFairShareService(reader), &cu, c, "org-1", "prov-1", "user-1", 20, time.Now()) {
+	if applyFairShare(context.Background(), service.NewFairShareService(reader), &cu, c, "org-1", "prov-1", "user-1", 20, time.Now(), nil) {
 		t.Fatal("applyFairShare reported success, want failure")
 	}
 	if cu.Constraint.TokenBudget == nil || *cu.Constraint.TokenBudget != 50 {
@@ -111,7 +111,7 @@ func TestApplyFairShare_SkippedWithoutTheBasisToAllocateOn(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			cu := orgcomponent.SubscriptionConstraintUsage{Constraint: tc.constraint}
-			if applyFairShare(context.Background(), tc.service, &cu, tc.constraint, "org-1", "prov-1", tc.userID, tc.memberCount, time.Now()) {
+			if applyFairShare(context.Background(), tc.service, &cu, tc.constraint, "org-1", "prov-1", tc.userID, tc.memberCount, time.Now(), nil) {
 				t.Error("applyFairShare reported success, want it skipped")
 			}
 			if cu.ActiveUsers != 0 || cu.TokenMode != "" {
@@ -119,4 +119,34 @@ func TestApplyFairShare_SkippedWithoutTheBasisToAllocateOn(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestApplyFairShare_UsesThePreReadPlanTotals(t *testing.T) {
+	// The page reads the plan-wide totals once per constraint and hands them in,
+	// as the proxy hot path does; the allocation must not sum the window again.
+	reader := &countingReader{stubPlanUsageReader: stubPlanUsageReader{userTokens: 100, otherActiveUsers: 2}}
+	c := planConstraint(1000)
+	cu := orgcomponent.SubscriptionConstraintUsage{Constraint: c}
+
+	ok := applyFairShare(context.Background(), service.NewFairShareService(reader), &cu, c,
+		"org-1", "prov-1", "user-1", 20, time.Now(), &service.PlanUsage{Tokens: 300})
+	if !ok {
+		t.Fatal("applyFairShare reported failure, want success")
+	}
+	if reader.planSums != 0 {
+		t.Errorf("SumPlanUsageSince called %d times, want 0 when the totals are handed in", reader.planSums)
+	}
+	if cu.Constraint.TokenBudget == nil || *cu.Constraint.TokenBudget != 248 {
+		t.Errorf("token budget = %v, want the 248 allowance", cu.Constraint.TokenBudget)
+	}
+}
+
+type countingReader struct {
+	stubPlanUsageReader
+	planSums int
+}
+
+func (c *countingReader) SumPlanUsageSince(ctx context.Context, orgID model.OrgID, providerID model.ProviderID, since time.Time) (int64, int64, error) {
+	c.planSums++
+	return c.stubPlanUsageReader.SumPlanUsageSince(ctx, orgID, providerID, since)
 }

@@ -132,6 +132,32 @@ func TestRollingWindow_CountFailureFallsBackToStaticShare(t *testing.T) {
 	}
 }
 
+func TestRollingWindow_DegradedCountOnAThrottledWindowStaysCoherent(t *testing.T) {
+	// Pacing applies on top of the degraded fallback, so the share is narrower
+	// than the static one: the message must not claim the static share was
+	// applied while the allocation was throttled below it.
+	anchor := time.Now().Add(-15 * time.Minute)
+	c := tokenConstraint(1000)
+	c.WindowAnchor = &anchor
+
+	store := &fairShareUsageStore{orgTokens: 900, userTokens: 60, countErr: errors.New("boom")}
+	ev := newRollingWindowEvaluator(store)
+
+	_, denial, err := ev.Acquire(context.Background(), fairShareScope(), c)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if denial == nil {
+		t.Fatal("request granted, want denied")
+	}
+	if !strings.Contains(denial.Message, "active-user count unavailable") {
+		t.Errorf("message = %q, want it to name the degraded count", denial.Message)
+	}
+	if strings.Contains(denial.Message, "static share applied") {
+		t.Errorf("message = %q, want it not to claim the static share when the allocation was narrowed", denial.Message)
+	}
+}
+
 func TestRollingWindow_CallerIsExcludedFromTheCountThenAddedBack(t *testing.T) {
 	// The caller competes for the budget whether or not their first request has
 	// been recorded yet, so they are excluded from the count and added back —

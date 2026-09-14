@@ -261,7 +261,7 @@ func ComputeFairShare(p FairShareParams) FairShareAllocation {
 	// the nominal allowance that carries the floor above, deferring to it also
 	// keeps an exhausted window from allocating zero to everyone.
 	if anchored && p.inHappyHour() {
-		if hh := p.happyHourAllowance(); hh > allowance {
+		if hh := p.happyHourAllowance(int64(active)); hh > allowance {
 			return FairShareAllocation{Allowance: hh, Mode: FairShareModeHappyHour}
 		}
 	}
@@ -273,7 +273,11 @@ func ComputeFairShare(p FairShareParams) FairShareAllocation {
 // leftover budget to be shared out. It takes both a fraction of the window and
 // an absolute lead, so that a long window does not open for hours.
 func (p FairShareParams) inHappyHour() bool {
-	if p.HappyHourStart >= 1 || p.WindowDuration <= 0 {
+	// A non-positive threshold is an unset one, never "open from the first
+	// second": read as a real threshold it would disable the allocation for the
+	// whole window. FairShareParamsFor already resolves it, but ComputeFairShare
+	// is exported, so the invariant belongs here too.
+	if p.HappyHourStart <= 0 || p.HappyHourStart >= 1 || p.WindowDuration <= 0 {
 		return false
 	}
 	if p.Elapsed < p.HappyHourStart {
@@ -295,8 +299,12 @@ func (p FairShareParams) inHappyHour() bool {
 // caller's own total: an allowance of the form "what I already used, plus a
 // share of the rest" grows as it is consumed, so the check that compares usage
 // to it can never fire.
-func (p FairShareParams) happyHourAllowance() int64 {
-	active := int64(max(p.ActiveUsers, 1))
+// active is the clamped competitor count, passed in rather than read back from
+// the params: both branches of one allocation must divide by the same number.
+func (p FairShareParams) happyHourAllowance(active int64) int64 {
+	if active < 1 {
+		active = 1
+	}
 	othersUsed := p.UsedTotal - p.UserUsed
 	if othersUsed < 0 {
 		othersUsed = 0

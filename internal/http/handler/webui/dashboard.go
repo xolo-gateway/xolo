@@ -567,9 +567,11 @@ func (h *Handler) serveUserUsageCSV(w http.ResponseWriter, r *http.Request, user
 }
 
 // buildDashboardSubscriptionUsage builds subscription plan consumption for one org,
-// scoped to a single user's personal fair-share: budgets and concurrency limits are
-// divided by the org member count, and usage figures reflect only this user. Window
-// timing (reset countdowns) is a window-level property and stays org-wide.
+// scoped to a single user's personal share, and usage figures reflect only this
+// user. Rolling-window budgets go through the same allocator as the enforcer, so
+// the denominators shown are the ones a request is actually decided against;
+// concurrency limits keep the static division by the member count. Window timing
+// (reset countdowns) is a window-level property and stays org-wide.
 func (h *Handler) buildDashboardSubscriptionUsage(ctx context.Context, orgID model.OrgID, userID model.UserID) []orgcomponent.SubscriptionProviderUsage {
 	providers, err := h.providerStore.ListProviders(ctx, orgID)
 	if err != nil {
@@ -617,11 +619,20 @@ func (h *Handler) buildDashboardSubscriptionUsage(ctx context.Context, orgID mod
 					cu.WindowStart = since
 					cu.Anchored = c.IsAnchored()
 					cu.ResetAt = c.NextResetAt(now)
+					// Read the plan-wide totals once and hand them to the allocator,
+					// as the proxy hot path does: this page is rendered on every visit
+					// and a weekly window is the most expensive of them.
+					var planUsage *service.PlanUsage
+					if planTokens, planValue, sumErr := h.usageStore.SumPlanUsageSince(ctx, orgID, p.ID(), since); sumErr != nil {
+						slog.WarnContext(ctx, "could not sum org plan usage", slogx.Error(sumErr))
+					} else {
+						planUsage = &service.PlanUsage{Tokens: planTokens, Value: planValue}
+					}
 					// Show the same denominators the enforcer decides against, so a
 					// varying allowance stays readable instead of looking arbitrary.
 					// The allocation reads this user's totals on the way, so they are
 					// taken from it rather than summed a second time.
-					if !applyFairShare(ctx, h.fairShare, &cu, c, orgID, p.ID(), userID, memberCount, now) {
+					if !applyFairShare(ctx, h.fairShare, &cu, c, orgID, p.ID(), userID, memberCount, now, planUsage) {
 						tokens, value, sumErr := h.usageStore.SumUserPlanUsageSince(ctx, userID, orgID, p.ID(), since)
 						if sumErr != nil {
 							slog.WarnContext(ctx, "could not sum user plan usage", slogx.Error(sumErr))
@@ -671,6 +682,7 @@ func applyFairShare(
 	userID model.UserID,
 	memberCount int64,
 	now time.Time,
+	planUsage *service.PlanUsage,
 ) bool {
 	if fairShare == nil || memberCount <= 0 || userID == "" || (c.TokenBudget == nil && c.ValueBudget == nil) {
 		return false
@@ -683,6 +695,7 @@ func applyFairShare(
 		MemberCount: int(memberCount),
 		Constraint:  c,
 		Now:         now,
+		PlanUsage:   planUsage,
 	})
 	if err != nil {
 		slog.WarnContext(ctx, "could not resolve fair-share denominators", slogx.Error(err))
