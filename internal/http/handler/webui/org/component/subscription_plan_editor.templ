@@ -8,8 +8,8 @@ import (
 
 	"github.com/xolo-gateway/xolo/internal/core/model"
 	common "github.com/xolo-gateway/xolo/internal/http/handler/webui/common/component"
-	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/accordion"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/button"
+	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/collapsible"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/form"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/icon"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/input"
@@ -280,86 +280,88 @@ templ planConstraintRow(idx int, c model.PlanConstraint, readonly bool) {
 			// Left empty these keep the defaults; they are here because a plan whose
 			// shape differs from the usual one (a handful of heavy users, a weekly
 			// window) is tuned per provider, not per deployment.
-			// accordion plutôt que collapsible : il repose sur <details> natif, sans
-			// identifiant tiré au rendu, donc une ligne de contrainte clonée depuis
-			// le <template> ci-dessus reste autonome.
-			@accordion.Accordion(accordion.Props{Class: "rounded-md border bg-background px-3"}) {
-				@accordion.Item() {
-					@accordion.Trigger() {
-						Répartition entre utilisateurs (optionnel)
-					}
-					@accordion.Content() {
-						<div class="space-y-3 pb-3">
-							@form.Description() {
-								La part de chaque utilisateur est un plancher garanti à tous les membres, plus le reste réparti entre les seuls utilisateurs actifs de la fenêtre. Laisser vide pour les valeurs par défaut.
-							}
-							<div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-								<div class="space-y-1">
-									@form.Label() {
-										Réserve garantie (%, défaut 30)
-									}
-									@form.Description() {
-										Part du budget réservée à parts égales entre tous les membres, y compris ceux qui ne consomment pas.
-									}
-									@input.Input(input.Props{
-										Name:        reserveName,
-										Type:        input.TypeNumber,
-										Value:       reserveStr,
-										Placeholder: "30",
-										Disabled:    readonly,
-										Attributes:  templ.Attributes{"data-xolo-name": "plan_c{i}_reserve_ratio", "min": "0", "max": "100", "step": "any"},
-									})
-								</div>
-								<div class="space-y-1">
-									@form.Label() {
-										Tolérance de rythme (%, défaut 15)
-									}
-									@form.Description() {
-										Avance de consommation tolérée sur l'écoulement de la fenêtre avant que les parts ne se resserrent.
-									}
-									@input.Input(input.Props{
-										Name:        paceSlackName,
-										Type:        input.TypeNumber,
-										Value:       paceSlackStr,
-										Placeholder: "15",
-										Disabled:    readonly,
-										Attributes:  templ.Attributes{"data-xolo-name": "plan_c{i}_pace_slack", "min": "0", "max": "100", "step": "any"},
-									})
-								</div>
-								<div class="space-y-1">
-									@form.Label() {
-										Ouverture de fin de fenêtre (%, défaut 90)
-									}
-									@form.Description() {
-										Fraction de la fenêtre passée laquelle le reliquat, qui serait perdu au reset, est réparti entre les actifs. 100 désactive.
-									}
-									@input.Input(input.Props{
-										Name:        happyStartName,
-										Type:        input.TypeNumber,
-										Value:       happyStartStr,
-										Placeholder: "90",
-										Disabled:    readonly,
-										Attributes:  templ.Attributes{"data-xolo-name": "plan_c{i}_happy_hour_start", "min": "0", "max": "100", "step": "any"},
-									})
-								</div>
-								<div class="space-y-1">
-									@form.Label() {
-										Avance maximale de l'ouverture (défaut 1h)
-									}
-									@form.Description() {
-										Borne absolue : sur une fenêtre longue, la fraction ci-dessus ouvrirait des heures avant le reset.
-									}
-									@input.Input(input.Props{
-										Name:        happyLeadName,
-										Value:       happyLeadStr,
-										Placeholder: "ex : 1h",
-										Disabled:    readonly,
-										Attributes:  templ.Attributes{"data-xolo-name": "plan_c{i}_happy_hour_max_lead"},
-									})
-								</div>
+			// collapsible plutôt qu'accordion : accordion.Item rend un
+			// <details name="accordion"> dont le nom est écrit en dur, et des
+			// <details> de même nom forment un groupe exclusif à l'échelle du
+			// document — ouvrir les réglages d'une contrainte fermerait ceux de
+			// toutes les autres. Le JS de collapsible ne travaille que par
+			// délégation et closest(), jamais par identifiant, donc une ligne
+			// clonée depuis le <template> ci-dessus reste autonome.
+			@collapsible.Collapsible(collapsible.Props{Class: "rounded-md border bg-background p-3"}) {
+				@collapsible.Trigger(collapsible.TriggerProps{Class: "cursor-pointer text-sm font-medium"}) {
+					Répartition entre utilisateurs (optionnel)
+				}
+				@collapsible.Content(collapsible.ContentProps{Class: "pt-3"}) {
+					<div class="space-y-3">
+						@form.Description() {
+							La part de chaque utilisateur est un plancher garanti à tous les membres, plus le reste réparti entre les seuls utilisateurs actifs de la fenêtre. Laisser vide pour les valeurs par défaut.
+						}
+						<div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+							<div class="space-y-1">
+								@form.Label() {
+									Réserve garantie (%, défaut 30)
+								}
+								@form.Description() {
+									Part du budget réservée à parts égales entre tous les membres, y compris ceux qui ne consomment pas.
+								}
+								@input.Input(input.Props{
+									Name:        reserveName,
+									Type:        input.TypeNumber,
+									Value:       reserveStr,
+									Placeholder: "30",
+									Disabled:    readonly,
+									Attributes:  templ.Attributes{"data-xolo-name": "plan_c{i}_reserve_ratio", "min": "0", "max": "100", "step": "any"},
+								})
+							</div>
+							<div class="space-y-1">
+								@form.Label() {
+									Tolérance de rythme (%, défaut 15)
+								}
+								@form.Description() {
+									Avance de consommation tolérée sur l'écoulement de la fenêtre avant que les parts ne se resserrent.
+								}
+								@input.Input(input.Props{
+									Name:        paceSlackName,
+									Type:        input.TypeNumber,
+									Value:       paceSlackStr,
+									Placeholder: "15",
+									Disabled:    readonly,
+									Attributes:  templ.Attributes{"data-xolo-name": "plan_c{i}_pace_slack", "min": "0", "max": "100", "step": "any"},
+								})
+							</div>
+							<div class="space-y-1">
+								@form.Label() {
+									Ouverture de fin de fenêtre (%, défaut 90)
+								}
+								@form.Description() {
+									Fraction de la fenêtre passée laquelle le reliquat, qui serait perdu au reset, est réparti entre les actifs. 100 désactive.
+								}
+								@input.Input(input.Props{
+									Name:        happyStartName,
+									Type:        input.TypeNumber,
+									Value:       happyStartStr,
+									Placeholder: "90",
+									Disabled:    readonly,
+									Attributes:  templ.Attributes{"data-xolo-name": "plan_c{i}_happy_hour_start", "min": "0", "max": "100", "step": "any"},
+								})
+							</div>
+							<div class="space-y-1">
+								@form.Label() {
+									Avance maximale de l'ouverture (défaut 1h)
+								}
+								@form.Description() {
+									Borne absolue : sur une fenêtre longue, la fraction ci-dessus ouvrirait des heures avant le reset.
+								}
+								@input.Input(input.Props{
+									Name:        happyLeadName,
+									Value:       happyLeadStr,
+									Placeholder: "ex : 1h",
+									Disabled:    readonly,
+									Attributes:  templ.Attributes{"data-xolo-name": "plan_c{i}_happy_hour_max_lead"},
+								})
 							</div>
 						</div>
-					}
+					</div>
 				}
 			}
 		</div>

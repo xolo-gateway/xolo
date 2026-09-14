@@ -111,6 +111,7 @@ func (h *Handler) getNewProviderPage(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) createProvider(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
+	user := httpCtx.User(ctx)
 	orgSlug := r.PathValue("orgSlug")
 
 	org, err := h.orgFromSlug(ctx, orgSlug)
@@ -141,7 +142,13 @@ func (h *Handler) createProvider(w http.ResponseWriter, r *http.Request) {
 	p.SetCloudTier(cloudTier)
 	p.SetBillingMode(billingMode)
 	if billingMode == model.BillingModeSubscription {
-		p.SetSubscriptionPlan(parseSubscriptionPlanFromForm(r, nil))
+		plan, err := parseSubscriptionPlanFromForm(r)
+		if err != nil {
+			h.renderProviderFormError(w, r, ctx, user, orgSlug, org, p, true,
+				"Forfait : "+err.Error()+".")
+			return
+		}
+		p.SetSubscriptionPlan(plan)
 	}
 	if err := h.providerStore.CreateProvider(ctx, p); err != nil {
 		slog.ErrorContext(ctx, "could not create provider", slogx.Error(err))
@@ -289,7 +296,13 @@ func (h *Handler) updateProvider(w http.ResponseWriter, r *http.Request) {
 	}
 	var subscriptionPlan *model.SubscriptionPlan
 	if billingMode == model.BillingModeSubscription {
-		subscriptionPlan = parseSubscriptionPlanFromForm(r, existing.SubscriptionPlan())
+		plan, err := parseSubscriptionPlanFromForm(r)
+		if err != nil {
+			h.renderProviderFormError(w, r, ctx, user, orgSlug, org, existing, false,
+				"Forfait : "+err.Error()+".")
+			return
+		}
+		subscriptionPlan = plan
 	}
 
 	updated := &updatedProviderAdapter{
@@ -522,55 +535,39 @@ func parseActiveParamsField(v string) int64 {
 // a fraction, the edited one a percentage.
 //
 // An empty field clears the setting, so the allocator applies its default. An
-// unusable one (a typo, a value out of range) is reported as such rather than
-// read as empty: the form is the only writer of a plan, so silently treating
-// "30 %" as "unset" would erase a setting the operator had deliberately made.
-func parsePlanRatioField(value string) (ratio *float64, ok bool) {
+// unusable one (a typo, a value out of range) is an error rather than a silent
+// fallback: the form is the only writer of a plan, so reading "30 %" as "unset"
+// would erase a setting the operator had deliberately made, and tell them
+// nothing about it.
+func parsePlanRatioField(value string) (*float64, error) {
 	value = strings.TrimSpace(value)
 	if value == "" {
-		return nil, true
+		return nil, nil
 	}
 	pct, err := strconv.ParseFloat(value, 64)
 	if err != nil || pct < 0 || pct > 100 {
-		return nil, false
+		return nil, errors.Errorf("valeur attendue entre 0 et 100, reçu %q", value)
 	}
 	fraction := pct / 100
-	return &fraction, true
+	return &fraction, nil
 }
 
-// planRatioOrPrevious applies the submitted percentage, keeping what the plan
-// already held when the field cannot be read.
-func planRatioOrPrevious(value string, previous *float64) *float64 {
-	ratio, ok := parsePlanRatioField(value)
-	if !ok {
-		return previous
-	}
-	return ratio
-}
 
-// previousConstraint returns the constraint at the same position in the plan
-// being edited, if any. Rows keep their order across a save, so the position is
-// what ties a submitted row to the values it carried.
-func previousConstraint(previous *model.SubscriptionPlan, idx int) model.PlanConstraint {
-	if previous == nil || idx < 0 || idx >= len(previous.Constraints) {
-		return model.PlanConstraint{}
-	}
-	return previous.Constraints[idx]
-}
 
 // parseSubscriptionPlanFromForm reads the structured subscription plan fields
-// submitted by the SubscriptionPlanEditor component. previous is the plan being
-// edited, if any: a setting the form cannot read falls back to the value it
-// already held rather than to the allocator's default.
-func parseSubscriptionPlanFromForm(r *http.Request, previous *model.SubscriptionPlan) *model.SubscriptionPlan {
+// submitted by the SubscriptionPlanEditor component. It returns an error the
+// caller is expected to show, rather than dropping a field it cannot read: a
+// tuning value that silently reverts to its default is a setting the operator
+// believes they made.
+func parseSubscriptionPlanFromForm(r *http.Request) (*model.SubscriptionPlan, error) {
 	label := strings.TrimSpace(r.FormValue("plan_label"))
 	countStr := r.FormValue("plan_constraint_count")
 	if countStr == "" {
-		return nil
+		return nil, nil
 	}
 	count, _ := strconv.Atoi(countStr)
 	if count <= 0 && label == "" {
-		return nil
+		return nil, nil
 	}
 
 	constraints := make([]model.PlanConstraint, 0, count)
@@ -604,19 +601,23 @@ func parseSubscriptionPlanFromForm(r *http.Request, previous *model.Subscription
 			// Fair-share tuning. Left empty, each keeps the allocator's default:
 			// the form is the only writer of a plan, so a field it does not read is
 			// a field the next save silently erases.
-			prev := previousConstraint(previous, i)
-			c.ReserveRatio = planRatioOrPrevious(r.FormValue(prefix+"reserve_ratio"), prev.ReserveRatio)
-			c.PaceSlack = planRatioOrPrevious(r.FormValue(prefix+"pace_slack"), prev.PaceSlack)
-			c.HappyHourStart = planRatioOrPrevious(r.FormValue(prefix+"happy_hour_start"), prev.HappyHourStart)
-			switch lead := strings.TrimSpace(r.FormValue(prefix + "happy_hour_max_lead")); {
-			case lead == "":
-			default:
-				if d, err := time.ParseDuration(lead); err == nil && d > 0 {
-					pd := model.PlanDuration(d)
-					c.HappyHourMaxLead = &pd
-				} else {
-					c.HappyHourMaxLead = prev.HappyHourMaxLead
+			var err error
+			if c.ReserveRatio, err = parsePlanRatioField(r.FormValue(prefix + "reserve_ratio")); err != nil {
+				return nil, errors.Wrapf(err, "contrainte « %s » : réserve garantie", c.Label)
+			}
+			if c.PaceSlack, err = parsePlanRatioField(r.FormValue(prefix + "pace_slack")); err != nil {
+				return nil, errors.Wrapf(err, "contrainte « %s » : tolérance de rythme", c.Label)
+			}
+			if c.HappyHourStart, err = parsePlanRatioField(r.FormValue(prefix + "happy_hour_start")); err != nil {
+				return nil, errors.Wrapf(err, "contrainte « %s » : ouverture de fin de fenêtre", c.Label)
+			}
+			if lead := strings.TrimSpace(r.FormValue(prefix + "happy_hour_max_lead")); lead != "" {
+				d, parseErr := time.ParseDuration(lead)
+				if parseErr != nil || d <= 0 {
+					return nil, errors.Errorf("contrainte « %s » : l'avance maximale de l'ouverture doit être une durée positive (ex : 1h)", c.Label)
 				}
+				pd := model.PlanDuration(d)
+				c.HappyHourMaxLead = &pd
 			}
 		case model.ConstraintConcurrency:
 			if mc, err := strconv.Atoi(r.FormValue(prefix + "max_concurrent")); err == nil && mc > 0 {
@@ -627,9 +628,9 @@ func parseSubscriptionPlanFromForm(r *http.Request, previous *model.Subscription
 	}
 
 	if label == "" && len(constraints) == 0 {
-		return nil
+		return nil, nil
 	}
-	return &model.SubscriptionPlan{Label: label, Constraints: constraints}
+	return &model.SubscriptionPlan{Label: label, Constraints: constraints}, nil
 }
 
 // computeWindowAnchor turns a "reset dans" countdown (e.g. "4h29m", "4d13h") into an
@@ -1057,12 +1058,24 @@ func (h *Handler) renderProviderFormError(w http.ResponseWriter, r *http.Request
 			Breadcrumbs: []common.BreadcrumbItem{
 				{Label: org.Name(), Href: "/orgs/" + orgSlug + "/usage"},
 				{Label: "Fournisseurs", Href: "/orgs/" + orgSlug + "/admin/providers"},
-				{Label: p.Name(), Href: "/orgs/" + orgSlug + "/admin/providers/" + string(p.ID()) + "/models"},
+				providerBreadcrumb(orgSlug, p, isNew),
 			},
 		},
 	}
 	w.WriteHeader(http.StatusUnprocessableEntity)
 	templ.Handler(component.ProviderForm(vmodel)).ServeHTTP(w, r)
+}
+
+// providerBreadcrumb is the last crumb of the provider form: a provider being
+// created has no page to link to yet.
+func providerBreadcrumb(orgSlug string, p model.Provider, isNew bool) common.BreadcrumbItem {
+	if isNew {
+		return common.BreadcrumbItem{Label: "Nouveau fournisseur"}
+	}
+	return common.BreadcrumbItem{
+		Label: p.Name(),
+		Href:  "/orgs/" + orgSlug + "/admin/providers/" + string(p.ID()) + "/models",
+	}
 }
 
 func (h *Handler) deleteModel(w http.ResponseWriter, r *http.Request) {

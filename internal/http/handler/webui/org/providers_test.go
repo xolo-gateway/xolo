@@ -3,10 +3,9 @@ package org
 import (
 	"net/http"
 	"net/url"
+	"strings"
 	"testing"
 	"time"
-
-	"github.com/xolo-gateway/xolo/internal/core/model"
 )
 
 func makeRequest(fields map[string]string) *http.Request {
@@ -209,7 +208,10 @@ func TestParseSubscriptionPlanFromForm_FairShareTuning(t *testing.T) {
 		"plan_c0_happy_hour_max_lead": "30m",
 	})
 
-	plan := parseSubscriptionPlanFromForm(r, nil)
+	plan, err := parseSubscriptionPlanFromForm(r)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 	if plan == nil || len(plan.Constraints) != 1 {
 		t.Fatalf("plan = %+v, want one constraint", plan)
 	}
@@ -238,7 +240,10 @@ func TestParseSubscriptionPlanFromForm_FairShareTuningLeftToDefaults(t *testing.
 		"plan_c0_token_budget":  "1000000",
 	})
 
-	plan := parseSubscriptionPlanFromForm(r, nil)
+	plan, err := parseSubscriptionPlanFromForm(r)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 	if plan == nil || len(plan.Constraints) != 1 {
 		t.Fatalf("plan = %+v, want one constraint", plan)
 	}
@@ -253,26 +258,26 @@ func TestParsePlanRatioField(t *testing.T) {
 	// An empty field clears the setting; an unusable one is reported as such so
 	// the caller can keep what the plan already held.
 	cases := []struct {
-		in     string
-		want   *float64
-		wantOK bool
+		in      string
+		want    *float64
+		wantErr bool
 	}{
-		{"", nil, true},
-		{"   ", nil, true},
-		{"not a number", nil, false},
-		{"30 %", nil, false},
-		{"-1", nil, false},
-		{"101", nil, false},
-		{"0", ptr(0.0), true},
-		{"30", ptr(0.3), true},
-		{"100", ptr(1.0), true},
-		{"12.5", ptr(0.125), true},
+		{"", nil, false},
+		{"   ", nil, false},
+		{"not a number", nil, true},
+		{"30 %", nil, true},
+		{"-1", nil, true},
+		{"101", nil, true},
+		{"0", ptr(0.0), false},
+		{"30", ptr(0.3), false},
+		{"100", ptr(1.0), false},
+		{"12.5", ptr(0.125), false},
 	}
 
 	for _, tc := range cases {
-		got, ok := parsePlanRatioField(tc.in)
-		if ok != tc.wantOK {
-			t.Errorf("parsePlanRatioField(%q) ok = %v, want %v", tc.in, ok, tc.wantOK)
+		got, err := parsePlanRatioField(tc.in)
+		if (err != nil) != tc.wantErr {
+			t.Errorf("parsePlanRatioField(%q) error = %v, want error: %v", tc.in, err, tc.wantErr)
 		}
 		switch {
 		case tc.want == nil && got != nil:
@@ -285,55 +290,46 @@ func TestParsePlanRatioField(t *testing.T) {
 	}
 }
 
-func TestParseSubscriptionPlanFromForm_InvalidTuningKeepsThePreviousValue(t *testing.T) {
-	// The form is the only writer of a plan: a typo must not silently replace a
-	// deliberate setting with the allocator's default.
-	reserve, lead := 0.4, model.PlanDuration(30*time.Minute)
-	previous := &model.SubscriptionPlan{
-		Label: "Pro",
-		Constraints: []model.PlanConstraint{{
-			Kind:             model.ConstraintRollingWindow,
-			Label:            "5h",
-			Duration:         model.PlanDuration(5 * time.Hour),
-			ReserveRatio:     &reserve,
-			HappyHourMaxLead: &lead,
-		}},
-	}
-
-	r := makeRequest(map[string]string{
-		"plan_label":                  "Pro",
-		"plan_constraint_count":       "1",
-		"plan_c0_kind":                "rolling_window",
-		"plan_c0_duration":            "5h",
+func TestParseSubscriptionPlanFromForm_InvalidTuningIsReported(t *testing.T) {
+	// The form is the only writer of a plan: a typo must be shown, not swallowed.
+	// Reverting to the default in silence leaves the operator believing they set
+	// a reserve they never set.
+	cases := map[string]string{
 		"plan_c0_reserve_ratio":       "30 %",
+		"plan_c0_pace_slack":          "-5",
+		"plan_c0_happy_hour_start":    "150",
 		"plan_c0_happy_hour_max_lead": "1 h",
-	})
+	}
 
-	plan := parseSubscriptionPlanFromForm(r, previous)
-	if plan == nil || len(plan.Constraints) != 1 {
-		t.Fatalf("plan = %+v, want one constraint", plan)
-	}
-	c := plan.Constraints[0]
-	if c.ReserveRatio == nil || *c.ReserveRatio != 0.4 {
-		t.Errorf("ReserveRatio = %v, want the previous 0.4 kept", c.ReserveRatio)
-	}
-	if c.HappyHourMaxLead == nil || c.HappyHourMaxLead.Duration() != 30*time.Minute {
-		t.Errorf("HappyHourMaxLead = %v, want the previous 30m kept", c.HappyHourMaxLead)
+	for field, value := range cases {
+		t.Run(field, func(t *testing.T) {
+			fields := map[string]string{
+				"plan_label":            "Pro",
+				"plan_constraint_count": "1",
+				"plan_c0_kind":          "rolling_window",
+				"plan_c0_label":         "5h",
+				"plan_c0_duration":      "5h",
+				field:                   value,
+			}
+
+			plan, err := parseSubscriptionPlanFromForm(makeRequest(fields))
+			if err == nil {
+				t.Fatalf("%s = %q accepted, want a validation error", field, value)
+			}
+			if plan != nil {
+				t.Errorf("plan = %+v, want none when the form cannot be read", plan)
+			}
+			// The message must say which constraint is at fault: a plan carries
+			// several, and they are edited on one screen.
+			if !strings.Contains(err.Error(), "5h") {
+				t.Errorf("error = %q, want it to name the constraint", err)
+			}
+		})
 	}
 }
 
-func TestParseSubscriptionPlanFromForm_EmptyTuningClearsThePreviousValue(t *testing.T) {
+func TestParseSubscriptionPlanFromForm_EmptyTuningKeepsTheDefaults(t *testing.T) {
 	// Clearing a field is a deliberate act: it returns the setting to its default.
-	reserve, lead := 0.4, model.PlanDuration(30*time.Minute)
-	previous := &model.SubscriptionPlan{
-		Constraints: []model.PlanConstraint{{
-			Kind:             model.ConstraintRollingWindow,
-			Duration:         model.PlanDuration(5 * time.Hour),
-			ReserveRatio:     &reserve,
-			HappyHourMaxLead: &lead,
-		}},
-	}
-
 	r := makeRequest(map[string]string{
 		"plan_label":                  "Pro",
 		"plan_constraint_count":       "1",
@@ -343,9 +339,13 @@ func TestParseSubscriptionPlanFromForm_EmptyTuningClearsThePreviousValue(t *test
 		"plan_c0_happy_hour_max_lead": "",
 	})
 
-	c := parseSubscriptionPlanFromForm(r, previous).Constraints[0]
+	plan, err := parseSubscriptionPlanFromForm(r)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	c := plan.Constraints[0]
 	if c.ReserveRatio != nil || c.HappyHourMaxLead != nil {
-		t.Errorf("tuning = (%v, %v), want both cleared", c.ReserveRatio, c.HappyHourMaxLead)
+		t.Errorf("tuning = (%v, %v), want both left to their defaults", c.ReserveRatio, c.HappyHourMaxLead)
 	}
 }
 

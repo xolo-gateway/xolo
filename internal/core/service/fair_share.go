@@ -158,26 +158,3 @@ func (s *FairShareService) Resolve(ctx context.Context, req FairShareRequest) (*
 
 	return res, nil
 }
-
-// Mode returns the mode to display for a constraint carrying one or both
-// budgets: the most restrictive of the two, so a gauge is never left without the
-// badge that explains it.
-func (r *FairShareResult) Mode() model.FairShareMode {
-	return narrowestMode(r.TokenMode, r.ValueMode)
-}
-
-func narrowestMode(a, b model.FairShareMode) model.FairShareMode {
-	if a == "" {
-		return b
-	}
-	if b == "" {
-		return a
-	}
-	if a == model.FairShareModeThrottled || b == model.FairShareModeThrottled {
-		return model.FairShareModeThrottled
-	}
-	if a == model.FairShareModeShared || b == model.FairShareModeShared {
-		return model.FairShareModeShared
-	}
-	return a
-}

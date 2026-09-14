@@ -162,8 +162,8 @@ func TestFairShareService_ActiveCountIsClampedToTheMembership(t *testing.T) {
 
 func TestFairShareService_ModeIsPerBudget(t *testing.T) {
 	// The pacing factor depends on how full each budget is, so one constraint can
-	// be throttled on tokens and still shared on value. Mode() keeps the most
-	// restrictive of the two for a single-badge display.
+	// be throttled on tokens and still shared on value — which is why the screens
+	// badge each gauge from its own mode.
 	anchor := time.Now().Add(-15 * time.Minute)
 	c := tokenAndValueConstraint(1000, 10_000)
 	c.WindowAnchor = &anchor
@@ -180,9 +180,6 @@ func TestFairShareService_ModeIsPerBudget(t *testing.T) {
 	}
 	if got.ValueMode != model.FairShareModeShared {
 		t.Errorf("value mode = %q, want shared", got.ValueMode)
-	}
-	if got.Mode() != model.FairShareModeThrottled {
-		t.Errorf("Mode() = %q, want the most restrictive of the two", got.Mode())
 	}
 }
 
