@@ -131,6 +131,26 @@ func (c *captureHost) waitForEvent(t *testing.T) pluginsdk.Event {
 	return c.event
 }
 
+// assertNoEvent fails if an event turns up within the window.
+//
+// The positive counterpart polls until one arrives; asserting the absence of
+// one has to wait out the window instead, because emitEvent publishes from a
+// goroutine. Reading the field straight after PreRequest would pass whether the
+// event was coming or not, and would race the writer.
+func (c *captureHost) assertNoEvent(t *testing.T, window time.Duration) {
+	t.Helper()
+	deadline := time.Now().Add(window)
+	for time.Now().Before(deadline) {
+		c.mu.Lock()
+		got := c.event
+		c.mu.Unlock()
+		if got.Type != "" {
+			t.Fatalf("an event was emitted: %s %v", got.Type, got.Attributes)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
 func TestHandleVerificationError_Allow(t *testing.T) {
 	cfg := defaultConfig()
 	cfg.VerificationStrict = true

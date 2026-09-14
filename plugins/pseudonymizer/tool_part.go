@@ -2,6 +2,8 @@ package main
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"strings"
 
@@ -338,7 +340,8 @@ func keepDetectedTypes(entities []ner.Entity, skipTypes []string) []ner.Entity {
 // `encrypted_content` would be read again on every request for no answer.
 //
 // `url` and `title` are deliberately absent: a URL path can carry a name and a
-// title routinely does.
+// title routinely does. The skip applies to string values only, so an object
+// that happens to sit under one of these names is still walked.
 var opaqueLeafKeys = map[string]bool{
 	"encrypted_content": true,
 	"data":              true,
@@ -351,49 +354,45 @@ var opaqueLeafKeys = map[string]bool{
 
 // detectLeaves walks a decoded JSON value read-only, running detect over
 // every string leaf and folding what it finds into counts, without rewriting
-// anything. It returns the total number of entities found.
+// anything. Counting happens in detect, once per distinct value, so there is
+// nothing to total here.
 //
 // The counterpart to anonymizeLeaves for content this plugin forwards
 // unpseudonymized on purpose (a thinking block, an unrecognized part type):
 // there is no mapping to build and nothing to reuse a placeholder for, only
 // a leak an operator should not have to infer from a debug log.
-func detectLeaves(v any, detect func(string) ([]ner.Entity, error), counts map[string]int) (int, error) {
+func detectLeaves(v any, detect func(string) ([]ner.Entity, error)) error {
 	switch value := v.(type) {
 	case string:
 		if value == "" {
-			return 0, nil
+			return nil
 		}
-		entities, err := detect(value)
-		if err != nil {
-			return 0, err
-		}
-		countEntities(counts, entities)
-		return len(entities), nil
+		_, err := detect(value)
+		return err
 	case map[string]any:
-		total := 0
 		for key, sub := range value {
-			if opaqueLeafKeys[key] {
+			// Only a string leaf is skipped. `data` and `id` are generic
+			// enough that an object can sit under them, and skipping the whole
+			// subtree on the name alone would blind the scan exactly where the
+			// catch-all needs it: an unrecognized block type is where free
+			// text hides under a name nobody has classified yet.
+			if _, isString := sub.(string); isString && opaqueLeafKeys[key] {
 				continue
 			}
-			n, err := detectLeaves(sub, detect, counts)
-			total += n
-			if err != nil {
-				return total, err
+			if err := detectLeaves(sub, detect); err != nil {
+				return err
 			}
 		}
-		return total, nil
+		return nil
 	case []any:
-		total := 0
 		for _, sub := range value {
-			n, err := detectLeaves(sub, detect, counts)
-			total += n
-			if err != nil {
-				return total, err
+			if err := detectLeaves(sub, detect); err != nil {
+				return err
 			}
 		}
-		return total, nil
+		return nil
 	default:
-		return 0, nil
+		return nil
 	}
 }
 
@@ -524,4 +523,37 @@ func anonymizeArgumentsValue(raw any, anonymize func(string) (string, error)) (a
 	default:
 		return rewriteLeaves(args, anonymize)
 	}
+}
+
+// leakKey identifies a detected entity for deduplication, without keeping the
+// value itself.
+//
+// The surface form is normalized the way go-anon normalizes it before reusing
+// a placeholder — trimmed and lowercased — so that a leak and a pseudonymized
+// entity count as one value on both sides of the event: "Marc Durand" and
+// "marc durand" are the same leak, as they would be the same mapping entry.
+//
+// The form is then hashed. Deduplicating needs equality, not the text, and a
+// map of detected personal data held for the life of the request is a thing to
+// avoid when nothing requires it.
+func leakKey(e ner.Entity) string {
+	sum := sha256.Sum256([]byte(strings.ToLower(strings.TrimSpace(e.Text))))
+	return string(e.Type) + "\x00" + hex.EncodeToString(sum[:8])
+}
+
+// leakTypesOf counts the distinct leaked values per entity type.
+//
+// Derived from the same set the total is derived from, so the two can never
+// disagree: reporting one leaked value next to a type count of five was the
+// contradiction this replaces.
+func leakTypesOf(values map[string]bool) map[string]int {
+	counts := make(map[string]int, len(values))
+	for key := range values {
+		entityType, _, found := strings.Cut(key, "\x00")
+		if !found {
+			continue
+		}
+		counts[entityType]++
+	}
+	return counts
 }

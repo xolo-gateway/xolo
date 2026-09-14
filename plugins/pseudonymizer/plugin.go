@@ -252,18 +252,19 @@ func (p *Plugin) PreRequest(ctx context.Context, in *proto.PreRequestInput) (*pr
 		// personnelles jusqu'au modèle.
 		anonymizeFailures int
 		lastAnonymizeErr  error
-		// leakTypeCounts et leakEntities comptent ce que Detect trouve dans un
-		// contenu volontairement transmis sans réécriture (bloc thinking, appel
-		// web_search, type de bloc non reconnu) : jamais ajouté à
-		// session.Mapping, donc tenu à part de typeCounts pour que ce dernier
-		// reste cohérent avec le nombre d'entités réellement pseudonymisées.
-		leakTypeCounts = map[string]int{}
-		// leakValues holds the distinct values found in clear-text content,
-		// keyed by type and surface form. Distinct and not occurrences,
-		// because the event sets this count beside `entities`, which is
-		// len(session.Mapping): one address quoted five times in a thinking
-		// block is one leak, and reporting it as five reads as five different
-		// things having escaped.
+		// leakValues holds what Detect found in content deliberately forwarded
+		// without rewriting (a thinking block, a web_search call, an
+		// unrecognized block type). Never added to session.Mapping, so kept
+		// apart from typeCounts, which stays about what was actually replaced.
+		//
+		// Keyed by entity type and a digest of the normalized surface form,
+		// which does two things. Distinct values, because the event sets this
+		// count beside `entities` — len(session.Mapping) — and one address
+		// quoted five times in a thinking block is one leak, not five. And a
+		// digest rather than the text, because deduplicating does not require
+		// holding the personal data itself for the life of the request. The
+		// normalization matches the session's, so the two sides count the same
+		// unit: "Marc Durand" and "marc durand" are one value on both.
 		leakValues = map[string]bool{}
 	)
 
@@ -276,32 +277,27 @@ func (p *Plugin) PreRequest(ctx context.Context, in *proto.PreRequestInput) (*pr
 		}
 		kept := keepDetectedTypes(entities, cfg.SkipTypes)
 		for _, e := range kept {
-			leakValues[string(e.Type)+"\x00"+e.Text] = true
+			leakValues[leakKey(e)] = true
 		}
 		return kept, nil
 	}
 
-	// detectLeak scanne en lecture seule un contenu qui ne sera pas réécrit et
-	// compte ce qu'il trouve, sans jamais toucher session.Mapping.
+	// detectLeak scanne en lecture seule un contenu qui ne sera pas réécrit.
+	// Le comptage se fait dans detectKept, une fois par valeur distincte.
 	detectLeak := func(text string) {
 		if text == "" {
 			return
 		}
-		entities, err := detectKept(text)
-		if err != nil {
+		if _, err := detectKept(text); err != nil {
 			slog.WarnContext(ctx, "pseudonymizer: failed to scan unpseudonymized content", slog.Any("error", err))
-			return
 		}
-		countEntities(leakTypeCounts, entities)
 	}
 
 	// detectLeakIn fait le même travail sur une forme entière, quelle qu'elle
 	// soit. Un scan qui échoue à mi-parcours garde ce qu'il avait déjà trouvé :
-	// detectKept inscrit chaque valeur dans leakValues au fil de la descente,
-	// et leakTypeCounts est alimenté de même, donc les deux compteurs restent
-	// d'accord quoi qu'il arrive.
+	// detectKept inscrit chaque valeur au fil de la descente.
 	detectLeakIn := func(v any, partType string) {
-		_, err := detectLeaves(v, detectKept, leakTypeCounts)
+		err := detectLeaves(v, detectKept)
 		if err != nil {
 			slog.WarnContext(ctx, "pseudonymizer: failed to scan unpseudonymized part",
 				slog.String("type", partType),
@@ -640,6 +636,7 @@ func (p *Plugin) PreRequest(ctx context.Context, in *proto.PreRequestInput) (*pr
 	// excluded web_search query, an unrecognized part type), or a
 	// non-anonymizable attachment had to be removed.
 	leakEntities := len(leakValues)
+	leakTypeCounts := leakTypesOf(leakValues)
 	if len(session.Mapping) > 0 || len(removedParts) > 0 || leakEntities > 0 {
 		var parts []string
 		if len(session.Mapping) > 0 {

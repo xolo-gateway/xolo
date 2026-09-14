@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+	"time"
 
 	proto "github.com/xolo-gateway/xolo/pkg/pluginsdk/proto"
 )
@@ -546,6 +547,45 @@ func TestPreRequest_WebSearchServerToolUseIsScannedBeyondItsQuery(t *testing.T) 
 	}
 }
 
+// A leaked type count has to be in the same unit as the leaked total, or the
+// same event says one value escaped and names five of them.
+func TestPreRequest_LeakTypesAreDistinctValuesToo(t *testing.T) {
+	cfg := attachmentConfig(t)
+	_, host := preRequestPartsWithHost(t, cfg, []any{
+		map[string]any{
+			"type":      "thinking",
+			"signature": "sig-abc123",
+			"thinking":  strings.Repeat("note : marc.durand@exemple.fr. ", 5),
+		},
+	})
+
+	evt := host.waitForEvent(t)
+	if got := evt.Attributes["leak_types"]; got != "EMAIL:1" {
+		t.Errorf("leak_types = %q, want EMAIL:1", got)
+	}
+	if got := evt.Attributes["leak_entities"]; got != "1" {
+		t.Errorf("leak_entities = %q, want 1", got)
+	}
+}
+
+// The same value written two ways is one leak, as it would be one mapping
+// entry once pseudonymized.
+func TestPreRequest_LeakDeduplicationMatchesTheSessionNormalization(t *testing.T) {
+	cfg := attachmentConfig(t)
+	_, host := preRequestPartsWithHost(t, cfg, []any{
+		map[string]any{
+			"type":      "thinking",
+			"signature": "sig-abc123",
+			"thinking":  "note : Marc.Durand@Exemple.fr puis marc.durand@exemple.fr",
+		},
+	})
+
+	evt := host.waitForEvent(t)
+	if got := evt.Attributes["leak_entities"]; got != "1" {
+		t.Errorf("leak_entities = %q, want 1", got)
+	}
+}
+
 // `entities` counts distinct pseudonymized values, so the leak count set beside
 // it in the same sentence has to be distinct too. One address quoted five times
 // is one leak; reporting five reads as five different things having escaped.
@@ -589,9 +629,7 @@ func TestPreRequest_OpaqueFieldsAreNotScannedForLeaks(t *testing.T) {
 		},
 	})
 
-	if evt := host.event; evt.Type != "" {
-		t.Errorf("encrypted_content was scanned: %v", evt.Attributes)
-	}
+	host.assertNoEvent(t, 500*time.Millisecond)
 }
 
 // The assistant's own text in a Responses history. Left out of the text family,
