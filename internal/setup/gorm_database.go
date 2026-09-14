@@ -13,11 +13,11 @@ import (
 	"gorm.io/gorm/logger"
 )
 
-// IsPostgresDSN reports whether dsn addresses a PostgreSQL server. Both the URL
+// isPostgresDSN reports whether dsn addresses a PostgreSQL server. Both the URL
 // form ("postgres://user:pass@host/db") and the libpq keyword form
 // ("host=... user=... dbname=...") are recognized; anything else is treated as
 // a SQLite file path, which keeps the historical default working.
-func IsPostgresDSN(dsn string) bool {
+func isPostgresDSN(dsn string) bool {
 	trimmed := strings.TrimSpace(dsn)
 
 	for _, prefix := range []string{"postgres://", "postgresql://"} {
@@ -39,7 +39,7 @@ func IsPostgresDSN(dsn string) bool {
 
 var getGormDatabaseFromConfig = createFromConfigOnce(func(ctx context.Context, conf *config.Config) (*gorm.DB, error) {
 	dsn := conf.Storage.Database.DSN
-	usePostgres := IsPostgresDSN(dsn)
+	usePostgres := isPostgresDSN(dsn)
 
 	var dialector gorm.Dialector
 	if usePostgres {
