@@ -141,7 +141,7 @@ func (h *Handler) createProvider(w http.ResponseWriter, r *http.Request) {
 	p.SetCloudTier(cloudTier)
 	p.SetBillingMode(billingMode)
 	if billingMode == model.BillingModeSubscription {
-		p.SetSubscriptionPlan(parseSubscriptionPlanFromForm(r))
+		p.SetSubscriptionPlan(parseSubscriptionPlanFromForm(r, nil))
 	}
 	if err := h.providerStore.CreateProvider(ctx, p); err != nil {
 		slog.ErrorContext(ctx, "could not create provider", slogx.Error(err))
@@ -289,7 +289,7 @@ func (h *Handler) updateProvider(w http.ResponseWriter, r *http.Request) {
 	}
 	var subscriptionPlan *model.SubscriptionPlan
 	if billingMode == model.BillingModeSubscription {
-		subscriptionPlan = parseSubscriptionPlanFromForm(r)
+		subscriptionPlan = parseSubscriptionPlanFromForm(r, existing.SubscriptionPlan())
 	}
 
 	updated := &updatedProviderAdapter{
@@ -518,25 +518,51 @@ func parseActiveParamsField(v string) int64 {
 	return int64(f * 1e9)
 }
 
-// parsePlanRatioField reads one of the fair-share percentages, returning nil for
-// an empty or out-of-range value so the allocator applies its default rather than
-// a figure nobody meant. The stored form is a fraction, the edited one a percentage.
-func parsePlanRatioField(value string) *float64 {
+// parsePlanRatioField reads one of the fair-share percentages. The stored form is
+// a fraction, the edited one a percentage.
+//
+// An empty field clears the setting, so the allocator applies its default. An
+// unusable one (a typo, a value out of range) is reported as such rather than
+// read as empty: the form is the only writer of a plan, so silently treating
+// "30 %" as "unset" would erase a setting the operator had deliberately made.
+func parsePlanRatioField(value string) (ratio *float64, ok bool) {
 	value = strings.TrimSpace(value)
 	if value == "" {
-		return nil
+		return nil, true
 	}
 	pct, err := strconv.ParseFloat(value, 64)
 	if err != nil || pct < 0 || pct > 100 {
-		return nil
+		return nil, false
 	}
-	ratio := pct / 100
-	return &ratio
+	fraction := pct / 100
+	return &fraction, true
+}
+
+// planRatioOrPrevious applies the submitted percentage, keeping what the plan
+// already held when the field cannot be read.
+func planRatioOrPrevious(value string, previous *float64) *float64 {
+	ratio, ok := parsePlanRatioField(value)
+	if !ok {
+		return previous
+	}
+	return ratio
+}
+
+// previousConstraint returns the constraint at the same position in the plan
+// being edited, if any. Rows keep their order across a save, so the position is
+// what ties a submitted row to the values it carried.
+func previousConstraint(previous *model.SubscriptionPlan, idx int) model.PlanConstraint {
+	if previous == nil || idx < 0 || idx >= len(previous.Constraints) {
+		return model.PlanConstraint{}
+	}
+	return previous.Constraints[idx]
 }
 
 // parseSubscriptionPlanFromForm reads the structured subscription plan fields
-// submitted by the SubscriptionPlanEditor component.
-func parseSubscriptionPlanFromForm(r *http.Request) *model.SubscriptionPlan {
+// submitted by the SubscriptionPlanEditor component. previous is the plan being
+// edited, if any: a setting the form cannot read falls back to the value it
+// already held rather than to the allocator's default.
+func parseSubscriptionPlanFromForm(r *http.Request, previous *model.SubscriptionPlan) *model.SubscriptionPlan {
 	label := strings.TrimSpace(r.FormValue("plan_label"))
 	countStr := r.FormValue("plan_constraint_count")
 	if countStr == "" {
@@ -578,12 +604,19 @@ func parseSubscriptionPlanFromForm(r *http.Request) *model.SubscriptionPlan {
 			// Fair-share tuning. Left empty, each keeps the allocator's default:
 			// the form is the only writer of a plan, so a field it does not read is
 			// a field the next save silently erases.
-			c.ReserveRatio = parsePlanRatioField(r.FormValue(prefix + "reserve_ratio"))
-			c.PaceSlack = parsePlanRatioField(r.FormValue(prefix + "pace_slack"))
-			c.HappyHourStart = parsePlanRatioField(r.FormValue(prefix + "happy_hour_start"))
-			if lead, err := time.ParseDuration(strings.TrimSpace(r.FormValue(prefix + "happy_hour_max_lead"))); err == nil && lead > 0 {
-				d := model.PlanDuration(lead)
-				c.HappyHourMaxLead = &d
+			prev := previousConstraint(previous, i)
+			c.ReserveRatio = planRatioOrPrevious(r.FormValue(prefix+"reserve_ratio"), prev.ReserveRatio)
+			c.PaceSlack = planRatioOrPrevious(r.FormValue(prefix+"pace_slack"), prev.PaceSlack)
+			c.HappyHourStart = planRatioOrPrevious(r.FormValue(prefix+"happy_hour_start"), prev.HappyHourStart)
+			switch lead := strings.TrimSpace(r.FormValue(prefix + "happy_hour_max_lead")); {
+			case lead == "":
+			default:
+				if d, err := time.ParseDuration(lead); err == nil && d > 0 {
+					pd := model.PlanDuration(d)
+					c.HappyHourMaxLead = &pd
+				} else {
+					c.HappyHourMaxLead = prev.HappyHourMaxLead
+				}
 			}
 		case model.ConstraintConcurrency:
 			if mc, err := strconv.Atoi(r.FormValue(prefix + "max_concurrent")); err == nil && mc > 0 {

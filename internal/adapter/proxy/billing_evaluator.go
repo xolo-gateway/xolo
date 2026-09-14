@@ -122,6 +122,8 @@ func (e *rollingWindowEvaluator) Acquire(ctx context.Context, scope planScope, c
 
 	// Per-user fair-share check.
 	if scope.UserID != "" && scope.MemberCount > 0 {
+		// The plan-wide totals were just read for the check above; handing them to
+		// the allocator keeps this to one aggregation of the window per request.
 		share, err := e.fairShare.Resolve(ctx, service.FairShareRequest{
 			OrgID:       scope.OrgID,
 			ProviderID:  scope.ProviderID,
@@ -129,6 +131,7 @@ func (e *rollingWindowEvaluator) Acquire(ctx context.Context, scope planScope, c
 			MemberCount: scope.MemberCount,
 			Constraint:  c,
 			Now:         now,
+			PlanUsage:   &service.PlanUsage{Tokens: tokens, Value: providerValue},
 		})
 		if err != nil {
 			return nil, nil, err

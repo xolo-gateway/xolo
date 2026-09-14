@@ -238,12 +238,84 @@ func TestComputeFairShare_HappyHourSplitsTheLeftoverBetweenActiveUsers(t *testin
 	if got.Mode != FairShareModeHappyHour {
 		t.Fatalf("mode = %q, want happy_hour", got.Mode)
 	}
-	// 100 already held + (1000−400)/4 of the leftover.
-	if got.Allowance != 250 {
-		t.Errorf("allowance = %d, want 250", got.Allowance)
+	// The other three consumed 300 between them; the remaining 700 is split four
+	// ways, so this user may hold 175 in total.
+	if got.Allowance != 175 {
+		t.Errorf("allowance = %d, want 175", got.Allowance)
 	}
 	if got.Allowance >= p.Budget {
 		t.Errorf("allowance = %d, want less than the whole budget while others are active", got.Allowance)
+	}
+}
+
+func TestComputeFairShare_HappyHourAllowanceDoesNotGrowAsItIsConsumed(t *testing.T) {
+	// The check that guards a budget compares usage against the allowance, so an
+	// allowance derived from that same usage can never fire. Consuming up to the
+	// allowance and recomputing must not raise it.
+	p := happyHourParams()
+	p.ActiveUsers = 4
+	p.UsedTotal = 400
+	p.UserUsed = 100
+
+	first := ComputeFairShare(p).Allowance
+
+	// The user consumes up to their allowance; nobody else moves.
+	p.UsedTotal += first - p.UserUsed
+	p.UserUsed = first
+
+	if second := ComputeFairShare(p).Allowance; second > first {
+		t.Errorf("allowance rose from %d to %d as it was consumed, want it stable", first, second)
+	}
+
+	// Iterating the grant must stay bounded by the share, not drift up to the
+	// whole budget one request at a time.
+	for range 20 {
+		alloc := ComputeFairShare(p).Allowance
+		if p.UserUsed >= alloc {
+			break
+		}
+		p.UsedTotal += alloc - p.UserUsed
+		p.UserUsed = alloc
+	}
+	if p.UserUsed > 200 {
+		t.Errorf("user ended up holding %d of a 1000 budget shared with 3 others, want it bounded near their share", p.UserUsed)
+	}
+}
+
+func TestComputeFairShare_HappyHourGivesTheWholeLeftoverToASoleUser(t *testing.T) {
+	// The point of the happy hour: with nobody else active, what would be
+	// destroyed at the reset goes to the one user who is there.
+	p := happyHourParams()
+	p.ActiveUsers = 1
+	p.UsedTotal = 200
+	p.UserUsed = 200
+
+	if got := ComputeFairShare(p); got.Allowance != p.Budget {
+		t.Errorf("allowance = %d, want the whole budget %d", got.Allowance, p.Budget)
+	}
+}
+
+func TestComputeFairShare_ThrottledOnlyWhenTheShareActuallyNarrows(t *testing.T) {
+	// A plan reserving its whole budget has no commons to close: reporting it as
+	// throttled would put a "narrowed share" badge on an unchanged allowance.
+	p := FairShareParams{
+		Budget:         1000,
+		TotalMembers:   10,
+		ActiveUsers:    2,
+		UsedTotal:      900,
+		Elapsed:        0.1,
+		WindowDuration: 5 * time.Hour,
+		Reserve:        1,
+		Slack:          DefaultPaceSlack,
+		HappyHourStart: DefaultHappyHourStart,
+	}
+
+	got := ComputeFairShare(p)
+	if got.Mode == FairShareModeThrottled {
+		t.Errorf("mode = %q, want no throttling when the whole budget is reserved", got.Mode)
+	}
+	if got.Allowance != 100 {
+		t.Errorf("allowance = %d, want the untouched guaranteed floor", got.Allowance)
 	}
 }
 

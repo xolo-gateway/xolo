@@ -16,11 +16,13 @@ type UsageRecord struct {
 	// range, then user_id / currency / cost read from the index itself): on a
 	// yearly budget it otherwise visited every row of the org since January.
 	//
-	// idx_usage_org_prov_plan is its subscription counterpart, for the three
-	// aggregations the fair-share allocator runs per rolling-window constraint
-	// (plan totals, the caller's totals, and the DISTINCT count of active users).
-	// It leads on provider_id, which the PAYG index does not carry, and ends on
-	// user_id so the count is served from the index.
+	// idx_usage_org_prov_plan is its subscription counterpart. It leads on
+	// provider_id, which the PAYG index does not carry, and serves the two
+	// plan-wide aggregations of the fair-share allocator: the window totals, and
+	// the DISTINCT count of active users, which it answers from the index alone.
+	// It does not serve the caller's own totals — user_id sits after the
+	// created_at range, so an equality on it cannot be used as a prefix; that
+	// query stays on idx_usage_user_org_created.
 	CreatedAt         time.Time `gorm:"index:idx_usage_org_created,priority:2;index:idx_usage_user_org_created,priority:3;index:idx_usage_org_payg_cost,priority:3;index:idx_usage_org_prov_plan,priority:4"`
 	UserID            string    `gorm:"index;index:idx_usage_user_org_created,priority:1;index:idx_usage_org_payg_cost,priority:4;index:idx_usage_org_prov_plan,priority:5"`
 	ApplicationID     string    `gorm:"index"`

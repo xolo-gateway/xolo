@@ -185,3 +185,60 @@ func TestFairShareService_ModeIsPerBudget(t *testing.T) {
 		t.Errorf("Mode() = %q, want the most restrictive of the two", got.Mode())
 	}
 }
+
+func TestFairShareService_PreReadPlanTotalsAreNotSummedAgain(t *testing.T) {
+	// The enforcer reads the plan totals to check the plan-wide budget before
+	// allocating; re-aggregating the same window would double the cost of the
+	// proxy hot path, per constraint.
+	reader := &countingPlanUsageReader{fakePlanUsageReader: fakePlanUsageReader{userTokens: 100, otherActiveUsers: 2}}
+	svc := service.NewFairShareService(reader)
+
+	req := request(tokenAndValueConstraint(1000, 10_000))
+	req.PlanUsage = &service.PlanUsage{Tokens: 300, Value: 3_000}
+
+	got, err := svc.Resolve(context.Background(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if reader.planSums != 0 {
+		t.Errorf("SumPlanUsageSince called %d times, want 0 when the totals are handed in", reader.planSums)
+	}
+	if got.PlanTokens != 300 || got.PlanValue != 3_000 {
+		t.Errorf("plan usage = (%d, %d), want the values handed in", got.PlanTokens, got.PlanValue)
+	}
+	// The allocation must be the same as if it had read them itself.
+	if *got.TokenAllowance != 248 {
+		t.Errorf("token allowance = %d, want 248", *got.TokenAllowance)
+	}
+}
+
+func TestFairShareService_NotApplicableWithoutMembershipOrUser(t *testing.T) {
+	// The degradation invariant — every fallback narrows the allowance — only
+	// holds with a membership to divide by. Without one, a failed count would
+	// leave a single "active" user holding the whole commons, so the service
+	// refuses rather than relying on its callers to filter.
+	svc := service.NewFairShareService(&fakePlanUsageReader{})
+
+	noMembers := request(tokenAndValueConstraint(1000, 10_000))
+	noMembers.MemberCount = 0
+	if _, err := svc.Resolve(context.Background(), noMembers); !errors.Is(err, service.ErrFairShareNotApplicable) {
+		t.Errorf("error = %v, want ErrFairShareNotApplicable", err)
+	}
+
+	noUser := request(tokenAndValueConstraint(1000, 10_000))
+	noUser.UserID = ""
+	if _, err := svc.Resolve(context.Background(), noUser); !errors.Is(err, service.ErrFairShareNotApplicable) {
+		t.Errorf("error = %v, want ErrFairShareNotApplicable", err)
+	}
+}
+
+// countingPlanUsageReader counts the plan-wide aggregations it is asked for.
+type countingPlanUsageReader struct {
+	fakePlanUsageReader
+	planSums int
+}
+
+func (f *countingPlanUsageReader) SumPlanUsageSince(ctx context.Context, orgID model.OrgID, providerID model.ProviderID, since time.Time) (int64, int64, error) {
+	f.planSums++
+	return f.fakePlanUsageReader.SumPlanUsageSince(ctx, orgID, providerID, since)
+}

@@ -241,7 +241,11 @@ func ComputeFairShare(p FairShareParams) FairShareAllocation {
 	commons := (1 - reserve) * budget / float64(active)
 
 	mode := FairShareModeShared
-	if anchored {
+	if anchored && commons > 0 {
+		// Only a pacing factor that actually narrows the allowance is reported as
+		// throttling: a plan reserving its whole budget has no commons to close,
+		// and a "Part réduite" badge on an unchanged share is the kind of
+		// unexplainable signal the modes exist to avoid.
 		if factor := pacingFactor(float64(p.UsedTotal)/budget, p.Elapsed, p.Slack); factor < 1 {
 			commons *= factor
 			mode = FairShareModeThrottled
@@ -276,20 +280,25 @@ func (p FairShareParams) inHappyHour() bool {
 	return remaining <= lead
 }
 
-// happyHourAllowance lets a user keep what they already consumed and take an
-// equal share of what is left. With a single active user this hands them the
-// whole budget; with several it stops the first one to notice from taking it all.
+// happyHourAllowance gives each active user an equal share of what the others
+// have left. With a single active user this hands them the whole budget; with
+// several it stops the first one to notice from taking it all.
+//
+// The share is computed from what the OTHER users consumed, never from the
+// caller's own total: an allowance of the form "what I already used, plus a
+// share of the rest" grows as it is consumed, so the check that compares usage
+// to it can never fire.
 func (p FairShareParams) happyHourAllowance() int64 {
 	active := int64(max(p.ActiveUsers, 1))
-	leftover := p.Budget - p.UsedTotal
-	if leftover < 0 {
-		leftover = 0
+	othersUsed := p.UsedTotal - p.UserUsed
+	if othersUsed < 0 {
+		othersUsed = 0
 	}
-	allowance := p.UserUsed + leftover/active
-	if allowance > p.Budget {
-		allowance = p.Budget
+	available := p.Budget - othersUsed
+	if available < 0 {
+		available = 0
 	}
-	return allowance
+	return available / active
 }
 
 // pacingFactor returns how much of the commons stays open, given how far plan

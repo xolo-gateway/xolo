@@ -617,16 +617,19 @@ func (h *Handler) buildDashboardSubscriptionUsage(ctx context.Context, orgID mod
 					cu.WindowStart = since
 					cu.Anchored = c.IsAnchored()
 					cu.ResetAt = c.NextResetAt(now)
-					tokens, value, sumErr := h.usageStore.SumUserPlanUsageSince(ctx, userID, orgID, p.ID(), since)
-					if sumErr != nil {
-						slog.WarnContext(ctx, "could not sum user plan usage", slogx.Error(sumErr))
-					} else {
-						cu.TokensUsed = tokens
-						cu.ValueUsed = value
-					}
 					// Show the same denominators the enforcer decides against, so a
 					// varying allowance stays readable instead of looking arbitrary.
-					applyFairShare(ctx, h.fairShare, &cu, c, orgID, p.ID(), userID, memberCount, now)
+					// The allocation reads this user's totals on the way, so they are
+					// taken from it rather than summed a second time.
+					if !applyFairShare(ctx, h.fairShare, &cu, c, orgID, p.ID(), userID, memberCount, now) {
+						tokens, value, sumErr := h.usageStore.SumUserPlanUsageSince(ctx, userID, orgID, p.ID(), since)
+						if sumErr != nil {
+							slog.WarnContext(ctx, "could not sum user plan usage", slogx.Error(sumErr))
+						} else {
+							cu.TokensUsed = tokens
+							cu.ValueUsed = value
+						}
+					}
 					// Window free-up hint is a window-level property → org-wide oldest record.
 					if oldest, oldestErr := h.usageStore.EarliestPlanUsageSince(ctx, orgID, p.ID(), since); oldestErr != nil {
 						slog.WarnContext(ctx, "could not get earliest plan usage", slogx.Error(oldestErr))
@@ -668,9 +671,9 @@ func applyFairShare(
 	userID model.UserID,
 	memberCount int64,
 	now time.Time,
-) {
-	if fairShare == nil || memberCount <= 0 || (c.TokenBudget == nil && c.ValueBudget == nil) {
-		return
+) bool {
+	if fairShare == nil || memberCount <= 0 || userID == "" || (c.TokenBudget == nil && c.ValueBudget == nil) {
+		return false
 	}
 
 	share, err := fairShare.Resolve(ctx, service.FairShareRequest{
@@ -683,7 +686,7 @@ func applyFairShare(
 	})
 	if err != nil {
 		slog.WarnContext(ctx, "could not resolve fair-share denominators", slogx.Error(err))
-		return
+		return false
 	}
 
 	if share.TokenAllowance != nil {
@@ -694,11 +697,15 @@ func applyFairShare(
 	}
 
 	cu.Constraint = c
+	cu.TokensUsed = share.UserTokens
+	cu.ValueUsed = share.UserValue
 	cu.TokenMode = share.TokenMode
 	cu.ValueMode = share.ValueMode
 	cu.ActiveUsers = share.ActiveUsers
 	cu.MemberCount = int(memberCount)
 	cu.ShareDegraded = share.CountDegraded
+
+	return true
 }
 
 // fairShareConstraint returns a copy of the constraint whose budgets (token, value,
