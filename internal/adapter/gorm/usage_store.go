@@ -256,6 +256,23 @@ func (s *Store) SumUserPlanUsageSince(ctx context.Context, userID model.UserID, 
 	return row.Tokens, row.ProviderValue, nil
 }
 
+// CountActivePlanUsersSince implements port.UsageStore.
+func (s *Store) CountActivePlanUsersSince(ctx context.Context, orgID model.OrgID, providerID model.ProviderID, since time.Time) (int64, error) {
+	var count int64
+
+	err := s.withRetry(ctx, false, func(ctx context.Context, db *gorm.DB) error {
+		return errors.WithStack(db.Model(&UsageRecord{}).
+			Select("COUNT(DISTINCT user_id)").
+			Where("org_id = ? AND provider_id = ? AND created_at >= ? AND plan_covered = 1 AND user_id <> ''",
+				string(orgID), string(providerID), since).
+			Scan(&count).Error)
+	})
+	if err != nil {
+		return 0, err
+	}
+	return count, nil
+}
+
 // dimensionGroupExpr returns the SQL expression to GROUP BY for a usage
 // dimension, spelled for the backend db talks to.
 func dimensionGroupExpr(db *gorm.DB, d port.UsageDimension) (string, error) {

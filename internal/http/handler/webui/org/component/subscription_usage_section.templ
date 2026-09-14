@@ -72,7 +72,17 @@ templ rollingWindowConstraintRow(cu SubscriptionConstraintUsage) {
 			} else {
 				@common.Badge(common.ToneNeutral, "Fenêtre glissante")
 			}
+			if cu.FairShareMode == model.FairShareModeThrottled {
+				@common.Badge(common.ToneWarning, "Part réduite")
+			} else if cu.FairShareMode == model.FairShareModeHappyHour {
+				@common.Badge(common.TonePositive, "Quota ouvert")
+			}
 		</div>
+		if cu.FairShareMode == model.FairShareModeThrottled {
+			<p class="text-xs text-muted-foreground">Le forfait se consomme plus vite que la fenêtre ne s'écoule : votre part est resserrée jusqu'à ce que la consommation rejoigne son rythme.</p>
+		} else if cu.FairShareMode == model.FairShareModeHappyHour {
+			<p class="text-xs text-muted-foreground">Fin de fenêtre : le quota restant serait perdu à la réinitialisation, il est ouvert à tous.</p>
+		}
 		// Token budget bar
 		if cu.Constraint.TokenBudget != nil && *cu.Constraint.TokenBudget > 0 {
 			{{ pctTokens := clampPct(cu.TokensUsed, *cu.Constraint.TokenBudget) }}

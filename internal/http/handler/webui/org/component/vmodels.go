@@ -138,6 +138,9 @@ type SubscriptionConstraintUsage struct {
 	Anchored bool
 	// ResetAt is the instant the current fixed window resets (zero for sliding windows).
 	ResetAt time.Time
+	// FairShareMode explains how the per-user budgets above were allocated (empty
+	// when the figures are org-wide, or when the allocation could not be computed).
+	FairShareMode model.FairShareMode
 	// concurrency fields
 	InFlight  int
 	Exhausted bool

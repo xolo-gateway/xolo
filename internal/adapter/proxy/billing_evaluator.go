@@ -3,6 +3,7 @@ package proxy
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/xolo-gateway/xolo/internal/core/model"
@@ -87,7 +88,8 @@ func (e *rollingWindowEvaluator) Acquire(ctx context.Context, scope planScope, c
 
 	// Window start is aligned on the constraint's anchor (fixed/tumbling window matching the
 	// upstream provider's reset schedule) or falls back to a sliding window when unset.
-	since := c.CurrentWindowStart(time.Now())
+	now := time.Now()
+	since := c.CurrentWindowStart(now)
 	tokens, providerValue, err := e.usageStore.SumPlanUsageSince(ctx, scope.OrgID, scope.ProviderID, since)
 	if err != nil {
 		return nil, nil, err
@@ -113,24 +115,48 @@ func (e *rollingWindowEvaluator) Acquire(ctx context.Context, scope planScope, c
 		if err != nil {
 			return nil, nil, err
 		}
-		n := int64(scope.MemberCount)
+
+		// How many members actually compete for the budget in this window. A
+		// failure here degrades to "everybody is active", i.e. the static
+		// budget/members share this replaces — never to a wider allowance.
+		activeUsers, err := e.usageStore.CountActivePlanUsersSince(ctx, scope.OrgID, scope.ProviderID, since)
+		if err != nil {
+			slog.WarnContext(ctx, "rolling window: could not count active plan users, falling back to full member count",
+				slog.Any("error", err), slog.String("org", string(scope.OrgID)), slog.String("provider", string(scope.ProviderID)))
+			activeUsers = int64(scope.MemberCount)
+		}
+		// The caller has not been recorded yet when this is their first request of
+		// the window; count them in so the share they get is the one they keep.
+		if userTokens == 0 && userProviderValue == 0 {
+			activeUsers++
+		}
+
+		base := model.FairShareParams{
+			TotalMembers: scope.MemberCount,
+			ActiveUsers:  int(activeUsers),
+			Elapsed:      c.ElapsedFraction(now),
+		}
 
 		if c.TokenBudget != nil {
-			fairShare := max(*c.TokenBudget/n, 1)
-			if userTokens >= fairShare {
+			p := c.FairShareParamsFor(base)
+			p.Budget, p.UsedTotal = *c.TokenBudget, tokens
+			alloc := model.ComputeFairShare(p)
+			if userTokens >= alloc.Allowance {
 				return nil, &planDenial{
-					Message: fmt.Sprintf("fair-share quota exceeded [%s]: %d / %d tokens used in the last %s (1/%d of plan budget)",
-						c.Label, userTokens, fairShare, formatDuration(dur), n),
+					Message: fmt.Sprintf("fair-share quota exceeded [%s]: %d / %d tokens used in the last %s (%s allocation, %d of %d members active)",
+						c.Label, userTokens, alloc.Allowance, formatDuration(dur), alloc.Mode, base.ActiveUsers, scope.MemberCount),
 				}, nil
 			}
 		}
 
 		if c.ValueBudget != nil {
-			fairShare := max(*c.ValueBudget/n, 1)
-			if userProviderValue >= fairShare {
+			p := c.FairShareParamsFor(base)
+			p.Budget, p.UsedTotal = *c.ValueBudget, providerValue
+			alloc := model.ComputeFairShare(p)
+			if userProviderValue >= alloc.Allowance {
 				return nil, &planDenial{
-					Message: fmt.Sprintf("fair-share quota exceeded [%s]: value budget of %s / %s reached in the last %s (1/%d of plan budget)",
-						c.Label, formatMicrocents(userProviderValue, "USD"), formatMicrocents(fairShare, "USD"), formatDuration(dur), n),
+					Message: fmt.Sprintf("fair-share quota exceeded [%s]: value budget of %s / %s reached in the last %s (%s allocation, %d of %d members active)",
+						c.Label, formatMicrocents(userProviderValue, "USD"), formatMicrocents(alloc.Allowance, "USD"), formatDuration(dur), alloc.Mode, base.ActiveUsers, scope.MemberCount),
 				}, nil
 			}
 		}
