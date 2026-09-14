@@ -517,3 +517,93 @@ func TestPreRequest_RedactedThinkingBlockDoesNotBlockTheRequest(t *testing.T) {
 		t.Errorf("redacted_thinking data was altered: %#v", part["data"])
 	}
 }
+
+// The whole `input` of a web_search server_tool_use leaves in clear, not just
+// its query: `user_location` carries a city and a region. Scanning only the
+// query left those uncounted, while the node documentation promises that
+// everything forwarded unrewritten is scanned read-only.
+func TestPreRequest_WebSearchServerToolUseIsScannedBeyondItsQuery(t *testing.T) {
+	cfg := attachmentConfig(t)
+	out, host := preRequestPartsWithHost(t, cfg, []any{
+		map[string]any{
+			"type": "server_tool_use",
+			"id":   "srvtoolu_1",
+			"name": "web_search",
+			"input": map[string]any{
+				"query":         "météo demain",
+				"user_location": map[string]any{"city": "écrire à " + agentBlockSecret},
+			},
+		},
+	})
+
+	if !strings.Contains(out.ModifiedMessagesJson, agentBlockSecret) {
+		t.Error("the block must still travel byte for byte")
+	}
+
+	evt := host.waitForEvent(t)
+	if got := evt.Attributes["leak_entities"]; got == "" || got == "0" {
+		t.Errorf("leak_entities = %q, want the user_location leak counted", got)
+	}
+}
+
+// `entities` counts distinct pseudonymized values, so the leak count set beside
+// it in the same sentence has to be distinct too. One address quoted five times
+// is one leak; reporting five reads as five different things having escaped.
+func TestPreRequest_LeakCountIsDistinctValuesNotOccurrences(t *testing.T) {
+	cfg := attachmentConfig(t)
+	_, host := preRequestPartsWithHost(t, cfg, []any{
+		map[string]any{"type": "text", "text": "écris à " + agentBlockSecret},
+		map[string]any{
+			"type":      "thinking",
+			"signature": "sig-abc123",
+			"thinking":  strings.Repeat("note : marc.durand@exemple.fr. ", 5),
+		},
+	})
+
+	evt := host.waitForEvent(t)
+	if got := evt.Attributes["entities"]; got != "1" {
+		t.Errorf("entities = %q, want 1", got)
+	}
+	if got := evt.Attributes["leak_entities"]; got != "1" {
+		t.Errorf("leak_entities = %q, want 1: the same address five times is one leak", got)
+	}
+}
+
+// An agentic conversation re-scans its whole history every turn, so the
+// kilobytes of base64 in a search result's encrypted_content would be read
+// again on every request to find nothing. Declared opaque, so never scanned.
+func TestPreRequest_OpaqueFieldsAreNotScannedForLeaks(t *testing.T) {
+	cfg := attachmentConfig(t)
+	_, host := preRequestPartsWithHost(t, cfg, []any{
+		map[string]any{
+			"type":        "web_search_tool_result",
+			"tool_use_id": "srvtoolu_2",
+			"content": []any{
+				map[string]any{
+					"type":              "web_search_result",
+					"title":             "un titre anodin",
+					"url":               "https://exemple.fr/a",
+					"encrypted_content": agentBlockSecret,
+				},
+			},
+		},
+	})
+
+	if evt := host.event; evt.Type != "" {
+		t.Errorf("encrypted_content was scanned: %v", evt.Attributes)
+	}
+}
+
+// The assistant's own text in a Responses history. Left out of the text family,
+// the model's restatement of a personal detail travels in clear on the next
+// turn while the question that prompted it was pseudonymized.
+func TestPreRequest_OutputTextPartIsPseudonymized(t *testing.T) {
+	cfg := attachmentConfig(t)
+	out, _ := preRequestPartsWithHost(t, cfg, []any{
+		map[string]any{"type": "output_text", "text": "j'écris à " + agentBlockSecret},
+	})
+
+	if strings.Contains(out.ModifiedMessagesJson, agentBlockSecret) {
+		t.Errorf("output_text was forwarded in clear: %s", out.ModifiedMessagesJson)
+	}
+}

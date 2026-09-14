@@ -10,10 +10,16 @@ import (
 
 const (
 	// partTypeText is how the Messages and Chat Completions routes name a text
-	// part; partTypeInputText is the OpenAI Responses spelling of the same
+	// part; partTypeInputText and partTypeOutputText are the OpenAI Responses
+	// spellings, for the user turn and the assistant turn of the same
 	// thing, carrying its text in the same `text` field.
 	partTypeText      = "text"
 	partTypeInputText = "input_text"
+	// partTypeOutputText is the assistant's own text replayed in a Responses
+	// history. Left out, the model's restatement of a personal detail travels
+	// in clear on the next turn while the user's question that prompted it was
+	// pseudonymized.
+	partTypeOutputText = "output_text"
 
 	partTypeToolUse    = "tool_use"
 	partTypeToolResult = "tool_result"
@@ -89,6 +95,12 @@ var passthroughToolParts = map[string]bool{
 var codeExecutionResultTypes = map[string]bool{
 	partTypeCodeExecutionToolResult:     true,
 	partTypeBashCodeExecutionToolResult: true,
+}
+
+// isTextPart reports whether a content part is a plain text block, under any
+// of the spellings the routes use for it.
+func isTextPart(partType string) bool {
+	return partType == partTypeText || partType == partTypeInputText || partType == partTypeOutputText
 }
 
 // nonTextToolPayloadNotice replaces a tool payload the plugin cannot read.
@@ -319,6 +331,24 @@ func keepDetectedTypes(entities []ner.Entity, skipTypes []string) []ner.Entity {
 	return kept
 }
 
+// opaqueLeafKeys are the field names that never hold free text: an encrypted
+// blob, a signature, a protocol enum, an identifier. Running the recognizer
+// over them finds nothing, and an agentic conversation re-scans its whole
+// history every turn, so a web search result's several kilobytes of
+// `encrypted_content` would be read again on every request for no answer.
+//
+// `url` and `title` are deliberately absent: a URL path can carry a name and a
+// title routinely does.
+var opaqueLeafKeys = map[string]bool{
+	"encrypted_content": true,
+	"data":              true,
+	"signature":         true,
+	"type":              true,
+	"id":                true,
+	"tool_use_id":       true,
+	"file_id":           true,
+}
+
 // detectLeaves walks a decoded JSON value read-only, running detect over
 // every string leaf and folding what it finds into counts, without rewriting
 // anything. It returns the total number of entities found.
@@ -341,7 +371,10 @@ func detectLeaves(v any, detect func(string) ([]ner.Entity, error), counts map[s
 		return len(entities), nil
 	case map[string]any:
 		total := 0
-		for _, sub := range value {
+		for key, sub := range value {
+			if opaqueLeafKeys[key] {
+				continue
+			}
 			n, err := detectLeaves(sub, detect, counts)
 			total += n
 			if err != nil {
