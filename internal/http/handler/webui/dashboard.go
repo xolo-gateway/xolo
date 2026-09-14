@@ -15,6 +15,7 @@ import (
 	"github.com/xolo-gateway/xolo/internal/adapter/cache"
 	"github.com/xolo-gateway/xolo/internal/core/model"
 	"github.com/xolo-gateway/xolo/internal/core/port"
+	"github.com/xolo-gateway/xolo/internal/core/service"
 	"github.com/xolo-gateway/xolo/internal/estimator"
 	httpCtx "github.com/xolo-gateway/xolo/internal/http/context"
 	common "github.com/xolo-gateway/xolo/internal/http/handler/webui/common/component"
@@ -625,15 +626,7 @@ func (h *Handler) buildDashboardSubscriptionUsage(ctx context.Context, orgID mod
 					}
 					// Show the same denominators the enforcer decides against, so a
 					// varying allowance stays readable instead of looking arbitrary.
-					cu.Constraint, cu.FairShareMode = h.dashboardFairShare(ctx, dashboardFairShareArgs{
-						Constraint:  c,
-						OrgID:       orgID,
-						ProviderID:  p.ID(),
-						Since:       since,
-						Now:         now,
-						MemberCount: memberCount,
-						UserActive:  cu.TokensUsed > 0 || cu.ValueUsed > 0,
-					})
+					applyFairShare(ctx, h.fairShare, &cu, c, orgID, p.ID(), userID, memberCount, now)
 					// Window free-up hint is a window-level property → org-wide oldest record.
 					if oldest, oldestErr := h.usageStore.EarliestPlanUsageSince(ctx, orgID, p.ID(), since); oldestErr != nil {
 						slog.WarnContext(ctx, "could not get earliest plan usage", slogx.Error(oldestErr))
@@ -660,68 +653,52 @@ func (h *Handler) buildDashboardSubscriptionUsage(ctx context.Context, orgID mod
 	return result
 }
 
-// dashboardFairShareArgs carries the state a fair-share denominator is computed from.
-type dashboardFairShareArgs struct {
-	Constraint  model.PlanConstraint
-	OrgID       model.OrgID
-	ProviderID  model.ProviderID
-	Since       time.Time
-	Now         time.Time
-	MemberCount int64
-	// UserActive reports whether the viewer already consumed in this window; the
-	// enforcer counts a first-time caller among the active users, so the displayed
-	// share must do the same or it would overstate what they get.
-	UserActive bool
-}
-
-// dashboardFairShare returns a copy of a rolling-window constraint whose budgets are
-// the allowance model.ComputeFairShare grants the viewer right now, along with the
-// mode that produced it. It mirrors rollingWindowEvaluator: any failure degrades to
-// the static budget/members share rather than to a wider allowance.
-func (h *Handler) dashboardFairShare(ctx context.Context, a dashboardFairShareArgs) (model.PlanConstraint, model.FairShareMode) {
-	c := a.Constraint
-	if a.MemberCount <= 0 || (c.TokenBudget == nil && c.ValueBudget == nil) {
-		return c, ""
+// applyFairShare replaces a constraint's budgets with the allowance the
+// subscription enforcer grants the viewer right now, and records how each was
+// produced. Any failure degrades to the static budget/members share, exactly as
+// the enforcer does — a dashboard promising more than the enforcer allows is
+// worse than one showing a conservative figure.
+func applyFairShare(
+	ctx context.Context,
+	fairShare *service.FairShareService,
+	cu *orgcomponent.SubscriptionConstraintUsage,
+	c model.PlanConstraint,
+	orgID model.OrgID,
+	providerID model.ProviderID,
+	userID model.UserID,
+	memberCount int64,
+	now time.Time,
+) {
+	if fairShare == nil || memberCount <= 0 || (c.TokenBudget == nil && c.ValueBudget == nil) {
+		return
 	}
 
-	tokens, value, err := h.usageStore.SumPlanUsageSince(ctx, a.OrgID, a.ProviderID, a.Since)
+	share, err := fairShare.Resolve(ctx, service.FairShareRequest{
+		OrgID:       orgID,
+		ProviderID:  providerID,
+		UserID:      userID,
+		MemberCount: int(memberCount),
+		Constraint:  c,
+		Now:         now,
+	})
 	if err != nil {
-		slog.WarnContext(ctx, "could not sum org plan usage for fair-share denominators", slogx.Error(err))
-		return fairShareConstraint(c, a.MemberCount), ""
+		slog.WarnContext(ctx, "could not resolve fair-share denominators", slogx.Error(err))
+		return
 	}
 
-	active, err := h.usageStore.CountActivePlanUsersSince(ctx, a.OrgID, a.ProviderID, a.Since)
-	if err != nil {
-		slog.WarnContext(ctx, "could not count active plan users for fair-share denominators", slogx.Error(err))
-		active = a.MemberCount
+	if share.TokenAllowance != nil {
+		c.TokenBudget = share.TokenAllowance
 	}
-	if !a.UserActive {
-		active++
+	if share.ValueAllowance != nil {
+		c.ValueBudget = share.ValueAllowance
 	}
 
-	base := model.FairShareParams{
-		TotalMembers: int(a.MemberCount),
-		ActiveUsers:  int(active),
-		Elapsed:      c.ElapsedFraction(a.Now),
-	}
-
-	var mode model.FairShareMode
-	if c.TokenBudget != nil {
-		p := c.FairShareParamsFor(base)
-		p.Budget, p.UsedTotal = *c.TokenBudget, tokens
-		alloc := model.ComputeFairShare(p)
-		c.TokenBudget = &alloc.Allowance
-		mode = alloc.Mode
-	}
-	if c.ValueBudget != nil {
-		p := c.FairShareParamsFor(base)
-		p.Budget, p.UsedTotal = *c.ValueBudget, value
-		alloc := model.ComputeFairShare(p)
-		c.ValueBudget = &alloc.Allowance
-		mode = alloc.Mode
-	}
-
-	return c, mode
+	cu.Constraint = c
+	cu.TokenMode = share.TokenMode
+	cu.ValueMode = share.ValueMode
+	cu.ActiveUsers = share.ActiveUsers
+	cu.MemberCount = int(memberCount)
+	cu.ShareDegraded = share.CountDegraded
 }
 
 // fairShareConstraint returns a copy of the constraint whose budgets (token, value,

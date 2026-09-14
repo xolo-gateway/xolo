@@ -52,11 +52,17 @@ type PlanConstraint struct {
 	TokenBudget   *int64             `json:"token_budget,omitempty"`
 	ValueBudget   *int64             `json:"value_budget,omitempty"` // microcents in provider currency
 	MaxConcurrent *int               `json:"max_concurrent,omitempty"`
-	// ReserveRatio, PaceSlack and HappyHourStart tune the per-user fair-share
-	// allocator (see ComputeFairShare); nil means the package default.
+	// ReserveRatio, PaceSlack, HappyHourStart and HappyHourMaxLead tune the
+	// per-user fair-share allocator (see ComputeFairShare); nil means the package
+	// default.
 	ReserveRatio   *float64 `json:"reserve_ratio,omitempty"`
 	PaceSlack      *float64 `json:"pace_slack,omitempty"`
 	HappyHourStart *float64 `json:"happy_hour_start,omitempty"`
+	// HappyHourMaxLead caps how long before the reset the happy hour may open.
+	// HappyHourStart is a fraction of the window, so on a long window it would
+	// otherwise open for hours: a tenth of a 168h window is nearly 17 hours, over
+	// which "the leftover is about to be destroyed" stops being true.
+	HappyHourMaxLead *PlanDuration `json:"happy_hour_max_lead,omitempty"`
 	// WindowAnchor aligns a rolling_window constraint on a fixed (tumbling) schedule.
 	// It records any instant at which a window opened; combined with Duration it lets us
 	// compute the current window boundaries so they match the upstream provider's real
@@ -116,9 +122,10 @@ type SubscriptionPlan struct {
 // Default tuning of the fair-share allocator, used when a constraint leaves the
 // corresponding field nil.
 const (
-	DefaultReserveRatio   = 0.3
-	DefaultPaceSlack      = 0.15
-	DefaultHappyHourStart = 0.9
+	DefaultReserveRatio     = 0.3
+	DefaultPaceSlack        = 0.15
+	DefaultHappyHourStart   = 0.9
+	DefaultHappyHourMaxLead = time.Hour
 )
 
 // FairShareMode explains which rule produced a user's allowance. It is surfaced
@@ -133,7 +140,7 @@ const (
 	// the window elapses, so the commons is being closed back toward the floor.
 	FairShareModeThrottled FairShareMode = "throttled"
 	// FairShareModeHappyHour means the window is about to reset: whatever is left
-	// would be destroyed, so the whole budget is opened to whoever shows up.
+	// would be destroyed, so it is shared out between the users who showed up.
 	FairShareModeHappyHour FairShareMode = "happy_hour"
 )
 
@@ -150,6 +157,13 @@ type FairShareParams struct {
 	ActiveUsers int
 	// UsedTotal is the plan-wide consumption in the current window.
 	UsedTotal int64
+	// UserUsed is what the user being allocated already consumed in the window.
+	// Only the happy hour reads it, to hand out the leftover on top of what each
+	// active user already holds.
+	UserUsed int64
+	// WindowDuration is the length of the window, used to turn the happy-hour
+	// fraction into a real duration. Zero disables the happy hour.
+	WindowDuration time.Duration
 	// Elapsed is the fraction of the window already elapsed, in [0,1]. It is
 	// negative for a sliding window, which never resets and therefore has
 	// neither pacing nor happy hour.
@@ -161,8 +175,11 @@ type FairShareParams struct {
 	// the commons starts closing.
 	Slack float64
 	// HappyHourStart is the elapsed fraction past which the leftover budget is
-	// opened to everyone. A value >= 1 disables the happy hour.
+	// shared out. A value >= 1 disables the happy hour.
 	HappyHourStart float64
+	// HappyHourMaxLead caps how long before the reset the happy hour may open,
+	// regardless of the fraction.
+	HappyHourMaxLead time.Duration
 }
 
 // FairShareAllocation is the outcome of the allocator for a single user.
@@ -189,18 +206,27 @@ type FairShareAllocation struct {
 // fraction of the window (plus some slack), then decreases linearly to 0 as the
 // budget fills up, collapsing the allowance back onto the guaranteed floor.
 //
-// Past HappyHourStart the remaining budget would be destroyed by the upcoming
-// reset, so it is handed out in full rather than protected for members who did
-// not come. Both pacing and happy hour require a window that actually resets;
-// for a sliding window (Elapsed < 0) only the two-part split applies.
+// In the last moments of a window the leftover budget would be destroyed by the
+// upcoming reset, so it is shared out between the active users on top of what
+// they already hold, rather than kept for members who did not come. Both pacing
+// and happy hour require a window that actually resets; for a sliding window
+// (Elapsed < 0) only the two-part split applies.
+//
+// The allocation is not monotonic: it is decided against the number of users
+// active at that instant, while consumption accumulates over the whole window.
+// A user alone on the plan may consume the wide share they were granted and then
+// be denied for the rest of the window once others show up and the share narrows.
+// This is deliberate — the alternative is to keep honouring a share the plan can
+// no longer afford — but it means a user can watch their own gauge fill without
+// consuming anything, which is why the dashboard reports the active-user count.
 func ComputeFairShare(p FairShareParams) FairShareAllocation {
 	if p.Budget <= 0 {
 		return FairShareAllocation{Allowance: 0, Mode: FairShareModeShared}
 	}
 
 	anchored := p.Elapsed >= 0
-	if anchored && p.HappyHourStart < 1 && p.Elapsed >= p.HappyHourStart {
-		return FairShareAllocation{Allowance: p.Budget, Mode: FairShareModeHappyHour}
+	if anchored && p.inHappyHour() {
+		return FairShareAllocation{Allowance: p.happyHourAllowance(), Mode: FairShareModeHappyHour}
 	}
 
 	reserve := clampUnit(p.Reserve)
@@ -230,6 +256,40 @@ func ComputeFairShare(p FairShareParams) FairShareAllocation {
 	}
 
 	return FairShareAllocation{Allowance: allowance, Mode: mode}
+}
+
+// inHappyHour reports whether the window is close enough to its reset for the
+// leftover budget to be shared out. It takes both a fraction of the window and
+// an absolute lead, so that a long window does not open for hours.
+func (p FairShareParams) inHappyHour() bool {
+	if p.HappyHourStart >= 1 || p.WindowDuration <= 0 {
+		return false
+	}
+	if p.Elapsed < p.HappyHourStart {
+		return false
+	}
+	lead := p.HappyHourMaxLead
+	if lead <= 0 {
+		lead = DefaultHappyHourMaxLead
+	}
+	remaining := time.Duration((1 - clampUnit(p.Elapsed)) * float64(p.WindowDuration))
+	return remaining <= lead
+}
+
+// happyHourAllowance lets a user keep what they already consumed and take an
+// equal share of what is left. With a single active user this hands them the
+// whole budget; with several it stops the first one to notice from taking it all.
+func (p FairShareParams) happyHourAllowance() int64 {
+	active := int64(max(p.ActiveUsers, 1))
+	leftover := p.Budget - p.UsedTotal
+	if leftover < 0 {
+		leftover = 0
+	}
+	allowance := p.UserUsed + leftover/active
+	if allowance > p.Budget {
+		allowance = p.Budget
+	}
+	return allowance
 }
 
 // pacingFactor returns how much of the commons stays open, given how far plan
@@ -265,10 +325,17 @@ func (c PlanConstraint) FairShareParamsFor(p FairShareParams) FairShareParams {
 	if c.PaceSlack != nil {
 		p.Slack = *c.PaceSlack
 	}
+	// A non-positive threshold would put every window permanently in happy hour,
+	// disabling the allocation altogether; read it as "unset" instead.
 	p.HappyHourStart = DefaultHappyHourStart
-	if c.HappyHourStart != nil {
+	if c.HappyHourStart != nil && *c.HappyHourStart > 0 {
 		p.HappyHourStart = *c.HappyHourStart
 	}
+	p.HappyHourMaxLead = DefaultHappyHourMaxLead
+	if c.HappyHourMaxLead != nil && c.HappyHourMaxLead.Duration() > 0 {
+		p.HappyHourMaxLead = c.HappyHourMaxLead.Duration()
+	}
+	p.WindowDuration = c.Duration.Duration()
 	return p
 }
 

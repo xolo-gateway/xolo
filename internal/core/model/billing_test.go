@@ -190,19 +190,26 @@ func TestComputeFairShare_PacingIgnoredOnSlidingWindow(t *testing.T) {
 	}
 }
 
-func TestComputeFairShare_HappyHourOpensTheLeftover(t *testing.T) {
-	// Past the happy-hour threshold the remaining budget would be destroyed by
-	// the reset, so it is handed out in full.
-	p := FairShareParams{
-		Budget:         1000,
-		TotalMembers:   20,
-		ActiveUsers:    1,
-		UsedTotal:      200,
-		Elapsed:        0.95,
-		Reserve:        DefaultReserveRatio,
-		Slack:          DefaultPaceSlack,
-		HappyHourStart: DefaultHappyHourStart,
+func happyHourParams() FairShareParams {
+	return FairShareParams{
+		Budget:           1000,
+		TotalMembers:     20,
+		ActiveUsers:      1,
+		UsedTotal:        200,
+		UserUsed:         200,
+		Elapsed:          0.95,
+		WindowDuration:   5 * time.Hour,
+		Reserve:          DefaultReserveRatio,
+		Slack:            DefaultPaceSlack,
+		HappyHourStart:   DefaultHappyHourStart,
+		HappyHourMaxLead: DefaultHappyHourMaxLead,
 	}
+}
+
+func TestComputeFairShare_HappyHourOpensTheLeftover(t *testing.T) {
+	// 15 minutes from the reset: the leftover would be destroyed, so the sole
+	// active user may take all of it on top of what they already hold.
+	p := happyHourParams()
 
 	got := ComputeFairShare(p)
 	if got.Mode != FairShareModeHappyHour {
@@ -216,6 +223,89 @@ func TestComputeFairShare_HappyHourOpensTheLeftover(t *testing.T) {
 	p.HappyHourStart = 1
 	if got := ComputeFairShare(p); got.Mode == FairShareModeHappyHour {
 		t.Error("happy hour must be disabled when HappyHourStart >= 1")
+	}
+}
+
+func TestComputeFairShare_HappyHourSplitsTheLeftoverBetweenActiveUsers(t *testing.T) {
+	// With several users still working, the leftover is shared rather than handed
+	// to whoever asks first.
+	p := happyHourParams()
+	p.ActiveUsers = 4
+	p.UsedTotal = 400
+	p.UserUsed = 100
+
+	got := ComputeFairShare(p)
+	if got.Mode != FairShareModeHappyHour {
+		t.Fatalf("mode = %q, want happy_hour", got.Mode)
+	}
+	// 100 already held + (1000−400)/4 of the leftover.
+	if got.Allowance != 250 {
+		t.Errorf("allowance = %d, want 250", got.Allowance)
+	}
+	if got.Allowance >= p.Budget {
+		t.Errorf("allowance = %d, want less than the whole budget while others are active", got.Allowance)
+	}
+}
+
+func TestComputeFairShare_HappyHourIsBoundedByAnAbsoluteLead(t *testing.T) {
+	// The threshold is a fraction of the window, so on a weekly plan its last
+	// tenth is nearly 17 hours — far too early to claim the leftover is about to
+	// be destroyed. The absolute lead is what keeps it honest.
+	p := happyHourParams()
+	p.WindowDuration = 168 * time.Hour
+
+	if got := ComputeFairShare(p); got.Mode == FairShareModeHappyHour {
+		t.Errorf("mode = %q, want the happy hour held back 8h before a weekly reset", got.Mode)
+	}
+
+	// Within the last hour of that same weekly window, it opens.
+	p.Elapsed = 1 - float64(30*time.Minute)/float64(168*time.Hour)
+	if got := ComputeFairShare(p); got.Mode != FairShareModeHappyHour {
+		t.Errorf("mode = %q, want happy_hour 30 minutes before the reset", got.Mode)
+	}
+}
+
+func TestComputeFairShare_AllocationIsNotMonotonic(t *testing.T) {
+	// Documented consequence of allocating against the users active at decision
+	// time while consumption accumulates over the window: a user alone on the
+	// plan may legitimately spend a wide share and be denied once others arrive,
+	// even though the plan is only half consumed. The dashboard reports the
+	// active-user count precisely so this can be accounted for.
+	alone := FairShareParams{
+		Budget:         1000,
+		TotalMembers:   20,
+		ActiveUsers:    1,
+		Elapsed:        -1,
+		Reserve:        DefaultReserveRatio,
+		Slack:          DefaultPaceSlack,
+		HappyHourStart: DefaultHappyHourStart,
+	}
+	granted := ComputeFairShare(alone).Allowance
+	if granted < 500 {
+		t.Fatalf("allowance alone = %d, want a wide share", granted)
+	}
+
+	crowded := alone
+	crowded.ActiveUsers = 2
+	crowded.UsedTotal = 500
+	narrowed := ComputeFairShare(crowded).Allowance
+	if narrowed >= 500 {
+		t.Fatalf("allowance with two active = %d, want it narrowed below what was already spent", narrowed)
+	}
+}
+
+func TestComputeFairShare_NonPositiveHappyHourStartIsIgnored(t *testing.T) {
+	// A zero or negative threshold would put every window permanently in happy
+	// hour, silently disabling the whole allocation.
+	zero := 0.0
+	c := PlanConstraint{Kind: ConstraintRollingWindow, Duration: PlanDuration(5 * time.Hour), HappyHourStart: &zero}
+
+	p := c.FairShareParamsFor(FairShareParams{Budget: 1000, TotalMembers: 10, ActiveUsers: 1, Elapsed: 0.1})
+	if p.HappyHourStart != DefaultHappyHourStart {
+		t.Errorf("HappyHourStart = %v, want the default %v", p.HappyHourStart, DefaultHappyHourStart)
+	}
+	if got := ComputeFairShare(p); got.Mode == FairShareModeHappyHour {
+		t.Error("a non-positive threshold must not put the window in permanent happy hour")
 	}
 }
 

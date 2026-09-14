@@ -518,6 +518,22 @@ func parseActiveParamsField(v string) int64 {
 	return int64(f * 1e9)
 }
 
+// parsePlanRatioField reads one of the fair-share percentages, returning nil for
+// an empty or out-of-range value so the allocator applies its default rather than
+// a figure nobody meant. The stored form is a fraction, the edited one a percentage.
+func parsePlanRatioField(value string) *float64 {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return nil
+	}
+	pct, err := strconv.ParseFloat(value, 64)
+	if err != nil || pct < 0 || pct > 100 {
+		return nil
+	}
+	ratio := pct / 100
+	return &ratio
+}
+
 // parseSubscriptionPlanFromForm reads the structured subscription plan fields
 // submitted by the SubscriptionPlanEditor component.
 func parseSubscriptionPlanFromForm(r *http.Request) *model.SubscriptionPlan {
@@ -558,6 +574,16 @@ func parseSubscriptionPlanFromForm(r *http.Request) *model.SubscriptionPlan {
 			// now, into an absolute anchor so the alignment survives restarts.
 			if anchor := computeWindowAnchor(r.FormValue(prefix+"reset_in"), c.Duration.Duration()); anchor != nil {
 				c.WindowAnchor = anchor
+			}
+			// Fair-share tuning. Left empty, each keeps the allocator's default:
+			// the form is the only writer of a plan, so a field it does not read is
+			// a field the next save silently erases.
+			c.ReserveRatio = parsePlanRatioField(r.FormValue(prefix + "reserve_ratio"))
+			c.PaceSlack = parsePlanRatioField(r.FormValue(prefix + "pace_slack"))
+			c.HappyHourStart = parsePlanRatioField(r.FormValue(prefix + "happy_hour_start"))
+			if lead, err := time.ParseDuration(strings.TrimSpace(r.FormValue(prefix + "happy_hour_max_lead"))); err == nil && lead > 0 {
+				d := model.PlanDuration(lead)
+				c.HappyHourMaxLead = &d
 			}
 		case model.ConstraintConcurrency:
 			if mc, err := strconv.Atoi(r.FormValue(prefix + "max_concurrent")); err == nil && mc > 0 {

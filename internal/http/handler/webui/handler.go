@@ -34,6 +34,7 @@ type Handler struct {
 	exchangeRateService *service.ExchangeRateService
 	pluginManager       pluginManagerIface
 	subscriptionMonitor port.SubscriptionMonitor
+	fairShare           *service.FairShareService
 }
 
 // ServeHTTP implements http.Handler.
@@ -82,6 +83,7 @@ func NewHandler(
 		exchangeRateService: exchangeRateService,
 		pluginManager:       pluginManager,
 		subscriptionMonitor: subscriptionMonitor,
+		fairShare:           service.NewFairShareService(usageStore),
 	}
 
 	isActive := authz.Middleware(http.HandlerFunc(h.getInactiveUserPage), authz.Active())

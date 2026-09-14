@@ -16,14 +16,18 @@ import (
 type fairShareUsageStore struct {
 	port.UsageStore
 
-	orgTokens   int64
-	orgValue    int64
-	userTokens  int64
-	userValue   int64
-	activeUsers int64
-	countErr    error
+	orgTokens int64
+	orgValue  int64
 
-	countCalls int
+	userTokens int64
+	userValue  int64
+
+	// otherActiveUsers is what the store reports once the caller is excluded.
+	otherActiveUsers int64
+	countErr         error
+
+	countCalls   int
+	excludedUser model.UserID
 }
 
 func (f *fairShareUsageStore) SumPlanUsageSince(_ context.Context, _ model.OrgID, _ model.ProviderID, _ time.Time) (int64, int64, error) {
@@ -34,12 +38,13 @@ func (f *fairShareUsageStore) SumUserPlanUsageSince(_ context.Context, _ model.U
 	return f.userTokens, f.userValue, nil
 }
 
-func (f *fairShareUsageStore) CountActivePlanUsersSince(_ context.Context, _ model.OrgID, _ model.ProviderID, _ time.Time) (int64, error) {
+func (f *fairShareUsageStore) CountActivePlanUsersSince(_ context.Context, _ model.OrgID, _ model.ProviderID, _ time.Time, excludeUserID model.UserID) (int64, error) {
 	f.countCalls++
+	f.excludedUser = excludeUserID
 	if f.countErr != nil {
 		return 0, f.countErr
 	}
-	return f.activeUsers, nil
+	return f.otherActiveUsers, nil
 }
 
 func tokenConstraint(budget int64) model.PlanConstraint {
@@ -63,8 +68,8 @@ func fairShareScope() planScope {
 func TestRollingWindow_QuietMembersWidenTheShare(t *testing.T) {
 	// 3 users active out of 20 members. The static budget/members cap stopped a
 	// user at 50 tokens; the shared allocation lets them keep going.
-	store := &fairShareUsageStore{orgTokens: 300, userTokens: 100, activeUsers: 3}
-	ev := &rollingWindowEvaluator{usageStore: store}
+	store := &fairShareUsageStore{orgTokens: 300, userTokens: 100, otherActiveUsers: 2}
+	ev := newRollingWindowEvaluator(store)
 
 	_, denial, err := ev.Acquire(context.Background(), fairShareScope(), tokenConstraint(1000))
 	if err != nil {
@@ -81,8 +86,8 @@ func TestRollingWindow_QuietMembersWidenTheShare(t *testing.T) {
 func TestRollingWindow_ShareStillBoundedByTheReserve(t *testing.T) {
 	// Sole active user: they get the commons but not the reserve held for the
 	// 19 members who have not shown up.
-	store := &fairShareUsageStore{orgTokens: 900, userTokens: 900, activeUsers: 1}
-	ev := &rollingWindowEvaluator{usageStore: store}
+	store := &fairShareUsageStore{orgTokens: 900, userTokens: 900, otherActiveUsers: 0}
+	ev := newRollingWindowEvaluator(store)
 
 	_, denial, err := ev.Acquire(context.Background(), fairShareScope(), tokenConstraint(1000))
 	if err != nil {
@@ -108,7 +113,7 @@ func TestRollingWindow_CountFailureFallsBackToStaticShare(t *testing.T) {
 		userTokens: 60, // above the static 1000/20 = 50 share
 		countErr:   errors.New("boom"),
 	}
-	ev := &rollingWindowEvaluator{usageStore: store}
+	ev := newRollingWindowEvaluator(store)
 
 	_, denial, err := ev.Acquire(context.Background(), fairShareScope(), tokenConstraint(1000))
 	if err != nil {
@@ -117,13 +122,23 @@ func TestRollingWindow_CountFailureFallsBackToStaticShare(t *testing.T) {
 	if denial == nil {
 		t.Fatal("request granted, want the static share to still apply on count failure")
 	}
+	// The message must not present the fallback as a measurement: "20 of 20
+	// members active" would send support looking for nineteen colleagues.
+	if !strings.Contains(denial.Message, "active-user count unavailable") {
+		t.Errorf("message = %q, want it to name the degraded count", denial.Message)
+	}
+	if strings.Contains(denial.Message, "members active") {
+		t.Errorf("message = %q, want no active-member figure when the count failed", denial.Message)
+	}
 }
 
-func TestRollingWindow_FirstRequestOfTheWindowCountsTheCaller(t *testing.T) {
-	// A user with no usage yet is not in the active count; the allocation must
-	// still make room for them rather than hand them a share it then revokes.
-	store := &fairShareUsageStore{orgTokens: 300, userTokens: 0, activeUsers: 3}
-	ev := &rollingWindowEvaluator{usageStore: store}
+func TestRollingWindow_CallerIsExcludedFromTheCountThenAddedBack(t *testing.T) {
+	// The caller competes for the budget whether or not their first request has
+	// been recorded yet, so they are excluded from the count and added back —
+	// counting them from a zero usage sum would miscount a user whose requests
+	// were recorded with no billable token.
+	store := &fairShareUsageStore{orgTokens: 300, userTokens: 0, otherActiveUsers: 2}
+	ev := newRollingWindowEvaluator(store)
 
 	_, denial, err := ev.Acquire(context.Background(), fairShareScope(), tokenConstraint(1000))
 	if err != nil {
@@ -132,13 +147,52 @@ func TestRollingWindow_FirstRequestOfTheWindowCountsTheCaller(t *testing.T) {
 	if denial != nil {
 		t.Fatalf("first request of the window denied: %s", denial.Message)
 	}
+	if store.excludedUser != "user-1" {
+		t.Errorf("excluded user = %q, want the caller", store.excludedUser)
+	}
+}
+
+func TestRollingWindow_DenialReportsTheAllocationBasis(t *testing.T) {
+	// 2 other active users + the caller, out of 20 members: the message must
+	// report 3 of 20, never a count that exceeds the membership.
+	store := &fairShareUsageStore{orgTokens: 900, userTokens: 300, otherActiveUsers: 2}
+	ev := newRollingWindowEvaluator(store)
+
+	_, denial, err := ev.Acquire(context.Background(), fairShareScope(), tokenConstraint(1000))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if denial == nil {
+		t.Fatal("request granted, want denied")
+	}
+	if !strings.Contains(denial.Message, "3 of 20 members active") {
+		t.Errorf("message = %q, want it to report 3 of 20 members active", denial.Message)
+	}
+}
+
+func TestRollingWindow_ActiveCountNeverExceedsTheMembership(t *testing.T) {
+	// A member removed mid-window still has usage records, so the raw count can
+	// reach the membership; adding the caller back must not report 21 of 20.
+	store := &fairShareUsageStore{orgTokens: 900, userTokens: 300, otherActiveUsers: 20}
+	ev := newRollingWindowEvaluator(store)
+
+	_, denial, err := ev.Acquire(context.Background(), fairShareScope(), tokenConstraint(1000))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if denial == nil {
+		t.Fatal("request granted, want denied")
+	}
+	if !strings.Contains(denial.Message, "20 of 20 members active") {
+		t.Errorf("message = %q, want the active count clamped to the membership", denial.Message)
+	}
 }
 
 func TestRollingWindow_OrgBudgetStillCapsEverything(t *testing.T) {
 	// Whatever the per-user allocation says, the plan-wide budget is the hard
 	// limit and is checked first.
-	store := &fairShareUsageStore{orgTokens: 1000, userTokens: 10, activeUsers: 5}
-	ev := &rollingWindowEvaluator{usageStore: store}
+	store := &fairShareUsageStore{orgTokens: 1000, userTokens: 10, otherActiveUsers: 4}
+	ev := newRollingWindowEvaluator(store)
 
 	_, denial, err := ev.Acquire(context.Background(), fairShareScope(), tokenConstraint(1000))
 	if err != nil {
@@ -156,8 +210,8 @@ func TestRollingWindow_OrgBudgetStillCapsEverything(t *testing.T) {
 }
 
 func TestRollingWindow_NoUserContextSkipsFairShare(t *testing.T) {
-	store := &fairShareUsageStore{orgTokens: 300, activeUsers: 3}
-	ev := &rollingWindowEvaluator{usageStore: store}
+	store := &fairShareUsageStore{orgTokens: 300, otherActiveUsers: 2}
+	ev := newRollingWindowEvaluator(store)
 
 	scope := fairShareScope()
 	scope.UserID = ""
@@ -181,8 +235,8 @@ func TestRollingWindow_HappyHourOpensTheLeftoverBeforeReset(t *testing.T) {
 	c := tokenConstraint(1000)
 	c.WindowAnchor = &anchor
 
-	store := &fairShareUsageStore{orgTokens: 300, userTokens: 290, activeUsers: 1}
-	ev := &rollingWindowEvaluator{usageStore: store}
+	store := &fairShareUsageStore{orgTokens: 300, userTokens: 290, otherActiveUsers: 0}
+	ev := newRollingWindowEvaluator(store)
 
 	_, denial, err := ev.Acquire(context.Background(), fairShareScope(), c)
 	if err != nil {

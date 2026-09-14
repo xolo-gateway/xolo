@@ -8,6 +8,7 @@ import (
 
 	"github.com/xolo-gateway/xolo/internal/core/model"
 	"github.com/xolo-gateway/xolo/internal/core/port"
+	"github.com/xolo-gateway/xolo/internal/core/service"
 )
 
 // planScope identifies the org+provider+user context for a subscription plan constraint.
@@ -76,9 +77,19 @@ type constraintEvaluator interface {
 // rollingWindowEvaluator enforces time-based rolling budgets (token count and/or value).
 type rollingWindowEvaluator struct {
 	usageStore port.UsageStore
+	fairShare  *service.FairShareService
 }
 
-func (e *rollingWindowEvaluator) Kind() model.PlanConstraintKind { return model.ConstraintRollingWindow }
+func newRollingWindowEvaluator(usageStore port.UsageStore) *rollingWindowEvaluator {
+	return &rollingWindowEvaluator{
+		usageStore: usageStore,
+		fairShare:  service.NewFairShareService(usageStore),
+	}
+}
+
+func (e *rollingWindowEvaluator) Kind() model.PlanConstraintKind {
+	return model.ConstraintRollingWindow
+}
 
 func (e *rollingWindowEvaluator) Acquire(ctx context.Context, scope planScope, c model.PlanConstraint) (planReservation, *planDenial, error) {
 	dur := c.Duration.Duration()
@@ -111,58 +122,51 @@ func (e *rollingWindowEvaluator) Acquire(ctx context.Context, scope planScope, c
 
 	// Per-user fair-share check.
 	if scope.UserID != "" && scope.MemberCount > 0 {
-		userTokens, userProviderValue, err := e.usageStore.SumUserPlanUsageSince(ctx, scope.UserID, scope.OrgID, scope.ProviderID, since)
+		share, err := e.fairShare.Resolve(ctx, service.FairShareRequest{
+			OrgID:       scope.OrgID,
+			ProviderID:  scope.ProviderID,
+			UserID:      scope.UserID,
+			MemberCount: scope.MemberCount,
+			Constraint:  c,
+			Now:         now,
+		})
 		if err != nil {
 			return nil, nil, err
 		}
-
-		// How many members actually compete for the budget in this window. A
-		// failure here degrades to "everybody is active", i.e. the static
-		// budget/members share this replaces — never to a wider allowance.
-		activeUsers, err := e.usageStore.CountActivePlanUsersSince(ctx, scope.OrgID, scope.ProviderID, since)
-		if err != nil {
-			slog.WarnContext(ctx, "rolling window: could not count active plan users, falling back to full member count",
-				slog.Any("error", err), slog.String("org", string(scope.OrgID)), slog.String("provider", string(scope.ProviderID)))
-			activeUsers = int64(scope.MemberCount)
-		}
-		// The caller has not been recorded yet when this is their first request of
-		// the window; count them in so the share they get is the one they keep.
-		if userTokens == 0 && userProviderValue == 0 {
-			activeUsers++
+		if share.CountDegraded {
+			slog.WarnContext(ctx, "rolling window: could not count active plan users, falling back to the static share",
+				slog.String("org", string(scope.OrgID)), slog.String("provider", string(scope.ProviderID)))
 		}
 
-		base := model.FairShareParams{
-			TotalMembers: scope.MemberCount,
-			ActiveUsers:  int(activeUsers),
-			Elapsed:      c.ElapsedFraction(now),
+		if share.TokenAllowance != nil && share.UserTokens >= *share.TokenAllowance {
+			return nil, &planDenial{
+				Message: fmt.Sprintf("fair-share quota exceeded [%s]: %d / %d tokens used in the last %s (%s)",
+					c.Label, share.UserTokens, *share.TokenAllowance, formatDuration(dur),
+					shareBasis(share, share.TokenMode, scope.MemberCount)),
+			}, nil
 		}
 
-		if c.TokenBudget != nil {
-			p := c.FairShareParamsFor(base)
-			p.Budget, p.UsedTotal = *c.TokenBudget, tokens
-			alloc := model.ComputeFairShare(p)
-			if userTokens >= alloc.Allowance {
-				return nil, &planDenial{
-					Message: fmt.Sprintf("fair-share quota exceeded [%s]: %d / %d tokens used in the last %s (%s allocation, %d of %d members active)",
-						c.Label, userTokens, alloc.Allowance, formatDuration(dur), alloc.Mode, base.ActiveUsers, scope.MemberCount),
-				}, nil
-			}
-		}
-
-		if c.ValueBudget != nil {
-			p := c.FairShareParamsFor(base)
-			p.Budget, p.UsedTotal = *c.ValueBudget, providerValue
-			alloc := model.ComputeFairShare(p)
-			if userProviderValue >= alloc.Allowance {
-				return nil, &planDenial{
-					Message: fmt.Sprintf("fair-share quota exceeded [%s]: value budget of %s / %s reached in the last %s (%s allocation, %d of %d members active)",
-						c.Label, formatMicrocents(userProviderValue, "USD"), formatMicrocents(alloc.Allowance, "USD"), formatDuration(dur), alloc.Mode, base.ActiveUsers, scope.MemberCount),
-				}, nil
-			}
+		if share.ValueAllowance != nil && share.UserValue >= *share.ValueAllowance {
+			return nil, &planDenial{
+				Message: fmt.Sprintf("fair-share quota exceeded [%s]: value budget of %s / %s reached in the last %s (%s)",
+					c.Label, formatMicrocents(share.UserValue, "USD"), formatMicrocents(*share.ValueAllowance, "USD"),
+					formatDuration(dur), shareBasis(share, share.ValueMode, scope.MemberCount)),
+			}, nil
 		}
 	}
 
 	return noopReservation{}, nil, nil
+}
+
+// shareBasis spells out what the allowance was computed from, so a share that
+// moves between two requests can be accounted for rather than guessed at. A
+// degraded count is named as such: reporting every member as active would read
+// as a measurement instead of a fallback.
+func shareBasis(share *service.FairShareResult, mode model.FairShareMode, memberCount int) string {
+	if share.CountDegraded {
+		return fmt.Sprintf("%s allocation, active-user count unavailable, static share applied", mode)
+	}
+	return fmt.Sprintf("%s allocation, %d of %d members active", mode, share.ActiveUsers, memberCount)
 }
 
 // concurrencyEvaluator enforces a maximum number of simultaneous in-flight requests.

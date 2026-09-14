@@ -30,7 +30,12 @@ type UsageStore interface {
 	// so that the plan budget left unused by quiet members is redistributed to the
 	// members actually competing for it. Requests without a user (application
 	// tokens) are not counted.
-	CountActivePlanUsersSince(ctx context.Context, orgID model.OrgID, providerID model.ProviderID, since time.Time) (int64, error)
+	//
+	// excludeUserID, when set, is left out of the count. Callers allocating for a
+	// user add them back unconditionally, which is exact whether or not they have
+	// consumed yet — inferring their presence from a zero usage sum is not, since
+	// a request can be recorded with no billable token.
+	CountActivePlanUsersSince(ctx context.Context, orgID model.OrgID, providerID model.ProviderID, since time.Time, excludeUserID model.UserID) (int64, error)
 	// EarliestPlanUsageSince returns the creation time of the oldest subscription-covered
 	// (plan_covered=true) usage record for a provider+org still inside the rolling window
 	// starting at `since`. Used to display when the window will next free up. Returns a zero

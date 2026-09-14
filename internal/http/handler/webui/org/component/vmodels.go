@@ -138,9 +138,20 @@ type SubscriptionConstraintUsage struct {
 	Anchored bool
 	// ResetAt is the instant the current fixed window resets (zero for sliding windows).
 	ResetAt time.Time
-	// FairShareMode explains how the per-user budgets above were allocated (empty
-	// when the figures are org-wide, or when the allocation could not be computed).
-	FairShareMode model.FairShareMode
+	// TokenMode and ValueMode explain how each per-user budget above was
+	// allocated. They are read per gauge rather than per constraint: the pacing
+	// factor depends on how full each budget is, so a constraint can be throttled
+	// on tokens while still shared on value. Empty when the figures are org-wide
+	// or the allocation could not be computed.
+	TokenMode model.FairShareMode
+	ValueMode model.FairShareMode
+	// ActiveUsers and MemberCount are the basis of the allocation, displayed so a
+	// share that moves between two visits can be accounted for.
+	ActiveUsers int
+	MemberCount int
+	// ShareDegraded reports that the active-user count was unavailable and that
+	// the static share was applied, so ActiveUsers is not a measurement.
+	ShareDegraded bool
 	// concurrency fields
 	InFlight  int
 	Exhausted bool

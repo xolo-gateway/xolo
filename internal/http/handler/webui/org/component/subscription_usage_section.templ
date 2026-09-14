@@ -72,27 +72,31 @@ templ rollingWindowConstraintRow(cu SubscriptionConstraintUsage) {
 			} else {
 				@common.Badge(common.ToneNeutral, "Fenêtre glissante")
 			}
-			if cu.FairShareMode == model.FairShareModeThrottled {
-				@common.Badge(common.ToneWarning, "Part réduite")
-			} else if cu.FairShareMode == model.FairShareModeHappyHour {
-				@common.Badge(common.TonePositive, "Quota ouvert")
-			}
 		</div>
-		if cu.FairShareMode == model.FairShareModeThrottled {
-			<p class="text-xs text-muted-foreground">Le forfait se consomme plus vite que la fenêtre ne s'écoule : votre part est resserrée jusqu'à ce que la consommation rejoigne son rythme.</p>
-		} else if cu.FairShareMode == model.FairShareModeHappyHour {
-			<p class="text-xs text-muted-foreground">Fin de fenêtre : le quota restant serait perdu à la réinitialisation, il est ouvert à tous.</p>
+		// The allocation basis. A share computed on the active users moves between
+		// two visits, so the figures it was computed from are shown rather than left
+		// for the reader to guess.
+		if cu.ShareDegraded {
+			<p class="text-xs text-muted-foreground">Nombre d'utilisateurs actifs indisponible : part calculée sur l'effectif complet.</p>
+		} else if cu.ActiveUsers > 0 && cu.MemberCount > 0 {
+			<p class="text-xs text-muted-foreground">
+				Part calculée sur { fmt.Sprintf("%d", cu.ActiveUsers) } utilisateur(s) actif(s) sur { fmt.Sprintf("%d", cu.MemberCount) } membre(s)
+			</p>
 		}
 		// Token budget bar
 		if cu.Constraint.TokenBudget != nil && *cu.Constraint.TokenBudget > 0 {
 			{{ pctTokens := clampPct(cu.TokensUsed, *cu.Constraint.TokenBudget) }}
 			<div class="space-y-1">
 				<div class="flex justify-between text-xs text-muted-foreground">
-					<span>Tokens</span>
+					<span class="flex items-center gap-2">
+						Tokens
+						@fairShareBadge(cu.TokenMode)
+					</span>
 					<span>{ fmt.Sprintf("%d%%", pctTokens) }</span>
 				</div>
 				@progressBar(pctTokens, pctTokens >= 90)
 			</div>
+			@fairShareNote(cu.TokenMode)
 		} else if cu.Constraint.TokenBudget == nil && cu.TokensUsed > 0 {
 			<p class="text-xs text-muted-foreground">{ formatLargeInt(cu.TokensUsed) } tokens consommés (pas de limite)</p>
 		}
@@ -101,11 +105,17 @@ templ rollingWindowConstraintRow(cu SubscriptionConstraintUsage) {
 			{{ pctValue := clampPct(cu.ValueUsed, *cu.Constraint.ValueBudget) }}
 			<div class="space-y-1">
 				<div class="flex justify-between text-xs text-muted-foreground">
-					<span>Valeur</span>
+					<span class="flex items-center gap-2">
+						Valeur
+						@fairShareBadge(cu.ValueMode)
+					</span>
 					<span>{ fmt.Sprintf("%d%%", pctValue) }</span>
 				</div>
 				@progressBar(pctValue, pctValue >= 90)
 			</div>
+			if cu.TokenMode != cu.ValueMode {
+				@fairShareNote(cu.ValueMode)
+			}
 		}
 		// Window timing. We always show a timezone-independent relative countdown.
 		if cu.Anchored && !cu.ResetAt.IsZero() {
@@ -124,6 +134,25 @@ templ rollingWindowConstraintRow(cu SubscriptionConstraintUsage) {
 			</p>
 		}
 	</div>
+}
+
+// fairShareBadge names the regime a gauge was allocated under. The nominal
+// regime carries no badge: only a share that is narrower or wider than usual
+// needs accounting for.
+templ fairShareBadge(mode model.FairShareMode) {
+	if mode == model.FairShareModeThrottled {
+		@common.Badge(common.ToneWarning, "Part réduite")
+	} else if mode == model.FairShareModeHappyHour {
+		@common.Badge(common.TonePositive, "Quota ouvert")
+	}
+}
+
+templ fairShareNote(mode model.FairShareMode) {
+	if mode == model.FairShareModeThrottled {
+		<p class="text-xs text-muted-foreground">Le forfait se consomme plus vite que la fenêtre ne s'écoule : votre part est resserrée jusqu'à ce que la consommation rejoigne son rythme.</p>
+	} else if mode == model.FairShareModeHappyHour {
+		<p class="text-xs text-muted-foreground">Fin de fenêtre : le quota restant serait perdu à la réinitialisation, il est réparti entre les utilisateurs actifs.</p>
+	}
 }
 
 templ concurrencyConstraintRow(cu SubscriptionConstraintUsage) {

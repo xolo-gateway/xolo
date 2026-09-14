@@ -15,11 +15,17 @@ type UsageRecord struct {
 	// the quota enforcer on every proxy request (org, plan_covered, created_at
 	// range, then user_id / currency / cost read from the index itself): on a
 	// yearly budget it otherwise visited every row of the org since January.
-	CreatedAt         time.Time `gorm:"index:idx_usage_org_created,priority:2;index:idx_usage_user_org_created,priority:3;index:idx_usage_org_payg_cost,priority:3"`
-	UserID            string    `gorm:"index;index:idx_usage_user_org_created,priority:1;index:idx_usage_org_payg_cost,priority:4"`
+	//
+	// idx_usage_org_prov_plan is its subscription counterpart, for the three
+	// aggregations the fair-share allocator runs per rolling-window constraint
+	// (plan totals, the caller's totals, and the DISTINCT count of active users).
+	// It leads on provider_id, which the PAYG index does not carry, and ends on
+	// user_id so the count is served from the index.
+	CreatedAt         time.Time `gorm:"index:idx_usage_org_created,priority:2;index:idx_usage_user_org_created,priority:3;index:idx_usage_org_payg_cost,priority:3;index:idx_usage_org_prov_plan,priority:4"`
+	UserID            string    `gorm:"index;index:idx_usage_user_org_created,priority:1;index:idx_usage_org_payg_cost,priority:4;index:idx_usage_org_prov_plan,priority:5"`
 	ApplicationID     string    `gorm:"index"`
-	OrgID             string    `gorm:"index;not null;index:idx_usage_org_created,priority:1;index:idx_usage_user_org_created,priority:2;index:idx_usage_org_payg_cost,priority:1"`
-	ProviderID        string    `gorm:"index;not null"`
+	OrgID             string    `gorm:"index;not null;index:idx_usage_org_created,priority:1;index:idx_usage_user_org_created,priority:2;index:idx_usage_org_payg_cost,priority:1;index:idx_usage_org_prov_plan,priority:1"`
+	ProviderID        string    `gorm:"index;not null;index:idx_usage_org_prov_plan,priority:2"`
 	ModelID           string    `gorm:"index;not null"`
 	ProxyModelName    string `gorm:"not null"`
 	ResolvedModelName string `gorm:""`      // actual model used when virtual model was resolved
@@ -31,7 +37,7 @@ type UsageRecord struct {
 	Cost              int64  `gorm:"index:idx_usage_org_payg_cost,priority:6"` // microcents, frozen at recording time (converted to org currency)
 	Currency          string `gorm:"index:idx_usage_org_payg_cost,priority:5"` // frozen from provider
 	CostSource        string // "provider" or "computed", see model.CostSource
-	PlanCovered       int    `gorm:"index;default:0;index:idx_usage_org_payg_cost,priority:2"` // 1 if served by a subscription provider
+	PlanCovered       int    `gorm:"index;default:0;index:idx_usage_org_payg_cost,priority:2;index:idx_usage_org_prov_plan,priority:3"` // 1 if served by a subscription provider
 	ProviderCost      int64  // equivalent PAYG cost in provider currency (microcents), for plan value budgets
 }
 

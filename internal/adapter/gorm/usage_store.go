@@ -257,15 +257,18 @@ func (s *Store) SumUserPlanUsageSince(ctx context.Context, userID model.UserID, 
 }
 
 // CountActivePlanUsersSince implements port.UsageStore.
-func (s *Store) CountActivePlanUsersSince(ctx context.Context, orgID model.OrgID, providerID model.ProviderID, since time.Time) (int64, error) {
+func (s *Store) CountActivePlanUsersSince(ctx context.Context, orgID model.OrgID, providerID model.ProviderID, since time.Time, excludeUserID model.UserID) (int64, error) {
 	var count int64
 
 	err := s.withRetry(ctx, false, func(ctx context.Context, db *gorm.DB) error {
-		return errors.WithStack(db.Model(&UsageRecord{}).
+		query := db.Model(&UsageRecord{}).
 			Select("COUNT(DISTINCT user_id)").
 			Where("org_id = ? AND provider_id = ? AND created_at >= ? AND plan_covered = 1 AND user_id <> ''",
-				string(orgID), string(providerID), since).
-			Scan(&count).Error)
+				string(orgID), string(providerID), since)
+		if excludeUserID != "" {
+			query = query.Where("user_id <> ?", string(excludeUserID))
+		}
+		return errors.WithStack(query.Scan(&count).Error)
 	})
 	if err != nil {
 		return 0, err

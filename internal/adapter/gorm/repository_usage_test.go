@@ -417,7 +417,7 @@ func scenarioUsageStoreCountActivePlanUsers(t *testing.T, store *xologorm.Store)
 		}
 	}
 
-	count, err := store.CountActivePlanUsersSince(ctx, f.orgID, f.providerID, time.Now().Add(-time.Hour))
+	count, err := store.CountActivePlanUsersSince(ctx, f.orgID, f.providerID, time.Now().Add(-time.Hour), "")
 	if err != nil {
 		t.Fatalf("CountActivePlanUsersSince: %v", err)
 	}
@@ -425,8 +425,27 @@ func scenarioUsageStoreCountActivePlanUsers(t *testing.T, store *xologorm.Store)
 		t.Errorf("expected 2 active plan users, got %d", count)
 	}
 
+	// Excluding a user leaves the others: callers allocating for a user add them
+	// back themselves, which is exact whether or not they have consumed yet.
+	count, err = store.CountActivePlanUsersSince(ctx, f.orgID, f.providerID, time.Now().Add(-time.Hour), f.userA)
+	if err != nil {
+		t.Fatalf("CountActivePlanUsersSince (excluding userA): %v", err)
+	}
+	if count != 1 {
+		t.Errorf("expected 1 active plan user once userA is excluded, got %d", count)
+	}
+
+	// Excluding a user who never consumed changes nothing.
+	count, err = store.CountActivePlanUsersSince(ctx, f.orgID, f.providerID, time.Now().Add(-time.Hour), model.NewUserID())
+	if err != nil {
+		t.Fatalf("CountActivePlanUsersSince (excluding a stranger): %v", err)
+	}
+	if count != 2 {
+		t.Errorf("expected 2 active plan users, got %d", count)
+	}
+
 	// Outside the window nobody is active.
-	count, err = store.CountActivePlanUsersSince(ctx, f.orgID, f.providerID, time.Now().Add(time.Hour))
+	count, err = store.CountActivePlanUsersSince(ctx, f.orgID, f.providerID, time.Now().Add(time.Hour), "")
 	if err != nil {
 		t.Fatalf("CountActivePlanUsersSince (future): %v", err)
 	}

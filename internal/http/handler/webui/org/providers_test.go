@@ -123,13 +123,13 @@ func TestParseExtraBodyFromForm(t *testing.T) {
 
 	t.Run("typed rows", func(t *testing.T) {
 		r := makeRequest(map[string]string{
-			"extra_body_count":     "3",
-			"extra_body_k0_key":    "reasoning_split",
-			"extra_body_k0_value":  "true",
-			"extra_body_k1_key":    "top_k",
-			"extra_body_k1_value":  "40",
-			"extra_body_k2_key":    "mode",
-			"extra_body_k2_value":  "auto",
+			"extra_body_count":    "3",
+			"extra_body_k0_key":   "reasoning_split",
+			"extra_body_k0_value": "true",
+			"extra_body_k1_key":   "top_k",
+			"extra_body_k1_value": "40",
+			"extra_body_k2_key":   "mode",
+			"extra_body_k2_value": "auto",
 		})
 		m, err := parseExtraBodyFromForm(r)
 		if err != nil {
@@ -190,3 +190,92 @@ func TestParseExtraBodyFromForm(t *testing.T) {
 		}
 	})
 }
+
+func TestParseSubscriptionPlanFromForm_FairShareTuning(t *testing.T) {
+	// The form is the only writer of a subscription plan: a tuning field it does
+	// not read is a field the next save of the provider silently erases.
+	r := makeRequest(map[string]string{
+		"plan_label":                  "Pro",
+		"plan_constraint_count":       "1",
+		"plan_c0_kind":                "rolling_window",
+		"plan_c0_label":               "5h",
+		"plan_c0_duration":            "5h",
+		"plan_c0_token_budget":        "1000000",
+		"plan_c0_reserve_ratio":       "40",
+		"plan_c0_pace_slack":          "5",
+		"plan_c0_happy_hour_start":    "80",
+		"plan_c0_happy_hour_max_lead": "30m",
+	})
+
+	plan := parseSubscriptionPlanFromForm(r)
+	if plan == nil || len(plan.Constraints) != 1 {
+		t.Fatalf("plan = %+v, want one constraint", plan)
+	}
+	c := plan.Constraints[0]
+
+	if c.ReserveRatio == nil || *c.ReserveRatio != 0.4 {
+		t.Errorf("ReserveRatio = %v, want 0.4", c.ReserveRatio)
+	}
+	if c.PaceSlack == nil || *c.PaceSlack != 0.05 {
+		t.Errorf("PaceSlack = %v, want 0.05", c.PaceSlack)
+	}
+	if c.HappyHourStart == nil || *c.HappyHourStart != 0.8 {
+		t.Errorf("HappyHourStart = %v, want 0.8", c.HappyHourStart)
+	}
+	if c.HappyHourMaxLead == nil || c.HappyHourMaxLead.Duration() != 30*time.Minute {
+		t.Errorf("HappyHourMaxLead = %v, want 30m", c.HappyHourMaxLead)
+	}
+}
+
+func TestParseSubscriptionPlanFromForm_FairShareTuningLeftToDefaults(t *testing.T) {
+	r := makeRequest(map[string]string{
+		"plan_label":            "Pro",
+		"plan_constraint_count": "1",
+		"plan_c0_kind":          "rolling_window",
+		"plan_c0_duration":      "5h",
+		"plan_c0_token_budget":  "1000000",
+	})
+
+	plan := parseSubscriptionPlanFromForm(r)
+	if plan == nil || len(plan.Constraints) != 1 {
+		t.Fatalf("plan = %+v, want one constraint", plan)
+	}
+	c := plan.Constraints[0]
+	if c.ReserveRatio != nil || c.PaceSlack != nil || c.HappyHourStart != nil || c.HappyHourMaxLead != nil {
+		t.Errorf("tuning = (%v, %v, %v, %v), want all nil so the defaults apply",
+			c.ReserveRatio, c.PaceSlack, c.HappyHourStart, c.HappyHourMaxLead)
+	}
+}
+
+func TestParsePlanRatioField(t *testing.T) {
+	// Out-of-range values fall back to the default rather than to a figure nobody
+	// meant — 0 % of happy hour would put every window in permanent happy hour.
+	cases := []struct {
+		in   string
+		want *float64
+	}{
+		{"", nil},
+		{"   ", nil},
+		{"not a number", nil},
+		{"-1", nil},
+		{"101", nil},
+		{"0", ptr(0.0)},
+		{"30", ptr(0.3)},
+		{"100", ptr(1.0)},
+		{"12.5", ptr(0.125)},
+	}
+
+	for _, tc := range cases {
+		got := parsePlanRatioField(tc.in)
+		switch {
+		case tc.want == nil && got != nil:
+			t.Errorf("parsePlanRatioField(%q) = %v, want nil", tc.in, *got)
+		case tc.want != nil && got == nil:
+			t.Errorf("parsePlanRatioField(%q) = nil, want %v", tc.in, *tc.want)
+		case tc.want != nil && got != nil && *got != *tc.want:
+			t.Errorf("parsePlanRatioField(%q) = %v, want %v", tc.in, *got, *tc.want)
+		}
+	}
+}
+
+func ptr[T any](v T) *T { return &v }

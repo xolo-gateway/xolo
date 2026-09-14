@@ -37,7 +37,7 @@ func NewXoloSubscriptionEnforcer(
 		orgStore:      orgStore,
 		state:         state,
 		evaluators: map[model.PlanConstraintKind]constraintEvaluator{
-			model.ConstraintRollingWindow: &rollingWindowEvaluator{usageStore: usageStore},
+			model.ConstraintRollingWindow: newRollingWindowEvaluator(usageStore),
 			model.ConstraintConcurrency:   &concurrencyEvaluator{state: state},
 		},
 	}
