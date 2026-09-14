@@ -224,11 +224,6 @@ func ComputeFairShare(p FairShareParams) FairShareAllocation {
 		return FairShareAllocation{Allowance: 0, Mode: FairShareModeShared}
 	}
 
-	anchored := p.Elapsed >= 0
-	if anchored && p.inHappyHour() {
-		return FairShareAllocation{Allowance: p.happyHourAllowance(), Mode: FairShareModeHappyHour}
-	}
-
 	reserve := clampUnit(p.Reserve)
 	members := max(p.TotalMembers, 1)
 	active := max(p.ActiveUsers, 1)
@@ -240,6 +235,7 @@ func ComputeFairShare(p FairShareParams) FairShareAllocation {
 	guaranteed := reserve * budget / float64(members)
 	commons := (1 - reserve) * budget / float64(active)
 
+	anchored := p.Elapsed >= 0
 	mode := FairShareModeShared
 	if anchored && commons > 0 {
 		// Only a pacing factor that actually narrows the allowance is reported as
@@ -257,6 +253,17 @@ func ComputeFairShare(p FairShareParams) FairShareAllocation {
 		// Never hand out a zero allowance: a budgeted plan must always let a
 		// request through, otherwise the org locks itself out of its own plan.
 		allowance = 1
+	}
+
+	// The happy hour only ever opens: it is taken when it widens the share, and
+	// ignored when it would narrow it. Handing out a leftover that is about to be
+	// destroyed must never be the reason a request is refused — and since it is
+	// the nominal allowance that carries the floor above, deferring to it also
+	// keeps an exhausted window from allocating zero to everyone.
+	if anchored && p.inHappyHour() {
+		if hh := p.happyHourAllowance(); hh > allowance {
+			return FairShareAllocation{Allowance: hh, Mode: FairShareModeHappyHour}
+		}
 	}
 
 	return FairShareAllocation{Allowance: allowance, Mode: mode}

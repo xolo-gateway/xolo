@@ -226,25 +226,70 @@ func TestComputeFairShare_HappyHourOpensTheLeftover(t *testing.T) {
 	}
 }
 
+// sharedHappyHourParams puts four users in a window close to its reset, with
+// little consumed: the leftover share is then wider than the nominal one, so the
+// happy hour actually applies.
+func sharedHappyHourParams() FairShareParams {
+	p := happyHourParams()
+	p.ActiveUsers = 4
+	p.UsedTotal = 200
+	p.UserUsed = 100
+	return p
+}
+
 func TestComputeFairShare_HappyHourSplitsTheLeftoverBetweenActiveUsers(t *testing.T) {
 	// With several users still working, the leftover is shared rather than handed
 	// to whoever asks first.
-	p := happyHourParams()
-	p.ActiveUsers = 4
-	p.UsedTotal = 400
-	p.UserUsed = 100
+	p := sharedHappyHourParams()
 
 	got := ComputeFairShare(p)
 	if got.Mode != FairShareModeHappyHour {
 		t.Fatalf("mode = %q, want happy_hour", got.Mode)
 	}
-	// The other three consumed 300 between them; the remaining 700 is split four
-	// ways, so this user may hold 175 in total.
-	if got.Allowance != 175 {
-		t.Errorf("allowance = %d, want 175", got.Allowance)
+	// The other three consumed 100 between them; the remaining 900 is split four
+	// ways, so this user may hold 225 in total.
+	if got.Allowance != 225 {
+		t.Errorf("allowance = %d, want 225", got.Allowance)
 	}
 	if got.Allowance >= p.Budget {
 		t.Errorf("allowance = %d, want less than the whole budget while others are active", got.Allowance)
+	}
+}
+
+func TestComputeFairShare_HappyHourNeverNarrowsTheShare(t *testing.T) {
+	// The happy hour hands out what the reset would destroy; it must never be the
+	// reason a request is refused. Once the other active users have consumed a
+	// lot, an equal split of the leftover is narrower than the nominal share — so
+	// the nominal share stands, and crossing the threshold cannot turn a grant
+	// into a denial.
+	p := happyHourParams()
+	p.ActiveUsers = 4
+	p.UsedTotal = 900
+	p.UserUsed = 100 // the other three consumed 800 between them
+
+	before := p
+	before.Elapsed = 0.5 // same window, before the happy hour opens
+	nominal := ComputeFairShare(before)
+
+	got := ComputeFairShare(p)
+	if got.Allowance < nominal.Allowance {
+		t.Errorf("allowance = %d during the happy hour, want at least the nominal %d", got.Allowance, nominal.Allowance)
+	}
+	if got.Mode == FairShareModeHappyHour {
+		t.Errorf("mode = %q, want the nominal mode when the leftover share is narrower", got.Mode)
+	}
+}
+
+func TestComputeFairShare_HappyHourNeverAllocatesZero(t *testing.T) {
+	// An integer split of a nearly exhausted leftover rounds to zero, and a zero
+	// allowance refuses every user — including one who has consumed nothing.
+	p := happyHourParams()
+	p.ActiveUsers = 4
+	p.UsedTotal = 999
+	p.UserUsed = 0
+
+	if got := ComputeFairShare(p); got.Allowance < 1 {
+		t.Errorf("allowance = %d, want at least 1 so a request can still go through", got.Allowance)
 	}
 }
 
@@ -252,10 +297,7 @@ func TestComputeFairShare_HappyHourAllowanceDoesNotGrowAsItIsConsumed(t *testing
 	// The check that guards a budget compares usage against the allowance, so an
 	// allowance derived from that same usage can never fire. Consuming up to the
 	// allowance and recomputing must not raise it.
-	p := happyHourParams()
-	p.ActiveUsers = 4
-	p.UsedTotal = 400
-	p.UserUsed = 100
+	p := sharedHappyHourParams()
 
 	first := ComputeFairShare(p).Allowance
 
@@ -277,7 +319,7 @@ func TestComputeFairShare_HappyHourAllowanceDoesNotGrowAsItIsConsumed(t *testing
 		p.UsedTotal += alloc - p.UserUsed
 		p.UserUsed = alloc
 	}
-	if p.UserUsed > 200 {
+	if p.UserUsed > 250 {
 		t.Errorf("user ended up holding %d of a 1000 budget shared with 3 others, want it bounded near their share", p.UserUsed)
 	}
 }
