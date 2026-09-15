@@ -117,7 +117,7 @@ leurs valeurs par défaut.
 Une valeur illisible ou hors bornes est refusée à l'enregistrement, avec un
 message nommant la contrainte concernée : un réglage affiché doit être celui que
 le moteur applique. L'ouverture de fin de fenêtre doit être strictement
-supérieure à 0 — c'est 100 qui la désactive.
+supérieure à 0. C'est 100 qui la désactive.
 
 La part d'un utilisateur dépend du nombre d'utilisateurs actifs au moment de la
 requête : elle peut donc varier au cours d'une même fenêtre, à la hausse comme à
