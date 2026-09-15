@@ -295,7 +295,10 @@ func ComputeFairShare(p FairShareParams) FairShareAllocation {
 		// allocation is for. It is only worth explaining once the share drops
 		// below what the static budget/members cap used to grant, since above
 		// that line the user still has more than before.
-		if guaranteed+commons < budget/float64(members) {
+		// Pacing keeps precedence when both rules bite: "your share reopens
+		// when consumption catches up with the clock" is the one explanation
+		// the user can act on, and the screen shows a single note per gauge.
+		if mode == FairShareModeShared && guaranteed+commons < budget/float64(members) {
 			mode = FairShareModeCapped
 		}
 	}

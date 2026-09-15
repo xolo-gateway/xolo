@@ -1,11 +1,15 @@
 package org
 
 import (
+	"context"
 	"net/http"
 	"net/url"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/xolo-gateway/xolo/internal/core/model"
+	"github.com/xolo-gateway/xolo/internal/http/handler/webui/org/component"
 )
 
 func makeRequest(fields map[string]string) *http.Request {
@@ -420,5 +424,42 @@ func TestParseSubscriptionPlanFromForm_FirstErrorWins(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "first") || strings.Contains(err.Error(), "second") {
 		t.Errorf("error = %q, want the first constraint's error only", err)
+	}
+}
+
+func TestProviderWithPlan_ShowsTheSubmittedPlanOnTheStoredProvider(t *testing.T) {
+	// providerWithPlan is what brings the plan back on screen as typed when the
+	// form is rendered in error. It must present the submitted plan while every
+	// other field still comes from the stored provider.
+	stored := model.NewProvider("org-1", "Mistral", "mistral", "https://api.mistral.ai/v1", "key", "EUR")
+	stored.SetBillingMode(model.BillingModeSubscription)
+	stored.SetSubscriptionPlan(&model.SubscriptionPlan{Label: "stored"})
+
+	typed := &model.SubscriptionPlan{Label: "typed", Constraints: []model.PlanConstraint{{
+		Kind: model.ConstraintRollingWindow, Label: "as-typed", Duration: model.PlanDuration(5 * time.Hour),
+	}}}
+	p := providerWithPlan{Provider: stored, plan: typed}
+
+	if p.SubscriptionPlan() != typed {
+		t.Error("SubscriptionPlan() does not return the submitted plan")
+	}
+	if p.Name() != "Mistral" || p.Currency() != "EUR" || p.BillingMode() != model.BillingModeSubscription {
+		t.Errorf("stored fields altered: name=%q currency=%q billing=%q", p.Name(), p.Currency(), p.BillingMode())
+	}
+
+	// And the editor renders that plan, rejected value included.
+	submitted := url.Values{"plan_c0_reserve_ratio": {"30 %"}}
+	var out strings.Builder
+	if err := component.SubscriptionPlanEditor(p.SubscriptionPlan(), false, submitted).Render(context.Background(), &out); err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	html := out.String()
+	for _, want := range []string{`value="typed"`, `value="as-typed"`, `value="30 %"`} {
+		if !strings.Contains(html, want) {
+			t.Errorf("rendered editor lacks %s", want)
+		}
+	}
+	if strings.Contains(html, `value="stored"`) {
+		t.Error("rendered editor still shows the stored plan label")
 	}
 }

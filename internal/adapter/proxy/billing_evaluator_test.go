@@ -48,6 +48,12 @@ func (f *fairShareUsageStore) CountActivePlanUsersSince(_ context.Context, _ mod
 	return f.otherActiveUsers, nil
 }
 
+// The caller is never among the counted in these fixtures: otherActiveUsers is
+// the number of other users, as its name says.
+func (f *fairShareUsageStore) HasPlanUsageSince(_ context.Context, _ model.UserID, _ model.OrgID, _ model.ProviderID, _ time.Time) (bool, error) {
+	return false, nil
+}
+
 func tokenConstraint(budget int64) model.PlanConstraint {
 	return model.PlanConstraint{
 		Kind:        model.ConstraintRollingWindow,
@@ -159,11 +165,11 @@ func TestRollingWindow_DegradedCountOnAThrottledWindowStaysCoherent(t *testing.T
 	}
 }
 
-func TestRollingWindow_CallerIsExcludedFromTheCountThenAddedBack(t *testing.T) {
+func TestRollingWindow_CallerAbsentFromTheCountIsAddedToIt(t *testing.T) {
 	// The caller competes for the budget whether or not their first request has
-	// been recorded yet, so they are excluded from the count and added back —
-	// counting them from a zero usage sum would miscount a user whose requests
-	// were recorded with no billable token.
+	// been recorded yet: absent from the plan-wide count, they are added to it.
+	// Inferring their presence from a zero usage sum would miscount a user whose
+	// requests were recorded with no billable token.
 	store := &fairShareUsageStore{orgTokens: 300, userTokens: 0, otherActiveUsers: 2}
 	ev := newRollingWindowEvaluator(store, service.NewFairShareService(store))
 
@@ -174,8 +180,9 @@ func TestRollingWindow_CallerIsExcludedFromTheCountThenAddedBack(t *testing.T) {
 	if denial != nil {
 		t.Fatalf("first request of the window denied: %s", denial.Message)
 	}
-	if store.excludedUser != "user-1" {
-		t.Errorf("excluded user = %q, want the caller", store.excludedUser)
+	// The count is plan-wide; the caller's presence is a separate lookup.
+	if store.excludedUser != "" {
+		t.Errorf("excluded user = %q, want the plan-wide count", store.excludedUser)
 	}
 }
 
@@ -309,5 +316,18 @@ func TestRollingWindow_ValueDenialUsesTheProviderCurrency(t *testing.T) {
 	}
 	if !strings.Contains(denial.Message, "€") || strings.Contains(denial.Message, "$") {
 		t.Errorf("message = %q, want amounts in euros", denial.Message)
+	}
+}
+
+func TestRollingWindow_NilAllocatorDegradesInsteadOfPanicking(t *testing.T) {
+	store := &fairShareUsageStore{orgTokens: 300, userTokens: 100, otherActiveUsers: 2}
+	ev := newRollingWindowEvaluator(store, nil)
+
+	_, denial, err := ev.Acquire(context.Background(), fairShareScope(), tokenConstraint(1000))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if denial != nil {
+		t.Fatalf("request denied: %s", denial.Message)
 	}
 }

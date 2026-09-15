@@ -34,6 +34,10 @@ func (s *stubPlanUsageReader) CountActivePlanUsersSince(context.Context, model.O
 	return s.otherActiveUsers, nil
 }
 
+func (s *stubPlanUsageReader) HasPlanUsageSince(context.Context, model.UserID, model.OrgID, model.ProviderID, time.Time) (bool, error) {
+	return false, nil
+}
+
 func planConstraint(budget int64) model.PlanConstraint {
 	return model.PlanConstraint{
 		Kind:        model.ConstraintRollingWindow,

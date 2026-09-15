@@ -707,3 +707,29 @@ func TestComputeFairShare_CapAboveTheStaticShareIsNotReported(t *testing.T) {
 		t.Errorf("mode = %q, allowance = %d; want capped once below the static share", got.Mode, got.Allowance)
 	}
 }
+
+func TestComputeFairShare_ThrottledKeepsPrecedenceOverCapped(t *testing.T) {
+	// Both rules bite: the plan runs ahead of the clock and the others drained
+	// it. The screen shows one note per gauge, and pacing is the only cause the
+	// user can wait out, so it must be the one reported.
+	p := FairShareParams{
+		Budget:         1000,
+		TotalMembers:   10,
+		ActiveUsers:    2,
+		UsedTotal:      800,
+		UserUsed:       0, // all consumed by the other active user
+		Elapsed:        0.1,
+		WindowDuration: 5 * time.Hour,
+		Reserve:        DefaultReserveRatio,
+		Slack:          DefaultPaceSlack,
+		HappyHourStart: DefaultHappyHourStart,
+	}
+
+	got := ComputeFairShare(p)
+	if got.Mode != FairShareModeThrottled {
+		t.Errorf("mode = %q, want throttled to take precedence over the cap", got.Mode)
+	}
+	if got.Allowance >= 100 {
+		t.Errorf("allowance = %d, want it narrowed below the static share as well", got.Allowance)
+	}
+}

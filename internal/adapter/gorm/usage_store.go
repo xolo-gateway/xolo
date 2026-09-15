@@ -276,6 +276,25 @@ func (s *Store) CountActivePlanUsersSince(ctx context.Context, orgID model.OrgID
 	return count, nil
 }
 
+// HasPlanUsageSince implements port.UsageStore.
+func (s *Store) HasPlanUsageSince(ctx context.Context, userID model.UserID, orgID model.OrgID, providerID model.ProviderID, since time.Time) (bool, error) {
+	var count int64
+
+	err := s.withRetry(ctx, false, func(ctx context.Context, db *gorm.DB) error {
+		// LIMIT 1 under the count: the question is presence, and the first
+		// matching index entry answers it.
+		return errors.WithStack(db.Model(&UsageRecord{}).
+			Where("org_id = ? AND provider_id = ? AND plan_covered = 1 AND created_at >= ? AND user_id = ?",
+				string(orgID), string(providerID), since, string(userID)).
+			Limit(1).
+			Count(&count).Error)
+	})
+	if err != nil {
+		return false, err
+	}
+	return count > 0, nil
+}
+
 // dimensionGroupExpr returns the SQL expression to GROUP BY for a usage
 // dimension, spelled for the backend db talks to.
 func dimensionGroupExpr(db *gorm.DB, d port.UsageDimension) (string, error) {

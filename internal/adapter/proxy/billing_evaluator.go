@@ -88,6 +88,13 @@ type rollingWindowEvaluator struct {
 // fairShare is the process-wide allocator, shared with the dashboard so both
 // decide and display from the same active-user cache.
 func newRollingWindowEvaluator(usageStore port.UsageStore, fairShare *service.FairShareService) *rollingWindowEvaluator {
+	if fairShare == nil {
+		// A nil allocator would only be noticed on the first subscription
+		// request in production, as a panic on the hot path. Build a private
+		// one instead: same formula, its own cache, and a share the dashboard
+		// may disagree with for one TTL — a degradation, not an outage.
+		fairShare = service.NewFairShareService(usageStore)
+	}
 	return &rollingWindowEvaluator{
 		usageStore: usageStore,
 		fairShare:  fairShare,

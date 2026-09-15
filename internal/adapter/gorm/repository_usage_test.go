@@ -444,6 +444,28 @@ func scenarioUsageStoreCountActivePlanUsers(t *testing.T, store *xologorm.Store)
 		t.Errorf("expected 2 active plan users, got %d", count)
 	}
 
+	// Presence is the per-caller half of the same question.
+	for _, tc := range []struct {
+		user model.UserID
+		want bool
+	}{
+		{f.userA, true},
+		{f.userB, true},
+		{model.NewUserID(), false},
+	} {
+		present, err := store.HasPlanUsageSince(ctx, tc.user, f.orgID, f.providerID, time.Now().Add(-time.Hour))
+		if err != nil {
+			t.Fatalf("HasPlanUsageSince(%s): %v", tc.user, err)
+		}
+		if present != tc.want {
+			t.Errorf("HasPlanUsageSince(%s) = %v, want %v", tc.user, present, tc.want)
+		}
+	}
+	// Another provider's usage does not make the user present on this one.
+	if present, err := store.HasPlanUsageSince(ctx, f.userA, f.orgID, f.otherProvID, time.Now().Add(-time.Hour)); err != nil || present {
+		t.Errorf("HasPlanUsageSince on the other provider = (%v, %v), want (false, nil)", present, err)
+	}
+
 	// Outside the window nobody is active.
 	count, err = store.CountActivePlanUsersSince(ctx, f.orgID, f.providerID, time.Now().Add(time.Hour), "")
 	if err != nil {

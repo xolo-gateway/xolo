@@ -6,6 +6,7 @@ import (
 
 	"github.com/xolo-gateway/xolo/internal/core/model"
 	"github.com/pkg/errors"
+	"golang.org/x/sync/singleflight"
 )
 
 // PlanUsageReader is the narrow slice of port.UsageStore the fair-share
@@ -14,6 +15,7 @@ type PlanUsageReader interface {
 	SumPlanUsageSince(ctx context.Context, orgID model.OrgID, providerID model.ProviderID, since time.Time) (tokens int64, providerValue int64, err error)
 	SumUserPlanUsageSince(ctx context.Context, userID model.UserID, orgID model.OrgID, providerID model.ProviderID, since time.Time) (tokens int64, providerValue int64, err error)
 	CountActivePlanUsersSince(ctx context.Context, orgID model.OrgID, providerID model.ProviderID, since time.Time, excludeUserID model.UserID) (int64, error)
+	HasPlanUsageSince(ctx context.Context, userID model.UserID, orgID model.OrgID, providerID model.ProviderID, since time.Time) (bool, error)
 }
 
 // FairShareRequest describes whose share of which constraint is being resolved.
@@ -63,27 +65,56 @@ type FairShareResult struct {
 	CountDegraded bool
 }
 
-// countOthers returns how many users other than the caller consumed in the
-// window, from the cache when a recent read is available. degraded reports that
-// the count could not be read, now or within the TTL: the failure is cached
-// like a value, so a database that cannot answer the count is spared the query
-// on every request rather than asked again and again while it is struggling.
-func (s *FairShareService) countOthers(ctx context.Context, req FairShareRequest, since time.Time) (count int64, degraded bool) {
-	key := activeUserKeyFor(req.OrgID, req.ProviderID, since, req.UserID, s.activeUsers.ttl)
+// countActive returns how many users compete for the budget in the window, the
+// caller included. degraded reports that the count could not be read, now or
+// within the TTL.
+//
+// The plan-wide count is the expensive part, a DISTINCT over the whole window,
+// and it is what the cache holds — one entry per plan and window, shared by
+// every user on it. Whether the caller is already among the counted is a point
+// lookup in the same index, asked on every call: a user whose first request has
+// not been recorded yet is competing all the same, and inferring their presence
+// from a zero usage sum was wrong, since a request can be recorded with no
+// billable token. A failed lookup counts the caller in, which only narrows.
+func (s *FairShareService) countActive(ctx context.Context, req FairShareRequest, since time.Time) (count int64, degraded bool) {
+	total, degraded := s.countAll(ctx, req, since)
+	if degraded {
+		return 0, true
+	}
+
+	present, err := s.usageReader.HasPlanUsageSince(ctx, req.UserID, req.OrgID, req.ProviderID, since)
+	if err != nil || !present {
+		total++
+	}
+
+	return total, false
+}
+
+// countAll returns the plan-wide active-user count, from the cache when a recent
+// read is available. A failure is cached like a value, so a database that cannot
+// answer the count is spared the query on every request rather than asked again
+// and again while it is struggling; concurrent reloads of one key are folded
+// into a single query.
+func (s *FairShareService) countAll(ctx context.Context, req FairShareRequest, since time.Time) (count int64, degraded bool) {
+	key := activeUserKeyFor(req.OrgID, req.ProviderID, since, s.activeUsers.ttl)
 
 	if entry, ok := s.activeUsers.get(key, req.Now); ok {
 		return entry.count, entry.degraded
 	}
 
-	count, err := s.usageReader.CountActivePlanUsersSince(ctx, req.OrgID, req.ProviderID, since, req.UserID)
-	if err != nil {
-		s.activeUsers.put(key, activeUserEntry{degraded: true}, req.Now)
-		return 0, true
-	}
+	v, _, _ := s.inflight.Do(key.flightKey(), func() (any, error) {
+		// Another caller may have filled the entry while this one waited.
+		if entry, ok := s.activeUsers.get(key, req.Now); ok {
+			return entry, nil
+		}
+		n, err := s.usageReader.CountActivePlanUsersSince(ctx, req.OrgID, req.ProviderID, since, "")
+		entry := activeUserEntry{count: n, degraded: err != nil}
+		s.activeUsers.put(key, entry, req.Now)
+		return entry, nil
+	})
+	entry := v.(activeUserEntry)
 
-	s.activeUsers.put(key, activeUserEntry{count: count}, req.Now)
-
-	return count, false
+	return entry.count, entry.degraded
 }
 
 // ErrFairShareNotApplicable is returned when there is no membership to divide a
@@ -99,6 +130,10 @@ var ErrFairShareNotApplicable = errors.New("fair share: not applicable without a
 type FairShareService struct {
 	usageReader PlanUsageReader
 	activeUsers *activeUserCache
+	// inflight serialises concurrent reloads of one count: when an entry
+	// expires, every request on the plan would otherwise fire the same
+	// COUNT(DISTINCT) at once.
+	inflight singleflight.Group
 }
 
 func NewFairShareService(usageReader PlanUsageReader) *FairShareService {
@@ -154,22 +189,19 @@ func (s *FairShareService) Resolve(ctx context.Context, req FairShareRequest) (*
 		UserValue:  userValue,
 	}
 
-	// The count excludes the caller, who is then added back: they are competing
-	// for the budget whether or not their first request has been recorded yet.
-	others, degraded := s.countOthers(ctx, req, since)
+	active, degraded := s.countActive(ctx, req, since)
 	if degraded {
 		res.CountDegraded = true
-		others = int64(req.MemberCount)
+		active = int64(req.MemberCount)
 	}
-	active := int(others) + 1
-	if active > req.MemberCount {
-		active = req.MemberCount
+	if active > int64(req.MemberCount) {
+		active = int64(req.MemberCount)
 	}
-	res.ActiveUsers = active
+	res.ActiveUsers = int(active)
 
 	base := c.FairShareParamsFor(model.FairShareParams{
 		TotalMembers: req.MemberCount,
-		ActiveUsers:  active,
+		ActiveUsers:  int(active),
 		Elapsed:      c.ElapsedFraction(req.Now),
 	})
 

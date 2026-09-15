@@ -1,6 +1,7 @@
 package service
 
 import (
+	"strconv"
 	"sync"
 	"time"
 
@@ -12,9 +13,11 @@ import (
 // few seconds stale changes an allowance by at most one competitor.
 const DefaultActiveUserCacheTTL = 30 * time.Second
 
-// activeUserKey identifies one count. The window start is part of it, so a new
-// window never reads a previous window's count, and the excluded user too, since
-// the count is taken without them.
+// activeUserKey identifies one count: the plan (org and provider) and the
+// window. It deliberately does not name a user. The count is taken over the
+// whole plan and shared by everyone on it; whether the caller is among the
+// counted is a separate, cheap presence check. Keying on the caller would pay
+// the expensive count once per active user per TTL instead of once per plan.
 //
 // The window start is quantised to the TTL before it gets here. On a sliding
 // window it is now−duration, a different instant on every request — down to the
@@ -26,18 +29,23 @@ type activeUserKey struct {
 	orgID      model.OrgID
 	providerID model.ProviderID
 	bucket     int64 // window start in TTL-sized steps
-	excluded   model.UserID
 }
 
 // activeUserKeyFor builds the key for one count. Quantising a sliding window's
 // start makes requests within one TTL of each other share an entry; the entry
 // expires on its own before the drift exceeds the TTL.
-func activeUserKeyFor(orgID model.OrgID, providerID model.ProviderID, since time.Time, excluded model.UserID, ttl time.Duration) activeUserKey {
+func activeUserKeyFor(orgID model.OrgID, providerID model.ProviderID, since time.Time, ttl time.Duration) activeUserKey {
 	bucket := since.UnixNano()
 	if ttl > 0 {
 		bucket /= int64(ttl)
 	}
-	return activeUserKey{orgID: orgID, providerID: providerID, bucket: bucket, excluded: excluded}
+	return activeUserKey{orgID: orgID, providerID: providerID, bucket: bucket}
+}
+
+// flightKey is the singleflight key for one count: the same identity as the
+// cache key, spelled as a string.
+func (k activeUserKey) flightKey() string {
+	return string(k.orgID) + "|" + string(k.providerID) + "|" + strconv.FormatInt(k.bucket, 10)
 }
 
 type activeUserEntry struct {

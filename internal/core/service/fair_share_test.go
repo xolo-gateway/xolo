@@ -2,6 +2,8 @@ package service_test
 
 import (
 	"context"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -16,7 +18,10 @@ type fakePlanUsageReader struct {
 	userTokens int64
 	userValue  int64
 
+	// otherActiveUsers is the plan-wide count as the store reports it; the
+	// caller is present in it when callerPresent is true.
 	otherActiveUsers int64
+	callerPresent    bool
 	countErr         error
 	sumErr           error
 
@@ -40,6 +45,10 @@ func (f *fakePlanUsageReader) CountActivePlanUsersSince(_ context.Context, _ mod
 		return 0, f.countErr
 	}
 	return f.otherActiveUsers, nil
+}
+
+func (f *fakePlanUsageReader) HasPlanUsageSince(_ context.Context, _ model.UserID, _ model.OrgID, _ model.ProviderID, _ time.Time) (bool, error) {
+	return f.callerPresent, nil
 }
 
 func tokenAndValueConstraint(tokens, value int64) model.PlanConstraint {
@@ -83,13 +92,15 @@ func TestFairShareService_ResolvesBothBudgets(t *testing.T) {
 		t.Errorf("value allowance = %d, want 1916", *got.ValueAllowance)
 	}
 	if got.ActiveUsers != 3 {
-		t.Errorf("active users = %d, want 3 (2 others plus the caller)", got.ActiveUsers)
+		t.Errorf("active users = %d, want 3 (2 counted plus the caller, absent from the count)", got.ActiveUsers)
 	}
 	if got.CountDegraded {
 		t.Error("count reported as degraded, want a clean read")
 	}
-	if reader.excludedUser != "user-1" {
-		t.Errorf("excluded user = %q, want the caller", reader.excludedUser)
+	// The count is taken plan-wide so every user on the plan can share it; the
+	// caller's presence is a separate lookup.
+	if reader.excludedUser != "" {
+		t.Errorf("excluded user = %q, want the plan-wide count", reader.excludedUser)
 	}
 }
 
@@ -281,9 +292,9 @@ func TestFairShareService_ActiveUserCountIsReusedWithinItsTTL(t *testing.T) {
 	}
 }
 
-func TestFairShareService_ActiveUserCountIsNotSharedAcrossKeys(t *testing.T) {
-	// The count is taken without the caller and over one window, so neither may
-	// be borrowed from another user's or another window's entry.
+func TestFairShareService_ActiveUserCountIsSharedByThePlanAndKeyedByWindow(t *testing.T) {
+	// One count per plan and window, shared by every user on it; a new window
+	// reads again.
 	reader := &countingCountReader{fakePlanUsageReader: fakePlanUsageReader{planTokens: 300, userTokens: 100, otherActiveUsers: 2}}
 	svc := service.NewFairShareService(reader)
 
@@ -292,10 +303,15 @@ func TestFairShareService_ActiveUserCountIsNotSharedAcrossKeys(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
+	// Another user on the same plan and window shares the count: that is the
+	// point of taking it plan-wide.
 	otherUser := base
 	otherUser.UserID = "user-2"
 	if _, err := svc.Resolve(context.Background(), otherUser); err != nil {
 		t.Fatalf("unexpected error: %v", err)
+	}
+	if reader.counts != 1 {
+		t.Errorf("count read %d times for two users on one plan, want 1", reader.counts)
 	}
 
 	otherWindow := base
@@ -303,9 +319,23 @@ func TestFairShareService_ActiveUserCountIsNotSharedAcrossKeys(t *testing.T) {
 	if _, err := svc.Resolve(context.Background(), otherWindow); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
+	if reader.counts != 2 {
+		t.Errorf("count read %d times, want a new read for a new window", reader.counts)
+	}
+}
 
-	if reader.counts != 3 {
-		t.Errorf("count read %d times, want one read per user and per window", reader.counts)
+func TestFairShareService_CallerAlreadyCountedIsNotAddedTwice(t *testing.T) {
+	// The plan-wide count already includes a user who consumed in the window;
+	// adding them back would overstate the competition and narrow every share.
+	reader := &fakePlanUsageReader{planTokens: 300, userTokens: 100, otherActiveUsers: 3, callerPresent: true}
+	svc := service.NewFairShareService(reader)
+
+	got, err := svc.Resolve(context.Background(), request(tokenAndValueConstraint(1000, 10_000)))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got.ActiveUsers != 3 {
+		t.Errorf("active users = %d, want the plan-wide 3 with the caller already in it", got.ActiveUsers)
 	}
 }
 
@@ -453,4 +483,66 @@ func TestFairShareService_CountIsSharedBetweenConstraintsOfTheSameWindow(t *test
 	if reader.counts != 1 {
 		t.Errorf("count read %d times for two constraints over one window, want 1", reader.counts)
 	}
+}
+
+func TestFairShareService_ConcurrentReloadsFireOneCount(t *testing.T) {
+	// When an entry expires, every request on the plan arrives at the same
+	// time; without single-flight each would run the same COUNT(DISTINCT).
+	reader := &blockingCountReader{fakePlanUsageReader: fakePlanUsageReader{planTokens: 300, userTokens: 100, otherActiveUsers: 2}, release: make(chan struct{})}
+	svc := service.NewFairShareService(reader)
+
+	c := tokenAndValueConstraint(1000, 10_000)
+	anchor := time.Now().Add(-time.Hour)
+	c.WindowAnchor = &anchor
+	req := request(c)
+
+	const callers = 8
+	var wg sync.WaitGroup
+	for range callers {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if _, err := svc.Resolve(context.Background(), req); err != nil {
+				t.Errorf("unexpected error: %v", err)
+			}
+		}()
+	}
+	// Let the callers pile up on the count before releasing it.
+	reader.waitForFirst()
+	time.Sleep(20 * time.Millisecond)
+	close(reader.release)
+	wg.Wait()
+
+	if got := reader.counts.Load(); got != 1 {
+		t.Errorf("count read %d times by %d concurrent callers, want 1", got, callers)
+	}
+}
+
+// blockingCountReader holds the first count until released, so concurrent
+// callers can be observed piling up on it.
+type blockingCountReader struct {
+	fakePlanUsageReader
+	release chan struct{}
+	first   sync.Once
+	started chan struct{}
+	counts  atomic.Int64
+}
+
+func (b *blockingCountReader) waitForFirst() {
+	b.first.Do(func() {})
+	for b.started == nil {
+		time.Sleep(time.Millisecond)
+	}
+	<-b.started
+}
+
+func (b *blockingCountReader) CountActivePlanUsersSince(ctx context.Context, orgID model.OrgID, providerID model.ProviderID, since time.Time, excludeUserID model.UserID) (int64, error) {
+	b.counts.Add(1)
+	b.first.Do(func() {})
+	if b.started == nil {
+		b.started = make(chan struct{})
+		close(b.started)
+	}
+	<-b.release
+	return b.fakePlanUsageReader.CountActivePlanUsersSince(ctx, orgID, providerID, since, excludeUserID)
 }

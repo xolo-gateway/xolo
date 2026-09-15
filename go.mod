@@ -122,7 +122,6 @@ require (
 	golang.org/x/crypto v0.54.0 // indirect
 	golang.org/x/image v0.43.0 // indirect
 	golang.org/x/oauth2 v0.36.0 // indirect
-	golang.org/x/sync v0.22.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260311181403-84a4fc48630c // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 )
@@ -153,7 +152,10 @@ require (
 
 // replace github.com/bornholm/go-anon => ../go-anon
 
-require github.com/xolo-gateway/xolo/pkg/pluginsdk v0.0.0-00010101000000-000000000000
+require (
+	github.com/xolo-gateway/xolo/pkg/pluginsdk v0.0.0-00010101000000-000000000000
+	golang.org/x/sync v0.22.0
+)
 
 // The plugin SDK lives in this repository as a nested module so that
 // third-party plugin authors depend only on it, not on the whole server.

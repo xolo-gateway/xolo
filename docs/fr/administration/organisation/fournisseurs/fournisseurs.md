@@ -80,7 +80,11 @@ part se compose de deux termes :
   occasionnel de ceux qui consomment beaucoup. C'est une réservation, non une
   simple part : la portion commune est plafonnée par ce qui reste réellement
   distribuable une fois les planchers des absents mis de côté, de sorte qu'un
-  membre arrivant tard dans la fenêtre y retrouve bien sa part ;
+  membre arrivant tard dans la fenêtre y retrouve bien sa part. Ce plancher vaut,
+  par défaut, 30 % de l'ancienne part fixe `budget / membres` : il est plus bas
+  que ce que l'ancienne règle garantissait, en échange d'une part nominale bien
+  plus large dès que des membres restent inactifs. Relever la réserve remonte le
+  plancher, mais reprend directement sur la portion commune ;
 - le **reste du budget**, réparti entre les seuls utilisateurs **actifs dans la
   fenêtre**. Sur une organisation de vingt personnes dont trois utilisent
   réellement le forfait, chacune de ces trois dispose ainsi d'environ un quart du

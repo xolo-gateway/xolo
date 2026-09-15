@@ -244,10 +244,11 @@ func (h *Handler) updateProvider(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// The plan is parsed before the other validations so that every error path
-	// below renders the form on the plan as typed. Rendering the stored one next
-	// to submitted retry or rate-limit values would mix the two silently: the
-	// constraint types, labels and row count from the database, the budgets
-	// from the form.
+	// below renders the form on the plan as typed. Only the plan block makes
+	// that round trip: the retry and rate-limit sections are rendered from the
+	// stored configuration on every error path, as they always were. Parsing
+	// the plan first at least keeps the plan itself whole when one of those
+	// sections is what fails.
 	var subscriptionPlan *model.SubscriptionPlan
 	if billingMode == model.BillingModeSubscription {
 		plan, err := parseSubscriptionPlanFromForm(r)
@@ -1083,7 +1084,7 @@ func (h *Handler) renderProviderFormError(w http.ResponseWriter, r *http.Request
 			Breadcrumbs: []common.BreadcrumbItem{
 				{Label: org.Name(), Href: "/orgs/" + orgSlug + "/usage"},
 				{Label: "Fournisseurs", Href: "/orgs/" + orgSlug + "/admin/providers"},
-				providerBreadcrumb(orgSlug, p, isNew),
+				{Label: p.Name(), Href: "/orgs/" + orgSlug + "/admin/providers/" + string(p.ID()) + "/models"},
 			},
 		},
 	}
@@ -1099,18 +1100,6 @@ type providerWithPlan struct {
 }
 
 func (p providerWithPlan) SubscriptionPlan() *model.SubscriptionPlan { return p.plan }
-
-// providerBreadcrumb is the last crumb of the provider form: a provider being
-// created has no page to link to yet.
-func providerBreadcrumb(orgSlug string, p model.Provider, isNew bool) common.BreadcrumbItem {
-	if isNew {
-		return common.BreadcrumbItem{Label: "Nouveau fournisseur"}
-	}
-	return common.BreadcrumbItem{
-		Label: p.Name(),
-		Href:  "/orgs/" + orgSlug + "/admin/providers/" + string(p.ID()) + "/models",
-	}
-}
 
 func (h *Handler) deleteModel(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()

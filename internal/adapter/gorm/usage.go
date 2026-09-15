@@ -17,9 +17,11 @@ type UsageRecord struct {
 	// yearly budget it otherwise visited every row of the org since January.
 	//
 	// idx_usage_org_prov_plan is its subscription counterpart. It leads on
-	// provider_id, which the PAYG index does not carry, and serves the two
-	// plan-wide aggregations of the fair-share allocator: the window totals, and
-	// the DISTINCT count of active users, which it answers from the index alone.
+	// provider_id, which the PAYG index does not carry, and serves the plan-wide
+	// reads of the fair-share allocator. The DISTINCT count of active users and
+	// the per-user presence check are answered from the index alone; the window
+	// totals use it for the range only and then read total_tokens and
+	// provider_cost from the table.
 	// It does not serve the caller's own totals — user_id sits after the
 	// created_at range, so an equality on it cannot be used as a prefix; that
 	// query stays on idx_usage_user_org_created.
