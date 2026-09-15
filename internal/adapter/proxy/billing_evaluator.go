@@ -186,9 +186,11 @@ func (e *rollingWindowEvaluator) Acquire(ctx context.Context, scope planScope, c
 func shareBasis(share *service.FairShareResult, mode model.FairShareMode, memberCount int) string {
 	if share.CountDegraded {
 		// The count is what the share is split by; every other rule still applies
-		// on top of it, so the allocation is the whole-membership share at best,
-		// narrower under pacing and wider during the happy hour. Naming the mode
-		// keeps the message from contradicting the allocation it explains.
+		// on top of it, so the allocation is the whole-membership share at best
+		// and narrower under pacing or the availability cap. The happy hour
+		// cannot widen it here: split across N members, (B − othersUsed)/N never
+		// exceeds B/N. Naming the mode keeps the message from contradicting the
+		// allocation it explains.
 		return fmt.Sprintf("active-user count unavailable, %s allocation split across every member", mode)
 	}
 	return fmt.Sprintf("%s allocation, %d of %d members active", mode, share.ActiveUsers, memberCount)

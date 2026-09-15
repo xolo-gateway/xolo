@@ -343,7 +343,7 @@ func rollingWindowConstraintRow(cu SubscriptionConstraintUsage) templ.Component 
 			return templ_7745c5c3_Err
 		}
 		if cu.ShareDegraded {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 17, "<p class=\"text-xs text-muted-foreground\">Nombre d'utilisateurs actifs indisponible : part calculée sur l'effectif complet.</p>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 17, "<p class=\"text-xs text-muted-foreground\">Nombre d'utilisateurs actifs indisponible : part calculée sur l'effectif complet, dans la limite de ce que le forfait peut encore honorer.</p>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"math"
 	"net/http"
 	"reflect"
 	"strconv"
@@ -550,7 +551,10 @@ func parsePlanRatioField(value string) (*float64, error) {
 		return nil, nil
 	}
 	pct, err := strconv.ParseFloat(value, 64)
-	if err != nil || pct < 0 || pct > 100 {
+	// ParseFloat accepts "NaN", and NaN is neither < 0 nor > 100: without the
+	// explicit check it would pass the range test, be stored on the constraint,
+	// and fail the whole provider save inside json.Marshal with a bare 500.
+	if err != nil || math.IsNaN(pct) || pct < 0 || pct > 100 {
 		return nil, errors.Errorf("valeur attendue entre 0 et 100, reçu %q", value)
 	}
 	fraction := pct / 100

@@ -774,3 +774,73 @@ func (r *slowCountReader) CountActivePlanUsersSince(ctx context.Context, orgID m
 		return 0, ctx.Err()
 	}
 }
+
+func TestFairShareService_FirstReadOfAWindowIsBounded(t *testing.T) {
+	// With nothing to serve stale, the first request of a window waits for the
+	// count — but not past the bound. Past it the share is computed on the whole
+	// membership, said to be degraded, and the count finishes behind for the
+	// next request.
+	reader := &slowCountReader{fakePlanUsageReader: fakePlanUsageReader{planTokens: 300, userTokens: 100, otherActiveUsers: 2}, delay: 50 * time.Millisecond}
+	svc := service.NewFairShareServiceWithOptions(reader, service.FairShareOptions{
+		CacheTTL:      time.Minute,
+		CountTimeout:  time.Second,
+		FirstReadWait: 5 * time.Millisecond,
+	})
+
+	c := tokenAndValueConstraint(1000, 10_000)
+	anchor := time.Now().Add(-time.Hour)
+	c.WindowAnchor = &anchor
+	req := request(c)
+
+	started := time.Now()
+	got, err := svc.Resolve(context.Background(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if waited := time.Since(started); waited > 40*time.Millisecond {
+		t.Errorf("first read waited %s on a 50ms count with a 5ms bound", waited)
+	}
+	if !got.CountDegraded || got.ActiveUsers != 20 {
+		t.Errorf("first read = (degraded %v, active %d), want the whole membership reported as degraded", got.CountDegraded, got.ActiveUsers)
+	}
+
+	// The count kept running; once it landed, the entry serves the real value.
+	time.Sleep(80 * time.Millisecond)
+	got, err = svc.Resolve(context.Background(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got.CountDegraded || got.ActiveUsers != 3 {
+		t.Errorf("second read = (degraded %v, active %d), want the count that finished behind the first", got.CountDegraded, got.ActiveUsers)
+	}
+}
+
+func TestFairShareService_PresenceProbeIsBounded(t *testing.T) {
+	// A probe that hangs must not hold the request for as long as the client
+	// stays connected; past its bound the caller is counted in, which narrows.
+	reader := &slowProbeReader{fakePlanUsageReader: fakePlanUsageReader{planTokens: 300, userTokens: 100, otherActiveUsers: 2, callerPresent: true}}
+	svc := service.NewFairShareServiceWithOptions(reader, service.FairShareOptions{CacheTTL: time.Minute, CountTimeout: 400 * time.Millisecond})
+
+	started := time.Now()
+	got, err := svc.Resolve(context.Background(), request(tokenAndValueConstraint(1000, 10_000)))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if waited := time.Since(started); waited > 300*time.Millisecond {
+		t.Errorf("probe held the request %s, want it bounded to a fraction of the count timeout", waited)
+	}
+	// callerPresent is true, but the probe never answered: the caller is added.
+	if got.ActiveUsers != 3 {
+		t.Errorf("active users = %d, want the caller counted in after the probe timed out", got.ActiveUsers)
+	}
+}
+
+// slowProbeReader never answers a presence probe before its context ends.
+type slowProbeReader struct {
+	fakePlanUsageReader
+}
+
+func (r *slowProbeReader) HasPlanUsageSince(ctx context.Context, _ model.UserID, _ model.OrgID, _ model.ProviderID, _ time.Time) (bool, error) {
+	<-ctx.Done()
+	return false, ctx.Err()
+}

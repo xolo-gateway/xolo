@@ -77,7 +77,7 @@ templ rollingWindowConstraintRow(cu SubscriptionConstraintUsage) {
 		// two visits, so the figures it was computed from are shown rather than left
 		// for the reader to guess.
 		if cu.ShareDegraded {
-			<p class="text-xs text-muted-foreground">Nombre d'utilisateurs actifs indisponible : part calculée sur l'effectif complet.</p>
+			<p class="text-xs text-muted-foreground">Nombre d'utilisateurs actifs indisponible : part calculée sur l'effectif complet, dans la limite de ce que le forfait peut encore honorer.</p>
 		} else if cu.ActiveUsers > 0 && cu.MemberCount > 0 {
 			<p class="text-xs text-muted-foreground">
 				Part calculée sur { fmt.Sprintf("%d", cu.ActiveUsers) } utilisateur(s) actif(s) sur { fmt.Sprintf("%d", cu.MemberCount) } membre(s)

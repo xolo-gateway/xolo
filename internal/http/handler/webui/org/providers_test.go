@@ -269,6 +269,8 @@ func TestParsePlanRatioField(t *testing.T) {
 		{"", nil, false},
 		{"   ", nil, false},
 		{"not a number", nil, true},
+		{"NaN", nil, true}, // ParseFloat accepts it, and NaN passes every comparison
+		{"Inf", nil, true},
 		{"30 %", nil, true},
 		{"-1", nil, true},
 		{"101", nil, true},

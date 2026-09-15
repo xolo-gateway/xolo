@@ -59,9 +59,12 @@ type FairShareResult struct {
 	// ActiveUsers is how many members are competing for the budget, the caller
 	// included. It never exceeds MemberCount.
 	ActiveUsers int
-	// CountDegraded reports that the active-user count could not be read and that
-	// the allocation fell back to "everybody is active", i.e. the static share.
-	// Callers must say so rather than present ActiveUsers as a measurement.
+	// CountDegraded reports that the active-user count could not be read and
+	// that the allocation split the commons across the whole membership. That is
+	// the static budget/members share at best: the availability cap and pacing
+	// still apply on top and can narrow it further, and the happy hour cannot
+	// widen it, since (B − othersUsed)/N never exceeds B/N. Callers must say so
+	// rather than present ActiveUsers as a measurement.
 	CountDegraded bool
 }
 
@@ -101,7 +104,11 @@ func (s *FairShareService) isPresent(ctx context.Context, req FairShareRequest, 
 		return true
 	}
 
-	present, err := s.usageReader.HasPlanUsageSince(ctx, req.UserID, req.OrgID, req.ProviderID, since)
+	// Bounded like the count it complements, but on the request's own context:
+	// its answer is not shared, so a client that hangs up may take it along.
+	probeCtx, cancel := context.WithTimeout(ctx, s.probeTimeout())
+	defer cancel()
+	present, err := s.usageReader.HasPlanUsageSince(probeCtx, req.UserID, req.OrgID, req.ProviderID, since)
 	if err != nil || !present {
 		return false
 	}
@@ -150,11 +157,26 @@ func (s *FairShareService) countAll(ctx context.Context, req FairShareRequest, s
 		return entry.count, entry.degraded
 	}
 
-	// Nothing to serve yet: this is the first read of the window, wait for it.
-	v, _, _ := s.inflight.Do(key.flightKey(), reload)
-	entry = v.(activeUserEntry)
+	// Nothing to serve yet: this is the first read of the window. Wait for it,
+	// but not indefinitely — a proxy request is not the place to sit behind a
+	// COUNT over a week of usage while the indexes are still being built. Past
+	// the bound the share is computed on the whole membership, reported as
+	// degraded, and the count carries on behind the request for the next one.
+	// Nothing is cached on that path: the reload writes the entry itself.
+	ch := s.inflight.DoChan(key.flightKey(), reload)
+	select {
+	case res := <-ch:
+		entry = res.Val.(activeUserEntry)
+		return entry.count, entry.degraded
+	case <-time.After(s.firstReadWait):
+		return 0, true
+	}
+}
 
-	return entry.count, entry.degraded
+// probeTimeout bounds one presence probe: a fraction of the count's own bound,
+// since a point lookup that takes that long is a database in trouble.
+func (s *FairShareService) probeTimeout() time.Duration {
+	return max(s.countTimeout/4, 100*time.Millisecond)
 }
 
 // ErrFairShareNotApplicable is returned when there is no membership to divide a
@@ -168,10 +190,11 @@ var ErrFairShareNotApplicable = errors.New("fair share: not applicable without a
 // does not apply is worse than showing nothing, and two copies of this wiring
 // drift the moment one of them is touched.
 type FairShareService struct {
-	usageReader  PlanUsageReader
-	activeUsers  *activeUserCache
-	presence     *presenceCache
-	countTimeout time.Duration
+	usageReader   PlanUsageReader
+	activeUsers   *activeUserCache
+	presence      *presenceCache
+	countTimeout  time.Duration
+	firstReadWait time.Duration
 	// inflight serialises concurrent reloads of one count: when an entry
 	// expires, every request on the plan would otherwise fire the same
 	// COUNT(DISTINCT) at once.
@@ -187,7 +210,16 @@ type FairShareOptions struct {
 	// request, so this is what stops a stuck query from holding the reload.
 	// Non-positive means DefaultActiveUserCountTimeout.
 	CountTimeout time.Duration
+	// FirstReadWait bounds how long a request waits for the first count of a
+	// window, when there is no entry to serve stale. Non-positive means
+	// DefaultFirstReadWait.
+	FirstReadWait time.Duration
 }
+
+// DefaultFirstReadWait is how long the first request of a window waits for its
+// count before falling back to the whole membership and letting the count
+// finish behind it. Later requests are served from the entry, stale or fresh.
+const DefaultFirstReadWait = time.Second
 
 // DefaultActiveUserCountTimeout is the default bound on one plan-wide count.
 // It assumes idx_usage_org_prov_plan is in place and the count is served from
@@ -211,19 +243,26 @@ func NewFairShareServiceWithOptions(usageReader PlanUsageReader, opts FairShareO
 	if timeout <= 0 {
 		timeout = DefaultActiveUserCountTimeout
 	}
+	firstRead := opts.FirstReadWait
+	if firstRead <= 0 {
+		firstRead = DefaultFirstReadWait
+	}
 	return &FairShareService{
-		usageReader:  usageReader,
-		activeUsers:  newActiveUserCache(opts.CacheTTL),
-		presence:     newPresenceCache(opts.CacheTTL),
-		countTimeout: timeout,
+		usageReader:   usageReader,
+		activeUsers:   newActiveUserCache(opts.CacheTTL),
+		presence:      newPresenceCache(opts.CacheTTL),
+		countTimeout:  timeout,
+		firstReadWait: firstRead,
 	}
 }
 
 // Resolve computes the allocation for one user on one rolling-window constraint.
 //
 // Every degraded path narrows the allowance rather than widening it: losing the
-// active-user count falls back to the static budget/members share, because an
-// allocation handed out on missing data must not exceed what the plan can honour.
+// active-user count splits the commons across the whole membership, which is the
+// static budget/members share at best and narrower under the availability cap or
+// pacing, because an allocation handed out on missing data must not exceed what
+// the plan can honour.
 func (s *FairShareService) Resolve(ctx context.Context, req FairShareRequest) (*FairShareResult, error) {
 	if req.MemberCount <= 0 || req.UserID == "" {
 		// The allocation divides a budget between members: without a membership to

@@ -2,18 +2,19 @@ package org
 
 import (
 	"log/slog"
+	"math"
 	"net/http"
 	"strconv"
 	"time"
 
 	"github.com/a-h/templ"
 	"github.com/bornholm/go-x/slogx"
+	"github.com/pkg/errors"
 	"github.com/xolo-gateway/xolo/internal/core/model"
 	"github.com/xolo-gateway/xolo/internal/core/port"
 	httpCtx "github.com/xolo-gateway/xolo/internal/http/context"
 	common "github.com/xolo-gateway/xolo/internal/http/handler/webui/common/component"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/org/component"
-	"github.com/pkg/errors"
 )
 
 func (h *Handler) getOrgQuotaPage(w http.ResponseWriter, r *http.Request) {
@@ -218,7 +219,9 @@ func parseBudgetField(v string) *int64 {
 		return nil
 	}
 	f, err := strconv.ParseFloat(v, 64)
-	if err != nil || f <= 0 {
+	// NaN and ±Inf parse fine and slip past "f <= 0"; int64(NaN * 1e6) is then
+	// an arbitrary amount, not an error.
+	if err != nil || math.IsNaN(f) || math.IsInf(f, 0) || f <= 0 {
 		return nil
 	}
 	mc := int64(f * 1_000_000)
