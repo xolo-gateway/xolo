@@ -19,6 +19,9 @@ type planScope struct {
 	ProviderID  model.ProviderID
 	UserID      model.UserID // empty if no user context
 	MemberCount int          // 0 disables per-user fair-share checks
+	// Currency is the provider's, in which value budgets and provider costs are
+	// expressed. Denial messages format amounts with it.
+	Currency string
 }
 
 // planDenial describes why a constraint blocked a request.
@@ -120,7 +123,7 @@ func (e *rollingWindowEvaluator) Acquire(ctx context.Context, scope planScope, c
 	if c.ValueBudget != nil && providerValue >= *c.ValueBudget {
 		return nil, &planDenial{
 			Message: fmt.Sprintf("plan quota exceeded [%s]: value budget of %s reached in the last %s",
-				c.Label, formatMicrocents(providerValue, "USD"), formatDuration(dur)),
+				c.Label, formatMicrocents(providerValue, scope.Currency), formatDuration(dur)),
 		}, nil
 	}
 
@@ -160,7 +163,7 @@ func (e *rollingWindowEvaluator) Acquire(ctx context.Context, scope planScope, c
 		if share.ValueAllowance != nil && share.UserValue >= *share.ValueAllowance {
 			return nil, &planDenial{
 				Message: fmt.Sprintf("fair-share quota exceeded [%s]: value budget of %s / %s reached in the last %s (%s)",
-					c.Label, formatMicrocents(share.UserValue, "USD"), formatMicrocents(*share.ValueAllowance, "USD"),
+					c.Label, formatMicrocents(share.UserValue, scope.Currency), formatMicrocents(*share.ValueAllowance, scope.Currency),
 					formatDuration(dur), shareBasis(share, share.ValueMode, scope.MemberCount)),
 			}, nil
 		}

@@ -168,9 +168,11 @@ const (
 	// would be destroyed, so it is shared out between the users who showed up.
 	FairShareModeHappyHour FairShareMode = "happy_hour"
 	// FairShareModeCapped means the share was cut to what the plan can still hand
-	// out: the other active users have already consumed most of it, or the
-	// absent members' floors hold what is left. On a sliding window, where there
-	// is no pacing, this is the only reason a share ever narrows.
+	// out, and below the static budget/members share: the other active users
+	// have already consumed most of it, or the absent members' floors hold what
+	// is left. A cap that leaves the share above the static one is not reported;
+	// the user still has more than the old cap gave them. On a sliding window,
+	// where there is no pacing, this is the only reason a share ever narrows.
 	FairShareModeCapped FairShareMode = "capped"
 )
 
@@ -286,9 +288,16 @@ func ComputeFairShare(p FairShareParams) FairShareAllocation {
 	// budget, and the quiet member the floor exists for finds the plan empty.
 	if allocatable := p.allocatableCommons(guaranteed, members, active); allocatable < commons {
 		commons = allocatable
-		// The cap is now the binding rule, whatever the pacing did before it: a
-		// gauge that narrowed between two visits must say why.
-		mode = FairShareModeCapped
+		// The cap binds on almost every plan where few members are active: the
+		// absent members' floors take a large slice of the budget, so a modest
+		// consumption by the others is enough to trim the commons. Reporting that
+		// as a warning would badge the nominal state of the very orgs this
+		// allocation is for. It is only worth explaining once the share drops
+		// below what the static budget/members cap used to grant, since above
+		// that line the user still has more than before.
+		if guaranteed+commons < budget/float64(members) {
+			mode = FairShareModeCapped
+		}
 	}
 
 	allowance := int64(guaranteed + commons)

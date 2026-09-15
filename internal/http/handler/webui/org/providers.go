@@ -238,18 +238,44 @@ func (h *Handler) updateProvider(w http.ResponseWriter, r *http.Request) {
 		currency = existing.Currency()
 	}
 
+	billingMode := model.BillingMode(r.FormValue("billing_mode"))
+	if billingMode != model.BillingModeSubscription {
+		billingMode = model.BillingModePayg
+	}
+
+	// The plan is parsed before the other validations so that every error path
+	// below renders the form on the plan as typed. Rendering the stored one next
+	// to submitted retry or rate-limit values would mix the two silently: the
+	// constraint types, labels and row count from the database, the budgets
+	// from the form.
+	var subscriptionPlan *model.SubscriptionPlan
+	if billingMode == model.BillingModeSubscription {
+		plan, err := parseSubscriptionPlanFromForm(r)
+		if err != nil {
+			h.renderProviderFormError(w, r, ctx, user, orgSlug, org,
+				providerWithPlan{Provider: existing, plan: plan}, false,
+				"Forfait : "+err.Error()+".")
+			return
+		}
+		subscriptionPlan = plan
+	}
+	formProvider := providerWithPlan{Provider: existing, plan: subscriptionPlan}
+	if billingMode != model.BillingModeSubscription {
+		formProvider.plan = existing.SubscriptionPlan()
+	}
+
 	// --- Retry config ---
 	var retryConfig *model.RetryConfig
 	if r.FormValue("retry_enabled") == "on" {
 		delay, err := parseDurationField(r, "retry_delay_value", "retry_delay_unit")
 		if err != nil || delay <= 0 {
-			h.renderProviderFormError(w, r, ctx, user, orgSlug, org, existing, false,
+			h.renderProviderFormError(w, r, ctx, user, orgSlug, org, formProvider, false,
 				"Retry : le délai doit être un entier strictement positif.")
 			return
 		}
 		attempts, _ := strconv.Atoi(r.FormValue("retry_max_attempts"))
 		if attempts < 1 {
-			h.renderProviderFormError(w, r, ctx, user, orgSlug, org, existing, false,
+			h.renderProviderFormError(w, r, ctx, user, orgSlug, org, formProvider, false,
 				"Retry : le nombre de tentatives doit être ≥ 1.")
 			return
 		}
@@ -265,13 +291,13 @@ func (h *Handler) updateProvider(w http.ResponseWriter, r *http.Request) {
 	if r.FormValue("rate_limit_enabled") == "on" {
 		interval, err := parseDurationField(r, "rate_limit_interval_value", "rate_limit_interval_unit")
 		if err != nil || interval <= 0 {
-			h.renderProviderFormError(w, r, ctx, user, orgSlug, org, existing, false,
+			h.renderProviderFormError(w, r, ctx, user, orgSlug, org, formProvider, false,
 				"Rate limit : l'intervalle doit être un entier strictement positif.")
 			return
 		}
 		burst, _ := strconv.Atoi(r.FormValue("rate_limit_max_burst"))
 		if burst < 1 {
-			h.renderProviderFormError(w, r, ctx, user, orgSlug, org, existing, false,
+			h.renderProviderFormError(w, r, ctx, user, orgSlug, org, formProvider, false,
 				"Rate limit : la capacité de burst doit être ≥ 1.")
 			return
 		}
@@ -283,26 +309,6 @@ func (h *Handler) updateProvider(w http.ResponseWriter, r *http.Request) {
 	}
 
 	cloudTier, _ := strconv.Atoi(r.FormValue("cloud_tier"))
-	billingMode := model.BillingMode(r.FormValue("billing_mode"))
-	if billingMode != model.BillingModeSubscription {
-		billingMode = model.BillingModePayg
-	}
-	var subscriptionPlan *model.SubscriptionPlan
-	if billingMode == model.BillingModeSubscription {
-		plan, err := parseSubscriptionPlanFromForm(r)
-		if err != nil {
-			// Re-render the plan as it was typed, not as it is stored, so one
-			// mistyped percentage does not discard the other plan edits. Only the
-			// plan block is refilled from the submission; the provider's own
-			// fields come back from the stored state, as on the other error paths.
-			h.renderProviderFormError(w, r, ctx, user, orgSlug, org,
-				providerWithPlan{Provider: existing, plan: plan}, false,
-				"Forfait : "+err.Error()+".")
-			return
-		}
-		subscriptionPlan = plan
-	}
-
 	updated := &updatedProviderAdapter{
 		id:               existing.ID(),
 		orgID:            existing.OrgID(),

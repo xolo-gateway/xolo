@@ -673,3 +673,37 @@ func TestComputeFairShare_CommonsIsCappedByWhatOthersLeft(t *testing.T) {
 		t.Errorf("allowance = %d, want never below the guaranteed floor %d", after, floor)
 	}
 }
+
+func TestComputeFairShare_CapAboveTheStaticShareIsNotReported(t *testing.T) {
+	// Few active members means large absent floors, so the cap trims the commons
+	// on almost every plan this allocation is for. Badging that would mark the
+	// nominal state as a warning: the cap is only reported once the share falls
+	// below what the static budget/members rule used to grant.
+	p := FairShareParams{
+		Budget:         1000,
+		TotalMembers:   20,
+		ActiveUsers:    3,
+		UsedTotal:      300,
+		UserUsed:       100, // the two others consumed 200
+		Elapsed:        -1,
+		Reserve:        DefaultReserveRatio,
+		Slack:          DefaultPaceSlack,
+		HappyHourStart: DefaultHappyHourStart,
+	}
+
+	got := ComputeFairShare(p)
+	// Commons trimmed from 233 to 176 by the cap, allowance 191: above the
+	// static 50, so nothing to explain.
+	if got.Allowance != 191 {
+		t.Fatalf("allowance = %d, want 191", got.Allowance)
+	}
+	if got.Mode != FairShareModeShared {
+		t.Errorf("mode = %q, want shared while the share still beats the static one", got.Mode)
+	}
+
+	// Drain the plan further and the share drops below 50: now it is reported.
+	p.UsedTotal = 800
+	if got := ComputeFairShare(p); got.Mode != FairShareModeCapped || got.Allowance >= 50 {
+		t.Errorf("mode = %q, allowance = %d; want capped once below the static share", got.Mode, got.Allowance)
+	}
+}

@@ -89,6 +89,7 @@ func (e *XoloSubscriptionEnforcer) PreRequest(ctx context.Context, req *genaiPro
 		ProviderID:  p.ID(),
 		UserID:      userID,
 		MemberCount: memberCount,
+		Currency:    p.Currency(),
 	}
 
 	// Check cooldowns first (fast path, no DB).

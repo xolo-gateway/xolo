@@ -288,3 +288,26 @@ func TestRollingWindow_HappyHourOpensTheLeftoverBeforeReset(t *testing.T) {
 		t.Errorf("message = %q, want it to name the throttled mode", denial.Message)
 	}
 }
+
+func TestRollingWindow_ValueDenialUsesTheProviderCurrency(t *testing.T) {
+	// Value budgets are in the provider's currency; a euro plan refused in
+	// dollars misreads what was spent.
+	budget := int64(10_000_000) // 10.00 in provider currency
+	c := model.PlanConstraint{Kind: model.ConstraintRollingWindow, Label: "5h", Duration: model.PlanDuration(5 * time.Hour), ValueBudget: &budget}
+
+	store := &fairShareUsageStore{orgValue: 9_000_000, userValue: 9_000_000, otherActiveUsers: 0}
+	ev := newRollingWindowEvaluator(store, service.NewFairShareService(store))
+	scope := fairShareScope()
+	scope.Currency = "EUR"
+
+	_, denial, err := ev.Acquire(context.Background(), scope, c)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if denial == nil {
+		t.Fatal("request granted, want denied")
+	}
+	if !strings.Contains(denial.Message, "€") || strings.Contains(denial.Message, "$") {
+		t.Errorf("message = %q, want amounts in euros", denial.Message)
+	}
+}

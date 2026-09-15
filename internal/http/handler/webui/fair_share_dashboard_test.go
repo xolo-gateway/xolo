@@ -64,11 +64,10 @@ func TestApplyFairShare_ReplacesTheDenominatorAndReportsTheBasis(t *testing.T) {
 	if cu.ActiveUsers != 3 || cu.MemberCount != 20 {
 		t.Errorf("basis = %d of %d, want 3 of 20", cu.ActiveUsers, cu.MemberCount)
 	}
-	// The two other users consumed 200 of the plan, so the share is cut to what
-	// is left once the absent members' floors are set aside — and the gauge
-	// must carry the badge that says so.
-	if cu.TokenMode != model.FairShareModeCapped {
-		t.Errorf("token mode = %q, want capped", cu.TokenMode)
+	// The two other users consumed 200, so the cap trimmed the commons, but 191
+	// is still above the static 50 the old rule granted: nothing to badge.
+	if cu.TokenMode != model.FairShareModeShared {
+		t.Errorf("token mode = %q, want shared while the share beats the static one", cu.TokenMode)
 	}
 	if cu.ShareDegraded {
 		t.Error("share reported as degraded, want a clean read")

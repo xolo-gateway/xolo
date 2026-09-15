@@ -426,3 +426,31 @@ func TestFairShareService_CountFailureIsCachedAsAFallback(t *testing.T) {
 		t.Errorf("count attempted %d times, want a retry once the cached failure expired", reader.counts)
 	}
 }
+
+func TestFairShareService_CountIsSharedBetweenConstraintsOfTheSameWindow(t *testing.T) {
+	// The count depends on the window alone, never on the budget or the label,
+	// so two constraints over the same window share one cache entry. This pins
+	// that invariance: should the count ever become sensitive to the constraint,
+	// the key must grow with it and this test will say so.
+	reader := &countingCountReader{fakePlanUsageReader: fakePlanUsageReader{planTokens: 300, userTokens: 100, otherActiveUsers: 2}}
+	svc := service.NewFairShareService(reader)
+
+	anchor := time.Now().Add(-time.Hour)
+	tokens := tokenAndValueConstraint(1000, 10_000)
+	tokens.Label, tokens.WindowAnchor = "tokens", &anchor
+	value := tokenAndValueConstraint(50_000, 500_000)
+	value.Label, value.WindowAnchor = "value", &anchor
+
+	now := time.Now()
+	for _, c := range []model.PlanConstraint{tokens, value} {
+		req := request(c)
+		req.Now = now
+		if _, err := svc.Resolve(context.Background(), req); err != nil {
+			t.Fatalf("resolve %s: %v", c.Label, err)
+		}
+	}
+
+	if reader.counts != 1 {
+		t.Errorf("count read %d times for two constraints over one window, want 1", reader.counts)
+	}
+}
