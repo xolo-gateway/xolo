@@ -131,3 +131,55 @@ func (c *activeUserCache) size() int {
 	defer c.mu.Unlock()
 	return len(c.entries)
 }
+
+// presenceKey identifies one user's presence on one plan and window.
+type presenceKey struct {
+	activeUserKey
+	userID model.UserID
+}
+
+func presenceKeyFor(orgID model.OrgID, providerID model.ProviderID, since time.Time, userID model.UserID, ttl time.Duration) presenceKey {
+	return presenceKey{activeUserKey: activeUserKeyFor(orgID, providerID, since, ttl), userID: userID}
+}
+
+// presenceCache remembers, for a TTL, the users known to have consumed in a
+// window. Only positive answers are stored: within a window a presence never
+// turns false again, while an absence may end with the very next request.
+type presenceCache struct {
+	ttl time.Duration
+
+	mu      sync.Mutex
+	seen    map[presenceKey]time.Time // expiry
+	purgeAt int
+}
+
+func newPresenceCache(ttl time.Duration) *presenceCache {
+	return &presenceCache{ttl: ttl, seen: make(map[presenceKey]time.Time), purgeAt: minPurgeAt}
+}
+
+func (c *presenceCache) has(key presenceKey, now time.Time) bool {
+	if c == nil || c.ttl <= 0 {
+		return false
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	expiresAt, ok := c.seen[key]
+	return ok && !now.After(expiresAt)
+}
+
+func (c *presenceCache) remember(key presenceKey, now time.Time) {
+	if c == nil || c.ttl <= 0 {
+		return
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if len(c.seen) >= c.purgeAt {
+		for k, e := range c.seen {
+			if now.After(e) {
+				delete(c.seen, k)
+			}
+		}
+		c.purgeAt = max(2*len(c.seen), minPurgeAt)
+	}
+	c.seen[key] = now.Add(c.ttl)
+}

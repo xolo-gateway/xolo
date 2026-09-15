@@ -278,21 +278,24 @@ func (s *Store) CountActivePlanUsersSince(ctx context.Context, orgID model.OrgID
 
 // HasPlanUsageSince implements port.UsageStore.
 func (s *Store) HasPlanUsageSince(ctx context.Context, userID model.UserID, orgID model.OrgID, providerID model.ProviderID, since time.Time) (bool, error) {
-	var count int64
+	var ids []string
 
 	err := s.withRetry(ctx, false, func(ctx context.Context, db *gorm.DB) error {
-		// LIMIT 1 under the count: the question is presence, and the first
-		// matching index entry answers it.
+		// A probe the planner can stop at the first hit. Not COUNT with a LIMIT:
+		// GORM keeps the LIMIT but turns the SELECT into count(*), which
+		// aggregates every matching row before the LIMIT applies to the result.
+		// The predicate is served by idx_usage_org_prov_user, whose user_id sits
+		// before the created_at range so the equality bounds the index.
 		return errors.WithStack(db.Model(&UsageRecord{}).
-			Where("org_id = ? AND provider_id = ? AND plan_covered = 1 AND created_at >= ? AND user_id = ?",
-				string(orgID), string(providerID), since, string(userID)).
+			Where("org_id = ? AND provider_id = ? AND plan_covered = 1 AND user_id = ? AND created_at >= ?",
+				string(orgID), string(providerID), string(userID), since).
 			Limit(1).
-			Count(&count).Error)
+			Pluck("id", &ids).Error)
 	})
 	if err != nil {
 		return false, err
 	}
-	return count > 0, nil
+	return len(ids) > 0, nil
 }
 
 // dimensionGroupExpr returns the SQL expression to GROUP BY for a usage

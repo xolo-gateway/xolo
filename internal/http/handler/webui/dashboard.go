@@ -625,9 +625,11 @@ func (h *Handler) buildDashboardSubscriptionUsage(ctx context.Context, orgID mod
 					// all when the allocation will not apply — the aggregation would
 					// be paid for nothing.
 					var planUsage *service.PlanUsage
+					planUsageFailed := false
 					if fairShareApplies(h.fairShare, c, userID, memberCount) {
 						if planTokens, planValue, sumErr := h.usageStore.SumPlanUsageSince(ctx, orgID, p.ID(), since); sumErr != nil {
 							slog.WarnContext(ctx, "could not sum org plan usage", slogx.Error(sumErr))
+							planUsageFailed = true
 						} else {
 							planUsage = &service.PlanUsage{Tokens: planTokens, Value: planValue}
 						}
@@ -636,7 +638,9 @@ func (h *Handler) buildDashboardSubscriptionUsage(ctx context.Context, orgID mod
 					// varying allowance stays readable instead of looking arbitrary.
 					// The allocation reads this user's totals on the way, so they are
 					// taken from it rather than summed a second time.
-					if !applyFairShare(ctx, h.fairShare, &cu, c, orgID, p.ID(), userID, memberCount, now, planUsage) {
+					// When the plan-wide sum already failed, the allocator would only
+					// run the same aggregation against the same struggling store.
+					if planUsageFailed || !applyFairShare(ctx, h.fairShare, &cu, c, orgID, p.ID(), userID, memberCount, now, planUsage) {
 						tokens, value, sumErr := h.usageStore.SumUserPlanUsageSince(ctx, userID, orgID, p.ID(), since)
 						if sumErr != nil {
 							slog.WarnContext(ctx, "could not sum user plan usage", slogx.Error(sumErr))

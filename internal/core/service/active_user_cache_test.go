@@ -3,7 +3,6 @@ package service
 import (
 	"testing"
 	"time"
-
 )
 
 func TestActiveUserCache_SweepsExpiredEntriesWithoutWalkingOnEveryPut(t *testing.T) {

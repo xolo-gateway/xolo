@@ -15,6 +15,7 @@ import (
 // scanning the whole window.
 var hotPathUsageIndexes = []string{
 	"idx_usage_org_prov_plan", // subscription plan aggregations + active-user count
+	"idx_usage_org_prov_user", // per-user presence probe
 	"idx_usage_org_payg_cost", // PAYG cost sums
 }
 
@@ -39,23 +40,28 @@ func TestUsageRecord_PlanIndexIsAddedToAnExistingSchema(t *testing.T) {
 		store := newStoreOn(t, db)
 		migrateSchema(t, store)
 
-		// Put the table back in the state a deployment predating the index is in.
-		// Raw SQL rather than Migrator().DropIndex: on PostgreSQL the latter
+		// Put the table back in the state a deployment predating the indexes is
+		// in. Raw SQL rather than Migrator().DropIndex: on PostgreSQL the latter
 		// qualifies the index with the current schema in a form the server
 		// rejects under a search_path DSN, which is how the test backend connects.
-		if err := db.Exec("DROP INDEX " + db.Statement.Quote("idx_usage_org_prov_plan")).Error; err != nil {
-			t.Fatalf("drop index: %v", err)
-		}
-		if db.Migrator().HasIndex("usage_records", "idx_usage_org_prov_plan") {
-			t.Fatal("index still present after drop; the test cannot exercise the migration")
+		added := []string{"idx_usage_org_prov_plan", "idx_usage_org_prov_user"}
+		for _, name := range added {
+			if err := db.Exec("DROP INDEX " + db.Statement.Quote(name)).Error; err != nil {
+				t.Fatalf("drop index %s: %v", name, err)
+			}
+			if db.Migrator().HasIndex("usage_records", name) {
+				t.Fatalf("%s still present after drop; the test cannot exercise the migration", name)
+			}
 		}
 
-		// This is exactly what migration 202609150001 runs.
+		// This is exactly what migrations 202609150001 and 202609150002 run.
 		if err := db.AutoMigrate(&xologorm.UsageRecord{}); err != nil {
 			t.Fatalf("AutoMigrate: %v", err)
 		}
-		if !db.Migrator().HasIndex("usage_records", "idx_usage_org_prov_plan") {
-			t.Error("AutoMigrate did not add idx_usage_org_prov_plan to an existing table")
+		for _, name := range added {
+			if !db.Migrator().HasIndex("usage_records", name) {
+				t.Errorf("AutoMigrate did not add %s to an existing table", name)
+			}
 		}
 	})
 }

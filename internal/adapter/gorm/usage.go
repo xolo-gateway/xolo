@@ -18,18 +18,22 @@ type UsageRecord struct {
 	//
 	// idx_usage_org_prov_plan is its subscription counterpart. It leads on
 	// provider_id, which the PAYG index does not carry, and serves the plan-wide
-	// reads of the fair-share allocator. The DISTINCT count of active users and
-	// the per-user presence check are answered from the index alone; the window
-	// totals use it for the range only and then read total_tokens and
-	// provider_cost from the table.
+	// reads of the fair-share allocator. The DISTINCT count of active users is
+	// answered from the index alone; the window totals use it for the range only
+	// and then read total_tokens and provider_cost from the table.
+	//
+	// idx_usage_org_prov_user answers the per-user presence probe of the same
+	// allocator: user_id comes before the created_at range, so the equality on
+	// the caller bounds the index and the probe stops at the first entry. On
+	// idx_usage_org_prov_plan user_id sits after the range and cannot do that.
 	// It does not serve the caller's own totals — user_id sits after the
 	// created_at range, so an equality on it cannot be used as a prefix; that
 	// query stays on idx_usage_user_org_created.
-	CreatedAt         time.Time `gorm:"index:idx_usage_org_created,priority:2;index:idx_usage_user_org_created,priority:3;index:idx_usage_org_payg_cost,priority:3;index:idx_usage_org_prov_plan,priority:4"`
-	UserID            string    `gorm:"index;index:idx_usage_user_org_created,priority:1;index:idx_usage_org_payg_cost,priority:4;index:idx_usage_org_prov_plan,priority:5"`
+	CreatedAt         time.Time `gorm:"index:idx_usage_org_created,priority:2;index:idx_usage_user_org_created,priority:3;index:idx_usage_org_payg_cost,priority:3;index:idx_usage_org_prov_plan,priority:4;index:idx_usage_org_prov_user,priority:5"`
+	UserID            string    `gorm:"index;index:idx_usage_user_org_created,priority:1;index:idx_usage_org_payg_cost,priority:4;index:idx_usage_org_prov_plan,priority:5;index:idx_usage_org_prov_user,priority:4"`
 	ApplicationID     string    `gorm:"index"`
-	OrgID             string    `gorm:"index;not null;index:idx_usage_org_created,priority:1;index:idx_usage_user_org_created,priority:2;index:idx_usage_org_payg_cost,priority:1;index:idx_usage_org_prov_plan,priority:1"`
-	ProviderID        string    `gorm:"index;not null;index:idx_usage_org_prov_plan,priority:2"`
+	OrgID             string    `gorm:"index;not null;index:idx_usage_org_created,priority:1;index:idx_usage_user_org_created,priority:2;index:idx_usage_org_payg_cost,priority:1;index:idx_usage_org_prov_plan,priority:1;index:idx_usage_org_prov_user,priority:1"`
+	ProviderID        string    `gorm:"index;not null;index:idx_usage_org_prov_plan,priority:2;index:idx_usage_org_prov_user,priority:2"`
 	ModelID           string    `gorm:"index;not null"`
 	ProxyModelName    string `gorm:"not null"`
 	ResolvedModelName string `gorm:""`      // actual model used when virtual model was resolved
@@ -41,7 +45,7 @@ type UsageRecord struct {
 	Cost              int64  `gorm:"index:idx_usage_org_payg_cost,priority:6"` // microcents, frozen at recording time (converted to org currency)
 	Currency          string `gorm:"index:idx_usage_org_payg_cost,priority:5"` // frozen from provider
 	CostSource        string // "provider" or "computed", see model.CostSource
-	PlanCovered       int    `gorm:"index;default:0;index:idx_usage_org_payg_cost,priority:2;index:idx_usage_org_prov_plan,priority:3"` // 1 if served by a subscription provider
+	PlanCovered       int    `gorm:"index;default:0;index:idx_usage_org_payg_cost,priority:2;index:idx_usage_org_prov_plan,priority:3;index:idx_usage_org_prov_user,priority:3"` // 1 if served by a subscription provider
 	ProviderCost      int64  // equivalent PAYG cost in provider currency (microcents), for plan value budgets
 }
 

@@ -38,9 +38,10 @@ type UsageStore interface {
 	CountActivePlanUsersSince(ctx context.Context, orgID model.OrgID, providerID model.ProviderID, since time.Time, excludeUserID model.UserID) (int64, error)
 	// HasPlanUsageSince reports whether the user consumed subscription-covered
 	// (plan_covered=true) usage for a provider+org since the given time. It is a
-	// point lookup in the plan usage index, not a range scan: the allocator uses
-	// it to tell whether the caller is already among the counted active users,
-	// so the expensive count itself can be shared by everyone on the plan.
+	// probe that stops at the first matching row, bounded to the caller's rows on
+	// the window by idx_usage_org_prov_user. The allocator uses it to tell whether
+	// the caller is already among the counted active users, so the expensive
+	// count itself can be shared by everyone on the plan.
 	HasPlanUsageSince(ctx context.Context, userID model.UserID, orgID model.OrgID, providerID model.ProviderID, since time.Time) (bool, error)
 	// EarliestPlanUsageSince returns the creation time of the oldest subscription-covered
 	// (plan_covered=true) usage record for a provider+org still inside the rolling window

@@ -285,6 +285,19 @@ func createGetDatabase(db *gorm.DB) func(ctx context.Context) (*gorm.DB, error) 
 						return errors.WithStack(tx.Migrator().DropIndex(&UsageRecord{}, "idx_usage_org_prov_plan"))
 					},
 				},
+				{
+					// (org_id, provider_id, plan_covered, user_id, created_at) for the
+					// per-user presence probe of the fair-share allocator. The index
+					// above puts user_id after the created_at range, so an equality on
+					// the caller cannot bound it and the probe would walk the window.
+					ID: "202609150002",
+					Migrate: func(tx *gorm.DB) error {
+						return errors.WithStack(tx.AutoMigrate(&UsageRecord{}))
+					},
+					Rollback: func(tx *gorm.DB) error {
+						return errors.WithStack(tx.Migrator().DropIndex(&UsageRecord{}, "idx_usage_org_prov_user"))
+					},
+				},
 			})
 
 			m.InitSchema(func(tx *gorm.DB) error {

@@ -4,8 +4,8 @@ import (
 	"context"
 	"time"
 
-	"github.com/xolo-gateway/xolo/internal/core/model"
 	"github.com/pkg/errors"
+	"github.com/xolo-gateway/xolo/internal/core/model"
 	"golang.org/x/sync/singleflight"
 )
 
@@ -82,13 +82,38 @@ func (s *FairShareService) countActive(ctx context.Context, req FairShareRequest
 		return 0, true
 	}
 
-	present, err := s.usageReader.HasPlanUsageSince(ctx, req.UserID, req.OrgID, req.ProviderID, since)
-	if err != nil || !present {
+	if !s.isPresent(ctx, req, since) {
 		total++
 	}
 
 	return total, false
 }
+
+// isPresent reports whether the caller already consumed in the window. A
+// positive answer is kept for the TTL: presence never turns false again within
+// a window, so there is no reason to ask the store on every request of a user
+// it has already seen. Absence is asked again every time, since it can end
+// with this very request. A failed lookup reads as absent, which counts the
+// caller in and only narrows.
+func (s *FairShareService) isPresent(ctx context.Context, req FairShareRequest, since time.Time) bool {
+	key := presenceKeyFor(req.OrgID, req.ProviderID, since, req.UserID, s.presence.ttl)
+	if s.presence.has(key, req.Now) {
+		return true
+	}
+
+	present, err := s.usageReader.HasPlanUsageSince(ctx, req.UserID, req.OrgID, req.ProviderID, since)
+	if err != nil || !present {
+		return false
+	}
+
+	s.presence.remember(key, req.Now)
+
+	return true
+}
+
+// activeUserCountTimeout bounds the detached count: without the request's
+// cancellation, this is what stops a stuck query from holding the singleflight.
+const activeUserCountTimeout = 10 * time.Second
 
 // countAll returns the plan-wide active-user count, from the cache when a recent
 // read is available. A failure is cached like a value, so a database that cannot
@@ -107,7 +132,13 @@ func (s *FairShareService) countAll(ctx context.Context, req FairShareRequest, s
 		if entry, ok := s.activeUsers.get(key, req.Now); ok {
 			return entry, nil
 		}
-		n, err := s.usageReader.CountActivePlanUsersSince(ctx, req.OrgID, req.ProviderID, since, "")
+		// Detached from the request: the result lands in an entry shared by
+		// everyone on the plan, and a client hanging up mid-query is not a
+		// reason to mark the plan degraded for a whole TTL. A failure here is
+		// then the database's own, and worth caching.
+		countCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), activeUserCountTimeout)
+		defer cancel()
+		n, err := s.usageReader.CountActivePlanUsersSince(countCtx, req.OrgID, req.ProviderID, since, "")
 		entry := activeUserEntry{count: n, degraded: err != nil}
 		s.activeUsers.put(key, entry, req.Now)
 		return entry, nil
@@ -130,6 +161,7 @@ var ErrFairShareNotApplicable = errors.New("fair share: not applicable without a
 type FairShareService struct {
 	usageReader PlanUsageReader
 	activeUsers *activeUserCache
+	presence    *presenceCache
 	// inflight serialises concurrent reloads of one count: when an entry
 	// expires, every request on the plan would otherwise fire the same
 	// COUNT(DISTINCT) at once.
@@ -146,6 +178,7 @@ func NewFairShareServiceWithCacheTTL(usageReader PlanUsageReader, ttl time.Durat
 	return &FairShareService{
 		usageReader: usageReader,
 		activeUsers: newActiveUserCache(ttl),
+		presence:    newPresenceCache(ttl),
 	}
 }
 

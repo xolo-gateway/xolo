@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/pkg/errors"
 	"github.com/xolo-gateway/xolo/internal/core/model"
 	"github.com/xolo-gateway/xolo/internal/core/service"
-	"github.com/pkg/errors"
 )
 
 type fakePlanUsageReader struct {
@@ -25,7 +25,8 @@ type fakePlanUsageReader struct {
 	countErr         error
 	sumErr           error
 
-	excludedUser model.UserID
+	excludedUser  model.UserID
+	presenceCalls atomic.Int64 // read concurrently by every caller of a plan
 }
 
 func (f *fakePlanUsageReader) SumPlanUsageSince(_ context.Context, _ model.OrgID, _ model.ProviderID, _ time.Time) (int64, int64, error) {
@@ -48,6 +49,7 @@ func (f *fakePlanUsageReader) CountActivePlanUsersSince(_ context.Context, _ mod
 }
 
 func (f *fakePlanUsageReader) HasPlanUsageSince(_ context.Context, _ model.UserID, _ model.OrgID, _ model.ProviderID, _ time.Time) (bool, error) {
+	f.presenceCalls.Add(1)
 	return f.callerPresent, nil
 }
 
@@ -488,7 +490,11 @@ func TestFairShareService_CountIsSharedBetweenConstraintsOfTheSameWindow(t *test
 func TestFairShareService_ConcurrentReloadsFireOneCount(t *testing.T) {
 	// When an entry expires, every request on the plan arrives at the same
 	// time; without single-flight each would run the same COUNT(DISTINCT).
-	reader := &blockingCountReader{fakePlanUsageReader: fakePlanUsageReader{planTokens: 300, userTokens: 100, otherActiveUsers: 2}, release: make(chan struct{})}
+	reader := &blockingCountReader{
+		fakePlanUsageReader: fakePlanUsageReader{planTokens: 300, userTokens: 100, otherActiveUsers: 2},
+		release:             make(chan struct{}),
+		started:             make(chan struct{}),
+	}
 	svc := service.NewFairShareService(reader)
 
 	c := tokenAndValueConstraint(1000, 10_000)
@@ -519,30 +525,102 @@ func TestFairShareService_ConcurrentReloadsFireOneCount(t *testing.T) {
 }
 
 // blockingCountReader holds the first count until released, so concurrent
-// callers can be observed piling up on it.
+// callers can be observed piling up on it. started is closed exactly once, by
+// the first count, and is the only thing the test goroutine reads: a channel
+// close is a synchronisation point, a plain field assignment is not.
 type blockingCountReader struct {
 	fakePlanUsageReader
 	release chan struct{}
-	first   sync.Once
 	started chan struct{}
+	first   sync.Once
 	counts  atomic.Int64
 }
 
 func (b *blockingCountReader) waitForFirst() {
-	b.first.Do(func() {})
-	for b.started == nil {
-		time.Sleep(time.Millisecond)
-	}
 	<-b.started
 }
 
 func (b *blockingCountReader) CountActivePlanUsersSince(ctx context.Context, orgID model.OrgID, providerID model.ProviderID, since time.Time, excludeUserID model.UserID) (int64, error) {
 	b.counts.Add(1)
-	b.first.Do(func() {})
-	if b.started == nil {
-		b.started = make(chan struct{})
-		close(b.started)
-	}
+	b.first.Do(func() { close(b.started) })
 	<-b.release
 	return b.fakePlanUsageReader.CountActivePlanUsersSince(ctx, orgID, providerID, since, excludeUserID)
+}
+
+func TestFairShareService_PresenceIsRememberedOncePositive(t *testing.T) {
+	// A user seen in a window stays seen for the rest of it: presence never
+	// turns false again, so a positive answer is kept for the TTL instead of
+	// being asked of the store on every request.
+	reader := &fakePlanUsageReader{planTokens: 300, userTokens: 100, otherActiveUsers: 3, callerPresent: true}
+	svc := service.NewFairShareService(reader)
+
+	c := tokenAndValueConstraint(1000, 10_000)
+	anchor := time.Now().Add(-time.Hour)
+	c.WindowAnchor = &anchor
+	req := request(c)
+
+	for range 3 {
+		if _, err := svc.Resolve(context.Background(), req); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	}
+	if got := reader.presenceCalls.Load(); got != 1 {
+		t.Errorf("presence asked %d times, want 1 once it answered present", got)
+	}
+}
+
+func TestFairShareService_AbsenceIsNotRemembered(t *testing.T) {
+	// The other way round, absence can end at any moment — with this very
+	// request — so it is asked again each time.
+	reader := &fakePlanUsageReader{planTokens: 300, userTokens: 0, otherActiveUsers: 3, callerPresent: false}
+	svc := service.NewFairShareService(reader)
+
+	c := tokenAndValueConstraint(1000, 10_000)
+	anchor := time.Now().Add(-time.Hour)
+	c.WindowAnchor = &anchor
+	req := request(c)
+
+	for range 2 {
+		if _, err := svc.Resolve(context.Background(), req); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	}
+	if got := reader.presenceCalls.Load(); got != 2 {
+		t.Errorf("presence asked %d times, want it asked again while absent", got)
+	}
+}
+
+func TestFairShareService_CallerCancellationDoesNotDegradeThePlan(t *testing.T) {
+	// The count runs under the winning request's context. A client that hangs
+	// up mid-query must not write "degraded" into an entry shared by everyone
+	// on the plan for a whole TTL: the count is detached from the request.
+	reader := &ctxCheckingReader{fakePlanUsageReader: fakePlanUsageReader{planTokens: 300, userTokens: 100, otherActiveUsers: 2}}
+	svc := service.NewFairShareService(reader)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // the client is already gone
+
+	got, err := svc.Resolve(ctx, request(tokenAndValueConstraint(1000, 10_000)))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got.CountDegraded {
+		t.Error("CountDegraded = true after a client cancellation, want the count to have run detached")
+	}
+	if got.ActiveUsers != 3 {
+		t.Errorf("active users = %d, want the real count", got.ActiveUsers)
+	}
+}
+
+// ctxCheckingReader fails the count when the context it receives is already
+// done, as a real database driver would.
+type ctxCheckingReader struct {
+	fakePlanUsageReader
+}
+
+func (r *ctxCheckingReader) CountActivePlanUsersSince(ctx context.Context, orgID model.OrgID, providerID model.ProviderID, since time.Time, excludeUserID model.UserID) (int64, error) {
+	if err := ctx.Err(); err != nil {
+		return 0, err
+	}
+	return r.fakePlanUsageReader.CountActivePlanUsersSince(ctx, orgID, providerID, since, excludeUserID)
 }
