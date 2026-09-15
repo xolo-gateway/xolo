@@ -381,3 +381,48 @@ func TestFairShareService_SlidingWindowCountIsReusedAcrossNearbyInstants(t *test
 		t.Errorf("count read %d times, want 1 for requests a few seconds apart on a sliding window", reader.counts)
 	}
 }
+
+func TestFairShareService_CountFailureIsCachedAsAFallback(t *testing.T) {
+	// A database that cannot answer the count must not be asked again on every
+	// request while it struggles: the failure is remembered for the TTL, and the
+	// shares computed meanwhile still say they are degraded.
+	reader := &countingCountReader{fakePlanUsageReader: fakePlanUsageReader{planTokens: 300, userTokens: 100, countErr: errors.New("boom")}}
+	svc := service.NewFairShareService(reader)
+
+	c := tokenAndValueConstraint(1000, 10_000)
+	anchor := time.Now().Add(-time.Hour)
+	c.WindowAnchor = &anchor
+	req := request(c)
+
+	for i := range 3 {
+		got, err := svc.Resolve(context.Background(), req)
+		if err != nil {
+			t.Fatalf("resolve %d: unexpected error: %v", i, err)
+		}
+		if !got.CountDegraded {
+			t.Errorf("resolve %d: CountDegraded = false, want the fallback reported while the failure is cached", i)
+		}
+		if got.ActiveUsers != 20 {
+			t.Errorf("resolve %d: active users = %d, want the whole membership", i, got.ActiveUsers)
+		}
+	}
+	if reader.counts != 1 {
+		t.Errorf("count attempted %d times, want 1 while the failure is cached", reader.counts)
+	}
+
+	// Once the entry expires the store is asked again, and a recovered count
+	// replaces the fallback.
+	reader.countErr = nil
+	later := req
+	later.Now = req.Now.Add(31 * time.Second)
+	got, err := svc.Resolve(context.Background(), later)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got.CountDegraded {
+		t.Error("CountDegraded = true after the store recovered, want a real count")
+	}
+	if reader.counts != 2 {
+		t.Errorf("count attempted %d times, want a retry once the cached failure expired", reader.counts)
+	}
+}

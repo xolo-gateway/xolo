@@ -64,22 +64,26 @@ type FairShareResult struct {
 }
 
 // countOthers returns how many users other than the caller consumed in the
-// window, from the cache when a recent count is available.
-func (s *FairShareService) countOthers(ctx context.Context, req FairShareRequest, since time.Time) (int64, error) {
+// window, from the cache when a recent read is available. degraded reports that
+// the count could not be read, now or within the TTL: the failure is cached
+// like a value, so a database that cannot answer the count is spared the query
+// on every request rather than asked again and again while it is struggling.
+func (s *FairShareService) countOthers(ctx context.Context, req FairShareRequest, since time.Time) (count int64, degraded bool) {
 	key := activeUserKeyFor(req.OrgID, req.ProviderID, since, req.UserID, s.activeUsers.ttl)
 
-	if count, ok := s.activeUsers.get(key, req.Now); ok {
-		return count, nil
+	if entry, ok := s.activeUsers.get(key, req.Now); ok {
+		return entry.count, entry.degraded
 	}
 
 	count, err := s.usageReader.CountActivePlanUsersSince(ctx, req.OrgID, req.ProviderID, since, req.UserID)
 	if err != nil {
-		return 0, errors.WithStack(err)
+		s.activeUsers.put(key, activeUserEntry{degraded: true}, req.Now)
+		return 0, true
 	}
 
-	s.activeUsers.put(key, count, req.Now)
+	s.activeUsers.put(key, activeUserEntry{count: count}, req.Now)
 
-	return count, nil
+	return count, false
 }
 
 // ErrFairShareNotApplicable is returned when there is no membership to divide a
@@ -152,8 +156,8 @@ func (s *FairShareService) Resolve(ctx context.Context, req FairShareRequest) (*
 
 	// The count excludes the caller, who is then added back: they are competing
 	// for the budget whether or not their first request has been recorded yet.
-	others, err := s.countOthers(ctx, req, since)
-	if err != nil {
+	others, degraded := s.countOthers(ctx, req, since)
+	if degraded {
 		res.CountDegraded = true
 		others = int64(req.MemberCount)
 	}

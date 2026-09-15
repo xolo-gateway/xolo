@@ -9,6 +9,8 @@ import (
 	"github.com/xolo-gateway/xolo/internal/core/model"
 	"github.com/xolo-gateway/xolo/internal/core/port"
 	"github.com/xolo-gateway/xolo/internal/core/service"
+	"github.com/xolo-gateway/xolo/internal/metrics"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 // planScope identifies the org+provider+user context for a subscription plan constraint.
@@ -139,7 +141,11 @@ func (e *rollingWindowEvaluator) Acquire(ctx context.Context, scope planScope, c
 			return nil, nil, err
 		}
 		if share.CountDegraded {
-			slog.WarnContext(ctx, "rolling window: could not count active plan users, falling back to the static share",
+			// Not a Warn: the failure is cached for a TTL and every request in
+			// that TTL lands here, so a struggling database would flood the log.
+			// The counter is what to alert on; the line is for a debugger.
+			metrics.FairShareDegradedShares.With(prometheus.Labels{metrics.LabelOrg: string(scope.OrgID)}).Inc()
+			slog.DebugContext(ctx, "rolling window: active-user count unavailable, share computed on the whole membership",
 				slog.String("org", string(scope.OrgID)), slog.String("provider", string(scope.ProviderID)))
 		}
 

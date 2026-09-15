@@ -6,9 +6,10 @@ import (
 )
 
 const (
-	NameProxyRequestDuration = "proxy_request_duration_seconds"
-	NameProxyErrors          = "proxy_errors_total"
-	LabelModel               = "model"
+	NameProxyRequestDuration    = "proxy_request_duration_seconds"
+	NameProxyErrors             = "proxy_errors_total"
+	NameFairShareDegradedShares = "fair_share_degraded_shares_total"
+	LabelModel                  = "model"
 )
 
 var ProxyRequestDuration = promauto.NewHistogramVec(
@@ -25,6 +26,19 @@ var ProxyErrors = promauto.NewCounterVec(
 	prometheus.CounterOpts{
 		Name:      NameProxyErrors,
 		Help:      "Total number of failed LLM upstream requests",
+		Namespace: Namespace,
+	},
+	[]string{LabelOrg},
+)
+
+// FairShareDegradedShares counts the per-user plan shares computed without the
+// active-user count, because reading it failed. The share then falls back to
+// the whole membership, which is safe but narrow; a rising counter means the
+// usage table cannot answer the count and the plan is being under-allocated.
+var FairShareDegradedShares = promauto.NewCounterVec(
+	prometheus.CounterOpts{
+		Name:      NameFairShareDegradedShares,
+		Help:      "Total number of subscription plan shares computed on a degraded active-user count",
 		Namespace: Namespace,
 	},
 	[]string{LabelOrg},

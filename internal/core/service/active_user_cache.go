@@ -42,6 +42,7 @@ func activeUserKeyFor(orgID model.OrgID, providerID model.ProviderID, since time
 
 type activeUserEntry struct {
 	count     int64
+	degraded  bool // the count could not be read; count is meaningless
 	expiresAt time.Time
 }
 
@@ -73,27 +74,29 @@ func newActiveUserCache(ttl time.Duration) *activeUserCache {
 	}
 }
 
-// get returns a count still within its TTL.
-func (c *activeUserCache) get(key activeUserKey, now time.Time) (int64, bool) {
+// get returns an entry still within its TTL. A degraded entry records that the
+// count failed recently: the caller falls back without asking the store again,
+// so a database that cannot answer the count is not asked to on every request.
+func (c *activeUserCache) get(key activeUserKey, now time.Time) (entry activeUserEntry, ok bool) {
 	if c == nil || c.ttl <= 0 {
-		return 0, false
+		return activeUserEntry{}, false
 	}
 
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	entry, ok := c.entries[key]
+	entry, ok = c.entries[key]
 	if !ok || now.After(entry.expiresAt) {
-		return 0, false
+		return activeUserEntry{}, false
 	}
-	return entry.count, true
+	return entry, true
 }
 
 // put stores a count. Keys carry a window bucket, so they stop being written
 // to on their own and would accumulate one set per elapsed bucket; expired
 // entries are swept once the map outgrows its last sweep, which keeps the
 // sweeping cost proportional to the insertions rather than to the map size.
-func (c *activeUserCache) put(key activeUserKey, count int64, now time.Time) {
+func (c *activeUserCache) put(key activeUserKey, entry activeUserEntry, now time.Time) {
 	if c == nil || c.ttl <= 0 {
 		return
 	}
@@ -110,7 +113,8 @@ func (c *activeUserCache) put(key activeUserKey, count int64, now time.Time) {
 		c.purgeAt = max(2*len(c.entries), minPurgeAt)
 	}
 
-	c.entries[key] = activeUserEntry{count: count, expiresAt: now.Add(c.ttl)}
+	entry.expiresAt = now.Add(c.ttl)
+	c.entries[key] = entry
 }
 
 // size reports how many entries the cache holds, for tests.

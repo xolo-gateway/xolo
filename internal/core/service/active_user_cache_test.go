@@ -20,7 +20,7 @@ func TestActiveUserCache_SweepsExpiredEntriesWithoutWalkingOnEveryPut(t *testing
 	for i := 0; i < 10*minPurgeAt; i++ {
 		at := now.Add(time.Duration(i) * ttl)
 		key := activeUserKeyFor("org", "prov", at, model.UserID("u"), ttl)
-		c.put(key, int64(i), at)
+		c.put(key, activeUserEntry{count: int64(i)}, at)
 	}
 
 	// Only entries still within their TTL may remain: the sweep keeps the map

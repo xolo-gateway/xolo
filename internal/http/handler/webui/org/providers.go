@@ -111,7 +111,6 @@ func (h *Handler) getNewProviderPage(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) createProvider(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	user := httpCtx.User(ctx)
 	orgSlug := r.PathValue("orgSlug")
 
 	org, err := h.orgFromSlug(ctx, orgSlug)
@@ -141,17 +140,9 @@ func (h *Handler) createProvider(w http.ResponseWriter, r *http.Request) {
 	p := model.NewProvider(org.ID(), r.FormValue("name"), r.FormValue("provider_type"), strings.TrimSpace(r.FormValue("base_url")), encryptedKey, r.FormValue("currency"))
 	p.SetCloudTier(cloudTier)
 	p.SetBillingMode(billingMode)
-	if billingMode == model.BillingModeSubscription {
-		plan, err := parseSubscriptionPlanFromForm(r)
-		if err != nil {
-			// Re-render on what was submitted, not on an empty plan.
-			p.SetSubscriptionPlan(plan)
-			h.renderProviderFormError(w, r, ctx, user, orgSlug, org, p, true,
-				"Forfait : "+err.Error()+".")
-			return
-		}
-		p.SetSubscriptionPlan(plan)
-	}
+	// The creation form does not render the plan editor (see provider_form.templ,
+	// which shows it under !IsNew only), so no plan field is ever posted here:
+	// a subscription provider is created without a plan and gets one on edit.
 	if err := h.providerStore.CreateProvider(ctx, p); err != nil {
 		slog.ErrorContext(ctx, "could not create provider", slogx.Error(err))
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
@@ -300,8 +291,10 @@ func (h *Handler) updateProvider(w http.ResponseWriter, r *http.Request) {
 	if billingMode == model.BillingModeSubscription {
 		plan, err := parseSubscriptionPlanFromForm(r)
 		if err != nil {
-			// Re-render the plan as it was typed, not as it is stored: one mistyped
-			// percentage must not discard every other edit made on the screen.
+			// Re-render the plan as it was typed, not as it is stored, so one
+			// mistyped percentage does not discard the other plan edits. Only the
+			// plan block is refilled from the submission; the provider's own
+			// fields come back from the stored state, as on the other error paths.
 			h.renderProviderFormError(w, r, ctx, user, orgSlug, org,
 				providerWithPlan{Provider: existing, plan: plan}, false,
 				"Forfait : "+err.Error()+".")
