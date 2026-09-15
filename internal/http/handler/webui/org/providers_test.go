@@ -471,3 +471,27 @@ func TestProviderWithPlan_ShowsTheSubmittedPlanOnTheStoredProvider(t *testing.T)
 		t.Error("rendered editor still shows the stored plan label")
 	}
 }
+
+// TestTestProviderConnection_KnowsEveryFormType guards the coupling between
+// the type list offered by the provider form and the genai registry: a type
+// selectable in the UI but unknown to the registry would only fail once an
+// administrator clicks "test connection".
+func TestTestProviderConnection_KnowsEveryFormType(t *testing.T) {
+	for _, providerType := range []string{"openai", "anthropic", "mistral", "openrouter"} {
+		t.Run(providerType, func(t *testing.T) {
+			ok, err := testProviderConnection(context.Background(), providerType, "http://127.0.0.1:9", "test-key")
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if !ok {
+				t.Fatal("expected the client to be created")
+			}
+		})
+	}
+}
+
+func TestTestProviderConnection_UnknownType(t *testing.T) {
+	if _, err := testProviderConnection(context.Background(), "nope", "http://127.0.0.1:9", "k"); err == nil {
+		t.Fatal("expected an error for an unknown provider type")
+	}
+}
