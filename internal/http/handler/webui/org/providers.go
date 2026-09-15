@@ -13,13 +13,13 @@ import (
 	"github.com/a-h/templ"
 	"github.com/bornholm/genai/llm/provider"
 	"github.com/bornholm/go-x/slogx"
+	"github.com/pkg/errors"
 	"github.com/xolo-gateway/xolo/internal/core/model"
 	"github.com/xolo-gateway/xolo/internal/core/port"
 	"github.com/xolo-gateway/xolo/internal/crypto"
 	httpCtx "github.com/xolo-gateway/xolo/internal/http/context"
 	common "github.com/xolo-gateway/xolo/internal/http/handler/webui/common/component"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/org/component"
-	"github.com/pkg/errors"
 
 	_ "github.com/bornholm/genai/llm/provider/mistral"
 	_ "github.com/bornholm/genai/llm/provider/openai"
@@ -254,13 +254,13 @@ func (h *Handler) updateProvider(w http.ResponseWriter, r *http.Request) {
 		plan, err := parseSubscriptionPlanFromForm(r)
 		if err != nil {
 			h.renderProviderFormError(w, r, ctx, user, orgSlug, org,
-				providerWithPlan{Provider: existing, plan: plan}, false,
+				providerWithPlan{Provider: existing, billingMode: billingMode, plan: plan}, false,
 				"Forfait : "+err.Error()+".")
 			return
 		}
 		subscriptionPlan = plan
 	}
-	formProvider := providerWithPlan{Provider: existing, plan: subscriptionPlan}
+	formProvider := providerWithPlan{Provider: existing, billingMode: billingMode, plan: subscriptionPlan}
 	if billingMode != model.BillingModeSubscription {
 		formProvider.plan = existing.SubscriptionPlan()
 	}
@@ -1092,13 +1092,18 @@ func (h *Handler) renderProviderFormError(w http.ResponseWriter, r *http.Request
 	templ.Handler(component.ProviderForm(vmodel)).ServeHTTP(w, r)
 }
 
-// providerWithPlan renders a stored provider carrying a subscription plan it
-// does not hold yet — the one just submitted, when the form comes back in error.
+// providerWithPlan renders a stored provider carrying the billing mode and the
+// subscription plan just submitted, when the form comes back in error. The mode
+// matters as much as the plan: a provider being switched from PAYG to
+// subscription would otherwise come back as PAYG, without the plan editor, and
+// be saved as PAYG on resubmit with the typed plan never read.
 type providerWithPlan struct {
 	model.Provider
-	plan *model.SubscriptionPlan
+	billingMode model.BillingMode
+	plan        *model.SubscriptionPlan
 }
 
+func (p providerWithPlan) BillingMode() model.BillingMode            { return p.billingMode }
 func (p providerWithPlan) SubscriptionPlan() *model.SubscriptionPlan { return p.plan }
 
 func (h *Handler) deleteModel(w http.ResponseWriter, r *http.Request) {

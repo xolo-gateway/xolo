@@ -290,6 +290,10 @@ func createGetDatabase(db *gorm.DB) func(ctx context.Context) (*gorm.DB, error) 
 					// per-user presence probe of the fair-share allocator. The index
 					// above puts user_id after the created_at range, so an equality on
 					// the caller cannot bound it and the probe would walk the window.
+					//
+					// Both indexes are tags on the same model, so the AutoMigrate of
+					// 202609150001 already creates this one on a database that skipped
+					// both. This entry exists so the index has a rollback of its own.
 					ID: "202609150002",
 					Migrate: func(tx *gorm.DB) error {
 						return errors.WithStack(tx.AutoMigrate(&UsageRecord{}))

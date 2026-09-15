@@ -431,20 +431,26 @@ func TestProviderWithPlan_ShowsTheSubmittedPlanOnTheStoredProvider(t *testing.T)
 	// providerWithPlan is what brings the plan back on screen as typed when the
 	// form is rendered in error. It must present the submitted plan while every
 	// other field still comes from the stored provider.
+	// Stored as PAYG: the operator is switching it to a subscription, and the
+	// form must come back showing that switch, or the plan editor vanishes and
+	// the resubmit saves PAYG.
 	stored := model.NewProvider("org-1", "Mistral", "mistral", "https://api.mistral.ai/v1", "key", "EUR")
-	stored.SetBillingMode(model.BillingModeSubscription)
+	stored.SetBillingMode(model.BillingModePayg)
 	stored.SetSubscriptionPlan(&model.SubscriptionPlan{Label: "stored"})
 
 	typed := &model.SubscriptionPlan{Label: "typed", Constraints: []model.PlanConstraint{{
 		Kind: model.ConstraintRollingWindow, Label: "as-typed", Duration: model.PlanDuration(5 * time.Hour),
 	}}}
-	p := providerWithPlan{Provider: stored, plan: typed}
+	p := providerWithPlan{Provider: stored, billingMode: model.BillingModeSubscription, plan: typed}
 
 	if p.SubscriptionPlan() != typed {
 		t.Error("SubscriptionPlan() does not return the submitted plan")
 	}
-	if p.Name() != "Mistral" || p.Currency() != "EUR" || p.BillingMode() != model.BillingModeSubscription {
-		t.Errorf("stored fields altered: name=%q currency=%q billing=%q", p.Name(), p.Currency(), p.BillingMode())
+	if p.BillingMode() != model.BillingModeSubscription {
+		t.Errorf("BillingMode() = %q, want the submitted subscription mode, not the stored PAYG", p.BillingMode())
+	}
+	if p.Name() != "Mistral" || p.Currency() != "EUR" {
+		t.Errorf("stored fields altered: name=%q currency=%q", p.Name(), p.Currency())
 	}
 
 	// And the editor renders that plan, rejected value included.

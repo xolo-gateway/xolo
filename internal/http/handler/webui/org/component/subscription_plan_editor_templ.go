@@ -1139,7 +1139,10 @@ func formatRatioField(ratio *float64) string {
 	if ratio == nil {
 		return ""
 	}
-	pct := *ratio * 100
+	// Rounded first: the stored fraction times 100 is not exact in float64 for a
+	// handful of whole percentages (7, 14, 28, 29, 55…), and "7.000000000000001"
+	// in the field is the display/engine gap the rest of this form removes.
+	pct := math.Round(*ratio*100*1e6) / 1e6
 	if pct == math.Trunc(pct) {
 		return fmt.Sprintf("%d", int(pct))
 	}

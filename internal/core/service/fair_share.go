@@ -111,10 +111,6 @@ func (s *FairShareService) isPresent(ctx context.Context, req FairShareRequest, 
 	return true
 }
 
-// activeUserCountTimeout bounds the detached count: without the request's
-// cancellation, this is what stops a stuck query from holding the singleflight.
-const activeUserCountTimeout = 10 * time.Second
-
 // countAll returns the plan-wide active-user count, from the cache when a recent
 // read is available. A failure is cached like a value, so a database that cannot
 // answer the count is spared the query on every request rather than asked again
@@ -123,11 +119,12 @@ const activeUserCountTimeout = 10 * time.Second
 func (s *FairShareService) countAll(ctx context.Context, req FairShareRequest, since time.Time) (count int64, degraded bool) {
 	key := activeUserKeyFor(req.OrgID, req.ProviderID, since, s.activeUsers.ttl)
 
-	if entry, ok := s.activeUsers.get(key, req.Now); ok {
+	entry, fresh, ok := s.activeUsers.lookup(key, req.Now)
+	if ok && fresh {
 		return entry.count, entry.degraded
 	}
 
-	v, _, _ := s.inflight.Do(key.flightKey(), func() (any, error) {
+	reload := func() (any, error) {
 		// Another caller may have filled the entry while this one waited.
 		if entry, ok := s.activeUsers.get(key, req.Now); ok {
 			return entry, nil
@@ -136,14 +133,26 @@ func (s *FairShareService) countAll(ctx context.Context, req FairShareRequest, s
 		// everyone on the plan, and a client hanging up mid-query is not a
 		// reason to mark the plan degraded for a whole TTL. A failure here is
 		// then the database's own, and worth caching.
-		countCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), activeUserCountTimeout)
+		countCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), s.countTimeout)
 		defer cancel()
 		n, err := s.usageReader.CountActivePlanUsersSince(countCtx, req.OrgID, req.ProviderID, since, "")
 		entry := activeUserEntry{count: n, degraded: err != nil}
 		s.activeUsers.put(key, entry, req.Now)
 		return entry, nil
-	})
-	entry := v.(activeUserEntry)
+	}
+
+	if ok {
+		// Stale but present: serve it and refresh behind the request. The
+		// denominator moves slowly, and holding a proxy request behind a COUNT
+		// over a week of usage buys nothing a one-TTL-old value does not give.
+		// DoChan folds concurrent refreshes into one; nobody waits on it.
+		s.inflight.DoChan(key.flightKey(), reload)
+		return entry.count, entry.degraded
+	}
+
+	// Nothing to serve yet: this is the first read of the window, wait for it.
+	v, _, _ := s.inflight.Do(key.flightKey(), reload)
+	entry = v.(activeUserEntry)
 
 	return entry.count, entry.degraded
 }
@@ -159,26 +168,54 @@ var ErrFairShareNotApplicable = errors.New("fair share: not applicable without a
 // does not apply is worse than showing nothing, and two copies of this wiring
 // drift the moment one of them is touched.
 type FairShareService struct {
-	usageReader PlanUsageReader
-	activeUsers *activeUserCache
-	presence    *presenceCache
+	usageReader  PlanUsageReader
+	activeUsers  *activeUserCache
+	presence     *presenceCache
+	countTimeout time.Duration
 	// inflight serialises concurrent reloads of one count: when an entry
 	// expires, every request on the plan would otherwise fire the same
 	// COUNT(DISTINCT) at once.
 	inflight singleflight.Group
 }
 
+// FairShareOptions tunes the service's reads of the usage store.
+type FairShareOptions struct {
+	// CacheTTL is how long an active-user count is reused. Non-positive reads
+	// the count on every call.
+	CacheTTL time.Duration
+	// CountTimeout bounds one plan-wide count. The count runs detached from the
+	// request, so this is what stops a stuck query from holding the reload.
+	// Non-positive means DefaultActiveUserCountTimeout.
+	CountTimeout time.Duration
+}
+
+// DefaultActiveUserCountTimeout is the default bound on one plan-wide count.
+// It assumes idx_usage_org_prov_plan is in place and the count is served from
+// the index; a deployment where it is not, or whose usage table is very large,
+// raises it through XOLO_PROXY_ACTIVE_USER_COUNT_TIMEOUT rather than living
+// with a count that always times out and a share that always degrades.
+const DefaultActiveUserCountTimeout = 10 * time.Second
+
 func NewFairShareService(usageReader PlanUsageReader) *FairShareService {
-	return NewFairShareServiceWithCacheTTL(usageReader, DefaultActiveUserCacheTTL)
+	return NewFairShareServiceWithOptions(usageReader, FairShareOptions{CacheTTL: DefaultActiveUserCacheTTL})
 }
 
 // NewFairShareServiceWithCacheTTL builds a service whose active-user counts are
 // reused for ttl. A non-positive ttl reads the count on every call.
 func NewFairShareServiceWithCacheTTL(usageReader PlanUsageReader, ttl time.Duration) *FairShareService {
+	return NewFairShareServiceWithOptions(usageReader, FairShareOptions{CacheTTL: ttl})
+}
+
+func NewFairShareServiceWithOptions(usageReader PlanUsageReader, opts FairShareOptions) *FairShareService {
+	timeout := opts.CountTimeout
+	if timeout <= 0 {
+		timeout = DefaultActiveUserCountTimeout
+	}
 	return &FairShareService{
-		usageReader: usageReader,
-		activeUsers: newActiveUserCache(ttl),
-		presence:    newPresenceCache(ttl),
+		usageReader:  usageReader,
+		activeUsers:  newActiveUserCache(opts.CacheTTL),
+		presence:     newPresenceCache(opts.CacheTTL),
+		countTimeout: timeout,
 	}
 }
 

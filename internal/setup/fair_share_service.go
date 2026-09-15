@@ -17,5 +17,8 @@ var getFairShareServiceFromConfig = createFromConfigOnce(func(ctx context.Contex
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
-	return service.NewFairShareServiceWithCacheTTL(usageStore, conf.Proxy.ActiveUserCacheTTL), nil
+	return service.NewFairShareServiceWithOptions(usageStore, service.FairShareOptions{
+		CacheTTL:     conf.Proxy.ActiveUserCacheTTL,
+		CountTimeout: conf.Proxy.ActiveUserCountTimeout,
+	}), nil
 })

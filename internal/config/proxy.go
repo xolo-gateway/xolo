@@ -20,4 +20,10 @@ type ProxyConfig struct {
 	// seconds stale changes a user's share by at most one competitor. Raise it
 	// where the usage table is large, "0" counts on every request.
 	ActiveUserCacheTTL time.Duration `env:"ACTIVE_USER_CACHE_TTL,expand" envDefault:"30s"`
+	// ActiveUserCountTimeout bounds one plan-wide active-user count. The count
+	// runs detached from the proxy request, so this is what stops a stuck query;
+	// a count that always exceeds it is cached as a failure and every share on
+	// the plan falls back to the whole membership. Raise it where the usage
+	// table is very large or the index is missing, rather than living with that.
+	ActiveUserCountTimeout time.Duration `env:"ACTIVE_USER_COUNT_TIMEOUT,expand" envDefault:"10s"`
 }

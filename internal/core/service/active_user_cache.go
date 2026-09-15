@@ -9,8 +9,13 @@ import (
 )
 
 // DefaultActiveUserCacheTTL is how long an active-user count is reused. The
-// count is a denominator over a window of hours: it moves slowly, and a value a
-// few seconds stale changes an allowance by at most one competitor.
+// count is a denominator over a window of hours and moves slowly. A stale value
+// misses the users who consumed for the first time since it was taken; the
+// caller is put back by the presence probe, the others are not, so within one
+// TTL the count can run short by as many first-time consumers as the TTL saw,
+// minus one. That errs toward a wider share, bounded by the availability cap
+// and the plan-wide budget check that runs first, and corrects on the next
+// refresh.
 const DefaultActiveUserCacheTTL = 30 * time.Second
 
 // activeUserKey identifies one count: the plan (org and provider) and the
@@ -86,18 +91,30 @@ func newActiveUserCache(ttl time.Duration) *activeUserCache {
 // count failed recently: the caller falls back without asking the store again,
 // so a database that cannot answer the count is not asked to on every request.
 func (c *activeUserCache) get(key activeUserKey, now time.Time) (entry activeUserEntry, ok bool) {
-	if c == nil || c.ttl <= 0 {
+	entry, fresh, ok := c.lookup(key, now)
+	if !ok || !fresh {
 		return activeUserEntry{}, false
+	}
+	return entry, true
+}
+
+// lookup returns an entry whether or not its TTL has passed, and says which. A
+// stale entry is what the hot path serves while a fresh count is being taken:
+// the denominator moves slowly, and a value one TTL old is a better answer than
+// a request held behind a COUNT over a week of usage.
+func (c *activeUserCache) lookup(key activeUserKey, now time.Time) (entry activeUserEntry, fresh bool, ok bool) {
+	if c == nil || c.ttl <= 0 {
+		return activeUserEntry{}, false, false
 	}
 
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
 	entry, ok = c.entries[key]
-	if !ok || now.After(entry.expiresAt) {
-		return activeUserEntry{}, false
+	if !ok {
+		return activeUserEntry{}, false, false
 	}
-	return entry, true
+	return entry, !now.After(entry.expiresAt), true
 }
 
 // put stores a count. Keys carry a window bucket, so they stop being written

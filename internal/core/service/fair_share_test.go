@@ -261,12 +261,41 @@ func (f *countingPlanUsageReader) SumPlanUsageSince(ctx context.Context, orgID m
 // countingCountReader counts how many times the active-user count is read.
 type countingCountReader struct {
 	fakePlanUsageReader
-	counts int
+	// counts is read by the test while a refresh may run behind a stale read,
+	// hence atomic; countErr is read the same way.
+	counts   atomic.Int64
+	errMu    sync.Mutex
+	countErr error
+}
+
+func (f *countingCountReader) setCountErr(err error) {
+	f.errMu.Lock()
+	defer f.errMu.Unlock()
+	f.countErr = err
 }
 
 func (f *countingCountReader) CountActivePlanUsersSince(ctx context.Context, orgID model.OrgID, providerID model.ProviderID, since time.Time, excludeUserID model.UserID) (int64, error) {
-	f.counts++
+	f.counts.Add(1)
+	f.errMu.Lock()
+	err := f.countErr
+	f.errMu.Unlock()
+	if err != nil {
+		return 0, err
+	}
 	return f.fakePlanUsageReader.CountActivePlanUsersSince(ctx, orgID, providerID, since, excludeUserID)
+}
+
+// waitForCounts blocks until the reader has seen n counts, or fails the test:
+// a refresh behind a stale read completes on its own schedule.
+func waitForCounts(t *testing.T, r *countingCountReader, n int64) {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for r.counts.Load() < n {
+		if time.Now().After(deadline) {
+			t.Fatalf("count read %d times, want %d", r.counts.Load(), n)
+		}
+		time.Sleep(time.Millisecond)
+	}
 }
 
 func TestFairShareService_ActiveUserCountIsReusedWithinItsTTL(t *testing.T) {
@@ -285,8 +314,8 @@ func TestFairShareService_ActiveUserCountIsReusedWithinItsTTL(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if reader.counts != 1 {
-		t.Errorf("count read %d times, want 1 within the TTL", reader.counts)
+	if reader.counts.Load() != 1 {
+		t.Errorf("count read %d times, want 1 within the TTL", reader.counts.Load())
 	}
 	if first.ActiveUsers != second.ActiveUsers || *first.TokenAllowance != *second.TokenAllowance {
 		t.Errorf("cached resolve differs: %d/%d vs %d/%d",
@@ -312,8 +341,8 @@ func TestFairShareService_ActiveUserCountIsSharedByThePlanAndKeyedByWindow(t *te
 	if _, err := svc.Resolve(context.Background(), otherUser); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if reader.counts != 1 {
-		t.Errorf("count read %d times for two users on one plan, want 1", reader.counts)
+	if reader.counts.Load() != 1 {
+		t.Errorf("count read %d times for two users on one plan, want 1", reader.counts.Load())
 	}
 
 	otherWindow := base
@@ -321,8 +350,8 @@ func TestFairShareService_ActiveUserCountIsSharedByThePlanAndKeyedByWindow(t *te
 	if _, err := svc.Resolve(context.Background(), otherWindow); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if reader.counts != 2 {
-		t.Errorf("count read %d times, want a new read for a new window", reader.counts)
+	if reader.counts.Load() != 2 {
+		t.Errorf("count read %d times, want a new read for a new window", reader.counts.Load())
 	}
 }
 
@@ -352,8 +381,8 @@ func TestFairShareService_CacheCanBeDisabled(t *testing.T) {
 		}
 	}
 
-	if reader.counts != 3 {
-		t.Errorf("count read %d times, want every call to reach the store", reader.counts)
+	if reader.counts.Load() != 3 {
+		t.Errorf("count read %d times, want every call to reach the store", reader.counts.Load())
 	}
 }
 
@@ -374,16 +403,14 @@ func TestFairShareService_ExpiredCacheEntryIsReRead(t *testing.T) {
 	}
 
 	// The cache ages against the request's own clock, so the passage of time is
-	// expressed rather than waited for.
+	// expressed rather than waited for. The expired entry is served and re-read
+	// behind the request.
 	later := req
 	later.Now = req.Now.Add(31 * time.Second)
 	if _, err := svc.Resolve(context.Background(), later); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-
-	if reader.counts != 2 {
-		t.Errorf("count read %d times, want the expired entry to be read again", reader.counts)
-	}
+	waitForCounts(t, reader, 2)
 }
 
 func TestFairShareService_SlidingWindowCountIsReusedAcrossNearbyInstants(t *testing.T) {
@@ -409,8 +436,8 @@ func TestFairShareService_SlidingWindowCountIsReusedAcrossNearbyInstants(t *test
 		}
 	}
 
-	if reader.counts != 1 {
-		t.Errorf("count read %d times, want 1 for requests a few seconds apart on a sliding window", reader.counts)
+	if reader.counts.Load() != 1 {
+		t.Errorf("count read %d times, want 1 for requests a few seconds apart on a sliding window", reader.counts.Load())
 	}
 }
 
@@ -418,7 +445,8 @@ func TestFairShareService_CountFailureIsCachedAsAFallback(t *testing.T) {
 	// A database that cannot answer the count must not be asked again on every
 	// request while it struggles: the failure is remembered for the TTL, and the
 	// shares computed meanwhile still say they are degraded.
-	reader := &countingCountReader{fakePlanUsageReader: fakePlanUsageReader{planTokens: 300, userTokens: 100, countErr: errors.New("boom")}}
+	reader := &countingCountReader{fakePlanUsageReader: fakePlanUsageReader{planTokens: 300, userTokens: 100}}
+	reader.setCountErr(errors.New("boom"))
 	svc := service.NewFairShareService(reader)
 
 	c := tokenAndValueConstraint(1000, 10_000)
@@ -438,24 +466,31 @@ func TestFairShareService_CountFailureIsCachedAsAFallback(t *testing.T) {
 			t.Errorf("resolve %d: active users = %d, want the whole membership", i, got.ActiveUsers)
 		}
 	}
-	if reader.counts != 1 {
-		t.Errorf("count attempted %d times, want 1 while the failure is cached", reader.counts)
+	if reader.counts.Load() != 1 {
+		t.Errorf("count attempted %d times, want 1 while the failure is cached", reader.counts.Load())
 	}
 
-	// Once the entry expires the store is asked again, and a recovered count
-	// replaces the fallback.
-	reader.countErr = nil
+	// Once the entry expires the store is asked again — behind the request,
+	// which is still answered from the cached failure — and a recovered count
+	// replaces the fallback for the next one.
+	reader.setCountErr(nil)
 	later := req
 	later.Now = req.Now.Add(31 * time.Second)
 	got, err := svc.Resolve(context.Background(), later)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
+	if !got.CountDegraded {
+		t.Error("CountDegraded = false on the stale read, want the cached failure served while the refresh runs")
+	}
+	waitForCounts(t, reader, 2)
+
+	got, err = svc.Resolve(context.Background(), later)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 	if got.CountDegraded {
 		t.Error("CountDegraded = true after the store recovered, want a real count")
-	}
-	if reader.counts != 2 {
-		t.Errorf("count attempted %d times, want a retry once the cached failure expired", reader.counts)
 	}
 }
 
@@ -482,8 +517,8 @@ func TestFairShareService_CountIsSharedBetweenConstraintsOfTheSameWindow(t *test
 		}
 	}
 
-	if reader.counts != 1 {
-		t.Errorf("count read %d times for two constraints over one window, want 1", reader.counts)
+	if reader.counts.Load() != 1 {
+		t.Errorf("count read %d times for two constraints over one window, want 1", reader.counts.Load())
 	}
 }
 
@@ -623,4 +658,119 @@ func (r *ctxCheckingReader) CountActivePlanUsersSince(ctx context.Context, orgID
 		return 0, err
 	}
 	return r.fakePlanUsageReader.CountActivePlanUsersSince(ctx, orgID, providerID, since, excludeUserID)
+}
+
+func TestFairShareService_StaleCountIsServedWhileRefreshing(t *testing.T) {
+	// Past its TTL an entry is not thrown away: the request is answered from
+	// it at once and the count is taken again behind it. Holding a proxy
+	// request behind a COUNT over a week of usage buys nothing a one-TTL-old
+	// denominator does not give.
+	reader := &signallingCountReader{
+		fakePlanUsageReader: fakePlanUsageReader{planTokens: 300, userTokens: 100, otherActiveUsers: 2},
+		done:                make(chan struct{}, 8),
+	}
+	svc := service.NewFairShareService(reader)
+
+	c := tokenAndValueConstraint(1000, 10_000)
+	anchor := time.Now().Add(-time.Hour)
+	c.WindowAnchor = &anchor
+	first := request(c)
+
+	// Prime the entry with 2 others, then let the plan grow to 5.
+	if _, err := svc.Resolve(context.Background(), first); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	<-reader.done
+	reader.setOthers(5)
+
+	// One TTL later the entry is stale: it is served as is, no waiting.
+	later := first
+	later.Now = first.Now.Add(31 * time.Second)
+	got, err := svc.Resolve(context.Background(), later)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got.ActiveUsers != 3 {
+		t.Errorf("active users = %d on a stale entry, want the stale 2 plus the caller", got.ActiveUsers)
+	}
+
+	// The refresh ran behind that request; the next one sees the new count.
+	select {
+	case <-reader.done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("no refresh ran behind the stale read")
+	}
+	again, err := svc.Resolve(context.Background(), later)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if again.ActiveUsers != 6 {
+		t.Errorf("active users = %d after the refresh, want the fresh 5 plus the caller", again.ActiveUsers)
+	}
+	if got := reader.counts.Load(); got != 2 {
+		t.Errorf("count read %d times, want the prime and one refresh", got)
+	}
+}
+
+// signallingCountReader announces each count on done, so a test can wait for a
+// refresh that runs behind a request rather than in it.
+type signallingCountReader struct {
+	fakePlanUsageReader
+	mu     sync.Mutex
+	done   chan struct{}
+	counts atomic.Int64
+}
+
+func (r *signallingCountReader) setOthers(n int64) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.otherActiveUsers = n
+}
+
+func (r *signallingCountReader) CountActivePlanUsersSince(ctx context.Context, orgID model.OrgID, providerID model.ProviderID, since time.Time, excludeUserID model.UserID) (int64, error) {
+	r.mu.Lock()
+	n := r.otherActiveUsers
+	r.mu.Unlock()
+	r.counts.Add(1)
+	r.done <- struct{}{}
+	return n, nil
+}
+
+func TestFairShareService_CountTimeoutIsConfigurable(t *testing.T) {
+	// A count slower than the bound is a failure, cached as one; the bound must
+	// be the operator's to raise where the usage table needs it.
+	reader := &slowCountReader{fakePlanUsageReader: fakePlanUsageReader{planTokens: 300, userTokens: 100, otherActiveUsers: 2}, delay: 50 * time.Millisecond}
+
+	tight := service.NewFairShareServiceWithOptions(reader, service.FairShareOptions{CacheTTL: time.Minute, CountTimeout: 5 * time.Millisecond})
+	got, err := tight.Resolve(context.Background(), request(tokenAndValueConstraint(1000, 10_000)))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !got.CountDegraded {
+		t.Error("CountDegraded = false with a 5ms bound on a 50ms count, want the timeout to degrade")
+	}
+
+	loose := service.NewFairShareServiceWithOptions(reader, service.FairShareOptions{CacheTTL: time.Minute, CountTimeout: time.Second})
+	got, err = loose.Resolve(context.Background(), request(tokenAndValueConstraint(1000, 10_000)))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got.CountDegraded {
+		t.Error("CountDegraded = true with a 1s bound on a 50ms count, want a clean read")
+	}
+}
+
+// slowCountReader takes delay to count, or fails when the context ends first.
+type slowCountReader struct {
+	fakePlanUsageReader
+	delay time.Duration
+}
+
+func (r *slowCountReader) CountActivePlanUsersSince(ctx context.Context, orgID model.OrgID, providerID model.ProviderID, since time.Time, excludeUserID model.UserID) (int64, error) {
+	select {
+	case <-time.After(r.delay):
+		return r.fakePlanUsageReader.CountActivePlanUsersSince(ctx, orgID, providerID, since, excludeUserID)
+	case <-ctx.Done():
+		return 0, ctx.Err()
+	}
 }
