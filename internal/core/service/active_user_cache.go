@@ -15,11 +15,29 @@ const DefaultActiveUserCacheTTL = 30 * time.Second
 // activeUserKey identifies one count. The window start is part of it, so a new
 // window never reads a previous window's count, and the excluded user too, since
 // the count is taken without them.
+//
+// The window start is quantised to the TTL before it gets here. On a sliding
+// window it is now−duration, a different instant on every request — down to the
+// nanosecond and the monotonic clock reading that time.Time equality includes —
+// and as a raw key it would make the cache write-only while still paying the
+// count. Freshness is carried by expiresAt, not by the key; the key only has to
+// tell windows apart.
 type activeUserKey struct {
 	orgID      model.OrgID
 	providerID model.ProviderID
-	since      time.Time
+	bucket     int64 // window start in TTL-sized steps
 	excluded   model.UserID
+}
+
+// activeUserKeyFor builds the key for one count. Quantising a sliding window's
+// start makes requests within one TTL of each other share an entry; the entry
+// expires on its own before the drift exceeds the TTL.
+func activeUserKeyFor(orgID model.OrgID, providerID model.ProviderID, since time.Time, excluded model.UserID, ttl time.Duration) activeUserKey {
+	bucket := since.UnixNano()
+	if ttl > 0 {
+		bucket /= int64(ttl)
+	}
+	return activeUserKey{orgID: orgID, providerID: providerID, bucket: bucket, excluded: excluded}
 }
 
 type activeUserEntry struct {
@@ -39,10 +57,20 @@ type activeUserCache struct {
 
 	mu      sync.Mutex
 	entries map[activeUserKey]activeUserEntry
+	// purgeAt is the size past which the next put sweeps expired entries. It is
+	// doubled after each sweep so the cost stays amortised O(1) per insertion
+	// instead of walking the whole map under the lock every time.
+	purgeAt int
 }
 
+const minPurgeAt = 64
+
 func newActiveUserCache(ttl time.Duration) *activeUserCache {
-	return &activeUserCache{ttl: ttl, entries: make(map[activeUserKey]activeUserEntry)}
+	return &activeUserCache{
+		ttl:     ttl,
+		entries: make(map[activeUserKey]activeUserEntry),
+		purgeAt: minPurgeAt,
+	}
 }
 
 // get returns a count still within its TTL.
@@ -61,9 +89,10 @@ func (c *activeUserCache) get(key activeUserKey, now time.Time) (int64, bool) {
 	return entry.count, true
 }
 
-// put stores a count, dropping the entries that have expired along the way:
-// keys carry a window start, so they stop being written to on their own and
-// would otherwise accumulate one set per elapsed window.
+// put stores a count. Keys carry a window bucket, so they stop being written
+// to on their own and would accumulate one set per elapsed bucket; expired
+// entries are swept once the map outgrows its last sweep, which keeps the
+// sweeping cost proportional to the insertions rather than to the map size.
 func (c *activeUserCache) put(key activeUserKey, count int64, now time.Time) {
 	if c == nil || c.ttl <= 0 {
 		return
@@ -72,11 +101,21 @@ func (c *activeUserCache) put(key activeUserKey, count int64, now time.Time) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	for k, e := range c.entries {
-		if now.After(e.expiresAt) {
-			delete(c.entries, k)
+	if len(c.entries) >= c.purgeAt {
+		for k, e := range c.entries {
+			if now.After(e.expiresAt) {
+				delete(c.entries, k)
+			}
 		}
+		c.purgeAt = max(2*len(c.entries), minPurgeAt)
 	}
 
 	c.entries[key] = activeUserEntry{count: count, expiresAt: now.Add(c.ttl)}
+}
+
+// size reports how many entries the cache holds, for tests.
+func (c *activeUserCache) size() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return len(c.entries)
 }

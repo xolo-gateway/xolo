@@ -1,6 +1,7 @@
 package component
 
 import (
+	"net/url"
 	"time"
 
 	"github.com/xolo-gateway/xolo/internal/core/model"
@@ -39,6 +40,10 @@ type ProviderFormVModel struct {
 	Provider model.Provider
 	IsNew    bool
 	Error    string
+	// Submitted is the form as it was posted, set when the page is rendered
+	// back with an error: fields are refilled from it rather than from the
+	// stored provider, so a rejected value is shown as typed instead of vanishing.
+	Submitted url.Values
 }
 
 type ModelsPageVModel struct {

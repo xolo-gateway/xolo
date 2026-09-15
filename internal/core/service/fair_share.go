@@ -66,12 +66,7 @@ type FairShareResult struct {
 // countOthers returns how many users other than the caller consumed in the
 // window, from the cache when a recent count is available.
 func (s *FairShareService) countOthers(ctx context.Context, req FairShareRequest, since time.Time) (int64, error) {
-	key := activeUserKey{
-		orgID:      req.OrgID,
-		providerID: req.ProviderID,
-		since:      since,
-		excluded:   req.UserID,
-	}
+	key := activeUserKeyFor(req.OrgID, req.ProviderID, since, req.UserID, s.activeUsers.ttl)
 
 	if count, ok := s.activeUsers.get(key, req.Now); ok {
 		return count, nil

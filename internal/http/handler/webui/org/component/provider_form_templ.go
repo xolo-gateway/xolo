@@ -1209,7 +1209,7 @@ func ProviderForm(vmodel ProviderFormVModel) templ.Component {
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = SubscriptionPlanEditor(vmodel.Provider.SubscriptionPlan(), readonly).Render(ctx, templ_7745c5c3_Buffer)
+				templ_7745c5c3_Err = SubscriptionPlanEditor(vmodel.Provider.SubscriptionPlan(), readonly, vmodel.Submitted).Render(ctx, templ_7745c5c3_Buffer)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}

@@ -157,9 +157,11 @@ func TestComputeFairShare_PacingClosesTheCommons(t *testing.T) {
 	}
 
 	// Same instant, but the plan already burned 80 % of the budget: the commons
-	// closes back toward the guaranteed floor.
+	// closes back toward the guaranteed floor. The caller is the one who burned
+	// it, so the availability cap stays loose and pacing is the binding rule.
 	ahead := early
 	ahead.UsedTotal = 800
+	ahead.UserUsed = 800
 	throttled := ComputeFairShare(ahead)
 	if throttled.Mode != FairShareModeThrottled {
 		t.Errorf("mode = %q, want throttled when the plan runs ahead of the clock", throttled.Mode)
@@ -185,8 +187,37 @@ func TestComputeFairShare_PacingIgnoredOnSlidingWindow(t *testing.T) {
 		HappyHourStart: DefaultHappyHourStart,
 	}
 
-	if got := ComputeFairShare(p); got.Mode != FairShareModeShared {
-		t.Errorf("mode = %q, want shared on a sliding window", got.Mode)
+	got := ComputeFairShare(p)
+	if got.Mode == FairShareModeThrottled {
+		t.Errorf("mode = %q, want no pacing on a sliding window", got.Mode)
+	}
+	// With 90 % of the plan consumed by the others, the availability cap is what
+	// narrows the share — and it says so, since it is the only rule that can.
+	if got.Mode != FairShareModeCapped {
+		t.Errorf("mode = %q, want capped when the others drained the plan", got.Mode)
+	}
+}
+
+func TestComputeFairShare_CapReportsItself(t *testing.T) {
+	// A share that narrowed because the others consumed the plan must not read
+	// as the nominal regime: the screen has nothing to explain the gauge with.
+	base := FairShareParams{
+		Budget:         1000,
+		TotalMembers:   20,
+		ActiveUsers:    2,
+		Elapsed:        -1,
+		Reserve:        DefaultReserveRatio,
+		Slack:          DefaultPaceSlack,
+		HappyHourStart: DefaultHappyHourStart,
+	}
+	if got := ComputeFairShare(base); got.Mode != FairShareModeShared {
+		t.Errorf("mode = %q on an untouched plan, want shared", got.Mode)
+	}
+
+	drained := base
+	drained.UsedTotal = 700
+	if got := ComputeFairShare(drained); got.Mode != FairShareModeCapped {
+		t.Errorf("mode = %q once the other user consumed 700, want capped", got.Mode)
 	}
 }
 

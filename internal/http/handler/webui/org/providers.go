@@ -536,12 +536,6 @@ func parseActiveParamsField(v string) int64 {
 	return int64(f * 1e9)
 }
 
-// partialPlan is what the form held when a field could not be read: the
-// constraints already parsed, plus the failing one as it was submitted.
-func partialPlan(label string, constraints []model.PlanConstraint, failing model.PlanConstraint) *model.SubscriptionPlan {
-	return &model.SubscriptionPlan{Label: label, Constraints: append(constraints, failing)}
-}
-
 // parsePlanRatioField reads one of the fair-share percentages. The stored form is
 // a fraction, the edited one a percentage.
 //
@@ -568,9 +562,10 @@ func parsePlanRatioField(value string) (*float64, error) {
 // caller is expected to show, rather than dropping a field it cannot read: a
 // tuning value that silently reverts to its default is a setting the operator
 // believes they made.
-// It returns the plan it managed to build alongside the error, so the caller can
-// re-render the form on what the operator actually typed instead of on what is
-// stored: losing a whole plan to one mistyped percentage is its own defect.
+// It returns the whole plan alongside the error — every constraint, readable
+// fields filled in — so the caller can re-render the form on what the operator
+// actually typed instead of on what is stored: losing a plan to one mistyped
+// percentage is its own defect.
 func parseSubscriptionPlanFromForm(r *http.Request) (*model.SubscriptionPlan, error) {
 	label := strings.TrimSpace(r.FormValue("plan_label"))
 	countStr := r.FormValue("plan_constraint_count")
@@ -583,6 +578,15 @@ func parseSubscriptionPlanFromForm(r *http.Request) (*model.SubscriptionPlan, er
 	}
 
 	constraints := make([]model.PlanConstraint, 0, count)
+	// The first unreadable field is reported, but parsing carries on: the plan
+	// handed back with the error must hold every constraint the operator typed,
+	// or one typo on the first row would wipe the rows below it off the screen.
+	var firstErr error
+	fail := func(err error) {
+		if firstErr == nil {
+			firstErr = err
+		}
+	}
 	for i := range count {
 		prefix := fmt.Sprintf("plan_c%d_", i)
 		kind := model.PlanConstraintKind(r.FormValue(prefix + "kind"))
@@ -615,30 +619,30 @@ func parseSubscriptionPlanFromForm(r *http.Request) (*model.SubscriptionPlan, er
 			// a field the next save silently erases.
 			var err error
 			if c.ReserveRatio, err = parsePlanRatioField(r.FormValue(prefix + "reserve_ratio")); err != nil {
-				return partialPlan(label, constraints, c), errors.Wrapf(err, "contrainte « %s » : réserve garantie", c.Label)
+				fail(errors.Wrapf(err, "contrainte « %s » : réserve garantie", c.Label))
 			}
 			if c.PaceSlack, err = parsePlanRatioField(r.FormValue(prefix + "pace_slack")); err != nil {
-				return partialPlan(label, constraints, c), errors.Wrapf(err, "contrainte « %s » : tolérance de rythme", c.Label)
+				fail(errors.Wrapf(err, "contrainte « %s » : tolérance de rythme", c.Label))
 			}
 			if c.HappyHourStart, err = parsePlanRatioField(r.FormValue(prefix + "happy_hour_start")); err != nil {
-				return partialPlan(label, constraints, c), errors.Wrapf(err, "contrainte « %s » : ouverture de fin de fenêtre", c.Label)
+				fail(errors.Wrapf(err, "contrainte « %s » : ouverture de fin de fenêtre", c.Label))
 			}
 			// 0 % ouvrirait la fenêtre entière, ce que l'allocateur refuse de faire :
 			// il retomberait sur son défaut, et l'éditeur réafficherait un réglage
 			// que le moteur n'applique pas. C'est 100 qui désactive l'ouverture.
 			if c.HappyHourStart != nil && *c.HappyHourStart <= 0 {
-				return partialPlan(label, constraints, c), errors.Errorf("contrainte « %s » : l'ouverture de fin de fenêtre doit être strictement supérieure à 0 (100 désactive l'ouverture)", c.Label)
+				fail(errors.Errorf("contrainte « %s » : l'ouverture de fin de fenêtre doit être strictement supérieure à 0 (100 désactive l'ouverture)", c.Label))
 			}
 			if lead := strings.TrimSpace(r.FormValue(prefix + "happy_hour_max_lead")); lead != "" {
 				// Same parser as the "reset dans" field above: a form that accepts
 				// "4d13h" in one duration field and refuses "1d" in the next is a
 				// trap, and a weekly window makes days the natural unit.
-				d, ok := parseResetIn(lead)
-				if !ok || d <= 0 {
-					return partialPlan(label, constraints, c), errors.Errorf("contrainte « %s » : l'avance maximale de l'ouverture doit être une durée positive (ex : 1h, 2d)", c.Label)
+				if d, ok := parseResetIn(lead); ok && d > 0 {
+					pd := model.PlanDuration(d)
+					c.HappyHourMaxLead = &pd
+				} else {
+					fail(errors.Errorf("contrainte « %s » : l'avance maximale de l'ouverture doit être une durée positive (ex : 1h, 2d)", c.Label))
 				}
-				pd := model.PlanDuration(d)
-				c.HappyHourMaxLead = &pd
 			}
 		case model.ConstraintConcurrency:
 			if mc, err := strconv.Atoi(r.FormValue(prefix + "max_concurrent")); err == nil && mc > 0 {
@@ -651,7 +655,7 @@ func parseSubscriptionPlanFromForm(r *http.Request) (*model.SubscriptionPlan, er
 	if label == "" && len(constraints) == 0 {
 		return nil, nil
 	}
-	return &model.SubscriptionPlan{Label: label, Constraints: constraints}, nil
+	return &model.SubscriptionPlan{Label: label, Constraints: constraints}, firstErr
 }
 
 // computeWindowAnchor turns a "reset dans" countdown (e.g. "4h29m", "4d13h") into an
@@ -1065,10 +1069,11 @@ func (h *Handler) renderModelFormError(w http.ResponseWriter, r *http.Request, c
 
 func (h *Handler) renderProviderFormError(w http.ResponseWriter, r *http.Request, ctx context.Context, user model.User, orgSlug string, org model.Organization, p model.Provider, isNew bool, errMsg string) {
 	vmodel := component.ProviderFormVModel{
-		Org:      org,
-		Provider: p,
-		IsNew:    isNew,
-		Error:    errMsg,
+		Org:       org,
+		Provider:  p,
+		IsNew:     isNew,
+		Error:     errMsg,
+		Submitted: r.Form,
 		AppLayoutVModel: common.AppLayoutVModel{
 			User:         user,
 			SelectedItem: "org-" + orgSlug + "-providers",

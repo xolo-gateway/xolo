@@ -171,7 +171,9 @@ func TestFairShareService_ModeIsPerBudget(t *testing.T) {
 	c := tokenAndValueConstraint(1000, 10_000)
 	c.WindowAnchor = &anchor
 
-	reader := &fakePlanUsageReader{planTokens: 900, planValue: 100, userTokens: 10, userValue: 10, otherActiveUsers: 1}
+	// The caller is the one who burned the tokens, so the availability cap stays
+	// loose on that budget and pacing is what narrows it.
+	reader := &fakePlanUsageReader{planTokens: 900, planValue: 100, userTokens: 890, userValue: 10, otherActiveUsers: 1}
 	svc := service.NewFairShareService(reader)
 
 	got, err := svc.Resolve(context.Background(), request(c))
@@ -349,5 +351,33 @@ func TestFairShareService_ExpiredCacheEntryIsReRead(t *testing.T) {
 
 	if reader.counts != 2 {
 		t.Errorf("count read %d times, want the expired entry to be read again", reader.counts)
+	}
+}
+
+func TestFairShareService_SlidingWindowCountIsReusedAcrossNearbyInstants(t *testing.T) {
+	// The default constraint has no anchor, so its window start is now−duration:
+	// a different instant on every request. The cache must still serve requests
+	// made within one TTL of each other, or it is write-only on the common case.
+	reader := &countingCountReader{fakePlanUsageReader: fakePlanUsageReader{planTokens: 300, userTokens: 100, otherActiveUsers: 2}}
+	svc := service.NewFairShareService(reader)
+
+	c := tokenAndValueConstraint(1000, 10_000)
+	if c.WindowAnchor != nil {
+		t.Fatal("this test needs a sliding window")
+	}
+
+	// Aligned on the TTL so the three instants fall in the same bucket regardless
+	// of the wall clock the test happens to run at.
+	start := time.Now().Truncate(service.DefaultActiveUserCacheTTL).Add(time.Second)
+	for _, offset := range []time.Duration{0, 750 * time.Millisecond, 3 * time.Second} {
+		req := request(c)
+		req.Now = start.Add(offset)
+		if _, err := svc.Resolve(context.Background(), req); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	}
+
+	if reader.counts != 1 {
+		t.Errorf("count read %d times, want 1 for requests a few seconds apart on a sliding window", reader.counts)
 	}
 }

@@ -142,6 +142,11 @@ const (
 	// FairShareModeHappyHour means the window is about to reset: whatever is left
 	// would be destroyed, so it is shared out between the users who showed up.
 	FairShareModeHappyHour FairShareMode = "happy_hour"
+	// FairShareModeCapped means the share was cut to what the plan can still hand
+	// out: the other active users have already consumed most of it, or the
+	// absent members' floors hold what is left. On a sliding window, where there
+	// is no pacing, this is the only reason a share ever narrows.
+	FairShareModeCapped FairShareMode = "capped"
 )
 
 // FairShareParams describes the state of a plan constraint at decision time.
@@ -256,6 +261,9 @@ func ComputeFairShare(p FairShareParams) FairShareAllocation {
 	// budget, and the quiet member the floor exists for finds the plan empty.
 	if allocatable := p.allocatableCommons(guaranteed, members, active); allocatable < commons {
 		commons = allocatable
+		// The cap is now the binding rule, whatever the pacing did before it: a
+		// gauge that narrowed between two visits must say why.
+		mode = FairShareModeCapped
 	}
 
 	allowance := int64(guaranteed + commons)

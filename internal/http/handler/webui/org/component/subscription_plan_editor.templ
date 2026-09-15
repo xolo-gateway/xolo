@@ -3,6 +3,7 @@ package component
 import (
 	"fmt"
 	"math"
+	"net/url"
 	"strconv"
 	"time"
 
@@ -32,7 +33,10 @@ import (
 //   - plan_c{i}_pace_slack           (percent 0-100, empty = allocator default)
 //   - plan_c{i}_happy_hour_start     (percent 1-100, empty = allocator default; 100 disables)
 //   - plan_c{i}_happy_hour_max_lead  (duration, e.g. "1h", "2d"; empty = allocator default)
-templ SubscriptionPlanEditor(plan *model.SubscriptionPlan, readonly bool) {
+// submitted, when not nil, is the form as it was posted: the page is being
+// rendered back with an error, and every field shows what the operator typed —
+// the rejected value included — rather than what is stored.
+templ SubscriptionPlanEditor(plan *model.SubscriptionPlan, readonly bool, submitted url.Values) {
 	{{ constraints := []model.PlanConstraint(nil) }}
 	{{ planLabel := "" }}
 	if plan != nil {
@@ -62,7 +66,7 @@ templ SubscriptionPlanEditor(plan *model.SubscriptionPlan, readonly bool) {
 					data-rows-count="plan-constraint-count"
 				>
 					for i, c := range constraints {
-						@planConstraintRow(i, c, readonly)
+						@planConstraintRow(i, c, readonly, submitted)
 					}
 				</div>
 			</div>
@@ -85,14 +89,14 @@ templ SubscriptionPlanEditor(plan *model.SubscriptionPlan, readonly bool) {
 	// des noms à trou (plan_c{i}_kind, …) que la renumérotation réécrit.
 	if !readonly {
 		<template id="plan-constraint-tpl">
-			@planConstraintRow(-1, model.PlanConstraint{}, false)
+			@planConstraintRow(-1, model.PlanConstraint{}, false, nil)
 		</template>
 	}
 }
 
 // planConstraintRow renders one constraint entry.
 // idx = -1 → template row; names use placeholder "{i}" replaced by JS.
-templ planConstraintRow(idx int, c model.PlanConstraint, readonly bool) {
+templ planConstraintRow(idx int, c model.PlanConstraint, readonly bool, submitted url.Values) {
 	{{ idxKey := fmt.Sprintf("%d", idx) }}
 	if idx == -1 {
 		{{ idxKey = "{i}" }}
@@ -113,34 +117,40 @@ templ planConstraintRow(idx int, c model.PlanConstraint, readonly bool) {
 	if c.Duration > 0 {
 		{{ durStr = c.Duration.Duration().String() }}
 	}
+	{{ durStr = submittedOr(submitted, durationName, durStr) }}
 	// Reset countdown value: rendered from the anchor so re-saving is idempotent.
 	{{ resetInStr := "" }}
 	if c.IsAnchored() {
 		{{ resetInStr = formatResetIn(time.Until(c.NextResetAt(time.Now()))) }}
 	}
+	{{ resetInStr = submittedOr(submitted, resetInName, resetInStr) }}
 	// Token budget: display as raw integer.
 	{{ tokenBudgetStr := "" }}
 	if c.TokenBudget != nil {
 		{{ tokenBudgetStr = fmt.Sprintf("%d", *c.TokenBudget) }}
 	}
+	{{ tokenBudgetStr = submittedOr(submitted, tokenBudgetName, tokenBudgetStr) }}
 	// Value budget: display as dollars (microcents / 1_000_000).
 	{{ valueBudgetStr := "" }}
 	if c.ValueBudget != nil {
 		{{ valueBudgetStr = formatBudgetField(*c.ValueBudget) }}
 	}
+	{{ valueBudgetStr = submittedOr(submitted, valueBudgetName, valueBudgetStr) }}
 	// Fair-share tuning: ratios are edited as percentages, empty meaning "default".
-	{{ reserveStr := formatRatioField(c.ReserveRatio) }}
-	{{ paceSlackStr := formatRatioField(c.PaceSlack) }}
-	{{ happyStartStr := formatRatioField(c.HappyHourStart) }}
+	{{ reserveStr := submittedOr(submitted, reserveName, formatRatioField(c.ReserveRatio)) }}
+	{{ paceSlackStr := submittedOr(submitted, paceSlackName, formatRatioField(c.PaceSlack)) }}
+	{{ happyStartStr := submittedOr(submitted, happyStartName, formatRatioField(c.HappyHourStart)) }}
 	{{ happyLeadStr := "" }}
 	if c.HappyHourMaxLead != nil {
 		{{ happyLeadStr = c.HappyHourMaxLead.Duration().String() }}
 	}
+	{{ happyLeadStr = submittedOr(submitted, happyLeadName, happyLeadStr) }}
 	// Max concurrent: display as integer.
 	{{ maxConcStr := "" }}
 	if c.MaxConcurrent != nil {
 		{{ maxConcStr = fmt.Sprintf("%d", *c.MaxConcurrent) }}
 	}
+	{{ maxConcStr = submittedOr(submitted, maxConcName, maxConcStr) }}
 	// rolling_window visible by default if kind matches (hidden for template row where kind is empty).
 	{{ showRolling := c.Kind == model.ConstraintRollingWindow }}
 	{{ showConcurrency := c.Kind == model.ConstraintConcurrency }}
@@ -396,6 +406,20 @@ templ planConstraintRow(idx int, c model.PlanConstraint, readonly bool) {
 			})
 		</div>
 	</div>
+}
+
+// submittedOr returns the value the operator posted for a field, falling back
+// to the stored one. Only a form rendered back with an error carries submitted
+// values; a rejected value is then shown as typed, so the operator sees what
+// was refused instead of an empty field.
+func submittedOr(submitted url.Values, name, stored string) string {
+	if submitted == nil {
+		return stored
+	}
+	if _, ok := submitted[name]; !ok {
+		return stored
+	}
+	return submitted.Get(name)
 }
 
 // formatRatioField renders a stored fraction as the percentage the form edits,

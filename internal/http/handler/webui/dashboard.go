@@ -621,12 +621,16 @@ func (h *Handler) buildDashboardSubscriptionUsage(ctx context.Context, orgID mod
 					cu.ResetAt = c.NextResetAt(now)
 					// Read the plan-wide totals once and hand them to the allocator,
 					// as the proxy hot path does: this page is rendered on every visit
-					// and a weekly window is the most expensive of them.
+					// and a weekly window is the most expensive of them. Not read at
+					// all when the allocation will not apply — the aggregation would
+					// be paid for nothing.
 					var planUsage *service.PlanUsage
-					if planTokens, planValue, sumErr := h.usageStore.SumPlanUsageSince(ctx, orgID, p.ID(), since); sumErr != nil {
-						slog.WarnContext(ctx, "could not sum org plan usage", slogx.Error(sumErr))
-					} else {
-						planUsage = &service.PlanUsage{Tokens: planTokens, Value: planValue}
+					if fairShareApplies(h.fairShare, c, userID, memberCount) {
+						if planTokens, planValue, sumErr := h.usageStore.SumPlanUsageSince(ctx, orgID, p.ID(), since); sumErr != nil {
+							slog.WarnContext(ctx, "could not sum org plan usage", slogx.Error(sumErr))
+						} else {
+							planUsage = &service.PlanUsage{Tokens: planTokens, Value: planValue}
+						}
 					}
 					// Show the same denominators the enforcer decides against, so a
 					// varying allowance stays readable instead of looking arbitrary.
@@ -667,6 +671,14 @@ func (h *Handler) buildDashboardSubscriptionUsage(ctx context.Context, orgID mod
 	return result
 }
 
+// fairShareApplies reports whether a per-user allocation can be computed for a
+// constraint at all: there must be a budget to divide, a user to divide it for,
+// and a membership to divide it between. Shared by applyFairShare and by the
+// plan-wide read that feeds it, so neither runs when the other would give up.
+func fairShareApplies(fairShare *service.FairShareService, c model.PlanConstraint, userID model.UserID, memberCount int64) bool {
+	return fairShare != nil && memberCount > 0 && userID != "" && (c.TokenBudget != nil || c.ValueBudget != nil)
+}
+
 // applyFairShare replaces a constraint's budgets with the allowance the
 // subscription enforcer grants the viewer right now, and records how each was
 // produced. Any failure degrades to the static budget/members share, exactly as
@@ -684,7 +696,7 @@ func applyFairShare(
 	now time.Time,
 	planUsage *service.PlanUsage,
 ) bool {
-	if fairShare == nil || memberCount <= 0 || userID == "" || (c.TokenBudget == nil && c.ValueBudget == nil) {
+	if !fairShareApplies(fairShare, c, userID, memberCount) {
 		return false
 	}
 

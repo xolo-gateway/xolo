@@ -204,7 +204,7 @@ templ ProviderForm(vmodel ProviderFormVModel) {
 				}
 				if !vmodel.IsNew && vmodel.Provider != nil && vmodel.Provider.BillingMode() == model.BillingModeSubscription {
 					<div class="mt-3.5">
-						@SubscriptionPlanEditor(vmodel.Provider.SubscriptionPlan(), readonly)
+						@SubscriptionPlanEditor(vmodel.Provider.SubscriptionPlan(), readonly, vmodel.Submitted)
 					</div>
 				}
 				if !vmodel.IsNew && vmodel.Provider != nil {

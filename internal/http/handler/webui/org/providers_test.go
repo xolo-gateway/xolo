@@ -355,3 +355,70 @@ func TestParseSubscriptionPlanFromForm_EmptyTuningKeepsTheDefaults(t *testing.T)
 }
 
 func ptr[T any](v T) *T { return &v }
+
+func TestParseSubscriptionPlanFromForm_ErrorKeepsEveryConstraint(t *testing.T) {
+	// A typo on the first row must not wipe the rows below it: the plan handed
+	// back with the error carries all three constraints, readable fields filled.
+	r := makeRequest(map[string]string{
+		"plan_label":             "Pro",
+		"plan_constraint_count":  "3",
+		"plan_c0_kind":           "rolling_window",
+		"plan_c0_label":          "5h",
+		"plan_c0_duration":       "5h",
+		"plan_c0_token_budget":   "1000",
+		"plan_c0_reserve_ratio":  "30 %", // the typo
+		"plan_c1_kind":           "rolling_window",
+		"plan_c1_label":          "7d",
+		"plan_c1_duration":       "168h",
+		"plan_c1_token_budget":   "5000",
+		"plan_c1_pace_slack":     "10",
+		"plan_c2_kind":           "concurrency",
+		"plan_c2_label":          "conc",
+		"plan_c2_max_concurrent": "4",
+	})
+
+	plan, err := parseSubscriptionPlanFromForm(r)
+	if err == nil {
+		t.Fatal("expected a validation error on the first constraint")
+	}
+	if !strings.Contains(err.Error(), "5h") {
+		t.Errorf("error = %q, want it to name the failing constraint", err)
+	}
+	if plan == nil || len(plan.Constraints) != 3 {
+		t.Fatalf("plan carries %d constraints, want all 3 despite the error", len(plan.Constraints))
+	}
+
+	// The rows after the failing one were parsed in full.
+	second := plan.Constraints[1]
+	if second.TokenBudget == nil || *second.TokenBudget != 5000 || second.PaceSlack == nil || *second.PaceSlack != 0.1 {
+		t.Errorf("second constraint = %+v, want its budget and pace slack read", second)
+	}
+	if third := plan.Constraints[2]; third.MaxConcurrent == nil || *third.MaxConcurrent != 4 {
+		t.Errorf("third constraint = %+v, want its concurrency read", third)
+	}
+}
+
+func TestParseSubscriptionPlanFromForm_FirstErrorWins(t *testing.T) {
+	// Several typos, one message: the first in form order, so the operator fixes
+	// them top to bottom.
+	r := makeRequest(map[string]string{
+		"plan_label":            "Pro",
+		"plan_constraint_count": "2",
+		"plan_c0_kind":          "rolling_window",
+		"plan_c0_label":         "first",
+		"plan_c0_duration":      "5h",
+		"plan_c0_pace_slack":    "abc",
+		"plan_c1_kind":          "rolling_window",
+		"plan_c1_label":         "second",
+		"plan_c1_duration":      "5h",
+		"plan_c1_reserve_ratio": "999",
+	})
+
+	_, err := parseSubscriptionPlanFromForm(r)
+	if err == nil {
+		t.Fatal("expected a validation error")
+	}
+	if !strings.Contains(err.Error(), "first") || strings.Contains(err.Error(), "second") {
+		t.Errorf("error = %q, want the first constraint's error only", err)
+	}
+}

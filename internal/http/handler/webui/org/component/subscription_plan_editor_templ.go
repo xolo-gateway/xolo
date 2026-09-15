@@ -11,6 +11,7 @@ import templruntime "github.com/a-h/templ/runtime"
 import (
 	"fmt"
 	"math"
+	"net/url"
 	"strconv"
 	"time"
 
@@ -40,7 +41,11 @@ import (
 //   - plan_c{i}_pace_slack           (percent 0-100, empty = allocator default)
 //   - plan_c{i}_happy_hour_start     (percent 1-100, empty = allocator default; 100 disables)
 //   - plan_c{i}_happy_hour_max_lead  (duration, e.g. "1h", "2d"; empty = allocator default)
-func SubscriptionPlanEditor(plan *model.SubscriptionPlan, readonly bool) templ.Component {
+//
+// submitted, when not nil, is the form as it was posted: the page is being
+// rendered back with an error, and every field shows what the operator typed —
+// the rejected value included — rather than what is stored.
+func SubscriptionPlanEditor(plan *model.SubscriptionPlan, readonly bool, submitted url.Values) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
@@ -188,7 +193,7 @@ func SubscriptionPlanEditor(plan *model.SubscriptionPlan, readonly bool) templ.C
 					return templ_7745c5c3_Err
 				}
 				for i, c := range constraints {
-					templ_7745c5c3_Err = planConstraintRow(i, c, readonly).Render(ctx, templ_7745c5c3_Buffer)
+					templ_7745c5c3_Err = planConstraintRow(i, c, readonly, submitted).Render(ctx, templ_7745c5c3_Buffer)
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
@@ -200,7 +205,7 @@ func SubscriptionPlanEditor(plan *model.SubscriptionPlan, readonly bool) templ.C
 				var templ_7745c5c3_Var8 string
 				templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("%d", len(constraints)))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/subscription_plan_editor.templ`, Line: 71, Col: 123}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/subscription_plan_editor.templ`, Line: 75, Col: 123}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var8))
 				if templ_7745c5c3_Err != nil {
@@ -256,7 +261,7 @@ func SubscriptionPlanEditor(plan *model.SubscriptionPlan, readonly bool) templ.C
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = planConstraintRow(-1, model.PlanConstraint{}, false).Render(ctx, templ_7745c5c3_Buffer)
+			templ_7745c5c3_Err = planConstraintRow(-1, model.PlanConstraint{}, false, nil).Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -271,7 +276,7 @@ func SubscriptionPlanEditor(plan *model.SubscriptionPlan, readonly bool) templ.C
 
 // planConstraintRow renders one constraint entry.
 // idx = -1 → template row; names use placeholder "{i}" replaced by JS.
-func planConstraintRow(idx int, c model.PlanConstraint, readonly bool) templ.Component {
+func planConstraintRow(idx int, c model.PlanConstraint, readonly bool, submitted url.Values) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
@@ -311,29 +316,35 @@ func planConstraintRow(idx int, c model.PlanConstraint, readonly bool) templ.Com
 		if c.Duration > 0 {
 			durStr = c.Duration.Duration().String()
 		}
+		durStr = submittedOr(submitted, durationName, durStr)
 		resetInStr := ""
 		if c.IsAnchored() {
 			resetInStr = formatResetIn(time.Until(c.NextResetAt(time.Now())))
 		}
+		resetInStr = submittedOr(submitted, resetInName, resetInStr)
 		tokenBudgetStr := ""
 		if c.TokenBudget != nil {
 			tokenBudgetStr = fmt.Sprintf("%d", *c.TokenBudget)
 		}
+		tokenBudgetStr = submittedOr(submitted, tokenBudgetName, tokenBudgetStr)
 		valueBudgetStr := ""
 		if c.ValueBudget != nil {
 			valueBudgetStr = formatBudgetField(*c.ValueBudget)
 		}
-		reserveStr := formatRatioField(c.ReserveRatio)
-		paceSlackStr := formatRatioField(c.PaceSlack)
-		happyStartStr := formatRatioField(c.HappyHourStart)
+		valueBudgetStr = submittedOr(submitted, valueBudgetName, valueBudgetStr)
+		reserveStr := submittedOr(submitted, reserveName, formatRatioField(c.ReserveRatio))
+		paceSlackStr := submittedOr(submitted, paceSlackName, formatRatioField(c.PaceSlack))
+		happyStartStr := submittedOr(submitted, happyStartName, formatRatioField(c.HappyHourStart))
 		happyLeadStr := ""
 		if c.HappyHourMaxLead != nil {
 			happyLeadStr = c.HappyHourMaxLead.Duration().String()
 		}
+		happyLeadStr = submittedOr(submitted, happyLeadName, happyLeadStr)
 		maxConcStr := ""
 		if c.MaxConcurrent != nil {
 			maxConcStr = fmt.Sprintf("%d", *c.MaxConcurrent)
 		}
+		maxConcStr = submittedOr(submitted, maxConcName, maxConcStr)
 		showRolling := c.Kind == model.ConstraintRollingWindow
 		showConcurrency := c.Kind == model.ConstraintConcurrency
 		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 11, "<div data-xolo-row class=\"rounded-md border p-3 space-y-3 bg-muted/30\"><div class=\"flex items-center gap-2\"><div class=\"flex-1 space-y-1\">")
@@ -369,7 +380,7 @@ func planConstraintRow(idx int, c model.PlanConstraint, readonly bool) templ.Com
 		var templ_7745c5c3_Var12 string
 		templ_7745c5c3_Var12, templ_7745c5c3_Err = templ.JoinStringErrs("plan-kind-" + idxKey)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/subscription_plan_editor.templ`, Line: 162, Col: 31}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/subscription_plan_editor.templ`, Line: 172, Col: 31}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var12))
 		if templ_7745c5c3_Err != nil {
@@ -382,7 +393,7 @@ func planConstraintRow(idx int, c model.PlanConstraint, readonly bool) templ.Com
 		var templ_7745c5c3_Var13 string
 		templ_7745c5c3_Var13, templ_7745c5c3_Err = templ.JoinStringErrs(kindName)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/subscription_plan_editor.templ`, Line: 163, Col: 20}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/subscription_plan_editor.templ`, Line: 173, Col: 20}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var13))
 		if templ_7745c5c3_Err != nil {
@@ -395,7 +406,7 @@ func planConstraintRow(idx int, c model.PlanConstraint, readonly bool) templ.Com
 		var templ_7745c5c3_Var14 string
 		templ_7745c5c3_Var14, templ_7745c5c3_Err = templ.JoinStringErrs("plan_c{i}_kind")
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/subscription_plan_editor.templ`, Line: 164, Col: 38}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/subscription_plan_editor.templ`, Line: 174, Col: 38}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var14))
 		if templ_7745c5c3_Err != nil {
@@ -1106,6 +1117,20 @@ func planConstraintRow(idx int, c model.PlanConstraint, readonly bool) templ.Com
 		}
 		return nil
 	})
+}
+
+// submittedOr returns the value the operator posted for a field, falling back
+// to the stored one. Only a form rendered back with an error carries submitted
+// values; a rejected value is then shown as typed, so the operator sees what
+// was refused instead of an empty field.
+func submittedOr(submitted url.Values, name, stored string) string {
+	if submitted == nil {
+		return stored
+	}
+	if _, ok := submitted[name]; !ok {
+		return stored
+	}
+	return submitted.Get(name)
 }
 
 // formatRatioField renders a stored fraction as the percentage the form edits,

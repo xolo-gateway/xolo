@@ -22,6 +22,9 @@ const testPostgresDSNEnv = "XOLO_TEST_POSTGRES_DSN"
 // backend names one storage backend the store suite can run against.
 type backend struct {
 	name string
+	// newDB returns an empty database the test keeps a handle on, for the few
+	// tests that assert on the schema (indexes, migrations) rather than on data.
+	newDB func(t *testing.T) *gormpkg.DB
 	// newStore returns a store bound to an empty database, torn down when the
 	// test ends.
 	newStore func(t *testing.T) *xologorm.Store
@@ -55,16 +58,34 @@ func newTestStore(t *testing.T) *xologorm.Store {
 }
 
 func sqliteBackend() backend {
+	newDB := func(t *testing.T) *gormpkg.DB {
+		t.Helper()
+		db, err := gormpkg.Open(gormlite.Open(":memory:"), &gormpkg.Config{})
+		if err != nil {
+			t.Fatalf("open db: %v", err)
+		}
+		return db
+	}
 	return backend{
-		name: "sqlite",
+		name:  "sqlite",
+		newDB: newDB,
 		newStore: func(t *testing.T) *xologorm.Store {
 			t.Helper()
-			db, err := gormpkg.Open(gormlite.Open(":memory:"), &gormpkg.Config{})
-			if err != nil {
-				t.Fatalf("open db: %v", err)
-			}
-			return newStoreOn(t, db)
+			return newStoreOn(t, newDB(t))
 		},
+	}
+}
+
+// eachBackendDB is eachBackend for tests that need the database handle itself.
+func eachBackendDB(t *testing.T, fn func(t *testing.T, db *gormpkg.DB)) {
+	t.Helper()
+
+	backends := append([]backend{sqliteBackend()}, postgresBackends(t)...)
+
+	for _, b := range backends {
+		t.Run(b.name, func(t *testing.T) {
+			fn(t, b.newDB(t))
+		})
 	}
 }
 
@@ -79,37 +100,42 @@ func newStoreOn(t *testing.T, db *gormpkg.DB) *xologorm.Store {
 // schema of the server at dsn, giving the same clean-slate semantics as a
 // fresh in-memory SQLite database.
 func newPostgresBackend(dsn string) backend {
+	newDB := func(t *testing.T) *gormpkg.DB {
+		t.Helper()
+
+		schema := testSchemaName(t)
+
+		admin, err := gormpkg.Open(postgres.Open(dsn), &gormpkg.Config{})
+		if err != nil {
+			t.Fatalf("open postgres: %v", err)
+		}
+		if err := admin.Exec(fmt.Sprintf(`DROP SCHEMA IF EXISTS %q CASCADE`, schema)).Error; err != nil {
+			t.Fatalf("drop schema: %v", err)
+		}
+		if err := admin.Exec(fmt.Sprintf(`CREATE SCHEMA %q`, schema)).Error; err != nil {
+			t.Fatalf("create schema: %v", err)
+		}
+		t.Cleanup(func() {
+			if err := admin.Exec(fmt.Sprintf(`DROP SCHEMA IF EXISTS %q CASCADE`, schema)).Error; err != nil {
+				t.Logf("drop schema: %v", err)
+			}
+			closeDB(t, admin)
+		})
+
+		db, err := gormpkg.Open(postgres.Open(withSearchPath(dsn, schema)), &gormpkg.Config{})
+		if err != nil {
+			t.Fatalf("open postgres schema: %v", err)
+		}
+		t.Cleanup(func() { closeDB(t, db) })
+
+		return db
+	}
 	return backend{
-		name: "postgres",
+		name:  "postgres",
+		newDB: newDB,
 		newStore: func(t *testing.T) *xologorm.Store {
 			t.Helper()
-
-			schema := testSchemaName(t)
-
-			admin, err := gormpkg.Open(postgres.Open(dsn), &gormpkg.Config{})
-			if err != nil {
-				t.Fatalf("open postgres: %v", err)
-			}
-			if err := admin.Exec(fmt.Sprintf(`DROP SCHEMA IF EXISTS %q CASCADE`, schema)).Error; err != nil {
-				t.Fatalf("drop schema: %v", err)
-			}
-			if err := admin.Exec(fmt.Sprintf(`CREATE SCHEMA %q`, schema)).Error; err != nil {
-				t.Fatalf("create schema: %v", err)
-			}
-			t.Cleanup(func() {
-				if err := admin.Exec(fmt.Sprintf(`DROP SCHEMA IF EXISTS %q CASCADE`, schema)).Error; err != nil {
-					t.Logf("drop schema: %v", err)
-				}
-				closeDB(t, admin)
-			})
-
-			db, err := gormpkg.Open(postgres.Open(withSearchPath(dsn, schema)), &gormpkg.Config{})
-			if err != nil {
-				t.Fatalf("open postgres schema: %v", err)
-			}
-			t.Cleanup(func() { closeDB(t, db) })
-
-			return xologorm.NewStore(db)
+			return newStoreOn(t, newDB(t))
 		},
 	}
 }

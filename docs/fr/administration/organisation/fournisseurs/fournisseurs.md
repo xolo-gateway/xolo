@@ -119,7 +119,8 @@ La part d'un utilisateur dépend du nombre d'utilisateurs actifs au moment de la
 requête : elle peut donc varier au cours d'une même fenêtre, à la hausse comme à
 la baisse. Le tableau de bord affiche, sous chaque jauge d'abonnement, le nombre
 d'utilisateurs actifs sur lequel la part a été calculée, ainsi qu'une mention
-lorsque le rythme resserre la part ou que la fin de fenêtre l'élargit.
+lorsque le rythme resserre la part, lorsque le forfait déjà consommé par les
+autres la plafonne, ou lorsque la fin de fenêtre l'élargit.
 
 ## Configurer la résilience
 

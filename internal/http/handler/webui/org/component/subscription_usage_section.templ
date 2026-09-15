@@ -142,6 +142,8 @@ templ rollingWindowConstraintRow(cu SubscriptionConstraintUsage) {
 templ fairShareBadge(mode model.FairShareMode) {
 	if mode == model.FairShareModeThrottled {
 		@common.Badge(common.ToneWarning, "Part réduite")
+	} else if mode == model.FairShareModeCapped {
+		@common.Badge(common.ToneWarning, "Part plafonnée")
 	} else if mode == model.FairShareModeHappyHour {
 		@common.Badge(common.TonePositive, "Quota ouvert")
 	}
@@ -150,6 +152,8 @@ templ fairShareBadge(mode model.FairShareMode) {
 templ fairShareNote(mode model.FairShareMode) {
 	if mode == model.FairShareModeThrottled {
 		<p class="text-xs text-muted-foreground">Le forfait se consomme plus vite que la fenêtre ne s'écoule : votre part est resserrée jusqu'à ce que la consommation rejoigne son rythme.</p>
+	} else if mode == model.FairShareModeCapped {
+		<p class="text-xs text-muted-foreground">Le forfait est déjà largement consommé par les autres utilisateurs actifs : votre part est limitée à ce qu'il peut encore honorer, planchers des membres absents mis de côté.</p>
 	} else if mode == model.FairShareModeHappyHour {
 		<p class="text-xs text-muted-foreground">Fin de fenêtre : le quota restant serait perdu à la réinitialisation, il est réparti entre les utilisateurs actifs.</p>
 	}
