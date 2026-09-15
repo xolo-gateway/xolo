@@ -166,6 +166,11 @@ func NewHTTPServerFromConfig(ctx context.Context, conf *config.Config) (*http.Se
 
 	subscriptionState := proxyAdapter.NewSubscriptionState()
 
+	fairShareService, err := getFairShareServiceFromConfig(ctx, conf)
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+
 	orgModelRouter := proxyAdapter.NewOrgModelRouter(providerStore, orgStore, conf.SecretKey,
 		proxyAdapter.WithUpstreamTimeout(conf.Proxy.UpstreamTimeout),
 	)
@@ -229,7 +234,7 @@ func NewHTTPServerFromConfig(ctx context.Context, conf *config.Config) (*http.Se
 		return nil, errors.Wrap(err, "could not start event purger from config")
 	}
 
-	webuiHandler := webui.NewHandler(taskRunner, userStore, orgStore, roleStore, providerStore, virtualModelStore, middlewareStore, personalVMStore, usageStore, inviteStore, applicationStore, quotaStore, quotaService, exchangeRateService, secretStore, conf.SecretKey, pluginManager, subscriptionState, eventStore, alertStore, alertIncidentStore, eventSettingsStore, conf.Events.MaxPerOrg, conf.Events.DefaultPerOrg)
+	webuiHandler := webui.NewHandler(taskRunner, userStore, orgStore, roleStore, providerStore, virtualModelStore, middlewareStore, personalVMStore, usageStore, inviteStore, applicationStore, quotaStore, quotaService, exchangeRateService, secretStore, conf.SecretKey, pluginManager, subscriptionState, fairShareService, eventStore, alertStore, alertIncidentStore, eventSettingsStore, conf.Events.MaxPerOrg, conf.Events.DefaultPerOrg)
 
 	apiHandler := api.NewHandler(providerStore, orgStore, virtualModelStore, personalVMStore, middlewareStore, secretStore, exchangeRateService, pluginManager)
 
@@ -240,7 +245,7 @@ func NewHTTPServerFromConfig(ctx context.Context, conf *config.Config) (*http.Se
 		proxy.WithHook(pipelineHookAdapter),
 		proxy.WithHook(orgModelRouter),
 		proxy.WithHook(proxyAdapter.NewXoloQuotaEnforcer(quotaService, quotaStore, usageStore, providerStore)),
-		proxy.WithHook(proxyAdapter.NewXoloSubscriptionEnforcer(providerStore, usageStore, subscriptionState, orgStore)),
+		proxy.WithHook(proxyAdapter.NewXoloSubscriptionEnforcer(providerStore, usageStore, fairShareService, subscriptionState, orgStore)),
 		proxy.WithHook(proxyAdapter.NewXoloUsageTracker(usageStore, providerStore, orgStore, exchangeRateService)),
 		proxy.WithHook(proxyAdapter.NewXoloEventEmitterHook(eventEmitter)),
 	)

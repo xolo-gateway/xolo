@@ -61,7 +61,8 @@ type PlanConstraint struct {
 	// HappyHourMaxLead caps how long before the reset the happy hour may open.
 	// HappyHourStart is a fraction of the window, so on a long window it would
 	// otherwise open for hours: a tenth of a 168h window is nearly 17 hours, over
-	// which "the leftover is about to be destroyed" stops being true.
+	// which "the leftover is about to be destroyed" stops being true. Nil means
+	// DefaultHappyHourLead of the window.
 	HappyHourMaxLead *PlanDuration `json:"happy_hour_max_lead,omitempty"`
 	// WindowAnchor aligns a rolling_window constraint on a fixed (tumbling) schedule.
 	// It records any instant at which a window opened; combined with Duration it lets us
@@ -122,11 +123,35 @@ type SubscriptionPlan struct {
 // Default tuning of the fair-share allocator, used when a constraint leaves the
 // corresponding field nil.
 const (
-	DefaultReserveRatio     = 0.3
-	DefaultPaceSlack        = 0.15
-	DefaultHappyHourStart   = 0.9
-	DefaultHappyHourMaxLead = time.Hour
+	DefaultReserveRatio   = 0.3
+	DefaultPaceSlack      = 0.15
+	DefaultHappyHourStart = 0.9
+
+	// The default happy-hour lead is a fraction of the window, bounded on both
+	// sides. A fixed lead does not fit every window: an hour is a third of a 5h
+	// plan's last stretch but leaves a weekly plan's absent-member floors to be
+	// destroyed unless someone shows up in the final hour of seven days. A bare
+	// fraction does not either — a tenth of a week is 17 hours during which
+	// "about to be destroyed" is simply not true. Hence a ratio, clamped.
+	DefaultHappyHourLeadRatio = 0.05
+	MinHappyHourLead          = 30 * time.Minute
+	MaxHappyHourLead          = 4 * time.Hour
 )
+
+// DefaultHappyHourLead returns the lead used when a constraint sets none:
+// DefaultHappyHourLeadRatio of the window, clamped to [MinHappyHourLead,
+// MaxHappyHourLead]. A 5h window opens 30 minutes before its reset, a weekly
+// one 4 hours before.
+func DefaultHappyHourLead(window time.Duration) time.Duration {
+	lead := time.Duration(float64(window) * DefaultHappyHourLeadRatio)
+	if lead < MinHappyHourLead {
+		return MinHappyHourLead
+	}
+	if lead > MaxHappyHourLead {
+		return MaxHappyHourLead
+	}
+	return lead
+}
 
 // FairShareMode explains which rule produced a user's allowance. It is surfaced
 // in denial messages and logs so a fluctuating allowance stays explainable.
@@ -303,7 +328,7 @@ func (p FairShareParams) inHappyHour() bool {
 	}
 	lead := p.HappyHourMaxLead
 	if lead <= 0 {
-		lead = DefaultHappyHourMaxLead
+		lead = DefaultHappyHourLead(p.WindowDuration)
 	}
 	remaining := time.Duration((1 - clampUnit(p.Elapsed)) * float64(p.WindowDuration))
 	return remaining <= lead
@@ -396,11 +421,11 @@ func (c PlanConstraint) FairShareParamsFor(p FairShareParams) FairShareParams {
 	if c.HappyHourStart != nil && *c.HappyHourStart > 0 {
 		p.HappyHourStart = *c.HappyHourStart
 	}
-	p.HappyHourMaxLead = DefaultHappyHourMaxLead
+	p.WindowDuration = c.Duration.Duration()
+	p.HappyHourMaxLead = DefaultHappyHourLead(p.WindowDuration)
 	if c.HappyHourMaxLead != nil && c.HappyHourMaxLead.Duration() > 0 {
 		p.HappyHourMaxLead = c.HappyHourMaxLead.Duration()
 	}
-	p.WindowDuration = c.Duration.Duration()
 	return p
 }
 

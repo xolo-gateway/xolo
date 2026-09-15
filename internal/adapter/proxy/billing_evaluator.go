@@ -80,10 +80,12 @@ type rollingWindowEvaluator struct {
 	fairShare  *service.FairShareService
 }
 
-func newRollingWindowEvaluator(usageStore port.UsageStore) *rollingWindowEvaluator {
+// fairShare is the process-wide allocator, shared with the dashboard so both
+// decide and display from the same active-user cache.
+func newRollingWindowEvaluator(usageStore port.UsageStore, fairShare *service.FairShareService) *rollingWindowEvaluator {
 	return &rollingWindowEvaluator{
 		usageStore: usageStore,
-		fairShare:  service.NewFairShareService(usageStore),
+		fairShare:  fairShare,
 	}
 }
 

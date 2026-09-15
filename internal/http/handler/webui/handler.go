@@ -61,6 +61,7 @@ func NewHandler(
 	secretKey string,
 	pluginManager pluginManagerIface,
 	subscriptionMonitor port.SubscriptionMonitor,
+	fairShare *service.FairShareService,
 	eventStore port.EventStore,
 	alertStore port.AlertStore,
 	alertIncidentStore port.AlertIncidentStore,
@@ -83,7 +84,7 @@ func NewHandler(
 		exchangeRateService: exchangeRateService,
 		pluginManager:       pluginManager,
 		subscriptionMonitor: subscriptionMonitor,
-		fairShare:           service.NewFairShareService(usageStore),
+		fairShare:           fairShare,
 	}
 
 	isActive := authz.Middleware(http.HandlerFunc(h.getInactiveUserPage), authz.Active())

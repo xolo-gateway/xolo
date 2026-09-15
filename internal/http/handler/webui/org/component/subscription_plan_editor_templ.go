@@ -998,7 +998,7 @@ func planConstraintRow(idx int, c model.PlanConstraint, readonly bool, submitted
 						}()
 					}
 					ctx = templ.InitializeContext(ctx)
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 54, "Avance maximale de l'ouverture (défaut 1h)")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 54, "Avance maximale de l'ouverture (défaut : 5 % de la fenêtre, entre 30 min et 4 h)")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
@@ -1020,7 +1020,7 @@ func planConstraintRow(idx int, c model.PlanConstraint, readonly bool, submitted
 						}()
 					}
 					ctx = templ.InitializeContext(ctx)
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 55, "Borne absolue : sur une fenêtre longue, la fraction ci-dessus ouvrirait des heures avant le reset.")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 55, "Borne absolue : sur une fenêtre longue, la fraction ci-dessus ouvrirait des heures avant le reset. Une fenêtre de 5 h s'ouvre 30 min avant, une fenêtre hebdomadaire 4 h avant.")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}

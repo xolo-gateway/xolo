@@ -82,6 +82,7 @@ Le schéma est créé et migré automatiquement au démarrage. Il n'existe pas d
 | Variable | Défaut | Description |
 | --- | --- | --- |
 | `XOLO_PROXY_UPSTREAM_TIMEOUT` | `5m` | Délai maximal accordé à un fournisseur. Pour une complétion non streamée ou un calcul d'embeddings, il borne l'appel complet, tentatives de retry comprises. Pour une complétion streamée, il borne l'attente du premier fragment puis le silence entre deux fragments, sans jamais couper une réponse longue qui continue d'arriver. À expiration le client reçoit une erreur 504 explicite au lieu d'une coupure opaque du reverse proxy. Le timeout du reverse proxy placé devant Xolo doit rester strictement supérieur à cette valeur. `0` désactive la borne. |
+| `XOLO_PROXY_ACTIVE_USER_CACHE_TTL` | `30s` | Durée de réutilisation du nombre d'utilisateurs actifs sur un forfait par abonnement, qui sert de dénominateur à la [répartition entre utilisateurs](../organisation/fournisseurs/fournisseurs.md#répartition-entre-utilisateurs). Ce comptage parcourt toute la fenêtre du forfait dans la table d'usage à chaque requête proxy ; il évolue lentement, et une valeur vieille de quelques secondes ne change la part d'un utilisateur que d'un concurrent au plus. À augmenter quand la table d'usage est volumineuse. `0` recompte à chaque requête. |
 
 ## Événements
 

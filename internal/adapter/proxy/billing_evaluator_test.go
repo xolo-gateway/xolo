@@ -8,6 +8,7 @@ import (
 
 	"github.com/xolo-gateway/xolo/internal/core/model"
 	"github.com/xolo-gateway/xolo/internal/core/port"
+	"github.com/xolo-gateway/xolo/internal/core/service"
 	"github.com/pkg/errors"
 )
 
@@ -69,7 +70,7 @@ func TestRollingWindow_QuietMembersWidenTheShare(t *testing.T) {
 	// 3 users active out of 20 members. The static budget/members cap stopped a
 	// user at 50 tokens; the shared allocation lets them keep going.
 	store := &fairShareUsageStore{orgTokens: 300, userTokens: 100, otherActiveUsers: 2}
-	ev := newRollingWindowEvaluator(store)
+	ev := newRollingWindowEvaluator(store, service.NewFairShareService(store))
 
 	_, denial, err := ev.Acquire(context.Background(), fairShareScope(), tokenConstraint(1000))
 	if err != nil {
@@ -87,7 +88,7 @@ func TestRollingWindow_ShareStillBoundedByTheReserve(t *testing.T) {
 	// Sole active user: they get the commons but not the reserve held for the
 	// 19 members who have not shown up.
 	store := &fairShareUsageStore{orgTokens: 900, userTokens: 900, otherActiveUsers: 0}
-	ev := newRollingWindowEvaluator(store)
+	ev := newRollingWindowEvaluator(store, service.NewFairShareService(store))
 
 	_, denial, err := ev.Acquire(context.Background(), fairShareScope(), tokenConstraint(1000))
 	if err != nil {
@@ -113,7 +114,7 @@ func TestRollingWindow_CountFailureFallsBackToStaticShare(t *testing.T) {
 		userTokens: 60, // above the static 1000/20 = 50 share
 		countErr:   errors.New("boom"),
 	}
-	ev := newRollingWindowEvaluator(store)
+	ev := newRollingWindowEvaluator(store, service.NewFairShareService(store))
 
 	_, denial, err := ev.Acquire(context.Background(), fairShareScope(), tokenConstraint(1000))
 	if err != nil {
@@ -141,7 +142,7 @@ func TestRollingWindow_DegradedCountOnAThrottledWindowStaysCoherent(t *testing.T
 	c.WindowAnchor = &anchor
 
 	store := &fairShareUsageStore{orgTokens: 900, userTokens: 60, countErr: errors.New("boom")}
-	ev := newRollingWindowEvaluator(store)
+	ev := newRollingWindowEvaluator(store, service.NewFairShareService(store))
 
 	_, denial, err := ev.Acquire(context.Background(), fairShareScope(), c)
 	if err != nil {
@@ -164,7 +165,7 @@ func TestRollingWindow_CallerIsExcludedFromTheCountThenAddedBack(t *testing.T) {
 	// counting them from a zero usage sum would miscount a user whose requests
 	// were recorded with no billable token.
 	store := &fairShareUsageStore{orgTokens: 300, userTokens: 0, otherActiveUsers: 2}
-	ev := newRollingWindowEvaluator(store)
+	ev := newRollingWindowEvaluator(store, service.NewFairShareService(store))
 
 	_, denial, err := ev.Acquire(context.Background(), fairShareScope(), tokenConstraint(1000))
 	if err != nil {
@@ -182,7 +183,7 @@ func TestRollingWindow_DenialReportsTheAllocationBasis(t *testing.T) {
 	// 2 other active users + the caller, out of 20 members: the message must
 	// report 3 of 20, never a count that exceeds the membership.
 	store := &fairShareUsageStore{orgTokens: 900, userTokens: 300, otherActiveUsers: 2}
-	ev := newRollingWindowEvaluator(store)
+	ev := newRollingWindowEvaluator(store, service.NewFairShareService(store))
 
 	_, denial, err := ev.Acquire(context.Background(), fairShareScope(), tokenConstraint(1000))
 	if err != nil {
@@ -200,7 +201,7 @@ func TestRollingWindow_ActiveCountNeverExceedsTheMembership(t *testing.T) {
 	// A member removed mid-window still has usage records, so the raw count can
 	// reach the membership; adding the caller back must not report 21 of 20.
 	store := &fairShareUsageStore{orgTokens: 900, userTokens: 300, otherActiveUsers: 20}
-	ev := newRollingWindowEvaluator(store)
+	ev := newRollingWindowEvaluator(store, service.NewFairShareService(store))
 
 	_, denial, err := ev.Acquire(context.Background(), fairShareScope(), tokenConstraint(1000))
 	if err != nil {
@@ -218,7 +219,7 @@ func TestRollingWindow_OrgBudgetStillCapsEverything(t *testing.T) {
 	// Whatever the per-user allocation says, the plan-wide budget is the hard
 	// limit and is checked first.
 	store := &fairShareUsageStore{orgTokens: 1000, userTokens: 10, otherActiveUsers: 4}
-	ev := newRollingWindowEvaluator(store)
+	ev := newRollingWindowEvaluator(store, service.NewFairShareService(store))
 
 	_, denial, err := ev.Acquire(context.Background(), fairShareScope(), tokenConstraint(1000))
 	if err != nil {
@@ -237,7 +238,7 @@ func TestRollingWindow_OrgBudgetStillCapsEverything(t *testing.T) {
 
 func TestRollingWindow_NoUserContextSkipsFairShare(t *testing.T) {
 	store := &fairShareUsageStore{orgTokens: 300, otherActiveUsers: 2}
-	ev := newRollingWindowEvaluator(store)
+	ev := newRollingWindowEvaluator(store, service.NewFairShareService(store))
 
 	scope := fairShareScope()
 	scope.UserID = ""
@@ -262,7 +263,7 @@ func TestRollingWindow_HappyHourOpensTheLeftoverBeforeReset(t *testing.T) {
 	c.WindowAnchor = &anchor
 
 	store := &fairShareUsageStore{orgTokens: 300, userTokens: 290, otherActiveUsers: 0}
-	ev := newRollingWindowEvaluator(store)
+	ev := newRollingWindowEvaluator(store, service.NewFairShareService(store))
 
 	_, denial, err := ev.Acquire(context.Background(), fairShareScope(), c)
 	if err != nil {

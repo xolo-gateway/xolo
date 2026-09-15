@@ -233,7 +233,7 @@ func happyHourParams() FairShareParams {
 		Reserve:          DefaultReserveRatio,
 		Slack:            DefaultPaceSlack,
 		HappyHourStart:   DefaultHappyHourStart,
-		HappyHourMaxLead: DefaultHappyHourMaxLead,
+		HappyHourMaxLead: DefaultHappyHourLead(5 * time.Hour),
 	}
 }
 
@@ -398,9 +398,10 @@ func TestComputeFairShare_ThrottledOnlyWhenTheShareActuallyNarrows(t *testing.T)
 func TestComputeFairShare_HappyHourIsBoundedByAnAbsoluteLead(t *testing.T) {
 	// The threshold is a fraction of the window, so on a weekly plan its last
 	// tenth is nearly 17 hours — far too early to claim the leftover is about to
-	// be destroyed. The absolute lead is what keeps it honest.
+	// be destroyed. The lead is what keeps it honest: 4 hours on a week.
 	p := happyHourParams()
 	p.WindowDuration = 168 * time.Hour
+	p.HappyHourMaxLead = DefaultHappyHourLead(p.WindowDuration)
 
 	if got := ComputeFairShare(p); got.Mode == FairShareModeHappyHour {
 		t.Errorf("mode = %q, want the happy hour held back 8h before a weekly reset", got.Mode)
@@ -495,10 +496,30 @@ func TestComputeFairShare_MoreActiveThanMembers(t *testing.T) {
 	}
 }
 
+func TestDefaultHappyHourLead_IsProportionalAndClamped(t *testing.T) {
+	cases := []struct {
+		window time.Duration
+		want   time.Duration
+	}{
+		{5 * time.Hour, 30 * time.Minute},    // 5 % = 15 min, raised to the floor
+		{24 * time.Hour, 72 * time.Minute},   // 5 % of a day, inside the bounds
+		{168 * time.Hour, 4 * time.Hour},     // 5 % = 8.4 h, cut to the ceiling
+		{30 * time.Minute, 30 * time.Minute}, // never longer than the window itself matters little: the floor applies
+	}
+	for _, tc := range cases {
+		if got := DefaultHappyHourLead(tc.window); got != tc.want {
+			t.Errorf("DefaultHappyHourLead(%s) = %s, want %s", tc.window, got, tc.want)
+		}
+	}
+}
+
 func TestPlanConstraint_FairShareParamsFor_Defaults(t *testing.T) {
 	c := PlanConstraint{Kind: ConstraintRollingWindow, Duration: PlanDuration(5 * time.Hour)}
 
 	p := c.FairShareParamsFor(FairShareParams{Budget: 100})
+	if p.HappyHourMaxLead != DefaultHappyHourLead(5*time.Hour) {
+		t.Errorf("HappyHourMaxLead = %s, want the window's default lead %s", p.HappyHourMaxLead, DefaultHappyHourLead(5*time.Hour))
+	}
 	if p.Reserve != DefaultReserveRatio || p.Slack != DefaultPaceSlack || p.HappyHourStart != DefaultHappyHourStart {
 		t.Errorf("defaults = (%v, %v, %v), want (%v, %v, %v)",
 			p.Reserve, p.Slack, p.HappyHourStart, DefaultReserveRatio, DefaultPaceSlack, DefaultHappyHourStart)
@@ -573,7 +594,7 @@ func TestComputeFairShare_NonPositiveHappyHourStartNeverOpensTheWindow(t *testin
 		Reserve:          DefaultReserveRatio,
 		Slack:            DefaultPaceSlack,
 		HappyHourStart:   0,
-		HappyHourMaxLead: DefaultHappyHourMaxLead,
+		HappyHourMaxLead: DefaultHappyHourLead(5 * time.Hour),
 	}
 
 	if got := ComputeFairShare(p); got.Mode == FairShareModeHappyHour {

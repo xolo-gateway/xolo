@@ -369,10 +369,10 @@ templ planConstraintRow(idx int, c model.PlanConstraint, readonly bool, submitte
 							</div>
 							<div class="space-y-1">
 								@form.Label() {
-									Avance maximale de l'ouverture (défaut 1h)
+									Avance maximale de l'ouverture (défaut : 5 % de la fenêtre, entre 30 min et 4 h)
 								}
 								@form.Description() {
-									Borne absolue : sur une fenêtre longue, la fraction ci-dessus ouvrirait des heures avant le reset.
+									Borne absolue : sur une fenêtre longue, la fraction ci-dessus ouvrirait des heures avant le reset. Une fenêtre de 5 h s'ouvre 30 min avant, une fenêtre hebdomadaire 4 h avant.
 								}
 								@input.Input(input.Props{
 									Name:        happyLeadName,

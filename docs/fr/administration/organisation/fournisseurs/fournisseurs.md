@@ -108,7 +108,7 @@ leurs valeurs par défaut.
 | **Réserve garantie**               | 30 %   | Part du budget réservée à parts égales entre tous les membres                                 |
 | **Tolérance de rythme**            | 15 %   | Avance de consommation tolérée avant que les parts ne se resserrent                           |
 | **Ouverture de fin de fenêtre**    | 90 %   | Fraction de la fenêtre au-delà de laquelle le reliquat est réparti entre les actifs ; 100 désactive |
-| **Avance maximale de l'ouverture** | 1h     | Borne absolue de cette ouverture, pour qu'une fenêtre longue ne s'ouvre pas des heures avant  |
+| **Avance maximale de l'ouverture** | 5 % de la fenêtre, entre 30 min et 4 h | Borne absolue de cette ouverture : 30 min avant le reset d'une fenêtre de 5 h, 4 h avant celui d'une fenêtre hebdomadaire |
 
 Une valeur illisible ou hors bornes est refusée à l'enregistrement, avec un
 message nommant la contrainte concernée : un réglage affiché doit être celui que
