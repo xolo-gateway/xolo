@@ -197,9 +197,12 @@ type FairShareAllocation struct {
 //	allowance = reserve×B/members  +  (1−reserve)×B/active × pacingFactor
 //
 // The first term is a floor every member holds whether they use it or not, so a
-// quiet user is never squeezed out by a heavy one. The second is the commons,
-// split only between the users who actually show up — this is what recovers the
-// budget that the static budget/members cap used to leave on the table.
+// quiet user is never squeezed out by a heavy one. It is a reservation, not just
+// a share: the commons is capped by what the plan can still hand out once the
+// absent members' floors are set aside, so shares granted in sequence cannot add
+// up past the budget. The second term is that commons, split only between the
+// users who actually show up — this is what recovers the budget that the static
+// budget/members cap used to leave on the table.
 //
 // The pacing factor keeps the commons from being drained in the first minutes of
 // a window: it stays at 1 as long as plan-wide consumption trails the elapsed
@@ -246,6 +249,13 @@ func ComputeFairShare(p FairShareParams) FairShareAllocation {
 			commons *= factor
 			mode = FairShareModeThrottled
 		}
+	}
+
+	// Hard cap on what is left to hand out. Without it the guaranteed floor is a
+	// share, not a reservation: shares granted one after another add up past the
+	// budget, and the quiet member the floor exists for finds the plan empty.
+	if allocatable := p.allocatableCommons(guaranteed, members, active); allocatable < commons {
+		commons = allocatable
 	}
 
 	allowance := int64(guaranteed + commons)
@@ -314,6 +324,29 @@ func (p FairShareParams) happyHourAllowance(active int64) int64 {
 		available = 0
 	}
 	return available / active
+}
+
+// allocatableCommons is each active user's share of what the plan can still
+// hand out: the budget, less what the other users already consumed, less the
+// floors held for the members who have not shown up. Those floors are what makes
+// the guarantee opposable — a member arriving late in the window still finds
+// their share, instead of a plan drained by whoever came first.
+func (p FairShareParams) allocatableCommons(guaranteed float64, members, active int) float64 {
+	othersUsed := float64(p.UsedTotal - p.UserUsed)
+	if othersUsed < 0 {
+		othersUsed = 0
+	}
+
+	// The caller's own floor is granted separately, so it comes off the pot too:
+	// leaving it in would let each arrival take their floor plus a slice of it,
+	// and the sequence of allocations would creep past the budget.
+	absentFloors := float64(members-active) * guaranteed
+	available := float64(p.Budget) - othersUsed - absentFloors - guaranteed
+	if available <= 0 {
+		return 0
+	}
+
+	return available / float64(active)
 }
 
 // pacingFactor returns how much of the commons stays open, given how far plan

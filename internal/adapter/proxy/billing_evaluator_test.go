@@ -153,8 +153,8 @@ func TestRollingWindow_DegradedCountOnAThrottledWindowStaysCoherent(t *testing.T
 	if !strings.Contains(denial.Message, "active-user count unavailable") {
 		t.Errorf("message = %q, want it to name the degraded count", denial.Message)
 	}
-	if strings.Contains(denial.Message, "static share applied") {
-		t.Errorf("message = %q, want it not to claim the static share when the allocation was narrowed", denial.Message)
+	if !strings.Contains(denial.Message, string(model.FairShareModeThrottled)) {
+		t.Errorf("message = %q, want it to name the mode that produced the allocation", denial.Message)
 	}
 }
 

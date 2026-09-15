@@ -248,6 +248,13 @@
       row.querySelectorAll("[data-xolo-name]").forEach(function (field) {
         field.name = field.dataset.xoloName.replace(/\{i\}/g, index);
       });
+      // Idem pour les identifiants : une ligne clonée depuis le <template> porte
+      // l'id de la ligne modèle, et deux éléments de même id rendent le document
+      // invalide — sans effet tant qu'aucun composant n'indexe par id, mais c'est
+      // exactement le genre de dette qui casse silencieusement plus tard.
+      row.querySelectorAll("[data-xolo-id]").forEach(function (el) {
+        el.id = el.dataset.xoloId.replace(/\{i\}/g, index);
+      });
       syncRowVariant(row);
     });
 

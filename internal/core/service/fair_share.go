@@ -63,6 +63,30 @@ type FairShareResult struct {
 	CountDegraded bool
 }
 
+// countOthers returns how many users other than the caller consumed in the
+// window, from the cache when a recent count is available.
+func (s *FairShareService) countOthers(ctx context.Context, req FairShareRequest, since time.Time) (int64, error) {
+	key := activeUserKey{
+		orgID:      req.OrgID,
+		providerID: req.ProviderID,
+		since:      since,
+		excluded:   req.UserID,
+	}
+
+	if count, ok := s.activeUsers.get(key, req.Now); ok {
+		return count, nil
+	}
+
+	count, err := s.usageReader.CountActivePlanUsersSince(ctx, req.OrgID, req.ProviderID, since, req.UserID)
+	if err != nil {
+		return 0, errors.WithStack(err)
+	}
+
+	s.activeUsers.put(key, count, req.Now)
+
+	return count, nil
+}
+
 // ErrFairShareNotApplicable is returned when there is no membership to divide a
 // budget between, or no user to allocate for.
 var ErrFairShareNotApplicable = errors.New("fair share: not applicable without a member count and a user")
@@ -75,10 +99,20 @@ var ErrFairShareNotApplicable = errors.New("fair share: not applicable without a
 // drift the moment one of them is touched.
 type FairShareService struct {
 	usageReader PlanUsageReader
+	activeUsers *activeUserCache
 }
 
 func NewFairShareService(usageReader PlanUsageReader) *FairShareService {
-	return &FairShareService{usageReader: usageReader}
+	return NewFairShareServiceWithCacheTTL(usageReader, DefaultActiveUserCacheTTL)
+}
+
+// NewFairShareServiceWithCacheTTL builds a service whose active-user counts are
+// reused for ttl. A non-positive ttl reads the count on every call.
+func NewFairShareServiceWithCacheTTL(usageReader PlanUsageReader, ttl time.Duration) *FairShareService {
+	return &FairShareService{
+		usageReader: usageReader,
+		activeUsers: newActiveUserCache(ttl),
+	}
 }
 
 // Resolve computes the allocation for one user on one rolling-window constraint.
@@ -123,7 +157,7 @@ func (s *FairShareService) Resolve(ctx context.Context, req FairShareRequest) (*
 
 	// The count excludes the caller, who is then added back: they are competing
 	// for the budget whether or not their first request has been recorded yet.
-	others, err := s.usageReader.CountActivePlanUsersSince(ctx, req.OrgID, req.ProviderID, since, req.UserID)
+	others, err := s.countOthers(ctx, req, since)
 	if err != nil {
 		res.CountDegraded = true
 		others = int64(req.MemberCount)

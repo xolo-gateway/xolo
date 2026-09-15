@@ -74,12 +74,13 @@ func TestFairShareService_ResolvesBothBudgets(t *testing.T) {
 	if got.TokenAllowance == nil || got.ValueAllowance == nil {
 		t.Fatal("both allowances must be resolved when the constraint carries both budgets")
 	}
-	// 0.3×B/20 + 0.7×B/3 on each budget.
-	if *got.TokenAllowance != 248 {
-		t.Errorf("token allowance = %d, want 248", *got.TokenAllowance)
+	// Floor (0.3×B/20) plus a third of the commons, itself capped by what the two
+	// other active users left once the 17 absent members' floors are set aside.
+	if *got.TokenAllowance != 191 {
+		t.Errorf("token allowance = %d, want 191", *got.TokenAllowance)
 	}
-	if *got.ValueAllowance != 2_483 {
-		t.Errorf("value allowance = %d, want 2483", *got.ValueAllowance)
+	if *got.ValueAllowance != 1_916 {
+		t.Errorf("value allowance = %d, want 1916", *got.ValueAllowance)
 	}
 	if got.ActiveUsers != 3 {
 		t.Errorf("active users = %d, want 3 (2 others plus the caller)", got.ActiveUsers)
@@ -130,8 +131,10 @@ func TestFairShareService_CountFailureFallsBackToTheStaticShare(t *testing.T) {
 	if got.ActiveUsers != 20 {
 		t.Errorf("active users = %d, want the full membership", got.ActiveUsers)
 	}
-	if *got.TokenAllowance != 50 {
-		t.Errorf("token allowance = %d, want the static 1000/20 share", *got.TokenAllowance)
+	// Split across the whole membership, as the static cap did — the last unit of
+	// the 1000/20 share going to what the plan has already consumed.
+	if *got.TokenAllowance != 49 {
+		t.Errorf("token allowance = %d, want the share split across every member", *got.TokenAllowance)
 	}
 }
 
@@ -204,8 +207,8 @@ func TestFairShareService_PreReadPlanTotalsAreNotSummedAgain(t *testing.T) {
 		t.Errorf("plan usage = (%d, %d), want the values handed in", got.PlanTokens, got.PlanValue)
 	}
 	// The allocation must be the same as if it had read them itself.
-	if *got.TokenAllowance != 248 {
-		t.Errorf("token allowance = %d, want 248", *got.TokenAllowance)
+	if *got.TokenAllowance != 191 {
+		t.Errorf("token allowance = %d, want 191", *got.TokenAllowance)
 	}
 }
 
@@ -238,4 +241,113 @@ type countingPlanUsageReader struct {
 func (f *countingPlanUsageReader) SumPlanUsageSince(ctx context.Context, orgID model.OrgID, providerID model.ProviderID, since time.Time) (int64, int64, error) {
 	f.planSums++
 	return f.fakePlanUsageReader.SumPlanUsageSince(ctx, orgID, providerID, since)
+}
+
+// countingCountReader counts how many times the active-user count is read.
+type countingCountReader struct {
+	fakePlanUsageReader
+	counts int
+}
+
+func (f *countingCountReader) CountActivePlanUsersSince(ctx context.Context, orgID model.OrgID, providerID model.ProviderID, since time.Time, excludeUserID model.UserID) (int64, error) {
+	f.counts++
+	return f.fakePlanUsageReader.CountActivePlanUsersSince(ctx, orgID, providerID, since, excludeUserID)
+}
+
+func TestFairShareService_ActiveUserCountIsReusedWithinItsTTL(t *testing.T) {
+	// The count walks the whole window in the database and moves slowly; a user
+	// firing requests in a row must not pay for it every time.
+	reader := &countingCountReader{fakePlanUsageReader: fakePlanUsageReader{planTokens: 300, userTokens: 100, otherActiveUsers: 2}}
+	svc := service.NewFairShareService(reader)
+
+	req := request(tokenAndValueConstraint(1000, 10_000))
+	first, err := svc.Resolve(context.Background(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	second, err := svc.Resolve(context.Background(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if reader.counts != 1 {
+		t.Errorf("count read %d times, want 1 within the TTL", reader.counts)
+	}
+	if first.ActiveUsers != second.ActiveUsers || *first.TokenAllowance != *second.TokenAllowance {
+		t.Errorf("cached resolve differs: %d/%d vs %d/%d",
+			first.ActiveUsers, *first.TokenAllowance, second.ActiveUsers, *second.TokenAllowance)
+	}
+}
+
+func TestFairShareService_ActiveUserCountIsNotSharedAcrossKeys(t *testing.T) {
+	// The count is taken without the caller and over one window, so neither may
+	// be borrowed from another user's or another window's entry.
+	reader := &countingCountReader{fakePlanUsageReader: fakePlanUsageReader{planTokens: 300, userTokens: 100, otherActiveUsers: 2}}
+	svc := service.NewFairShareService(reader)
+
+	base := request(tokenAndValueConstraint(1000, 10_000))
+	if _, err := svc.Resolve(context.Background(), base); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	otherUser := base
+	otherUser.UserID = "user-2"
+	if _, err := svc.Resolve(context.Background(), otherUser); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	otherWindow := base
+	otherWindow.Now = base.Now.Add(6 * time.Hour) // a later sliding window
+	if _, err := svc.Resolve(context.Background(), otherWindow); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if reader.counts != 3 {
+		t.Errorf("count read %d times, want one read per user and per window", reader.counts)
+	}
+}
+
+func TestFairShareService_CacheCanBeDisabled(t *testing.T) {
+	reader := &countingCountReader{fakePlanUsageReader: fakePlanUsageReader{planTokens: 300, userTokens: 100, otherActiveUsers: 2}}
+	svc := service.NewFairShareServiceWithCacheTTL(reader, 0)
+
+	req := request(tokenAndValueConstraint(1000, 10_000))
+	for range 3 {
+		if _, err := svc.Resolve(context.Background(), req); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	}
+
+	if reader.counts != 3 {
+		t.Errorf("count read %d times, want every call to reach the store", reader.counts)
+	}
+}
+
+func TestFairShareService_ExpiredCacheEntryIsReRead(t *testing.T) {
+	reader := &countingCountReader{fakePlanUsageReader: fakePlanUsageReader{planTokens: 300, userTokens: 100, otherActiveUsers: 2}}
+	svc := service.NewFairShareServiceWithCacheTTL(reader, 30*time.Second)
+
+	// An anchored window, so the window start — part of the cache key — does not
+	// move with the clock: without it the entry would be missed because the key
+	// changed, and the test would pass whether the TTL worked or not.
+	c := tokenAndValueConstraint(1000, 10_000)
+	anchor := time.Now().Add(-time.Hour)
+	c.WindowAnchor = &anchor
+
+	req := request(c)
+	if _, err := svc.Resolve(context.Background(), req); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// The cache ages against the request's own clock, so the passage of time is
+	// expressed rather than waited for.
+	later := req
+	later.Now = req.Now.Add(31 * time.Second)
+	if _, err := svc.Resolve(context.Background(), later); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if reader.counts != 2 {
+		t.Errorf("count read %d times, want the expired entry to be read again", reader.counts)
+	}
 }

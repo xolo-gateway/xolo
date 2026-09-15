@@ -1041,7 +1041,15 @@ func planConstraintRow(idx int, c model.PlanConstraint, readonly bool) templ.Com
 			}
 			return nil
 		})
-		templ_7745c5c3_Err = collapsible.Collapsible(collapsible.Props{Class: "rounded-md border bg-background p-3"}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var23), templ_7745c5c3_Buffer)
+		templ_7745c5c3_Err = collapsible.Collapsible(collapsible.Props{
+			Class: "rounded-md border bg-background p-3",
+			// Sans ID explicite, le composant s'en tire un au rendu : la ligne
+			// modèle n'étant rendue qu'une fois, chaque ligne ajoutée clonerait
+			// le même. L'identifiant est donc dérivé de l'index et renuméroté
+			// par le module de lignes répétables, comme les noms de champs.
+			ID:         "plan_c" + idxKey + "_fairshare",
+			Attributes: templ.Attributes{"data-xolo-id": "plan_c{i}_fairshare"},
+		}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var23), templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

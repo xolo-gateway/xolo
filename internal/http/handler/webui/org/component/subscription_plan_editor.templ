@@ -291,7 +291,15 @@ templ planConstraintRow(idx int, c model.PlanConstraint, readonly bool) {
 			// toutes les autres. Le JS de collapsible ne travaille que par
 			// délégation et closest(), jamais par identifiant, donc une ligne
 			// clonée depuis le <template> ci-dessus reste autonome.
-			@collapsible.Collapsible(collapsible.Props{Class: "rounded-md border bg-background p-3"}) {
+			@collapsible.Collapsible(collapsible.Props{
+				Class: "rounded-md border bg-background p-3",
+				// Sans ID explicite, le composant s'en tire un au rendu : la ligne
+				// modèle n'étant rendue qu'une fois, chaque ligne ajoutée clonerait
+				// le même. L'identifiant est donc dérivé de l'index et renuméroté
+				// par le module de lignes répétables, comme les noms de champs.
+				ID:         "plan_c" + idxKey + "_fairshare",
+				Attributes: templ.Attributes{"data-xolo-id": "plan_c{i}_fairshare"},
+			}) {
 				@collapsible.Trigger(collapsible.TriggerProps{Class: "cursor-pointer text-sm font-medium"}) {
 					Répartition entre utilisateurs (optionnel)
 				}

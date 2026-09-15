@@ -77,7 +77,10 @@ part se compose de deux termes :
 
 - un **plancher garanti**, réparti à parts égales entre tous les membres de
   l'organisation, qu'ils consomment ou non : c'est ce qui protège un utilisateur
-  occasionnel de ceux qui consomment beaucoup ;
+  occasionnel de ceux qui consomment beaucoup. C'est une réservation, non une
+  simple part : la portion commune est plafonnée par ce qui reste réellement
+  distribuable une fois les planchers des absents mis de côté, de sorte qu'un
+  membre arrivant tard dans la fenêtre y retrouve bien sa part ;
 - le **reste du budget**, réparti entre les seuls utilisateurs **actifs dans la
   fenêtre**. Sur une organisation de vingt personnes dont trois utilisent
   réellement le forfait, chacune de ces trois dispose ainsi d'environ un quart du

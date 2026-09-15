@@ -316,8 +316,13 @@ func TestParseSubscriptionPlanFromForm_InvalidTuningIsReported(t *testing.T) {
 			if err == nil {
 				t.Fatalf("%s = %q accepted, want a validation error", field, value)
 			}
-			if plan != nil {
-				t.Errorf("plan = %+v, want none when the form cannot be read", plan)
+			// The plan built so far comes back with the error: the screen re-renders
+			// what was typed, so one mistyped percentage does not discard the rest.
+			if plan == nil || len(plan.Constraints) != 1 {
+				t.Fatalf("plan = %+v, want the constraint as submitted", plan)
+			}
+			if got := plan.Constraints[0]; got.Label != "5h" || got.Duration.Duration() != 5*time.Hour {
+				t.Errorf("constraint = %+v, want the fields that were readable", got)
 			}
 			// The message must say which constraint is at fault: a plan carries
 			// several, and they are edited on one screen.

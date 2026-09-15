@@ -55,8 +55,8 @@ func TestApplyFairShare_ReplacesTheDenominatorAndReportsTheBasis(t *testing.T) {
 	}
 
 	// 0.3×1000/20 + 0.7×1000/3, not the static 1000/20.
-	if cu.Constraint.TokenBudget == nil || *cu.Constraint.TokenBudget != 248 {
-		t.Errorf("token budget = %v, want the 248 allowance", cu.Constraint.TokenBudget)
+	if cu.Constraint.TokenBudget == nil || *cu.Constraint.TokenBudget != 191 {
+		t.Errorf("token budget = %d, want the 191 allowance", *cu.Constraint.TokenBudget)
 	}
 	if cu.TokensUsed != 100 {
 		t.Errorf("tokens used = %d, want the total read by the allocation", cu.TokensUsed)
@@ -136,8 +136,8 @@ func TestApplyFairShare_UsesThePreReadPlanTotals(t *testing.T) {
 	if reader.planSums != 0 {
 		t.Errorf("SumPlanUsageSince called %d times, want 0 when the totals are handed in", reader.planSums)
 	}
-	if cu.Constraint.TokenBudget == nil || *cu.Constraint.TokenBudget != 248 {
-		t.Errorf("token budget = %v, want the 248 allowance", cu.Constraint.TokenBudget)
+	if cu.Constraint.TokenBudget == nil || *cu.Constraint.TokenBudget != 191 {
+		t.Errorf("token budget = %d, want the 191 allowance", *cu.Constraint.TokenBudget)
 	}
 }
 

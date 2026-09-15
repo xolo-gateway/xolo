@@ -262,10 +262,13 @@ func TestComputeFairShare_HappyHourNeverNarrowsTheShare(t *testing.T) {
 	// lot, an equal split of the leftover is narrower than the nominal share — so
 	// the nominal share stands, and crossing the threshold cannot turn a grant
 	// into a denial.
+	// Most of the membership is active, so few floors are set aside and the
+	// nominal share stays wide; an equal split of what is left is then narrower.
 	p := happyHourParams()
-	p.ActiveUsers = 4
-	p.UsedTotal = 900
-	p.UserUsed = 100 // the other three consumed 800 between them
+	p.TotalMembers = 4
+	p.ActiveUsers = 3
+	p.UsedTotal = 700
+	p.UserUsed = 100 // the other two consumed 600 between them
 
 	before := p
 	before.Elapsed = 0.5 // same window, before the happy hour opens
@@ -544,5 +547,77 @@ func TestComputeFairShare_NonPositiveHappyHourStartNeverOpensTheWindow(t *testin
 
 	if got := ComputeFairShare(p); got.Mode == FairShareModeHappyHour {
 		t.Errorf("mode = %q, want the nominal allocation", got.Mode)
+	}
+}
+
+func TestComputeFairShare_TheFloorIsOpposableToEarlierUsers(t *testing.T) {
+	// The scenario the guaranteed floor exists for, and which the share alone did
+	// not cover: a heavy user takes a wide share early, then the members who were
+	// quiet show up. Each must still find their floor, rather than an empty plan.
+	const (
+		budget  = 1000
+		members = 20
+	)
+	base := FairShareParams{
+		Budget:         budget,
+		TotalMembers:   members,
+		Elapsed:        -1, // sliding window: no pacing to lean on
+		Reserve:        DefaultReserveRatio,
+		Slack:          DefaultPaceSlack,
+		HappyHourStart: DefaultHappyHourStart,
+	}
+	floor := int64(DefaultReserveRatio * budget / members)
+
+	// The first user, alone, takes everything they are granted.
+	first := base
+	first.ActiveUsers = 1
+	granted := ComputeFairShare(first).Allowance
+	consumed := granted
+
+	// Then every other member shows up in turn and consumes their allowance.
+	for i := 2; i <= members; i++ {
+		p := base
+		p.ActiveUsers = i
+		p.UsedTotal = consumed
+		p.UserUsed = 0
+
+		alloc := ComputeFairShare(p).Allowance
+		if alloc < floor {
+			t.Fatalf("member %d was allocated %d, below the guaranteed floor of %d", i, alloc, floor)
+		}
+		consumed += alloc
+	}
+
+	// Nothing may have been handed out beyond the plan: that is what makes the
+	// floor a reservation rather than a promise the budget cannot keep.
+	if consumed > budget {
+		t.Errorf("allocations summed to %d over a budget of %d", consumed, budget)
+	}
+}
+
+func TestComputeFairShare_CommonsIsCappedByWhatOthersLeft(t *testing.T) {
+	// Same budget and membership, the only difference being how much the other
+	// users already consumed: the share must shrink accordingly.
+	base := FairShareParams{
+		Budget:         1000,
+		TotalMembers:   20,
+		ActiveUsers:    2,
+		Elapsed:        -1,
+		Reserve:        DefaultReserveRatio,
+		Slack:          DefaultPaceSlack,
+		HappyHourStart: DefaultHappyHourStart,
+	}
+
+	untouched := ComputeFairShare(base).Allowance
+
+	drained := base
+	drained.UsedTotal = 700 // consumed by the other active user
+	after := ComputeFairShare(drained).Allowance
+
+	if after >= untouched {
+		t.Errorf("allowance = %d after the plan was drained, want less than %d", after, untouched)
+	}
+	if floor := int64(DefaultReserveRatio * 1000 / 20); after < floor {
+		t.Errorf("allowance = %d, want never below the guaranteed floor %d", after, floor)
 	}
 }

@@ -144,6 +144,8 @@ func (h *Handler) createProvider(w http.ResponseWriter, r *http.Request) {
 	if billingMode == model.BillingModeSubscription {
 		plan, err := parseSubscriptionPlanFromForm(r)
 		if err != nil {
+			// Re-render on what was submitted, not on an empty plan.
+			p.SetSubscriptionPlan(plan)
 			h.renderProviderFormError(w, r, ctx, user, orgSlug, org, p, true,
 				"Forfait : "+err.Error()+".")
 			return
@@ -298,7 +300,10 @@ func (h *Handler) updateProvider(w http.ResponseWriter, r *http.Request) {
 	if billingMode == model.BillingModeSubscription {
 		plan, err := parseSubscriptionPlanFromForm(r)
 		if err != nil {
-			h.renderProviderFormError(w, r, ctx, user, orgSlug, org, existing, false,
+			// Re-render the plan as it was typed, not as it is stored: one mistyped
+			// percentage must not discard every other edit made on the screen.
+			h.renderProviderFormError(w, r, ctx, user, orgSlug, org,
+				providerWithPlan{Provider: existing, plan: plan}, false,
 				"Forfait : "+err.Error()+".")
 			return
 		}
@@ -531,6 +536,12 @@ func parseActiveParamsField(v string) int64 {
 	return int64(f * 1e9)
 }
 
+// partialPlan is what the form held when a field could not be read: the
+// constraints already parsed, plus the failing one as it was submitted.
+func partialPlan(label string, constraints []model.PlanConstraint, failing model.PlanConstraint) *model.SubscriptionPlan {
+	return &model.SubscriptionPlan{Label: label, Constraints: append(constraints, failing)}
+}
+
 // parsePlanRatioField reads one of the fair-share percentages. The stored form is
 // a fraction, the edited one a percentage.
 //
@@ -557,6 +568,9 @@ func parsePlanRatioField(value string) (*float64, error) {
 // caller is expected to show, rather than dropping a field it cannot read: a
 // tuning value that silently reverts to its default is a setting the operator
 // believes they made.
+// It returns the plan it managed to build alongside the error, so the caller can
+// re-render the form on what the operator actually typed instead of on what is
+// stored: losing a whole plan to one mistyped percentage is its own defect.
 func parseSubscriptionPlanFromForm(r *http.Request) (*model.SubscriptionPlan, error) {
 	label := strings.TrimSpace(r.FormValue("plan_label"))
 	countStr := r.FormValue("plan_constraint_count")
@@ -601,19 +615,19 @@ func parseSubscriptionPlanFromForm(r *http.Request) (*model.SubscriptionPlan, er
 			// a field the next save silently erases.
 			var err error
 			if c.ReserveRatio, err = parsePlanRatioField(r.FormValue(prefix + "reserve_ratio")); err != nil {
-				return nil, errors.Wrapf(err, "contrainte « %s » : réserve garantie", c.Label)
+				return partialPlan(label, constraints, c), errors.Wrapf(err, "contrainte « %s » : réserve garantie", c.Label)
 			}
 			if c.PaceSlack, err = parsePlanRatioField(r.FormValue(prefix + "pace_slack")); err != nil {
-				return nil, errors.Wrapf(err, "contrainte « %s » : tolérance de rythme", c.Label)
+				return partialPlan(label, constraints, c), errors.Wrapf(err, "contrainte « %s » : tolérance de rythme", c.Label)
 			}
 			if c.HappyHourStart, err = parsePlanRatioField(r.FormValue(prefix + "happy_hour_start")); err != nil {
-				return nil, errors.Wrapf(err, "contrainte « %s » : ouverture de fin de fenêtre", c.Label)
+				return partialPlan(label, constraints, c), errors.Wrapf(err, "contrainte « %s » : ouverture de fin de fenêtre", c.Label)
 			}
 			// 0 % ouvrirait la fenêtre entière, ce que l'allocateur refuse de faire :
 			// il retomberait sur son défaut, et l'éditeur réafficherait un réglage
 			// que le moteur n'applique pas. C'est 100 qui désactive l'ouverture.
 			if c.HappyHourStart != nil && *c.HappyHourStart <= 0 {
-				return nil, errors.Errorf("contrainte « %s » : l'ouverture de fin de fenêtre doit être strictement supérieure à 0 (100 désactive l'ouverture)", c.Label)
+				return partialPlan(label, constraints, c), errors.Errorf("contrainte « %s » : l'ouverture de fin de fenêtre doit être strictement supérieure à 0 (100 désactive l'ouverture)", c.Label)
 			}
 			if lead := strings.TrimSpace(r.FormValue(prefix + "happy_hour_max_lead")); lead != "" {
 				// Same parser as the "reset dans" field above: a form that accepts
@@ -621,7 +635,7 @@ func parseSubscriptionPlanFromForm(r *http.Request) (*model.SubscriptionPlan, er
 				// trap, and a weekly window makes days the natural unit.
 				d, ok := parseResetIn(lead)
 				if !ok || d <= 0 {
-					return nil, errors.Errorf("contrainte « %s » : l'avance maximale de l'ouverture doit être une durée positive (ex : 1h, 2d)", c.Label)
+					return partialPlan(label, constraints, c), errors.Errorf("contrainte « %s » : l'avance maximale de l'ouverture doit être une durée positive (ex : 1h, 2d)", c.Label)
 				}
 				pd := model.PlanDuration(d)
 				c.HappyHourMaxLead = &pd
@@ -1072,6 +1086,15 @@ func (h *Handler) renderProviderFormError(w http.ResponseWriter, r *http.Request
 	w.WriteHeader(http.StatusUnprocessableEntity)
 	templ.Handler(component.ProviderForm(vmodel)).ServeHTTP(w, r)
 }
+
+// providerWithPlan renders a stored provider carrying a subscription plan it
+// does not hold yet — the one just submitted, when the form comes back in error.
+type providerWithPlan struct {
+	model.Provider
+	plan *model.SubscriptionPlan
+}
+
+func (p providerWithPlan) SubscriptionPlan() *model.SubscriptionPlan { return p.plan }
 
 // providerBreadcrumb is the last crumb of the provider form: a provider being
 // created has no page to link to yet.
