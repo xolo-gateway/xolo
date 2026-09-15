@@ -27,6 +27,13 @@ func messagesRequest(t *testing.T, token, modelName, system string, messages []m
 	if system != "" {
 		body["system"] = system
 	}
+	return postMessages(t, token, body)
+}
+
+// postMessages sends an arbitrary body to the Anthropic Messages route, for
+// the tests that need a system prompt as an array of blocks.
+func postMessages(t *testing.T, token string, body map[string]any) chatResult {
+	t.Helper()
 
 	req, err := http.NewRequest(http.MethodPost, env.baseURL+"/api/v1/messages", bytes.NewReader(mustJSON(body)))
 	if err != nil {

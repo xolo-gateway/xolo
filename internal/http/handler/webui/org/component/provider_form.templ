@@ -68,7 +68,7 @@ templ ProviderForm(vmodel ProviderFormVModel) {
 									}
 									@selectbox.Content(selectbox.ContentProps{NoSearch: true}) {
 										@selectbox.Group() {
-											for _, t := range []string{"openai", "mistral", "openrouter", "yzma"} {
+											for _, t := range []string{"openai", "anthropic", "mistral", "openrouter", "yzma"} {
 												@selectbox.Item(selectbox.ItemProps{Value: t, Selected: !vmodel.IsNew && vmodel.Provider != nil && vmodel.Provider.Type() == t}) {
 													{ t }
 												}
@@ -87,6 +87,7 @@ templ ProviderForm(vmodel ProviderFormVModel) {
 								@common.InlineSnippet("https://api.openai.com/v1")
 								@common.InlineSnippet("https://api.mistral.ai/v1")
 								@common.InlineSnippet("https://openrouter.ai/api/v1")
+								@common.InlineSnippet("https://api.anthropic.com")
 							}
 							@input.Input(input.Props{
 								ID:          "provider_base_url",

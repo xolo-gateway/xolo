@@ -26,7 +26,7 @@ Un fournisseur est une connexion vers un service LLM externe (OpenAI, Mistral, O
    | Champ                       | Description                                                                                           |
    | --------------------------- | ----------------------------------------------------------------------------------------------------- |
    | **Nom**                     | Nom affiché du fournisseur                                                                            |
-   | **Type**                    | Type de connexion : `openai`, `mistral`, `openrouter`, `yzma`                                         |
+   | **Type**                    | Type de connexion : `openai`, `anthropic`, `mistral`, `openrouter`, `yzma`                            |
    | **URL de base**             | URL de l'endpoint API (ex: `https://api.openai.com/v1`)                                               |
    | **Clé API**                 | Clé d'authentification auprès du fournisseur                                                          |
    | **Devise**                  | Devise pour la tarification (USD, EUR, etc.)                                                          |
@@ -46,6 +46,20 @@ Xolo n'a pas de type de connexion propre à Ollama ou à vLLM, et n'en a pas bes
 | **Clé API**     | vide, sauf si vous en avez configuré une | celle passée à `--api-key`, sinon vide |
 
 Adaptez l'hôte et le port à votre déploiement. Pour l'estimation énergétique, choisissez le niveau d'infrastructure **Small Provider** : c'est celui qui correspond le mieux à une machine que vous opérez vous-même. La même recette vaut pour tout serveur qui parle le format OpenAI (LM Studio, llama.cpp en mode serveur, LocalAI…).
+
+## Anthropic : utilisez le type `anthropic`
+
+Le type `anthropic` parle l'API Messages native d'Anthropic (`https://api.anthropic.com`), via le SDK officiel. C'est le type à choisir pour un compte Anthropic direct : il transmet les points de cache (`cache_control`) posés par les clients, rejoue les blocs de réflexion signés d'un tour à l'autre et remonte séparément les tokens lus et écrits dans le cache.
+
+| Champ           | Anthropic                                                  |
+| --------------- | ---------------------------------------------------------- |
+| **Type**        | `anthropic`                                                |
+| **URL de base** | `https://api.anthropic.com` (un suffixe `/v1` est toléré)  |
+| **Clé API**     | votre clé `sk-ant-…`                                       |
+
+Un fournisseur Anthropic déclaré avec le type `openai` sur l'endpoint compatible OpenAI continue de fonctionner, mais ce chemin ne transmet pas `cache_control` : les préfixes de prompt ne sont jamais mis en cache et sont facturés au tarif plein à chaque appel. Aucune migration automatique n'est faite ; modifiez le type du fournisseur à la main.
+
+Pensez à renseigner le **coût du prompt en cache** sur les modèles concernés : une fois le cache actif, le coût affiché diverge de la facture si ce tarif reste égal au tarif plein.
 
 ## Tester la connexion
 

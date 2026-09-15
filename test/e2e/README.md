@@ -22,10 +22,12 @@ workflow GitHub `check` l'exécute à chaque push et pull request.
 2. génère la base SQLite avec `cmd/seed` (voir `cmd/seed/README.md` pour le
    catalogue : organisations, jetons, modèles…) ;
 3. démarre le fournisseur factice (`httptest`), qui expose
-   `POST /v1/chat/completions` et répond `Bien reçu : <dernier message
-   utilisateur>` ; chaque requête reçue est conservée pour les assertions ;
-4. pointe le fournisseur `prov-acme-openai` de la base sur ce faux serveur et
-   ajoute les middlewares sous test ;
+   `POST /v1/chat/completions` (format OpenAI) et `POST /v1/messages` (format
+   Anthropic, flux SSE) et répond `Bien reçu : <dernier message utilisateur>` ;
+   chaque requête reçue est conservée pour les assertions ;
+4. pointe le fournisseur `prov-acme-openai` de la base sur ce faux serveur,
+   y ajoute un fournisseur de type `anthropic` (`prov-acme-anthropic`, modèle
+   `acme/e2e-claude`) et les middlewares sous test ;
 5. lance le serveur sur un port libre, avec la clé secrète du seed, et attend
    qu'il réponde sur `/api/v1/models`.
 
@@ -63,8 +65,17 @@ En cas d'échec de la mise en place, le journal du serveur est imprimé.
 | `TestPseudonymizer_NoPersonalData_Passthrough` | `acme/gpt-4o-mini` | message transmis tel quel, aucun événement de détection |
 | `TestPseudonymizer_HashWithoutKey_FailsClosed` | `acme/gpt-4o` | 403, le fournisseur ne reçoit rien, événement `request.blocked` avec `reason=hash_key_missing` |
 
-Le pseudonymizer est branché par deux middlewares (`mw-e2e-pseudo-tag`,
-`mw-e2e-pseudo-hash`) enveloppant chacun un seul modèle ; les autres scénarios
+### Cache de prompt Anthropic (`cache_control_test.go`)
+
+| Test | Modèle | Attendu |
+|---|---|---|
+| `TestCacheControl_ReachesAnthropicUpstream` | `acme/e2e-claude` | le bloc `system` annoté `cache_control` arrive tel quel sur `/v1/messages`, dans le champ `system` de premier niveau |
+| `TestCacheControl_NotEmittedOnOpenAIUpstream` | `acme/e2e-fast` | témoin : la même requête vers un fournisseur `openai` ne porte aucun `cache_control` |
+| `TestCacheControl_SurvivesARewritingNode` | `acme/e2e-claude` | le pseudonymizer réécrit le message utilisateur sans perdre le point de cache |
+| `TestCacheControl_CachedTokensAreRecorded` | `acme/e2e-claude` | l'enregistrement d'usage porte les tokens lus dans le cache et les facture au tarif « prompt en cache » |
+
+Le pseudonymizer est branché par trois middlewares (`mw-e2e-pseudo-tag`,
+`mw-e2e-pseudo-hash`, `mw-e2e-pseudo-claude`) enveloppant chacun un seul modèle ; les autres scénarios
 passent par des modèles virtuels dédiés, tous déclarés dans `fixtures_test.go`
 avec un petit constructeur de graphes (`newGraph().generator("gen")…`).
 

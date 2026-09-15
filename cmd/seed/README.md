@@ -96,7 +96,7 @@ hachage SHA-256, comme pour tout jeton créé par l'application.
 | `prov-acme-openai` | openai | USD | payg (retry + rate limit configurés) | actif |
 | `prov-acme-mistral` | mistral | EUR | payg | actif |
 | `prov-acme-local` | openai (Ollama) | EUR | payg | **désactivé** |
-| `prov-globex-plan` | openai | USD | **abonnement** (fenêtre 5 h + concurrence) | actif |
+| `prov-globex-plan` | anthropic | USD | **abonnement** (fenêtre 5 h + concurrence) | actif |
 
 Modèles : `acme/gpt-4o`, `acme/gpt-4o-mini`, `acme/mistral-small` (avec
 `extra_body`), `acme/text-embedding-3-small` (embeddings), `globex/claude-sonnet`,

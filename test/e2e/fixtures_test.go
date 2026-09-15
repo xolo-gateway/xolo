@@ -41,6 +41,13 @@ const (
 	modelBroken = "acme/e2e-broken"
 
 	realModelBroken = "e2e-broken"
+
+	// A provider of type anthropic, pointed at the fake Messages endpoint,
+	// and its single model.
+	providerAcmeAnthropic = "prov-acme-anthropic"
+	modelClaude           = "acme/e2e-claude"
+	modelClaudeID         = "mdl-e2e-claude"
+	realModelClaude       = "e2e-claude"
 )
 
 // Virtual models created by the harness, one per scenario family.
@@ -167,6 +174,9 @@ func prepareDatabase(dsn, providerURL string) error {
 		return fmt.Errorf("point provider at fake: %w", err)
 	}
 
+	if err := createAnthropicProvider(db, providerURL); err != nil {
+		return err
+	}
 	if err := createModels(db); err != nil {
 		return err
 	}
@@ -174,6 +184,44 @@ func prepareDatabase(dsn, providerURL string) error {
 		return err
 	}
 	return createVirtualModels(db)
+}
+
+// createAnthropicProvider clones the seeded OpenAI provider (whose API key is
+// already encrypted with the seed secret) into a provider of type anthropic
+// aimed at the fake, and gives it one model with a distinct cached-prompt
+// tariff.
+func createAnthropicProvider(db *gorm.DB, providerURL string) error {
+	var source gormadapter.Provider
+	if err := db.Where("id = ?", providerAcmeOpenAI).First(&source).Error; err != nil {
+		return fmt.Errorf("load seeded provider: %w", err)
+	}
+
+	now := time.Now()
+	p := source
+	p.ID = providerAcmeAnthropic
+	p.Name = "Anthropic (e2e)"
+	p.Type = "anthropic"
+	p.BaseURL = providerURL
+	p.CreatedAt, p.UpdatedAt = now, now
+	p.LLMModels = nil
+	if err := db.Create(&p).Error; err != nil {
+		return fmt.Errorf("create anthropic provider: %w", err)
+	}
+
+	m := &gormadapter.LLMModel{
+		ID: modelClaudeID, CreatedAt: now, UpdatedAt: now,
+		ProviderID: providerAcmeAnthropic, OrgID: orgAcme,
+		ProxyName: realModelClaude, RealModel: realModelClaude,
+		Description:           "Modèle de test e2e servi par le faux endpoint Messages.",
+		Enabled:               1,
+		PromptCostPer1KTokens: 100, CachedPromptCostPer1KTokens: 10, CompletionCostPer1KTokens: 500,
+		ContextWindow: 200_000, OutputWindow: 8_192, ActiveParams: 8_000_000_000,
+		TokensPerSecLow: 50, TokensPerSecHigh: 100,
+	}
+	if err := db.Create(m).Error; err != nil {
+		return fmt.Errorf("create model %s: %w", realModelClaude, err)
+	}
+	return nil
 }
 
 func createModels(db *gorm.DB) error {
@@ -202,6 +250,8 @@ func createMiddlewares(db *gorm.DB) error {
 			`{"language":"fr","strategy":"tag"}`),
 		pseudonymizerMiddleware("mw-e2e-pseudo-hash", "e2e-pseudonymizer-hash", modelAcmeGPT4o,
 			`{"language":"fr","strategy":"hash"}`),
+		pseudonymizerMiddleware("mw-e2e-pseudo-claude", "e2e-pseudonymizer-claude", modelClaudeID,
+			`{"language":"fr","strategy":"tag"}`),
 	}
 	for _, mw := range middlewares {
 		if err := db.Create(mw).Error; err != nil {

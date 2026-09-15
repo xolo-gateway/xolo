@@ -252,9 +252,11 @@ func mustJSON(v any) json.RawMessage {
 
 // ── Fake provider ────────────────────────────────────────────────────────────
 
-// fakeProvider is an OpenAI-compatible chat completion endpoint with fully
-// predictable answers: it echoes the last user message back, so a test can
-// check both what reached the provider and what the client got back.
+// fakeProvider is a chat completion endpoint with fully predictable answers:
+// it echoes the last user message back, so a test can check both what
+// reached the provider and what the client got back. It speaks both wire
+// formats Xolo's providers use: OpenAI chat completions and Anthropic
+// Messages (server-sent events).
 type fakeProvider struct {
 	srv *httptest.Server
 
@@ -278,6 +280,7 @@ func newFakeProvider() *fakeProvider {
 	p := &fakeProvider{}
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /v1/chat/completions", p.handleChat)
+	mux.HandleFunc("POST /v1/messages", p.handleMessages)
 	p.srv = httptest.NewServer(mux)
 	return p
 }
@@ -327,6 +330,65 @@ func (p *fakeProvider) handleChat(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(resp)
 }
+
+// handleMessages answers an Anthropic Messages request with the SSE stream
+// the official SDK expects, echoing the last user message like handleChat.
+// The usage reports a cached prefix so the cache accounting can be asserted
+// downstream.
+func (p *fakeProvider) handleMessages(w http.ResponseWriter, r *http.Request) {
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	var req chatRequest
+	if err := json.Unmarshal(body, &req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	req.Raw = string(body)
+
+	p.mu.Lock()
+	p.requests = append(p.requests, req)
+	p.mu.Unlock()
+
+	answer := "Bien reçu : " + lastUserText(req.Messages)
+	events := []struct {
+		name string
+		data map[string]any
+	}{
+		{"message_start", map[string]any{"type": "message_start", "message": map[string]any{
+			"id": "msg_e2e", "type": "message", "role": "assistant", "model": req.Model,
+			"content": []any{}, "stop_reason": nil, "stop_sequence": nil,
+			"usage": map[string]any{
+				"input_tokens": fakeMessagesInputTokens, "output_tokens": 1,
+				"cache_read_input_tokens": fakeMessagesCacheReadTokens, "cache_creation_input_tokens": 0,
+			},
+		}}},
+		{"content_block_start", map[string]any{"type": "content_block_start", "index": 0,
+			"content_block": map[string]any{"type": "text", "text": ""}}},
+		{"content_block_delta", map[string]any{"type": "content_block_delta", "index": 0,
+			"delta": map[string]any{"type": "text_delta", "text": answer}}},
+		{"content_block_stop", map[string]any{"type": "content_block_stop", "index": 0}},
+		{"message_delta", map[string]any{"type": "message_delta",
+			"delta": map[string]any{"stop_reason": "end_turn", "stop_sequence": nil},
+			"usage": map[string]any{"output_tokens": fakeMessagesOutputTokens}}},
+		{"message_stop", map[string]any{"type": "message_stop"}},
+	}
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.WriteHeader(http.StatusOK)
+	for _, ev := range events {
+		fmt.Fprintf(w, "event: %s\ndata: %s\n\n", ev.name, mustJSON(ev.data))
+	}
+}
+
+// Token counts reported by the fake Messages endpoint.
+const (
+	fakeMessagesInputTokens     = 10
+	fakeMessagesCacheReadTokens = 100
+	fakeMessagesOutputTokens    = 5
+)
 
 // lastUserText returns the text of the last user message, whether it is a
 // plain string or an array of content parts.

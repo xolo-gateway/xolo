@@ -23,6 +23,7 @@ import (
 	"github.com/hashicorp/golang-lru/v2/expirable"
 	"github.com/pkg/errors"
 
+	_ "github.com/bornholm/genai/llm/provider/anthropic"
 	_ "github.com/bornholm/genai/llm/provider/mistral"
 	_ "github.com/bornholm/genai/llm/provider/openai"
 	_ "github.com/bornholm/genai/llm/provider/openrouter"

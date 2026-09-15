@@ -546,7 +546,7 @@ func (s *seeder) seedProviders(ctx context.Context) error {
 		},
 		{
 			ID: providerGlobexPlan, CreatedAt: now.AddDate(0, -5, 0), UpdatedAt: now.AddDate(0, 0, -2),
-			OrgID: orgGlobex, Name: "Anthropic (abonnement)", Type: "openai", BaseURL: "https://api.anthropic.com/v1",
+			OrgID: orgGlobex, Name: "Anthropic (abonnement)", Type: "anthropic", BaseURL: "https://api.anthropic.com",
 			APIKey: apiKey, Active: 1, Currency: "USD", CloudTier: 1,
 			BillingMode: string(model.BillingModeSubscription),
 			SubscriptionPlan: gormadapter.JSONColumn[model.SubscriptionPlan]{Val: &model.SubscriptionPlan{
