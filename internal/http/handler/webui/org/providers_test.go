@@ -477,7 +477,7 @@ func TestProviderWithPlan_ShowsTheSubmittedPlanOnTheStoredProvider(t *testing.T)
 // selectable in the UI but unknown to the registry would only fail once an
 // administrator clicks "test connection".
 func TestTestProviderConnection_KnowsEveryFormType(t *testing.T) {
-	for _, providerType := range []string{"openai", "anthropic", "mistral", "openrouter"} {
+	for _, providerType := range component.ProviderTypes {
 		t.Run(providerType, func(t *testing.T) {
 			ok, err := testProviderConnection(context.Background(), providerType, "http://127.0.0.1:9", "test-key")
 			if err != nil {

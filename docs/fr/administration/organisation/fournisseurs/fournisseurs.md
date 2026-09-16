@@ -26,7 +26,7 @@ Un fournisseur est une connexion vers un service LLM externe (OpenAI, Mistral, O
    | Champ                       | Description                                                                                           |
    | --------------------------- | ----------------------------------------------------------------------------------------------------- |
    | **Nom**                     | Nom affiché du fournisseur                                                                            |
-   | **Type**                    | Type de connexion : `openai`, `anthropic`, `mistral`, `openrouter`, `yzma`                            |
+   | **Type**                    | Type de connexion : `openai`, `anthropic`, `mistral`, `openrouter`                                    |
    | **URL de base**             | URL de l'endpoint API (ex: `https://api.openai.com/v1`)                                               |
    | **Clé API**                 | Clé d'authentification auprès du fournisseur                                                          |
    | **Devise**                  | Devise pour la tarification (USD, EUR, etc.)                                                          |
@@ -59,7 +59,9 @@ Le type `anthropic` parle l'API Messages native d'Anthropic (`https://api.anthro
 
 Un fournisseur Anthropic déclaré avec le type `openai` sur l'endpoint compatible OpenAI continue de fonctionner, mais ce chemin ne transmet pas `cache_control` : les préfixes de prompt ne sont jamais mis en cache et sont facturés au tarif plein à chaque appel. Aucune migration automatique n'est faite ; modifiez le type du fournisseur à la main.
 
-Pensez à renseigner le **coût du prompt en cache** sur les modèles concernés : une fois le cache actif, le coût affiché diverge de la facture si ce tarif reste égal au tarif plein.
+Pensez à renseigner le **coût du prompt en cache** sur les modèles concernés (chez Anthropic, environ 10 % du tarif d'entrée). Laissé vide, ce champ vaut le tarif plein : le coût affiché surestime alors la facture dès que le cache est actif. Les écritures de cache, facturées plus cher que le tarif d'entrée par Anthropic, sont comptées au tarif plein.
+
+Le type `anthropic` envoie `max_tokens` à chaque requête, l'API l'exigeant : la valeur est celle du client, sinon la **fenêtre de sortie** du modèle telle que déclarée dans Xolo. Renseignez-la, à défaut le provider retombe sur 4096 tokens.
 
 ## Tester la connexion
 

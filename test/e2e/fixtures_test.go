@@ -43,11 +43,17 @@ const (
 	realModelBroken = "e2e-broken"
 
 	// A provider of type anthropic, pointed at the fake Messages endpoint,
-	// and its single model.
+	// with two models: one wrapped by a pseudonymizer middleware, one
+	// reached directly. The direct one ticks the embeddings capability
+	// (which the provider type cannot serve) and declares no cached-prompt
+	// tariff, so the guard and the tariff fallback are exercised.
 	providerAcmeAnthropic = "prov-acme-anthropic"
 	modelClaude           = "acme/e2e-claude"
 	modelClaudeID         = "mdl-e2e-claude"
 	realModelClaude       = "e2e-claude"
+	modelClaudeDirect     = "acme/e2e-claude-direct"
+	modelClaudeDirectID   = "mdl-e2e-claude-direct"
+	realModelClaudeDirect = "e2e-claude-direct"
 )
 
 // Virtual models created by the harness, one per scenario family.
@@ -208,18 +214,33 @@ func createAnthropicProvider(db *gorm.DB, providerURL string) error {
 		return fmt.Errorf("create anthropic provider: %w", err)
 	}
 
-	m := &gormadapter.LLMModel{
-		ID: modelClaudeID, CreatedAt: now, UpdatedAt: now,
-		ProviderID: providerAcmeAnthropic, OrgID: orgAcme,
-		ProxyName: realModelClaude, RealModel: realModelClaude,
-		Description:           "Modèle de test e2e servi par le faux endpoint Messages.",
-		Enabled:               1,
-		PromptCostPer1KTokens: 100, CachedPromptCostPer1KTokens: 10, CompletionCostPer1KTokens: 500,
-		ContextWindow: 200_000, OutputWindow: 8_192, ActiveParams: 8_000_000_000,
-		TokensPerSecLow: 50, TokensPerSecHigh: 100,
+	models := []*gormadapter.LLMModel{
+		{
+			ID: modelClaudeID, CreatedAt: now, UpdatedAt: now,
+			ProviderID: providerAcmeAnthropic, OrgID: orgAcme,
+			ProxyName: realModelClaude, RealModel: realModelClaude,
+			Description:           "Modèle de test e2e servi par le faux endpoint Messages.",
+			Enabled:               1,
+			PromptCostPer1KTokens: 100, CachedPromptCostPer1KTokens: 10, CompletionCostPer1KTokens: 500,
+			ContextWindow: 200_000, OutputWindow: 8_192, ActiveParams: 8_000_000_000,
+			TokensPerSecLow: 50, TokensPerSecHigh: 100,
+		},
+		{
+			ID: modelClaudeDirectID, CreatedAt: now, UpdatedAt: now,
+			ProviderID: providerAcmeAnthropic, OrgID: orgAcme,
+			ProxyName: realModelClaudeDirect, RealModel: realModelClaudeDirect,
+			Description:           "Modèle de test e2e sans middleware, capacité embeddings cochée, sans tarif de cache.",
+			Enabled:               1,
+			CapEmbeddings:         1,
+			PromptCostPer1KTokens: 100, CompletionCostPer1KTokens: 500,
+			ContextWindow: 200_000, OutputWindow: 8_192, ActiveParams: 8_000_000_000,
+			TokensPerSecLow: 50, TokensPerSecHigh: 100,
+		},
 	}
-	if err := db.Create(m).Error; err != nil {
-		return fmt.Errorf("create model %s: %w", realModelClaude, err)
+	for _, m := range models {
+		if err := db.Create(m).Error; err != nil {
+			return fmt.Errorf("create model %s: %w", m.ProxyName, err)
+		}
 	}
 	return nil
 }

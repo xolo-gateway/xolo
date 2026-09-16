@@ -174,11 +174,19 @@ func (r *OrgModelRouter) clientForModel(ctx context.Context, llmModel model.LLMM
 		return nil, errors.New("provider configuration error")
 	}
 
+	providerName := provider.Name(p.Type())
 	providerOpts := []provider.OptionFunc{
-		withDynamicChatCompletion(provider.Name(p.Type()), p.BaseURL(), decryptedKey, llmModel.RealModel()),
+		withDynamicChatCompletion(providerName, p.BaseURL(), decryptedKey, llmModel.RealModel(), llmModel.OutputWindow()),
 	}
 	if llmModel.Capabilities().Embeddings {
-		providerOpts = append(providerOpts, withDynamicEmbeddings(provider.Name(p.Type()), p.BaseURL(), decryptedKey, llmModel.RealModel()))
+		// A provider without an embeddings client (anthropic) must not lose
+		// its chat completions to a capability ticked on the model.
+		if provider.NewEmbeddingsProviderOptions(providerName) == nil {
+			slog.WarnContext(ctx, "model declares the embeddings capability but its provider type has no embeddings client",
+				slog.String("model", string(llmModel.ID())), slog.String("providerType", p.Type()))
+		} else {
+			providerOpts = append(providerOpts, withDynamicEmbeddings(providerName, p.BaseURL(), decryptedKey, llmModel.RealModel()))
+		}
 	}
 
 	client, err := provider.Create(ctx, providerOpts...)
@@ -353,7 +361,11 @@ func withDynamicEmbeddings(name provider.Name, baseURL, apiKey, model string) pr
 // withDynamicChatCompletion crée une OptionFunc pour un provider identifié à runtime.
 // Tous les providers enregistrés embarquent provider.CommonOptions, on utilise
 // la réflexion pour définir BaseURL, APIKey et Model sans type connu à la compilation.
-func withDynamicChatCompletion(name provider.Name, baseURL, apiKey, model string) provider.OptionFunc {
+//
+// maxTokens renseigne le champ MaxTokens des providers qui en ont un
+// (anthropic, dont l'API exige max_tokens) : c'est la fenêtre de sortie du
+// modèle, à défaut de quoi le provider applique son propre défaut.
+func withDynamicChatCompletion(name provider.Name, baseURL, apiKey, model string, maxTokens int64) provider.OptionFunc {
 	return func(o *provider.Options) error {
 		opts := provider.NewChatCompletionProviderOptions(name)
 		if opts == nil {
@@ -364,6 +376,9 @@ func withDynamicChatCompletion(name provider.Name, baseURL, apiKey, model string
 			common.FieldByName("BaseURL").SetString(baseURL)
 			common.FieldByName("APIKey").SetString(apiKey)
 			common.FieldByName("Model").SetString(model)
+		}
+		if field := v.FieldByName("MaxTokens"); field.IsValid() && field.CanSet() && field.Kind() == reflect.Int64 && maxTokens > 0 {
+			field.SetInt(maxTokens)
 		}
 		o.ChatCompletion = &provider.ResolvedClientOptions{
 			Provider: name,

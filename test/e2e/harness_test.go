@@ -362,7 +362,7 @@ func (p *fakeProvider) handleMessages(w http.ResponseWriter, r *http.Request) {
 			"content": []any{}, "stop_reason": nil, "stop_sequence": nil,
 			"usage": map[string]any{
 				"input_tokens": fakeMessagesInputTokens, "output_tokens": 1,
-				"cache_read_input_tokens": fakeMessagesCacheReadTokens, "cache_creation_input_tokens": 0,
+				"cache_read_input_tokens": fakeMessagesCacheReadTokens, "cache_creation_input_tokens": fakeMessagesCacheCreationTokens,
 			},
 		}}},
 		{"content_block_start", map[string]any{"type": "content_block_start", "index": 0,
@@ -387,7 +387,10 @@ func (p *fakeProvider) handleMessages(w http.ResponseWriter, r *http.Request) {
 const (
 	fakeMessagesInputTokens     = 10
 	fakeMessagesCacheReadTokens = 100
-	fakeMessagesOutputTokens    = 5
+	// Cache writes: counted in the prompt, billed at the full prompt rate
+	// by Xolo (the usage record has no dedicated column yet).
+	fakeMessagesCacheCreationTokens = 20
+	fakeMessagesOutputTokens        = 5
 )
 
 // lastUserText returns the text of the last user message, whether it is a

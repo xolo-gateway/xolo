@@ -26,8 +26,8 @@ workflow GitHub `check` l'exécute à chaque push et pull request.
    Anthropic, flux SSE) et répond `Bien reçu : <dernier message utilisateur>` ;
    chaque requête reçue est conservée pour les assertions ;
 4. pointe le fournisseur `prov-acme-openai` de la base sur ce faux serveur,
-   y ajoute un fournisseur de type `anthropic` (`prov-acme-anthropic`, modèle
-   `acme/e2e-claude`) et les middlewares sous test ;
+   y ajoute un fournisseur de type `anthropic` (`prov-acme-anthropic`, modèles
+   `acme/e2e-claude` et `acme/e2e-claude-direct`) et les middlewares sous test ;
 5. lance le serveur sur un port libre, avec la clé secrète du seed, et attend
    qu'il réponde sur `/api/v1/models`.
 
@@ -69,10 +69,13 @@ En cas d'échec de la mise en place, le journal du serveur est imprimé.
 
 | Test | Modèle | Attendu |
 |---|---|---|
-| `TestCacheControl_ReachesAnthropicUpstream` | `acme/e2e-claude` | le bloc `system` annoté `cache_control` arrive tel quel sur `/v1/messages`, dans le champ `system` de premier niveau |
+| `TestCacheControl_ReachesAnthropicUpstream` | `acme/e2e-claude-direct` | le bloc `system` annoté `cache_control` arrive tel quel sur `/v1/messages`, dans le champ `system` de premier niveau ; la capacité embeddings cochée sur le modèle ne casse pas la complétion |
 | `TestCacheControl_NotEmittedOnOpenAIUpstream` | `acme/e2e-fast` | témoin : la même requête vers un fournisseur `openai` ne porte aucun `cache_control` |
 | `TestCacheControl_SurvivesARewritingNode` | `acme/e2e-claude` | le pseudonymizer réécrit le message utilisateur sans perdre le point de cache |
-| `TestCacheControl_CachedTokensAreRecorded` | `acme/e2e-claude` | l'enregistrement d'usage porte les tokens lus dans le cache et les facture au tarif « prompt en cache » |
+| `TestCacheControl_CachedTokensAreRecorded` | `acme/e2e-claude` | l'enregistrement d'usage porte les tokens lus dans le cache et les facture au tarif « prompt en cache » ; les écritures de cache sont comptées au tarif plein |
+| `TestCacheControl_OnMessageContentPart` | `acme/e2e-claude-direct` | un breakpoint posé sur une partie de contenu atteint l'amont sur le dernier bloc du message |
+| `TestCacheControl_OutputWindowIsTheDefaultMaxTokens` | `acme/e2e-claude-direct` | sans `max_tokens` client, c'est la fenêtre de sortie du modèle qui part à l'amont |
+| `TestCacheControl_MissingCachedTariffFallsBackToFullRate` | `acme/e2e-claude-direct` | sans tarif de cache, les tokens en cache sont facturés au tarif plein, jamais gratuits |
 
 Le pseudonymizer est branché par trois middlewares (`mw-e2e-pseudo-tag`,
 `mw-e2e-pseudo-hash`, `mw-e2e-pseudo-claude`) enveloppant chacun un seul modèle ; les autres scénarios

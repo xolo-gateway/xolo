@@ -66,7 +66,10 @@ func systemCacheControl(t *testing.T, raw string) map[string]any {
 
 func TestCacheControl_ReachesAnthropicUpstream(t *testing.T) {
 	const system = "Tu es un assistant e2e qui répond en une phrase."
-	res, sent := messagesWithCachedSystem(t, modelClaude, system, "Bonjour.")
+	// The direct model: no middleware in the way, and the embeddings
+	// capability ticked, which must not break chat completions on a
+	// provider type without an embeddings client.
+	res, sent := messagesWithCachedSystem(t, modelClaudeDirect, system, "Bonjour.")
 
 	if !strings.Contains(res.Content, "Bonjour.") {
 		t.Errorf("the fake's echo did not come back: %q", res.Content)
@@ -79,8 +82,86 @@ func TestCacheControl_ReachesAnthropicUpstream(t *testing.T) {
 	if strings.Contains(sent.Raw, `"role":"system"`) {
 		t.Errorf("the system prompt must travel in the top-level system field, not as a message.\nsent: %s", sent.Raw)
 	}
-	if sent.Model != realModelClaude {
-		t.Errorf("upstream model = %q, want %q", sent.Model, realModelClaude)
+	if sent.Model != realModelClaudeDirect {
+		t.Errorf("upstream model = %q, want %q", sent.Model, realModelClaudeDirect)
+	}
+	var body struct {
+		MaxTokens int `json:"max_tokens"`
+	}
+	if json.Unmarshal([]byte(sent.Raw), &body) == nil && body.MaxTokens != 256 {
+		t.Errorf("the client's max_tokens must reach the upstream, got %d", body.MaxTokens)
+	}
+}
+
+// A breakpoint on a message content part, not only on the system prompt,
+// must reach the upstream. genai's message model carries one text per
+// message, so the parts are merged into a single block and the breakpoint
+// covers the whole message: the cached prefix still ends where the client
+// asked, at the end of that message.
+func TestCacheControl_OnMessageContentPart(t *testing.T) {
+	before := len(env.provider.Requests())
+	res := postMessages(t, tokenAlice, map[string]any{
+		"model":      modelClaudeDirect,
+		"max_tokens": 256,
+		"messages": []map[string]any{{
+			"role": "user",
+			"content": []map[string]any{
+				{"type": "text", "text": "Voici un long contexte de référence."},
+				{"type": "text", "text": "Résume-le.", "cache_control": map[string]any{"type": "ephemeral"}},
+			},
+		}},
+	})
+	if res.Status != 200 {
+		t.Fatalf("status = %d, body = %s", res.Status, res.Body)
+	}
+	upstream := env.provider.RequestsSince(before)
+	if len(upstream) != 1 {
+		t.Fatalf("upstream calls = %d, want 1", len(upstream))
+	}
+	var body struct {
+		Messages []struct {
+			Content []struct {
+				Text         string         `json:"text"`
+				CacheControl map[string]any `json:"cache_control"`
+			} `json:"content"`
+		} `json:"messages"`
+	}
+	if err := json.Unmarshal([]byte(upstream[0].Raw), &body); err != nil || len(body.Messages) == 0 {
+		t.Fatalf("could not parse the upstream request: %v\n%s", err, upstream[0].Raw)
+	}
+	parts := body.Messages[0].Content
+	if len(parts) == 0 {
+		t.Fatalf("no content part reached the upstream: %s", upstream[0].Raw)
+	}
+	last := parts[len(parts)-1]
+	if !strings.Contains(last.Text, "Résume-le.") || !strings.Contains(upstream[0].Raw, "long contexte") {
+		t.Errorf("both texts must reach the upstream: %s", upstream[0].Raw)
+	}
+	if cc := last.CacheControl; cc == nil || cc["type"] != "ephemeral" {
+		t.Errorf("the breakpoint must sit on the last block of the message: %s", upstream[0].Raw)
+	}
+}
+
+// Without a max_tokens from the client, the model's output window is what
+// reaches the upstream, not the provider's 4096 default.
+func TestCacheControl_OutputWindowIsTheDefaultMaxTokens(t *testing.T) {
+	before := len(env.provider.Requests())
+	res := chat(t, tokenAlice, modelClaudeDirect, "Bonjour.")
+	if res.Status != 200 {
+		t.Fatalf("status = %d, body = %s", res.Status, res.Body)
+	}
+	upstream := env.provider.RequestsSince(before)
+	if len(upstream) != 1 {
+		t.Fatalf("upstream calls = %d, want 1", len(upstream))
+	}
+	var body struct {
+		MaxTokens int `json:"max_tokens"`
+	}
+	if err := json.Unmarshal([]byte(upstream[0].Raw), &body); err != nil {
+		t.Fatal(err)
+	}
+	if body.MaxTokens != 8_192 {
+		t.Errorf("max_tokens = %d, want the model's output window 8192", body.MaxTokens)
 	}
 }
 
@@ -119,9 +200,9 @@ func TestCacheControl_CachedTokensAreRecorded(t *testing.T) {
 
 	record := waitForUsage(t, modelClaudeID, start)
 
-	wantPrompt := fakeMessagesInputTokens + fakeMessagesCacheReadTokens
+	wantPrompt := fakeMessagesInputTokens + fakeMessagesCacheReadTokens + fakeMessagesCacheCreationTokens
 	if record.PromptTokens() != wantPrompt {
-		t.Errorf("prompt tokens = %d, want %d (input + cache reads)", record.PromptTokens(), wantPrompt)
+		t.Errorf("prompt tokens = %d, want %d (input + cache reads + cache writes)", record.PromptTokens(), wantPrompt)
 	}
 	if record.CachedTokens() != fakeMessagesCacheReadTokens {
 		t.Errorf("cached tokens = %d, want %d", record.CachedTokens(), fakeMessagesCacheReadTokens)
@@ -131,18 +212,35 @@ func TestCacheControl_CachedTokensAreRecorded(t *testing.T) {
 	}
 
 	// Tariffs of the e2e Claude model (see createAnthropicProvider), applied
-	// the way the usage tracker does: non-cached prompt at the full rate,
-	// cached prompt at the cached rate, completion at its own rate.
+	// the way the usage tracker does: non-cached prompt (input and cache
+	// writes) at the full rate, cache reads at the cached rate, completion
+	// at its own rate.
 	var (
 		promptRate     int64 = 100
 		cachedRate     int64 = 10
 		completionRate int64 = 500
 	)
-	wantCost := int64(fakeMessagesInputTokens)*promptRate/1000 +
+	wantCost := int64(fakeMessagesInputTokens+fakeMessagesCacheCreationTokens)*promptRate/1000 +
 		int64(fakeMessagesCacheReadTokens)*cachedRate/1000 +
 		int64(fakeMessagesOutputTokens)*completionRate/1000
 	if record.ProviderCost() != wantCost {
 		t.Errorf("provider cost = %d, want %d (cached tokens billed at the cached rate)", record.ProviderCost(), wantCost)
+	}
+}
+
+// A model without a cached-prompt tariff bills cache reads at the full
+// prompt rate, never for free.
+func TestCacheControl_MissingCachedTariffFallsBackToFullRate(t *testing.T) {
+	start := time.Now().Add(-time.Second)
+	messagesWithCachedSystem(t, modelClaudeDirect, "Tu es un assistant e2e.", "Compte jusqu'à deux.")
+
+	record := waitForUsage(t, modelClaudeDirectID, start)
+
+	var promptRate, completionRate int64 = 100, 500
+	wantCost := int64(fakeMessagesInputTokens+fakeMessagesCacheReadTokens+fakeMessagesCacheCreationTokens)*promptRate/1000 +
+		int64(fakeMessagesOutputTokens)*completionRate/1000
+	if record.ProviderCost() != wantCost {
+		t.Errorf("provider cost = %d, want %d (no cached tariff: full rate on every prompt token)", record.ProviderCost(), wantCost)
 	}
 }
 

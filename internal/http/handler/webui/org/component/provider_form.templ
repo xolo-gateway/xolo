@@ -68,7 +68,7 @@ templ ProviderForm(vmodel ProviderFormVModel) {
 									}
 									@selectbox.Content(selectbox.ContentProps{NoSearch: true}) {
 										@selectbox.Group() {
-											for _, t := range []string{"openai", "anthropic", "mistral", "openrouter", "yzma"} {
+											for _, t := range ProviderTypes {
 												@selectbox.Item(selectbox.ItemProps{Value: t, Selected: !vmodel.IsNew && vmodel.Provider != nil && vmodel.Provider.Type() == t}) {
 													{ t }
 												}
