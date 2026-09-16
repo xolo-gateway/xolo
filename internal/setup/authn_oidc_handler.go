@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
@@ -117,38 +118,15 @@ func getOIDCAuthnHandlerFromConfig(ctx context.Context, conf *config.Config) (*o
 	}
 
 	if conf.HTTP.Authn.Providers.Gitea.Key != "" && conf.HTTP.Authn.Providers.Gitea.Secret != "" {
-		key := string(conf.HTTP.Authn.Providers.Gitea.Key)
-		secret := string(conf.HTTP.Authn.Providers.Gitea.Secret)
-		scopes := conf.HTTP.Authn.Providers.Gitea.Scopes
-		authURL := string(conf.HTTP.Authn.Providers.Gitea.AuthURL)
-		tokenURL := string(conf.HTTP.Authn.Providers.Gitea.TokenURL)
-		profileURL := string(conf.HTTP.Authn.Providers.Gitea.ProfileURL)
-
-		factories["gitea"] = func(callbackURL string) (goth.Provider, error) {
-			return gitea.NewCustomisedURL(key, secret, callbackURL, authURL, tokenURL, profileURL, scopes...), nil
+		factory, provider, withJWKS, err := buildGiteaProvider(ctx, discoveryClient, conf.HTTP.Authn.Providers.Gitea)
+		if err != nil {
+			return nil, errors.WithStack(err)
 		}
 
-		providers = append(providers, oidc.Provider{
-			ID:    "gitea",
-			Label: string(conf.HTTP.Authn.Providers.Gitea.Label),
-			Icon:  "gitlab",
-		})
-
-		discoveryURL := string(conf.HTTP.Authn.Providers.Gitea.DiscoveryURL)
-
-		discovery, err := fetchOIDCDiscovery(ctx, discoveryClient, discoveryURL)
-		if err == nil && discovery != nil && discovery.JWKSURI != "" {
-			providersWithJWKS = append(providersWithJWKS, oidc.ProviderWithJWKS{
-				ID:               "gitea",
-				Label:            string(conf.HTTP.Authn.Providers.Gitea.Label),
-				Icon:             "gitlab",
-				Issuer:           discovery.Issuer,
-				JWKSURL:          discovery.JWKSURI,
-				IntrospectionURL: discovery.IntrospectionEndpoint,
-				UserInfoURL:      discovery.UserInfoEndpoint,
-				ClientID:         key,
-				ClientSecret:     secret,
-			})
+		factories["gitea"] = factory
+		providers = append(providers, provider)
+		if withJWKS != nil {
+			providersWithJWKS = append(providersWithJWKS, *withJWKS)
 		}
 	}
 
@@ -215,6 +193,90 @@ func getRandomBytes(n int) ([]byte, error) {
 	return data, nil
 }
 
+// buildGiteaProvider configures the built-in Gitea provider, mirroring
+// buildOIDCProvider so the two stay symmetric. The provider ID is fixed to
+// "gitea" because it is identified by configuration slot, not by name.
+//
+// As of the Gitea validation hardening, Gitea requires a configured
+// DiscoveryURL just like named OIDC providers: the document is downloaded
+// once at startup, validated with validateOIDCDiscovery (issuer,
+// authorization_endpoint, token_endpoint remain mandatory, jwks_uri is
+// optional and triggers a warning when missing), and its endpoints are
+// reused by every tenant-scoped instance.
+//
+// Operators who previously configured Gitea with only AUTH_URL / TOKEN_URL /
+// PROFILE_URL must now publish a discovery document on their Gitea instance
+// (https://gitea.example.com/.well-known/openid-configuration) or configure
+// the equivalent AUTH_URL / TOKEN_URL and a self-hosted /.well-known/ path.
+func buildGiteaProvider(
+	ctx context.Context,
+	discoveryClient *http.Client,
+	gp config.GiteaProvider,
+) (oidcProviderFactory, oidc.Provider, *oidc.ProviderWithJWKS, error) {
+	key := string(gp.Key)
+	secret := string(gp.Secret)
+	scopes := gp.Scopes
+	authURL := string(gp.AuthURL)
+	tokenURL := string(gp.TokenURL)
+	profileURL := string(gp.ProfileURL)
+	discoveryURL := string(gp.DiscoveryURL)
+
+	if discoveryURL == "" {
+		return nil, oidc.Provider{}, nil, errors.New("gitea provider discovery url is required")
+	}
+
+	discovery, err := fetchOIDCDiscovery(ctx, discoveryClient, discoveryURL)
+	if err != nil {
+		return nil, oidc.Provider{}, nil, errors.WithStack(err)
+	}
+	if err := validateOIDCDiscovery(discovery); err != nil {
+		return nil, oidc.Provider{}, nil, errors.WithStack(err)
+	}
+
+	factory := func(callbackURL string) (goth.Provider, error) {
+		return gitea.NewCustomisedURL(key, secret, callbackURL, authURL, tokenURL, profileURL, scopes...), nil
+	}
+
+	provider := oidc.Provider{
+		ID:    "gitea",
+		Label: string(gp.Label),
+		Icon:  "gitlab",
+	}
+
+	// jwks_uri is optional: a non-conformant IdP can still drive interactive
+	// login. When it is absent, we boot the instance, warn the operator, and
+	// leave the provider out of the JWKS registry. Note that the same slice
+	// feeds both the oidctoken and oauth2token authenticators
+	// (see oidc.Handler.ProvidersWithJWKS and ProvidersForTokenValidation),
+	// so omitting a provider disables API-token validation against it for
+	// both: there is no introspection-only path through this slice.
+	if discovery.JWKSURI == "" {
+		slog.WarnContext(
+			ctx,
+			"gitea provider discovery document has no jwks_uri; API token validation is disabled for this provider",
+			slog.String("provider", "gitea"),
+			slog.String("discovery_url", discoveryURL),
+		)
+
+		return factory, provider, nil, nil
+	}
+
+	withJWKS := &oidc.ProviderWithJWKS{
+		ID:               "gitea",
+		Label:            string(gp.Label),
+		Icon:             "gitlab",
+		DiscoveryURL:     discoveryURL,
+		Issuer:           discovery.Issuer,
+		JWKSURL:          discovery.JWKSURI,
+		IntrospectionURL: discovery.IntrospectionEndpoint,
+		UserInfoURL:      discovery.UserInfoEndpoint,
+		ClientID:         key,
+		ClientSecret:     secret,
+	}
+
+	return factory, provider, withJWKS, nil
+}
+
 // buildOIDCProvider configures a single named OIDC provider: the factory
 // building its goth provider (for interactive login), its login-button
 // descriptor, and its JWKS/introspection/userinfo descriptor used by the
@@ -264,6 +326,24 @@ func buildOIDCProvider(
 		ID:    np.ID,
 		Label: np.Label,
 		Icon:  np.Icon,
+	}
+
+	// jwks_uri is optional: a non-conformant IdP can still drive interactive
+	// login. When it is absent, we boot the instance, warn the operator, and
+	// leave the provider out of the JWKS registry. Note that the same slice
+	// feeds both the oidctoken and oauth2token authenticators
+	// (see oidc.Handler.ProvidersWithJWKS and ProvidersForTokenValidation),
+	// so omitting a provider disables API-token validation against it for
+	// both: there is no introspection-only path through this slice.
+	if discovery.JWKSURI == "" {
+		slog.WarnContext(
+			ctx,
+			"oidc provider discovery document has no jwks_uri; API token validation is disabled for this provider",
+			slog.String("provider", np.ID),
+			slog.String("discovery_url", discoveryURL),
+		)
+
+		return factory, provider, nil, nil
 	}
 
 	withJWKS := &oidc.ProviderWithJWKS{
@@ -336,7 +416,11 @@ func validateOIDCDiscovery(discovery *OIDCDiscovery) error {
 		{name: "issuer", value: discovery.Issuer, required: true},
 		{name: "authorization_endpoint", value: discovery.AuthURL, required: true},
 		{name: "token_endpoint", value: discovery.TokenURL, required: true},
-		{name: "jwks_uri", value: discovery.JWKSURI, required: true},
+		// jwks_uri is intentionally not required: a non-conformant IdP that
+		// issues opaque tokens plus introspection can still drive interactive
+		// login, and the absence only disables API-token validation against
+		// this provider. The caller is expected to log a startup warning.
+		{name: "jwks_uri", value: discovery.JWKSURI},
 		{name: "userinfo_endpoint", value: discovery.UserInfoEndpoint},
 		{name: "introspection_endpoint", value: discovery.IntrospectionEndpoint},
 		{name: "end_session_endpoint", value: discovery.EndSessionEndpoint},

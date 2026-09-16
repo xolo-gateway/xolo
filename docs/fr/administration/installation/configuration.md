@@ -29,7 +29,7 @@ Xolo authentifie les utilisateurs via un ou plusieurs fournisseurs OAuth2/OIDC. 
 | `XOLO_HTTP_AUTHN_ACTIVE_BY_DEFAULT` | Si `true`, les nouveaux comptes sont actifs sans validation manuelle. |
 | `XOLO_HTTP_AUTHN_PROVIDERS_GOOGLE_KEY` / `_SECRET` | Fournisseur Google OAuth2. |
 | `XOLO_HTTP_AUTHN_PROVIDERS_GITHUB_KEY` / `_SECRET` | Fournisseur GitHub OAuth2. |
-| `XOLO_HTTP_AUTHN_PROVIDERS_GITEA_KEY` / `_SECRET` / `_AUTH_URL` / `_TOKEN_URL` / `_PROFILE_URL` | Fournisseur Gitea auto-hébergé. |
+| `XOLO_HTTP_AUTHN_PROVIDERS_GITEA_KEY` / `_SECRET` / `_AUTH_URL` / `_TOKEN_URL` / `_PROFILE_URL` / `_DISCOVERY_URL` | Fournisseur Gitea auto-hébergé. `DISCOVERY_URL` est obligatoire (voir [Fournisseur Gitea](#fournisseur-gitea) ci-dessous). |
 
 ### Fournisseurs OIDC nommés
 
@@ -45,9 +45,19 @@ XOLO_HTTP_AUTHN_OIDC_PROVIDER_KEYCLOAK_LABEL="Mon SSO"
 XOLO_HTTP_AUTHN_OIDC_PROVIDER_KEYCLOAK_SCOPES=openid,profile,email
 ```
 
-L'URL de découverte est obligatoire. Xolo télécharge le document au démarrage, avec un délai maximal de 10 secondes. Si le document est inaccessible ou incomplet, le serveur refuse de démarrer, en mode mono-tenant comme en multi-tenant. Le document doit contenir `issuer`, `authorization_endpoint`, `token_endpoint` et `jwks_uri`. Chacun de ces champs, ainsi que `userinfo_endpoint`, `introspection_endpoint` et `end_session_endpoint` quand ils sont présents, doit être une URL absolue en `http` ou `https`.
+L'URL de découverte est obligatoire. Xolo télécharge le document au démarrage, avec un délai maximal de 10 secondes. Si le document est inaccessible ou incomplet, le serveur refuse de démarrer, en mode mono-tenant comme en multi-tenant. Le document doit contenir `issuer`, `authorization_endpoint` et `token_endpoint`. Chacun de ces champs, ainsi que `jwks_uri`, `userinfo_endpoint`, `introspection_endpoint` et `end_session_endpoint` quand ils sont présents, doit être une URL absolue en `http` ou `https`.
+
+Le champ `jwks_uri` n'est pas obligatoire : un IdP non conforme peut démarrer sans bloquer l'instance. Dans ce cas, Xolo émet un avertissement au démarrage qui cite le fournisseur concerné et indique que la validation des jetons d'API est désactivée pour ce fournisseur — ce qui couvre à la fois les authentificateurs `oidctoken` (vérification JWT via JWKS) et `oauth2token` (introspection / UserInfo), puisque les deux s'appuient sur la même liste interne de fournisseurs. Le login interactif reste fonctionnel. Pour valider des jetons d'accès opaques côté API via un autre IdP, activez `XOLO_HTTP_AUTHN_OAUTH2TOKEN_ENABLED=true` sur un IdP pourvu de `jwks_uri` ou configurez-le en fournisseur OIDC distinct.
 
 Pour valider des jetons d'accès opaques côté API (introspection RFC 7662, ou UserInfo à défaut) plutôt que des ID Tokens OIDC autoportés, activez `XOLO_HTTP_AUTHN_OAUTH2TOKEN_ENABLED=true`.
+
+### Fournisseur Gitea
+
+Le fournisseur Gitea suit la même politique de validation que les fournisseurs OIDC nommés : `XOLO_HTTP_AUTHN_PROVIDERS_GITEA_DISCOVERY_URL` est obligatoire et le document téléchargé doit contenir `issuer`, `authorization_endpoint` et `token_endpoint`. Si le document est inaccessible, mal formé ou incomplet, le serveur refuse de démarrer.
+
+**Changement de comportement par rapport aux versions antérieures :** les versions précédentes acceptaient une configuration Gitea sans DiscoveryURL (uniquement `AUTH_URL` / `TOKEN_URL` / `PROFILE_URL`). Après cette mise à jour, ces configurations cessent de démarrer. Pour migrer, publiez un document de découverte sur votre instance Gitea (par défaut `https://gitea.example.com/.well-known/openid-configuration`, à activer via la configuration Gitea) puis configurez `XOLO_HTTP_AUTHN_PROVIDERS_GITEA_DISCOVERY_URL` en conséquence. Les champs `AUTH_URL` / `TOKEN_URL` / `PROFILE_URL` restent utilisés par le flux de login interactif et n'ont pas besoin d'être modifiés.
+
+Comme pour les fournisseurs OIDC nommés, `jwks_uri` est optionnel : en son absence, un avertissement est émis au démarrage et la validation des jetons d'API est désactivée pour ce fournisseur.
 
 ## Stockage
 
