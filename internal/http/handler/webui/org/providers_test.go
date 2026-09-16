@@ -455,6 +455,14 @@ func TestProviderWithPlan_ShowsTheSubmittedPlanOnTheStoredProvider(t *testing.T)
 		t.Errorf("stored fields altered: name=%q currency=%q", p.Name(), p.Currency())
 	}
 
+	// A rejected edit must come back showing the submitted identity, so a
+	// provider stored with a type the form no longer offers is displayed
+	// with what the operator just typed, not the stale row.
+	edited := providerWithPlan{Provider: stored, name: "Mistral EU", baseURL: "https://eu.mistral.ai/v1", pType: "openrouter", billingMode: model.BillingModePayg}
+	if edited.Name() != "Mistral EU" || edited.BaseURL() != "https://eu.mistral.ai/v1" || edited.Type() != "openrouter" {
+		t.Errorf("submitted identity lost: name=%q url=%q type=%q", edited.Name(), edited.BaseURL(), edited.Type())
+	}
+
 	// And the editor renders that plan, rejected value included.
 	submitted := url.Values{"plan_c0_reserve_ratio": {"30 %"}}
 	var out strings.Builder

@@ -261,13 +261,20 @@ func (h *Handler) updateProvider(w http.ResponseWriter, r *http.Request) {
 		plan, err := parseSubscriptionPlanFromForm(r)
 		if err != nil {
 			h.renderProviderFormError(w, r, ctx, user, orgSlug, org,
-				providerWithPlan{Provider: existing, billingMode: billingMode, plan: plan}, false,
+				providerWithPlan{Provider: existing, name: r.FormValue("name"), baseURL: strings.TrimSpace(r.FormValue("base_url")), pType: r.FormValue("provider_type"), billingMode: billingMode, plan: plan}, false,
 				"Forfait : "+err.Error()+".")
 			return
 		}
 		subscriptionPlan = plan
 	}
-	formProvider := providerWithPlan{Provider: existing, billingMode: billingMode, plan: subscriptionPlan}
+	formProvider := providerWithPlan{
+		Provider:    existing,
+		name:        r.FormValue("name"),
+		baseURL:     strings.TrimSpace(r.FormValue("base_url")),
+		pType:       r.FormValue("provider_type"),
+		billingMode: billingMode,
+		plan:        subscriptionPlan,
+	}
 	if billingMode != model.BillingModeSubscription {
 		formProvider.plan = existing.SubscriptionPlan()
 	}
@@ -1092,6 +1099,16 @@ func (h *Handler) renderModelFormError(w http.ResponseWriter, r *http.Request, c
 	templ.Handler(component.ModelForm(vmodel)).ServeHTTP(w, r)
 }
 
+// providerCrumb is the last breadcrumb of the provider form: the provider's
+// models page when it exists, a dead-end label on a creation that failed,
+// where the id was minted but nothing stored.
+func providerCrumb(orgSlug string, p model.Provider, isNew bool) common.BreadcrumbItem {
+	if isNew {
+		return common.BreadcrumbItem{Label: "Nouveau fournisseur", Href: ""}
+	}
+	return common.BreadcrumbItem{Label: p.Name(), Href: "/orgs/" + orgSlug + "/admin/providers/" + string(p.ID()) + "/models"}
+}
+
 func (h *Handler) renderProviderFormError(w http.ResponseWriter, r *http.Request, ctx context.Context, user model.User, orgSlug string, org model.Organization, p model.Provider, isNew bool, errMsg string) {
 	vmodel := component.ProviderFormVModel{
 		Org:       org,
@@ -1109,7 +1126,7 @@ func (h *Handler) renderProviderFormError(w http.ResponseWriter, r *http.Request
 			Breadcrumbs: []common.BreadcrumbItem{
 				{Label: org.Name(), Href: "/orgs/" + orgSlug + "/usage"},
 				{Label: "Fournisseurs", Href: "/orgs/" + orgSlug + "/admin/providers"},
-				{Label: p.Name(), Href: "/orgs/" + orgSlug + "/admin/providers/" + string(p.ID()) + "/models"},
+				providerCrumb(orgSlug, p, isNew),
 			},
 		},
 	}
@@ -1122,14 +1139,31 @@ func (h *Handler) renderProviderFormError(w http.ResponseWriter, r *http.Request
 // matters as much as the plan: a provider being switched from PAYG to
 // subscription would otherwise come back as PAYG, without the plan editor, and
 // be saved as PAYG on resubmit with the typed plan never read.
+// providerWithPlan re-renders the edit form with what was submitted when
+// the submit is rejected: the stored provider supplies what the form does
+// not carry, the submitted values win for everything the form does. A
+// blank submitted field falls back to the stored one.
 type providerWithPlan struct {
 	model.Provider
+	name        string
+	baseURL     string
+	pType       string
 	billingMode model.BillingMode
 	plan        *model.SubscriptionPlan
 }
 
+func (p providerWithPlan) Name() string                              { return firstNonEmpty(p.name, p.Provider.Name()) }
+func (p providerWithPlan) BaseURL() string                           { return firstNonEmpty(p.baseURL, p.Provider.BaseURL()) }
+func (p providerWithPlan) Type() string                              { return firstNonEmpty(p.pType, p.Provider.Type()) }
 func (p providerWithPlan) BillingMode() model.BillingMode            { return p.billingMode }
 func (p providerWithPlan) SubscriptionPlan() *model.SubscriptionPlan { return p.plan }
+
+func firstNonEmpty(submitted, stored string) string {
+	if submitted != "" {
+		return submitted
+	}
+	return stored
+}
 
 func (h *Handler) deleteModel(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()

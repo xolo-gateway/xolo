@@ -128,7 +128,7 @@ templ ProviderForm(vmodel ProviderFormVModel) {
 									@selectbox.Content(selectbox.ContentProps{NoSearch: true}) {
 										@selectbox.Group() {
 											for _, c := range model.SupportedCurrencies {
-												@selectbox.Item(selectbox.ItemProps{Value: c, Selected: !vmodel.IsNew && vmodel.Provider != nil && vmodel.Provider.Currency() == c}) {
+												@selectbox.Item(selectbox.ItemProps{Value: c, Selected: vmodel.Provider != nil && vmodel.Provider.Currency() == c}) {
 													{ c }
 												}
 											}
@@ -144,7 +144,7 @@ templ ProviderForm(vmodel ProviderFormVModel) {
 									Utilisé pour l'estimation de consommation énergétique.
 								}
 								{{ currentTier := 0 }}
-								if !vmodel.IsNew && vmodel.Provider != nil {
+								if vmodel.Provider != nil {
 									{{ currentTier = vmodel.Provider.CloudTier() }}
 								}
 								@selectbox.SelectBox(selectbox.Props{ID: "cloud_tier"}) {
@@ -173,7 +173,7 @@ templ ProviderForm(vmodel ProviderFormVModel) {
 									Mode de facturation
 								}
 								{{ currentBillingMode := model.BillingModePayg }}
-								if !vmodel.IsNew && vmodel.Provider != nil {
+								if vmodel.Provider != nil {
 									{{ currentBillingMode = vmodel.Provider.BillingMode() }}
 								}
 								@selectbox.SelectBox(selectbox.Props{ID: "billing_mode"}) {

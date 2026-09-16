@@ -210,6 +210,10 @@ func createAnthropicProvider(db *gorm.DB, providerURL string) error {
 	p.BaseURL = providerURL
 	p.CreatedAt, p.UpdatedAt = now, now
 	p.LLMModels = nil
+	// The seeded OpenAI provider retries and rate-limits; neither belongs on
+	// this clone, whose scenarios count upstream calls.
+	p.RetryConfig = gormadapter.JSONColumn[model.RetryConfig]{}
+	p.RateLimitConfig = gormadapter.JSONColumn[model.RateLimitConfig]{}
 	if err := db.Create(&p).Error; err != nil {
 		return fmt.Errorf("create anthropic provider: %w", err)
 	}

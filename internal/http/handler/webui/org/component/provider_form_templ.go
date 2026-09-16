@@ -701,7 +701,7 @@ func ProviderForm(vmodel ProviderFormVModel) templ.Component {
 											}
 											return nil
 										})
-										templ_7745c5c3_Err = selectbox.Item(selectbox.ItemProps{Value: c, Selected: !vmodel.IsNew && vmodel.Provider != nil && vmodel.Provider.Currency() == c}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var30), templ_7745c5c3_Buffer)
+										templ_7745c5c3_Err = selectbox.Item(selectbox.ItemProps{Value: c, Selected: vmodel.Provider != nil && vmodel.Provider.Currency() == c}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var30), templ_7745c5c3_Buffer)
 										if templ_7745c5c3_Err != nil {
 											return templ_7745c5c3_Err
 										}
@@ -795,7 +795,7 @@ func ProviderForm(vmodel ProviderFormVModel) templ.Component {
 							return templ_7745c5c3_Err
 						}
 						currentTier := 0
-						if !vmodel.IsNew && vmodel.Provider != nil {
+						if vmodel.Provider != nil {
 							currentTier = vmodel.Provider.CloudTier()
 						}
 						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 32, " ")
@@ -1005,7 +1005,7 @@ func ProviderForm(vmodel ProviderFormVModel) templ.Component {
 							return templ_7745c5c3_Err
 						}
 						currentBillingMode := model.BillingModePayg
-						if !vmodel.IsNew && vmodel.Provider != nil {
+						if vmodel.Provider != nil {
 							currentBillingMode = vmodel.Provider.BillingMode()
 						}
 						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 42, " ")

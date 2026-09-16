@@ -56,16 +56,18 @@ func TestWithDynamicChatCompletion_MaxTokens(t *testing.T) {
 		}
 	})
 
-	t.Run("providers without the field are unaffected", func(t *testing.T) {
-		opts, err := provider.NewOptions(withDynamicChatCompletion("openai", "https://api.openai.com/v1", "k", "gpt-4o", 64000))
-		if err != nil {
-			t.Fatal(err)
-		}
-		if typ := fmt.Sprintf("%T", opts.ChatCompletion.Specific); typ != "*openai.Options" {
-			t.Fatalf("unexpected options type %s", typ)
-		}
-		if _, has := maxTokensOf(t, opts.ChatCompletion.Specific); has {
-			t.Error("openai options must not grow a MaxTokens field silently")
+	t.Run("other providers are unaffected", func(t *testing.T) {
+		for _, name := range []provider.Name{"openai", "mistral", "openrouter"} {
+			opts, err := provider.NewOptions(withDynamicChatCompletion(name, "https://example.invalid/v1", "k", "m", 64000))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if typ := fmt.Sprintf("%T", opts.ChatCompletion.Specific); typ != "*"+string(name)+".Options" {
+				t.Fatalf("%s: unexpected options type %s", name, typ)
+			}
+			if got, has := maxTokensOf(t, opts.ChatCompletion.Specific); has && got != 0 {
+				t.Errorf("%s: MaxTokens must only be set on allowlisted providers, got %d", name, got)
+			}
 		}
 	})
 }

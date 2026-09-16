@@ -269,6 +269,10 @@ func waitForUsage(t *testing.T, modelID string, start time.Time) model.UsageReco
 		if err != nil {
 			t.Fatalf("query usage: %v", err)
 		}
+		// The tracker records usage in the PostResponse hook, before the
+		// response reaches the client, so a previous scenario's record
+		// always predates this one's start. A second record can only be
+		// this request billed twice, which no retry should turn into a pass.
 		if len(records) > 1 {
 			t.Fatalf("expected a single usage record since %s for model %s, got %d", start.Format(time.RFC3339Nano), modelID, len(records))
 		}
