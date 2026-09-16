@@ -68,7 +68,7 @@ templ ProviderForm(vmodel ProviderFormVModel) {
 									}
 									@selectbox.Content(selectbox.ContentProps{NoSearch: true}) {
 										@selectbox.Group() {
-											for _, t := range ProviderTypes {
+											for _, t := range model.ProviderTypes() {
 												@selectbox.Item(selectbox.ItemProps{Value: t, Selected: vmodel.Provider != nil && vmodel.Provider.Type() == t}) {
 													{ t }
 												}
@@ -114,7 +114,13 @@ templ ProviderForm(vmodel ProviderFormVModel) {
 								Placeholder: "sk-...",
 								Class:       "font-mono",
 								Disabled:    readonly,
+								Attributes:  apiKeyAttributes(vmodel),
 							})
+							if vmodel.IsNew && vmodel.Error != "" {
+								@form.Description() {
+									La clé API n'est jamais réaffichée : saisissez-la de nouveau.
+								}
+							}
 						}
 						<div class="grid gap-4 sm:grid-cols-[200px_minmax(0,1fr)]">
 							@form.Item() {
@@ -406,6 +412,15 @@ templ durationUnitSelect(name string, selected string, readonly bool) {
 			}
 		}
 	}
+}
+
+// apiKeyAttributes makes the API key mandatory on creation only: on edit an
+// empty key means "keep the stored one".
+func apiKeyAttributes(vmodel ProviderFormVModel) templ.Attributes {
+	if vmodel.IsNew {
+		return templ.Attributes{"required": "required"}
+	}
+	return nil
 }
 
 // providerName and providerBaseURL read a field of the provider being

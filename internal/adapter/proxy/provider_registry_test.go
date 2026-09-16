@@ -8,11 +8,11 @@ import (
 	"testing"
 
 	"github.com/bornholm/genai/llm/provider"
-	"github.com/xolo-gateway/xolo/internal/http/handler/webui/org/component"
+	"github.com/xolo-gateway/xolo/internal/core/model"
 )
 
 func TestRouterRegistersEveryFormProviderType(t *testing.T) {
-	for _, providerType := range component.ProviderTypes {
+	for _, providerType := range model.ProviderTypes() {
 		if provider.NewChatCompletionProviderOptions(provider.Name(providerType)) == nil {
 			t.Errorf("provider type %q is offered by the form but not registered by the proxy router imports", providerType)
 		}

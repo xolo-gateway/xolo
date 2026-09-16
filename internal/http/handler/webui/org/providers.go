@@ -143,8 +143,12 @@ func (h *Handler) createProvider(w http.ResponseWriter, r *http.Request) {
 	p := model.NewProvider(org.ID(), r.FormValue("name"), r.FormValue("provider_type"), strings.TrimSpace(r.FormValue("base_url")), encryptedKey, r.FormValue("currency"))
 	p.SetCloudTier(cloudTier)
 	p.SetBillingMode(billingMode)
-	if !component.IsKnownProviderType(p.Type()) {
+	if !model.IsKnownProviderType(p.Type()) {
 		h.renderProviderFormError(w, r, ctx, user, orgSlug, org, p, true, unknownProviderTypeMessage(p.Type()))
+		return
+	}
+	if apiKey == "" {
+		h.renderProviderFormError(w, r, ctx, user, orgSlug, org, p, true, "La clé API est obligatoire.")
 		return
 	}
 	// The creation form does not render the plan editor (see provider_form.templ,
@@ -261,20 +265,13 @@ func (h *Handler) updateProvider(w http.ResponseWriter, r *http.Request) {
 		plan, err := parseSubscriptionPlanFromForm(r)
 		if err != nil {
 			h.renderProviderFormError(w, r, ctx, user, orgSlug, org,
-				providerWithPlan{Provider: existing, name: r.FormValue("name"), baseURL: strings.TrimSpace(r.FormValue("base_url")), pType: r.FormValue("provider_type"), billingMode: billingMode, plan: plan}, false,
+				submittedProvider(r, existing, billingMode, plan), false,
 				"Forfait : "+err.Error()+".")
 			return
 		}
 		subscriptionPlan = plan
 	}
-	formProvider := providerWithPlan{
-		Provider:    existing,
-		name:        r.FormValue("name"),
-		baseURL:     strings.TrimSpace(r.FormValue("base_url")),
-		pType:       r.FormValue("provider_type"),
-		billingMode: billingMode,
-		plan:        subscriptionPlan,
-	}
+	formProvider := submittedProvider(r, existing, billingMode, subscriptionPlan)
 	if billingMode != model.BillingModeSubscription {
 		formProvider.plan = existing.SubscriptionPlan()
 	}
@@ -323,7 +320,7 @@ func (h *Handler) updateProvider(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	if providerType := r.FormValue("provider_type"); !component.IsKnownProviderType(providerType) {
+	if providerType := r.FormValue("provider_type"); !model.IsKnownProviderType(providerType) {
 		h.renderProviderFormError(w, r, ctx, user, orgSlug, org, formProvider, false, unknownProviderTypeMessage(providerType))
 		return
 	}
@@ -1134,29 +1131,51 @@ func (h *Handler) renderProviderFormError(w http.ResponseWriter, r *http.Request
 	templ.Handler(component.ProviderForm(vmodel)).ServeHTTP(w, r)
 }
 
-// providerWithPlan renders a stored provider carrying the billing mode and the
-// subscription plan just submitted, when the form comes back in error. The mode
-// matters as much as the plan: a provider being switched from PAYG to
-// subscription would otherwise come back as PAYG, without the plan editor, and
-// be saved as PAYG on resubmit with the typed plan never read.
 // providerWithPlan re-renders the edit form with what was submitted when
-// the submit is rejected: the stored provider supplies what the form does
-// not carry, the submitted values win for everything the form does. A
-// blank submitted field falls back to the stored one.
+// the submit is rejected. The stored provider supplies what the form does
+// not carry (id, dates, encrypted key); the submitted values win for every
+// field the form does, so an operator switching a provider from PAYG to
+// subscription, changing its currency or unticking "active" sees that
+// choice come back rather than the stored row, and does not save the old
+// value on resubmit. A blank submitted name or base URL falls back to the
+// stored one; a blank type does not, the error message asks for one.
 type providerWithPlan struct {
 	model.Provider
 	name        string
 	baseURL     string
 	pType       string
+	currency    string
+	cloudTier   int
+	active      bool
 	billingMode model.BillingMode
 	plan        *model.SubscriptionPlan
 }
 
 func (p providerWithPlan) Name() string                              { return firstNonEmpty(p.name, p.Provider.Name()) }
 func (p providerWithPlan) BaseURL() string                           { return firstNonEmpty(p.baseURL, p.Provider.BaseURL()) }
-func (p providerWithPlan) Type() string                              { return firstNonEmpty(p.pType, p.Provider.Type()) }
+func (p providerWithPlan) Type() string                              { return p.pType }
+func (p providerWithPlan) Currency() string                          { return p.currency }
+func (p providerWithPlan) CloudTier() int                            { return p.cloudTier }
+func (p providerWithPlan) Active() bool                              { return p.active }
 func (p providerWithPlan) BillingMode() model.BillingMode            { return p.billingMode }
 func (p providerWithPlan) SubscriptionPlan() *model.SubscriptionPlan { return p.plan }
+
+// submittedProvider builds the providerWithPlan for a rejected edit from the
+// posted form.
+func submittedProvider(r *http.Request, existing model.Provider, billingMode model.BillingMode, plan *model.SubscriptionPlan) providerWithPlan {
+	cloudTier, _ := strconv.Atoi(r.FormValue("cloud_tier"))
+	return providerWithPlan{
+		Provider:    existing,
+		name:        r.FormValue("name"),
+		baseURL:     strings.TrimSpace(r.FormValue("base_url")),
+		pType:       r.FormValue("provider_type"),
+		currency:    firstNonEmpty(r.FormValue("currency"), existing.Currency()),
+		cloudTier:   cloudTier,
+		active:      r.FormValue("active") == "on",
+		billingMode: billingMode,
+		plan:        plan,
+	}
+}
 
 func firstNonEmpty(submitted, stored string) string {
 	if submitted != "" {

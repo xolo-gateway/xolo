@@ -17,7 +17,7 @@ type Provider interface {
 
 	OrgID() OrgID
 	Name() string
-	Type() string   // openai | anthropic | mistral | openrouter (see webui/org/component.ProviderTypes)
+	Type() string   // one of ProviderTypes()
 	BaseURL() string
 	APIKey() string // encrypted at rest, decrypted on use
 	Active() bool

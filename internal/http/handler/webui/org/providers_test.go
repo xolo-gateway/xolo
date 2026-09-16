@@ -443,7 +443,7 @@ func TestProviderWithPlan_ShowsTheSubmittedPlanOnTheStoredProvider(t *testing.T)
 	typed := &model.SubscriptionPlan{Label: "typed", Constraints: []model.PlanConstraint{{
 		Kind: model.ConstraintRollingWindow, Label: "as-typed", Duration: model.PlanDuration(5 * time.Hour),
 	}}}
-	p := providerWithPlan{Provider: stored, billingMode: model.BillingModeSubscription, plan: typed}
+	p := providerWithPlan{Provider: stored, pType: "mistral", currency: "EUR", active: true, billingMode: model.BillingModeSubscription, plan: typed}
 
 	if p.SubscriptionPlan() != typed {
 		t.Error("SubscriptionPlan() does not return the submitted plan")
@@ -458,9 +458,23 @@ func TestProviderWithPlan_ShowsTheSubmittedPlanOnTheStoredProvider(t *testing.T)
 	// A rejected edit must come back showing the submitted identity, so a
 	// provider stored with a type the form no longer offers is displayed
 	// with what the operator just typed, not the stale row.
-	edited := providerWithPlan{Provider: stored, name: "Mistral EU", baseURL: "https://eu.mistral.ai/v1", pType: "openrouter", billingMode: model.BillingModePayg}
+	form := makeRequest(map[string]string{
+		"name": "Mistral EU", "base_url": " https://eu.mistral.ai/v1 ", "provider_type": "openrouter",
+		"currency": "GBP", "cloud_tier": "2",
+		// "active" absent: the operator unticked it.
+	})
+	edited := submittedProvider(form, stored, model.BillingModePayg, nil)
 	if edited.Name() != "Mistral EU" || edited.BaseURL() != "https://eu.mistral.ai/v1" || edited.Type() != "openrouter" {
 		t.Errorf("submitted identity lost: name=%q url=%q type=%q", edited.Name(), edited.BaseURL(), edited.Type())
+	}
+	if edited.Currency() != "GBP" || edited.CloudTier() != 2 || edited.Active() {
+		t.Errorf("submitted currency/tier/active lost: %q %d %v", edited.Currency(), edited.CloudTier(), edited.Active())
+	}
+	// A blank submitted type must not fall back on the stored one: the form
+	// asks the operator to pick one and must not show the old one selected.
+	blank := submittedProvider(makeRequest(map[string]string{"name": "x"}), stored, model.BillingModePayg, nil)
+	if blank.Type() != "" || blank.Currency() != "EUR" {
+		t.Errorf("blank type must stay blank and currency fall back: type=%q currency=%q", blank.Type(), blank.Currency())
 	}
 
 	// And the editor renders that plan, rejected value included.
@@ -485,7 +499,7 @@ func TestProviderWithPlan_ShowsTheSubmittedPlanOnTheStoredProvider(t *testing.T)
 // selectable in the UI but unknown to the registry would only fail once an
 // administrator clicks "test connection".
 func TestTestProviderConnection_KnowsEveryFormType(t *testing.T) {
-	for _, providerType := range component.ProviderTypes {
+	for _, providerType := range model.ProviderTypes() {
 		t.Run(providerType, func(t *testing.T) {
 			ok, err := testProviderConnection(context.Background(), providerType, "http://127.0.0.1:9", "test-key")
 			if err != nil {
@@ -505,13 +519,13 @@ func TestTestProviderConnection_UnknownType(t *testing.T) {
 }
 
 func TestIsKnownProviderType(t *testing.T) {
-	for _, providerType := range component.ProviderTypes {
-		if !component.IsKnownProviderType(providerType) {
+	for _, providerType := range model.ProviderTypes() {
+		if !model.IsKnownProviderType(providerType) {
 			t.Errorf("%q must be known", providerType)
 		}
 	}
 	for _, unknown := range []string{"", "yzma", "OpenAI"} {
-		if component.IsKnownProviderType(unknown) {
+		if model.IsKnownProviderType(unknown) {
 			t.Errorf("%q must be rejected", unknown)
 		}
 	}

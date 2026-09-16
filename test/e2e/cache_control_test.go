@@ -92,7 +92,10 @@ func TestCacheControl_ReachesAnthropicUpstream(t *testing.T) {
 	var body struct {
 		MaxTokens int `json:"max_tokens"`
 	}
-	if json.Unmarshal([]byte(sent.Raw), &body) == nil && body.MaxTokens != 256 {
+	if err := json.Unmarshal([]byte(sent.Raw), &body); err != nil {
+		t.Fatalf("could not parse the upstream request: %v", err)
+	}
+	if body.MaxTokens != 256 {
 		t.Errorf("the client's max_tokens must reach the upstream, got %d", body.MaxTokens)
 	}
 }
