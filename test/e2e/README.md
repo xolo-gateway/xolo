@@ -76,7 +76,7 @@ En cas d'échec de la mise en place, le journal du serveur est imprimé.
 | `TestCacheControl_CachedTokensAreRecorded` | `acme/e2e-claude` | l'enregistrement d'usage porte les tokens lus dans le cache et les facture au tarif « prompt en cache » ; les écritures de cache sont comptées au tarif plein |
 | `TestCacheControl_OnMessageContentPart` | `acme/e2e-claude-direct` | un breakpoint posé sur une partie de contenu atteint l'amont sur le dernier bloc du message |
 | `TestCacheControl_OutputWindowIsTheDefaultMaxTokens` | `acme/e2e-claude-direct` | sans `max_tokens` client, c'est la fenêtre de sortie du modèle (plafonnée à 16 384) qui part à l'amont |
-| `TestCacheControl_StreamingRoundTrip` | `acme/e2e-claude-direct` | la route OpenAI en streaming traverse le provider Messages ; le faux amont flushe chaque événement SSE et les deltas reconstituent la réponse |
+| `TestCacheControl_StreamingRoundTrip` | `acme/e2e-claude-direct` | la route OpenAI en streaming traverse le provider Messages ; le faux amont flushe chaque événement SSE, les deltas reconstituent la réponse et les compteurs de cache sont enregistrés comme en non streamé |
 | `TestCacheControl_MissingCachedTariffFallsBackToFullRate` | `acme/e2e-claude-direct` | sans tarif de cache, les tokens en cache sont facturés au tarif plein, jamais gratuits |
 
 Le pseudonymizer est branché par trois middlewares (`mw-e2e-pseudo-tag`,

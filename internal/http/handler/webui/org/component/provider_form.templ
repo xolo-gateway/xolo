@@ -69,7 +69,7 @@ templ ProviderForm(vmodel ProviderFormVModel) {
 									@selectbox.Content(selectbox.ContentProps{NoSearch: true}) {
 										@selectbox.Group() {
 											for _, t := range ProviderTypes {
-												@selectbox.Item(selectbox.ItemProps{Value: t, Selected: !vmodel.IsNew && vmodel.Provider != nil && vmodel.Provider.Type() == t}) {
+												@selectbox.Item(selectbox.ItemProps{Value: t, Selected: vmodel.Provider != nil && vmodel.Provider.Type() == t}) {
 													{ t }
 												}
 											}
@@ -408,17 +408,19 @@ templ durationUnitSelect(name string, selected string, readonly bool) {
 	}
 }
 
-// providerName and providerBaseURL read a field of the edited provider, or the
-// empty string on creation — the form is the same template in both cases.
+// providerName and providerBaseURL read a field of the provider being
+// edited, or of the one rebuilt from a rejected creation form, so a
+// validation error never costs the administrator what was typed. On a blank
+// creation form Provider is nil and the fields are empty.
 func providerName(vmodel ProviderFormVModel) string {
-	if vmodel.IsNew || vmodel.Provider == nil {
+	if vmodel.Provider == nil {
 		return ""
 	}
 	return vmodel.Provider.Name()
 }
 
 func providerBaseURL(vmodel ProviderFormVModel) string {
-	if vmodel.IsNew || vmodel.Provider == nil {
+	if vmodel.Provider == nil {
 		return ""
 	}
 	return vmodel.Provider.BaseURL()

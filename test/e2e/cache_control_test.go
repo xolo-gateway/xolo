@@ -286,6 +286,7 @@ func waitForUsage(t *testing.T, modelID string, start time.Time) model.UsageReco
 // incrementally and must add up to the echoed answer.
 func TestCacheControl_StreamingRoundTrip(t *testing.T) {
 	before := len(env.provider.Requests())
+	start := time.Now()
 
 	payload := mustJSON(map[string]any{
 		"model":    modelClaudeDirect,
@@ -339,5 +340,19 @@ func TestCacheControl_StreamingRoundTrip(t *testing.T) {
 	}
 	if len(env.provider.RequestsSince(before)) != 1 {
 		t.Errorf("upstream calls = %d, want 1", len(env.provider.RequestsSince(before)))
+	}
+
+	// The streaming path rebuilds its usage separately from the plain one:
+	// the cache counters must come through it too.
+	record := waitForUsage(t, modelClaudeDirectID, start)
+	if record.CachedTokens() != fakeMessagesCacheReadTokens {
+		t.Errorf("streamed cached tokens = %d, want %d", record.CachedTokens(), fakeMessagesCacheReadTokens)
+	}
+	wantPrompt := fakeMessagesInputTokens + fakeMessagesCacheReadTokens + fakeMessagesCacheCreationTokens
+	if record.PromptTokens() != wantPrompt {
+		t.Errorf("streamed prompt tokens = %d, want %d", record.PromptTokens(), wantPrompt)
+	}
+	if record.CompletionTokens() != fakeMessagesOutputTokens {
+		t.Errorf("streamed completion tokens = %d, want %d", record.CompletionTokens(), fakeMessagesOutputTokens)
 	}
 }

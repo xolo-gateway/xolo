@@ -1,13 +1,28 @@
 package proxy
 
+// No genai provider package is imported here on purpose: the test binary
+// shares one registry, and an import in a test file would hide a missing
+// blank import in org_model_router.go (see provider_registry_test.go).
+
 import (
+	"fmt"
+	"reflect"
 	"testing"
 
 	"github.com/bornholm/genai/llm/provider"
-	"github.com/bornholm/genai/llm/provider/anthropic"
-	"github.com/bornholm/genai/llm/provider/openai"
 	"github.com/xolo-gateway/xolo/internal/core/model"
 )
+
+// maxTokensOf reads the MaxTokens field of provider options by reflection,
+// the way withDynamicChatCompletion sets it.
+func maxTokensOf(t *testing.T, specific any) (int64, bool) {
+	t.Helper()
+	field := reflect.ValueOf(specific).Elem().FieldByName("MaxTokens")
+	if !field.IsValid() {
+		return 0, false
+	}
+	return field.Int(), true
+}
 
 // The anthropic provider needs max_tokens on every request: the model's
 // output window must reach its options, and providers without the field
@@ -18,12 +33,15 @@ func TestWithDynamicChatCompletion_MaxTokens(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		specific, ok := opts.ChatCompletion.Specific.(*anthropic.Options)
-		if !ok {
-			t.Fatalf("unexpected options type %T", opts.ChatCompletion.Specific)
+		if typ := fmt.Sprintf("%T", opts.ChatCompletion.Specific); typ != "*anthropic.Options" {
+			t.Fatalf("unexpected options type %s", typ)
 		}
-		if specific.MaxTokens != 64000 || specific.Model != "claude-sonnet-5" || specific.APIKey != "k" {
-			t.Errorf("options not populated: %+v", specific)
+		if got, ok := maxTokensOf(t, opts.ChatCompletion.Specific); !ok || got != 64000 {
+			t.Errorf("MaxTokens not populated: %v", opts.ChatCompletion.Specific)
+		}
+		common := reflect.ValueOf(opts.ChatCompletion.Specific).Elem().FieldByName("CommonOptions")
+		if common.FieldByName("Model").String() != "claude-sonnet-5" || common.FieldByName("APIKey").String() != "k" {
+			t.Errorf("common options not populated: %+v", opts.ChatCompletion.Specific)
 		}
 	})
 
@@ -32,8 +50,9 @@ func TestWithDynamicChatCompletion_MaxTokens(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if got := opts.ChatCompletion.Specific.(*anthropic.Options).MaxTokens; got != anthropic.DefaultMaxTokens {
-			t.Errorf("expected the provider default %d, got %d", anthropic.DefaultMaxTokens, got)
+		// 4096 is anthropic.DefaultMaxTokens, not imported here on purpose.
+		if got, ok := maxTokensOf(t, opts.ChatCompletion.Specific); !ok || got != 4096 {
+			t.Errorf("expected the provider default 4096, got %d", got)
 		}
 	})
 
@@ -42,8 +61,11 @@ func TestWithDynamicChatCompletion_MaxTokens(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if _, ok := opts.ChatCompletion.Specific.(*openai.Options); !ok {
-			t.Fatalf("unexpected options type %T", opts.ChatCompletion.Specific)
+		if typ := fmt.Sprintf("%T", opts.ChatCompletion.Specific); typ != "*openai.Options" {
+			t.Fatalf("unexpected options type %s", typ)
+		}
+		if _, has := maxTokensOf(t, opts.ChatCompletion.Specific); has {
+			t.Error("openai options must not grow a MaxTokens field silently")
 		}
 	})
 }

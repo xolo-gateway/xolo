@@ -364,7 +364,7 @@ func ProviderForm(vmodel ProviderFormVModel) templ.Component {
 											}
 											return nil
 										})
-										templ_7745c5c3_Err = selectbox.Item(selectbox.ItemProps{Value: t, Selected: !vmodel.IsNew && vmodel.Provider != nil && vmodel.Provider.Type() == t}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var17), templ_7745c5c3_Buffer)
+										templ_7745c5c3_Err = selectbox.Item(selectbox.ItemProps{Value: t, Selected: vmodel.Provider != nil && vmodel.Provider.Type() == t}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var17), templ_7745c5c3_Buffer)
 										if templ_7745c5c3_Err != nil {
 											return templ_7745c5c3_Err
 										}
@@ -2151,17 +2151,19 @@ func durationUnitSelect(name string, selected string, readonly bool) templ.Compo
 	})
 }
 
-// providerName and providerBaseURL read a field of the edited provider, or the
-// empty string on creation — the form is the same template in both cases.
+// providerName and providerBaseURL read a field of the provider being
+// edited, or of the one rebuilt from a rejected creation form, so a
+// validation error never costs the administrator what was typed. On a blank
+// creation form Provider is nil and the fields are empty.
 func providerName(vmodel ProviderFormVModel) string {
-	if vmodel.IsNew || vmodel.Provider == nil {
+	if vmodel.Provider == nil {
 		return ""
 	}
 	return vmodel.Provider.Name()
 }
 
 func providerBaseURL(vmodel ProviderFormVModel) string {
-	if vmodel.IsNew || vmodel.Provider == nil {
+	if vmodel.Provider == nil {
 		return ""
 	}
 	return vmodel.Provider.BaseURL()
