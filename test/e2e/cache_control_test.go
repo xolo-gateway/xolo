@@ -3,8 +3,12 @@
 package e2e
 
 import (
+	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
+	"io"
+	"net/http"
 	"strings"
 	"testing"
 	"time"
@@ -195,7 +199,7 @@ func TestCacheControl_SurvivesARewritingNode(t *testing.T) {
 // The cache reads reported by the Messages upstream must land in the usage
 // record, and be billed at the cached-prompt tariff.
 func TestCacheControl_CachedTokensAreRecorded(t *testing.T) {
-	start := time.Now().Add(-time.Second)
+	start := time.Now()
 	messagesWithCachedSystem(t, modelClaude, "Tu es un assistant e2e.", "Compte jusqu'à trois.")
 
 	record := waitForUsage(t, modelClaudeID, start)
@@ -231,7 +235,7 @@ func TestCacheControl_CachedTokensAreRecorded(t *testing.T) {
 // A model without a cached-prompt tariff bills cache reads at the full
 // prompt rate, never for free.
 func TestCacheControl_MissingCachedTariffFallsBackToFullRate(t *testing.T) {
-	start := time.Now().Add(-time.Second)
+	start := time.Now()
 	messagesWithCachedSystem(t, modelClaudeDirect, "Tu es un assistant e2e.", "Compte jusqu'à deux.")
 
 	record := waitForUsage(t, modelClaudeDirectID, start)
@@ -265,11 +269,75 @@ func waitForUsage(t *testing.T, modelID string, start time.Time) model.UsageReco
 		if err != nil {
 			t.Fatalf("query usage: %v", err)
 		}
-		if len(records) > 0 {
-			return records[len(records)-1]
+		if len(records) > 1 {
+			t.Fatalf("expected a single usage record since %s for model %s, got %d", start.Format(time.RFC3339Nano), modelID, len(records))
+		}
+		if len(records) == 1 {
+			return records[0]
 		}
 		time.Sleep(200 * time.Millisecond)
 	}
 	t.Fatalf("no usage record for model %s within 10s", modelID)
 	return nil
+}
+
+// The OpenAI-format streaming route over an anthropic provider: the fake
+// upstream flushes each SSE event, so the deltas cross the whole chain
+// incrementally and must add up to the echoed answer.
+func TestCacheControl_StreamingRoundTrip(t *testing.T) {
+	before := len(env.provider.Requests())
+
+	payload := mustJSON(map[string]any{
+		"model":    modelClaudeDirect,
+		"stream":   true,
+		"messages": []map[string]any{{"role": "user", "content": "Bonjour en streaming."}},
+	})
+	req, err := http.NewRequest(http.MethodPost, env.baseURL+"/api/v1/chat/completions", bytes.NewReader(payload))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Authorization", "Bearer "+tokenAlice)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := (&http.Client{Timeout: time.Minute}).Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("status = %d, body = %s", resp.StatusCode, body)
+	}
+
+	var content strings.Builder
+	var chunks int
+	scanner := bufio.NewScanner(resp.Body)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if !strings.HasPrefix(line, "data: ") || line == "data: [DONE]" {
+			continue
+		}
+		var chunk struct {
+			Choices []struct {
+				Delta struct {
+					Content string `json:"content"`
+				} `json:"delta"`
+			} `json:"choices"`
+		}
+		if err := json.Unmarshal([]byte(strings.TrimPrefix(line, "data: ")), &chunk); err != nil {
+			t.Fatalf("bad chunk %q: %v", line, err)
+		}
+		chunks++
+		for _, c := range chunk.Choices {
+			content.WriteString(c.Delta.Content)
+		}
+	}
+	if chunks == 0 {
+		t.Fatal("no streamed chunk received")
+	}
+	if !strings.Contains(content.String(), "Bien reçu : Bonjour en streaming.") {
+		t.Errorf("streamed content = %q", content.String())
+	}
+	if len(env.provider.RequestsSince(before)) != 1 {
+		t.Errorf("upstream calls = %d, want 1", len(env.provider.RequestsSince(before)))
+	}
 }

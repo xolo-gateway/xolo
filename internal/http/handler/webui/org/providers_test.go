@@ -495,3 +495,16 @@ func TestTestProviderConnection_UnknownType(t *testing.T) {
 		t.Fatal("expected an error for an unknown provider type")
 	}
 }
+
+func TestIsKnownProviderType(t *testing.T) {
+	for _, providerType := range component.ProviderTypes {
+		if !component.IsKnownProviderType(providerType) {
+			t.Errorf("%q must be known", providerType)
+		}
+	}
+	for _, unknown := range []string{"", "yzma", "OpenAI"} {
+		if component.IsKnownProviderType(unknown) {
+			t.Errorf("%q must be rejected", unknown)
+		}
+	}
+}

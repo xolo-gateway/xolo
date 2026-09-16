@@ -6,6 +6,7 @@ import (
 	"github.com/bornholm/genai/llm/provider"
 	"github.com/bornholm/genai/llm/provider/anthropic"
 	"github.com/bornholm/genai/llm/provider/openai"
+	"github.com/xolo-gateway/xolo/internal/core/model"
 )
 
 // The anthropic provider needs max_tokens on every request: the model's
@@ -55,3 +56,26 @@ func TestEmbeddingsRegistry_AnthropicHasNone(t *testing.T) {
 		t.Fatal("openai must still register an embeddings client")
 	}
 }
+
+func TestDefaultMaxTokensFor(t *testing.T) {
+	cases := map[int64]int64{
+		0:      0,
+		8_192:  8_192,
+		16_384: 16_384,
+		64_000: maxDefaultMaxTokens,
+	}
+	for window, want := range cases {
+		got := defaultMaxTokensFor(outputWindowModel{LLMModel: model.NewLLMModel("", "", "", "", "", 0, 0), window: window})
+		if got != want {
+			t.Errorf("output window %d: got %d, want %d", window, got, want)
+		}
+	}
+}
+
+// outputWindowModel overrides the output window of a base model.
+type outputWindowModel struct {
+	model.LLMModel
+	window int64
+}
+
+func (m outputWindowModel) OutputWindow() int64 { return m.window }

@@ -378,8 +378,14 @@ func (p *fakeProvider) handleMessages(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.WriteHeader(http.StatusOK)
+	flusher, _ := w.(http.Flusher)
 	for _, ev := range events {
 		fmt.Fprintf(w, "event: %s\ndata: %s\n\n", ev.name, mustJSON(ev.data))
+		// Deliver each event on its own so the server's streaming path is
+		// really exercised, not a whole body handed over at the end.
+		if flusher != nil {
+			flusher.Flush()
+		}
 	}
 }
 

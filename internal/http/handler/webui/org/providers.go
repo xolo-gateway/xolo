@@ -113,6 +113,7 @@ func (h *Handler) getNewProviderPage(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) createProvider(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
+	user := httpCtx.User(ctx)
 	orgSlug := r.PathValue("orgSlug")
 
 	org, err := h.orgFromSlug(ctx, orgSlug)
@@ -142,6 +143,10 @@ func (h *Handler) createProvider(w http.ResponseWriter, r *http.Request) {
 	p := model.NewProvider(org.ID(), r.FormValue("name"), r.FormValue("provider_type"), strings.TrimSpace(r.FormValue("base_url")), encryptedKey, r.FormValue("currency"))
 	p.SetCloudTier(cloudTier)
 	p.SetBillingMode(billingMode)
+	if !component.IsKnownProviderType(p.Type()) {
+		h.renderProviderFormError(w, r, ctx, user, orgSlug, org, p, true, unknownProviderTypeMessage(p.Type()))
+		return
+	}
 	// The creation form does not render the plan editor (see provider_form.templ,
 	// which shows it under !IsNew only), so no plan field is ever posted here:
 	// a subscription provider is created without a plan and gets one on edit.
@@ -311,6 +316,11 @@ func (h *Handler) updateProvider(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	if providerType := r.FormValue("provider_type"); !component.IsKnownProviderType(providerType) {
+		h.renderProviderFormError(w, r, ctx, user, orgSlug, org, formProvider, false, unknownProviderTypeMessage(providerType))
+		return
+	}
+
 	cloudTier, _ := strconv.Atoi(r.FormValue("cloud_tier"))
 	updated := &updatedProviderAdapter{
 		id:               existing.ID(),
@@ -383,6 +393,16 @@ func (h *Handler) testProvider(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Write([]byte(`<span class="text-green-600">Connection successful ✓</span>`))
+}
+
+// unknownProviderTypeMessage is the form error for a type the registry
+// does not know, including a type stored before it was removed from the
+// form (an edit must not silently rewrite it).
+func unknownProviderTypeMessage(providerType string) string {
+	if providerType == "" {
+		return "Sélectionnez un type de fournisseur."
+	}
+	return "Type de fournisseur inconnu : " + providerType + ". Choisissez un type de la liste."
 }
 
 func testProviderConnection(ctx context.Context, providerType, baseURL, apiKey string) (bool, error) {

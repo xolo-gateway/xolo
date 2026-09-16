@@ -129,8 +129,20 @@ func (r *OrgModelRouter) ResolveModel(ctx context.Context, req *genaiProxy.Proxy
 	}
 
 	// Verify capability for embedding requests
-	if req.Type == genaiProxy.RequestTypeEmbedding && !llmModel.Capabilities().Embeddings {
-		return nil, "", errors.Errorf("model '%s' does not support embeddings", req.Model)
+	if req.Type == genaiProxy.RequestTypeEmbedding {
+		if !llmModel.Capabilities().Embeddings {
+			return nil, "", errors.Errorf("model '%s' does not support embeddings", req.Model)
+		}
+		// The capability can be ticked on a model whose provider type has
+		// no embeddings client (anthropic): say so instead of letting genai
+		// fail with a generic error.
+		p, err := r.providerStore.GetProviderByID(ctx, llmModel.ProviderID())
+		if err != nil {
+			return nil, "", errors.WithStack(err)
+		}
+		if provider.NewEmbeddingsProviderOptions(provider.Name(p.Type())) == nil {
+			return nil, "", errors.Errorf("model '%s' cannot serve embeddings: provider type '%s' has no embeddings client", req.Model, p.Type())
+		}
 	}
 
 	// Store model ID in metadata for UsageTracker
@@ -176,7 +188,7 @@ func (r *OrgModelRouter) clientForModel(ctx context.Context, llmModel model.LLMM
 
 	providerName := provider.Name(p.Type())
 	providerOpts := []provider.OptionFunc{
-		withDynamicChatCompletion(providerName, p.BaseURL(), decryptedKey, llmModel.RealModel(), llmModel.OutputWindow()),
+		withDynamicChatCompletion(providerName, p.BaseURL(), decryptedKey, llmModel.RealModel(), defaultMaxTokensFor(llmModel)),
 	}
 	if llmModel.Capabilities().Embeddings {
 		// A provider without an embeddings client (anthropic) must not lose
@@ -356,6 +368,25 @@ func withDynamicEmbeddings(name provider.Name, baseURL, apiKey, model string) pr
 		}
 		return nil
 	}
+}
+
+// maxDefaultMaxTokens caps the max_tokens sent on behalf of a client that
+// set none. The model's output window is the natural default, but on the
+// Messages API it also sizes the reasoning budget (a share of max_tokens)
+// and counts against the context window, so a 64k window would turn a
+// request with no max_tokens into a 32k-token thinking budget and reject
+// long prompts that used to pass. 16k keeps long answers possible without
+// either effect getting out of hand; a client wanting more sets max_tokens.
+const maxDefaultMaxTokens int64 = 16_384
+
+// defaultMaxTokensFor returns the max_tokens to use when the client sets
+// none: the model's output window, capped.
+func defaultMaxTokensFor(m model.LLMModel) int64 {
+	window := m.OutputWindow()
+	if window <= 0 {
+		return 0
+	}
+	return min(window, maxDefaultMaxTokens)
 }
 
 // withDynamicChatCompletion crée une OptionFunc pour un provider identifié à runtime.
