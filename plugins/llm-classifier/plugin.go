@@ -207,32 +207,95 @@ func historyExcerpt(messagesJSON string, maxChars int) string {
 	return strings.Join(parts, "\n")
 }
 
-var reJSONObject = regexp.MustCompile(`(?s)\{.*\}`)
+// reJSONFence catches a JSON object wrapped in a markdown fence
+// (```` ```json { ... } ``` ````). reJSONObject (non-greedy) is the generic
+// fallback for an object with no braces inside; the previous greedy
+// `(?s)\{.*\}` swallowed any stray `{` or `}` in the surrounding prose and
+// left json.Unmarshal with a payload it could not decode, silently routing
+// every failure to the substring fallback below.
+var (
+	reJSONFence   = regexp.MustCompile("(?s)```(?:json)?\\s*(\\{[^{}]*\\})\\s*```")
+	reJSONObject  = regexp.MustCompile(`(?s)\{[^{}]*\}`)
+)
 
-// parseVerdict reads the model's answer. It accepts a JSON object, possibly
-// wrapped in prose or code fences, and falls back to spotting a category name
-// in the raw text, since small models do not always honour the format.
+// parseVerdict reads the model's answer. It tries, in order: a JSON object
+// inside a code fence, then any plain JSON object in the content, then a
+// word-boundary count of category mentions across the whole text. The count
+// replaces the previous first-match substring loop, which always picked the
+// first category in declaration order whenever the JSON parse failed (so a
+// request that mentioned every category ended up labelled with whichever
+// came first in the list).
 func parseVerdict(content string, categories []Category) (verdict, bool) {
-	var v verdict
-	if m := reJSONObject.FindString(content); m != "" {
-		if err := json.Unmarshal([]byte(m), &v); err == nil && v.Category != "" {
-			if name, ok := matchCategory(v.Category, categories); ok {
-				v.Category = name
-				v.Confidence = clamp01(v.Confidence)
-				if v.Confidence == 0 {
-					v.Confidence = 0.5
-				}
-				return v, true
+	if v, ok := tryParseJSON(content); ok {
+		if cat, mOK := matchCategory(v.Category, categories); mOK {
+			v.Category = cat
+			v.Confidence = clamp01(v.Confidence)
+			if v.Confidence == 0 {
+				v.Confidence = 0.5
 			}
+			return v, true
 		}
 	}
 	lower := strings.ToLower(content)
+	best, bestN := "", 0
 	for _, c := range categories {
-		if strings.Contains(lower, strings.ToLower(c.Name)) {
-			return verdict{Category: c.Name, Confidence: 0.5, Reason: truncate(content, 200)}, true
+		n := countWordMatches(lower, strings.ToLower(c.Name))
+		if n > bestN {
+			best, bestN = c.Name, n
+		}
+	}
+	if bestN > 0 {
+		return verdict{Category: best, Confidence: 0.5, Reason: truncate(content, 200)}, true
+	}
+	return verdict{}, false
+}
+
+// tryParseJSON returns the first JSON object the content yields, preferring a
+// fenced block over a bare object. It returns ok=false when neither decodes.
+func tryParseJSON(content string) (verdict, bool) {
+	var v verdict
+	for _, re := range []*regexp.Regexp{reJSONFence, reJSONObject} {
+		m := re.FindStringSubmatch(content)
+		if len(m) == 0 {
+			continue
+		}
+		payload := m[len(m)-1]
+		if err := json.Unmarshal([]byte(payload), &v); err == nil && v.Category != "" {
+			return v, true
 		}
 	}
 	return verdict{}, false
+}
+
+// countWordMatches returns how many times needle appears in haystack as a
+// whole word (non-alphanumeric boundaries). It prevents "code" from matching
+// inside "encoder" or "decode".
+func countWordMatches(haystack, needle string) int {
+	if needle == "" {
+		return 0
+	}
+	n, i := 0, 0
+	for {
+		j := strings.Index(haystack[i:], needle)
+		if j < 0 {
+			return n
+		}
+		k := i + j
+		leftOK := k == 0 || !isAlnum(haystack[k-1])
+		rightEnd := k + len(needle)
+		rightOK := rightEnd == len(haystack) || !isAlnum(haystack[rightEnd])
+		if leftOK && rightOK {
+			n++
+		}
+		i = k + len(needle)
+		if i >= len(haystack) {
+			return n
+		}
+	}
+}
+
+func isAlnum(b byte) bool {
+	return (b >= 'a' && b <= 'z') || (b >= '0' && b <= '9')
 }
 
 func matchCategory(answer string, categories []Category) (string, bool) {
