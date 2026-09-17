@@ -23,6 +23,11 @@ type UsageStore interface {
 	// not by aggregating the usage history: the yearly window covers the whole table, and
 	// running that scan on every proxied request made the database saturate long before
 	// the gateway.
+	//
+	// Those counters have day granularity, so `since` is widened to the start of its own
+	// local day: asking from 14:00 returns the whole day's spending. Budget windows all
+	// begin at midnight (see model.StartOfDay and friends), so this costs the callers
+	// nothing; a rolling window would overstate spending and must not use this method.
 	SumQuotaCostSince(ctx context.Context, scope model.QuotaScope, scopeID string, orgID model.OrgID, since time.Time) (int64, error)
 	// SumCostSinceByCurrency returns the total PAYG (plan_covered=false) cost per currency for an
 	// org (and optionally a subset of users) since the given time. When userIDs is empty, all users

@@ -24,7 +24,26 @@ const (
 	// configured PromptCostPer1KTokens/CompletionCostPer1KTokens tariff,
 	// because the provider did not report an actual cost.
 	CostSourceComputed CostSource = "computed"
+	// CostSourceEstimated means the token counts themselves are estimates, not
+	// counts the provider published. A stream cut short before the provider
+	// reported its usage leaves them unknown, and most providers only report in
+	// the final chunk, which never arrives. The counts are then derived from the
+	// request and from how much of the answer reached the client. Treat such a
+	// record as an order of magnitude, not as a billing figure.
+	CostSourceEstimated CostSource = "estimated"
 )
+
+// FeedsMonetaryBudget reports whether a usage record counts toward a monetary
+// budget. Subscription-covered usage is governed by the subscription enforcer
+// instead, a record with no cost moves no total, and one without an
+// organization belongs to no budget at all.
+//
+// The store, the cache and the backfill must agree on this, or the totals they
+// each produce drift apart. The backfill states the same rule in SQL, since it
+// never sees a record as a value.
+func FeedsMonetaryBudget(r UsageRecord) bool {
+	return !r.PlanCovered() && r.Cost() != 0 && r.OrgID() != ""
+}
 
 // UsageStatus tells how the proxy call the record accounts for ended. A
 // streamed answer can stop before the provider signals completion while the
@@ -41,6 +60,13 @@ const (
 	// UsageStatusClientGone means the client hung up mid-stream — a closed tab,
 	// an aborted request, a reverse proxy timing out.
 	UsageStatusClientGone UsageStatus = "client_gone"
+	// UsageStatusWriteFailed means writing the response failed for a reason
+	// that is not the client going away. Unlike a hangup it is a server fault.
+	UsageStatusWriteFailed UsageStatus = "write_failed"
+	// UsageStatusTruncated means the provider closed the stream without
+	// signalling completion and without reporting an error. What the exchange
+	// cost is unknown; an upstream connection dropped cleanly looks like this.
+	UsageStatusTruncated UsageStatus = "truncated"
 )
 
 // UsageRecord captures one proxy call with cost frozen at recording time.

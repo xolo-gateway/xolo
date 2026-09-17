@@ -54,10 +54,10 @@ func quotaUsageDay(t time.Time) string {
 
 // quotaUsageRows returns the counter rows a usage record contributes to: one
 // for the org, one for the user when the call was made by a user rather than
-// by an application. Subscription-covered or zero-cost records contribute
-// nothing and yield no row.
+// by an application. A record that feeds no monetary budget yields no row, per
+// model.FeedsMonetaryBudget, the rule the backfill restates in SQL.
 func quotaUsageRows(r model.UsageRecord) []*QuotaUsage {
-	if r.PlanCovered() || r.Cost() == 0 {
+	if !model.FeedsMonetaryBudget(r) {
 		return nil
 	}
 

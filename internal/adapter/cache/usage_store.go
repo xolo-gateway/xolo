@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/xolo-gateway/xolo/internal/core/model"
@@ -26,11 +27,31 @@ type UsageStore struct {
 
 	cache port.Cache
 	ttl   time.Duration
+
+	// loading tracks the keys whose total is being read from the backend, and
+	// whether a record landed while that read was in flight. Without it a total
+	// read before a record was written could be stored after that record's
+	// increment was applied, counting it twice and refusing requests a fresh
+	// read would allow.
+	mu      sync.Mutex
+	loading map[string]*keyLoad
+}
+
+// keyLoad counts the readers loading one key and remembers whether the value
+// they are about to store is already out of date.
+type keyLoad struct {
+	readers int
+	stale   bool
 }
 
 // NewUsageStore wraps backend, caching budget totals for ttl in cache.
 func NewUsageStore(backend port.UsageStore, cache port.Cache, ttl time.Duration) *UsageStore {
-	return &UsageStore{UsageStore: backend, cache: cache, ttl: ttl}
+	return &UsageStore{
+		UsageStore: backend,
+		cache:      cache,
+		ttl:        ttl,
+		loading:    map[string]*keyLoad{},
+	}
 }
 
 // SumQuotaCostSince implements port.UsageStore.
@@ -43,21 +64,67 @@ func (s *UsageStore) SumQuotaCostSince(ctx context.Context, scope model.QuotaSco
 		slog.WarnContext(ctx, "quota sum cache read failed, falling back to the store", slog.Any("error", err), slog.String("key", key))
 	}
 
+	s.beginLoad(key)
 	total, err := s.UsageStore.SumQuotaCostSince(ctx, scope, scopeID, orgID, since)
+	stale := s.endLoad(key)
 	if err != nil {
 		return 0, err
 	}
 
-	// A record written between the read above and this store is counted by the
-	// backend but may also be applied by RecordUsage's increment, or neither,
-	// depending on the interleaving. The window is one database round-trip wide
-	// and the entry expires within the TTL, so the drift it can cause is bounded
-	// by what a single request spends.
-	if err := s.cache.SetInt64(ctx, key, total, s.ttl); err != nil {
-		slog.WarnContext(ctx, "quota sum cache write failed", slog.Any("error", err), slog.String("key", key))
+	// A record written while the read was in flight is already counted by the
+	// backend, or will be by the next read, but storing this value now would
+	// race with its increment. The key is left absent instead, and the next
+	// check reads a fresh total.
+	if !stale {
+		if err := s.cache.SetInt64(ctx, key, total, s.ttl); err != nil {
+			slog.WarnContext(ctx, "quota sum cache write failed", slog.Any("error", err), slog.String("key", key))
+		}
 	}
 
 	return total, nil
+}
+
+// beginLoad registers a backend read for key.
+func (s *UsageStore) beginLoad(key string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	load, exists := s.loading[key]
+	if !exists {
+		load = &keyLoad{}
+		s.loading[key] = load
+	}
+	load.readers++
+}
+
+// endLoad closes a backend read and reports whether a record landed while it
+// was in flight.
+func (s *UsageStore) endLoad(key string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	load, exists := s.loading[key]
+	if !exists {
+		return true
+	}
+
+	stale := load.stale
+	load.readers--
+	if load.readers <= 0 {
+		delete(s.loading, key)
+	}
+	return stale
+}
+
+// markLoadsStale tells the readers currently loading key that the value they
+// are about to store no longer reflects what is in the database.
+func (s *UsageStore) markLoadsStale(key string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if load, exists := s.loading[key]; exists {
+		load.stale = true
+	}
 }
 
 // RecordUsage implements port.UsageStore. Once the record is persisted, the
@@ -71,6 +138,7 @@ func (s *UsageStore) RecordUsage(ctx context.Context, record model.UsageRecord) 
 	}
 
 	for _, key := range quotaSumCacheKeysFor(record) {
+		s.markLoadsStale(key)
 		if _, _, err := s.cache.AddInt64(ctx, key, record.Cost()); err != nil {
 			// A failed increment only costs a stale total until the entry
 			// expires, so it is reported rather than propagated: the usage
@@ -86,9 +154,14 @@ func (s *UsageStore) RecordUsage(ctx context.Context, record model.UsageRecord) 
 // window. The window start is what makes an entry roll over on its own at
 // midnight, on the first of the month and on new year's day, with no
 // invalidation to schedule.
+//
+// The bound is spelled out to the second even though the counters behind it
+// have day granularity: two windows opening on the same day are different
+// questions, and a key that conflated them would answer one with the other for
+// the length of a TTL.
 func quotaSumCacheKey(scope model.QuotaScope, scopeID string, orgID model.OrgID, since time.Time) string {
 	return strings.Join([]string{
-		"quota", "sum", string(scope), scopeID, string(orgID), since.Format("2006-01-02"),
+		"quota", "sum", string(scope), scopeID, string(orgID), since.UTC().Format(time.RFC3339),
 	}, ":")
 }
 
@@ -99,7 +172,7 @@ func quotaSumCacheKey(scope model.QuotaScope, scopeID string, orgID model.OrgID,
 // Subscription-covered records consume no monetary budget and are left out, as
 // they are by the counters themselves.
 func quotaSumCacheKeysFor(record model.UsageRecord) []string {
-	if record.PlanCovered() || record.Cost() == 0 || record.OrgID() == "" {
+	if !model.FeedsMonetaryBudget(record) {
 		return nil
 	}
 

@@ -6,9 +6,12 @@ import (
 )
 
 // Cache is a small key/value store for values that may be recomputed at any
-// time. It is deliberately narrow: everything it exposes maps onto a single
-// Redis command, so a deployment spanning several gateway replicas can swap the
-// in-process implementation for a shared one without touching the callers.
+// time. It is deliberately narrow, so a deployment spanning several gateway
+// replicas can swap the in-process implementation for a shared one without
+// touching the callers. Reads and writes are one Redis command each; AddInt64
+// is the exception, since INCRBY creates the key it is missing and this
+// contract must not, so a Redis implementation needs a short Lua script that
+// increments only an existing key and leaves its expiry alone.
 //
 // A cache is best-effort by contract. An implementation that loses an entry,
 // or that cannot be reached, must report a miss rather than an error the caller

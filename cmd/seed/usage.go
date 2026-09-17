@@ -144,7 +144,10 @@ func (s *seeder) seedUsage(ctx context.Context) error {
 					Currency:          currency,
 					CostSource:        string(model.CostSourceComputed),
 					PlanCovered:       boolToInt(provider.BillingMode == string(model.BillingModeSubscription)),
-					ProviderCost:      providerCost,
+					// Spelled out rather than left to the column default, so the
+					// fixture matches a migrated database byte for byte.
+					Status:       string(model.UsageStatusOK),
+					ProviderCost: providerCost,
 				}
 
 				batch = append(batch, record)

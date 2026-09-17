@@ -81,9 +81,10 @@ func (c *MemoryCache) AddInt64(ctx context.Context, key string, delta int64) (in
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	// Peek instead of Get: refreshing the recency of an entry nobody read would
-	// keep a cold counter alive at the expense of one that is actually serving
-	// requests.
+	// Peek only avoids reordering on the read itself; the Add below moves the
+	// key to the front regardless. What this method does guarantee is that an
+	// absent key stays absent, and that the entry keeps the deadline it was
+	// created with.
 	entry, exists := c.entries.Peek(key)
 	if !exists {
 		return 0, false, nil
