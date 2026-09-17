@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	genaiProxy "github.com/bornholm/genai/proxy"
@@ -139,3 +140,87 @@ func TestUsageTrackerFallsBackToComputedCost(t *testing.T) {
 // Tenancy is not what these tests exercise: they only need a stable, shared
 // owner so the tenant-scoped unique keys behave like the pre-tenant ones.
 const testTenantID = model.TenantID("test-tenant")
+
+// TestUsageTrackerRecordsInterruptedStream asserts that a stream cut short by
+// the provider is still accounted for, and marked as such. The provider billed
+// the tokens it produced and the client received them: dropping the record
+// under-bills the customer and hides the failing provider from usage reports.
+func TestUsageTrackerRecordsInterruptedStream(t *testing.T) {
+	orgID := model.OrgID("org-1")
+	providerID := model.NewProviderID()
+	provider := model.NewProvider(orgID, "openai", "openai", "https://api.openai.com", "key", "USD")
+	llmModel := model.NewLLMModel(providerID, orgID, "cadoles/test-model", "real/model", "desc", 1000, 2000)
+	org := model.NewOrganization(testTenantID, "org-1", "Org 1", "", "USD")
+
+	tracker, usageStore := newTestTracker(&fakeProviderStore{provider: provider, llmModel: llmModel}, &fakeOrgStore{org: org})
+
+	req, res := newTestRequestResponse(llmModel.ID(), orgID, &genaiProxy.TokenUsage{
+		PromptTokens:     1000,
+		CompletionTokens: 300,
+		TotalTokens:      1300,
+	})
+	res.Interruption = &genaiProxy.StreamInterruption{
+		Cause:         genaiProxy.StreamInterruptionUpstream,
+		Err:           errors.New("upstream hung up"),
+		ChunksEmitted: 7,
+	}
+
+	if _, err := tracker.PostResponse(context.Background(), req, res); err != nil {
+		t.Fatalf("PostResponse: %v", err)
+	}
+
+	if usageStore.recorded == nil {
+		t.Fatal("no usage recorded for an interrupted stream")
+	}
+	if got, want := usageStore.recorded.Status(), model.UsageStatusInterrupted; got != want {
+		t.Errorf("Status() = %q, want %q", got, want)
+	}
+	// 1000 prompt tokens at 1000 µ¢/1k + 300 completion tokens at 2000 µ¢/1k.
+	if got, want := usageStore.recorded.Cost(), int64(1000+600); got != want {
+		t.Errorf("Cost() = %d, want %d: partial usage must be charged", got, want)
+	}
+}
+
+// TestUsageTrackerMarksClientHangup keeps the two interruption causes apart: a
+// client that closed the tab is not a provider failure, and reports have to be
+// able to tell them apart.
+func TestUsageTrackerMarksClientHangup(t *testing.T) {
+	orgID := model.OrgID("org-1")
+	providerID := model.NewProviderID()
+	provider := model.NewProvider(orgID, "openai", "openai", "https://api.openai.com", "key", "USD")
+	llmModel := model.NewLLMModel(providerID, orgID, "cadoles/test-model", "real/model", "desc", 1000, 2000)
+	org := model.NewOrganization(testTenantID, "org-1", "Org 1", "", "USD")
+
+	tracker, usageStore := newTestTracker(&fakeProviderStore{provider: provider, llmModel: llmModel}, &fakeOrgStore{org: org})
+
+	req, res := newTestRequestResponse(llmModel.ID(), orgID, &genaiProxy.TokenUsage{PromptTokens: 10, CompletionTokens: 5})
+	res.Interruption = &genaiProxy.StreamInterruption{Cause: genaiProxy.StreamInterruptionClientGone}
+
+	if _, err := tracker.PostResponse(context.Background(), req, res); err != nil {
+		t.Fatalf("PostResponse: %v", err)
+	}
+	if got, want := usageStore.recorded.Status(), model.UsageStatusClientGone; got != want {
+		t.Errorf("Status() = %q, want %q", got, want)
+	}
+}
+
+// TestUsageTrackerMarksCompletedStream guards the normal path: no interruption
+// means a plain "ok" record.
+func TestUsageTrackerMarksCompletedStream(t *testing.T) {
+	orgID := model.OrgID("org-1")
+	providerID := model.NewProviderID()
+	provider := model.NewProvider(orgID, "openai", "openai", "https://api.openai.com", "key", "USD")
+	llmModel := model.NewLLMModel(providerID, orgID, "cadoles/test-model", "real/model", "desc", 1000, 2000)
+	org := model.NewOrganization(testTenantID, "org-1", "Org 1", "", "USD")
+
+	tracker, usageStore := newTestTracker(&fakeProviderStore{provider: provider, llmModel: llmModel}, &fakeOrgStore{org: org})
+
+	req, res := newTestRequestResponse(llmModel.ID(), orgID, &genaiProxy.TokenUsage{PromptTokens: 10, CompletionTokens: 5})
+
+	if _, err := tracker.PostResponse(context.Background(), req, res); err != nil {
+		t.Fatalf("PostResponse: %v", err)
+	}
+	if got, want := usageStore.recorded.Status(), model.UsageStatusOK; got != want {
+		t.Errorf("Status() = %q, want %q", got, want)
+	}
+}

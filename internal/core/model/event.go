@@ -30,6 +30,11 @@ const EventSourcePlatform = "platform"
 const (
 	EventTypeProxyRequest       = "proxy.request"
 	EventTypeProxyRequestFailed = "proxy.request.failed"
+	// EventTypeProxyStreamInterrupted marks a streamed answer that stopped
+	// before the provider signalled completion. Its usage is still recorded —
+	// the tokens were produced and billed — so this event is what makes the
+	// interruption rate measurable.
+	EventTypeProxyStreamInterrupted = "proxy.stream.interrupted"
 	EventTypeAuthLoginFailed    = "auth.login.failed"
 
 	EventTypeProviderCreated = "provider.created"
@@ -80,6 +85,7 @@ func PlatformEventTypes() []EventTypeDef {
 	return []EventTypeDef{
 		{EventTypeProxyRequest, "Requête proxy", SeverityInfo},
 		{EventTypeProxyRequestFailed, "Requête proxy en échec", SeverityWarning},
+		{EventTypeProxyStreamInterrupted, "Flux proxy interrompu", SeverityWarning},
 		{EventTypeAuthLoginFailed, "Échec de connexion", SeverityWarning},
 
 		{EventTypeProviderCreated, "Fournisseur créé", SeverityInfo},

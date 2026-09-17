@@ -22,8 +22,8 @@ github.com/bahlo/generic-list-go v0.2.0 h1:5sz/EEAK+ls5wF+NeqDpk5+iNdMDXrh3z3nPn
 github.com/bahlo/generic-list-go v0.2.0/go.mod h1:2KvAjgMlE5NNynlg/5iLrrCCZ2+5xWbdbCW3pNTGyYg=
 github.com/beorn7/perks v1.0.1 h1:VlbKKnNfV8bJzeqoa4cOKqO6bYr3WgKZxO8Z16+hsOM=
 github.com/beorn7/perks v1.0.1/go.mod h1:G2ZrVWU2WbWT9wwq4/hrbKbnv/1ERSJQ0ibhJ6rlkpw=
-github.com/bornholm/genai v0.40.0 h1:F3m/Eb8MuX4X+rh+M7mViOckf/Y4RsR9jKevNG6NfZQ=
-github.com/bornholm/genai v0.40.0/go.mod h1:i9wtyZ9gayJursxgEUUoWG3v6K8S3bNPYDtYtmM+hkI=
+github.com/bornholm/genai v0.41.0 h1:nTUjZXOLw0wHbFTVAh3HMJBL00yHkUgJgz6FoUsHhuc=
+github.com/bornholm/genai v0.41.0/go.mod h1:i9wtyZ9gayJursxgEUUoWG3v6K8S3bNPYDtYtmM+hkI=
 github.com/bornholm/go-anon v0.3.0 h1:VjPZFF2T+eRiy5z7RYtDoRIJ/g88nh52BymEtrr5InE=
 github.com/bornholm/go-anon v0.3.0/go.mod h1:q9EiQH9IdPYxfcj3+Htua+WgR0Us4GIJ5uV5j3LZRRA=
 github.com/bornholm/go-fuzzy v0.0.0-20250815131223-76b121e8632d h1:IUrWuFur+t1DKOMt49Np0vzF/9WcX1A1H9kWpiyMhPA=

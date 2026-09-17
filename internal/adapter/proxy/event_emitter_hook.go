@@ -59,6 +59,29 @@ func (h *XoloEventEmitterHook) PostResponse(ctx context.Context, req *genaiProxy
 		attrs["total_tokens"] = strconv.Itoa(res.TokensUsed.PromptTokens + res.TokensUsed.CompletionTokens)
 	}
 
+	// A stream cut short is not an OnError case: the client was answered with a
+	// 200 and received part of the answer, so it never reaches the error hook.
+	// It gets its own event, with the usage attributes above, because that is
+	// the only place the interruption rate can be read from.
+	if res.Interruption != nil {
+		attrs["cause"] = string(res.Interruption.Cause)
+		attrs["chunks_emitted"] = strconv.Itoa(res.Interruption.ChunksEmitted)
+		if res.Interruption.Err != nil {
+			attrs["error"] = truncate(res.Interruption.Err.Error(), maxErrorAttributeLength)
+		}
+
+		event := model.NewEvent(model.EventSourcePlatform, model.EventTypeProxyStreamInterrupted,
+			model.WithEventOrg(orgID),
+			model.WithEventUser(model.UserID(req.UserID)),
+			model.WithEventSeverity(model.SeverityWarning),
+			model.WithEventMessage("Flux proxy interrompu ("+string(res.Interruption.Cause)+"): "+req.Model),
+			model.WithEventAttributes(attrs),
+		)
+		h.emitter.Emit(ctx, event)
+
+		return nil, nil
+	}
+
 	event := model.NewEvent(model.EventSourcePlatform, model.EventTypeProxyRequest,
 		model.WithEventOrg(orgID),
 		model.WithEventUser(model.UserID(req.UserID)),

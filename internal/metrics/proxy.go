@@ -9,7 +9,9 @@ const (
 	NameProxyRequestDuration    = "proxy_request_duration_seconds"
 	NameProxyErrors             = "proxy_errors_total"
 	NameFairShareDegradedShares = "fair_share_degraded_shares_total"
+	NameStreamInterrupted       = "proxy_stream_interrupted_total"
 	LabelModel                  = "model"
+	LabelCause                  = "cause"
 )
 
 var ProxyRequestDuration = promauto.NewHistogramVec(
@@ -42,4 +44,19 @@ var FairShareDegradedShares = promauto.NewCounterVec(
 		Namespace: Namespace,
 	},
 	[]string{LabelOrg},
+)
+
+// StreamInterrupted counts the streamed answers that stopped before the
+// provider signalled completion, by cause: "upstream_error" when the provider
+// failed mid-stream, "client_gone" when the client hung up. Those requests are
+// billed by the provider and their usage is recorded, so this is the rate that
+// sizes what an unstable provider costs — without it a provider failing
+// mid-stream simply disappears from the figures.
+var StreamInterrupted = promauto.NewCounterVec(
+	prometheus.CounterOpts{
+		Name:      NameStreamInterrupted,
+		Help:      "Total number of streamed responses interrupted before completion",
+		Namespace: Namespace,
+	},
+	[]string{LabelOrg, LabelModel, LabelCause},
 )

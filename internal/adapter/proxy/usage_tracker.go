@@ -88,6 +88,15 @@ func (t *XoloUsageTracker) PostResponse(ctx context.Context, req *genaiProxy.Pro
 	cachedTokens := res.TokensUsed.CachedTokens
 	completionTokens := res.TokensUsed.CompletionTokens
 
+	status := usageStatus(res)
+	if status != model.UsageStatusOK {
+		metrics.StreamInterrupted.With(prometheus.Labels{
+			metrics.LabelOrg:   string(orgID),
+			metrics.LabelModel: llmModel.ProxyName(),
+			metrics.LabelCause: string(res.Interruption.Cause),
+		}).Inc()
+	}
+
 	metrics.ChatCompletionRequests.With(prometheus.Labels{
 		metrics.LabelOrg: string(orgID),
 	}).Inc()
@@ -165,6 +174,7 @@ func (t *XoloUsageTracker) PostResponse(ctx context.Context, req *genaiProxy.Pro
 	)
 	record.SetPlanCovered(planCovered)
 	record.SetProviderCost(providerCost)
+	record.SetStatus(status)
 
 	if err := t.usageStore.RecordUsage(ctx, record); err != nil {
 		slog.ErrorContext(ctx, "usage tracker: could not record usage", slog.Any("error", errors.WithStack(err)))
@@ -174,3 +184,21 @@ func (t *XoloUsageTracker) PostResponse(ctx context.Context, req *genaiProxy.Pro
 }
 
 var _ genaiProxy.PostResponseHook = &XoloUsageTracker{}
+
+// usageStatus maps how the proxy reported the exchange ending onto the status
+// stored on the record. A stream cut short still produced and delivered tokens
+// the provider billed, so it is recorded like any other call; the status is
+// what keeps it distinguishable afterwards.
+func usageStatus(res *genaiProxy.ProxyResponse) model.UsageStatus {
+	if res.Interruption == nil {
+		return model.UsageStatusOK
+	}
+	switch res.Interruption.Cause {
+	case genaiProxy.StreamInterruptionUpstream:
+		return model.UsageStatusInterrupted
+	case genaiProxy.StreamInterruptionClientGone:
+		return model.UsageStatusClientGone
+	default:
+		return model.UsageStatusOK
+	}
+}

@@ -26,6 +26,23 @@ const (
 	CostSourceComputed CostSource = "computed"
 )
 
+// UsageStatus tells how the proxy call the record accounts for ended. A
+// streamed answer can stop before the provider signals completion while the
+// tokens already produced were billed and delivered, so the record exists
+// either way and this is what sets it apart from a normal one.
+type UsageStatus string
+
+const (
+	// UsageStatusOK means the call ran to completion.
+	UsageStatusOK UsageStatus = "ok"
+	// UsageStatusInterrupted means the provider failed mid-stream, after chunks
+	// had already reached the client.
+	UsageStatusInterrupted UsageStatus = "interrupted"
+	// UsageStatusClientGone means the client hung up mid-stream — a closed tab,
+	// an aborted request, a reverse proxy timing out.
+	UsageStatusClientGone UsageStatus = "client_gone"
+)
+
 // UsageRecord captures one proxy call with cost frozen at recording time.
 type UsageRecord interface {
 	WithID[UsageRecordID]
@@ -54,6 +71,10 @@ type UsageRecord interface {
 	// ProviderCost is the raw equivalent PAYG cost in the provider's own currency (microcents).
 	// Used to measure rolling-window value budgets on subscription plans.
 	ProviderCost() int64
+	// Status tells whether the call completed or was cut short. Interrupted
+	// records count toward quotas and costs like any other: the tokens were
+	// produced and billed.
+	Status() UsageStatus
 }
 
 type BaseUsageRecord struct {
@@ -76,6 +97,7 @@ type BaseUsageRecord struct {
 	createdAt         time.Time
 	planCovered       bool
 	providerCost      int64
+	status            UsageStatus
 }
 
 func (r *BaseUsageRecord) ID() UsageRecordID            { return r.id }
@@ -98,10 +120,12 @@ func (r *BaseUsageRecord) CreatedAt() time.Time         { return r.createdAt }
 
 func (r *BaseUsageRecord) PlanCovered() bool  { return r.planCovered }
 func (r *BaseUsageRecord) ProviderCost() int64 { return r.providerCost }
+func (r *BaseUsageRecord) Status() UsageStatus { return r.status }
 
 func (r *BaseUsageRecord) SetResolvedModelName(v string) { r.resolvedModelName = v }
 func (r *BaseUsageRecord) SetPlanCovered(v bool)         { r.planCovered = v }
 func (r *BaseUsageRecord) SetProviderCost(v int64)       { r.providerCost = v }
+func (r *BaseUsageRecord) SetStatus(v UsageStatus)       { r.status = v }
 
 var _ UsageRecord = &BaseUsageRecord{}
 
@@ -133,5 +157,6 @@ func NewUsageRecord(
 		currency:          currency,
 		costSource:        costSource,
 		createdAt:         time.Now(),
+		status:            UsageStatusOK,
 	}
 }

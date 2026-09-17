@@ -47,6 +47,10 @@ type UsageRecord struct {
 	CostSource        string // "provider" or "computed", see model.CostSource
 	PlanCovered       int    `gorm:"index;default:0;index:idx_usage_org_payg_cost,priority:2;index:idx_usage_org_prov_plan,priority:3;index:idx_usage_org_prov_user,priority:3"` // 1 if served by a subscription provider
 	ProviderCost      int64  // equivalent PAYG cost in provider currency (microcents), for plan value budgets
+	// Status is "ok", "interrupted" or "client_gone", see model.UsageStatus. It
+	// is indexed so usage reports can isolate the interrupted calls without
+	// scanning the table; every status counts toward quotas and costs.
+	Status string `gorm:"index;default:ok"`
 }
 
 type wrappedUsageRecord struct {
@@ -75,6 +79,15 @@ func (w *wrappedUsageRecord) CreatedAt() time.Time         { return w.r.CreatedA
 func (w *wrappedUsageRecord) PlanCovered() bool            { return w.r.PlanCovered != 0 }
 func (w *wrappedUsageRecord) ProviderCost() int64          { return w.r.ProviderCost }
 
+// Status defaults to model.UsageStatusOK for rows written before the column
+// existed: they are all completed calls, the only ones recorded back then.
+func (w *wrappedUsageRecord) Status() model.UsageStatus {
+	if w.r.Status == "" {
+		return model.UsageStatusOK
+	}
+	return model.UsageStatus(w.r.Status)
+}
+
 var _ model.UsageRecord = &wrappedUsageRecord{}
 
 func fromUsageRecord(r model.UsageRecord) *UsageRecord {
@@ -97,5 +110,6 @@ func fromUsageRecord(r model.UsageRecord) *UsageRecord {
 		CostSource:        string(r.CostSource()),
 		PlanCovered:       boolToInt(r.PlanCovered()),
 		ProviderCost:      r.ProviderCost(),
+		Status:            string(r.Status()),
 	}
 }
