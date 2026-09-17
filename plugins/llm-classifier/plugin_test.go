@@ -128,6 +128,65 @@ func TestParseVerdict_FencedJSON(t *testing.T) {
 	}
 }
 
+// Regression: when the model rambles and mentions more than one category, the
+// most-mentioned one must win. The previous substring loop always returned the
+// first declared category, which made the classifier look broken whenever the
+// model answer had a preamble or an internal monologue.
+func TestParseVerdict_MultiCategoryTextPicksMostMentioned(t *testing.T) {
+	cats := []Category{{Name: "code"}, {Name: "doc"}, {Name: "autre"}}
+	v, ok := parseVerdict("It could be doc or doc, possibly doc, but definitely not really code.", cats)
+	if !ok || v.Category != "doc" {
+		t.Errorf("expected doc (mentioned 3x), got %+v ok=%v", v, ok)
+	}
+}
+
+// Regression: ties are broken by declaration order so the verdict stays
+// deterministic across runs.
+func TestParseVerdict_TiesBreakByDeclarationOrder(t *testing.T) {
+	cats := []Category{{Name: "code"}, {Name: "doc"}}
+	v, ok := parseVerdict("Could be code or doc.", cats)
+	if !ok || v.Category != "code" {
+		t.Errorf("expected code on tie (declared first), got %+v", v)
+	}
+}
+
+// Regression: a stray prose prefix around the JSON must not swallow the
+// object. The previous `(?s)\{.*\}` regex was greedy and would catch the first
+// `{` to the very last `}` of the content, leaving json.Unmarshal with junk.
+func TestParseVerdict_ProseAroundJSONIsIgnored(t *testing.T) {
+	cats := []Category{{Name: "code"}, {Name: "doc"}}
+	v, ok := parseVerdict("Sure thing! Here you go:\n{\"category\": \"doc\", \"confidence\": 0.7}", cats)
+	if !ok || v.Category != "doc" || v.Confidence != 0.7 {
+		t.Errorf("expected doc/0.7, got %+v ok=%v", v, ok)
+	}
+}
+
+// Regression: a fenced JSON is preferred over a bare object further down.
+func TestParseVerdict_FencedBeforeBare(t *testing.T) {
+	cats := []Category{{Name: "code"}, {Name: "doc"}}
+	content := "noise\n```json\n{\"category\": \"doc\", \"confidence\": 0.9}\n```\n{\"category\": \"code\"}"
+	v, ok := parseVerdict(content, cats)
+	if !ok || v.Category != "doc" {
+		t.Errorf("expected the fenced doc verdict, got %+v", v)
+	}
+}
+
+// Regression: substring matching must respect word boundaries so "code" does
+// not bleed into "encoder", "decode" or "hardcoded".
+func TestParseVerdict_WordBoundaryExcludesSubstrings(t *testing.T) {
+	cats := []Category{{Name: "code"}, {Name: "doc"}}
+	// "code" appears only as a substring inside "encoder" / "hardcoded".
+	v, ok := parseVerdict("Please rewrite the encoder and review the hardcoded values in this PR.", cats)
+	if ok {
+		t.Errorf("expected no match, got %+v (category=%q)", v, v.Category)
+	}
+	// A single, well-bounded mention of "code" still wins.
+	v, ok = parseVerdict("The encoder is fine. The code could use a refactor.", cats)
+	if !ok || v.Category != "code" {
+		t.Errorf("expected code on a single word-boundary mention, got %+v", v)
+	}
+}
+
 func contains(s, sub string) bool {
 	return len(sub) == 0 || (len(s) >= len(sub) && indexOf(s, sub) >= 0)
 }
