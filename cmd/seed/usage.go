@@ -167,7 +167,11 @@ func (s *seeder) seedUsage(ctx context.Context) error {
 		}
 	}
 
-	return nil
+	// The records were written in bulk, not through the store, so the budget
+	// counters the quota enforcer reads were never incremented. Rebuilding them
+	// here is what makes a seeded instance enforce the quotas its usage history
+	// implies.
+	return errors.WithStack(gormadapter.RebuildQuotaUsage(s.db))
 }
 
 // tokenCounts draws a plausible triple (prompt, cached, completion) for one

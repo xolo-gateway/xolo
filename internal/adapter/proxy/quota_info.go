@@ -41,9 +41,9 @@ func (r *QuotaInfoResolver) Resolve(ctx context.Context, userID model.UserID, or
 	now := r.now()
 	info := &proto.QuotaInfo{}
 	ok := true
-	info.DailyTotal, info.DailyRemaining, ok = r.period(ctx, userID, orgID, effective.DailyBudget, startOfDay(now), ok)
-	info.MonthlyTotal, info.MonthlyRemaining, ok = r.period(ctx, userID, orgID, effective.MonthlyBudget, startOfMonth(now), ok)
-	info.YearlyTotal, info.YearlyRemaining, ok = r.period(ctx, userID, orgID, effective.YearlyBudget, startOfYear(now), ok)
+	info.DailyTotal, info.DailyRemaining, ok = r.period(ctx, userID, orgID, effective.DailyBudget, model.StartOfDay(now), ok)
+	info.MonthlyTotal, info.MonthlyRemaining, ok = r.period(ctx, userID, orgID, effective.MonthlyBudget, model.StartOfMonth(now), ok)
+	info.YearlyTotal, info.YearlyRemaining, ok = r.period(ctx, userID, orgID, effective.YearlyBudget, model.StartOfYear(now), ok)
 	if !ok {
 		return nil
 	}
@@ -54,7 +54,7 @@ func (r *QuotaInfoResolver) period(ctx context.Context, userID model.UserID, org
 	if !ok || budget == nil {
 		return 0, 0, ok
 	}
-	spent, err := r.usageStore.SumCostSince(ctx, userID, orgID, since)
+	spent, err := r.usageStore.SumQuotaCostSince(ctx, model.QuotaScopeUser, string(userID), orgID, since)
 	if err != nil {
 		slog.WarnContext(ctx, "pipeline: could not sum usage for quota", slog.Any("error", err))
 		return 0, 0, false

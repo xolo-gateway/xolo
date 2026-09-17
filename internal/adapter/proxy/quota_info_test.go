@@ -19,7 +19,7 @@ func (f fakeQuotaResolver) ResolveEffectiveQuota(context.Context, model.UserID, 
 	return f.quota, f.err
 }
 
-// fakeUsage answers SumCostSince with the amount registered for the period start.
+// fakeUsage answers SumQuotaCostSince with the amount registered for the period start.
 type fakeUsage struct {
 	port.UsageStore
 	spent map[time.Time]int64
@@ -27,7 +27,7 @@ type fakeUsage struct {
 	err   error
 }
 
-func (f *fakeUsage) SumCostSince(_ context.Context, _ model.UserID, _ model.OrgID, since time.Time) (int64, error) {
+func (f *fakeUsage) SumQuotaCostSince(_ context.Context, _ model.QuotaScope, _ string, _ model.OrgID, since time.Time) (int64, error) {
 	f.calls++
 	return f.spent[since], f.err
 }
@@ -37,8 +37,8 @@ func i64(v int64) *int64 { return &v }
 func TestQuotaInfoResolver_Resolve(t *testing.T) {
 	now := time.Date(2026, 9, 8, 15, 0, 0, 0, time.UTC)
 	usage := &fakeUsage{spent: map[time.Time]int64{
-		startOfDay(now):   25,
-		startOfMonth(now): 800,
+		model.StartOfDay(now):   25,
+		model.StartOfMonth(now): 800,
 	}}
 	r := NewQuotaInfoResolver(fakeQuotaResolver{quota: &model.EffectiveQuota{
 		DailyBudget:   i64(100),
@@ -66,7 +66,7 @@ func TestQuotaInfoResolver_Resolve(t *testing.T) {
 
 func TestQuotaInfoResolver_OverspentClampsToZero(t *testing.T) {
 	now := time.Now()
-	usage := &fakeUsage{spent: map[time.Time]int64{startOfDay(now): 500}}
+	usage := &fakeUsage{spent: map[time.Time]int64{model.StartOfDay(now): 500}}
 	r := NewQuotaInfoResolver(fakeQuotaResolver{quota: &model.EffectiveQuota{DailyBudget: i64(100)}}, usage)
 	info := r.Resolve(context.Background(), "u", "o")
 	if info == nil || info.DailyRemaining != 0 {

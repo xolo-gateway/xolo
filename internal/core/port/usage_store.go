@@ -12,7 +12,18 @@ type UsageStore interface {
 	QueryUsage(ctx context.Context, filter UsageFilter) ([]model.UsageRecord, error)
 	AggregateUsage(ctx context.Context, filter UsageFilter) (*UsageAggregate, error)
 	// SumCostSince sums all PAYG (plan_covered=false) costs for a user+org since the given time.
+	// It reads usage_records directly and its cost grows with the history: use it for reports,
+	// never on the proxy hot path, where SumQuotaCostSince answers the same question.
 	SumCostSince(ctx context.Context, userID model.UserID, orgID model.OrgID, since time.Time) (int64, error)
+	// SumQuotaCostSince returns the PAYG spending of one budget scope (a user or an org,
+	// always within one organization) since the given time, summed across currencies the
+	// way the budget check consumes it.
+	//
+	// It is answered from the running per-day counters maintained when usage is recorded,
+	// not by aggregating the usage history: the yearly window covers the whole table, and
+	// running that scan on every proxied request made the database saturate long before
+	// the gateway.
+	SumQuotaCostSince(ctx context.Context, scope model.QuotaScope, scopeID string, orgID model.OrgID, since time.Time) (int64, error)
 	// SumCostSinceByCurrency returns the total PAYG (plan_covered=false) cost per currency for an
 	// org (and optionally a subset of users) since the given time. When userIDs is empty, all users
 	// are included.

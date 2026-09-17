@@ -320,6 +320,22 @@ func createGetDatabase(db *gorm.DB) func(ctx context.Context) (*gorm.DB, error) 
 						return errors.WithStack(tx.Migrator().DropColumn(&UsageRecord{}, "status"))
 					},
 				},
+				{
+					// Running per-day PAYG counters backing budget enforcement.
+					// Until now every proxied request aggregated over
+					// usage_records, up to six times, and the yearly window
+					// rescanned the whole history: the database saturated at a few
+					// tens of requests per second whatever the number of gateway
+					// replicas. The counters are filled from the existing history
+					// so budgets carry over unchanged.
+					ID: "202609170002",
+					Migrate: func(tx *gorm.DB) error {
+						return migrateQuotaUsageCounters(tx)
+					},
+					Rollback: func(tx *gorm.DB) error {
+						return errors.WithStack(tx.Migrator().DropTable("quota_usages"))
+					},
+				},
 			})
 
 			m.InitSchema(func(tx *gorm.DB) error {
@@ -349,7 +365,7 @@ func createGetDatabase(db *gorm.DB) func(ctx context.Context) (*gorm.DB, error) 
 						// Personal virtual model store
 						&PersonalVirtualModel{},
 						// Quota store
-						&Quota{},
+						&Quota{}, &QuotaUsage{},
 						// Usage store
 						&UsageRecord{},
 						// Invite store
