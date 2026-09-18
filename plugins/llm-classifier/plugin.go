@@ -8,6 +8,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/xolo-gateway/xolo/pkg/pluginsdk"
 	proto "github.com/xolo-gateway/xolo/pkg/pluginsdk/proto"
@@ -214,8 +216,8 @@ func historyExcerpt(messagesJSON string, maxChars int) string {
 // left json.Unmarshal with a payload it could not decode, silently routing
 // every failure to the substring fallback below.
 var (
-	reJSONFence   = regexp.MustCompile("(?s)```(?:json)?\\s*(\\{[^{}]*\\})\\s*```")
-	reJSONObject  = regexp.MustCompile(`(?s)\{[^{}]*\}`)
+	reJSONFence  = regexp.MustCompile("(?s)```(?:json)?\\s*(\\{[^{}]*\\})\\s*```")
+	reJSONObject = regexp.MustCompile(`(?s)\{[^{}]*\}`)
 )
 
 // parseVerdict reads the model's answer. It tries, in order: a JSON object
@@ -268,34 +270,46 @@ func tryParseJSON(content string) (verdict, bool) {
 }
 
 // countWordMatches returns how many times needle appears in haystack as a
-// whole word (non-alphanumeric boundaries). It prevents "code" from matching
-// inside "encoder" or "decode".
+// whole word. Boundaries are decoded as runes, not bytes: an ASCII-only test
+// takes a UTF-8 continuation byte for a boundary, so "code" would count as a
+// mention inside "décode".
 func countWordMatches(haystack, needle string) int {
 	if needle == "" {
 		return 0
 	}
 	n, i := 0, 0
-	for {
+	for i < len(haystack) {
 		j := strings.Index(haystack[i:], needle)
 		if j < 0 {
 			return n
 		}
 		k := i + j
-		leftOK := k == 0 || !isAlnum(haystack[k-1])
-		rightEnd := k + len(needle)
-		rightOK := rightEnd == len(haystack) || !isAlnum(haystack[rightEnd])
-		if leftOK && rightOK {
+		if !endsWithWordRune(haystack[:k]) && !startsWithWordRune(haystack[k+len(needle):]) {
 			n++
 		}
 		i = k + len(needle)
-		if i >= len(haystack) {
-			return n
-		}
 	}
+	return n
 }
 
-func isAlnum(b byte) bool {
-	return (b >= 'a' && b <= 'z') || (b >= '0' && b <= '9')
+func endsWithWordRune(s string) bool {
+	if s == "" {
+		return false
+	}
+	r, _ := utf8.DecodeLastRuneInString(s)
+	return isWordRune(r)
+}
+
+func startsWithWordRune(s string) bool {
+	if s == "" {
+		return false
+	}
+	r, _ := utf8.DecodeRuneInString(s)
+	return isWordRune(r)
+}
+
+func isWordRune(r rune) bool {
+	return unicode.IsLetter(r) || unicode.IsDigit(r)
 }
 
 func matchCategory(answer string, categories []Category) (string, bool) {
