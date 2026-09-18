@@ -161,13 +161,18 @@ func TestParseVerdict_ProseAroundJSONIsIgnored(t *testing.T) {
 	}
 }
 
-// Regression: a fenced JSON is preferred over a bare object further down.
-func TestParseVerdict_FencedBeforeBare(t *testing.T) {
+// The blocks genai returns come in document order and the first one carrying a
+// category wins. A fenced block has no privilege of its own — the fence is
+// prose around the object — so the invariant is checked both ways round.
+func TestParseVerdict_FirstJSONObjectWins(t *testing.T) {
 	cats := []Category{{Name: "code"}, {Name: "doc"}}
-	content := "noise\n```json\n{\"category\": \"doc\", \"confidence\": 0.9}\n```\n{\"category\": \"code\"}"
-	v, ok := parseVerdict(content, cats)
-	if !ok || v.Category != "doc" {
-		t.Errorf("expected the fenced doc verdict, got %+v", v)
+	fencedFirst := "noise\n```json\n{\"category\": \"doc\"}\n```\n{\"category\": \"code\"}"
+	if v, ok := parseVerdict(fencedFirst, cats); !ok || v.Category != "doc" {
+		t.Errorf("expected doc, the first object, got %+v ok=%v", v, ok)
+	}
+	bareFirst := "{\"category\": \"code\"}\n```json\n{\"category\": \"doc\"}\n```"
+	if v, ok := parseVerdict(bareFirst, cats); !ok || v.Category != "code" {
+		t.Errorf("expected code, the first object, got %+v ok=%v", v, ok)
 	}
 }
 
@@ -187,10 +192,10 @@ func TestParseVerdict_WordBoundaryExcludesSubstrings(t *testing.T) {
 	}
 }
 
-// Regression: a brace inside a JSON string value must not break the
-// extraction. The non-greedy `\{[^{}]*\}` regex rejected the whole object,
-// the verdict fell through to the prose count, and a reason that mentioned
-// another category more often flipped the answer.
+// A brace inside a JSON string value must not break the extraction. This
+// locks the behaviour rather than fixing a bug: the greedy regexp this branch
+// started from already decoded it. The non-greedy regexp tried in between did
+// not, which is how the case surfaced.
 func TestParseVerdict_BracesInsideJSONString(t *testing.T) {
 	cats := []Category{{Name: "code"}, {Name: "doc"}, {Name: "autre"}}
 	content := `{"category":"doc","confidence":0.95,"reason":"asks to document the code, not to write code like func(){}"}`
@@ -200,8 +205,8 @@ func TestParseVerdict_BracesInsideJSONString(t *testing.T) {
 	}
 }
 
-// Regression: a nested object is valid JSON and must decode, rather than be
-// discarded in favour of the prose count.
+// A nested object is valid JSON and must decode rather than fall through to
+// the prose count. Behaviour lock, same story as the test above.
 func TestParseVerdict_NestedObjectIsParsed(t *testing.T) {
 	cats := []Category{{Name: "code"}, {Name: "doc"}}
 	content := `{"category":"code","confidence":0.8,"meta":{"tokens":12}}`
@@ -246,6 +251,81 @@ func TestParseVerdict_SloppyJSONIsRepaired(t *testing.T) {
 		if v.Confidence < 0.69 || v.Confidence > 0.71 {
 			t.Errorf("expected confidence near 0.7 from %q, got %v", content, v.Confidence)
 		}
+	}
+}
+
+// Regression: a scratchpad object before the verdict used to merge with it.
+// Both the greedy regexp on main and the one genai shipped until v0.42.0 ran
+// from the first `{` of the answer to its last `}`, so json-repair resolved the
+// merged block to the stray object, the category came out empty, and the prose
+// count answered "code" against a JSON verdict that said "doc".
+func TestParseVerdict_StrayObjectBeforeVerdict(t *testing.T) {
+	cats := []Category{{Name: "code"}, {Name: "doc"}, {Name: "autre"}}
+	for _, content := range []string{
+		`code code code {"a":1} {"category":"doc","confidence":0.9}`,
+		`code code code {} {"category":"doc","confidence":0.9}`,
+		`The user wrote { and } in their code code code. Verdict: {"category":"doc","confidence":0.9}`,
+		`code { code {"category":"doc","confidence":0.9}`,
+	} {
+		v, ok := parseVerdict(content, cats)
+		if !ok || v.Category != "doc" {
+			t.Errorf("expected doc from %q, got %+v ok=%v", content, v, ok)
+		}
+	}
+}
+
+// A payload cut short by max_tokens is closed by json-repair instead of being
+// dropped. Neither regexp could match it: both needed a closing brace.
+func TestParseVerdict_TruncatedJSONIsRecovered(t *testing.T) {
+	cats := []Category{{Name: "code"}, {Name: "doc"}}
+	v, ok := parseVerdict(`{"category":"doc","confidence":0.9`, cats)
+	if !ok || v.Category != "doc" {
+		t.Errorf("expected doc from a truncated payload, got %+v ok=%v", v, ok)
+	}
+	// The confidence proves the verdict came from the payload: the prose count
+	// would also answer "doc" here, but with its flat 0.5.
+	if v.Confidence < 0.89 || v.Confidence > 0.91 {
+		t.Errorf("expected the confidence carried by the payload, got %v", v.Confidence)
+	}
+}
+
+// The word-boundary rule drops inflected forms. This is the accepted cost of
+// excluding "encoder" and "hardcoded"; the test exists so the trade-off is not
+// changed by accident.
+func TestParseVerdict_InflectedFormsAreNotMatches(t *testing.T) {
+	for _, tc := range []struct{ haystack, needle string }{
+		{"i need it coded", "code"},
+		{"it is a maths problem", "math"},
+		{"check the docs", "doc"},
+	} {
+		if n := countWordMatches(tc.haystack, tc.needle); n != 0 {
+			t.Errorf("expected %q not to count as a mention of %q, got %d", tc.haystack, tc.needle, n)
+		}
+	}
+	// Punctuation is a boundary, so these do count.
+	for _, tc := range []struct{ haystack, needle string }{
+		{"a code-based answer", "code"},
+		{"the code's author", "code"},
+	} {
+		if n := countWordMatches(tc.haystack, tc.needle); n != 1 {
+			t.Errorf("expected %q to count once as %q, got %d", tc.haystack, tc.needle, n)
+		}
+	}
+}
+
+// A JSON verdict naming a category that is not configured falls through to the
+// prose count, which runs over the raw answer — the JSON text included. With
+// no configured category named anywhere, parseVerdict reports no match and the
+// caller applies fallback_category.
+func TestParseVerdict_UnknownJSONCategoryFallsThrough(t *testing.T) {
+	cats := []Category{{Name: "code"}, {Name: "doc"}}
+	if v, ok := parseVerdict(`{"category":"banana","confidence":0.9}`, cats); ok {
+		t.Errorf("expected no match for an unconfigured category, got %+v", v)
+	}
+	// When the answer does name a configured category, that one wins.
+	v, ok := parseVerdict(`{"category":"banana","reason":"really about the doc"}`, cats)
+	if !ok || v.Category != "doc" {
+		t.Errorf("expected doc from the prose count, got %+v ok=%v", v, ok)
 	}
 }
 
