@@ -216,15 +216,12 @@ func historyExcerpt(messagesJSON string, maxChars int) string {
 // parse failed (so a request that mentioned every category ended up labelled
 // with whichever came first in the list).
 func parseVerdict(content string, categories []Category) (verdict, bool) {
-	if v, ok := tryParseJSON(content); ok {
-		if cat, mOK := matchCategory(v.Category, categories); mOK {
-			v.Category = cat
-			v.Confidence = clamp01(v.Confidence)
-			if v.Confidence == 0 {
-				v.Confidence = 0.5
-			}
-			return v, true
+	if v, ok := tryParseJSON(content, categories); ok {
+		v.Confidence = clamp01(v.Confidence)
+		if v.Confidence == 0 {
+			v.Confidence = 0.5
 		}
+		return v, true
 	}
 	lower := strings.ToLower(content)
 	best, bestN := "", 0
@@ -247,18 +244,22 @@ func parseVerdict(content string, categories []Category) (verdict, bool) {
 // neither copes with the trailing commas, single quotes and payloads cut short
 // by max_tokens that small models produce.
 //
-// The blocks come in document order and the first one carrying a category
-// wins, so a scratchpad object the model wrote before its verdict is skipped
-// rather than mistaken for it. There is no preference for a fenced block: the
-// fence is prose around the object, nothing more. Returns ok=false when no
-// block yields a category, which is the normal path for a prose-only answer.
-func tryParseJSON(content string) (verdict, bool) {
+// The blocks come in document order and the first one naming a configured
+// category wins, so a scratchpad object the model wrote before its verdict is
+// skipped rather than mistaken for it — including when that scratchpad carries
+// a category of its own. Testing the block against `categories` here, rather
+// than on the single block the caller gets back, is what makes that true.
+// There is no preference for a fenced block: the fence is prose around the
+// object, nothing more. Returns ok=false when no block names a configured
+// category, which is the normal path for a prose-only answer.
+func tryParseJSON(content string, categories []Category) (verdict, bool) {
 	verdicts, err := llm.ParseJSON[verdict](llm.NewMessage(llm.RoleAssistant, content))
 	if err != nil {
 		return verdict{}, false
 	}
 	for _, v := range verdicts {
-		if v.Category != "" {
+		if name, ok := matchCategory(v.Category, categories); ok {
+			v.Category = name
 			return v, true
 		}
 	}
@@ -311,14 +312,27 @@ func startsWithWordRune(s string) bool {
 	return isWordRune(r)
 }
 
+// A combining mark is part of the word it decorates. Without Mn, the decomposed
+// form of "décode" ("de" + U+0301 + "code") puts a non-letter right before
+// "code" and the mention counts — the precomposed form already did not.
 func isWordRune(r rune) bool {
-	return unicode.IsLetter(r) || unicode.IsDigit(r)
+	return unicode.IsLetter(r) || unicode.IsDigit(r) || unicode.Is(unicode.Mn, r)
 }
 
+// matchCategory resolves the category the model named. The comparison is exact
+// apart from a trailing "s": a model that answers "docs" for a category called
+// "doc" has picked a category, not made one up, and before the word-boundary
+// rule landed the substring match let that through. Tolerating it here rather
+// than in countWordMatches keeps it off the prose path, where a loose
+// comparison is what made "encoder" count as "code".
 func matchCategory(answer string, categories []Category) (string, bool) {
 	answer = strings.TrimSpace(strings.ToLower(answer))
+	if answer == "" {
+		return "", false
+	}
 	for _, c := range categories {
-		if strings.ToLower(c.Name) == answer {
+		name := strings.ToLower(c.Name)
+		if name == answer || name+"s" == answer || name == answer+"s" {
 			return c.Name, true
 		}
 	}
