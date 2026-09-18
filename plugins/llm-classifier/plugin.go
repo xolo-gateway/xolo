@@ -240,13 +240,18 @@ func parseVerdict(content string, categories []Category) (verdict, bool) {
 	return verdict{}, false
 }
 
-// tryParseJSON delegates to genai, which locates the JSON blocks of the answer
-// and runs them through json-repair. Hand-rolled extraction does not pay off
-// here: a regexp either swallows the surrounding prose when it is greedy, or
-// rejects an object holding a nested one or a brace inside a string value when
-// it is not — and neither one copes with the trailing commas and single quotes
-// small models produce. It returns ok=false when no block yields a category,
-// which is the normal path for a prose-only answer.
+// tryParseJSON delegates to genai, which splits the answer into balanced JSON
+// blocks and runs each through json-repair. Hand-rolling this does not pay
+// off: a greedy regexp swallows the surrounding prose, a non-greedy one
+// rejects an object holding a nested one or a brace inside a string value, and
+// neither copes with the trailing commas, single quotes and payloads cut short
+// by max_tokens that small models produce.
+//
+// The blocks come in document order and the first one carrying a category
+// wins, so a scratchpad object the model wrote before its verdict is skipped
+// rather than mistaken for it. There is no preference for a fenced block: the
+// fence is prose around the object, nothing more. Returns ok=false when no
+// block yields a category, which is the normal path for a prose-only answer.
 func tryParseJSON(content string) (verdict, bool) {
 	verdicts, err := llm.ParseJSON[verdict](llm.NewMessage(llm.RoleAssistant, content))
 	if err != nil {
@@ -264,6 +269,13 @@ func tryParseJSON(content string) (verdict, bool) {
 // whole word. Boundaries are decoded as runes, not bytes: an ASCII-only test
 // takes a UTF-8 continuation byte for a boundary, so "code" would count as a
 // mention inside "décode".
+//
+// The trade-off is that inflected forms no longer count: "coded", "maths" and
+// "docs" are not mentions of "code", "math" and "doc". Loosening this would
+// bring back the "encoder"/"hardcoded" false positives this path exists to
+// remove, and a category the model only names in the plural is rare enough
+// next to a category it names inside an unrelated word. Punctuation is a
+// boundary, so "code-based" and "code's" do count.
 func countWordMatches(haystack, needle string) int {
 	if needle == "" {
 		return 0
