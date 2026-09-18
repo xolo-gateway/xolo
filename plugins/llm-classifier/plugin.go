@@ -244,17 +244,27 @@ func parseVerdict(content string, categories []Category) (verdict, bool) {
 // neither copes with the trailing commas, single quotes and payloads cut short
 // by max_tokens that small models produce.
 //
-// The blocks come in document order and the first one naming a *configured*
-// category wins. A scratchpad object the model wrote before its verdict is
-// therefore skipped only when the category it names is not configured — one
-// that names a real category wins over the verdict that follows it. That is
-// the deliberate rule: with no way to tell a draft from a final answer, the
-// first recognisable verdict is the least surprising choice, and it is what
-// keeps a stray `{"a":1}` from deciding anything.
+// Document order is a documented guarantee of ParseJSON ("every JSON object
+// found in the message content, in the order they appear"), not a property of
+// the current implementation, so the first-match rule below rests on the
+// dependency's contract rather than on its internals.
 //
-// Same reason, one caveat: genai appends a payload cut short by max_tokens
-// after the blocks that closed on their own, so a closed draft naming a
-// configured category outranks a truncated real verdict.
+// The first block naming a *configured* category wins. A scratchpad object the
+// model wrote before its verdict is therefore skipped only when the category
+// it names is not configured — one that names a real category wins over the
+// verdict that follows it. That is the deliberate rule: with no way to tell a
+// draft from a final answer, the first recognisable verdict is the least
+// surprising choice, and it is what keeps a stray `{"a":1}` from deciding
+// anything. Same reason, one caveat: ParseJSON returns a payload cut short by
+// max_tokens after the blocks that closed on their own, so a closed draft
+// naming a configured category outranks a truncated real verdict.
+//
+// Testing each block against `categories` is also what ParseJSON asks of its
+// callers: it returns an error only when no block at all decoded, so a stray
+// `{}` decoding to a zero value hides the failure of the block that carried
+// the answer. Checking the field we expect, rather than the error, is the
+// prescribed way to tell "no verdict" from "unreadable verdict" — which is why
+// an err here simply means no blocks, and the prose count decides.
 //
 // There is no preference for a fenced block: the fence is prose around the
 // object, nothing more. Returns ok=false when no block names a configured
