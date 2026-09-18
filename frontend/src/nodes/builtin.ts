@@ -39,6 +39,11 @@ export function builtinSummary(kind: PipelineNodeType, data: Record<string, unkn
       const inputs = (data.inputs as Array<{ name?: string }> | undefined) ?? []
       return `${inputs.length} port${inputs.length > 1 ? 's' : ''}`
     }
+    case 'block': {
+      const message = ((data.message as string) ?? '').trim()
+      if (!message) return 'message par défaut'
+      return message.length > 32 ? message.slice(0, 32) + '…' : message
+    }
     case 'note': {
       const text = ((data.text as string) ?? '').trim()
       const first = text.split('\n')[0]
@@ -66,6 +71,7 @@ export const LABELLED_KINDS: ReadonlySet<PipelineNodeType> = new Set<PipelineNod
   'sample',
   'context',
   'trace',
+  'block',
 ])
 
 /** descriptorOf reads the catalog descriptor the editor attached to a node. */

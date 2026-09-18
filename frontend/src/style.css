@@ -242,6 +242,7 @@
 .pipeline-palette__icon--model,
 .pipeline-palette__icon--model_fallback,
 .pipeline-palette__icon--model_ref { background: color-mix(in oklab, var(--primary) 12%, transparent); color: var(--primary); }
+.pipeline-palette__icon--block { background: color-mix(in oklab, var(--destructive) 14%, transparent); color: var(--destructive); }
 .pipeline-palette__icon--value { background: color-mix(in oklab, var(--chart-4) 16%, transparent); color: var(--chart-4); }
 .pipeline-palette__icon--plugin { background: color-mix(in oklab, var(--chart-3) 16%, transparent); color: var(--chart-3); }
 
@@ -318,6 +319,7 @@
 .pipeline-node--note { background: color-mix(in oklab, var(--chart-4) 8%, var(--card)); min-width: 180px; max-width: 280px; }
 .pipeline-node__note-text { font-size: 12px; white-space: pre-wrap; color: var(--foreground); padding: 4px 0; }
 .pipeline-node--value .pipeline-node__kind { color: var(--chart-4); }
+.pipeline-node--block .pipeline-node__kind { color: var(--destructive); }
 .pipeline-node--plugin .pipeline-node__kind { color: var(--chart-3); }
 
 .pipeline-node__identity { padding: 5px 10px 8px; }
@@ -445,6 +447,7 @@
 .pipeline-fallback-list__row > .pipeline-picker { flex: 1; }
 .pipeline-fallback-list__rank { font-size: 11px; color: var(--muted-foreground); padding-top: 8px; width: 16px; }
 .pipeline-inspector__kind--value { color: var(--chart-4); }
+.pipeline-inspector__kind--block { color: var(--destructive); }
 .pipeline-inspector__kind--plugin { color: var(--chart-3); }
 
 .pipeline-inspector__name {

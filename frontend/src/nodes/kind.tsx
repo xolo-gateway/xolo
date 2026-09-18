@@ -20,6 +20,7 @@ export const KIND_LABEL: Record<PipelineNodeType, string> = {
   sample: 'sample',
   context: 'context',
   trace: 'trace',
+  block: 'block',
   note: 'note',
   value: 'value',
   plugin: 'plugin',
@@ -38,6 +39,7 @@ export const KIND_DESCRIPTION: Record<PipelineNodeType, string> = {
   sample: 'part du trafic, stable par utilisateur',
   context: 'utilisateur, org, jeton, heure',
   trace: 'enregistre les valeurs en événement',
+  block: 'refuse la requête si le booléen est vrai',
   note: 'texte libre sur le canevas',
   value: 'valeur statique typée',
   plugin: 'traitement intercalé',
@@ -134,6 +136,13 @@ export function NodeKindIcon({ kind }: { kind: PipelineNodeType }) {
       return (
         <svg {...common} aria-hidden="true">
           <path d="M3 12h4l3-8 4 16 3-8h4" />
+        </svg>
+      )
+    case 'block':
+      return (
+        <svg {...common} aria-hidden="true">
+          <path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1Z" />
+          <path d="m9 9 6 6M15 9l-6 6" />
         </svg>
       )
     case 'note':

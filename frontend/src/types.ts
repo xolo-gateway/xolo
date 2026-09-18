@@ -11,6 +11,7 @@ export type PipelineNodeType =
   | 'sample'
   | 'context'
   | 'trace'
+  | 'block'
   | 'note'
   | 'value'
   | 'plugin'

@@ -41,6 +41,7 @@ const nodeTypes = {
   sample: BuiltinNode,
   context: BuiltinNode,
   trace: BuiltinNode,
+  block: BuiltinNode,
   note: NoteNode,
   value: ValueNode,
   plugin: PluginNode,
@@ -71,6 +72,8 @@ function defaultNodeData(desc: NodeTypeDescriptor): Record<string, unknown> {
       return { models: [] }
     case 'trace':
       return { severity: 'info', inputs: [{ name: 'value', portType: 'number' }] }
+    case 'block':
+      return { message: '' }
     case 'note':
       return { text: '' }
     default:
