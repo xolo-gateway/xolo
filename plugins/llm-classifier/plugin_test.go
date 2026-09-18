@@ -227,6 +227,11 @@ func TestParseVerdict_AccentedWordIsNotAMatch(t *testing.T) {
 	if n := countWordMatches("une école", "cole"); n != 0 {
 		t.Errorf("expected 0 mention inside \"école\", got %d", n)
 	}
+	// Decomposed form: "de" + U+0301 + "code". A combining mark is part of the
+	// word, so it is a boundary no more than the letter it decorates.
+	if n := countWordMatches("il faut de\u0301code", "code"); n != 0 {
+		t.Errorf("expected 0 mention inside the decomposed \"décode\", got %d", n)
+	}
 	v, ok := parseVerdict("Il faut décode le flux, puis relire la doc.", cats)
 	if !ok || v.Category != "doc" {
 		t.Errorf("expected doc (code only appears inside \"décode\"), got %+v ok=%v", v, ok)
@@ -271,6 +276,38 @@ func TestParseVerdict_StrayObjectBeforeVerdict(t *testing.T) {
 		if !ok || v.Category != "doc" {
 			t.Errorf("expected doc from %q, got %+v ok=%v", content, v, ok)
 		}
+	}
+}
+
+// A scratchpad block carrying a category of its own must not shadow the real
+// verdict either. Filtering on a non-empty `category` field was not enough:
+// the draft won, matchCategory rejected it, and the decision fell to the prose
+// count — which answered "doc" here too, but with its flat 0.5 instead of the
+// confidence the model gave. The assertion is on the confidence for that
+// reason.
+func TestParseVerdict_DraftWithUnknownCategoryIsSkipped(t *testing.T) {
+	cats := []Category{{Name: "code"}, {Name: "doc"}}
+	v, ok := parseVerdict(`{"category":"unsure"} then {"category":"doc","confidence":0.9}`, cats)
+	if !ok || v.Category != "doc" {
+		t.Fatalf("expected doc, got %+v ok=%v", v, ok)
+	}
+	if v.Confidence != 0.9 {
+		t.Errorf("expected the confidence carried by the real verdict, got %v", v.Confidence)
+	}
+}
+
+// A plural on the JSON answer is a category the model picked, not one it made
+// up. Before the word-boundary rule, the substring match let it through; the
+// tolerance lives in matchCategory so it stays off the prose path.
+func TestParseVerdict_PluralJSONCategoryMatches(t *testing.T) {
+	cats := []Category{{Name: "code"}, {Name: "doc"}}
+	v, ok := parseVerdict(`{"category":"docs","confidence":0.9}`, cats)
+	if !ok || v.Category != "doc" || v.Confidence != 0.9 {
+		t.Errorf("expected doc/0.9, got %+v ok=%v", v, ok)
+	}
+	// A category the model invented still falls through.
+	if v, ok := parseVerdict(`{"category":"banana"}`, cats); ok {
+		t.Errorf("expected no match for an invented category, got %+v", v)
 	}
 }
 
