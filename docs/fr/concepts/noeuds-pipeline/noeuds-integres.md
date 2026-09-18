@@ -104,6 +104,16 @@ Posez-en un après le scorer quand un routage vous surprend. C'est le seul moyen
 
 ![Ports déclarés dans la configuration du nœud trace](./screenshots/inspector-trace.png)
 
+## block
+
+Refuse la requête quand `condition` est vrai. L'appelant reçoit un 403 avec le message configuré, aucun modèle n'est appelé, et un événement `request.blocked` est enregistré avec l'identifiant du nœud, son libellé et le message. Quand la condition est fausse, le nœud ne fait rien.
+
+Ports : `condition` (boolean, requis) en entrée, aucune sortie. Configuration : le message renvoyé à l'appelant, plus le libellé commun à tous les nœuds. Sans message, un texte générique est renvoyé.
+
+Les plugins qui refusent le font chacun derrière leur propre seuil. `block` déplace la décision dans le graphe : `prompt-guard` fournit `risk`, `compare` pose le seuil, `block` refuse, et la politique se lit d'un coup d'œil. On combine ensuite les signaux comme on veut, un `math` en `max` de `risk` et de `pressure`, un `compare` sur `context.hour`, sans attendre que chaque plugin sache bloquer.
+
+Le nœud s'exécute avant tout nœud modèle quelle que soit sa position sur le canevas, comme les autres nœuds sans port de sortie. Il n'a pas besoin d'être placé sur le chemin de la requête.
+
 ## note
 
 Un bloc de texte sur le canevas. Aucun port, aucun effet à l'exécution. Écrivez-y pourquoi le seuil vaut 0,6 et pas 0,5. La personne qui relira le graphe dans six mois vous remerciera, et ce sera peut-être vous.

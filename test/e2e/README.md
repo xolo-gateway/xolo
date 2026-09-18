@@ -46,6 +46,7 @@ En cas d'échec de la mise en place, le journal du serveur est imprimé.
 |---|---|---|---|
 | `TestNodes_LogicPipeline` | `acme/e2e-logic` | `value`, `math`, `compare`, `select`, `model_ref`, `sample`, `context`, `trace`, `model` | `max(0,2 ; 0,9) > 0,5` appelle le modèle fort ; un `sample` à 0 % ne sélectionne jamais ; l'événement `pipeline.trace` porte chaque valeur intermédiaire et l'identifiant de l'appelant |
 | `TestNodes_ModelFallback` | `acme/e2e-fallback` | `model_fallback` | le fournisseur reçoit d'abord le modèle cassé (503), puis le modèle de secours ; le client obtient une réponse normale |
+| `TestNodes_Block` | `acme/e2e-block` | `prompt-guard` (score seul) → `compare` → `block` | injection refusée (403) avec le message du nœud, sans appel amont, événement `request.blocked` attribué à l'appelant ; question honnête servie sans événement |
 
 ### Plugins (`plugins_test.go`)
 

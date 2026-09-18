@@ -67,6 +67,7 @@ const (
 	vmOpen         = "acme/e2e-open"          // time-restriction, always inside the slots
 	vmGuard        = "acme/e2e-guard"         // prompt-guard in blocking mode
 	vmTelemetry    = "acme/e2e-telemetry"     // request-inspector, text-classifier, energy-estimator, budget-pressure, script-processor → trace
+	vmBlock        = "acme/e2e-block"         // prompt-guard risk → compare → block
 )
 
 const dummyTemplate = "Réponse factice pour {{.User}} : {{.LastMessage}}"
@@ -119,6 +120,10 @@ func (b *graph) compare(id, op string, threshold float64) *graph {
 }
 
 func (b *graph) selectNode(id string) *graph { return b.node(id, model.NodeTypeSelect, nil) }
+
+func (b *graph) block(id, label, message string) *graph {
+	return b.node(id, model.NodeTypeBlock, model.BlockNodeData{Label: label, Message: message})
+}
 
 func (b *graph) math(id, op string, weights ...float64) *graph {
 	return b.node(id, model.NodeTypeMath, model.MathNodeData{Op: op, Weights: weights})
@@ -425,6 +430,21 @@ func virtualModelGraphs() map[string]*graph {
 			modelNode("llm", modelFast).
 			sink("out").
 			edge("gen.request", "guard.request").
+			edge("gen.request", "llm.request").
+			edge("llm.response", "out.response"),
+
+		// The same refusal as vmGuard, but decided by the pipeline: the guard
+		// only scores, a compare sets the threshold and a block node refuses.
+		vmBlock: newGraph().
+			generator("gen").
+			plugin("guard", "prompt-guard", `{}`).
+			compare("cmp", "gt", 0.6).
+			block("policy", "injection", "Requête refusée par la politique (e2e).").
+			modelNode("llm", modelFast).
+			sink("out").
+			edge("gen.request", "guard.request").
+			edge("guard.risk", "cmp.value").
+			edge("cmp.result", "policy.condition").
 			edge("gen.request", "llm.request").
 			edge("llm.response", "out.response"),
 
