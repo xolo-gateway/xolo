@@ -4,13 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"regexp"
 	"strings"
 	"sync"
 	"time"
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/bornholm/genai/llm"
 	"github.com/xolo-gateway/xolo/pkg/pluginsdk"
 	proto "github.com/xolo-gateway/xolo/pkg/pluginsdk/proto"
 	"github.com/xolo-gateway/xolo/plugins/internal/requesttext"
@@ -209,24 +209,12 @@ func historyExcerpt(messagesJSON string, maxChars int) string {
 	return strings.Join(parts, "\n")
 }
 
-// reJSONFence catches a JSON object wrapped in a markdown fence
-// (```` ```json { ... } ``` ````). reJSONObject (non-greedy) is the generic
-// fallback for an object with no braces inside; the previous greedy
-// `(?s)\{.*\}` swallowed any stray `{` or `}` in the surrounding prose and
-// left json.Unmarshal with a payload it could not decode, silently routing
-// every failure to the substring fallback below.
-var (
-	reJSONFence  = regexp.MustCompile("(?s)```(?:json)?\\s*(\\{[^{}]*\\})\\s*```")
-	reJSONObject = regexp.MustCompile(`(?s)\{[^{}]*\}`)
-)
-
-// parseVerdict reads the model's answer. It tries, in order: a JSON object
-// inside a code fence, then any plain JSON object in the content, then a
-// word-boundary count of category mentions across the whole text. The count
-// replaces the previous first-match substring loop, which always picked the
-// first category in declaration order whenever the JSON parse failed (so a
-// request that mentioned every category ended up labelled with whichever
-// came first in the list).
+// parseVerdict reads the model's answer. It tries the JSON object first, then
+// falls back to a word-boundary count of category mentions across the whole
+// text. The count replaces the previous first-match substring loop, which
+// always picked the first category in declaration order whenever the JSON
+// parse failed (so a request that mentioned every category ended up labelled
+// with whichever came first in the list).
 func parseVerdict(content string, categories []Category) (verdict, bool) {
 	if v, ok := tryParseJSON(content); ok {
 		if cat, mOK := matchCategory(v.Category, categories); mOK {
@@ -252,17 +240,20 @@ func parseVerdict(content string, categories []Category) (verdict, bool) {
 	return verdict{}, false
 }
 
-// tryParseJSON returns the first JSON object the content yields, preferring a
-// fenced block over a bare object. It returns ok=false when neither decodes.
+// tryParseJSON delegates to genai, which locates the JSON blocks of the answer
+// and runs them through json-repair. Hand-rolled extraction does not pay off
+// here: a regexp either swallows the surrounding prose when it is greedy, or
+// rejects an object holding a nested one or a brace inside a string value when
+// it is not — and neither one copes with the trailing commas and single quotes
+// small models produce. It returns ok=false when no block yields a category,
+// which is the normal path for a prose-only answer.
 func tryParseJSON(content string) (verdict, bool) {
-	var v verdict
-	for _, re := range []*regexp.Regexp{reJSONFence, reJSONObject} {
-		m := re.FindStringSubmatch(content)
-		if len(m) == 0 {
-			continue
-		}
-		payload := m[len(m)-1]
-		if err := json.Unmarshal([]byte(payload), &v); err == nil && v.Category != "" {
+	verdicts, err := llm.ParseJSON[verdict](llm.NewMessage(llm.RoleAssistant, content))
+	if err != nil {
+		return verdict{}, false
+	}
+	for _, v := range verdicts {
+		if v.Category != "" {
 			return v, true
 		}
 	}
