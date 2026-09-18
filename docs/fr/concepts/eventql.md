@@ -192,6 +192,8 @@ duplication de code dans les handlers.
 |--------|-----------|--------|------------|-----------|
 | `proxy.request` | `info` | utilisateur | Une requête proxy aboutit | `model`, `auth_token_id`, `prompt_tokens`, `completion_tokens`, `total_tokens` |
 | `auth.login.failed` | `warning` | globale | Une connexion échoue (ex. compte déjà existant avec un autre fournisseur) | `email`, `provider`, `reason` |
+| `pipeline.trace` | `info` (configurable) | utilisateur | Un nœud `trace` d'un pipeline s'exécute | `node_id`, `label`, `port.<nom>` pour chaque port connecté |
+| `request.blocked` | `warning` | utilisateur | Un nœud `block` d'un pipeline refuse la requête | `node_id`, `label`, `reason` |
 
 **Configuration (CRUD)** — tous globaux à l'organisation (`user` vide), avec les
 attributs `actor` et `actor_id` (l'utilisateur ayant effectué l'action) en plus

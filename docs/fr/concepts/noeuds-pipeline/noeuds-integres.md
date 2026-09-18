@@ -108,6 +108,8 @@ Posez-en un après le scorer quand un routage vous surprend. C'est le seul moyen
 
 Refuse la requête quand `condition` est vrai. L'appelant reçoit un 403 avec le message configuré, aucun modèle n'est appelé, et un événement `request.blocked` est enregistré avec l'identifiant du nœud, son libellé et le message. Quand la condition est fausse, le nœud ne fait rien.
 
+Une condition non connectée, ou qui n'est ni un booléen ni un nombre, ne laisse pas passer la requête : le pipeline échoue avec une erreur 500 tant que le graphe n'est pas réparé, comme pour `select` et `compare`.
+
 Ports : `condition` (boolean, requis) en entrée, aucune sortie. Configuration : le message renvoyé à l'appelant, plus le libellé commun à tous les nœuds. Sans message, un texte générique est renvoyé.
 
 Les plugins qui refusent le font chacun derrière leur propre seuil. `block` déplace la décision dans le graphe : `prompt-guard` fournit `risk`, `compare` pose le seuil, `block` refuse, et la politique se lit d'un coup d'œil. On combine ensuite les signaux comme on veut, un `math` en `max` de `risk` et de `pressure`, un `compare` sur `context.hour`, sans attendre que chaque plugin sache bloquer.

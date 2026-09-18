@@ -17,8 +17,10 @@ const DefaultBlockMessage = "Requête refusée par la politique du pipeline."
 // arriving on its condition port is true. Plugins that block do so behind
 // their own threshold; this node lets a pipeline decide from any combination
 // of signals and shows that decision on the canvas. A rejection is recorded as
-// a request.blocked event, the same type the blocking plugins emit, so the
-// events page reads the same whichever node refused.
+// a platform request.blocked event, shaped like the ones the blocking plugins
+// emit (warning, "Requête bloquée : " message, a reason attribute). Plugin
+// events are stored under a plugin.<name>. prefix, so a filter on the exact
+// type does not group the two; a filter on the "request.blocked" suffix does.
 type BlockExecutor struct {
 	noopBackwardExecutor
 	emitter port.EventEmitter
