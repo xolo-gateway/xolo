@@ -50,7 +50,7 @@ type UsageRecord struct {
 	// Status is "ok", "interrupted", "client_gone", "write_failed" or
 	// "truncated", see model.UsageStatus for what each one means and
 	// usageStatus for the genai cause each maps from. It is indexed so usage
-	// reports can isolate the calls that ended early without scanning the
+	// reports can filter the calls that ended early without scanning the
 	// table; every status counts toward quotas and costs.
 	Status string `gorm:"index;default:ok"`
 }
