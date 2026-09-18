@@ -366,6 +366,66 @@ func TestParseVerdict_UnknownJSONCategoryFallsThrough(t *testing.T) {
 	}
 }
 
+// The first block naming a configured category wins, even when it is a draft
+// and a fuller verdict follows. There is no way to tell one from the other, so
+// the rule is first-recognised-wins; this test exists so the trade-off is
+// visible rather than discovered.
+func TestParseVerdict_ConfiguredDraftOutranksLaterVerdict(t *testing.T) {
+	cats := []Category{{Name: "code"}, {Name: "doc"}}
+	v, ok := parseVerdict(`{"category":"code","confidence":0.3} then {"category":"doc","confidence":0.9}`, cats)
+	if !ok || v.Category != "code" || v.Confidence != 0.3 {
+		t.Errorf("expected code/0.3, the first recognised block, got %+v ok=%v", v, ok)
+	}
+}
+
+// matchCategory compares exactly across every category before trying the
+// number variants, so a configured "docs" is not shadowed by the plural of a
+// configured "doc".
+func TestMatchCategory_ExactWinsOverPluralVariant(t *testing.T) {
+	cats := []Category{{Name: "doc"}, {Name: "docs"}}
+	if name, ok := matchCategory("docs", cats); !ok || name != "docs" {
+		t.Errorf("expected the exact docs, got %q ok=%v", name, ok)
+	}
+	if name, ok := matchCategory("doc", cats); !ok || name != "doc" {
+		t.Errorf("expected the exact doc, got %q ok=%v", name, ok)
+	}
+}
+
+// The number tolerance works both ways, and recovers an answer truncated of a
+// final "s". An answer that is not a category either way still falls through.
+func TestMatchCategory_NumberMismatch(t *testing.T) {
+	for _, tc := range []struct {
+		answer string
+		cats   []Category
+		want   string
+	}{
+		{"docs", []Category{{Name: "doc"}}, "doc"},
+		{"doc", []Category{{Name: "docs"}}, "docs"},
+		{"analysi", []Category{{Name: "analysis"}}, "analysis"},
+	} {
+		if name, ok := matchCategory(tc.answer, tc.cats); !ok || name != tc.want {
+			t.Errorf("expected %q from %q, got %q ok=%v", tc.want, tc.answer, name, ok)
+		}
+	}
+	if name, ok := matchCategory("banana", []Category{{Name: "doc"}}); ok {
+		t.Errorf("expected no match for banana, got %q", name)
+	}
+}
+
+// An underscore is part of a word, so a category name buried in a snake_case
+// token is not a mention — same rule that excludes "encoder" and "hardcoded".
+func TestParseVerdict_UnderscoreIsNotAWordBoundary(t *testing.T) {
+	for _, tc := range []struct{ haystack, needle string }{
+		{"about code_review here", "code"},
+		{"about doc_file here", "doc"},
+		{"about hardcode_this here", "code"},
+	} {
+		if n := countWordMatches(tc.haystack, tc.needle); n != 0 {
+			t.Errorf("expected %q not to count as a mention of %q, got %d", tc.haystack, tc.needle, n)
+		}
+	}
+}
+
 func contains(s, sub string) bool {
 	return len(sub) == 0 || (len(s) >= len(sub) && indexOf(s, sub) >= 0)
 }
