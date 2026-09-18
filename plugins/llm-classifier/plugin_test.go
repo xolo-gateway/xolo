@@ -187,6 +187,68 @@ func TestParseVerdict_WordBoundaryExcludesSubstrings(t *testing.T) {
 	}
 }
 
+// Regression: a brace inside a JSON string value must not break the
+// extraction. The non-greedy `\{[^{}]*\}` regex rejected the whole object,
+// the verdict fell through to the prose count, and a reason that mentioned
+// another category more often flipped the answer.
+func TestParseVerdict_BracesInsideJSONString(t *testing.T) {
+	cats := []Category{{Name: "code"}, {Name: "doc"}, {Name: "autre"}}
+	content := `{"category":"doc","confidence":0.95,"reason":"asks to document the code, not to write code like func(){}"}`
+	v, ok := parseVerdict(content, cats)
+	if !ok || v.Category != "doc" || v.Confidence != 0.95 {
+		t.Errorf("expected doc/0.95 from the JSON verdict, got %+v ok=%v", v, ok)
+	}
+}
+
+// Regression: a nested object is valid JSON and must decode, rather than be
+// discarded in favour of the prose count.
+func TestParseVerdict_NestedObjectIsParsed(t *testing.T) {
+	cats := []Category{{Name: "code"}, {Name: "doc"}}
+	content := `{"category":"code","confidence":0.8,"meta":{"tokens":12}}`
+	v, ok := parseVerdict(content, cats)
+	if !ok || v.Category != "code" || v.Confidence != 0.8 {
+		t.Errorf("expected code/0.8, got %+v ok=%v", v, ok)
+	}
+}
+
+// Regression: word boundaries are decoded as runes. With a byte test, the
+// continuation bytes of "é" passed for a boundary and "décode" counted as a
+// mention of "code" — the very false positive this path exists to avoid.
+func TestParseVerdict_AccentedWordIsNotAMatch(t *testing.T) {
+	cats := []Category{{Name: "code"}, {Name: "doc"}}
+	if n := countWordMatches("il faut décode", "code"); n != 0 {
+		t.Errorf("expected 0 mention inside \"décode\", got %d", n)
+	}
+	if n := countWordMatches("une école", "cole"); n != 0 {
+		t.Errorf("expected 0 mention inside \"école\", got %d", n)
+	}
+	v, ok := parseVerdict("Il faut décode le flux, puis relire la doc.", cats)
+	if !ok || v.Category != "doc" {
+		t.Errorf("expected doc (code only appears inside \"décode\"), got %+v ok=%v", v, ok)
+	}
+}
+
+// Delegating to genai buys tolerance a hand-rolled extractor did not have:
+// the trailing commas and single quotes small models emit go through
+// json-repair instead of falling back to the prose count. Confidence is only
+// forwarded to the output port, never compared to a threshold, so the float32
+// round-trip json-repair performs on a repaired payload is harmless.
+func TestParseVerdict_SloppyJSONIsRepaired(t *testing.T) {
+	cats := []Category{{Name: "code"}, {Name: "doc"}}
+	for _, content := range []string{
+		`{"category":"doc","confidence":0.7,}`,
+		`{'category': 'doc', 'confidence': 0.7}`,
+	} {
+		v, ok := parseVerdict(content, cats)
+		if !ok || v.Category != "doc" {
+			t.Errorf("expected doc from %q, got %+v ok=%v", content, v, ok)
+		}
+		if v.Confidence < 0.69 || v.Confidence > 0.71 {
+			t.Errorf("expected confidence near 0.7 from %q, got %v", content, v.Confidence)
+		}
+	}
+}
+
 func contains(s, sub string) bool {
 	return len(sub) == 0 || (len(s) >= len(sub) && indexOf(s, sub) >= 0)
 }
