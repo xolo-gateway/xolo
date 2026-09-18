@@ -5,8 +5,8 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/xolo-gateway/xolo/internal/core/port"
 	"github.com/pkg/errors"
+	"github.com/xolo-gateway/xolo/internal/core/port"
 	"gorm.io/gorm"
 )
 
@@ -65,6 +65,14 @@ func NewStore(db *gorm.DB) *Store {
 	return &Store{
 		getDatabase: createGetDatabase(db),
 	}
+}
+
+// Migrate applies all pending schema migrations. NewStore still migrates
+// lazily on the first store operation, while application setup can call this
+// method to guarantee the schema is ready before starting background work.
+func (s *Store) Migrate(ctx context.Context) error {
+	_, err := s.getDatabase(ctx)
+	return errors.WithStack(err)
 }
 
 var _ port.UserStore = &Store{}

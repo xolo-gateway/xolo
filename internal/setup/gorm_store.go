@@ -3,9 +3,9 @@ package setup
 import (
 	"context"
 
+	"github.com/pkg/errors"
 	gormAdapter "github.com/xolo-gateway/xolo/internal/adapter/gorm"
 	"github.com/xolo-gateway/xolo/internal/config"
-	"github.com/pkg/errors"
 )
 
 var getGormStoreFromConfig = createFromConfigOnce(func(ctx context.Context, conf *config.Config) (*gormAdapter.Store, error) {
@@ -14,5 +14,10 @@ var getGormStoreFromConfig = createFromConfigOnce(func(ctx context.Context, conf
 		return nil, errors.WithStack(err)
 	}
 
-	return gormAdapter.NewStore(db), nil
+	store := gormAdapter.NewStore(db)
+	if err := store.Migrate(ctx); err != nil {
+		return nil, errors.WithStack(err)
+	}
+
+	return store, nil
 })
