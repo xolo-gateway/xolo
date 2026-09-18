@@ -283,6 +283,16 @@ func (h *Handler) handlePipelineNodeTypes(w http.ResponseWriter, r *http.Request
 			},
 		},
 		nodeTypeDescriptor{
+			Type:        model.NodeTypeBlock,
+			Label:       "Blocage",
+			Description: "Refuse la requête (403) quand le booléen reçu est vrai et enregistre un événement request.blocked. Permet de composer une politique de refus à partir de plusieurs signaux.",
+			InputPorts: []*proto.PortDescriptor{
+				{Name: "condition", PortType: string(model.PortTypeBoolean), Required: true},
+			},
+			OutputPorts:  []*proto.PortDescriptor{},
+			ConfigSchema: `{"type":"object","properties":{"message":{"type":"string","title":"Message renvoyé à l'appelant","format":"multiline"}}}`,
+		},
+		nodeTypeDescriptor{
 			Type:        model.NodeTypeMath,
 			Label:       "Calcul",
 			Description: "Combine jusqu'à quatre nombres : somme, moyenne, min, max, produit ou moyenne pondérée.",

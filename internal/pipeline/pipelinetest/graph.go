@@ -80,6 +80,17 @@ func (b *GraphBuilder) Value(id, portType, value string) *GraphBuilder {
 	return b
 }
 
+// Block adds a block node rejecting the request with message when its
+// condition port is true.
+func (b *GraphBuilder) Block(id, message string) *GraphBuilder {
+	b.nodes = append(b.nodes, model.PipelineNode{
+		ID:   id,
+		Type: model.NodeTypeBlock,
+		Data: MustJSON(model.BlockNodeData{Message: message}),
+	})
+	return b
+}
+
 // Edge connects srcID's srcPort output to dstID's dstPort input.
 func (b *GraphBuilder) Edge(srcID, srcPort, dstID, dstPort string) *GraphBuilder {
 	b.edges = append(b.edges, model.PipelineEdge{

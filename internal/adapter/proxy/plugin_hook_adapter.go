@@ -37,9 +37,10 @@ type PipelineHookAdapter struct {
 	quotaInfo         *QuotaInfoResolver
 }
 
-// WithEventEmitter lets trace nodes record events; without it they only log.
+// WithEventEmitter lets trace and block nodes record events; without it they only log.
 func (a *PipelineHookAdapter) WithEventEmitter(emitter port.EventEmitter) *PipelineHookAdapter {
 	a.registry.Register(model.NodeTypeTrace, pipeline.NewTraceExecutor(emitter))
+	a.registry.Register(model.NodeTypeBlock, pipeline.NewBlockExecutor(emitter))
 	return a
 }
 
@@ -100,6 +101,7 @@ func NewPipelineHookAdapter(
 	reg.Register(model.NodeTypeContext, pipeline.NewContextExecutor())
 	reg.Register(model.NodeTypeNote, pipeline.NewNoteExecutor())
 	reg.Register(model.NodeTypeTrace, pipeline.NewTraceExecutor(nil))
+	reg.Register(model.NodeTypeBlock, pipeline.NewBlockExecutor(nil))
 	reg.Register(model.NodeTypeModelFallback, pipeline.NewModelFallbackExecutor(orgModelRouter))
 	reg.Register(model.NodeTypePlugin, pipeline.NewPluginExecutor(pluginProvider))
 	// ModelExecutor needs the engine for recursive VirtualModel resolution.

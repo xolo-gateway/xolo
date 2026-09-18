@@ -164,6 +164,21 @@ func pipelineCard(n model.PipelineNode) PipelineNodeCard {
 			TintClass: "bg-chart-4/15 text-chart-4",
 		}
 
+	case model.NodeTypeBlock:
+		var data model.BlockNodeData
+		_ = json.Unmarshal(n.Data, &data)
+		name := data.Label
+		if name == "" {
+			name = "block"
+		}
+		return PipelineNodeCard{
+			Kind:      "Blocage",
+			Name:      name,
+			Detail:    "Refuse la requête si vrai",
+			Icon:      icon.ShieldBan,
+			TintClass: "bg-destructive/15 text-destructive",
+		}
+
 	case model.NodeTypeTrace:
 		var data model.TraceNodeData
 		_ = json.Unmarshal(n.Data, &data)

@@ -40,6 +40,7 @@ const (
 	NodeTypeTrace         PipelineNodeType = "trace"          // records connected values as an event
 	NodeTypeNote          PipelineNodeType = "note"           // free text, editor only
 	NodeTypeModelFallback PipelineNodeType = "model_fallback" // ordered list of models, next on failure
+	NodeTypeBlock         PipelineNodeType = "block"          // boolean -> rejects the request
 
 	// gRPC plugin node.
 	NodeTypePlugin PipelineNodeType = "plugin"
@@ -175,6 +176,16 @@ type TraceInputDef struct {
 // NoteNodeData is the Data payload for NodeTypeNote.
 type NoteNodeData struct {
 	Text string `json:"text"`
+}
+
+// BlockNodeData is the Data payload for NodeTypeBlock.
+// The node rejects the request when its condition port is true, so a policy
+// composed from several signals (compare, math, plugin scores) reads on the
+// canvas instead of being buried in one plugin's threshold.
+type BlockNodeData struct {
+	Label string `json:"label,omitempty"`
+	// Message is returned to the caller with the 403.
+	Message string `json:"message,omitempty"`
 }
 
 // ModelFallbackNodeData is the Data payload for NodeTypeModelFallback.
