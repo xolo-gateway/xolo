@@ -8,13 +8,64 @@ import (
 	"github.com/xolo-gateway/xolo/internal/core/port"
 	"github.com/pkg/errors"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // RecordUsage implements port.UsageStore.
+//
+// The record and the quota counters it feeds are written in the same
+// transaction: a counter that missed an insert would under-report spending
+// until the next backfill, and there is no backfill on the hot path.
 func (s *Store) RecordUsage(ctx context.Context, record model.UsageRecord) error {
 	return s.withRetry(ctx, true, func(ctx context.Context, db *gorm.DB) error {
-		return errors.WithStack(db.Create(fromUsageRecord(record)).Error)
+		if err := db.Create(fromUsageRecord(record)).Error; err != nil {
+			return errors.WithStack(err)
+		}
+		return incrementQuotaUsage(db, quotaUsageRows(record))
 	})
+}
+
+// incrementQuotaUsage adds each row's cost to the matching counter, creating it
+// on first use. The upsert is a single statement per row so two concurrent
+// requests on the same scope add up instead of overwriting each other.
+func incrementQuotaUsage(db *gorm.DB, rows []*QuotaUsage) error {
+	for _, row := range rows {
+		err := db.Clauses(clause.OnConflict{
+			Columns: []clause.Column{
+				{Name: "scope"}, {Name: "scope_id"}, {Name: "org_id"}, {Name: "currency"}, {Name: "day"},
+			},
+			// The column is qualified by the table so it names the stored row and
+			// not the one being inserted: this adds to the existing total rather
+			// than replacing it. PostgreSQL rejects the unqualified form outright
+			// ("column reference \"cost\" is ambiguous").
+			DoUpdates: clause.Assignments(map[string]any{
+				"cost": gorm.Expr(quotaUsageTable+".cost + ?", row.Cost),
+			}),
+		}).Create(row).Error
+		if err != nil {
+			return errors.WithStack(err)
+		}
+	}
+	return nil
+}
+
+// SumQuotaCostSince implements port.UsageStore.
+func (s *Store) SumQuotaCostSince(ctx context.Context, scope model.QuotaScope, scopeID string, orgID model.OrgID, since time.Time) (int64, error) {
+	var total int64
+
+	err := s.withRetry(ctx, false, func(ctx context.Context, db *gorm.DB) error {
+		var result struct{ Total int64 }
+		err := db.Model(&QuotaUsage{}).
+			Select("COALESCE(SUM(cost), 0) as total").
+			Where("scope = ? AND scope_id = ? AND org_id = ? AND day >= ?", string(scope), scopeID, string(orgID), quotaUsageDay(since)).
+			Scan(&result).Error
+		total = result.Total
+		return errors.WithStack(err)
+	})
+	if err != nil {
+		return 0, err
+	}
+	return total, nil
 }
 
 // QueryUsage implements port.UsageStore.

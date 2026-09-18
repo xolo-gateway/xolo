@@ -3,29 +3,28 @@ package gorm
 import (
 	"context"
 
+	"github.com/pkg/errors"
 	"github.com/xolo-gateway/xolo/internal/core/model"
 	"github.com/xolo-gateway/xolo/internal/core/port"
-	"github.com/pkg/errors"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
 
-type ExchangeRateStore struct {
-	db *gorm.DB
-}
-
-func NewExchangeRateStore(db *gorm.DB) *ExchangeRateStore {
-	return &ExchangeRateStore{db: db}
-}
-
-func (s *ExchangeRateStore) GetRate(ctx context.Context, from, to string) (*model.ExchangeRate, error) {
+func (s *Store) GetRate(ctx context.Context, from, to string) (*model.ExchangeRate, error) {
 	var row ExchangeRate
-	if err := s.db.WithContext(ctx).First(&row, "from_currency = ? AND to_currency = ?", from, to).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, port.ErrNotFound
+	err := s.withRetry(ctx, false, func(ctx context.Context, db *gorm.DB) error {
+		if err := db.First(&row, "from_currency = ? AND to_currency = ?", from, to).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return errors.WithStack(port.ErrNotFound)
+			}
+			return errors.WithStack(err)
 		}
-		return nil, errors.WithStack(err)
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
+
 	r := model.ExchangeRate{
 		FromCurrency: row.FromCurrency,
 		ToCurrency:   row.ToCurrency,
@@ -35,11 +34,15 @@ func (s *ExchangeRateStore) GetRate(ctx context.Context, from, to string) (*mode
 	return &r, nil
 }
 
-func (s *ExchangeRateStore) ListRates(ctx context.Context) ([]model.ExchangeRate, error) {
+func (s *Store) ListRates(ctx context.Context) ([]model.ExchangeRate, error) {
 	var rows []ExchangeRate
-	if err := s.db.WithContext(ctx).Order("from_currency, to_currency").Find(&rows).Error; err != nil {
-		return nil, errors.WithStack(err)
+	err := s.withRetry(ctx, false, func(ctx context.Context, db *gorm.DB) error {
+		return errors.WithStack(db.Order("from_currency, to_currency").Find(&rows).Error)
+	})
+	if err != nil {
+		return nil, err
 	}
+
 	result := make([]model.ExchangeRate, len(rows))
 	for i, r := range rows {
 		result[i] = model.ExchangeRate{
@@ -52,17 +55,19 @@ func (s *ExchangeRateStore) ListRates(ctx context.Context) ([]model.ExchangeRate
 	return result, nil
 }
 
-func (s *ExchangeRateStore) UpsertRate(ctx context.Context, rate model.ExchangeRate) error {
-	row := ExchangeRate{
-		FromCurrency: rate.FromCurrency,
-		ToCurrency:   rate.ToCurrency,
-		Rate:         rate.Rate,
-		FetchedAt:    rate.FetchedAt,
-	}
-	return errors.WithStack(s.db.WithContext(ctx).Clauses(clause.OnConflict{
-		Columns:   []clause.Column{{Name: "from_currency"}, {Name: "to_currency"}},
-		DoUpdates: clause.AssignmentColumns([]string{"rate", "fetched_at"}),
-	}).Create(&row).Error)
+func (s *Store) UpsertRate(ctx context.Context, rate model.ExchangeRate) error {
+	return s.withRetry(ctx, true, func(ctx context.Context, db *gorm.DB) error {
+		row := ExchangeRate{
+			FromCurrency: rate.FromCurrency,
+			ToCurrency:   rate.ToCurrency,
+			Rate:         rate.Rate,
+			FetchedAt:    rate.FetchedAt,
+		}
+		return errors.WithStack(db.Clauses(clause.OnConflict{
+			Columns:   []clause.Column{{Name: "from_currency"}, {Name: "to_currency"}},
+			DoUpdates: clause.AssignmentColumns([]string{"rate", "fetched_at"}),
+		}).Create(&row).Error)
+	})
 }
 
-var _ port.ExchangeRateStore = &ExchangeRateStore{}
+var _ port.ExchangeRateStore = &Store{}

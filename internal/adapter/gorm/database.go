@@ -6,6 +6,7 @@ import (
 
 	"github.com/go-gormigrate/gormigrate/v2"
 	"github.com/pkg/errors"
+	"github.com/xolo-gateway/xolo/internal/core/model"
 	"gorm.io/gorm"
 )
 
@@ -302,6 +303,39 @@ func createGetDatabase(db *gorm.DB) func(ctx context.Context) (*gorm.DB, error) 
 						return errors.WithStack(tx.Migrator().DropIndex(&UsageRecord{}, "idx_usage_org_prov_user"))
 					},
 				},
+				{
+					// Add the status column to usage_records. A streamed answer cut
+					// short by the provider is now recorded like any other call — the
+					// tokens it delivered were billed — and this column is what tells
+					// the two apart in usage reports. Existing rows predate the change
+					// and are all completed calls, hence the "ok" backfill.
+					ID: "202609170001",
+					Migrate: func(tx *gorm.DB) error {
+						if err := tx.AutoMigrate(&UsageRecord{}); err != nil {
+							return errors.WithStack(err)
+						}
+						return errors.WithStack(tx.Exec("UPDATE usage_records SET status = ? WHERE status IS NULL OR status = ''", string(model.UsageStatusOK)).Error)
+					},
+					Rollback: func(tx *gorm.DB) error {
+						return errors.WithStack(tx.Migrator().DropColumn(&UsageRecord{}, "status"))
+					},
+				},
+				{
+					// Running per-day PAYG counters backing budget enforcement.
+					// Until now every proxied request aggregated over
+					// usage_records, up to six times, and the yearly window
+					// rescanned the whole history: the database saturated at a few
+					// tens of requests per second whatever the number of gateway
+					// replicas. The counters are filled from the existing history
+					// so budgets carry over unchanged.
+					ID: "202609170002",
+					Migrate: func(tx *gorm.DB) error {
+						return migrateQuotaUsageCounters(tx)
+					},
+					Rollback: func(tx *gorm.DB) error {
+						return errors.WithStack(tx.Migrator().DropTable("quota_usages"))
+					},
+				},
 			})
 
 			m.InitSchema(func(tx *gorm.DB) error {
@@ -331,7 +365,7 @@ func createGetDatabase(db *gorm.DB) func(ctx context.Context) (*gorm.DB, error) 
 						// Personal virtual model store
 						&PersonalVirtualModel{},
 						// Quota store
-						&Quota{},
+						&Quota{}, &QuotaUsage{},
 						// Usage store
 						&UsageRecord{},
 						// Invite store

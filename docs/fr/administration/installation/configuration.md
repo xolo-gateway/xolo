@@ -58,6 +58,9 @@ Pour valider des jetons d'accès opaques côté API (introspection RFC 7662, ou 
 | `XOLO_STORAGE_DATABASE_POOL_MAX_IDLE_CONNS` | `5` | Connexions inactives conservées dans le pool (PostgreSQL uniquement). |
 | `XOLO_STORAGE_DATABASE_POOL_CONN_MAX_LIFETIME` | `60m` | Durée de vie maximale d'une connexion (PostgreSQL uniquement). |
 | `XOLO_STORAGE_DATABASE_CACHE_USERS_*` / `_PROVIDERS_*` | — | Taille et TTL des caches en mémoire pour les utilisateurs et fournisseurs (activés par défaut, 25 entrées, 60 min). |
+| `XOLO_STORAGE_DATABASE_CACHE_QUOTA_ENABLED` | `true` | Réutilise les totaux de dépense lus à chaque requête proxy pour la vérification des budgets, au lieu de les relire à chaque fois. Les totaux eux-mêmes viennent de compteurs journaliers tenus à l'enregistrement de l'usage, pas d'une agrégation de l'historique. |
+| `XOLO_STORAGE_DATABASE_CACHE_QUOTA_SIZE` | `4096` | Nombre maximal de totaux conservés. Chaque organisation active en occupe trois (jour, mois, année), plus trois par utilisateur actif. |
+| `XOLO_STORAGE_DATABASE_CACHE_QUOTA_TTL` | `10s` | Durée de réutilisation d'un total. Les dépenses sont appliquées aux totaux en cache au fil des enregistrements, donc une instance seule reste exacte pendant toute la durée ; avec plusieurs instances, c'est le délai pendant lequel l'une peut ignorer la dépense d'une autre. `0` relit les compteurs à chaque vérification. |
 
 ### Choisir entre SQLite et PostgreSQL
 

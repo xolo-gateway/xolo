@@ -59,6 +59,11 @@ func (h *XoloEventEmitterHook) PostResponse(ctx context.Context, req *genaiProxy
 		attrs["total_tokens"] = strconv.Itoa(res.TokensUsed.PromptTokens + res.TokensUsed.CompletionTokens)
 	}
 
+	// The request happened and produced usage whatever way the stream ended, so
+	// proxy.request is emitted in every case. Anything counting proxy calls
+	// would otherwise lose the interrupted ones — including client hangups and
+	// truncated streams, which were counted as ordinary requests before
+	// interruptions were reported at all.
 	event := model.NewEvent(model.EventSourcePlatform, model.EventTypeProxyRequest,
 		model.WithEventOrg(orgID),
 		model.WithEventUser(model.UserID(req.UserID)),
@@ -68,7 +73,50 @@ func (h *XoloEventEmitterHook) PostResponse(ctx context.Context, req *genaiProxy
 	)
 	h.emitter.Emit(ctx, event)
 
+	// A stream cut short is not an OnError case: the client was answered with a
+	// 200 and received part of the answer, so it never reaches the error hook.
+	// It gets an event of its own, on top of the one above, because that is the
+	// only place the interruption rate can be read from.
+	if res.Interruption != nil {
+		interruptAttrs := make(map[string]string, len(attrs)+3)
+		for k, v := range attrs {
+			interruptAttrs[k] = v
+		}
+		interruptAttrs["cause"] = string(res.Interruption.Cause)
+		interruptAttrs["chunks_emitted"] = strconv.Itoa(res.Interruption.ChunksEmitted)
+		if res.Interruption.Err != nil {
+			interruptAttrs["error"] = truncate(res.Interruption.Err.Error(), maxErrorAttributeLength)
+		}
+
+		interrupted := model.NewEvent(model.EventSourcePlatform, model.EventTypeProxyStreamInterrupted,
+			model.WithEventOrg(orgID),
+			model.WithEventUser(model.UserID(req.UserID)),
+			model.WithEventSeverity(interruptionSeverity(res.Interruption.Cause)),
+			model.WithEventMessage("Flux proxy interrompu ("+string(res.Interruption.Cause)+"): "+req.Model),
+			model.WithEventAttributes(interruptAttrs),
+		)
+		h.emitter.Emit(ctx, interrupted)
+	}
+
 	return nil, nil
+}
+
+// interruptionSeverity rates a cause by who is at fault. A client closing its
+// tab is ordinary traffic, and a provider ending a stream without a terminal
+// chunk is common enough that warning on it would drown the signal; everything
+// else is a fault worth an alert.
+//
+// The ordinary cases are the ones enumerated, so that a cause added upstream
+// and not recognised here is rated a fault. usageStatus resolves the same doubt
+// the same way, and the two have to agree: a record flagged as a fault while
+// the event stream calls it routine is worse than either alone.
+func interruptionSeverity(cause genaiProxy.StreamInterruptionCause) model.EventSeverity {
+	switch cause {
+	case genaiProxy.StreamInterruptionClientGone, genaiProxy.StreamInterruptionTruncated:
+		return model.SeverityInfo
+	default:
+		return model.SeverityWarning
+	}
 }
 
 // OnError implements proxy.ErrorHook. A client that hangs up before the

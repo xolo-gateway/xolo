@@ -112,6 +112,18 @@ func validateSecretKey(secretKey string) error {
 }
 
 func (c *Config) Validate() error {
+	// Normalize XOLO_HTTP_BASE_URL once so the value that gets validated is
+	// exactly the value every downstream consumer uses (http.WithBaseURL,
+	// newTenantBaseURLResolver, oidcCallbackURL). Without this, a stray space
+	// picked up from a .env file or a ConfigMap would clear config validation
+	// here and then blow up further down — in multi-tenant mode either with
+	// "could not parse base url" (when net/url rejects the input) or with
+	// "must be absolute (scheme and host) when multi-tenancy is enabled"
+	// (when net/url accepts it but with empty Scheme/Host), and in
+	// single-tenant mode — where the absolute-URL check is skipped — silently
+	// propagating into every generated redirect_uri. See issue #28.
+	c.HTTP.BaseURL = normalizeBaseURL(c.HTTP.BaseURL)
+
 	if err := validateSecretKey(c.SecretKey); err != nil {
 		return errors.WithStack(err)
 	}
@@ -131,18 +143,56 @@ func (c *Config) Validate() error {
 	return nil
 }
 
+// normalizeBaseURL trims surrounding whitespace and a trailing slash so the
+// stored value is independent of how it was written in the environment.
+//
+// The whitespace trim is the fix for issue #28: a stray space picked up from
+// a .env file or a ConfigMap would otherwise clear Validate() and then fail
+// downstream in newTenantBaseURLResolver (or, in single-tenant mode, leak
+// into every generated URL).
+//
+// The trailing-slash trim is a small, related normalization that goes beyond
+// issue #28's stated scope: a trailing '/' would otherwise leak into every
+// URL built from the base (see oidcCallbackURL, which had to defensively
+// re-trim it).
+//
+// The return "/" fallback covers three reachable inputs:
+//   - envDefault "/", the value XOLO_HTTP_BASE_URL defaults to;
+//   - whitespace-only inputs (" ", a lone newline, a stray ConfigMap line);
+//   - XOLO_HTTP_BASE_URL='${VAR}' with VAR unset. caarlos0/env v11.3.1
+//     expands the env tag after substituting envDefault, so an unset
+//     expansion delivers "" here rather than "/" — without the fallback,
+//     url.Parse("").JoinPath(...) drops the leading slash and the browser
+//     resolves redirects/invite links against the current request directory
+//     instead of the root. No production code builds config.Config with a
+//     literal "" BaseURL, so the fallback is uniformly safe.
+func normalizeBaseURL(raw string) string {
+	if cleaned := strings.TrimRight(strings.TrimSpace(raw), "/"); cleaned != "" {
+		return cleaned
+	}
+	return "/"
+}
+
 // validateMultitenantBaseURL enforces the one cross-section rule multi-tenancy
 // adds: the base URL must be absolute. In single-tenant mode a relative value
 // is fine — the whole instance lives on one host and its links can stay
 // relative. In multi-tenant mode it is the template every tenant URL is derived
 // from, scheme included, and it is what OAuth callbacks are built on; a
 // relative value would produce callbacks no identity provider can return to.
+//
+// The caller is expected to have run the value through normalizeBaseURL first;
+// the absolute-URL check therefore operates on the canonical form. Whitespace
+// trimming that used to live here has been moved to normalizeBaseURL at the
+// top of Validate so the same canonical form reaches every consumer
+// (http.WithBaseURL, newTenantBaseURLResolver, oidcCallbackURL) — do not add
+// a defensive TrimSpace here, it would silently duplicate work and obscure
+// the single-source-of-truth contract.
 func validateMultitenantBaseURL(baseURL string, multitenancyEnabled bool) error {
 	if !multitenancyEnabled {
 		return nil
 	}
 
-	parsed, err := url.Parse(strings.TrimSpace(baseURL))
+	parsed, err := url.Parse(baseURL)
 	if err != nil {
 		return errors.Errorf("XOLO_HTTP_BASE_URL %q is not a valid URL", baseURL)
 	}

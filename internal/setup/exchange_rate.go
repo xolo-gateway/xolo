@@ -4,20 +4,19 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/pkg/errors"
 	exchangerateAdapter "github.com/xolo-gateway/xolo/internal/adapter/exchangerate"
-	gormAdapter "github.com/xolo-gateway/xolo/internal/adapter/gorm"
 	"github.com/xolo-gateway/xolo/internal/config"
 	"github.com/xolo-gateway/xolo/internal/core/port"
 	"github.com/xolo-gateway/xolo/internal/core/service"
-	"github.com/pkg/errors"
 )
 
 var getExchangeRateStoreFromConfig = createFromConfigOnce(func(ctx context.Context, conf *config.Config) (port.ExchangeRateStore, error) {
-	db, err := getGormDatabaseFromConfig(ctx, conf)
+	store, err := getGormStoreFromConfig(ctx, conf)
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
-	return gormAdapter.NewExchangeRateStore(db), nil
+	return store, nil
 })
 
 var getExchangeRateServiceFromConfig = createFromConfigOnce(func(ctx context.Context, conf *config.Config) (*service.ExchangeRateService, error) {

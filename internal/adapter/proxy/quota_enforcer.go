@@ -76,7 +76,7 @@ func (e *XoloQuotaEnforcer) PreRequest(ctx context.Context, req *genaiProxy.Prox
 	currency := effectiveQuota.Currency
 
 	if effectiveQuota.DailyBudget != nil {
-		spent, err := e.usageStore.SumCostSince(ctx, userID, orgID, startOfDay(now))
+		spent, err := e.usageStore.SumQuotaCostSince(ctx, model.QuotaScopeUser, string(userID), orgID, model.StartOfDay(now))
 		if err != nil {
 			return nil, errors.WithStack(err)
 		}
@@ -91,7 +91,7 @@ func (e *XoloQuotaEnforcer) PreRequest(ctx context.Context, req *genaiProxy.Prox
 	}
 
 	if effectiveQuota.MonthlyBudget != nil {
-		spent, err := e.usageStore.SumCostSince(ctx, userID, orgID, startOfMonth(now))
+		spent, err := e.usageStore.SumQuotaCostSince(ctx, model.QuotaScopeUser, string(userID), orgID, model.StartOfMonth(now))
 		if err != nil {
 			return nil, errors.WithStack(err)
 		}
@@ -106,7 +106,7 @@ func (e *XoloQuotaEnforcer) PreRequest(ctx context.Context, req *genaiProxy.Prox
 	}
 
 	if effectiveQuota.YearlyBudget != nil {
-		spent, err := e.usageStore.SumCostSince(ctx, userID, orgID, startOfYear(now))
+		spent, err := e.usageStore.SumQuotaCostSince(ctx, model.QuotaScopeUser, string(userID), orgID, model.StartOfYear(now))
 		if err != nil {
 			return nil, errors.WithStack(err)
 		}
@@ -129,7 +129,7 @@ func (e *XoloQuotaEnforcer) PreRequest(ctx context.Context, req *genaiProxy.Prox
 		orgCurrency := orgQuota.Currency()
 
 		if orgQuota.DailyBudget() != nil {
-			orgSpent, err := e.sumOrgCost(ctx, orgID, startOfDay(now))
+			orgSpent, err := e.sumOrgCost(ctx, orgID, model.StartOfDay(now))
 			if err != nil {
 				return nil, errors.WithStack(err)
 			}
@@ -144,7 +144,7 @@ func (e *XoloQuotaEnforcer) PreRequest(ctx context.Context, req *genaiProxy.Prox
 		}
 
 		if orgQuota.MonthlyBudget() != nil {
-			orgSpent, err := e.sumOrgCost(ctx, orgID, startOfMonth(now))
+			orgSpent, err := e.sumOrgCost(ctx, orgID, model.StartOfMonth(now))
 			if err != nil {
 				return nil, errors.WithStack(err)
 			}
@@ -159,7 +159,7 @@ func (e *XoloQuotaEnforcer) PreRequest(ctx context.Context, req *genaiProxy.Prox
 		}
 
 		if orgQuota.YearlyBudget() != nil {
-			orgSpent, err := e.sumOrgCost(ctx, orgID, startOfYear(now))
+			orgSpent, err := e.sumOrgCost(ctx, orgID, model.StartOfYear(now))
 			if err != nil {
 				return nil, errors.WithStack(err)
 			}
@@ -180,14 +180,14 @@ func (e *XoloQuotaEnforcer) PreRequest(ctx context.Context, req *genaiProxy.Prox
 // sumOrgCost returns the total cost for all users in the org since the given time,
 // summing across all stored currencies. Because records are converted to org currency
 // at record time, this approximates the true total in org currency.
+//
+// The total is shared by every user of the org, and so is the counter it is read
+// from: one lookup answers the check for all of them instead of one aggregation
+// per request per user.
 func (e *XoloQuotaEnforcer) sumOrgCost(ctx context.Context, orgID model.OrgID, since time.Time) (int64, error) {
-	byCurrency, err := e.usageStore.SumCostSinceByCurrency(ctx, nil, orgID, since)
+	total, err := e.usageStore.SumQuotaCostSince(ctx, model.QuotaScopeOrg, string(orgID), orgID, since)
 	if err != nil {
 		return 0, errors.WithStack(err)
-	}
-	var total int64
-	for _, amount := range byCurrency {
-		total += amount
 	}
 	return total, nil
 }
@@ -203,20 +203,6 @@ func rateLimitResponse(message string) *genaiProxy.ProxyResponse {
 			},
 		},
 	}
-}
-
-func startOfDay(t time.Time) time.Time {
-	y, m, d := t.Date()
-	return time.Date(y, m, d, 0, 0, 0, 0, t.Location())
-}
-
-func startOfMonth(t time.Time) time.Time {
-	y, m, _ := t.Date()
-	return time.Date(y, m, 1, 0, 0, 0, 0, t.Location())
-}
-
-func startOfYear(t time.Time) time.Time {
-	return time.Date(t.Year(), 1, 1, 0, 0, 0, 0, t.Location())
 }
 
 // formatMicrocents converts microcents to a currency string, e.g. 1000000 USD → "$1.00".

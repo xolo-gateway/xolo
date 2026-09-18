@@ -20,6 +20,24 @@ const (
 	QuotaScopeApplication QuotaScope = "application"
 )
 
+// StartOfDay, StartOfMonth and StartOfYear return the start of the budget
+// window containing t, in t's own location. Budget windows are calendar
+// windows in the server's timezone, and enforcement, reporting and the running
+// counters have to agree on where they begin — hence a single definition.
+func StartOfDay(t time.Time) time.Time {
+	y, m, d := t.Date()
+	return time.Date(y, m, d, 0, 0, 0, 0, t.Location())
+}
+
+func StartOfMonth(t time.Time) time.Time {
+	y, m, _ := t.Date()
+	return time.Date(y, m, 1, 0, 0, 0, 0, t.Location())
+}
+
+func StartOfYear(t time.Time) time.Time {
+	return time.Date(t.Year(), 1, 1, 0, 0, 0, 0, t.Location())
+}
+
 // Quota defines a monetary budget constraint for an org or user.
 // All values are in microcents (1 microcent = $0.000001). nil = unlimited.
 // Currency specifies which currency the budget amounts are expressed in.

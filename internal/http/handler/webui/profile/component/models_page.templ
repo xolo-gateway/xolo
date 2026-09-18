@@ -1,6 +1,7 @@
 package component
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"github.com/xolo-gateway/xolo/internal/core/model"
@@ -18,6 +19,23 @@ type ModelsPageVModel struct {
 	AllModelUsages  []ModelUsage
 	Range           string
 	RemainingCount  int
+	// ShowAll mirrors the show_all query parameter from the request so the
+	// period selector can round-trip the expanded state. Defaults to false
+	// when the request did not ask for the full list.
+	ShowAll bool
+	// Sort selects how the model list is ordered: "" (default) orders by
+	// aggregate usage; "price" orders by total cost (prompt + completion
+	// per 1K tokens). Unknown values are normalised to "" by the handler.
+	Sort string
+	// Order is the direction of the sort: "asc" or "desc". Each criterion
+	// has its own default (price asc, usage desc) and Order reflects the
+	// effective direction so the URL and the toggle button never disagree.
+	Order string
+	// OrderExplicit is true when the request explicitly carried ?order=...
+	// (i.e. the user picked a non-default direction). The range form
+	// round-trips Order only when this is true, so the default view
+	// does not pollute its bookmark with a redundant ?order=... param.
+	OrderExplicit bool
 }
 
 templ ModelsPage(vmodel ModelsPageVModel) {
@@ -33,9 +51,21 @@ templ ModelsPage(vmodel ModelsPageVModel) {
 						Title: "Modèles d'org.",
 					})
 				</div>
-				<form method="GET" class="flex items-center gap-2">
-					@common.RangeSelect(vmodel.Range)
-				</form>
+				<div class="flex items-center gap-3">
+					@modelsSortControl(vmodel.Sort, vmodel.Order)
+					<form method="GET" class="flex items-center gap-2">
+						@common.RangeSelect(vmodel.Range)
+						if vmodel.Sort != "" {
+							<input type="hidden" name="sort" value={ vmodel.Sort }/>
+						}
+						if vmodel.OrderExplicit {
+							<input type="hidden" name="order" value={ vmodel.Order }/>
+						}
+						if vmodel.ShowAll {
+							<input type="hidden" name="show_all" value="true"/>
+						}
+					</form>
+				</div>
 			</div>
 			<!-- Models list -->
 			if len(vmodel.ModelUsages) == 0 {
@@ -52,8 +82,9 @@ templ ModelsPage(vmodel ModelsPageVModel) {
 						}
 					</div>
 					if vmodel.RemainingCount > 0 {
+						{{ href := templ.SafeURL(common.MutateCurrentURL(ctx, common.WithoutValues("show_all", "*"), common.WithValues("show_all", "true"))) }}
 						<a
-							href={ common.BaseURL(ctx, common.WithPath("/models"), common.WithValues("show_all", "true")) }
+							href={ href }
 							class="text-sm text-muted-foreground hover:text-foreground underline cursor-pointer"
 						>
 							Afficher { fmt.Sprintf("%d", vmodel.RemainingCount) } modèle(s) supplémentaire(s)
@@ -129,6 +160,94 @@ templ apiExample(language, title, snippet string) {
 			@common.Snippet(language, snippet)
 		}
 	}
+}
+
+// modelsSortControl renders a two-segment cyclic control (Usage /
+// Prix) that mirrors the SegmentedNav used for the period selector
+// (24 h / 7 j / 30 j / 12 m) on the org and personal dashboards.
+// Each segment is cyclic: clicking the inactive segment once enters
+// the new criterion at its natural default direction; clicking the
+// active segment again cycles through the available directions.
+//
+// Active and inactive segments are both rendered as <a> links: the
+// active one carries the URL of the next direction in the cycle, the
+// inactive one carries the URL of the criterion's natural default.
+// Server-rendered, bookmarkable, no JS.
+//
+// URL contract:
+//   Usage ↓ (default):  /models
+//   Usage ↑            : /models?order=asc
+//   Prix ↑  (default): /models?sort=price
+//   Prix ↓             : /models?sort=price&order=desc
+templ modelsSortControl(currentSort string, currentOrder string) {
+	@common.SegmentedNav([]common.Segment{
+		usageSegment(ctx, currentSort, currentOrder),
+		priceSegment(ctx, currentSort, currentOrder),
+	})
+}
+
+// usageSegment returns the Usage segment of the sort control. The
+// active label embeds the current direction (Usage ↓ or Usage ↑);
+// its href carries the OPPOSITE direction so a click cycles the
+// order. The inactive label is plain "Usage" and its href drops
+// `sort` and `order` so the user lands on the criterion's natural
+// default (Usage ↓).
+func usageSegment(ctx context.Context, currentSort string, currentOrder string) common.Segment {
+	if currentSort != "price" {
+		// Usage is active: label carries direction, href carries the
+		// opposite direction so the next click toggles. We must drop
+		// any existing `order` first because httpURL.WithValues uses
+		// query.Add (append); without the drop the URL would carry
+		// `order=asc&order=desc` on a page that already had ?order=asc,
+		// and Go's url.Values.Get returns the first value, breaking
+		// the toggle on reachable bookmarks.
+		if currentOrder == "asc" {
+			return common.Segment{
+				Label:  "Usage ↑",
+				Href:   common.MutateCurrentURL(ctx, common.WithoutValues("order", "*")),
+				Active: true,
+			}
+		}
+		return common.Segment{
+			Label:  "Usage ↓",
+			Href:   common.MutateCurrentURL(ctx, common.WithoutValues("order", "*"), common.WithValues("order", "asc")),
+			Active: true,
+		}
+	}
+	// Inactive: a single "Usage" tab lands on the criterion's natural
+	// default (Usage ↓ = no params).
+	href := common.MutateCurrentURL(ctx, common.WithoutValues("sort", "*"), common.WithoutValues("order", "*"))
+	return common.Segment{Label: "Usage", Href: href}
+}
+
+// priceSegment returns the Prix segment of the sort control. Same
+// cyclic pattern: 1st click from Usage → Prix ↑ (asc, the criterion
+// default), 2nd click on Prix ↑ → Prix ↓ (desc), 3rd click → Prix ↑
+// again.
+func priceSegment(ctx context.Context, currentSort string, currentOrder string) common.Segment {
+	if currentSort == "price" {
+		// Prix is active: same drop-then-add pattern as usageSegment
+		// to avoid duplicate `order` params on reachable bookmarks.
+		if currentOrder == "desc" {
+			return common.Segment{
+				Label:  "Prix ↓",
+				Href:   common.MutateCurrentURL(ctx, common.WithoutValues("order", "*")),
+				Active: true,
+			}
+		}
+		return common.Segment{
+			Label:  "Prix ↑",
+			Href:   common.MutateCurrentURL(ctx, common.WithoutValues("order", "*"), common.WithValues("order", "desc")),
+			Active: true,
+		}
+	}
+	// Inactive: a single "Prix" tab lands on the criterion's natural
+	// default (Prix ↑ = ?sort=price).
+	href := common.MutateCurrentURL(ctx,
+		common.WithoutValues("sort", "*", "order", "*"),
+		common.WithValues("sort", "price"),
+	)
+	return common.Segment{Label: "Prix", Href: href}
 }
 
 templ modelCard(mu ModelUsage) {

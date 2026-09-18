@@ -2,16 +2,18 @@ package proxy
 
 import (
 	"context"
+	"encoding/json"
 	"log/slog"
 	"math"
+	"strings"
 
 	genaiProxy "github.com/bornholm/genai/proxy"
+	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/xolo-gateway/xolo/internal/core/model"
 	"github.com/xolo-gateway/xolo/internal/core/port"
 	"github.com/xolo-gateway/xolo/internal/core/service"
 	"github.com/xolo-gateway/xolo/internal/metrics"
-	"github.com/pkg/errors"
-	"github.com/prometheus/client_golang/prometheus"
 )
 
 // XoloUsageTracker is a PostResponseHook that records one UsageRecord per
@@ -88,6 +90,31 @@ func (t *XoloUsageTracker) PostResponse(ctx context.Context, req *genaiProxy.Pro
 	cachedTokens := res.TokensUsed.CachedTokens
 	completionTokens := res.TokensUsed.CompletionTokens
 
+	status := usageStatus(ctx, res)
+
+	// The metric counts every interruption, whatever status it maps to: the
+	// cause is already a label, and the point of the counter is to make the
+	// interruption rate measurable.
+	if res.Interruption != nil {
+		metrics.StreamInterrupted.With(prometheus.Labels{
+			metrics.LabelOrg:   string(orgID),
+			metrics.LabelModel: llmModel.ProxyName(),
+			metrics.LabelCause: string(res.Interruption.Cause),
+		}).Inc()
+	}
+
+	// An interrupted stream whose provider never published its usage leaves
+	// TokensUsed at zero, which means "unknown", not "free". Recording it as
+	// free would hand the customer a free request and hide the provider's own
+	// bill — the loss issue #43 exists to close. The counts are estimated
+	// instead, and cost_source says so.
+	estimatedUsage := false
+	if res.Interruption != nil && !res.Interruption.PartialUsage {
+		promptTokens, completionTokens = estimateInterruptedTokens(req, res.Interruption)
+		cachedTokens = 0
+		estimatedUsage = true
+	}
+
 	metrics.ChatCompletionRequests.With(prometheus.Labels{
 		metrics.LabelOrg: string(orgID),
 	}).Inc()
@@ -105,7 +132,7 @@ func (t *XoloUsageTracker) PostResponse(ctx context.Context, req *genaiProxy.Pro
 		providerCurrency string
 		costSource       model.CostSource
 	)
-	if res.TokensUsed.Cost != nil {
+	if res.TokensUsed.Cost != nil && !estimatedUsage {
 		// Provider reported the actual billed cost (e.g. OpenRouter usage.cost).
 		providerCost = int64(math.Round(*res.TokensUsed.Cost * 1_000_000))
 		providerCurrency = res.TokensUsed.CostCurrency
@@ -117,6 +144,9 @@ func (t *XoloUsageTracker) PostResponse(ctx context.Context, req *genaiProxy.Pro
 			(int64(completionTokens) * llmModel.CompletionCostPer1KTokens() / 1000)
 		providerCurrency = p.Currency()
 		costSource = model.CostSourceComputed
+		if estimatedUsage {
+			costSource = model.CostSourceEstimated
+		}
 	}
 
 	planCovered := p.BillingMode() == model.BillingModeSubscription
@@ -165,6 +195,7 @@ func (t *XoloUsageTracker) PostResponse(ctx context.Context, req *genaiProxy.Pro
 	)
 	record.SetPlanCovered(planCovered)
 	record.SetProviderCost(providerCost)
+	record.SetStatus(status)
 
 	if err := t.usageStore.RecordUsage(ctx, record); err != nil {
 		slog.ErrorContext(ctx, "usage tracker: could not record usage", slog.Any("error", errors.WithStack(err)))
@@ -174,3 +205,104 @@ func (t *XoloUsageTracker) PostResponse(ctx context.Context, req *genaiProxy.Pro
 }
 
 var _ genaiProxy.PostResponseHook = &XoloUsageTracker{}
+
+// usageStatus maps how the proxy reported the exchange ending onto the status
+// stored on the record. A stream cut short still produced and delivered tokens
+// the provider billed, so it is recorded like any other call; the status is
+// what keeps it distinguishable afterwards.
+//
+// An unknown cause is recorded as interrupted rather than as a completed call:
+// a cause added upstream is more likely to be another way a stream breaks than
+// a new way for it to succeed, and a wrong "ok" is invisible.
+func usageStatus(ctx context.Context, res *genaiProxy.ProxyResponse) model.UsageStatus {
+	if res.Interruption == nil {
+		return model.UsageStatusOK
+	}
+	switch res.Interruption.Cause {
+	case genaiProxy.StreamInterruptionUpstream:
+		return model.UsageStatusInterrupted
+	case genaiProxy.StreamInterruptionClientGone:
+		return model.UsageStatusClientGone
+	case genaiProxy.StreamInterruptionWriteFailed:
+		return model.UsageStatusWriteFailed
+	case genaiProxy.StreamInterruptionTruncated:
+		return model.UsageStatusTruncated
+	default:
+		slog.WarnContext(ctx, "usage tracker: unknown stream interruption cause, recording as interrupted",
+			slog.String("cause", string(res.Interruption.Cause)))
+		return model.UsageStatusInterrupted
+	}
+}
+
+// charsPerToken is the ratio used to turn request text into a token count when
+// no tokenizer is available. Tokenizers differ per model and none is shipped
+// here; four characters per token is the usual rule of thumb for English prose
+// and lands within a factor of two for the rest.
+const charsPerToken = 4
+
+// estimateInterruptedTokens derives token counts for a stream the provider
+// never reported usage for.
+//
+// The prompt is whatever the client sent, and the provider charged it in full
+// the moment it started generating, so it is estimated from the request text.
+// The completion is only known through ChunksEmitted: an OpenAI-style stream
+// carries roughly one token per content chunk, which is the closest measure of
+// the volume produced that is always available.
+//
+// Both are approximations, and the record says so through
+// model.CostSourceEstimated. Estimating beats recording a zero, which would
+// assert that an answer the client received cost nothing.
+func estimateInterruptedTokens(req *genaiProxy.ProxyRequest, interruption *genaiProxy.StreamInterruption) (promptTokens, completionTokens int) {
+	return estimatePromptTokens(req.Body), interruption.ChunksEmitted
+}
+
+// estimatePromptTokens counts the text of the messages carried by an
+// OpenAI-compatible request body. A body it cannot parse falls back to its
+// whole length, which overestimates by the weight of the JSON scaffolding
+// rather than reporting nothing.
+func estimatePromptTokens(body []byte) int {
+	if len(body) == 0 {
+		return 0
+	}
+
+	var parsed struct {
+		Messages []struct {
+			Content json.RawMessage `json:"content"`
+		} `json:"messages"`
+	}
+	if err := json.Unmarshal(body, &parsed); err != nil || len(parsed.Messages) == 0 {
+		return len(body) / charsPerToken
+	}
+
+	chars := 0
+	for _, message := range parsed.Messages {
+		chars += len(messageText(message.Content))
+	}
+	return chars / charsPerToken
+}
+
+// messageText extracts the text of one message content, which the OpenAI
+// schema allows to be either a plain string or a list of typed parts.
+func messageText(content json.RawMessage) string {
+	if len(content) == 0 {
+		return ""
+	}
+
+	var text string
+	if err := json.Unmarshal(content, &text); err == nil {
+		return text
+	}
+
+	var parts []struct {
+		Text string `json:"text"`
+	}
+	if err := json.Unmarshal(content, &parts); err != nil {
+		return string(content)
+	}
+
+	var builder strings.Builder
+	for _, part := range parts {
+		builder.WriteString(part.Text)
+	}
+	return builder.String()
+}

@@ -12,9 +12,32 @@ Un événement est une entrée de journalisation relative à une action survenue
 | ---------------- | --------------------------------------- |
 | `proxy.request`  | Requête API vers un modèle              |
 | `proxy.request.failed` | Requête API en échec (fournisseur, timeout, hook) avec le statut HTTP et la cause |
+| `proxy.stream.interrupted` | Réponse streamée interrompue avant la fin, avec la cause, le nombre de fragments déjà émis et l'erreur. Émis en complément de `proxy.request`, jamais à sa place |
 | `auth.login.*`   | Tentatives de connexion (succès, échec) |
 | `quota.exceeded` | Dépassement de budget                   |
 | `middleware.*`   | Événements des middlewares              |
+
+#### Causes d'interruption de flux
+
+L'attribut `cause` de `proxy.stream.interrupted` prend l'une de ces valeurs. Les deux premières sont des fautes et remontent en `warning`, les deux autres relèvent du trafic ordinaire et restent en `info`.
+
+| Cause | Description |
+| --- | --- |
+| `upstream_error` | Le fournisseur a échoué en cours de flux, après que des fragments sont parvenus au client. L'erreur est transmise au client sous forme d'événement SSE. |
+| `write_failed` | L'écriture de la réponse a échoué pour une raison autre que le départ du client, par exemple une erreur d'entrée/sortie locale. C'est une faute serveur. |
+| `client_gone` | Le client s'est retiré : onglet fermé, requête annulée, reverse proxy expiré. |
+| `stream_truncated` | Le fournisseur a clos le flux sans signaler la fin ni remonter d'erreur. Le client reçoit malgré tout les événements de clôture habituels ; une connexion amont coupée proprement a exactement cette allure. |
+
+Un appel interrompu est enregistré dans l'usage comme n'importe quel autre : les tokens produits ont été facturés par le fournisseur et livrés au client. La colonne `status` de l'enregistrement porte une valeur dérivée de la cause, qui n'en reprend pas le nom dans deux cas sur quatre :
+
+| Cause de l'événement | `status` de l'enregistrement |
+| --- | --- |
+| `upstream_error` | `interrupted` |
+| `write_failed` | `write_failed` |
+| `client_gone` | `client_gone` |
+| `stream_truncated` | `truncated` |
+
+Une cause qu'une version de Xolo ne connaît pas encore est enregistrée en `interrupted` et remonte en `warning`, un « ok » erroné étant invisible. Quand le fournisseur n'a publié aucun décompte avant la coupure, ce qui est le cas le plus fréquent hors Anthropic, les tokens sont estimés à partir de la requête et du nombre de fragments émis, et l'enregistrement porte alors la source de coût `estimated`.
 
 ### Niveaux de sévérité
 
