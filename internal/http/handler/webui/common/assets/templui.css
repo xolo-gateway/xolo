@@ -1452,6 +1452,12 @@
   .bg-destructive-tint {
     background-color: var(--destructive-tint);
   }
+  .bg-destructive\/15 {
+    background-color: var(--destructive);
+    @supports (color: color-mix(in lab, red, red)) {
+      background-color: color-mix(in oklab, var(--destructive) 15%, transparent);
+    }
+  }
   .bg-foreground {
     background-color: var(--foreground);
   }
