@@ -114,7 +114,7 @@ Ports : `condition` (boolean, requis) en entrée, aucune sortie. Configuration :
 
 Les plugins qui refusent le font chacun derrière leur propre seuil. `block` déplace la décision dans le graphe : `prompt-guard` fournit `risk`, `compare` pose le seuil, `block` refuse, et la politique se lit d'un coup d'œil. On combine ensuite les signaux comme on veut, un `math` en `max` de `risk` et de `pressure`, un `compare` sur `context.hour`, sans attendre que chaque plugin sache bloquer.
 
-Le nœud s'exécute avant tout nœud modèle quelle que soit sa position sur le canevas, comme les autres nœuds sans port de sortie. Il n'a pas besoin d'être placé sur le chemin de la requête.
+Le nœud s'exécute avant tout nœud modèle quelle que soit sa position sur le canevas, comme les autres nœuds sans port de sortie. Il n'a pas besoin d'être placé sur le chemin de la requête. Sa condition doit en revanche venir de nœuds situés en amont du modèle : un `block` alimenté, même indirectement, par la sortie `response` d'un nœud `model` ne pourrait jamais s'exécuter, et Xolo refuse ce graphe à la première requête plutôt que de servir la réponse avec une politique silencieusement inactive.
 
 ## note
 

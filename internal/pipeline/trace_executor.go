@@ -60,7 +60,7 @@ func (e *TraceExecutor) Forward(ctx context.Context, node model.PipelineNode, in
 		if message == "" {
 			message = "trace " + node.ID
 		}
-		e.emitter.Emit(ctx, model.NewEvent(model.EventSourcePlatform, "pipeline.trace",
+		e.emitter.Emit(ctx, model.NewEvent(model.EventSourcePlatform, model.EventTypePipelineTrace,
 			model.WithEventOrg(model.OrgID(ec.OrgID)),
 			model.WithEventUser(model.UserID(ec.UserID)),
 			model.WithEventSeverity(severity),

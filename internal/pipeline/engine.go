@@ -78,7 +78,7 @@ func (e *Engine) RunForward(ctx context.Context, graph *model.PipelineGraph, ec 
 		}
 	}
 
-	for _, nodeID := range order {
+	for i, nodeID := range order {
 		node := nodeByID(graph, nodeID)
 		if node == nil {
 			continue
@@ -128,6 +128,13 @@ func (e *Engine) RunForward(ctx context.Context, graph *model.PipelineGraph, ec 
 
 		// Terminal: model node resolved the LLM client.
 		if result.ResolvedClient != nil {
+			// A block node still waiting on the model's output would be
+			// skipped: its policy would silently never apply. Refuse the
+			// graph instead, so the mistake shows on the first request
+			// rather than when an attacker finds the open gate.
+			if id := pendingBlockNode(graph, order[i+1:]); id != "" {
+				return nil, errors.Errorf("block node %s depends on the model output and would never run; feed its condition from nodes upstream of the model", id)
+			}
 			resolvedClient := result.ResolvedClient
 			for _, decorate := range decorators {
 				resolvedClient = decorate(resolvedClient)
@@ -145,6 +152,17 @@ func (e *Engine) RunForward(ctx context.Context, graph *model.PipelineGraph, ec 
 	}
 
 	return nil, errors.New("pipeline graph has no terminal model node")
+}
+
+// pendingBlockNode returns the ID of the first block node among the nodes
+// the forward pass will not reach, or "" when there is none.
+func pendingBlockNode(graph *model.PipelineGraph, remaining []string) string {
+	for _, id := range remaining {
+		if n := nodeByID(graph, id); n != nil && n.Type == model.NodeTypeBlock {
+			return id
+		}
+	}
+	return ""
 }
 
 // RunBackward executes nodes in reverse order (post-response pass).

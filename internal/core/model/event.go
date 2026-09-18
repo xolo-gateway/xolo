@@ -69,6 +69,10 @@ const (
 	EventTypeMemberAdded   = "member.added"
 	EventTypeMemberUpdated = "member.updated"
 	EventTypeMemberRemoved = "member.removed"
+
+	// Emitted by pipeline nodes; see internal/pipeline.
+	EventTypePipelineTrace  = "pipeline.trace"
+	EventTypeRequestBlocked = "request.blocked"
 )
 
 // EventTypeDef describes a known event type for display and autocompletion in
@@ -87,6 +91,9 @@ func PlatformEventTypes() []EventTypeDef {
 		{EventTypeProxyRequestFailed, "Requête proxy en échec", SeverityWarning},
 		{EventTypeProxyStreamInterrupted, "Flux proxy interrompu", SeverityWarning},
 		{EventTypeAuthLoginFailed, "Échec de connexion", SeverityWarning},
+
+		{EventTypePipelineTrace, "Trace de pipeline", SeverityInfo},
+		{EventTypeRequestBlocked, "Requête bloquée par un pipeline", SeverityWarning},
 
 		{EventTypeProviderCreated, "Fournisseur créé", SeverityInfo},
 		{EventTypeProviderUpdated, "Fournisseur modifié", SeverityInfo},

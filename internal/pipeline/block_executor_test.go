@@ -64,6 +64,28 @@ func TestBlockExecutor_DefaultMessageAndNumericCondition(t *testing.T) {
 	}
 }
 
+func TestBlockExecutor_UnconfiguredNodeEmitsDefaultReason(t *testing.T) {
+	em := &recordingEmitter{}
+	e := NewBlockExecutor(em)
+	res, err := e.Forward(context.Background(), nodeWith(model.NodeTypeBlock, ""), map[string]interface{}{"condition": true}, ExecutionContext{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !res.Rejected || res.RejectionReason != DefaultBlockMessage {
+		t.Fatalf("expected rejection with the default message, got %+v", res)
+	}
+	if len(em.events) != 1 {
+		t.Fatalf("expected one event, got %d", len(em.events))
+	}
+	attrs := em.events[0].Attributes()
+	if attrs["reason"] != DefaultBlockMessage {
+		t.Errorf("reason = %q, want the default message", attrs["reason"])
+	}
+	if _, has := attrs["label"]; has {
+		t.Errorf("an unlabelled node must not record a label attribute: %v", attrs)
+	}
+}
+
 func TestBlockExecutor_UnconnectedConditionFails(t *testing.T) {
 	e := NewBlockExecutor(nil)
 	_, err := e.Forward(context.Background(), nodeWith(model.NodeTypeBlock, ""), map[string]interface{}{}, ExecutionContext{})

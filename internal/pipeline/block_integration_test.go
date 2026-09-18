@@ -2,6 +2,7 @@ package pipeline_test
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/xolo-gateway/xolo/internal/pipeline/pipelinetest"
@@ -49,4 +50,26 @@ func TestPipeline_BlockNode(t *testing.T) {
 			t.Errorf("content = %q", result.FinalContent)
 		}
 	})
+}
+
+// A block node whose condition comes from the model output can never run,
+// since the forward pass stops at the model. The engine refuses the graph
+// instead of serving the request with the policy silently disabled.
+func TestPipeline_BlockNodeBehindModelIsRefused(t *testing.T) {
+	graph := pipelinetest.NewGraph().
+		Generator("gen").
+		ModelWithProxy("mdl", "org/gpt4").
+		Block("policy", "").
+		Sink("sink").
+		Edge("gen", "request", "mdl", "request").
+		Edge("mdl", "response", "policy", "condition").
+		Edge("mdl", "response", "sink", "response").
+		Build()
+	resolver := pipelinetest.NewModelResolver().WithResponse("org/gpt4", "réponse du modèle")
+	h := pipelinetest.New(pipelinetest.WithModelResolver(resolver))
+
+	_, err := h.Run(context.Background(), graph, pipelinetest.NewExecutionContext())
+	if err == nil || !strings.Contains(err.Error(), "policy") {
+		t.Fatalf("expected an error naming the block node, got %v", err)
+	}
 }

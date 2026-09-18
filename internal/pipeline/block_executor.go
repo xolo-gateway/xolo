@@ -62,7 +62,7 @@ func (e *BlockExecutor) Forward(ctx context.Context, node model.PipelineNode, in
 		if data.Label != "" {
 			attrs["label"] = data.Label
 		}
-		e.emitter.Emit(ctx, model.NewEvent(model.EventSourcePlatform, "request.blocked",
+		e.emitter.Emit(ctx, model.NewEvent(model.EventSourcePlatform, model.EventTypeRequestBlocked,
 			model.WithEventOrg(model.OrgID(ec.OrgID)),
 			model.WithEventUser(model.UserID(ec.UserID)),
 			model.WithEventSeverity(model.SeverityWarning),
