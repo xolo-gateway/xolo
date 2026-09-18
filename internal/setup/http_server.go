@@ -274,7 +274,7 @@ func NewHTTPServerFromConfig(ctx context.Context, conf *config.Config) (*http.Se
 	// within a tenant, so no route may run before the tenant is known. A host
 	// matching none answers 404 — an unknown subdomain must not reveal whether
 	// the instance exists.
-	tenantResolver := tenant.NewResolver(tenantStore, conf.Multitenancy)
+	tenantResolver := tenant.NewResolver(tenantStore, conf.Multitenancy, conf.HTTP.BaseURL)
 
 	tenantMiddleware := tenant.Middleware(
 		tenantResolver,

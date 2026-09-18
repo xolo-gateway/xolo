@@ -15,7 +15,7 @@ func TestNewTenantBaseURLResolver(t *testing.T) {
 		Enabled:           true,
 		HostPattern:       "{tenant}.XOLO.Example.Com",
 		DefaultTenantSlug: model.DefaultTenantSlug,
-	})
+	}, "")
 	canonicalHost := tenantResolver.CanonicalHost
 
 	t.Run("refuses a base url that is not absolute", func(t *testing.T) {

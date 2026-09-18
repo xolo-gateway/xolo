@@ -66,7 +66,7 @@ func TestSingleTenant(t *testing.T) {
 
 	t.Run("serves the default tenant whatever the host", func(t *testing.T) {
 		store := newStore(model.NewTenant(model.DefaultTenantSlug, "Default", ""))
-		resolver := tenant.NewResolver(store, conf)
+		resolver := tenant.NewResolver(store, conf, "")
 
 		for _, host := range []string{"xolo.example.com", "localhost:3002", "10.0.0.1", "anything.at.all"} {
 			status, resolved := serve(t, resolver, host)
@@ -82,7 +82,7 @@ func TestSingleTenant(t *testing.T) {
 
 	t.Run("resolves the default tenant only once", func(t *testing.T) {
 		store := newStore(model.NewTenant(model.DefaultTenantSlug, "Default", ""))
-		resolver := tenant.NewResolver(store, conf)
+		resolver := tenant.NewResolver(store, conf, "")
 
 		for range 3 {
 			serve(t, resolver, "xolo.example.com")
@@ -97,7 +97,7 @@ func TestSingleTenant(t *testing.T) {
 		// No default tenant: every request must retry rather than latch the
 		// failure for the lifetime of the process.
 		store := newStore()
-		resolver := tenant.NewResolver(store, conf)
+		resolver := tenant.NewResolver(store, conf, "")
 
 		for range 3 {
 			if status, _ := serve(t, resolver, "xolo.example.com"); status != http.StatusInternalServerError {
@@ -125,7 +125,7 @@ func TestMultiTenant(t *testing.T) {
 		model.NewTenant(model.DefaultTenantSlug, "Default", ""),
 		suspended,
 	)
-	resolver := tenant.NewResolver(store, conf)
+	resolver := tenant.NewResolver(store, conf, "")
 
 	for name, testCase := range map[string]struct {
 		host       string
@@ -176,6 +176,10 @@ func TestCanonicalHostMatching(t *testing.T) {
 		conf config.Multitenancy
 		host string
 		want bool
+		// baseURL configures the resolver's single-tenant base URL. It is
+		// ignored on the multi-tenant branch.
+		baseURL  string
+		wantHost string
 	}{
 		"framed by the pattern":       {conf: multi, host: "acme.xolo.example.com", want: true},
 		"port is ignored":             {conf: multi, host: "acme.xolo.example.com:3002", want: true},
@@ -184,17 +188,35 @@ func TestCanonicalHostMatching(t *testing.T) {
 		"bare suffix names no tenant": {conf: multi, host: "xolo.example.com", want: false},
 		"slug is not a dns label":     {conf: multi, host: "not_a_label.xolo.example.com", want: false},
 		"empty host":                  {conf: multi, host: "", want: false},
-		"single tenant matches anything": {
+		"single tenant without a configured base url rejects any host": {
 			conf: config.Multitenancy{Enabled: false, DefaultTenantSlug: model.DefaultTenantSlug},
 			host: "whatever.example.com",
-			want: true,
+			want: false,
+		},
+		"single tenant ignores the request host entirely": {
+			conf:     config.Multitenancy{Enabled: false, DefaultTenantSlug: model.DefaultTenantSlug},
+			host:     "evil.example.com",
+			baseURL:  "http://XOLO.Example.Com:3002",
+			want:     true,
+			wantHost: "xolo.example.com",
+		},
+		"single tenant returns the configured host and ignores the request": {
+			conf:     config.Multitenancy{Enabled: false, DefaultTenantSlug: model.DefaultTenantSlug},
+			host:     "evil.example.com",
+			baseURL:  "https://xolo.example.com",
+			want:     true,
+			wantHost: "xolo.example.com",
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
-			resolver := tenant.NewResolver(newStore(), testCase.conf)
+			resolver := tenant.NewResolver(newStore(), testCase.conf, testCase.baseURL)
 
-			if _, got := resolver.CanonicalHost(testCase.host); got != testCase.want {
-				t.Errorf("CanonicalHost(%q) matched: got %t, want %t", testCase.host, got, testCase.want)
+			got, ok := resolver.CanonicalHost(testCase.host)
+			if ok != testCase.want {
+				t.Errorf("CanonicalHost(%q) matched: got %t, want %t", testCase.host, ok, testCase.want)
+			}
+			if testCase.wantHost != "" && got != testCase.wantHost {
+				t.Errorf("CanonicalHost(%q): got %q, want %q", testCase.host, got, testCase.wantHost)
 			}
 		})
 	}
@@ -205,7 +227,7 @@ func TestResolverCanonicalHost(t *testing.T) {
 		Enabled:           true,
 		HostPattern:       "{tenant}.XOLO.Example.Com:3002",
 		DefaultTenantSlug: model.DefaultTenantSlug,
-	})
+	}, "")
 
 	for name, testCase := range map[string]struct {
 		host string
@@ -228,6 +250,80 @@ func TestResolverCanonicalHost(t *testing.T) {
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
+			got, ok := resolver.CanonicalHost(testCase.host)
+			if ok != testCase.ok {
+				t.Fatalf("matched: got %t, want %t", ok, testCase.ok)
+			}
+			if got != testCase.want {
+				t.Errorf("canonical host: got %q, want %q", got, testCase.want)
+			}
+		})
+	}
+}
+
+// TestResolverCanonicalHostSingleTenant asserts the contract on the
+// single-tenant branch (issue #30): the canonical host comes from the
+// configured base URL, never from the request, and an empty result is
+// rejected with ok=false.
+func TestResolverCanonicalHostSingleTenant(t *testing.T) {
+	single := config.Multitenancy{Enabled: false, DefaultTenantSlug: model.DefaultTenantSlug}
+
+	for name, testCase := range map[string]struct {
+		baseURL string
+		host    string
+		want    string
+		ok      bool
+	}{
+		"single tenant returns the configured host instead of the request": {
+			baseURL: "https://xolo.example.com",
+			host:    "evil.example.com",
+			want:    "xolo.example.com",
+			ok:      true,
+		},
+		"lowercases and strips the port from the configured base url": {
+			baseURL: "http://XOLO.Example.Com:3002",
+			host:    "anything",
+			want:    "xolo.example.com",
+			ok:      true,
+		},
+		"the request port is ignored": {
+			baseURL: "https://xolo.example.com",
+			host:    "xolo.example.com:9999",
+			want:    "xolo.example.com",
+			ok:      true,
+		},
+		"rejects when no base url host is configured": {
+			baseURL: "",
+			host:    "xolo.example.com",
+			ok:      false,
+		},
+		"the request host is irrelevant when a base url is configured": {
+			baseURL: "https://xolo.example.com",
+			host:    "",
+			want:    "xolo.example.com",
+			ok:      true,
+		},
+		"rejects a relative base url": {
+			baseURL: "/xolo",
+			host:    "xolo.example.com",
+			ok:      false,
+		},
+		"keeps ipv6 brackets when the configured base url has a port": {
+			baseURL: "http://[::1]:8080",
+			host:    "anything",
+			want:    "[::1]",
+			ok:      true,
+		},
+		"keeps ipv6 brackets when the configured base url has no port": {
+			baseURL: "http://[::1]",
+			host:    "anything",
+			want:    "[::1]",
+			ok:      true,
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			resolver := tenant.NewResolver(newStore(), single, testCase.baseURL)
+
 			got, ok := resolver.CanonicalHost(testCase.host)
 			if ok != testCase.ok {
 				t.Fatalf("matched: got %t, want %t", ok, testCase.ok)
