@@ -33,6 +33,12 @@ type UsageStore struct {
 	// read before a record was written could be stored after that record's
 	// increment was applied, counting it twice and refusing requests a fresh
 	// read would allow.
+	//
+	// mu also guards the cache writes themselves, so that marking a load stale
+	// and applying its increment happen together, and so does deciding a load is
+	// fresh and storing its result. Split across two critical sections, a record
+	// landing in between would be counted twice or not at all. The mutex is held
+	// only around cache operations, never around a backend read.
 	mu      sync.Mutex
 	loading map[string]*keyLoad
 }
@@ -66,19 +72,9 @@ func (s *UsageStore) SumQuotaCostSince(ctx context.Context, scope model.QuotaSco
 
 	s.beginLoad(key)
 	total, err := s.UsageStore.SumQuotaCostSince(ctx, scope, scopeID, orgID, since)
-	stale := s.endLoad(key)
+	s.finishLoad(ctx, key, total, err == nil)
 	if err != nil {
 		return 0, err
-	}
-
-	// A record written while the read was in flight is already counted by the
-	// backend, or will be by the next read, but storing this value now would
-	// race with its increment. The key is left absent instead, and the next
-	// check reads a fresh total.
-	if !stale {
-		if err := s.cache.SetInt64(ctx, key, total, s.ttl); err != nil {
-			slog.WarnContext(ctx, "quota sum cache write failed", slog.Any("error", err), slog.String("key", key))
-		}
 	}
 
 	return total, nil
@@ -97,34 +93,48 @@ func (s *UsageStore) beginLoad(key string) {
 	load.readers++
 }
 
-// endLoad closes a backend read and reports whether a record landed while it
-// was in flight.
-func (s *UsageStore) endLoad(key string) bool {
+// finishLoad closes a backend read and stores its result, unless a record
+// landed while it was in flight.
+//
+// A record written during the read is already counted by the backend, or will
+// be by the next read, but storing this value now would race with its
+// increment. The key is left absent instead, and the next check reads a fresh
+// total. The decision and the write share one critical section with
+// RecordUsage's, so a record cannot slip between them.
+func (s *UsageStore) finishLoad(ctx context.Context, key string, total int64, store bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	load, exists := s.loading[key]
-	if !exists {
-		return true
+	if exists {
+		load.readers--
+		if load.readers <= 0 {
+			delete(s.loading, key)
+		}
 	}
 
-	stale := load.stale
-	load.readers--
-	if load.readers <= 0 {
-		delete(s.loading, key)
+	if !store || !exists || load.stale {
+		return
 	}
-	return stale
+
+	if err := s.cache.SetInt64(ctx, key, total, s.ttl); err != nil {
+		slog.WarnContext(ctx, "quota sum cache write failed", slog.Any("error", err), slog.String("key", key))
+	}
 }
 
-// markLoadsStale tells the readers currently loading key that the value they
-// are about to store no longer reflects what is in the database.
-func (s *UsageStore) markLoadsStale(key string) {
+// applyRecordedCost adds cost to the cached total for key and tells the readers
+// currently loading it that the value they are about to store is already out of
+// date. Both happen under one lock, for the reason finishLoad describes.
+func (s *UsageStore) applyRecordedCost(ctx context.Context, key string, cost int64) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	if load, exists := s.loading[key]; exists {
 		load.stale = true
 	}
+
+	_, _, err := s.cache.AddInt64(ctx, key, cost)
+	return err
 }
 
 // RecordUsage implements port.UsageStore. Once the record is persisted, the
@@ -138,8 +148,7 @@ func (s *UsageStore) RecordUsage(ctx context.Context, record model.UsageRecord) 
 	}
 
 	for _, key := range quotaSumCacheKeysFor(record) {
-		s.markLoadsStale(key)
-		if _, _, err := s.cache.AddInt64(ctx, key, record.Cost()); err != nil {
+		if err := s.applyRecordedCost(ctx, key, record.Cost()); err != nil {
 			// A failed increment only costs a stale total until the entry
 			// expires, so it is reported rather than propagated: the usage
 			// record itself is already written.

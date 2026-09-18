@@ -40,14 +40,18 @@ func backfillQuotaUsage(tx *gorm.DB) error {
 
 	dayExpr, args := localDayExpr(tx)
 
-	// Application principals have an empty user_id and only feed the org
-	// counter, which is why the user scope filters them out rather than
-	// grouping an empty id.
+	// The conditions restate model.FeedsMonetaryBudget, which the store applies
+	// in Go, so the two produce the same totals.
+	//
+	// The user scope skips an empty user_id rather than grouping it. In
+	// production an application authenticates through a shadow user and its
+	// records do carry that user's id, so they get a user counter like any
+	// other; the filter is for records written without any principal at all.
 	orgSQL := `
 		INSERT INTO ` + quotaUsageTable + ` (scope, scope_id, org_id, currency, day, cost)
 		SELECT 'org', org_id, org_id, currency, ` + dayExpr + `, SUM(cost)
 		  FROM usage_records
-		 WHERE plan_covered = 0 AND org_id <> ''
+		 WHERE plan_covered = 0 AND org_id <> '' AND cost <> 0
 		 GROUP BY org_id, currency, ` + dayExpr
 	if err := tx.Exec(orgSQL, append(append([]any{}, args...), args...)...).Error; err != nil {
 		return errors.WithStack(err)
@@ -57,7 +61,7 @@ func backfillQuotaUsage(tx *gorm.DB) error {
 		INSERT INTO ` + quotaUsageTable + ` (scope, scope_id, org_id, currency, day, cost)
 		SELECT 'user', user_id, org_id, currency, ` + dayExpr + `, SUM(cost)
 		  FROM usage_records
-		 WHERE plan_covered = 0 AND org_id <> '' AND user_id <> ''
+		 WHERE plan_covered = 0 AND org_id <> '' AND cost <> 0 AND user_id <> ''
 		 GROUP BY user_id, org_id, currency, ` + dayExpr
 	if err := tx.Exec(userSQL, append(append([]any{}, args...), args...)...).Error; err != nil {
 		return errors.WithStack(err)

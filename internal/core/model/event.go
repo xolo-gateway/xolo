@@ -35,7 +35,7 @@ const (
 	// the tokens were produced and billed — so this event is what makes the
 	// interruption rate measurable.
 	EventTypeProxyStreamInterrupted = "proxy.stream.interrupted"
-	EventTypeAuthLoginFailed    = "auth.login.failed"
+	EventTypeAuthLoginFailed        = "auth.login.failed"
 
 	EventTypeProviderCreated = "provider.created"
 	EventTypeProviderUpdated = "provider.updated"
@@ -160,14 +160,14 @@ type BaseEvent struct {
 func (e *BaseEvent) ID() EventID                   { return e.id }
 func (e *BaseEvent) OrgID() OrgID                  { return e.orgID }
 func (e *BaseEvent) UserID() UserID                { return e.userID }
-func (e *BaseEvent) Source() string               { return e.source }
-func (e *BaseEvent) Type() string                 { return e.typ }
+func (e *BaseEvent) Source() string                { return e.source }
+func (e *BaseEvent) Type() string                  { return e.typ }
 func (e *BaseEvent) Severity() EventSeverity       { return e.severity }
-func (e *BaseEvent) Message() string              { return e.message }
+func (e *BaseEvent) Message() string               { return e.message }
 func (e *BaseEvent) Attributes() map[string]string { return e.attributes }
-func (e *BaseEvent) Pinned() bool                 { return e.pinned }
-func (e *BaseEvent) IncidentID() AlertIncidentID  { return e.incidentID }
-func (e *BaseEvent) CreatedAt() time.Time         { return e.createdAt }
+func (e *BaseEvent) Pinned() bool                  { return e.pinned }
+func (e *BaseEvent) IncidentID() AlertIncidentID   { return e.incidentID }
+func (e *BaseEvent) CreatedAt() time.Time          { return e.createdAt }
 
 func (e *BaseEvent) SetPinned(v bool)                 { e.pinned = v }
 func (e *BaseEvent) SetIncidentID(id AlertIncidentID) { e.incidentID = id }
@@ -176,7 +176,7 @@ var _ Event = &BaseEvent{}
 
 type EventOption func(*BaseEvent)
 
-func WithEventOrg(orgID OrgID) EventOption   { return func(e *BaseEvent) { e.orgID = orgID } }
+func WithEventOrg(orgID OrgID) EventOption    { return func(e *BaseEvent) { e.orgID = orgID } }
 func WithEventUser(userID UserID) EventOption { return func(e *BaseEvent) { e.userID = userID } }
 func WithEventSeverity(s EventSeverity) EventOption {
 	return func(e *BaseEvent) { e.severity = s }

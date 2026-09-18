@@ -205,7 +205,6 @@ func rateLimitResponse(message string) *genaiProxy.ProxyResponse {
 	}
 }
 
-
 // formatMicrocents converts microcents to a currency string, e.g. 1000000 USD → "$1.00".
 func formatMicrocents(v int64, currency string) string {
 	symbols := map[string]string{

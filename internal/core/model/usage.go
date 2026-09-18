@@ -144,7 +144,7 @@ func (r *BaseUsageRecord) CostSource() CostSource       { return r.costSource }
 func (r *BaseUsageRecord) ResolvedModelName() string    { return r.resolvedModelName }
 func (r *BaseUsageRecord) CreatedAt() time.Time         { return r.createdAt }
 
-func (r *BaseUsageRecord) PlanCovered() bool  { return r.planCovered }
+func (r *BaseUsageRecord) PlanCovered() bool   { return r.planCovered }
 func (r *BaseUsageRecord) ProviderCost() int64 { return r.providerCost }
 func (r *BaseUsageRecord) Status() UsageStatus { return r.status }
 

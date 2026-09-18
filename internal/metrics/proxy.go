@@ -48,10 +48,13 @@ var FairShareDegradedShares = promauto.NewCounterVec(
 
 // StreamInterrupted counts the streamed answers that stopped before the
 // provider signalled completion, by cause: "upstream_error" when the provider
-// failed mid-stream, "client_gone" when the client hung up. Those requests are
-// billed by the provider and their usage is recorded, so this is the rate that
-// sizes what an unstable provider costs — without it a provider failing
-// mid-stream simply disappears from the figures.
+// failed mid-stream, "write_failed" when writing the response failed for a
+// reason of our own, "client_gone" when the client hung up, "stream_truncated"
+// when the provider closed without signalling the end. The first two are
+// faults, the last two ordinary traffic. Those requests are billed by the
+// provider and their usage is recorded, so this is the rate that sizes what an
+// unstable provider costs — without it a provider failing mid-stream simply
+// disappears from the figures.
 var StreamInterrupted = promauto.NewCounterVec(
 	prometheus.CounterOpts{
 		Name:      NameStreamInterrupted,

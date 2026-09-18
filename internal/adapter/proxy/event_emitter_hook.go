@@ -101,16 +101,21 @@ func (h *XoloEventEmitterHook) PostResponse(ctx context.Context, req *genaiProxy
 	return nil, nil
 }
 
-// interruptionSeverity rates a cause by who is at fault. A provider failing and
-// a write failing are faults worth an alert; a client closing its tab is
-// ordinary traffic, and a provider ending a stream without a terminal chunk is
-// common enough that warning on it would drown the signal.
+// interruptionSeverity rates a cause by who is at fault. A client closing its
+// tab is ordinary traffic, and a provider ending a stream without a terminal
+// chunk is common enough that warning on it would drown the signal; everything
+// else is a fault worth an alert.
+//
+// The ordinary cases are the ones enumerated, so that a cause added upstream
+// and not recognised here is rated a fault. usageStatus resolves the same doubt
+// the same way, and the two have to agree: a record flagged as a fault while
+// the event stream calls it routine is worse than either alone.
 func interruptionSeverity(cause genaiProxy.StreamInterruptionCause) model.EventSeverity {
 	switch cause {
-	case genaiProxy.StreamInterruptionUpstream, genaiProxy.StreamInterruptionWriteFailed:
-		return model.SeverityWarning
-	default:
+	case genaiProxy.StreamInterruptionClientGone, genaiProxy.StreamInterruptionTruncated:
 		return model.SeverityInfo
+	default:
+		return model.SeverityWarning
 	}
 }
 
