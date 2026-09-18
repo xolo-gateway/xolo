@@ -244,11 +244,18 @@ func parseVerdict(content string, categories []Category) (verdict, bool) {
 // neither copes with the trailing commas, single quotes and payloads cut short
 // by max_tokens that small models produce.
 //
-// The blocks come in document order and the first one naming a configured
-// category wins, so a scratchpad object the model wrote before its verdict is
-// skipped rather than mistaken for it — including when that scratchpad carries
-// a category of its own. Testing the block against `categories` here, rather
-// than on the single block the caller gets back, is what makes that true.
+// The blocks come in document order and the first one naming a *configured*
+// category wins. A scratchpad object the model wrote before its verdict is
+// therefore skipped only when the category it names is not configured — one
+// that names a real category wins over the verdict that follows it. That is
+// the deliberate rule: with no way to tell a draft from a final answer, the
+// first recognisable verdict is the least surprising choice, and it is what
+// keeps a stray `{"a":1}` from deciding anything.
+//
+// Same reason, one caveat: genai appends a payload cut short by max_tokens
+// after the blocks that closed on their own, so a closed draft naming a
+// configured category outranks a truncated real verdict.
+//
 // There is no preference for a fenced block: the fence is prose around the
 // object, nothing more. Returns ok=false when no block names a configured
 // category, which is the normal path for a prose-only answer.
@@ -312,27 +319,29 @@ func startsWithWordRune(s string) bool {
 	return isWordRune(r)
 }
 
-// A combining mark is part of the word it decorates. Without Mn, the decomposed
+// A combining mark is part of the word it decorates: without Mn, the decomposed
 // form of "décode" ("de" + U+0301 + "code") puts a non-letter right before
-// "code" and the mention counts — the precomposed form already did not.
+// "code" and the mention counts, where the precomposed form already did not.
+// An underscore is part of a word for the same reason "hardcoded" is one:
+// "code_review" and "doc_file" are single tokens, not mentions of "code" and
+// "doc".
 func isWordRune(r rune) bool {
-	return unicode.IsLetter(r) || unicode.IsDigit(r) || unicode.Is(unicode.Mn, r)
+	return unicode.IsLetter(r) || unicode.IsDigit(r) || unicode.Is(unicode.Mn, r) || r == '_'
 }
 
-// matchCategory resolves the category the model named. The comparison is exact
-// apart from a trailing "s": a model that answers "docs" for a category called
-// "doc" has picked a category, not made one up, and before the word-boundary
-// rule landed the substring match let that through. Tolerating it here rather
-// than in countWordMatches keeps it off the prose path, where a loose
-// comparison is what made "encoder" count as "code".
 func matchCategory(answer string, categories []Category) (string, bool) {
 	answer = strings.TrimSpace(strings.ToLower(answer))
 	if answer == "" {
 		return "", false
 	}
 	for _, c := range categories {
+		if strings.ToLower(c.Name) == answer {
+			return c.Name, true
+		}
+	}
+	for _, c := range categories {
 		name := strings.ToLower(c.Name)
-		if name == answer || name+"s" == answer || name == answer+"s" {
+		if name+"s" == answer || name == answer+"s" {
 			return c.Name, true
 		}
 	}
