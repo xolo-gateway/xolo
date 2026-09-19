@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
@@ -117,38 +118,19 @@ func getOIDCAuthnHandlerFromConfig(ctx context.Context, conf *config.Config) (*o
 	}
 
 	if conf.HTTP.Authn.Providers.Gitea.Key != "" && conf.HTTP.Authn.Providers.Gitea.Secret != "" {
-		key := string(conf.HTTP.Authn.Providers.Gitea.Key)
-		secret := string(conf.HTTP.Authn.Providers.Gitea.Secret)
-		scopes := conf.HTTP.Authn.Providers.Gitea.Scopes
-		authURL := string(conf.HTTP.Authn.Providers.Gitea.AuthURL)
-		tokenURL := string(conf.HTTP.Authn.Providers.Gitea.TokenURL)
-		profileURL := string(conf.HTTP.Authn.Providers.Gitea.ProfileURL)
-
-		factories["gitea"] = func(callbackURL string) (goth.Provider, error) {
-			return gitea.NewCustomisedURL(key, secret, callbackURL, authURL, tokenURL, profileURL, scopes...), nil
+		factory, provider, withJWKS, err := buildGiteaProvider(ctx, slog.Default(), discoveryClient, conf.HTTP.Authn.Providers.Gitea)
+		if err != nil {
+			return nil, errors.Wrap(err, "could not configure gitea provider")
 		}
 
-		providers = append(providers, oidc.Provider{
-			ID:    "gitea",
-			Label: string(conf.HTTP.Authn.Providers.Gitea.Label),
-			Icon:  "gitlab",
-		})
-
-		discoveryURL := string(conf.HTTP.Authn.Providers.Gitea.DiscoveryURL)
-
-		discovery, err := fetchOIDCDiscovery(ctx, discoveryClient, discoveryURL)
-		if err == nil && discovery != nil && discovery.JWKSURI != "" {
-			providersWithJWKS = append(providersWithJWKS, oidc.ProviderWithJWKS{
-				ID:               "gitea",
-				Label:            string(conf.HTTP.Authn.Providers.Gitea.Label),
-				Icon:             "gitlab",
-				Issuer:           discovery.Issuer,
-				JWKSURL:          discovery.JWKSURI,
-				IntrospectionURL: discovery.IntrospectionEndpoint,
-				UserInfoURL:      discovery.UserInfoEndpoint,
-				ClientID:         key,
-				ClientSecret:     secret,
-			})
+		factories["gitea"] = factory
+		providers = append(providers, provider)
+		// buildGiteaProvider returns nil for withJWKS on the
+		// empty-DiscoveryURL path; skip the append in that case so we do
+		// not register an inert descriptor that would iterate per
+		// request.
+		if withJWKS != nil {
+			providersWithJWKS = append(providersWithJWKS, *withJWKS)
 		}
 	}
 
@@ -157,16 +139,14 @@ func getOIDCAuthnHandlerFromConfig(ctx context.Context, conf *config.Config) (*o
 			continue
 		}
 
-		factory, provider, withJWKS, err := buildOIDCProvider(ctx, discoveryClient, np)
+		factory, provider, withJWKS, err := buildOIDCProvider(ctx, slog.Default(), discoveryClient, np)
 		if err != nil {
 			return nil, errors.Wrapf(err, "could not configure oidc provider %q", np.ID)
 		}
 
 		factories[np.ID] = factory
 		providers = append(providers, provider)
-		if withJWKS != nil {
-			providersWithJWKS = append(providersWithJWKS, *withJWKS)
-		}
+		providersWithJWKS = append(providersWithJWKS, *withJWKS)
 	}
 
 	opts := []oidc.OptionFunc{
@@ -215,6 +195,170 @@ func getRandomBytes(n int) ([]byte, error) {
 	return data, nil
 }
 
+// buildGiteaProvider configures the built-in Gitea provider, mirroring
+// buildOIDCProvider so the two stay symmetric. The provider ID is fixed to
+// "gitea" because it is identified by configuration slot, not by name.
+//
+// DiscoveryURL is optional: when it is set, the document is downloaded once
+// at startup and validated with validateOIDCDiscovery (issuer,
+// authorization_endpoint, token_endpoint remain mandatory; jwks_uri is
+// optional and triggers a warning when missing or unusable). When it is not
+// set, the interactive-login factory is built from the static AUTH_URL /
+// TOKEN_URL / PROFILE_URL configuration.
+//
+// The discovery-populated path returns a populated *oidc.ProviderWithJWKS so
+// the JWKS registry is in scope for the introspection / UserInfo
+// authenticators. The empty-DiscoveryURL path returns nil instead: every
+// endpoint field would be empty (no Issuer was discovered, no JWKSURL, no
+// IntrospectionEndpoint, no UserInfoEndpoint), so the entry would be
+// inert for both oidctoken (skips on empty JWKSURL) and
+// ProvidersForTokenValidation (skips on empty IntrospectionURL and
+// UserInfoURL), and adding it would cost an iteration + a debug log per
+// API token for no observable effect. The caller skips the append when
+// the descriptor is nil.
+func buildGiteaProvider(
+	ctx context.Context,
+	logger *slog.Logger,
+	discoveryClient *http.Client,
+	gp config.GiteaProvider,
+) (oidcProviderFactory, oidc.Provider, *oidc.ProviderWithJWKS, error) {
+	key := string(gp.Key)
+	secret := string(gp.Secret)
+	scopes := gp.Scopes
+	cfgAuthURL := string(gp.AuthURL)
+	cfgTokenURL := string(gp.TokenURL)
+	profileURL := string(gp.ProfileURL)
+	discoveryURL := string(gp.DiscoveryURL)
+
+	// Gitea is reachable either through its discovery document or through a
+	// fully populated static AUTH_URL / TOKEN_URL configuration. Refuse to
+	// boot with neither: gitea.NewCustomisedURL accepts the URL set as-is and
+	// the failure would only surface on the first login, as an opaque redirect
+	// error against an IdP that never receives a request.
+	if discoveryURL == "" && (cfgAuthURL == "" || cfgTokenURL == "") {
+		return nil, oidc.Provider{}, nil, errors.New(
+			"gitea provider requires either DISCOVERY_URL or both AUTH_URL and TOKEN_URL",
+		)
+	}
+
+	var (
+		discovery             *OIDCDiscovery
+		issuer                string
+		jwksURL               string
+		introspectionEndpoint string
+		userInfoEndpoint      string
+	)
+
+	authURL := cfgAuthURL
+	tokenURL := cfgTokenURL
+
+	if discoveryURL != "" {
+		if err := requireAbsoluteHTTPURL(discoveryURL, "DISCOVERY_URL"); err != nil {
+			return nil, oidc.Provider{}, nil, errors.WithStack(err)
+		}
+		var err error
+		discovery, err = fetchOIDCDiscovery(ctx, discoveryClient, discoveryURL)
+		if err != nil {
+			return nil, oidc.Provider{}, nil, errors.WithStack(err)
+		}
+		if err := validateOIDCDiscovery(discovery); err != nil {
+			return nil, oidc.Provider{}, nil, errors.WithStack(err)
+		}
+
+		issuer = discovery.Issuer
+		jwksURL = tolerableJWKSURI(ctx, logger, "gitea provider", "gitea", discoveryURL, discovery.JWKSURI, discovery.IntrospectionEndpoint, discovery.UserInfoEndpoint)
+		introspectionEndpoint = discovery.IntrospectionEndpoint
+		userInfoEndpoint = discovery.UserInfoEndpoint
+
+		// Discovery populated: validateOIDCDiscovery guarantees
+		// authorization_endpoint and token_endpoint are non-empty absolute
+		// URLs, so the discovered values always win over the static config.
+		// The cfgAuthURL/cfgTokenURL fallback above only matters on the
+		// empty-DiscoveryURL path (already validated).
+		authURL = discovery.AuthURL
+		tokenURL = discovery.TokenURL
+		// PROFILE_URL stays optional in the static config: when it is empty,
+		// fall back to the discovered userinfo_endpoint so an operator that
+		// publishes a full OIDC document does not have to redeclare it.
+		//
+		// When PROFILE_URL is set on the discovery path it still has to be a
+		// well-formed absolute http(s) URL — otherwise the failure surfaces
+		// only at first login, as an opaque goth error against a profile
+		// endpoint that never receives a request.
+		if profileURL != "" {
+			if err := requireAbsoluteHTTPURL(profileURL, "PROFILE_URL"); err != nil {
+				return nil, oidc.Provider{}, nil, errors.WithStack(err)
+			}
+		} else {
+			profileURL = discovery.UserInfoEndpoint
+			if profileURL == "" {
+				return nil, oidc.Provider{}, nil, errors.New(
+					"gitea provider requires PROFILE_URL or a discovery document that publishes userinfo_endpoint",
+				)
+			}
+		}
+	} else {
+		// Validate the static config first so the fallback warning below
+		// reflects an actual fallback reaching boot, not a would-be fallback
+		// that the very next check ends up refusing.
+		if err := requireAbsoluteHTTPURL(cfgAuthURL, "AUTH_URL"); err != nil {
+			return nil, oidc.Provider{}, nil, errors.WithStack(err)
+		}
+		if err := requireAbsoluteHTTPURL(cfgTokenURL, "TOKEN_URL"); err != nil {
+			return nil, oidc.Provider{}, nil, errors.WithStack(err)
+		}
+		// PROFILE_URL is optional (goth treats it as a UserInfo fallback that
+		// the OIDC gitea provider does not always need), but when present it
+		// must be a well-formed absolute http(s) URL.
+		if profileURL != "" {
+			if err := requireAbsoluteHTTPURL(profileURL, "PROFILE_URL"); err != nil {
+				return nil, oidc.Provider{}, nil, errors.WithStack(err)
+			}
+		}
+
+		logger.WarnContext(
+			ctx,
+			"gitea provider has no discovery url; JWT id-token validation is disabled and interactive login falls back to the static AUTH_URL / TOKEN_URL configuration",
+			slog.String("provider", "gitea"),
+		)
+	}
+
+	factory := func(callbackURL string) (goth.Provider, error) {
+		// gitea.NewCustomisedURL returns *Provider only: it does not surface a
+		// construction error, so the boot-time validation above is what keeps a
+		// misconfigured Gitea from reaching this point.
+		return gitea.NewCustomisedURL(key, secret, callbackURL, authURL, tokenURL, profileURL, scopes...), nil
+	}
+
+	provider := oidc.Provider{
+		ID:    "gitea",
+		Label: string(gp.Label),
+		Icon:  "gitlab",
+	}
+
+	// Only construct the JWKS-registry descriptor on the discovery-populated
+	// path: the empty-DiscoveryURL path returns nil so the caller skips the
+	// inert append (every endpoint field would be empty and every token
+	// request would otherwise pay for an iteration + a debug log).
+	var withJWKS *oidc.ProviderWithJWKS
+	if discoveryURL != "" {
+		withJWKS = &oidc.ProviderWithJWKS{
+			ID:               "gitea",
+			Label:            string(gp.Label),
+			Icon:             "gitlab",
+			DiscoveryURL:     discoveryURL,
+			Issuer:           issuer,
+			JWKSURL:          jwksURL,
+			IntrospectionURL: introspectionEndpoint,
+			UserInfoURL:      userInfoEndpoint,
+			ClientID:         key,
+			ClientSecret:     secret,
+		}
+	}
+
+	return factory, provider, withJWKS, nil
+}
+
 // buildOIDCProvider configures a single named OIDC provider: the factory
 // building its goth provider (for interactive login), its login-button
 // descriptor, and its JWKS/introspection/userinfo descriptor used by the
@@ -223,6 +367,7 @@ func getRandomBytes(n int) ([]byte, error) {
 // consistent across the interactive-login and API-token paths.
 func buildOIDCProvider(
 	ctx context.Context,
+	logger *slog.Logger,
 	discoveryClient *http.Client,
 	np config.NamedOIDCProvider,
 ) (oidcProviderFactory, oidc.Provider, *oidc.ProviderWithJWKS, error) {
@@ -230,6 +375,9 @@ func buildOIDCProvider(
 	key := string(np.Key)
 	secret := string(np.Secret)
 
+	if err := requireAbsoluteHTTPURL(discoveryURL, "DISCOVERY_URL"); err != nil {
+		return nil, oidc.Provider{}, nil, errors.WithStack(err)
+	}
 	discovery, err := fetchOIDCDiscovery(ctx, discoveryClient, discoveryURL)
 	if err != nil {
 		return nil, oidc.Provider{}, nil, errors.WithStack(err)
@@ -266,13 +414,27 @@ func buildOIDCProvider(
 		Icon:  np.Icon,
 	}
 
+	// jwks_uri is optional: a non-conformant IdP can still drive interactive
+	// login. When it is absent or not an absolute http(s) url, tolerableJWKSURI
+	// emits one startup warning naming the provider and leaves JWKSURL empty
+	// on the descriptor. The provider stays in the registry, and:
+	//
+	//   - oidctoken.validateToken skips providers with an empty JWKSURL
+	//     (returns errInvalidToken, which the authentication loop continues
+	//     on), so JWT id-token validation is silently disabled here.
+	//   - oauth2token.ProvidersForTokenValidation filters on
+	//     IntrospectionURL / UserInfoURL directly, not on JWKSURL, so
+	//     introspection / UserInfo keep working when the discovery document
+	//     exposes either endpoint. This is the case issue #27 targets.
+	jwksURL := tolerableJWKSURI(ctx, logger, "oidc provider", np.ID, discoveryURL, discovery.JWKSURI, discovery.IntrospectionEndpoint, discovery.UserInfoEndpoint)
+
 	withJWKS := &oidc.ProviderWithJWKS{
 		ID:               np.ID,
 		Label:            np.Label,
 		Icon:             np.Icon,
 		DiscoveryURL:     discoveryURL,
 		Issuer:           discovery.Issuer,
-		JWKSURL:          discovery.JWKSURI,
+		JWKSURL:          jwksURL,
 		IntrospectionURL: discovery.IntrospectionEndpoint,
 		UserInfoURL:      discovery.UserInfoEndpoint,
 		ClientID:         key,
@@ -286,6 +448,115 @@ func buildOIDCProvider(
 
 func newOIDCDiscoveryHTTPClient() *http.Client {
 	return &http.Client{Timeout: oidcDiscoveryTimeout}
+}
+
+// tolerableJWKSURI returns the jwks_uri unchanged when it is a non-empty
+// absolute http(s) URL, and "" otherwise. When it returns "", the supplied
+// logger has emitted a startup warning so the operator can see which
+// provider lost JWT id-token validation. The empty result lets the
+// oidctoken loop skip the provider cleanly (errInvalidToken on every
+// token) while still keeping the provider registered for introspection /
+// UserInfo purposes.
+//
+// Production callers pass slog.Default(); tests pass a *slog.Logger
+// configured with a captureHandler so they never need to mutate the
+// process-global slog.Default (which races with any t.Parallel test that
+// also captures logs).
+//
+// introspectionURL and userInfoURL are surfaced as slog attributes on the
+// warning record (omitted when empty) so operators can verify whether the IdP
+// actually publishes them: a missing jwks_uri only "still active" when at
+// least one of those is present and the API-token authenticator that consumes
+// them is enabled.
+func tolerableJWKSURI(ctx context.Context, logger *slog.Logger, providerKind, providerID, discoveryURL, raw, introspectionURL, userInfoURL string) string {
+	extraAttrs := make([]any, 0, 4)
+	if introspectionURL != "" {
+		extraAttrs = append(extraAttrs, slog.String("introspection_endpoint", introspectionURL))
+	}
+	if userInfoURL != "" {
+		extraAttrs = append(extraAttrs, slog.String("userinfo_endpoint", userInfoURL))
+	}
+
+	if raw == "" {
+		attrs := []any{
+			slog.String("provider", providerID),
+			slog.String("discovery_url", discoveryURL),
+		}
+		logger.WarnContext(
+			ctx,
+			providerKind+" discovery document has no jwks_uri; JWT id-token validation is disabled for this provider",
+			append(attrs, extraAttrs...)...,
+		)
+
+		return ""
+	}
+
+	parsed, err := url.Parse(raw)
+	if err != nil {
+		// net/url.Parse never returns a non-nil *URL alongside a non-nil
+		// error, so we can return early without touching `parsed`. Keeping
+		// the variable declaration avoids a shadow of `err` in the success
+		// branch below.
+		attrs := []any{
+			slog.String("provider", providerID),
+			slog.String("discovery_url", discoveryURL),
+			slog.String("jwks_uri", raw),
+			slog.String("parse_error", err.Error()),
+		}
+		logger.WarnContext(
+			ctx,
+			providerKind+" discovery document jwks_uri is not a parseable url; JWT id-token validation is disabled for this provider",
+			append(attrs, extraAttrs...)...,
+		)
+
+		return ""
+	}
+
+	scheme := strings.ToLower(parsed.Scheme)
+	if (scheme != "http" && scheme != "https") || parsed.Host == "" {
+		attrs := []any{
+			slog.String("provider", providerID),
+			slog.String("discovery_url", discoveryURL),
+			slog.String("jwks_uri", raw),
+		}
+		logger.WarnContext(
+			ctx,
+			providerKind+" discovery document jwks_uri is not an absolute http(s) url; JWT id-token validation is disabled for this provider",
+			append(attrs, extraAttrs...)...,
+		)
+
+		return ""
+	}
+
+	return raw
+}
+
+// requireAbsoluteHTTPURL enforces the same absolute-http(s) shape as
+// validateOIDCDiscovery on a single configuration value. The same helper
+// gates AUTH_URL / TOKEN_URL / PROFILE_URL / DISCOVERY_URL on both the
+// static-config and discovery-populated paths in buildGiteaProvider and
+// buildOIDCProvider, so an operator gets a uniform
+// "<FIELD> must be an absolute http(s) url" message regardless of which
+// branch (parse failure, non-http scheme, or missing host) rejected the
+// value. The underlying net/url parse error, when present, is wrapped as
+// the error cause so it stays accessible via errors.Cause for debugging
+// without leaking into the operator-facing sentence.
+func requireAbsoluteHTTPURL(value, field string) error {
+	parsed, err := url.Parse(value)
+	if err != nil {
+		return errors.Wrapf(
+			err,
+			"%s must be an absolute http(s) url",
+			field,
+		)
+	}
+
+	// RFC 3986 marks URL schemes case-insensitive; lowercase before compare.
+	if scheme := strings.ToLower(parsed.Scheme); (scheme != "http" && scheme != "https") || parsed.Host == "" {
+		return errors.Errorf("%s must be an absolute http(s) url", field)
+	}
+
+	return nil
 }
 
 func fetchOIDCDiscovery(
@@ -336,7 +607,11 @@ func validateOIDCDiscovery(discovery *OIDCDiscovery) error {
 		{name: "issuer", value: discovery.Issuer, required: true},
 		{name: "authorization_endpoint", value: discovery.AuthURL, required: true},
 		{name: "token_endpoint", value: discovery.TokenURL, required: true},
-		{name: "jwks_uri", value: discovery.JWKSURI, required: true},
+		// jwks_uri is intentionally absent from this list: the caller routes it
+		// through tolerableJWKSURI, which logs a startup warning and returns ""
+		// for both a missing and an unusable value. Boot is never blocked on
+		// jwks_uri — the only effect is that JWT id-token validation is
+		// disabled, while introspection / UserInfo remain available.
 		{name: "userinfo_endpoint", value: discovery.UserInfoEndpoint},
 		{name: "introspection_endpoint", value: discovery.IntrospectionEndpoint},
 		{name: "end_session_endpoint", value: discovery.EndSessionEndpoint},
@@ -356,7 +631,13 @@ func validateOIDCDiscovery(discovery *OIDCDiscovery) error {
 			return errors.Wrapf(err, "oidc discovery field %q is not a valid url", endpoint.name)
 		}
 
-		isHTTP := parsed.Scheme == "http" || parsed.Scheme == "https"
+		isHTTP := func() bool {
+			switch strings.ToLower(parsed.Scheme) {
+			case "http", "https":
+				return true
+			}
+			return false
+		}()
 		if !isHTTP || parsed.Host == "" {
 			return errors.Errorf(
 				"oidc discovery field %q must be an absolute http(s) url",
