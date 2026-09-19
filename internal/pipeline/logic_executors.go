@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"hash/fnv"
 	"math"
+	"strings"
 	"time"
 
 	"github.com/pkg/errors"
@@ -60,6 +61,10 @@ func numberInput(inputs map[string]interface{}, name string) (float64, bool) {
 
 // CompareExecutor handles NodeTypeCompare: value <op> threshold -> boolean.
 // The threshold comes from the port when connected, from the data otherwise.
+// With the text port connected instead of value, the string is compared to
+// the configured Expected string, so a classifier's category can drive a
+// select or a block without a script. Both strings are trimmed and compared
+// without regard to case: a category is a label, not a payload.
 type CompareExecutor struct{ noopBackwardExecutor }
 
 func NewCompareExecutor() *CompareExecutor { return &CompareExecutor{} }
@@ -69,9 +74,12 @@ func (e *CompareExecutor) Forward(_ context.Context, node model.PipelineNode, in
 	if err := decodeNodeData(node, &data); err != nil {
 		return nil, errors.Wrap(err, "compare node: invalid data")
 	}
+	if text, ok := inputs["text"].(string); ok {
+		return compareText(node, data, text)
+	}
 	value, ok := numberInput(inputs, "value")
 	if !ok {
-		return nil, errors.Errorf("compare node %s: value port is not connected or not a number", node.ID)
+		return nil, errors.Errorf("compare node %s: neither value nor text port is connected (or value is not a number)", node.ID)
 	}
 	threshold := data.Threshold
 	if t, ok := numberInput(inputs, "threshold"); ok {
@@ -94,6 +102,22 @@ func (e *CompareExecutor) Forward(_ context.Context, node model.PipelineNode, in
 		result = value != threshold
 	default:
 		return nil, errors.Errorf("compare node %s: unknown op %q", node.ID, data.Op)
+	}
+	return &ForwardResult{OutputValues: map[string]interface{}{"result": result}}, nil
+}
+
+func compareText(node model.PipelineNode, data model.CompareNodeData, text string) (*ForwardResult, error) {
+	equal := strings.EqualFold(strings.TrimSpace(text), strings.TrimSpace(data.Expected))
+	var result bool
+	switch data.Op {
+	case "eq", "", "gt":
+		// "gt" is the numeric default the editor seeds; on text it reads as
+		// "the usual comparison", which is equality.
+		result = equal
+	case "ne":
+		result = !equal
+	default:
+		return nil, errors.Errorf("compare node %s: op %q does not apply to text, use eq or ne", node.ID, data.Op)
 	}
 	return &ForwardResult{OutputValues: map[string]interface{}{"result": result}}, nil
 }

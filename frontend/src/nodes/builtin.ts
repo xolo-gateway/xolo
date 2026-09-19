@@ -22,6 +22,8 @@ export function builtinSummary(kind: PipelineNodeType, data: Record<string, unkn
     case 'compare': {
       const op = (data.op as string) ?? 'gt'
       const sym: Record<string, string> = { gt: '>', gte: '≥', lt: '<', lte: '≤', eq: '=', ne: '≠' }
+      const expected = typeof data.expected === 'string' ? data.expected.trim() : ''
+      if (expected) return `${op === 'ne' ? '≠' : '='} "${expected}"`
       return `${sym[op] ?? op} ${data.threshold ?? 0.5}`
     }
     case 'select':

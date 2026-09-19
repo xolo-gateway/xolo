@@ -259,15 +259,16 @@ func (h *Handler) handlePipelineNodeTypes(w http.ResponseWriter, r *http.Request
 		nodeTypeDescriptor{
 			Type:        model.NodeTypeCompare,
 			Label:       "Comparaison",
-			Description: "Compare un nombre à un seuil et émet un booléen.",
+			Description: "Compare un nombre à un seuil, ou une chaîne (port text) à une valeur attendue, et émet un booléen.",
 			InputPorts: []*proto.PortDescriptor{
-				{Name: "value", PortType: string(model.PortTypeNumber), Required: true},
+				{Name: "value", PortType: string(model.PortTypeNumber)},
 				{Name: "threshold", PortType: string(model.PortTypeNumber)},
+				{Name: "text", PortType: string(model.PortTypeString)},
 			},
 			OutputPorts: []*proto.PortDescriptor{
 				{Name: "result", PortType: string(model.PortTypeBoolean)},
 			},
-			ConfigSchema: `{"type":"object","properties":{"op":{"type":"string","title":"Opérateur","enum":["gt","gte","lt","lte","eq","ne"],"default":"gt"},"threshold":{"type":"number","title":"Seuil (si le port n'est pas connecté)","default":0.5}}}`,
+			ConfigSchema: `{"type":"object","properties":{"op":{"type":"string","title":"Opérateur","description":"Sur text, seuls eq et ne s'appliquent.","enum":["gt","gte","lt","lte","eq","ne"],"default":"gt"},"threshold":{"type":"number","title":"Seuil (si le port threshold n'est pas connecté)","default":0.5},"expected":{"type":"string","title":"Chaîne attendue (port text)","description":"Comparée sans tenir compte de la casse ni des espaces autour."}}}`,
 		},
 		nodeTypeDescriptor{
 			Type:        model.NodeTypeSelect,

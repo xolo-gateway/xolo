@@ -126,11 +126,15 @@ type ModelRefNodeData struct {
 }
 
 // CompareNodeData is the Data payload for NodeTypeCompare.
+// The node compares a number on its value port to a threshold, or, when its
+// text port is connected instead, a string to Expected (eq and ne only).
 type CompareNodeData struct {
 	// Op is one of gt, gte, lt, lte, eq, ne.
 	Op string `json:"op"`
 	// Threshold is used when the threshold port is not connected.
 	Threshold float64 `json:"threshold"`
+	// Expected is the string the text port is compared to.
+	Expected string `json:"expected,omitempty"`
 }
 
 // MathNodeData is the Data payload for NodeTypeMath.
