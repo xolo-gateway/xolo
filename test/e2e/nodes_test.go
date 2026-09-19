@@ -166,11 +166,19 @@ func TestNodes_GuardedAgent(t *testing.T) {
 		if res.Status != 200 {
 			t.Fatalf("status = %d, body = %s", res.Status, res.Body)
 		}
+		// Two provider calls: the classifier's, then the answer. Both must
+		// carry the pseudonymised text, since the classifier sits after the
+		// pseudonymizer.
 		requests := env.provider.RequestsSince(before)
-		if len(requests) != 1 {
-			t.Fatalf("provider received %d request(s), want 1", len(requests))
+		if len(requests) != 2 {
+			t.Fatalf("provider received %d request(s), want 2 (classifier, answer)", len(requests))
 		}
-		up := requests[0]
+		for _, r := range requests {
+			if strings.Contains(r.Raw, "Jean Dupont") {
+				t.Errorf("a provider request carries the raw name: %s", r.Raw)
+			}
+		}
+		up := requests[1]
 		if len(up.Messages) == 0 || up.Messages[0].Role != "system" || !strings.Contains(fmt.Sprint(up.Messages[0].Content), "support e2e") {
 			t.Errorf("system prompt missing or not first: %s", up.Raw)
 		}
@@ -185,7 +193,32 @@ func TestNodes_GuardedAgent(t *testing.T) {
 		if risk := portNumber(t, evt, "risk"); risk > 0.6 {
 			t.Errorf("honest message scored risk %v", risk)
 		}
+		if got := evt.Attributes()["port.category"]; got != "support" {
+			t.Errorf("port.category = %q, want the fallback category support", got)
+		}
 		assertNoEvent(t, snap, "request.blocked")
+	})
+	t.Run("off-topic message routed to the canned answer", func(t *testing.T) {
+		snap := snapshotEvents(t)
+		before := len(env.provider.Requests())
+
+		// The fake provider echoes the last user turn, so naming the category
+		// in the message is what makes the classifier answer it.
+		res := chat(t, tokenAlice, vmAgent, "Ceci est hors_sujet : une recette de tarte.")
+		if res.Status != 200 {
+			t.Fatalf("status = %d, body = %s", res.Status, res.Body)
+		}
+		if !strings.Contains(res.Content, "Réponse factice") {
+			t.Errorf("expected the dummy answer, got %q", res.Content)
+		}
+		// Only the classifier reached the provider; the answer came from dummy-model.
+		if got := len(env.provider.RequestsSince(before)); got != 1 {
+			t.Errorf("provider received %d request(s), want 1 (the classifier)", got)
+		}
+		evt := traceEvent(t, snap, "agent")
+		if got := evt.Attributes()["port.model_name"]; got != vmDummy {
+			t.Errorf("port.model_name = %q, want %s", got, vmDummy)
+		}
 	})
 	t.Run("injection refused before the provider", func(t *testing.T) {
 		snap := snapshotEvents(t)
@@ -198,8 +231,15 @@ func TestNodes_GuardedAgent(t *testing.T) {
 		if !strings.Contains(res.Body, "politique de l'agent (e2e)") {
 			t.Errorf("rejection body = %s", res.Body)
 		}
-		if got := len(env.provider.RequestsSince(before)); got != 0 {
-			t.Errorf("provider received %d request(s), want none", got)
+		// The classifier runs before the block (independent branches), so the
+		// provider sees its call; the answer call never happens. This is the
+		// documented cost of the assembly, see the tutorial.
+		requests := env.provider.RequestsSince(before)
+		if len(requests) != 1 {
+			t.Fatalf("provider received %d request(s), want 1 (the classifier only)", len(requests))
+		}
+		if strings.Contains(requests[0].Raw, "assistant support e2e") {
+			t.Errorf("the answer call reached the provider despite the block: %s", requests[0].Raw)
 		}
 		evt := waitForEvent(t, snap, "request.blocked")
 		if evt.Attributes()["label"] != "injection" {

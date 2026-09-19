@@ -30,6 +30,7 @@ var e2ePlugins = []string{
 	"budget-pressure",
 	"prompt-guard",
 	"script-processor",
+	"llm-classifier",
 }
 
 // Models added on the fake provider. The fake answers any real model name,
@@ -68,7 +69,7 @@ const (
 	vmGuard        = "acme/e2e-guard"         // prompt-guard in blocking mode
 	vmTelemetry    = "acme/e2e-telemetry"     // request-inspector, text-classifier, energy-estimator, budget-pressure, script-processor → trace
 	vmBlock        = "acme/e2e-block"         // prompt-guard risk → compare → block
-	vmAgent        = "acme/e2e-agent"         // the guarded agent: system-prompt, pseudonymizer, prompt-guard → compare → block, trace
+	vmAgent        = "acme/e2e-agent"         // the guarded agent: system-prompt, pseudonymizer, prompt-guard → compare → block, llm-classifier → compare(text) → select, trace
 )
 
 const dummyTemplate = "Réponse factice pour {{.User}} : {{.LastMessage}}"
@@ -121,6 +122,10 @@ func (b *graph) compare(id, op string, threshold float64) *graph {
 }
 
 func (b *graph) selectNode(id string) *graph { return b.node(id, model.NodeTypeSelect, nil) }
+
+func (b *graph) compareText(id, op, expected string) *graph {
+	return b.node(id, model.NodeTypeCompare, model.CompareNodeData{Op: op, Expected: expected})
+}
 
 func (b *graph) block(id, label, message string) *graph {
 	return b.node(id, model.NodeTypeBlock, model.BlockNodeData{Label: label, Message: message})
@@ -452,6 +457,10 @@ func virtualModelGraphs() map[string]*graph {
 		// A guarded agent assembled from the pieces above: the system prompt
 		// frames the role, names leave pseudonymised, the guard scores and
 		// the graph decides the refusal, a trace records the risk.
+		// The classifier asks the fake provider, which echoes the last user
+		// turn: a message that names the category classifies as it, any other
+		// falls back to "support". The off-topic branch routes to the dummy
+		// virtual model, so the answer tells which branch ran.
 		vmAgent: newGraph().
 			generator("gen").
 			plugin("sys", "system-prompt", `{"system_prompt":"Tu es l'assistant support e2e."}`).
@@ -459,8 +468,19 @@ func virtualModelGraphs() map[string]*graph {
 			plugin("guard", "prompt-guard", `{}`).
 			compare("cmp", "gt", 0.6).
 			block("policy", "injection", "Requête refusée par la politique de l'agent (e2e).").
-			trace("trace", "agent", "risk:number").
-			modelNode("llm", modelFast).
+			plugin("cls", "llm-classifier", string(mustJSON(map[string]any{
+				"model": modelFast, "fallback_category": "support", "temperature": 0,
+				"categories": []map[string]string{
+					{"name": "support", "description": "Une question sur le service."},
+					{"name": "hors_sujet", "description": "Tout le reste."},
+				},
+			}))).
+			compareText("cmptext", "eq", "hors_sujet").
+			modelRef("refus", vmDummy).
+			modelRef("strong", modelFast).
+			selectNode("sel").
+			trace("trace", "agent", "risk:number", "category:string", "model_name:string").
+			modelNode("llm", "").
 			sink("out").
 			edge("gen.request", "sys.request").
 			edge("sys.request", "pseudo.request").
@@ -468,7 +488,15 @@ func virtualModelGraphs() map[string]*graph {
 			edge("gen.request", "guard.request").
 			edge("guard.risk", "cmp.value").
 			edge("cmp.result", "policy.condition").
+			edge("pseudo.request", "cls.request").
+			edge("cls.category", "cmptext.text").
+			edge("cmptext.result", "sel.condition").
+			edge("refus.model_name", "sel.when_true").
+			edge("strong.model_name", "sel.when_false").
+			edge("sel.value", "llm.model_name").
 			edge("guard.risk", "trace.risk").
+			edge("cls.category", "trace.category").
+			edge("sel.value", "trace.model_name").
 			edge("llm.response", "out.response"),
 
 		// Analysis plugins feeding one trace: their outputs become event

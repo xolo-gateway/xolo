@@ -76,6 +76,9 @@ func TestCompareExecutor(t *testing.T) {
 	if _, err := e.Forward(context.Background(), nodeWith(model.NodeTypeCompare, `{"op":"eq"}`), map[string]interface{}{"text": "x"}, ExecutionContext{}); err == nil {
 		t.Error("an empty expected string must fail rather than yield a constant")
 	}
+	if _, err := e.Forward(context.Background(), nodeWith(model.NodeTypeCompare, `{"op":"eq","expected":"x"}`), map[string]interface{}{"text": "x", "value": 1.0}, ExecutionContext{}); err == nil {
+		t.Error("value and text both connected must fail rather than silently prefer text")
+	}
 	if _, err := e.Forward(context.Background(), nodeWith(model.NodeTypeCompare, `{"op":"between"}`), map[string]interface{}{"value": 1.0}, ExecutionContext{}); err == nil {
 		t.Error("unknown op must fail")
 	}

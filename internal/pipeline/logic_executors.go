@@ -75,6 +75,11 @@ func (e *CompareExecutor) Forward(_ context.Context, node model.PipelineNode, in
 		return nil, errors.Wrap(err, "compare node: invalid data")
 	}
 	if text, ok := inputs["text"].(string); ok {
+		if _, both := inputs["value"]; both {
+			// The editor refuses this wiring; a graph that arrives through
+			// the API must not silently pick one side.
+			return nil, errors.Errorf("compare node %s: value and text are both connected, keep one", node.ID)
+		}
 		return compareText(node, data, text)
 	}
 	if data.Op == "" {
