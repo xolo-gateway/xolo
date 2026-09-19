@@ -68,6 +68,7 @@ const (
 	vmGuard        = "acme/e2e-guard"         // prompt-guard in blocking mode
 	vmTelemetry    = "acme/e2e-telemetry"     // request-inspector, text-classifier, energy-estimator, budget-pressure, script-processor → trace
 	vmBlock        = "acme/e2e-block"         // prompt-guard risk → compare → block
+	vmAgent        = "acme/e2e-agent"         // the guarded agent: system-prompt, pseudonymizer, prompt-guard → compare → block, trace
 )
 
 const dummyTemplate = "Réponse factice pour {{.User}} : {{.LastMessage}}"
@@ -446,6 +447,28 @@ func virtualModelGraphs() map[string]*graph {
 			edge("guard.risk", "cmp.value").
 			edge("cmp.result", "policy.condition").
 			edge("gen.request", "llm.request").
+			edge("llm.response", "out.response"),
+
+		// A guarded agent assembled from the pieces above: the system prompt
+		// frames the role, names leave pseudonymised, the guard scores and
+		// the graph decides the refusal, a trace records the risk.
+		vmAgent: newGraph().
+			generator("gen").
+			plugin("sys", "system-prompt", `{"system_prompt":"Tu es l'assistant support e2e."}`).
+			plugin("pseudo", "pseudonymizer", `{"language":"fr","strategy":"tag"}`).
+			plugin("guard", "prompt-guard", `{}`).
+			compare("cmp", "gt", 0.6).
+			block("policy", "injection", "Requête refusée par la politique de l'agent (e2e).").
+			trace("trace", "agent", "risk:number").
+			modelNode("llm", modelFast).
+			sink("out").
+			edge("gen.request", "sys.request").
+			edge("sys.request", "pseudo.request").
+			edge("pseudo.request", "llm.request").
+			edge("gen.request", "guard.request").
+			edge("guard.risk", "cmp.value").
+			edge("cmp.result", "policy.condition").
+			edge("guard.risk", "trace.risk").
 			edge("llm.response", "out.response"),
 
 		// Analysis plugins feeding one trace: their outputs become event
