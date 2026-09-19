@@ -56,7 +56,7 @@ func TestCompareExecutor(t *testing.T) {
 		{`{"op":"eq","expected":"hors_sujet"}`, " Hors_Sujet ", true},
 		{`{"op":"eq","expected":"hors_sujet"}`, "support", false},
 		{`{"op":"ne","expected":"hors_sujet"}`, "support", true},
-		// eq is the default when text is connected, whatever the numeric default.
+		// An absent op reads as eq.
 		{`{"expected":"support"}`, "support", true},
 	}
 	for _, c := range textCases {
@@ -68,8 +68,13 @@ func TestCompareExecutor(t *testing.T) {
 			t.Errorf("%s %q: expected %v, got %v", c.data, c.text, c.want, res.OutputValues["result"])
 		}
 	}
-	if _, err := e.Forward(context.Background(), nodeWith(model.NodeTypeCompare, `{"op":"lt","expected":"x"}`), map[string]interface{}{"text": "x"}, ExecutionContext{}); err == nil {
-		t.Error("an ordering op on text must fail")
+	for _, data := range []string{`{"op":"lt","expected":"x"}`, `{"op":"gt","expected":"x"}`} {
+		if _, err := e.Forward(context.Background(), nodeWith(model.NodeTypeCompare, data), map[string]interface{}{"text": "x"}, ExecutionContext{}); err == nil {
+			t.Errorf("%s: an ordering op on text must fail", data)
+		}
+	}
+	if _, err := e.Forward(context.Background(), nodeWith(model.NodeTypeCompare, `{"op":"eq"}`), map[string]interface{}{"text": "x"}, ExecutionContext{}); err == nil {
+		t.Error("an empty expected string must fail rather than yield a constant")
 	}
 	if _, err := e.Forward(context.Background(), nodeWith(model.NodeTypeCompare, `{"op":"between"}`), map[string]interface{}{"value": 1.0}, ExecutionContext{}); err == nil {
 		t.Error("unknown op must fail")

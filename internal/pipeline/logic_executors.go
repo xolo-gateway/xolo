@@ -70,12 +70,15 @@ type CompareExecutor struct{ noopBackwardExecutor }
 func NewCompareExecutor() *CompareExecutor { return &CompareExecutor{} }
 
 func (e *CompareExecutor) Forward(_ context.Context, node model.PipelineNode, inputs map[string]interface{}, _ ExecutionContext) (*ForwardResult, error) {
-	data := model.CompareNodeData{Op: "gt"}
+	var data model.CompareNodeData
 	if err := decodeNodeData(node, &data); err != nil {
 		return nil, errors.Wrap(err, "compare node: invalid data")
 	}
 	if text, ok := inputs["text"].(string); ok {
 		return compareText(node, data, text)
+	}
+	if data.Op == "" {
+		data.Op = "gt"
 	}
 	value, ok := numberInput(inputs, "value")
 	if !ok {
@@ -107,12 +110,16 @@ func (e *CompareExecutor) Forward(_ context.Context, node model.PipelineNode, in
 }
 
 func compareText(node model.PipelineNode, data model.CompareNodeData, text string) (*ForwardResult, error) {
-	equal := strings.EqualFold(strings.TrimSpace(text), strings.TrimSpace(data.Expected))
+	expected := strings.TrimSpace(data.Expected)
+	if expected == "" {
+		// An empty expectation would make the node a constant, and a policy
+		// built on it silently inert. Fail loudly instead.
+		return nil, errors.Errorf("compare node %s: text port is connected but no expected string is configured", node.ID)
+	}
+	equal := strings.EqualFold(strings.TrimSpace(text), expected)
 	var result bool
 	switch data.Op {
-	case "eq", "", "gt":
-		// "gt" is the numeric default the editor seeds; on text it reads as
-		// "the usual comparison", which is equality.
+	case "eq", "":
 		result = equal
 	case "ne":
 		result = !equal

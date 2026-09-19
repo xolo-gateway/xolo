@@ -1,6 +1,6 @@
 {
   "version": "1",
-  "exportedAt": "2026-09-19T06:31:03.171824502Z",
+  "exportedAt": "2026-09-19T12:11:10.565261101Z",
   "name": "support-agent",
   "description": "Agent support gardé : cadrage, pseudonymisation, anti-injection et recentrage.",
   "graph": {
@@ -11,7 +11,8 @@
         "position": {
           "x": 40,
           "y": 300
-        }
+        },
+        "data": {}
       },
       {
         "id": "sink",
@@ -19,7 +20,8 @@
         "position": {
           "x": 1400,
           "y": 300
-        }
+        },
+        "data": {}
       },
       {
         "id": "sys",
@@ -257,7 +259,7 @@
       },
       {
         "id": "e8",
-        "source": "gen",
+        "source": "pseudo",
         "sourcePort": "request",
         "target": "cls",
         "targetPort": "request"

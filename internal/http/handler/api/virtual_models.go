@@ -268,7 +268,7 @@ func (h *Handler) handlePipelineNodeTypes(w http.ResponseWriter, r *http.Request
 			OutputPorts: []*proto.PortDescriptor{
 				{Name: "result", PortType: string(model.PortTypeBoolean)},
 			},
-			ConfigSchema: `{"type":"object","properties":{"op":{"type":"string","title":"Opérateur","description":"Sur text, seuls eq et ne s'appliquent.","enum":["gt","gte","lt","lte","eq","ne"],"default":"gt"},"threshold":{"type":"number","title":"Seuil (si le port threshold n'est pas connecté)","default":0.5},"expected":{"type":"string","title":"Chaîne attendue (port text)","description":"Comparée sans tenir compte de la casse ni des espaces autour."}}}`,
+			ConfigSchema: `{"type":"object","properties":{"op":{"type":"string","title":"Opérateur","description":"Sur text, seuls eq et ne s'appliquent ; gt, gte, lt et lte sont une erreur.","enum":["gt","gte","lt","lte","eq","ne"],"default":"gt"},"threshold":{"type":"number","title":"Seuil (si le port threshold n'est pas connecté)","default":0.5},"expected":{"type":"string","title":"Chaîne attendue (port text)","description":"Obligatoire quand le port text est connecté. Comparée sans tenir compte de la casse ni des espaces autour."}}}`,
 		},
 		nodeTypeDescriptor{
 			Type:        model.NodeTypeSelect,
