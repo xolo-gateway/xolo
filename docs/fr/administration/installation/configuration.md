@@ -27,6 +27,7 @@ Xolo authentifie les utilisateurs via un ou plusieurs fournisseurs OAuth2/OIDC. 
 | --- | --- |
 | `XOLO_HTTP_AUTHN_DEFAULT_ADMINS` | Emails (séparés par des virgules) promus administrateurs plateforme dès leur première connexion. |
 | `XOLO_HTTP_AUTHN_ACTIVE_BY_DEFAULT` | Si `true`, les nouveaux comptes sont actifs sans validation manuelle. |
+| `XOLO_HTTP_AUTHN_AUTO_CREATE_USERS` | Si `true` (défaut), une identité inconnue obtient un compte à sa première connexion. Si `false`, seules les identités pré-provisionnées peuvent se connecter — à trois exceptions près : les adresses de `DEFAULT_ADMINS`, les applications, et **les adresses destinataires d'une invitation en attente**. |
 | `XOLO_HTTP_AUTHN_PROVIDERS_GOOGLE_KEY` / `_SECRET` | Fournisseur Google OAuth2. |
 | `XOLO_HTTP_AUTHN_PROVIDERS_GITHUB_KEY` / `_SECRET` | Fournisseur GitHub OAuth2. |
 | `XOLO_HTTP_AUTHN_PROVIDERS_GITEA_KEY` / `_SECRET` / `_AUTH_URL` / `_TOKEN_URL` / `_PROFILE_URL` | Fournisseur Gitea auto-hébergé. |
