@@ -74,11 +74,19 @@ func (e *CompareExecutor) Forward(_ context.Context, node model.PipelineNode, in
 	if err := decodeNodeData(node, &data); err != nil {
 		return nil, errors.Wrap(err, "compare node: invalid data")
 	}
-	if text, ok := inputs["text"].(string); ok {
-		if _, both := inputs["value"]; both {
-			// The editor refuses this wiring; a graph that arrives through
-			// the API must not silently pick one side.
-			return nil, errors.Errorf("compare node %s: value and text are both connected, keep one", node.ID)
+	// The mode follows the wiring, not the type of what arrived: a text port
+	// fed by a number is a wiring mistake to report, not a reason to fall back
+	// to the numeric comparison. The editor refuses these cases too, but a
+	// graph that arrives through the API must not silently pick one side.
+	rawText, hasText := inputs["text"]
+	_, hasValue := inputs["value"]
+	if hasText && hasValue {
+		return nil, errors.Errorf("compare node %s: value and text are both connected, keep one", node.ID)
+	}
+	if hasText {
+		text, ok := rawText.(string)
+		if !ok {
+			return nil, errors.Errorf("compare node %s: text port received a %T, connect it to a string output", node.ID, rawText)
 		}
 		return compareText(node, data, text)
 	}
@@ -87,7 +95,10 @@ func (e *CompareExecutor) Forward(_ context.Context, node model.PipelineNode, in
 	}
 	value, ok := numberInput(inputs, "value")
 	if !ok {
-		return nil, errors.Errorf("compare node %s: neither value nor text port is connected (or value is not a number)", node.ID)
+		if hasValue {
+			return nil, errors.Errorf("compare node %s: value port received a %T, connect it to a number output", node.ID, inputs["value"])
+		}
+		return nil, errors.Errorf("compare node %s: neither value nor text port is connected", node.ID)
 	}
 	threshold := data.Threshold
 	if t, ok := numberInput(inputs, "threshold"); ok {

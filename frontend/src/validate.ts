@@ -66,10 +66,11 @@ function compareProblem(node: Node, connected: Set<string>): string | null {
   const hasText = connected.has(portKey(node.id, 'text'))
   const name = `compare (${node.id})`
   if (!hasValue && !hasText) return `${name} : connectez le port value ou le port text.`
-  if (hasValue && hasText) return `${name} : value et text sont connectés, text l'emporterait ; n'en gardez qu'un.`
+  if (hasValue && hasText) return `${name} : value et text sont connectés, la requête sera refusée à l'exécution ; n'en gardez qu'un.`
   if (hasText) {
     if (!(data.expected ?? '').trim()) return `${name} : renseignez la chaîne attendue.`
-    const op = data.op ?? 'gt'
+    // The engine reads an absent op as eq on text; only an explicit ordering op is wrong.
+    const op = data.op || 'eq'
     if (op !== 'eq' && op !== 'ne') return `${name} : l'opérateur ${op} ne s'applique pas à text, choisissez eq ou ne.`
   }
   return null

@@ -3,6 +3,7 @@ package pipeline
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
@@ -78,6 +79,14 @@ func TestCompareExecutor(t *testing.T) {
 	}
 	if _, err := e.Forward(context.Background(), nodeWith(model.NodeTypeCompare, `{"op":"eq","expected":"x"}`), map[string]interface{}{"text": "x", "value": 1.0}, ExecutionContext{}); err == nil {
 		t.Error("value and text both connected must fail rather than silently prefer text")
+	}
+	// The wiring decides the mode: a text port fed by a number is reported as
+	// such, and never falls back to the numeric comparison.
+	if _, err := e.Forward(context.Background(), nodeWith(model.NodeTypeCompare, `{"op":"eq","expected":"x"}`), map[string]interface{}{"text": 0.7, "value": 1.0}, ExecutionContext{}); err == nil || !strings.Contains(err.Error(), "both connected") {
+		t.Errorf("both ports wired with a numeric text must still fail on the wiring, got %v", err)
+	}
+	if _, err := e.Forward(context.Background(), nodeWith(model.NodeTypeCompare, `{"op":"eq","expected":"x"}`), map[string]interface{}{"text": 0.7}, ExecutionContext{}); err == nil || !strings.Contains(err.Error(), "text port received") {
+		t.Errorf("a numeric text must name the text port, got %v", err)
 	}
 	if _, err := e.Forward(context.Background(), nodeWith(model.NodeTypeCompare, `{"op":"between"}`), map[string]interface{}{"value": 1.0}, ExecutionContext{}); err == nil {
 		t.Error("unknown op must fail")
