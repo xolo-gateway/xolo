@@ -4,6 +4,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/a-h/templ"
 	"github.com/bornholm/go-x/slogx"
@@ -98,14 +99,28 @@ func (h *Handler) createPersonalModel(w http.ResponseWriter, r *http.Request) {
 	name := r.FormValue("name")
 	description := r.FormValue("description")
 
+	// A blank name is rejected here. The input is marked `required` in the
+	// form, but the attribute is bypassable, and we want the same response
+	// as the update path and the org-side create path: ?error=name_required,
+	// mapped to "Le nom est obligatoire." in common/flash.templ.
 	if name == "" {
-		http.Redirect(w, r, "/profile/personal-models?error=create_failed", http.StatusSeeOther)
+		http.Redirect(w, r, "/profile/personal-models?error=name_required", http.StatusSeeOther)
 		return
 	}
 
+	// Uniqueness pre-check. See createVirtualModel for the rationale.
 	existing, err := h.personalVMStore.GetPersonalVirtualModelByName(ctx, user.ID(), name)
-	if err == nil && existing != nil {
-		http.Redirect(w, r, "/profile/personal-models?error=exists", http.StatusSeeOther)
+	switch {
+	case err == nil:
+		if existing != nil {
+			http.Redirect(w, r, "/profile/personal-models?error=exists", http.StatusSeeOther)
+			return
+		}
+	case errors.Is(err, port.ErrNotFound):
+		// No collision, proceed.
+	default:
+		slog.ErrorContext(ctx, "could not check personal virtual model name uniqueness", slogx.Error(err))
+		http.Redirect(w, r, "/profile/personal-models?error=create_failed", http.StatusSeeOther)
 		return
 	}
 
@@ -145,6 +160,7 @@ func (h *Handler) getEditPersonalModelPage(w http.ResponseWriter, r *http.Reques
 		IsNew:        false,
 		Name:         vm.Name(),
 		Description:  vm.Description(),
+		Error:        r.URL.Query().Get("error"),
 		AppLayoutVModel: common.AppLayoutVModel{
 			User:         user,
 			SelectedItem: "personal-models",
@@ -186,18 +202,65 @@ func (h *Handler) updatePersonalModel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	name := r.FormValue("name")
 	description := r.FormValue("description")
 
-	v, ok := vm.(*model.BasePersonalVirtualModel)
+	// A blank name is rejected here. The input is marked `required` in the
+	// form, but the attribute is bypassable. We redirect to
+	// ?error=name_required, the same flash code used by createPersonalModel
+	// and createVirtualModel, mapped to "Le nom est obligatoire." in
+	// common/flash.templ.
+	if name == "" {
+		http.Redirect(w, r, "/profile/personal-models/"+vmID+"/edit?error=name_required", http.StatusSeeOther)
+		return
+	}
+
+	if name != vm.Name() {
+		existing, err := h.personalVMStore.GetPersonalVirtualModelByName(ctx, user.ID(), name)
+		switch {
+		case err == nil:
+			// Mirror of updateVirtualModel: the outer `name != vm.Name()`
+			// guard makes a collision with the current row impossible since
+			// GetPersonalVirtualModelByName matches on (user_id, name).
+			if existing != nil {
+				http.Redirect(w, r, "/profile/personal-models/"+vmID+"/edit?error=exists", http.StatusSeeOther)
+				return
+			}
+		case errors.Is(err, port.ErrNotFound):
+			// No collision, proceed.
+		default:
+			// See updateVirtualModel — surface a store error other than
+			// not-found instead of silently treating it as "no conflict".
+			slog.ErrorContext(ctx, "could not check personal virtual model name uniqueness", slogx.Error(err))
+			http.Redirect(w, r, "/profile/personal-models/"+vmID+"/edit?error=update_failed", http.StatusSeeOther)
+			return
+		}
+	}
+
+	type mutable interface {
+		SetName(string)
+		SetDescription(string)
+		SetUpdatedAt(time.Time)
+	}
+
+	m, ok := vm.(mutable)
 	if !ok {
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
-	v.SetDescription(description)
+	m.SetName(name)
+	m.SetDescription(description)
+	m.SetUpdatedAt(time.Now())
 
 	if err := h.personalVMStore.SavePersonalVirtualModel(ctx, vm); err != nil {
+		if errors.Is(err, port.ErrAlreadyExists) {
+			// Mirror of updateVirtualModel — concurrent rename caught by the
+			// idx_pvm_user_name unique index after the pre-check passed.
+			http.Redirect(w, r, "/profile/personal-models/"+vmID+"/edit?error=exists", http.StatusSeeOther)
+			return
+		}
 		slog.ErrorContext(ctx, "could not save personal virtual model", slogx.Error(err))
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		http.Redirect(w, r, "/profile/personal-models/"+vmID+"/edit?error=update_failed", http.StatusSeeOther)
 		return
 	}
 

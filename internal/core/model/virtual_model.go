@@ -45,9 +45,10 @@ func (m *BaseVirtualModel) Graph() *PipelineGraph { return m.graph }
 func (m *BaseVirtualModel) CreatedAt() time.Time  { return m.createdAt }
 func (m *BaseVirtualModel) UpdatedAt() time.Time  { return m.updatedAt }
 
-func (m *BaseVirtualModel) SetDescription(v string)     { m.description = v }
-func (m *BaseVirtualModel) SetGraph(v *PipelineGraph)   { m.graph = v }
-func (m *BaseVirtualModel) SetUpdatedAt(v time.Time)    { m.updatedAt = v }
+func (m *BaseVirtualModel) SetName(v string)          { m.name = v }
+func (m *BaseVirtualModel) SetDescription(v string)   { m.description = v }
+func (m *BaseVirtualModel) SetGraph(v *PipelineGraph) { m.graph = v }
+func (m *BaseVirtualModel) SetUpdatedAt(v time.Time)  { m.updatedAt = v }
 
 var (
 	_ VirtualModel   = &BaseVirtualModel{}

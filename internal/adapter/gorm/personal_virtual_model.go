@@ -24,13 +24,14 @@ type wrappedPersonalVirtualModel struct {
 func (w *wrappedPersonalVirtualModel) ID() model.PersonalVirtualModelID {
 	return model.PersonalVirtualModelID(w.m.ID)
 }
-func (w *wrappedPersonalVirtualModel) UserID() model.UserID     { return model.UserID(w.m.UserID) }
-func (w *wrappedPersonalVirtualModel) Name() string             { return w.m.Name }
-func (w *wrappedPersonalVirtualModel) Description() string      { return w.m.Description }
-func (w *wrappedPersonalVirtualModel) CreatedAt() time.Time     { return w.m.CreatedAt }
-func (w *wrappedPersonalVirtualModel) UpdatedAt() time.Time     { return w.m.UpdatedAt }
+func (w *wrappedPersonalVirtualModel) UserID() model.UserID { return model.UserID(w.m.UserID) }
+func (w *wrappedPersonalVirtualModel) Name() string         { return w.m.Name }
+func (w *wrappedPersonalVirtualModel) Description() string  { return w.m.Description }
+func (w *wrappedPersonalVirtualModel) CreatedAt() time.Time { return w.m.CreatedAt }
+func (w *wrappedPersonalVirtualModel) UpdatedAt() time.Time { return w.m.UpdatedAt }
 
-func (w *wrappedPersonalVirtualModel) SetDescription(v string) { w.m.Description = v }
+func (w *wrappedPersonalVirtualModel) SetName(v string)         { w.m.Name = v }
+func (w *wrappedPersonalVirtualModel) SetDescription(v string)  { w.m.Description = v }
 func (w *wrappedPersonalVirtualModel) SetUpdatedAt(v time.Time) { w.m.UpdatedAt = v }
 
 func (w *wrappedPersonalVirtualModel) SetGraph(v *model.PipelineGraph) {

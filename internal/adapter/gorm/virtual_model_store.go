@@ -73,10 +73,19 @@ func (s *Store) ListVirtualModels(ctx context.Context, orgID model.OrgID) ([]mod
 
 func (s *Store) SaveVirtualModel(ctx context.Context, vm model.VirtualModel) error {
 	return s.withRetry(ctx, true, func(ctx context.Context, db *gorm.DB) error {
-		return errors.WithStack(db.Clauses(clause.OnConflict{
+		// The ON CONFLICT (id) clause does not match a collision on the
+		// idx_org_name unique index, so a rename racing another
+		// concurrent rename surfaces as gorm.ErrDuplicatedKey. Translate
+		// it to port.ErrAlreadyExists so callers can map the rename race
+		// to the same user-facing error as a pre-check collision.
+		err := db.Clauses(clause.OnConflict{
 			Columns:   []clause.Column{{Name: "id"}},
 			UpdateAll: true,
-		}).Create(fromVirtualModel(vm)).Error)
+		}).Create(fromVirtualModel(vm)).Error
+		if errors.Is(err, gorm.ErrDuplicatedKey) {
+			return errors.WithStack(port.ErrAlreadyExists)
+		}
+		return errors.WithStack(err)
 	})
 }
 

@@ -3,8 +3,10 @@ package org
 import (
 	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/a-h/templ"
+	"github.com/pkg/errors"
 	"github.com/xolo-gateway/xolo/internal/core/model"
 	"github.com/xolo-gateway/xolo/internal/core/port"
 	"github.com/xolo-gateway/xolo/internal/core/rbac"
@@ -12,7 +14,6 @@ import (
 	httpCtx "github.com/xolo-gateway/xolo/internal/http/context"
 	common "github.com/xolo-gateway/xolo/internal/http/handler/webui/common/component"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/org/component"
-	"github.com/pkg/errors"
 )
 
 func (h *Handler) getVirtualModelsPage(w http.ResponseWriter, r *http.Request) {
@@ -126,15 +127,31 @@ func (h *Handler) createVirtualModel(w http.ResponseWriter, r *http.Request) {
 	name := r.FormValue("name")
 	description := r.FormValue("description")
 
+	// A blank name is rejected here even though the input is marked `required`
+	// in the form (the attribute is bypassable, and we want the same response
+	// as the update path and the personal create path). The flash code
+	// `?error=name_required` is mapped in common/flash.templ.
 	if name == "" {
-		http.Error(w, "Name is required", http.StatusBadRequest)
+		http.Redirect(w, r, "/orgs/"+orgSlug+"/admin/virtual-models?error=name_required", http.StatusSeeOther)
 		return
 	}
 
-	// Check if a virtual model with this name already exists
+	// Uniqueness pre-check. ErrNotFound means "no collision", any other
+	// error is a lookup failure we surface explicitly rather than silently
+	// skipping — the unique index would still reject, but with a misleading
+	// `?error=create_failed` instead of a clear diagnostic.
 	existing, err := h.virtualModelStore.GetVirtualModelByName(ctx, org.ID(), name)
-	if err == nil && existing != nil {
-		http.Redirect(w, r, "/orgs/"+orgSlug+"/admin/virtual-models?error=exists", http.StatusSeeOther)
+	switch {
+	case err == nil:
+		if existing != nil {
+			http.Redirect(w, r, "/orgs/"+orgSlug+"/admin/virtual-models?error=exists", http.StatusSeeOther)
+			return
+		}
+	case errors.Is(err, port.ErrNotFound):
+		// No collision, proceed.
+	default:
+		slog.ErrorContext(ctx, "could not check virtual model name uniqueness", slog.Any("error", err))
+		http.Redirect(w, r, "/orgs/"+orgSlug+"/admin/virtual-models?error=create_failed", http.StatusSeeOther)
 		return
 	}
 
@@ -172,12 +189,22 @@ func (h *Handler) getEditVirtualModelPage(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	// The store loads by ID only, so a {modelID} belonging to another org is
+	// resolvable through this route. Treat the mismatch as a 404 rather than
+	// surfacing a model that does not belong to the org the request came in
+	// for. Mirrors the personal handler's user-ownership check.
+	if vm.OrgID() != org.ID() {
+		http.NotFound(w, r)
+		return
+	}
+
 	vmodel := component.VirtualModelFormVModel{
 		Org:          org,
 		VirtualModel: vm,
 		IsNew:        false,
 		Name:         vm.Name(),
 		Description:  vm.Description(),
+		Error:        r.URL.Query().Get("error"),
 		AppLayoutVModel: common.AppLayoutVModel{
 			User:         user,
 			SelectedItem: "org-" + orgSlug + "-virtual-models",
@@ -201,7 +228,7 @@ func (h *Handler) updateVirtualModel(w http.ResponseWriter, r *http.Request) {
 	orgSlug := r.PathValue("orgSlug")
 	modelID := r.PathValue("modelID")
 
-	_, err := h.orgFromSlug(ctx, orgSlug)
+	org, err := h.orgFromSlug(ctx, orgSlug)
 	if err != nil {
 		http.Error(w, "Organization not found", http.StatusNotFound)
 		return
@@ -218,24 +245,74 @@ func (h *Handler) updateVirtualModel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// See getEditVirtualModelPage — reject cross-org access through this route.
+	if vm.OrgID() != org.ID() {
+		http.NotFound(w, r)
+		return
+	}
+
 	if err := r.ParseForm(); err != nil {
 		http.Error(w, "Invalid form", http.StatusBadRequest)
 		return
 	}
 
+	name := r.FormValue("name")
 	description := r.FormValue("description")
 
-	// We know the concrete type from GORM wrapper.
-	v, ok := vm.(interface{ SetDescription(string) })
+	if name == "" {
+		http.Redirect(w, r, "/orgs/"+orgSlug+"/admin/virtual-models/"+modelID+"/edit?error=name_required", http.StatusSeeOther)
+		return
+	}
+
+	if name != vm.Name() {
+		existing, err := h.virtualModelStore.GetVirtualModelByName(ctx, org.ID(), name)
+		switch {
+		case err == nil:
+			// The outer `name != vm.Name()` guard makes it impossible for
+			// the returned row to be the current one: GetVirtualModelByName
+			// matches on (org_id, name), so a hit is by definition another row.
+			if existing != nil {
+				http.Redirect(w, r, "/orgs/"+orgSlug+"/admin/virtual-models/"+modelID+"/edit?error=exists", http.StatusSeeOther)
+				return
+			}
+		case errors.Is(err, port.ErrNotFound):
+			// No collision, proceed.
+		default:
+			// A store error other than not-found is not a name collision.
+			// The handler surfaces the lookup failure here; a concurrent
+			// rename that slips past the pre-check will still be caught at
+			// SaveVirtualModel (mapped to ErrAlreadyExists in the store).
+			slog.ErrorContext(ctx, "could not check virtual model name uniqueness", slog.Any("error", err))
+			http.Redirect(w, r, "/orgs/"+orgSlug+"/admin/virtual-models/"+modelID+"/edit?error=update_failed", http.StatusSeeOther)
+			return
+		}
+	}
+
+	type mutable interface {
+		SetName(string)
+		SetDescription(string)
+		SetUpdatedAt(time.Time)
+	}
+
+	v, ok := vm.(mutable)
 	if !ok {
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
+	v.SetName(name)
 	v.SetDescription(description)
+	v.SetUpdatedAt(time.Now())
 
 	if err := h.virtualModelStore.SaveVirtualModel(ctx, vm); err != nil {
+		if errors.Is(err, port.ErrAlreadyExists) {
+			// A concurrent rename slipped past the pre-check and the
+			// idx_org_name unique index caught it. Surface the same
+			// user-facing error the pre-check would have produced.
+			http.Redirect(w, r, "/orgs/"+orgSlug+"/admin/virtual-models/"+modelID+"/edit?error=exists", http.StatusSeeOther)
+			return
+		}
 		slog.ErrorContext(ctx, "could not save virtual model", slog.Any("error", err))
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		http.Redirect(w, r, "/orgs/"+orgSlug+"/admin/virtual-models/"+modelID+"/edit?error=update_failed", http.StatusSeeOther)
 		return
 	}
 
@@ -247,6 +324,12 @@ func (h *Handler) deleteVirtualModel(w http.ResponseWriter, r *http.Request) {
 	orgSlug := r.PathValue("orgSlug")
 	modelID := r.PathValue("modelID")
 
+	org, err := h.orgFromSlug(ctx, orgSlug)
+	if err != nil {
+		http.Error(w, "Organization not found", http.StatusNotFound)
+		return
+	}
+
 	vm, err := h.virtualModelStore.GetVirtualModelByID(ctx, model.VirtualModelID(modelID))
 	if err != nil {
 		if errors.Is(err, port.ErrNotFound) {
@@ -255,6 +338,12 @@ func (h *Handler) deleteVirtualModel(w http.ResponseWriter, r *http.Request) {
 		}
 		slog.ErrorContext(ctx, "could not get virtual model", slog.Any("error", err))
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+
+	// See getEditVirtualModelPage — reject cross-org access through this route.
+	if vm.OrgID() != org.ID() {
+		http.NotFound(w, r)
 		return
 	}
 
@@ -293,7 +382,14 @@ func (h *Handler) getPipelineEditorPage(w http.ResponseWriter, r *http.Request) 
 			http.NotFound(w, r)
 			return
 		}
+		slog.ErrorContext(ctx, "could not get virtual model", slog.Any("error", err))
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+
+	// See getEditVirtualModelPage — reject cross-org access through this route.
+	if vm.OrgID() != org.ID() {
+		http.NotFound(w, r)
 		return
 	}
 

@@ -13,7 +13,7 @@ type VirtualModel struct {
 	Name        string `gorm:"uniqueIndex:idx_org_name;not null"`
 	Description string
 	// GraphJSON stores the PipelineGraph as JSON. Empty string or "{}" means no graph.
-	GraphJSON string    `gorm:"type:text;default:'{}'"`
+	GraphJSON string `gorm:"type:text;default:'{}'"`
 	CreatedAt time.Time
 	UpdatedAt time.Time
 }
@@ -31,6 +31,7 @@ func (w *wrappedVirtualModel) CreatedAt() time.Time     { return w.m.CreatedAt }
 func (w *wrappedVirtualModel) UpdatedAt() time.Time     { return w.m.UpdatedAt }
 
 // Setters — needed by API update handler.
+func (w *wrappedVirtualModel) SetName(v string) { w.m.Name = v }
 func (w *wrappedVirtualModel) SetDescription(v string) {
 	w.m.Description = v
 }

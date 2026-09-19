@@ -192,13 +192,19 @@ templ PersonalModelFormPage(vmodel PersonalModelFormVModel) {
 							Placeholder: "ex: assistant, rapide, expert",
 							Attributes:  templ.Attributes{"required": true},
 						})
-						<p class="text-sm text-muted-foreground">Le nom sera utilisé comme suffixe (ex&nbsp;: ~/assistant)</p>
+						@form.Description() {
+							Le nom sera utilisé comme suffixe (ex&nbsp;: ~/assistant)
+						}
 					} else {
 						@input.Input(input.Props{
-							Name:     "name",
-							Value:    vmodel.Name,
-							Readonly: true,
+							Name:        "name",
+							Value:       vmodel.Name,
+							Placeholder: "ex: assistant, rapide, expert",
+							Attributes:  templ.Attributes{"required": true, "autocomplete": "off"},
 						})
+						@form.Description() {
+							Renommer change le suffixe utilisé pour appeler ce modèle (ex&nbsp;: ~/assistant). Le nom doit rester unique parmi vos modèles personnels.
+						}
 					}
 				</div>
 				<div class="space-y-2">

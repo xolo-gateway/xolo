@@ -256,10 +256,14 @@ templ VirtualModelFormPage(vmodel VirtualModelFormVModel) {
 									}
 								} else {
 									@input.Input(input.Props{
-										Name:     "name",
-										Value:    vmodel.Name,
-										Readonly: true,
+										Name:        "name",
+										Value:       vmodel.Name,
+										Placeholder: "ex: auto, fast, smart",
+										Attributes:  templ.Attributes{"required": true, "autocomplete": "off"},
 									})
+									@form.Description() {
+										Renommer change le suffixe du nom qualifié (ex&nbsp;: acme/auto). Le nom doit rester unique au sein de l'organisation.
+									}
 								}
 							</div>
 							<div class="space-y-2">

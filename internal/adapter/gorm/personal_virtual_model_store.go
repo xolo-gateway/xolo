@@ -73,10 +73,19 @@ func (s *Store) ListPersonalVirtualModels(ctx context.Context, userID model.User
 
 func (s *Store) SavePersonalVirtualModel(ctx context.Context, vm model.PersonalVirtualModel) error {
 	return s.withRetry(ctx, true, func(ctx context.Context, db *gorm.DB) error {
-		return errors.WithStack(db.Clauses(clause.OnConflict{
+		// The ON CONFLICT (id) clause does not match a collision on the
+		// (user_id, name) unique index, so a rename racing another
+		// concurrent rename surfaces as gorm.ErrDuplicatedKey. Translate
+		// it to port.ErrAlreadyExists so callers can map the rename race
+		// to the same user-facing error as a pre-check collision.
+		err := db.Clauses(clause.OnConflict{
 			Columns:   []clause.Column{{Name: "id"}},
 			UpdateAll: true,
-		}).Create(fromPersonalVirtualModel(vm)).Error)
+		}).Create(fromPersonalVirtualModel(vm)).Error
+		if errors.Is(err, gorm.ErrDuplicatedKey) {
+			return errors.WithStack(port.ErrAlreadyExists)
+		}
+		return errors.WithStack(err)
 	})
 }
 

@@ -145,6 +145,8 @@ func errorMessage(reason, subject string) string {
 			return "Un élément portant ce nom existe déjà."
 		}
 		return subject + " portant ce nom existe déjà."
+	case "name_required":
+		return "Le nom est obligatoire."
 	case "create_failed":
 		return "La création a échoué."
 	case "update_failed":
