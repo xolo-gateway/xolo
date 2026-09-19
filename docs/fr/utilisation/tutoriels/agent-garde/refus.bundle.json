@@ -1,0 +1,56 @@
+{
+  "version": "1",
+  "exportedAt": "2026-09-19T06:31:03.224604252Z",
+  "name": "refus",
+  "description": "Réponse canonique quand la demande sort du périmètre du support.",
+  "graph": {
+    "nodes": [
+      {
+        "id": "gen",
+        "type": "generator",
+        "position": {
+          "x": 80,
+          "y": 200
+        }
+      },
+      {
+        "id": "dummy",
+        "type": "plugin",
+        "position": {
+          "x": 340,
+          "y": 200
+        },
+        "data": {
+          "pluginName": "dummy-model",
+          "config": {
+            "response_template": "Je suis l'assistant support de Xolo et je ne réponds qu'aux questions sur le service. Votre demande sort de ce périmètre."
+          }
+        }
+      },
+      {
+        "id": "sink",
+        "type": "sink",
+        "position": {
+          "x": 640,
+          "y": 200
+        }
+      }
+    ],
+    "edges": [
+      {
+        "id": "e1",
+        "source": "gen",
+        "sourcePort": "request",
+        "target": "dummy",
+        "targetPort": "request"
+      },
+      {
+        "id": "e2",
+        "source": "dummy",
+        "sourcePort": "response",
+        "target": "sink",
+        "targetPort": "response"
+      }
+    ]
+  }
+}

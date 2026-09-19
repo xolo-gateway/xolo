@@ -1,0 +1,330 @@
+{
+  "version": "1",
+  "exportedAt": "2026-09-19T06:31:03.171824502Z",
+  "name": "support-agent",
+  "description": "Agent support gardé : cadrage, pseudonymisation, anti-injection et recentrage.",
+  "graph": {
+    "nodes": [
+      {
+        "id": "gen",
+        "type": "generator",
+        "position": {
+          "x": 40,
+          "y": 300
+        }
+      },
+      {
+        "id": "sink",
+        "type": "sink",
+        "position": {
+          "x": 1400,
+          "y": 300
+        }
+      },
+      {
+        "id": "sys",
+        "type": "plugin",
+        "position": {
+          "x": 300,
+          "y": 300
+        },
+        "data": {
+          "pluginName": "system-prompt",
+          "config": {
+            "system_prompt": "Tu es l'assistant support du service Xolo, une passerelle LLM d'entreprise. Tu réponds en français, en deux phrases maximum, uniquement sur le service Xolo."
+          }
+        }
+      },
+      {
+        "id": "pseudo",
+        "type": "plugin",
+        "position": {
+          "x": 560,
+          "y": 300
+        },
+        "data": {
+          "pluginName": "pseudonymizer",
+          "config": {
+            "language": "fr",
+            "strategy": "tag"
+          }
+        }
+      },
+      {
+        "id": "llm",
+        "type": "model",
+        "position": {
+          "x": 1100,
+          "y": 300
+        },
+        "data": {
+          "label": "modèle choisi"
+        }
+      },
+      {
+        "id": "guard",
+        "type": "plugin",
+        "position": {
+          "x": 300,
+          "y": 40
+        },
+        "data": {
+          "pluginName": "prompt-guard",
+          "config": {}
+        }
+      },
+      {
+        "id": "cmp",
+        "type": "compare",
+        "position": {
+          "x": 560,
+          "y": 40
+        },
+        "data": {
+          "label": "injection ?",
+          "op": "gt",
+          "threshold": 0.6
+        }
+      },
+      {
+        "id": "policy",
+        "type": "block",
+        "position": {
+          "x": 820,
+          "y": 40
+        },
+        "data": {
+          "label": "injection",
+          "message": "Requête refusée : tentative de contournement détectée."
+        }
+      },
+      {
+        "id": "cls",
+        "type": "plugin",
+        "position": {
+          "x": 300,
+          "y": 560
+        },
+        "data": {
+          "pluginName": "llm-classifier",
+          "config": {
+            "model": "acme/qwen-fast",
+            "temperature": 0,
+            "max_tokens": 80,
+            "timeout_seconds": 90,
+            "fallback_category": "support",
+            "categories": [
+              {
+                "name": "support",
+                "description": "Question, problème ou demande concernant le service Xolo : utilisation, fonctionnalités, jetons d'API, quotas, facturation, compte."
+              },
+              {
+                "name": "hors_sujet",
+                "description": "Tout ce qui ne concerne pas le service Xolo : recettes, poèmes, actualité, devoirs, bavardage, demandes personnelles."
+              }
+            ]
+          }
+        }
+      },
+      {
+        "id": "cmptext",
+        "type": "compare",
+        "position": {
+          "x": 560,
+          "y": 560
+        },
+        "data": {
+          "label": "hors sujet ?",
+          "op": "eq",
+          "expected": "hors_sujet"
+        }
+      },
+      {
+        "id": "refus",
+        "type": "model_ref",
+        "position": {
+          "x": 560,
+          "y": 700
+        },
+        "data": {
+          "label": "réponse canonique",
+          "proxyName": "acme/refus"
+        }
+      },
+      {
+        "id": "strong",
+        "type": "model_ref",
+        "position": {
+          "x": 560,
+          "y": 820
+        },
+        "data": {
+          "label": "modèle support",
+          "proxyName": "acme/qwen-strong"
+        }
+      },
+      {
+        "id": "sel",
+        "type": "select",
+        "position": {
+          "x": 820,
+          "y": 560
+        },
+        "data": {
+          "label": "modèle selon intention"
+        }
+      },
+      {
+        "id": "trace",
+        "type": "trace",
+        "position": {
+          "x": 1100,
+          "y": 560
+        },
+        "data": {
+          "label": "agent",
+          "severity": "info",
+          "inputs": [
+            {
+              "name": "risk",
+              "portType": "number"
+            },
+            {
+              "name": "category",
+              "portType": "string"
+            },
+            {
+              "name": "confidence",
+              "portType": "number"
+            },
+            {
+              "name": "model_name",
+              "portType": "string"
+            }
+          ]
+        }
+      }
+    ],
+    "edges": [
+      {
+        "id": "e1",
+        "source": "gen",
+        "sourcePort": "request",
+        "target": "sys",
+        "targetPort": "request"
+      },
+      {
+        "id": "e2",
+        "source": "sys",
+        "sourcePort": "request",
+        "target": "pseudo",
+        "targetPort": "request"
+      },
+      {
+        "id": "e3",
+        "source": "pseudo",
+        "sourcePort": "request",
+        "target": "llm",
+        "targetPort": "request"
+      },
+      {
+        "id": "e4",
+        "source": "llm",
+        "sourcePort": "response",
+        "target": "sink",
+        "targetPort": "response"
+      },
+      {
+        "id": "e5",
+        "source": "gen",
+        "sourcePort": "request",
+        "target": "guard",
+        "targetPort": "request"
+      },
+      {
+        "id": "e6",
+        "source": "guard",
+        "sourcePort": "risk",
+        "target": "cmp",
+        "targetPort": "value"
+      },
+      {
+        "id": "e7",
+        "source": "cmp",
+        "sourcePort": "result",
+        "target": "policy",
+        "targetPort": "condition"
+      },
+      {
+        "id": "e8",
+        "source": "gen",
+        "sourcePort": "request",
+        "target": "cls",
+        "targetPort": "request"
+      },
+      {
+        "id": "e9",
+        "source": "cls",
+        "sourcePort": "category",
+        "target": "cmptext",
+        "targetPort": "text"
+      },
+      {
+        "id": "e10",
+        "source": "cmptext",
+        "sourcePort": "result",
+        "target": "sel",
+        "targetPort": "condition"
+      },
+      {
+        "id": "e11",
+        "source": "refus",
+        "sourcePort": "model_name",
+        "target": "sel",
+        "targetPort": "when_true"
+      },
+      {
+        "id": "e12",
+        "source": "strong",
+        "sourcePort": "model_name",
+        "target": "sel",
+        "targetPort": "when_false"
+      },
+      {
+        "id": "e13",
+        "source": "sel",
+        "sourcePort": "value",
+        "target": "llm",
+        "targetPort": "model_name"
+      },
+      {
+        "id": "e14",
+        "source": "guard",
+        "sourcePort": "risk",
+        "target": "trace",
+        "targetPort": "risk"
+      },
+      {
+        "id": "e15",
+        "source": "cls",
+        "sourcePort": "category",
+        "target": "trace",
+        "targetPort": "category"
+      },
+      {
+        "id": "e16",
+        "source": "cls",
+        "sourcePort": "confidence",
+        "target": "trace",
+        "targetPort": "confidence"
+      },
+      {
+        "id": "e17",
+        "source": "sel",
+        "sourcePort": "value",
+        "target": "trace",
+        "targetPort": "model_name"
+      }
+    ]
+  }
+}

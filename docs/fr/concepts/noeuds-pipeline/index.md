@@ -94,6 +94,8 @@ Ces plugins transforment des mesures en décision quand `compare` et `select` ne
 
 ## Quatre assemblages types
 
+Le [tutoriel de l'agent support gardé](../../utilisation/tutoriels/agent-garde/agent-garde.md) assemble plusieurs de ces briques pas à pas, captures d'écran à l'appui.
+
 Politique de refus composée. `prompt-guard.risk` entre dans `compare` avec le seuil 0,6, `result` entre dans `block`. Le plugin mesure, le graphe décide, et le seuil se lit sur le canevas au lieu d'être enfoui dans la configuration du plugin. Un `math` en `max` entre plusieurs signaux, `risk` et `pressure` par exemple, refuse dès que l'un d'eux dépasse.
 
 Garde-fou sans blocage. `prompt-guard.suspicious` va dans `select`, avec en `when_true` un `model_ref` vers un modèle virtuel dépourvu d'outils et en `when_false` le modèle habituel. Une requête douteuse est servie, mais sans pouvoir agir. Un `trace` branché sur `risk` et `top_rule` garde la trace de ce qui a déclenché.
