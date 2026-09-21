@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"net/http"
+	"strings"
 
 	"github.com/a-h/templ"
 	"github.com/bornholm/go-x/slogx"
@@ -61,8 +62,10 @@ func (h *Handler) getJoinPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Targeted invites can only be accepted by their addressee.
-	if user != nil && invite.InviteeEmail() != nil && *invite.InviteeEmail() != user.Email() {
+	// Targeted invites can only be accepted by their addressee. The comparison
+	// is case-insensitive: the case an administrator typed and the one the
+	// identity provider returns rarely agree.
+	if user != nil && invite.InviteeEmail() != nil && !strings.EqualFold(*invite.InviteeEmail(), user.Email()) {
 		h.renderError(w, r, user, "Cette invitation n'est pas destinée à votre adresse email.")
 		return
 	}
@@ -108,7 +111,7 @@ func (h *Handler) acceptInvite(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Check if targeted invite matches current user's email
-	if invite.InviteeEmail() != nil && *invite.InviteeEmail() != user.Email() {
+	if invite.InviteeEmail() != nil && !strings.EqualFold(*invite.InviteeEmail(), user.Email()) {
 		h.renderError(w, r, user, "Cette invitation n'est pas destinée à votre adresse email.")
 		return
 	}

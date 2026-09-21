@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"slices"
 	"testing"
+	"time"
 
 	_ "github.com/ncruces/go-sqlite3/embed"
 	"github.com/ncruces/go-sqlite3/gormlite"
@@ -60,7 +61,7 @@ type callResult struct {
 
 // call runs the bridge middleware for the given authenticated identity and
 // reports what the terminal handler saw.
-func call(t *testing.T, store port.UserStore, opts bridge.Options, identity *authn.User) callResult {
+func call(t *testing.T, store *xologorm.Store, opts bridge.Options, identity *authn.User) callResult {
 	t.Helper()
 
 	result := callResult{emitter: &recordingEmitter{}}
@@ -70,7 +71,7 @@ func call(t *testing.T, store port.UserStore, opts bridge.Options, identity *aut
 		result.user = httpCtx.User(r.Context())
 	})
 
-	handler := bridge.Middleware(store, result.emitter, opts)(terminal)
+	handler := bridge.Middleware(store, store, result.emitter, opts)(terminal)
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 
@@ -91,6 +92,26 @@ func call(t *testing.T, store port.UserStore, opts bridge.Options, identity *aut
 	result.status = rec.Code
 
 	return result
+}
+
+// inviteEmail creates an organization in the given tenant and a pending
+// invitation targeting email.
+func inviteEmail(t *testing.T, store *xologorm.Store, tenantID model.TenantID, orgSlug, email string, expiresAt *time.Time) model.InviteToken {
+	t.Helper()
+
+	ctx := context.Background()
+
+	org := model.NewOrganization(tenantID, orgSlug, orgSlug, "")
+	if err := store.CreateOrg(ctx, org); err != nil {
+		t.Fatalf("create org: %v", err)
+	}
+
+	invite := model.NewInviteToken(org.ID(), model.RoleMember, &email, expiresAt, nil, model.NewUserID())
+	if err := store.CreateInvite(ctx, invite); err != nil {
+		t.Fatalf("create invite: %v", err)
+	}
+
+	return invite
 }
 
 func newIdentity(subject, email, displayName string) *authn.User {
@@ -190,6 +211,111 @@ func TestAutoCreateDisabled(t *testing.T) {
 		}
 		if result.user.ID() != provisioned.ID() {
 			t.Errorf("user id: got %q, want %q", result.user.ID(), provisioned.ID())
+		}
+	})
+
+	// An invitation names its addressee on purpose: refusing it here left the
+	// invitee unable to ever reach /join/{token}, which runs behind this
+	// middleware.
+	t.Run("creates an account for an invited identity", func(t *testing.T) {
+		store := newStore(t)
+
+		inviteEmail(t, store, testTenantID, "acme", "jean@corp.tld", nil)
+
+		result := call(t, store, disabled, newIdentity("sub-1", "jean@corp.tld", "Jean"))
+
+		if !result.served {
+			t.Fatalf("request should have been served, got status %d", result.status)
+		}
+
+		if _, err := store.GetUserByIdentity(ctx, testTenantID, "openid-connect", "sub-1"); err != nil {
+			t.Fatalf("get user: %v", err)
+		}
+	})
+
+	// The invitation grants the account, not its activation. /join/{token} is
+	// the one route that does not assert authz.Active(), so the invitee still
+	// accepts and gets the membership; the rest waits for an administrator.
+	t.Run("leaves the activation of an invited identity to ActiveByDefault", func(t *testing.T) {
+		store := newStore(t)
+
+		opts := disabled
+		opts.ActiveByDefault = false
+
+		inviteEmail(t, store, testTenantID, "acme", "jean@corp.tld", nil)
+
+		call(t, store, opts, newIdentity("sub-1", "jean@corp.tld", "Jean"))
+
+		user, err := store.GetUserByIdentity(ctx, testTenantID, "openid-connect", "sub-1")
+		if err != nil {
+			t.Fatalf("get user: %v", err)
+		}
+		if user.Active() {
+			t.Error("an invitation must not override ActiveByDefault")
+		}
+	})
+
+	// The administrator's typing and the identity provider's answer rarely
+	// agree on case.
+	t.Run("matches the invited e-mail case-insensitively", func(t *testing.T) {
+		store := newStore(t)
+
+		inviteEmail(t, store, testTenantID, "acme", "Jean.Dupont@corp.tld", nil)
+
+		result := call(t, store, disabled, newIdentity("sub-1", "jean.dupont@corp.tld", "Jean"))
+
+		if !result.served {
+			t.Fatalf("request should have been served, got status %d", result.status)
+		}
+	})
+
+	t.Run("ignores an invitation issued by another tenant", func(t *testing.T) {
+		store := newStore(t)
+
+		inviteEmail(t, store, model.TenantID("other-tenant"), "other", "jean@corp.tld", nil)
+
+		result := call(t, store, disabled, newIdentity("sub-1", "jean@corp.tld", "Jean"))
+
+		if result.served {
+			t.Error("the request should not have been served")
+		}
+		if result.status != http.StatusForbidden {
+			t.Errorf("status: got %d, want %d", result.status, http.StatusForbidden)
+		}
+	})
+
+	t.Run("ignores a revoked invitation", func(t *testing.T) {
+		store := newStore(t)
+
+		invite := inviteEmail(t, store, testTenantID, "acme", "jean@corp.tld", nil)
+		if err := store.RevokeInvite(ctx, invite.ID()); err != nil {
+			t.Fatalf("revoke invite: %v", err)
+		}
+
+		result := call(t, store, disabled, newIdentity("sub-1", "jean@corp.tld", "Jean"))
+
+		if result.served {
+			t.Error("the request should not have been served")
+		}
+	})
+
+	// An open link (no addressee) is not a per-identity grant: it must not act
+	// as a back door around AutoCreateUsers.
+	t.Run("ignores an untargeted invitation", func(t *testing.T) {
+		store := newStore(t)
+
+		org := model.NewOrganization(testTenantID, "acme", "Acme", "")
+		if err := store.CreateOrg(ctx, org); err != nil {
+			t.Fatalf("create org: %v", err)
+		}
+		if err := store.CreateInvite(ctx, model.NewInviteToken(org.ID(), model.RoleMember, nil, nil, nil, model.NewUserID())); err != nil {
+			t.Fatalf("create invite: %v", err)
+		}
+
+		result := call(t, store, disabled, newIdentity("sub-1", "jean@corp.tld", "Jean"))
+
+		if result.served {
+			t.Error("the request should not have been served")
 		}
 	})
 

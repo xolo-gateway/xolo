@@ -97,8 +97,12 @@ func (s *Store) ListPendingInvitesForEmail(ctx context.Context, email string) ([
 	var tokens []*InviteToken
 	now := time.Now()
 	err := s.withRetry(ctx, false, func(ctx context.Context, db *gorm.DB) error {
+		// E-mail addresses are compared case-insensitively: what an administrator
+		// typed in the invitation form and what the identity provider returns
+		// rarely agree on case, and a mismatch used to silently hide the
+		// invitation from its addressee.
 		return errors.WithStack(db.Preload("Org").
-			Where("invitee_email = ? AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at > ?)", email, now).
+			Where("LOWER(invitee_email) = LOWER(?) AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at > ?)", email, now).
 			Order("created_at DESC").
 			Find(&tokens).Error)
 	})

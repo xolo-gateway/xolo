@@ -3,9 +3,11 @@ package bridge
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"net/http"
 	"slices"
 
+	"github.com/bornholm/go-x/slogx"
 	"github.com/xolo-gateway/xolo/internal/core/model"
 	"github.com/xolo-gateway/xolo/internal/core/port"
 	httpCtx "github.com/xolo-gateway/xolo/internal/http/context"
@@ -33,7 +35,7 @@ type Options struct {
 	DefaultAdmins []string
 }
 
-func Middleware(userStore port.UserStore, emitter port.EventEmitter, opts Options) func(http.Handler) http.Handler {
+func Middleware(userStore port.UserStore, inviteStore port.InviteStore, emitter port.EventEmitter, opts Options) func(http.Handler) http.Handler {
 	emitLoginFailed := func(ctx context.Context, authnUser *authn.User, reason string) {
 		if emitter == nil || authnUser == nil {
 			return
@@ -81,10 +83,17 @@ func Middleware(userStore port.UserStore, emitter port.EventEmitter, opts Option
 					return
 				}
 
+				// An identity holding a pending invitation is pre-provisioned by
+				// definition: an administrator named that address on purpose. The
+				// invitee cannot reach /join/{token} otherwise — this middleware
+				// runs before every route, so refusing here makes every invitation
+				// unusable as soon as AutoCreateUsers is off.
+				isInvited := hasPendingInvite(ctx, inviteStore, tenant.ID(), authnUser.Email)
+
 				// The identity authenticated successfully but Xolo knows
 				// nothing about it. Default admins are the exception: they are
 				// the only way to bootstrap an instance that has no user yet.
-				if !opts.AutoCreateUsers && !isDefaultAdmin && !isApplication {
+				if !opts.AutoCreateUsers && !isDefaultAdmin && !isApplication && !isInvited {
 					emitLoginFailed(ctx, authnUser, "aucun compte ne correspond à cette identité et la création automatique est désactivée")
 					common.HandleError(w, r, common.NewError(
 						"user account auto-creation is disabled",
@@ -94,6 +103,13 @@ func Middleware(userStore port.UserStore, emitter port.EventEmitter, opts Option
 					return
 				}
 
+				// An invitation grants the account, not its activation:
+				// ActiveByDefault keeps deciding that, as it does for any other
+				// identity. Nothing is lost by waiting — /join/{token} is the one
+				// route that does not assert authz.Active(), so an invitee whose
+				// account is still inactive accepts the invitation and gets the
+				// membership and role right away; only the rest of the instance
+				// waits for an administrator.
 				user = model.NewUser(
 					tenant.ID(),
 					authnUser.Provider, authnUser.Subject, authnUser.Email, authnUser.DisplayName,
@@ -170,4 +186,38 @@ func Middleware(userStore port.UserStore, emitter port.EventEmitter, opts Option
 
 		return fn
 	}
+}
+
+// hasPendingInvite reports whether a still-acceptable invitation targets this
+// e-mail inside this tenant. A lookup failure is never fatal: it only means the
+// identity falls back to the configured provisioning policy.
+func hasPendingInvite(ctx context.Context, inviteStore port.InviteStore, tenantID model.TenantID, email string) bool {
+	if inviteStore == nil || email == "" {
+		return false
+	}
+
+	invites, err := inviteStore.ListPendingInvitesForEmail(ctx, email)
+	if err != nil {
+		slog.ErrorContext(ctx, "could not list pending invites for identity", slogx.Error(err))
+		return false
+	}
+
+	for _, invite := range invites {
+		// The store filters on revocation and expiry only; IsInviteValid also
+		// rejects an invitation whose uses are exhausted.
+		if !model.IsInviteValid(invite) {
+			continue
+		}
+
+		// Invitations are scoped to an organization, organizations to a tenant:
+		// one issued by another tenant grants nothing here.
+		org := invite.Org()
+		if org == nil || org.TenantID() != tenantID {
+			continue
+		}
+
+		return true
+	}
+
+	return false
 }

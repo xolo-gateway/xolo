@@ -42,7 +42,11 @@ Une invitation est un lien qui permet à un utilisateur de rejoindre votre organ
 
 ### Invitation ciblée
 
-Liez le convite à une adresse email. Seule la personne avec cet email pourra l'utiliser.
+Liez le convite à une adresse email. Seule la personne avec cet email pourra l'utiliser. La comparaison ignore la casse : peu importe que vous saisissiez `Jean.Dupont@corp.tld` là où le fournisseur d'identité renvoie `jean.dupont@corp.tld`.
+
+Le destinataire n'a pas besoin de posséder déjà un compte Xolo : une invitation ciblée en attente vaut pré-provisionnement, et le compte se crée à sa première connexion même lorsque `XOLO_HTTP_AUTHN_AUTO_CREATE_USERS` vaut `false`. Une invitation **ouverte** n'accorde pas cette dispense — elle ne nomme personne.
+
+L'activation du compte, elle, reste réglée par `XOLO_HTTP_AUTHN_ACTIVE_BY_DEFAULT`. Un destinataire dont le compte est encore inactif accepte malgré tout son invitation — il obtient son adhésion et son rôle immédiatement — mais le reste de l'instance lui répond « compte désactivé » jusqu'à ce qu'un administrateur l'active depuis `/admin/users`.
 
 ### Invitation ouverte
 
