@@ -8,7 +8,7 @@ import (
 	goanon "github.com/bornholm/go-anon"
 )
 
-func TestDetectionSample_PrefersRecentUserMessages(t *testing.T) {
+func TestDetectionSample_PrefersUserMessages(t *testing.T) {
 	messages := []map[string]any{
 		{"role": "system", "content": "You are a helpful assistant."},
 		{"role": "user", "content": "Bonjour, je m'appelle William."},
@@ -54,8 +54,32 @@ func TestDetectionSample_RespectsMaxLen(t *testing.T) {
 	if len(got) > 32 {
 		t.Errorf("len(sample) = %d, want <= 32", len(got))
 	}
-	if !strings.HasPrefix(got, "a") {
-		t.Errorf("sample should start with the most recent message, got %q", got)
+	if !strings.HasPrefix(got, "é") {
+		t.Errorf("sample should start with the oldest message, got %q", got)
+	}
+}
+
+// A new turn must not change the sample once it is full, and must only extend
+// it before that: a language that flips between turns changes the instruction
+// and the NER model, and breaks the upstream prompt cache (#85).
+func TestDetectionSample_StableAcrossTurns(t *testing.T) {
+	firstTurn := []map[string]any{
+		{"role": "user", "content": "Bonjour, peux-tu relire ce module ?"},
+	}
+	secondTurn := append(firstTurn,
+		map[string]any{"role": "assistant", "content": "Oui, voici mon analyse."},
+		map[string]any{"role": "user", "content": "panic: runtime error: index out of range [3] with length 3"},
+	)
+
+	first := detectionSample(firstTurn, maxDetectionSample)
+	second := detectionSample(secondTurn, maxDetectionSample)
+	if !strings.HasPrefix(second, first) {
+		t.Errorf("second turn sample does not extend the first one:\nfirst:  %q\nsecond: %q", first, second)
+	}
+
+	full := detectionSample(firstTurn, 16)
+	if got := detectionSample(secondTurn, 16); got != full {
+		t.Errorf("a full sample changed with a new turn: %q, then %q", full, got)
 	}
 }
 

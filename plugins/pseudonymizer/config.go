@@ -29,7 +29,7 @@ const configSchemaJSON = `{
     "language": {
       "type": "string",
       "title": "Langue",
-      "description": "Langue des messages à anonymiser. 'auto' détecte automatiquement la langue de chaque requête parmi les modèles disponibles.",
+      "description": "Langue des messages à anonymiser. 'auto' détecte automatiquement la langue de la conversation, à partir de ses premiers messages utilisateur, parmi les modèles disponibles.",
       "default": "auto",
       "enum": ["auto", "fr", "en", "es"]
     },

@@ -11,7 +11,7 @@ import (
 )
 
 const (
-	// LanguageAuto active la détection automatique de la langue, requête par requête.
+	// LanguageAuto active la détection automatique de la langue de la conversation.
 	LanguageAuto = "auto"
 	// defaultLanguage est la langue utilisée par défaut et en dernier recours.
 	defaultLanguage = "fr"
@@ -81,9 +81,17 @@ func detectLanguage(ctx context.Context, detector goanon.LanguageDetector, sampl
 }
 
 // detectionSample construit un échantillon de texte représentatif de la langue
-// de la conversation. Les messages utilisateur les plus récents sont prioritaires :
-// ce sont eux qui portent la langue réelle de l'échange, les prompts système
-// étant souvent rédigés dans une autre langue.
+// de la conversation. Les messages utilisateur sont prioritaires : ce sont eux
+// qui portent la langue réelle de l'échange, les prompts système étant souvent
+// rédigés dans une autre langue.
+//
+// Ils sont lus du plus ancien au plus récent, pour que la langue reste la même
+// d'un tour à l'autre. Un agent renvoie tout l'historique à chaque tour et ses
+// derniers messages portent souvent des sorties d'outils en anglais : un
+// échantillon pris sur les messages récents faisait basculer la langue, donc
+// l'instruction et le modèle NER, et cassait le cache de prompt amont (#85).
+// Lu depuis le début, l'échantillon d'un tour prolonge celui du tour précédent,
+// et ne bouge plus une fois maxLen atteint.
 func detectionSample(messages []map[string]any, maxLen int) string {
 	var b strings.Builder
 
@@ -107,15 +115,15 @@ func detectionSample(messages []map[string]any, maxLen int) string {
 		return b.Len() < maxLen
 	}
 
-	// Première passe : messages utilisateur, du plus récent au plus ancien.
+	// Première passe : messages utilisateur, du plus ancien au plus récent.
 	// Seconde passe : les autres messages, si l'échantillon est encore trop court.
 	for _, userOnly := range []bool{true, false} {
-		for i := len(messages) - 1; i >= 0; i-- {
-			role, _ := messages[i]["role"].(string)
+		for _, msg := range messages {
+			role, _ := msg["role"].(string)
 			if (role == "user") != userOnly {
 				continue
 			}
-			for _, text := range messageTexts(messages[i]) {
+			for _, text := range messageTexts(msg) {
 				if !appendText(text) {
 					return b.String()
 				}
