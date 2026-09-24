@@ -204,62 +204,73 @@ func TestCacheControl_SurvivesARewritingNode(t *testing.T) {
 // the client's system prompt and every turn is billed at full price (#85).
 func TestCacheControl_PseudonymizedPrefixIsStableAcrossTurns(t *testing.T) {
 	const system = "Tu es un assistant e2e discret."
-	firstTurn := []map[string]any{
-		{"role": "user", "content": "Bonjour, je m'appelle Jean Dupont."},
-	}
-	secondTurn := append(firstTurn,
-		map[string]any{"role": "assistant", "content": "Bonjour [PERSON_1]."},
-		map[string]any{"role": "user", "content": "Mon collègue Pierre Martin habite à Lyon."},
-	)
-
-	send := func(messages []map[string]any) chatRequest {
-		t.Helper()
-		before := len(env.provider.Requests())
-		res := postMessages(t, tokenAlice, map[string]any{
-			"model":      modelClaude,
-			"max_tokens": 256,
-			"system":     cachedSystemPrompt(system),
-			"messages":   messages,
-		})
-		if res.Status != 200 {
-			t.Fatalf("status = %d, body = %s", res.Status, res.Body)
-		}
-		upstream := env.provider.RequestsSince(before)
-		if len(upstream) != 1 {
-			t.Fatalf("upstream calls = %d, want 1", len(upstream))
-		}
-		return upstream[0]
-	}
-
-	first := send(firstTurn)
-	second := send(secondTurn)
-
-	if strings.Contains(second.Raw, "Pierre Martin") {
-		t.Fatalf("the pseudonymizer did not rewrite the second turn: %s", second.Raw)
+	// A client resends the history as it received it: the assistant turns
+	// carry the restored values, which the plugin pseudonymizes again.
+	turns := [][]map[string]any{
+		{
+			{"role": "user", "content": "Bonjour, je m'appelle Jean Dupont."},
+		},
+		{
+			{"role": "assistant", "content": "Bonjour Jean Dupont."},
+			{"role": "user", "content": "Mon collègue Pierre Martin habite à Lyon."},
+		},
+		{
+			{"role": "assistant", "content": "Noté : Pierre Martin, à Lyon."},
+			{"role": "user", "content": "Écris un courriel à Jean Dupont et Pierre Martin."},
+		},
 	}
 
 	type upstreamBody struct {
 		System   json.RawMessage   `json:"system"`
 		Messages []json.RawMessage `json:"messages"`
 	}
-	var a, b upstreamBody
-	if err := json.Unmarshal([]byte(first.Raw), &a); err != nil {
-		t.Fatalf("could not parse the first upstream request: %v", err)
-	}
-	if err := json.Unmarshal([]byte(second.Raw), &b); err != nil {
-		t.Fatalf("could not parse the second upstream request: %v", err)
-	}
 
-	if !bytes.Equal(a.System, b.System) {
-		t.Errorf("the system prompt changed between turns.\nfirst:  %s\nsecond: %s", a.System, b.System)
-	}
-	if len(b.Messages) < len(a.Messages) {
-		t.Fatalf("second turn has fewer messages (%d) than the first (%d)", len(b.Messages), len(a.Messages))
-	}
-	for i := range a.Messages {
-		if !bytes.Equal(a.Messages[i], b.Messages[i]) {
-			t.Errorf("message %d changed between turns.\nfirst:  %s\nsecond: %s", i, a.Messages[i], b.Messages[i])
+	var (
+		history  []map[string]any
+		previous *upstreamBody
+	)
+	for turn, messages := range turns {
+		history = append(history, messages...)
+
+		before := len(env.provider.Requests())
+		res := postMessages(t, tokenAlice, map[string]any{
+			"model":      modelClaude,
+			"max_tokens": 256,
+			"system":     cachedSystemPrompt(system),
+			"messages":   history,
+		})
+		if res.Status != 200 {
+			t.Fatalf("turn %d: status = %d, body = %s", turn+1, res.Status, res.Body)
 		}
+		upstream := env.provider.RequestsSince(before)
+		if len(upstream) != 1 {
+			t.Fatalf("turn %d: upstream calls = %d, want 1", turn+1, len(upstream))
+		}
+		for _, name := range []string{"Jean Dupont", "Pierre Martin"} {
+			if strings.Contains(upstream[0].Raw, name) {
+				t.Fatalf("turn %d: %q reached the upstream: %s", turn+1, name, upstream[0].Raw)
+			}
+		}
+
+		var current upstreamBody
+		if err := json.Unmarshal([]byte(upstream[0].Raw), &current); err != nil {
+			t.Fatalf("turn %d: could not parse the upstream request: %v", turn+1, err)
+		}
+		if len(current.Messages) != len(history) {
+			t.Fatalf("turn %d: upstream messages = %d, want %d", turn+1, len(current.Messages), len(history))
+		}
+
+		if previous != nil {
+			if !bytes.Equal(previous.System, current.System) {
+				t.Errorf("turn %d: the system prompt changed.\nbefore: %s\nnow:    %s", turn+1, previous.System, current.System)
+			}
+			for i := range previous.Messages {
+				if !bytes.Equal(previous.Messages[i], current.Messages[i]) {
+					t.Errorf("turn %d: message %d changed.\nbefore: %s\nnow:    %s", turn+1, i, previous.Messages[i], current.Messages[i])
+				}
+			}
+		}
+		previous = &current
 	}
 }
 
