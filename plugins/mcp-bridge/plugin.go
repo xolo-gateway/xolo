@@ -5,11 +5,11 @@ import (
 	"sync"
 	"time"
 
+	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/pkg/errors"
 	"github.com/xolo-gateway/xolo/internal/adapter/mcpclient"
 	"github.com/xolo-gateway/xolo/pkg/pluginsdk"
 	proto "github.com/xolo-gateway/xolo/pkg/pluginsdk/proto"
-	"github.com/modelcontextprotocol/go-sdk/mcp"
-	"github.com/pkg/errors"
 )
 
 const secretKeyAuthValue = "authValue"
@@ -20,6 +20,17 @@ type Plugin struct {
 
 	mu         sync.Mutex
 	hostClient pluginsdk.HostClient
+	oauth      *oauthClient
+}
+
+// oauthClient returns the client shared by the tool calls and the UI.
+func (p *Plugin) oauthClient() *oauthClient {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.oauth == nil {
+		p.oauth = newOAuthClient()
+	}
+	return p.oauth
 }
 
 // SetHostClient implémente pluginsdk.HostClientSetter.
@@ -62,8 +73,19 @@ func (p *Plugin) connect(ctx context.Context, reqCtx *proto.RequestContext) (*mc
 		return nil, Config{}, errors.New("mcp-bridge: endpoint not configured")
 	}
 
+	authHeaderName := cfg.AuthHeaderName
 	var authValue string
-	if hc := p.getHostClient(); hc != nil {
+	if cfg.AuthMode == AuthModeOAuth {
+		hc := p.getHostClient()
+		if hc == nil {
+			return nil, cfg, errors.WithStack(ErrNotAuthorized)
+		}
+		token, err := p.oauthClient().accessToken(ctx, hc, "mcp-bridge", reqCtx.GetOrgId(), reqCtx.GetNodeId(), reqCtx.GetUserId(), cfg.Endpoint)
+		if err != nil {
+			return nil, cfg, err
+		}
+		authHeaderName, authValue = "Authorization", "Bearer "+token
+	} else if hc := p.getHostClient(); hc != nil {
 		v, found, err := hc.GetSecret(ctx, reqCtx.GetOrgId(), "mcp-bridge", reqCtx.GetNodeId(), secretKeyAuthValue)
 		if err != nil {
 			return nil, Config{}, errors.Wrap(err, "get auth secret")
@@ -76,7 +98,7 @@ func (p *Plugin) connect(ctx context.Context, reqCtx *proto.RequestContext) (*mc
 	timeout := time.Duration(cfg.TimeoutSeconds) * time.Second
 	session, err := mcpclient.Connect(ctx, mcpclient.Config{
 		Endpoint:       cfg.Endpoint,
-		AuthHeaderName: cfg.AuthHeaderName,
+		AuthHeaderName: authHeaderName,
 		AuthValue:      authValue,
 		Timeout:        timeout,
 	})
@@ -88,6 +110,18 @@ func (p *Plugin) connect(ctx context.Context, reqCtx *proto.RequestContext) (*mc
 
 func (p *Plugin) ListTools(ctx context.Context, in *proto.ListToolsInput) (*proto.ListToolsOutput, error) {
 	session, cfg, err := p.connect(ctx, in.GetCtx())
+	if errors.Is(err, ErrNotAuthorized) {
+		// The user has to authorize the server first: the only tool offered
+		// gives the link to do so.
+		return &proto.ListToolsOutput{
+			Tools: []*proto.ToolDescriptor{{
+				Name:            connectToolName,
+				Description:     "Donne le lien permettant à l'utilisateur d'autoriser l'accès au serveur MCP " + cfg.Endpoint + ". À appeler lorsque l'utilisateur demande une information que ce serveur pourrait fournir.",
+				InputSchemaJson: `{"type":"object","properties":{}}`,
+			}},
+			MaxConsecutiveToolCalls: int32(cfg.MaxConsecutiveToolCalls),
+		}, nil
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -113,7 +147,13 @@ func (p *Plugin) ListTools(ctx context.Context, in *proto.ListToolsInput) (*prot
 }
 
 func (p *Plugin) CallTool(ctx context.Context, in *proto.CallToolInput) (*proto.CallToolOutput, error) {
-	session, _, err := p.connect(ctx, in.GetCtx())
+	session, cfg, err := p.connect(ctx, in.GetCtx())
+	if errors.Is(err, ErrNotAuthorized) {
+		return &proto.CallToolOutput{
+			ResultText: "L'utilisateur doit d'abord autoriser l'accès au serveur MCP en ouvrant ce lien, puis renouveler sa demande : " + connectURL(cfg, in.GetCtx().GetNodeId()),
+			IsError:    in.Name != connectToolName,
+		}, nil
+	}
 	if err != nil {
 		return nil, err
 	}

@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"strings"
 
 	httpCtx "github.com/xolo-gateway/xolo/internal/http/context"
 )
@@ -46,6 +47,13 @@ func (h *Handler) servePersonalPluginUI(w http.ResponseWriter, r *http.Request) 
 		originalDirector(req)
 		req.Header.Set("X-Xolo-Org-Id", scopeID)
 		req.Header.Set("X-Xolo-Plugin-Base-Path", pluginBasePath+"/")
+		// The user and the public URL are always set, never forwarded from
+		// the client: a plugin trusts them.
+		req.Header.Del("X-Xolo-User-Id")
+		if user != nil {
+			req.Header.Set("X-Xolo-User-Id", string(user.ID()))
+		}
+		req.Header.Set("X-Xolo-Public-Base-URL", strings.TrimSuffix(httpCtx.BaseURL(ctx).String(), "/"))
 		if nodeID != "" {
 			req.Header.Set("X-Xolo-Node-Id", nodeID)
 		}

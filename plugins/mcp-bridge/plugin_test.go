@@ -6,9 +6,9 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/xolo-gateway/xolo/pkg/pluginsdk"
 	proto "github.com/xolo-gateway/xolo/pkg/pluginsdk/proto"
-	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 type fakeHostClient struct {

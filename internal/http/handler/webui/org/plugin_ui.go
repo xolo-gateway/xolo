@@ -6,8 +6,10 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"strings"
 
 	"github.com/xolo-gateway/xolo/internal/core/port"
+	httpCtx "github.com/xolo-gateway/xolo/internal/http/context"
 	"github.com/pkg/errors"
 )
 
@@ -18,6 +20,9 @@ import (
 //   - X-Xolo-Org-Id        — org UUID, used by the plugin to scope GetConfig/SaveConfig calls
 //   - X-Xolo-Plugin-Base-Path — absolute prefix under which the plugin UI is mounted in the app,
 //     used by the plugin to construct correct relative URLs
+//   - X-Xolo-User-Id       — the signed-in user, for plugins acting on their behalf
+//   - X-Xolo-Public-Base-URL — public URL of the tenant, to build absolute URLs
+//     (OAuth redirect URIs, links given to the user)
 //   - X-Xolo-Node-Id       — pipeline node instance ID (from the ?nodeId= query param), used
 //     by the plugin to scope GetSecret/SetSecret calls to this node placement
 //
@@ -60,6 +65,13 @@ func (h *Handler) servePluginUI(w http.ResponseWriter, r *http.Request) {
 		req.Header.Set("X-Xolo-Org-Id", string(org.ID()))
 		// Inject the mount base path so the plugin can build correct relative/absolute URLs.
 		req.Header.Set("X-Xolo-Plugin-Base-Path", pluginBasePath+"/")
+		// The user and the public URL are always set, never forwarded from the
+		// client: a plugin trusts them.
+		req.Header.Del("X-Xolo-User-Id")
+		if user := httpCtx.User(ctx); user != nil {
+			req.Header.Set("X-Xolo-User-Id", string(user.ID()))
+		}
+		req.Header.Set("X-Xolo-Public-Base-URL", strings.TrimSuffix(httpCtx.BaseURL(ctx).String(), "/"))
 		// Inject the node instance ID so the plugin can scope GetSecret/SetSecret calls.
 		if nodeID != "" {
 			req.Header.Set("X-Xolo-Node-Id", nodeID)

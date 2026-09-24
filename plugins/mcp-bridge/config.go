@@ -17,6 +17,17 @@ const configSchemaJSON = `{
       "title": "URL du serveur MCP",
       "description": "Endpoint Streamable HTTP, ex: https://mcp.example.com/mcp"
     },
+    "authMode": {
+      "type": "string",
+      "title": "Authentification",
+      "enum": ["static", "oauth"],
+      "description": "static : un en-tête fixe pour tous ; oauth : chaque utilisateur autorise Xolo sur le serveur MCP"
+    },
+    "publicBaseURL": {
+      "type": "string",
+      "title": "URL publique de Xolo",
+      "description": "Base des liens d'autorisation donnés aux utilisateurs (renseignée automatiquement)"
+    },
     "authHeaderName": {
       "type": "string",
       "title": "Nom de l'en-tête d'authentification",
@@ -41,7 +52,12 @@ const configSchemaJSON = `{
 
 // Config représente la configuration non-sensible du nœud (PluginNodeData.Config).
 type Config struct {
-	Endpoint                string   `json:"endpoint"`
+	Endpoint string `json:"endpoint"`
+	// AuthMode is AuthModeStatic (default) or AuthModeOAuth.
+	AuthMode string `json:"authMode,omitempty"`
+	// PublicBaseURL is the public URL of Xolo, captured when the node is
+	// configured: the authorization links given to the users start with it.
+	PublicBaseURL           string   `json:"publicBaseURL,omitempty"`
 	AuthHeaderName          string   `json:"authHeaderName"`
 	ToolFilter              []string `json:"toolFilter,omitempty"`
 	TimeoutSeconds          int      `json:"timeoutSeconds,omitempty"`

@@ -11,10 +11,13 @@ import (
 	"github.com/xolo-gateway/xolo/pkg/pluginsdk"
 )
 
-func newUIHandler() http.Handler {
+func newUIHandler(oauth *oauthClient) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /", handleIndex)
 	mux.HandleFunc("POST /api/config", handleSaveConfig)
+	mux.HandleFunc("GET /connect", handleConnect)
+	mux.HandleFunc("POST /connect", oauth.handleStartConnect)
+	mux.HandleFunc("GET /callback", oauth.handleCallback)
 	return mux
 }
 
@@ -109,10 +112,16 @@ func handleSaveConfig(w http.ResponseWriter, r *http.Request) {
 	maxConsecutiveToolCalls, _ := strconv.Atoi(r.FormValue("max_consecutive_tool_calls"))
 	cfg := Config{
 		Endpoint:                strings.TrimSpace(r.FormValue("endpoint")),
+		AuthMode:                r.FormValue("auth_mode"),
+		PublicBaseURL:           r.Header.Get("X-Xolo-Public-Base-URL"),
 		AuthHeaderName:          strings.TrimSpace(r.FormValue("auth_header_name")),
 		ToolFilter:              splitNonEmpty(r.FormValue("tool_filter")),
 		TimeoutSeconds:          timeoutSeconds,
 		MaxConsecutiveToolCalls: maxConsecutiveToolCalls,
+	}
+
+	if cfg.AuthMode != AuthModeOAuth {
+		cfg.AuthMode = AuthModeStatic
 	}
 
 	cfgJSON, err := json.Marshal(cfg)

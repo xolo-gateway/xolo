@@ -1,0 +1,58 @@
+package main
+
+import (
+	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/alert"
+	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/button"
+	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/card"
+)
+
+// connectPage lets a user authorize Xolo on an MCP server.
+templ connectPage(pd connectPageData) {
+	<!DOCTYPE html>
+	<html class="dark">
+		<head>
+			<meta charset="utf-8"/>
+			<meta name="viewport" content="width=device-width, initial-scale=1"/>
+			<base href={ pd.BasePath }/>
+			<link rel="stylesheet" href="/assets/templui.css"/>
+		</head>
+		<body class="bg-background text-foreground min-h-screen p-4 space-y-4">
+			<h1 class="text-lg font-semibold">Autoriser un serveur MCP</h1>
+			if pd.Error != "" {
+				@alert.Alert(alert.Props{Variant: alert.VariantDestructive}) {
+					@alert.Description() {
+						{ pd.Error }
+					}
+				}
+			} else if pd.Done {
+				@alert.Alert(alert.Props{Variant: alert.VariantDefault}) {
+					@alert.Description() {
+						Xolo peut désormais interroger { pd.Host } en votre nom. Vous pouvez fermer cette page et renouveler votre demande à l'assistant.
+					}
+				}
+			} else {
+				<form method="POST" action="connect" class="space-y-4">
+					<input type="hidden" name="nodeId" value={ pd.NodeID }/>
+					<input type="hidden" name="endpoint" value={ pd.Endpoint }/>
+					@card.Card() {
+						@card.Content() {
+							<p class="text-sm pt-6">
+								L'assistant demande à accéder en votre nom au serveur
+								<strong>{ pd.Host }</strong> ({ pd.Endpoint }). Vous allez être
+								redirigé vers ce service pour vous identifier et autoriser Xolo.
+							</p>
+							<p class="text-xs text-muted-foreground pt-2">
+								Ne continuez que si vous reconnaissez ce serveur.
+							</p>
+						}
+					}
+					<div class="flex justify-end">
+						@button.Button(button.Props{Type: button.TypeSubmit}) {
+							Autoriser
+						}
+					</div>
+				</form>
+			}
+		</body>
+	</html>
+}
