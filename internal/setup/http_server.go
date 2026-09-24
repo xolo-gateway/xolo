@@ -348,6 +348,17 @@ func NewHTTPServerFromConfig(ctx context.Context, conf *config.Config) (*http.Se
 		options = append(options, http.WithBaseURLResolver(resolveBaseURL))
 	}
 
+	// The passthrough relays a client-supplied upstream credential instead of
+	// authenticating with a provider key Xolo owns; it stays off unless an
+	// operator turns it on explicitly.
+	if conf.Passthrough.Enabled {
+		passthroughOpts, err := passthroughOptions(conf, apiAuthChain, usageStore, providerStore, orgStore, exchangeRateService)
+		if err != nil {
+			return nil, errors.Wrap(err, "could not configure passthrough from config")
+		}
+		options = append(options, passthroughOpts...)
+	}
+
 	server := http.NewServer(options...)
 
 	return server, nil

@@ -155,6 +155,21 @@ Un fournisseur acceptant un `redirect_uri` à joker (Keycloak, Authentik…) cou
 
 Prévoyez enfin un DNS et un certificat TLS joker (`*.xolo.example.com`) sur le reverse proxy placé devant Xolo, et passez `XOLO_HTTP_SESSION_COOKIE_SECURE=true`.
 
+## Relais de credential
+
+Surface où le client fournit lui-même son credential amont et où Xolo se contente de mesurer. Voir le [relais de credential](../passthrough/passthrough.md) pour le détail. Désactivée par défaut : l'activer fait transiter par l'instance des credentials qu'elle ne possède pas.
+
+| Variable | Défaut | Description |
+| --- | --- | --- |
+| `XOLO_PASSTHROUGH_ENABLED` | `false` | Active la surface de relais. |
+| `XOLO_PASSTHROUGH_MOUNT_PREFIX` | `/passthrough/` | Chemin servi ; c'est l'URL de base à donner au client. Doit commencer et finir par une barre oblique. |
+| `XOLO_PASSTHROUGH_UPSTREAM_BASE_URL` | `https://api.anthropic.com` | Origine vers laquelle les requêtes sont relayées. `https` obligatoire, sauf boucle locale. |
+| `XOLO_PASSTHROUGH_CREDENTIAL_HEADER` | `X-Xolo-Key` | En-tête portant la clé API Xolo. `Authorization` n'est pas utilisable : il transporte déjà le credential amont. |
+| `XOLO_PASSTHROUGH_PROVIDER_ID` | _(requis si activé)_ | Fournisseur auquel la consommation relayée est imputée ; ses modèles fournissent le tarif. Sa clé API n'est jamais lue. |
+| `XOLO_PASSTHROUGH_ALLOWED_PATHS` | `/v1/messages` | Liste blanche des chemins amont acceptés, séparés par des virgules. |
+
+Le relais n'a pas de timeout propre : il réutilise `XOLO_PROXY_UPSTREAM_TIMEOUT`.
+
 ## Taux de change et tâches de fond
 
 | Variable | Défaut | Description |

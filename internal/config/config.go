@@ -21,6 +21,7 @@ type Config struct {
 	Events           EventsConfig       `envPrefix:"EVENTS_"`
 	ProvisionningAPI ProvisionningAPI   `envPrefix:"PROVISIONNING_API_"`
 	Multitenancy     Multitenancy       `envPrefix:"MULTITENANCY_"`
+	Passthrough      Passthrough        `envPrefix:"PASSTHROUGH_"`
 	// SecretKey is a 32-byte hex string used for AES-GCM encryption of provider API keys.
 	SecretKey string `env:"SECRET_KEY"`
 }
@@ -137,6 +138,10 @@ func (c *Config) Validate() error {
 	}
 
 	if err := validateMultitenantBaseURL(c.HTTP.BaseURL, c.Multitenancy.Enabled); err != nil {
+		return errors.WithStack(err)
+	}
+
+	if err := c.Passthrough.Validate(); err != nil {
 		return errors.WithStack(err)
 	}
 
