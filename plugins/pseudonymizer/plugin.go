@@ -169,8 +169,12 @@ func passthroughOutput() *proto.PreRequestOutput {
 // A derived nonce does not weaken the protection against injected
 // placeholders: go-anon refuses any ⟦…⟧ already present in the source text,
 // whatever its nonce.
-func newSession(reqCtx *proto.RequestContext) *anonymizer.Session {
+func newSession(ctx context.Context, reqCtx *proto.RequestContext) *anonymizer.Session {
 	if reqCtx.GetUserId() == "" && reqCtx.GetOrgId() == "" {
+		// The host always resolves a user before a pipeline runs, so this
+		// should not happen. If it does, every turn gets a new nonce and the
+		// upstream prompt cache breaks again: say so rather than hide it.
+		slog.WarnContext(ctx, "pseudonymizer: request without org nor user, falling back to a random placeholder nonce")
 		return anonymizer.NewSession()
 	}
 
@@ -249,7 +253,7 @@ func (p *Plugin) PreRequest(ctx context.Context, in *proto.PreRequestInput) (*pr
 
 	// Anonymize all text content using a shared session for consistent numbering.
 	// Non-anonymizable attachments (documents, files…) are removed and tracked.
-	session := newSession(in.GetCtx())
+	session := newSession(ctx, in.GetCtx())
 	anonymOpts, err := buildAnonymizeOptions(ctx, cfg, in.GetCtx(), p.getHostClient())
 	if err != nil {
 		// Fail-closed: a hash strategy without a usable key cannot protect

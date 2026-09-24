@@ -293,10 +293,10 @@ func TestNewSession_NonceIsStablePerSender(t *testing.T) {
 	alice := &proto.RequestContext{OrgId: "org", UserId: "alice", NodeId: "node"}
 	bob := &proto.RequestContext{OrgId: "org", UserId: "bob", NodeId: "node"}
 
-	if a, b := newSession(alice).Nonce(), newSession(alice).Nonce(); a != b {
+	if a, b := newSession(context.Background(), alice).Nonce(), newSession(context.Background(), alice).Nonce(); a != b {
 		t.Errorf("same sender, different nonces: %q, %q", a, b)
 	}
-	if a, b := newSession(alice).Nonce(), newSession(bob).Nonce(); a == b {
+	if a, b := newSession(context.Background(), alice).Nonce(), newSession(context.Background(), bob).Nonce(); a == b {
 		t.Errorf("different senders share the nonce %q", a)
 	}
 }
