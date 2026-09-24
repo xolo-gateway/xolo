@@ -199,6 +199,70 @@ func TestCacheControl_SurvivesARewritingNode(t *testing.T) {
 	}
 }
 
+// A conversation that brings a new entity on each turn must keep the prefix it
+// sent upstream on the previous turn, or the prompt cache never reaches past
+// the client's system prompt and every turn is billed at full price (#85).
+func TestCacheControl_PseudonymizedPrefixIsStableAcrossTurns(t *testing.T) {
+	const system = "Tu es un assistant e2e discret."
+	firstTurn := []map[string]any{
+		{"role": "user", "content": "Bonjour, je m'appelle Jean Dupont."},
+	}
+	secondTurn := append(firstTurn,
+		map[string]any{"role": "assistant", "content": "Bonjour [PERSON_1]."},
+		map[string]any{"role": "user", "content": "Mon collègue Pierre Martin habite à Lyon."},
+	)
+
+	send := func(messages []map[string]any) chatRequest {
+		t.Helper()
+		before := len(env.provider.Requests())
+		res := postMessages(t, tokenAlice, map[string]any{
+			"model":      modelClaude,
+			"max_tokens": 256,
+			"system":     cachedSystemPrompt(system),
+			"messages":   messages,
+		})
+		if res.Status != 200 {
+			t.Fatalf("status = %d, body = %s", res.Status, res.Body)
+		}
+		upstream := env.provider.RequestsSince(before)
+		if len(upstream) != 1 {
+			t.Fatalf("upstream calls = %d, want 1", len(upstream))
+		}
+		return upstream[0]
+	}
+
+	first := send(firstTurn)
+	second := send(secondTurn)
+
+	if strings.Contains(second.Raw, "Pierre Martin") {
+		t.Fatalf("the pseudonymizer did not rewrite the second turn: %s", second.Raw)
+	}
+
+	type upstreamBody struct {
+		System   json.RawMessage   `json:"system"`
+		Messages []json.RawMessage `json:"messages"`
+	}
+	var a, b upstreamBody
+	if err := json.Unmarshal([]byte(first.Raw), &a); err != nil {
+		t.Fatalf("could not parse the first upstream request: %v", err)
+	}
+	if err := json.Unmarshal([]byte(second.Raw), &b); err != nil {
+		t.Fatalf("could not parse the second upstream request: %v", err)
+	}
+
+	if !bytes.Equal(a.System, b.System) {
+		t.Errorf("the system prompt changed between turns.\nfirst:  %s\nsecond: %s", a.System, b.System)
+	}
+	if len(b.Messages) < len(a.Messages) {
+		t.Fatalf("second turn has fewer messages (%d) than the first (%d)", len(b.Messages), len(a.Messages))
+	}
+	for i := range a.Messages {
+		if !bytes.Equal(a.Messages[i], b.Messages[i]) {
+			t.Errorf("message %d changed between turns.\nfirst:  %s\nsecond: %s", i, a.Messages[i], b.Messages[i])
+		}
+	}
+}
+
 // The cache reads reported by the Messages upstream must land in the usage
 // record, and be billed at the cached-prompt tariff.
 func TestCacheControl_CachedTokensAreRecorded(t *testing.T) {

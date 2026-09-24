@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -154,6 +156,36 @@ func passthroughOutput() *proto.PreRequestOutput {
 	return &proto.PreRequestOutput{Allowed: true, NoResponseRewrite: true}
 }
 
+// newSession returns the anonymization session of one request, with a
+// placeholder nonce derived from who sends it through which node.
+//
+// go-anon draws a random nonce per session by default, so the same history
+// came out as ⟦PERSON_1_769a07⟧ on one turn and ⟦PERSON_1_f59c52⟧ on the next.
+// Every turn then rewrote the whole conversation, and the upstream prompt cache
+// never reached past the client's system prompt (#85). The numbering already
+// follows the order of appearance, so with a stable nonce an append-only
+// conversation keeps the prefix it sent on the previous turn.
+//
+// A derived nonce does not weaken the protection against injected
+// placeholders: go-anon refuses any ⟦…⟧ already present in the source text,
+// whatever its nonce.
+func newSession(reqCtx *proto.RequestContext) *anonymizer.Session {
+	if reqCtx.GetUserId() == "" && reqCtx.GetOrgId() == "" {
+		return anonymizer.NewSession()
+	}
+
+	digest := sha256.Sum256([]byte(reqCtx.GetOrgId() + "\x00" + reqCtx.GetUserId() + "\x00" + reqCtx.GetNodeId()))
+	session, err := anonymizer.NewSessionFromState(anonymizer.SessionState{
+		Version: anonymizer.SessionStateVersion,
+		Nonce:   hex.EncodeToString(digest[:3]),
+	})
+	if err != nil {
+		// Unreachable: the state carries the current version.
+		return anonymizer.NewSession()
+	}
+	return session
+}
+
 func (p *Plugin) PreRequest(ctx context.Context, in *proto.PreRequestInput) (*proto.PreRequestOutput, error) {
 	cfg, err := parseConfig(in.GetCtx().GetConfigJson())
 	if err != nil {
@@ -217,7 +249,7 @@ func (p *Plugin) PreRequest(ctx context.Context, in *proto.PreRequestInput) (*pr
 
 	// Anonymize all text content using a shared session for consistent numbering.
 	// Non-anonymizable attachments (documents, files…) are removed and tracked.
-	session := anonymizer.NewSession()
+	session := newSession(in.GetCtx())
 	anonymOpts, err := buildAnonymizeOptions(ctx, cfg, in.GetCtx(), p.getHostClient())
 	if err != nil {
 		// Fail-closed: a hash strategy without a usable key cannot protect
@@ -820,13 +852,19 @@ func deanonymizeArguments(args string, mapping map[string]string) string {
 	return restored
 }
 
-// injectPlaceholderInstruction prepends an instruction to the conversation's
-// system message (or inserts a new one) telling the LLM to keep the
-// pseudonymization placeholder tokens verbatim, so they can be restored in
-// PostResponse. The instruction is written in language, the language resolved
-// for the conversation. Returns messages unchanged if there is nothing to
-// instruct about (no entities anonymized, or the strategy doesn't produce
-// stable reusable tokens).
+// injectPlaceholderInstruction tells the LLM to keep the pseudonymization
+// placeholder tokens verbatim, so they can be restored in PostResponse. The
+// instruction is written in language, the language resolved for the
+// conversation. Returns messages unchanged if there is nothing to instruct
+// about (no entities anonymized, or the strategy doesn't produce stable
+// reusable tokens).
+//
+// The instruction sits in front of the whole conversation, so it must not
+// break the upstream prompt cache. Its text never depends on mapping: an agent
+// finds new entities on almost every turn, and a text listing them would
+// change the prefix each time and send the whole conversation back at full
+// price (#85). For the same reason it goes after the client's system prompt,
+// never before, so the prefix the client cached stays byte-identical.
 func injectPlaceholderInstruction(messages []map[string]any, mapping map[string]string, cfg Config, language string) []map[string]any {
 	if !cfg.InjectInstruction || len(mapping) == 0 {
 		return messages
@@ -836,7 +874,7 @@ func injectPlaceholderInstruction(messages []map[string]any, mapping map[string]
 		return messages
 	}
 
-	instruction := buildInstructionText(mapping, language)
+	instruction := instructionText(language)
 
 	for i, msg := range messages {
 		role, _ := msg["role"].(string)
@@ -848,55 +886,44 @@ func injectPlaceholderInstruction(messages []map[string]any, mapping map[string]
 			// Non-string system content (parts array): insert a new system message instead.
 			break
 		}
+		// Appended rather than given its own message: several chat templates
+		// reject a system message that is not the first one.
 		updated := make(map[string]any, len(msg))
 		maps.Copy(updated, msg)
-		updated["content"] = instruction + "\n\n" + content
+		updated["content"] = content + "\n\n" + instruction
 		messages[i] = updated
 		return messages
 	}
 
+	// On the Messages route the client's system prompt is a top-level field,
+	// outside messages: the proxy puts it back in front of this one.
 	systemMsg := map[string]any{"role": "system", "content": instruction}
 	return append([]map[string]any{systemMsg}, messages...)
 }
 
-// buildInstructionText builds the system instruction listing the placeholder
-// tokens present in mapping, in the conversation's language.
-func buildInstructionText(mapping map[string]string, language string) string {
-	placeholders := make([]string, 0, len(mapping))
-	for placeholder := range mapping {
-		placeholders = append(placeholders, placeholder)
-	}
-	sort.Strings(placeholders)
-	examples := strings.Join(placeholders, ", ")
-
+// instructionText returns the placeholder instruction in the conversation's
+// language. It names the delimiters rather than any placeholder: see
+// injectPlaceholderInstruction.
+func instructionText(language string) string {
 	switch language {
 	case "en":
-		return fmt.Sprintf(
-			"IMPORTANT: some personal or sensitive information in this conversation has been replaced "+
-				"by placeholder tokens such as %s. These tokens will be automatically restored after your "+
-				"reply. You MUST reproduce these tokens exactly as written (same brackets, same case, same "+
-				"numbering), without translating, modifying, merging, splitting, or inventing new ones.",
-			examples,
-		)
+		return "IMPORTANT: some personal or sensitive information in this conversation has been replaced " +
+			"by placeholder tokens delimited by ⟦ and ⟧. These tokens will be automatically restored after " +
+			"your reply. You MUST reproduce these tokens exactly as written (same delimiters, same case, " +
+			"same characters), without translating, modifying, merging, splitting, or inventing new ones."
 	case "es":
-		return fmt.Sprintf(
-			"IMPORTANTE: algunas informaciones personales o sensibles de esta conversación han sido "+
-				"reemplazadas por marcadores como %s. Estos marcadores se restaurarán automáticamente "+
-				"después de tu respuesta. DEBES reproducirlos exactamente tal cual (mismos corchetes, "+
-				"mismas mayúsculas, misma numeración), sin traducirlos, modificarlos, fusionarlos, "+
-				"dividirlos ni inventar otros nuevos.",
-			examples,
-		)
+		return "IMPORTANTE: algunas informaciones personales o sensibles de esta conversación han sido " +
+			"reemplazadas por marcadores delimitados por ⟦ y ⟧. Estos marcadores se restaurarán " +
+			"automáticamente después de tu respuesta. DEBES reproducirlos exactamente tal cual (mismos " +
+			"delimitadores, mismas mayúsculas, mismos caracteres), sin traducirlos, modificarlos, " +
+			"fusionarlos, dividirlos ni inventar otros nuevos."
 	}
 
-	return fmt.Sprintf(
-		"IMPORTANT : certaines informations personnelles ou sensibles de cette conversation ont été "+
-			"remplacées par des jetons de substitution tels que %s. Ces jetons seront automatiquement "+
-			"restitués après ta réponse. Tu DOIS recopier ces jetons strictement à l'identique (mêmes "+
-			"crochets, même casse, même numérotation), sans les traduire, les modifier, les fusionner, "+
-			"les scinder, ni en inventer de nouveaux.",
-		examples,
-	)
+	return "IMPORTANT : certaines informations personnelles ou sensibles de cette conversation ont été " +
+		"remplacées par des jetons de substitution délimités par ⟦ et ⟧. Ces jetons seront " +
+		"automatiquement restitués après ta réponse. Tu DOIS recopier ces jetons strictement à " +
+		"l'identique (mêmes délimiteurs, même casse, mêmes caractères), sans les traduire, les modifier, " +
+		"les fusionner, les scinder, ni en inventer de nouveaux."
 }
 
 // handleVerificationError convertit une erreur d'anonymisation en décision

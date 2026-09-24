@@ -73,7 +73,7 @@ Insérez le plugin `pseudonymizer` entre `system-prompt` et `model` : supprimez 
 
 ![Pseudonymisation insérée sur le chemin de la requête](./screenshots/05-pseudonymisation-canvas.png)
 
-Dans l'inspecteur, réglez la langue sur français et la stratégie sur `tag`. Les personnes, lieux et organisations partent chez le fournisseur sous forme de jetons `⟦PERSON_1_a3f9c2⟧`, `⟦LOCATION_1_7b10e4⟧`, un suffixe aléatoire par requête empêchant le modèle de les deviner, et le plugin rétablit les valeurs d'origine dans la réponse avant qu'elle ne revienne au client. Le modèle de reconnaissance d'entités se télécharge au premier appel.
+Dans l'inspecteur, réglez la langue sur français et la stratégie sur `tag`. Les personnes, lieux et organisations partent chez le fournisseur sous forme de jetons `⟦PERSON_1_a3f9c2⟧`, `⟦LOCATION_1_a3f9c2⟧`. Le suffixe est dérivé de l'organisation, de l'utilisateur et du nœud : il reste le même d'un tour à l'autre, ce qui préserve le cache de prompt du fournisseur. Le plugin rétablit les valeurs d'origine dans la réponse avant qu'elle ne revienne au client. Le modèle de reconnaissance d'entités se télécharge au premier appel.
 
 ![Configuration du pseudonymizer](./screenshots/05-pseudonymisation-inspector.png)
 

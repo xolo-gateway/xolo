@@ -17,8 +17,8 @@ func TestInjectPlaceholderInstruction_NewSystemMessage(t *testing.T) {
 		{"role": "user", "content": "Bonjour [PERSON_1], votre email est [EMAIL_1]."},
 	}
 	mapping := map[string]string{
-		"[PERSON_1]": "William Petit",
-		"[EMAIL_1]":  "wpetit@cadoles.com",
+		"[PERSON_1]": "Jean Martin",
+		"[EMAIL_1]":  "jean.martin@example.com",
 	}
 	cfg := defaultConfig()
 
@@ -30,11 +30,8 @@ func TestInjectPlaceholderInstruction_NewSystemMessage(t *testing.T) {
 	if role, _ := got[0]["role"].(string); role != "system" {
 		t.Fatalf("messages[0].role = %q, want system", role)
 	}
-	content, _ := got[0]["content"].(string)
-	for _, placeholder := range []string{"[PERSON_1]", "[EMAIL_1]"} {
-		if !strings.Contains(content, placeholder) {
-			t.Errorf("instruction does not mention %q: %q", placeholder, content)
-		}
+	if content, _ := got[0]["content"].(string); content != instructionText("fr") {
+		t.Errorf("messages[0].content = %q, want the instruction", content)
 	}
 	// Original user message must be untouched.
 	if got[1]["content"] != "Bonjour [PERSON_1], votre email est [EMAIL_1]." {
@@ -42,12 +39,12 @@ func TestInjectPlaceholderInstruction_NewSystemMessage(t *testing.T) {
 	}
 }
 
-func TestInjectPlaceholderInstruction_PrependsToExistingSystemMessage(t *testing.T) {
+func TestInjectPlaceholderInstruction_AppendsToExistingSystemMessage(t *testing.T) {
 	messages := []map[string]any{
 		{"role": "system", "content": "Tu es un assistant utile."},
 		{"role": "user", "content": "Bonjour [PERSON_1] !"},
 	}
-	mapping := map[string]string{"[PERSON_1]": "William Petit"}
+	mapping := map[string]string{"[PERSON_1]": "Jean Martin"}
 	cfg := defaultConfig()
 
 	got := injectPlaceholderInstruction(messages, mapping, cfg, "fr")
@@ -56,11 +53,41 @@ func TestInjectPlaceholderInstruction_PrependsToExistingSystemMessage(t *testing
 		t.Fatalf("len(messages) = %d, want 2", len(got))
 	}
 	content, _ := got[0]["content"].(string)
-	if !strings.Contains(content, "[PERSON_1]") {
-		t.Errorf("instruction does not mention [PERSON_1]: %q", content)
+	// The client's system prompt must stay a prefix: it is what the upstream
+	// prompt cache matches on.
+	if !strings.HasPrefix(content, "Tu es un assistant utile.") {
+		t.Errorf("client system prompt is no longer a prefix: %q", content)
 	}
-	if !strings.Contains(content, "Tu es un assistant utile.") {
-		t.Errorf("original system prompt lost: %q", content)
+	if !strings.HasSuffix(content, instructionText("fr")) {
+		t.Errorf("instruction not appended: %q", content)
+	}
+}
+
+// A conversation that finds new entities on each turn must keep sending the
+// same instruction, otherwise the upstream prompt cache breaks right before the
+// conversation on every turn (#85).
+func TestInjectPlaceholderInstruction_StableAcrossMappings(t *testing.T) {
+	cfg := defaultConfig()
+	mappings := []map[string]string{
+		{"[PERSON_1]": "Jean Martin"},
+		{"[PERSON_1]": "Jean Martin", "[EMAIL_1]": "jean.martin@example.com"},
+		{"[PERSON_1]": "Jean Martin", "[EMAIL_1]": "jean.martin@example.com", "[LOCATION_1]": "Lyon"},
+	}
+
+	for _, language := range []string{"fr", "en", "es"} {
+		var first string
+		for i, mapping := range mappings {
+			messages := []map[string]any{{"role": "user", "content": "Bonjour"}}
+			got := injectPlaceholderInstruction(messages, mapping, cfg, language)
+			content, _ := got[0]["content"].(string)
+			if i == 0 {
+				first = content
+				continue
+			}
+			if content != first {
+				t.Errorf("%s: instruction changed with the mapping:\n%q\n%q", language, first, content)
+			}
+		}
 	}
 }
 
@@ -256,5 +283,20 @@ func TestHandleVerificationError_AllowDeclaresNoResponseRewrite(t *testing.T) {
 	}
 	if !out.NoResponseRewrite {
 		t.Error("the allow path rewrites nothing and must say so")
+	}
+}
+
+// The placeholder nonce must not change between two requests of the same
+// sender, or each turn rewrites the whole history and breaks the upstream
+// prompt cache (#85).
+func TestNewSession_NonceIsStablePerSender(t *testing.T) {
+	alice := &proto.RequestContext{OrgId: "org", UserId: "alice", NodeId: "node"}
+	bob := &proto.RequestContext{OrgId: "org", UserId: "bob", NodeId: "node"}
+
+	if a, b := newSession(alice).Nonce(), newSession(alice).Nonce(); a != b {
+		t.Errorf("same sender, different nonces: %q, %q", a, b)
+	}
+	if a, b := newSession(alice).Nonce(), newSession(bob).Nonce(); a == b {
+		t.Errorf("different senders share the nonce %q", a)
 	}
 }
