@@ -3,7 +3,9 @@ package oidc
 import (
 	"fmt"
 	"log/slog"
+	"maps"
 	"net/http"
+	"slices"
 
 	httpCtx "github.com/xolo-gateway/xolo/internal/http/context"
 	"github.com/xolo-gateway/xolo/internal/http/middleware/authn"
@@ -59,7 +61,13 @@ func (h *Handler) handleProviderCallback(w http.ResponseWriter, r *http.Request)
 	}
 
 	if user.Email == "" {
-		slog.ErrorContext(r.Context(), "could not authenticate user", slog.Any("error", errors.New("user email missing")))
+		// The claim names, not their values, are enough to tell a scope or IdP
+		// attribute mapping problem apart without logging personal data.
+		slog.ErrorContext(r.Context(), "could not authenticate user",
+			slog.Any("error", errors.New("user email missing")),
+			slog.String("provider", user.Provider),
+			slog.Any("claims", slices.Sorted(maps.Keys(gothUser.RawData))),
+		)
 		http.Redirect(w, r, "/auth/oidc/logout", http.StatusTemporaryRedirect)
 		return
 	}
