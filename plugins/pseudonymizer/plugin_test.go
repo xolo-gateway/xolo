@@ -63,6 +63,31 @@ func TestInjectPlaceholderInstruction_AppendsToExistingSystemMessage(t *testing.
 	}
 }
 
+func TestInjectPlaceholderInstruction_AppendsToSystemContentParts(t *testing.T) {
+	clientPart := map[string]any{"type": "text", "text": "Tu es un assistant utile."}
+	messages := []map[string]any{
+		{"role": "system", "content": []any{clientPart}},
+		{"role": "user", "content": "Bonjour [PERSON_1] !"},
+	}
+	mapping := map[string]string{"[PERSON_1]": "Jean Martin"}
+
+	got := injectPlaceholderInstruction(messages, mapping, defaultConfig(), "fr")
+
+	if len(got) != 2 {
+		t.Fatalf("len(messages) = %d, want 2", len(got))
+	}
+	parts, _ := got[0]["content"].([]any)
+	if len(parts) != 2 {
+		t.Fatalf("system parts = %v, want the client part then the instruction", got[0]["content"])
+	}
+	if first, _ := parts[0].(map[string]any); first["text"] != "Tu es un assistant utile." {
+		t.Errorf("the client part is no longer first: %v", parts[0])
+	}
+	if last, _ := parts[1].(map[string]any); last["text"] != instructionText("fr") {
+		t.Errorf("instruction not appended as the last part: %v", parts[1])
+	}
+}
+
 // A conversation that finds new entities on each turn must keep sending the
 // same instruction, otherwise the upstream prompt cache breaks right before the
 // conversation on every turn (#85).

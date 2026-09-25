@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"maps"
 	"os"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -885,16 +886,20 @@ func injectPlaceholderInstruction(messages []map[string]any, mapping map[string]
 		if role != "system" {
 			continue
 		}
-		content, ok := msg["content"].(string)
-		if !ok {
-			// Non-string system content (parts array): insert a new system message instead.
-			break
-		}
 		// Appended rather than given its own message: several chat templates
 		// reject a system message that is not the first one.
+		var content any
+		switch c := msg["content"].(type) {
+		case string:
+			content = c + "\n\n" + instruction
+		case []any:
+			content = append(slices.Clone(c), map[string]any{"type": "text", "text": instruction})
+		default:
+			continue
+		}
 		updated := make(map[string]any, len(msg))
 		maps.Copy(updated, msg)
-		updated["content"] = content + "\n\n" + instruction
+		updated["content"] = content
 		messages[i] = updated
 		return messages
 	}
