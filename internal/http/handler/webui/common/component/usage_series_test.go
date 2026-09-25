@@ -175,3 +175,31 @@ func TestCostChartDataStacksOnlyWhenSomethingIsCovered(t *testing.T) {
 		t.Errorf("covered series should use ChartCoveredColor, got %v", data.Datasets[1].BackgroundColor)
 	}
 }
+
+// Each series may bring its own stray day: both must appear once, in date
+// order, on every series.
+func TestStackedCostSeriesMergesTheStraysOfEverySeries(t *testing.T) {
+	since := time.Date(2026, 6, 1, 0, 0, 0, 0, time.Local)
+	until := time.Date(2026, 6, 2, 0, 0, 0, 0, time.Local)
+
+	series := StackedCostSeries([]map[string]int64{
+		{"2026-05-30": 1_000_000, "2026-06-01": 1_000_000},
+		{"2026-05-28": 2_000_000, "2026-05-30": 500_000},
+	}, since, until, "7d")
+
+	wantLabels := []string{"28 mai", "30 mai", "1 juin", "2 juin"}
+	wantPayg := []float64{0, 1, 1, 0}
+	wantCovered := []float64{2, 0.5, 0, 0}
+
+	for s, want := range [][]float64{wantPayg, wantCovered} {
+		pts := series[s]
+		if len(pts) != len(wantLabels) {
+			t.Fatalf("series %d: expected %d bars, got %d: %+v", s, len(wantLabels), len(pts), pts)
+		}
+		for i, p := range pts {
+			if p.Label != wantLabels[i] || p.Value != want[i] {
+				t.Errorf("series %d, bar %d: expected %s=%v, got %+v", s, i, wantLabels[i], want[i], p)
+			}
+		}
+	}
+}
