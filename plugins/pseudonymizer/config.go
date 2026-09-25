@@ -153,7 +153,7 @@ const configSchemaJSON = `{
     "inject_instruction": {
       "type": "boolean",
       "title": "Instruction de préservation des jetons",
-      "description": "Ajoute une instruction système demandant au LLM de recopier les jetons de substitution (ex: [PERSON_1]) sans les modifier. Ignoré pour la stratégie 'redact'.",
+      "description": "Ajoute une instruction système demandant au LLM de recopier les jetons de substitution (délimités par ⟦ et ⟧) sans les modifier. Ignoré pour la stratégie 'redact'.",
       "default": true
     },
     "verification": {
