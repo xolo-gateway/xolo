@@ -361,3 +361,29 @@ func TestRewriteLeaves_KeepsShapeAndKeys(t *testing.T) {
 		t.Errorf("shape or keys changed:\n got %s\nwant %s", got, want)
 	}
 }
+
+// The session numbers entities in the order it meets them, so the walk must
+// visit a tool input in the same order on every turn, whatever Go's map order
+// (#85).
+func TestRewriteLeaves_VisitsKeysInSortedOrder(t *testing.T) {
+	input := map[string]any{
+		"to":      "a",
+		"cc":      "b",
+		"subject": "c",
+		"body":    map[string]any{"text": "d", "footer": "e"},
+	}
+
+	for range 50 {
+		var visited []string
+		record := func(s string) (string, error) {
+			visited = append(visited, s)
+			return s, nil
+		}
+		if _, err := rewriteLeaves(input, record); err != nil {
+			t.Fatalf("rewriteLeaves: %v", err)
+		}
+		if got, want := strings.Join(visited, ""), "edbca"; got != want {
+			t.Fatalf("visit order = %q, want %q", got, want)
+		}
+	}
+}

@@ -5,6 +5,8 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"maps"
+	"slices"
 	"strings"
 
 	"github.com/bornholm/go-anon/pkg/ner"
@@ -278,13 +280,19 @@ func textBlock(text string) map[string]any {
 // Map KEYS are left alone on purpose: they are the tool's parameter names, part
 // of a schema the model and the client agreed on. Rewriting them would produce
 // a call the client cannot execute.
+//
+// Keys are walked in sorted order. The session numbers entities in the order it
+// meets them, and Go's map order changes from one run to the next: two new
+// names in two fields of the same tool input could swap numbers between turns,
+// which rewrites the history and breaks the upstream prompt cache (#85).
 func rewriteLeaves(v any, rewrite func(string) (string, error)) (any, error) {
 	switch value := v.(type) {
 	case string:
 		return rewrite(value)
 	case map[string]any:
 		out := make(map[string]any, len(value))
-		for k, sub := range value {
+		for _, k := range slices.Sorted(maps.Keys(value)) {
+			sub := value[k]
 			walked, err := rewriteLeaves(sub, rewrite)
 			if err != nil {
 				return nil, err
