@@ -88,6 +88,41 @@ func TestInjectPlaceholderInstruction_AppendsToSystemContentParts(t *testing.T) 
 	}
 }
 
+func TestInjectPlaceholderInstruction_SkipsUnexpectedSystemContent(t *testing.T) {
+	mapping := map[string]string{"[PERSON_1]": "Jean Martin"}
+
+	// The only system message cannot carry the instruction: a new one goes
+	// in front, and the malformed one is left as it was.
+	messages := []map[string]any{
+		{"role": "system", "content": 42},
+		{"role": "user", "content": "Bonjour [PERSON_1] !"},
+	}
+	got := injectPlaceholderInstruction(messages, mapping, defaultConfig(), "fr")
+	if len(got) != 3 {
+		t.Fatalf("len(messages) = %d, want 3", len(got))
+	}
+	if content, _ := got[0]["content"].(string); content != instructionText("fr") {
+		t.Errorf("messages[0].content = %v, want the instruction", got[0]["content"])
+	}
+	if got[1]["content"] != 42 {
+		t.Errorf("the malformed system message was modified: %v", got[1]["content"])
+	}
+
+	// A later system message that can carry it gets it instead.
+	messages = []map[string]any{
+		{"role": "system", "content": 42},
+		{"role": "system", "content": "Tu es un assistant utile."},
+		{"role": "user", "content": "Bonjour [PERSON_1] !"},
+	}
+	got = injectPlaceholderInstruction(messages, mapping, defaultConfig(), "fr")
+	if len(got) != 3 {
+		t.Fatalf("len(messages) = %d, want 3", len(got))
+	}
+	if want := "Tu es un assistant utile.\n\n" + instructionText("fr"); got[1]["content"] != want {
+		t.Errorf("messages[1].content = %v, want the instruction appended", got[1]["content"])
+	}
+}
+
 // A conversation that finds new entities on each turn must keep sending the
 // same instruction, otherwise the upstream prompt cache breaks right before the
 // conversation on every turn (#85).
@@ -323,5 +358,9 @@ func TestNewSession_NonceIsStablePerSender(t *testing.T) {
 	}
 	if a, b := newSession(context.Background(), alice).Nonce(), newSession(context.Background(), bob).Nonce(); a == b {
 		t.Errorf("different senders share the nonce %q", a)
+	}
+	aliceElsewhere := &proto.RequestContext{OrgId: "org", UserId: "alice", NodeId: "other-node"}
+	if a, b := newSession(context.Background(), alice).Nonce(), newSession(context.Background(), aliceElsewhere).Nonce(); a == b {
+		t.Errorf("the same sender on two nodes shares the nonce %q", a)
 	}
 }

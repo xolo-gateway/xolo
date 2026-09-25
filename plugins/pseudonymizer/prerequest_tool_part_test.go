@@ -370,7 +370,13 @@ func TestRewriteLeaves_VisitsKeysInSortedOrder(t *testing.T) {
 		"to":      "a",
 		"cc":      "b",
 		"subject": "c",
-		"body":    map[string]any{"text": "d", "footer": "e"},
+		"body": map[string]any{
+			"text":   "d",
+			"footer": "e",
+			"attachments": []any{
+				map[string]any{"name": "f", "author": "g"},
+			},
+		},
 	}
 
 	for range 50 {
@@ -382,7 +388,7 @@ func TestRewriteLeaves_VisitsKeysInSortedOrder(t *testing.T) {
 		if _, err := rewriteLeaves(input, record); err != nil {
 			t.Fatalf("rewriteLeaves: %v", err)
 		}
-		if got, want := strings.Join(visited, ""), "edbca"; got != want {
+		if got, want := strings.Join(visited, ""), "gfedbca"; got != want {
 			t.Fatalf("visit order = %q, want %q", got, want)
 		}
 	}
