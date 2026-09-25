@@ -219,6 +219,13 @@ func TestCacheControl_PseudonymizedPrefixIsStableAcrossTurns(t *testing.T) {
 			{"role": "user", "content": "Écris un courriel à Jean Dupont et Pierre Martin."},
 		},
 	}
+	// The fake provider echoes the last user message: each answer must come
+	// back with the names of that message restored.
+	restored := [][]string{
+		{"Jean Dupont"},
+		{"Pierre Martin"},
+		{"Jean Dupont", "Pierre Martin"},
+	}
 
 	type upstreamBody struct {
 		System   json.RawMessage   `json:"system"`
@@ -250,6 +257,14 @@ func TestCacheControl_PseudonymizedPrefixIsStableAcrossTurns(t *testing.T) {
 			if strings.Contains(upstream[0].Raw, name) {
 				t.Fatalf("turn %d: %q reached the upstream: %s", turn+1, name, upstream[0].Raw)
 			}
+		}
+		for _, name := range restored[turn] {
+			if !strings.Contains(res.Content, name) {
+				t.Errorf("turn %d: %q was not restored in the answer: %q", turn+1, name, res.Content)
+			}
+		}
+		if cc := systemCacheControl(t, upstream[0].Raw); cc == nil || cc["type"] != "ephemeral" {
+			t.Errorf("turn %d: the cache breakpoint did not reach the upstream.\nsent: %s", turn+1, upstream[0].Raw)
 		}
 
 		var current upstreamBody
