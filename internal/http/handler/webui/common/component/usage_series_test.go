@@ -128,3 +128,50 @@ func TestFormatDayLabel(t *testing.T) {
 		t.Errorf("got %q, want %q", got, want)
 	}
 }
+
+// The two series of a stacked chart must land bar for bar, including the days
+// only one of them fills and a stray day only one of them carries.
+func TestStackedCostSeriesAlignsTheSeries(t *testing.T) {
+	since := time.Date(2026, 6, 1, 0, 0, 0, 0, time.Local)
+	until := time.Date(2026, 6, 3, 0, 0, 0, 0, time.Local)
+
+	series := StackedCostSeries([]map[string]int64{
+		{"2026-06-01": 1_000_000},
+		{"2026-06-03": 2_000_000, "2026-05-31": 500_000},
+	}, since, until, "7d")
+
+	payg, covered := series[0], series[1]
+	if len(payg) != 4 || len(covered) != 4 {
+		t.Fatalf("expected the stray day plus three days in both series, got %d and %d", len(payg), len(covered))
+	}
+	for i := range payg {
+		if payg[i].Label != covered[i].Label {
+			t.Errorf("bar %d: labels differ, %q and %q", i, payg[i].Label, covered[i].Label)
+		}
+	}
+	if payg[0].Label != "31 mai" || payg[0].Value != 0 || covered[0].Value != 0.5 {
+		t.Errorf("stray day: got %+v and %+v", payg[0], covered[0])
+	}
+	if payg[1].Value != 1 || covered[1].Value != 0 {
+		t.Errorf("first day: got %+v and %+v", payg[1], covered[1])
+	}
+	if payg[3].Value != 0 || covered[3].Value != 2 {
+		t.Errorf("last day: got %+v and %+v", payg[3], covered[3])
+	}
+}
+
+func TestCostChartDataStacksOnlyWhenSomethingIsCovered(t *testing.T) {
+	payg := []ChartDataPoint{{Label: "1 juin", Value: 1}}
+
+	if data := CostChartData(payg, []ChartDataPoint{{Label: "1 juin"}}, "EUR"); len(data.Datasets) != 1 {
+		t.Errorf("nothing covered: expected a single series, got %d", len(data.Datasets))
+	}
+
+	data := CostChartData(payg, []ChartDataPoint{{Label: "1 juin", Value: 2}}, "EUR")
+	if len(data.Datasets) != 2 {
+		t.Fatalf("expected the covered series stacked on the PAYG one, got %d", len(data.Datasets))
+	}
+	if data.Datasets[1].BackgroundColor != ChartCoveredColor {
+		t.Errorf("covered series should use ChartCoveredColor, got %v", data.Datasets[1].BackgroundColor)
+	}
+}

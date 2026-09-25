@@ -197,6 +197,10 @@ func (h *Handler) getDashboardPage(w http.ResponseWriter, r *http.Request) {
 	// period into memory. Records may span several orgs, so each sub-total is converted
 	// from its stored currency to *its own org's* currency, matching the previous per-record
 	// behavior.
+	//
+	// The sub-totals include the requests covered by a subscription, at their equivalent
+	// PAYG value: a user served entirely by a plan would otherwise face empty charts over
+	// a list of requests. The daily chart stacks the two apart; the breakdowns add them up.
 	convertPerOrg := func(rows []port.DimensionCost) map[string]int64 {
 		out := make(map[string]int64, len(rows))
 		for _, row := range rows {
@@ -216,11 +220,21 @@ func (h *Handler) getDashboardPage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	perModel := convertPerOrg(h.aggregateCostRows(ctx, chartFilter, port.UsageDimensionModel))
-	perDay := convertPerOrg(h.aggregateCostRows(ctx, chartFilter, port.UsageDimensionDay))
 
+	paygDayRows, coveredDayRows := port.SplitPlanCovered(h.aggregateCostRows(ctx, chartFilter, port.UsageDimensionDay))
+	perDay := convertPerOrg(paygDayRows)
+	coveredPerDay := convertPerOrg(coveredDayRows)
+
+	providerRows := h.aggregateCostRows(ctx, chartFilter, port.UsageDimensionProvider)
 	perProvider := make(map[model.ProviderID]int64)
-	for key, cost := range convertPerOrg(h.aggregateCostRows(ctx, chartFilter, port.UsageDimensionProvider)) {
+	for key, cost := range convertPerOrg(providerRows) {
 		perProvider[model.ProviderID(key)] += cost
+	}
+	coveredProviders := make(map[model.ProviderID]bool)
+	for _, row := range providerRows {
+		if row.PlanCovered {
+			coveredProviders[model.ProviderID(row.Key)] = true
+		}
 	}
 
 	// Build provider name map for chart labels
@@ -307,6 +321,8 @@ func (h *Handler) getDashboardPage(w http.ResponseWriter, r *http.Request) {
 		subscriptionProviders = append(subscriptionProviders, h.buildDashboardSubscriptionUsage(ctx, m.OrgID(), user.ID())...)
 	}
 
+	costPerDay := common.StackedCostSeries([]map[string]int64{perDay, coveredPerDay}, since, time.Now(), rangeParam)
+
 	vmodel := component.DashboardPageVModel{
 		AppLayoutVModel: common.AppLayoutVModel{
 			User:         user,
@@ -326,9 +342,11 @@ func (h *Handler) getDashboardPage(w http.ResponseWriter, r *http.Request) {
 		Page:                  page,
 		PageSize:              dashboardPageSize,
 		HasNext:               hasNext,
-		ChartPerDay:           common.CostSeries(perDay, since, time.Now(), rangeParam),
+		ChartPerDay:           costPerDay[0],
+		ChartCoveredPerDay:    costPerDay[1],
 		ChartSharesPerModel:   common.ChartShares(common.TopNChartDataPoints(dashChartByValue(perModel), 5)),
 		ChartPerProvider:      dashChartByProvider(perProvider, providerNames),
+		PlanCoveredProviders:  common.PlanCoveredLabels(coveredProviders, providerNames),
 		TotalEnergyWh:         totalEnergyWh,
 		TotalCO2GramsMid:      totalCO2GramsMid,
 	}

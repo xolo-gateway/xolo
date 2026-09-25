@@ -196,9 +196,15 @@ type OrgUsagePageVModel struct {
 	YearlyCost          int64       // this year's org cost in org currency (microcents)
 	Currency            string      // org currency
 	ChartPerDay         []ChartDataPoint
+	// ChartCoveredPerDay is the value of the requests covered by a subscription,
+	// stacked on ChartPerDay bar for bar.
+	ChartCoveredPerDay  []ChartDataPoint
 	ChartSharesPerModel []ChartShare
 	ChartPerUser        []ChartDataPoint
 	ChartPerProvider    []ChartDataPoint
+	// PlanCoveredProviders holds the labels of ChartPerProvider billed by
+	// subscription.
+	PlanCoveredProviders map[string]bool
 	// Consommation (en tokens) des requêtes couvertes par un abonnement, par utilisateur.
 	// Séparé des graphiques de coût car le forfait est un coût fixe, pas marginal.
 	ChartSubTokensPerUser []ChartDataPoint

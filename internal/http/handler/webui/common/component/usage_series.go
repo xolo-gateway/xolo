@@ -4,6 +4,9 @@ import (
 	"fmt"
 	"sort"
 	"time"
+
+	"github.com/xolo-gateway/xolo/internal/core/model"
+	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/chart"
 )
 
 // SeriesBucket is the granularity the cost chart of a period is drawn on.
@@ -49,59 +52,79 @@ func CostSeriesTitle(r string) string {
 // `perDay` is keyed by calendar day, "YYYY-MM-DD", in micro-units of currency,
 // as returned by AggregateCostByDimension on the day dimension.
 func CostSeries(perDay map[string]int64, since, until time.Time, r string) []ChartDataPoint {
+	return StackedCostSeries([]map[string]int64{perDay}, since, until, r)[0]
+}
+
+// StackedCostSeries is CostSeries for several series drawn on the same axis —
+// the pay-as-you-go spend and the value covered by a subscription, stacked in
+// one bar. Every returned series has the same buckets in the same order, so the
+// i-th point of each lands on the same bar; a bucket only one series fills is
+// charted at zero in the others.
+func StackedCostSeries(perDay []map[string]int64, since, until time.Time, r string) [][]ChartDataPoint {
+	out := make([][]ChartDataPoint, len(perDay))
 	if until.Before(since) {
-		return nil
+		return out
 	}
 
 	bucket := RangeBucket(r)
-	totals := make(map[string]int64, len(perDay))
-	for day, cost := range perDay {
-		key, err := seriesKey(day, bucket)
-		if err != nil {
-			// A key the store did not produce: keep it out of the timeline rather
-			// than guess where it belongs.
-			continue
+	totals := make([]map[string]int64, len(perDay))
+	for i, series := range perDay {
+		totals[i] = make(map[string]int64, len(series))
+		for day, cost := range series {
+			key, err := seriesKey(day, bucket)
+			if err != nil {
+				// A key the store did not produce: keep it out of the timeline rather
+				// than guess where it belongs.
+				continue
+			}
+			totals[i][key] += cost
 		}
-		totals[key] += cost
 	}
 
-	pts := make([]ChartDataPoint, 0, len(totals)+1)
-	seen := make(map[string]bool, len(totals))
+	var keys []time.Time
+	seen := make(map[string]bool)
 	for cursor := truncate(since, bucket); !cursor.After(until); cursor = next(cursor, bucket) {
-		key := cursor.Format(keyLayout(bucket))
-		seen[key] = true
-		pts = append(pts, ChartDataPoint{
-			Label: seriesLabel(cursor, bucket),
-			Value: float64(totals[key]) / 1_000_000,
-		})
+		seen[cursor.Format(keyLayout(bucket))] = true
+		keys = append(keys, cursor)
 	}
 
 	// Usage recorded outside the window — the filter and the bucketing round
 	// differently near the edges — would otherwise vanish from a chart whose
 	// total is displayed right above it.
 	var strays []string
-	for key := range totals {
-		if !seen[key] {
-			strays = append(strays, key)
+	for _, series := range totals {
+		for key := range series {
+			if !seen[key] {
+				seen[key] = true
+				strays = append(strays, key)
+			}
 		}
 	}
 	if len(strays) > 0 {
 		sort.Strings(strays)
-		extra := make([]ChartDataPoint, 0, len(strays))
+		extra := make([]time.Time, 0, len(strays))
 		for _, key := range strays {
 			at, err := time.ParseInLocation(keyLayout(bucket), key, time.Local)
 			if err != nil {
 				continue
 			}
-			extra = append(extra, ChartDataPoint{
-				Label: seriesLabel(at, bucket),
-				Value: float64(totals[key]) / 1_000_000,
-			})
+			extra = append(extra, at)
 		}
-		pts = append(extra, pts...)
+		keys = append(extra, keys...)
 	}
 
-	return pts
+	for i, series := range totals {
+		pts := make([]ChartDataPoint, 0, len(keys))
+		for _, at := range keys {
+			pts = append(pts, ChartDataPoint{
+				Label: seriesLabel(at, bucket),
+				Value: float64(series[at.Format(keyLayout(bucket))]) / 1_000_000,
+			})
+		}
+		out[i] = pts
+	}
+
+	return out
 }
 
 // seriesKey moves a "YYYY-MM-DD" day onto the bucket it belongs to.
@@ -169,4 +192,73 @@ func FormatDayLabel(day string) string {
 	}
 
 	return seriesLabel(at, SeriesBucketDay)
+}
+
+// HasValue reports whether any point of a series is non-zero.
+func HasValue(pts []ChartDataPoint) bool {
+	for _, p := range pts {
+		if p.Value != 0 {
+			return true
+		}
+	}
+	return false
+}
+
+// CostChartData lays the series of CostChart out for Chart.js: the
+// pay-as-you-go spend first, so it sits at the base of each bar, then the value
+// covered by a subscription, only when there is some.
+func CostChartData(payg, covered []ChartDataPoint, currency string) chart.Data {
+	if !HasValue(covered) {
+		return chart.Data{
+			Labels: ChartLabels(payg),
+			Datasets: []chart.Dataset{{
+				Label:           currency,
+				Data:            ChartValues(payg),
+				BackgroundColor: ChartColor(0),
+			}},
+		}
+	}
+
+	return chart.Data{
+		Labels: ChartLabels(payg),
+		Datasets: []chart.Dataset{
+			{
+				Label:           "À l'usage (" + currency + ")",
+				Data:            ChartValues(payg),
+				BackgroundColor: ChartColor(0),
+			},
+			{
+				Label:           "Couvert par abonnement (" + currency + ")",
+				Data:            ChartValues(covered),
+				BackgroundColor: ChartCoveredColor,
+			},
+		},
+	}
+}
+
+// ProviderCostValue words the figure closing a provider's row in a cost
+// breakdown. A provider billed by subscription gets its equivalent PAYG value,
+// marked as such: it was not charged per request.
+func ProviderCostValue(value float64, currency string, covered bool) string {
+	formatted := FormatCost(int64(value*1_000_000), currency)
+	if covered {
+		return formatted + " · forfait"
+	}
+	return formatted
+}
+
+// PlanCoveredLabels returns the chart labels of the providers whose cost is
+// covered by a subscription, so a breakdown keyed by label can tell which of its
+// figures are a value rather than an amount billed. A provider without a name is
+// labelled by its id, as the breakdowns do.
+func PlanCoveredLabels(covered map[model.ProviderID]bool, names map[model.ProviderID]string) map[string]bool {
+	labels := make(map[string]bool, len(covered))
+	for pid := range covered {
+		label := names[pid]
+		if label == "" {
+			label = string(pid)
+		}
+		labels[label] = true
+	}
+	return labels
 }

@@ -7,7 +7,6 @@ import (
 	common "github.com/xolo-gateway/xolo/internal/http/handler/webui/common/component"
 	orgcomponent "github.com/xolo-gateway/xolo/internal/http/handler/webui/org/component"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/button"
-	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/chart"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/icon"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/pagination"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/table"
@@ -55,8 +54,14 @@ type DashboardPageVModel struct {
 	HasNext               bool
 	SubscriptionProviders []orgcomponent.SubscriptionProviderUsage
 	ChartPerDay           []ProfileChartDataPoint
-	ChartSharesPerModel   []ChartShare
-	ChartPerProvider      []ProfileChartDataPoint
+	// ChartCoveredPerDay is the value of the requests covered by a subscription,
+	// stacked on ChartPerDay bar for bar.
+	ChartCoveredPerDay  []ProfileChartDataPoint
+	ChartSharesPerModel []ChartShare
+	ChartPerProvider    []ProfileChartDataPoint
+	// PlanCoveredProviders holds the labels of ChartPerProvider billed by
+	// subscription.
+	PlanCoveredProviders map[string]bool
 	TotalEnergyWh         float64 // sum of midpoint estimates (0 if all unknown)
 	TotalCO2GramsMid      float64 // sum of CO₂ midpoints (world average, grams)
 }
@@ -157,7 +162,6 @@ templ DashboardPage(vmodel DashboardPageVModel) {
 			devient indiscernable d'un défaut de chargement.
 			Même grille que l'overview d'organisation : le coût par jour prend la
 			largeur restante, la répartition par modèle une colonne de 380 px. -->
-			{{ trueVal := true }}
 			<div class="grid grid-cols-1 gap-3.5 xl:grid-cols-[minmax(0,1fr)_380px]">
 				@common.Section() {
 					@common.SectionHeader() {
@@ -169,29 +173,13 @@ templ DashboardPage(vmodel DashboardPageVModel) {
 					}
 					if len(vmodel.ChartPerDay) > 0 {
 						@common.SectionBody() {
-							@chart.Chart(chart.Props{
-								Variant:     chart.VariantBar,
-								ShowXLabels: true,
-								ShowYLabels: true,
-								ShowYGrid:   true,
-								ShowLegend:  false,
-								BeginAtZero: &trueVal,
-								Class:       "h-64",
-								Data: chart.Data{
-									Labels: common.ChartLabels(vmodel.ChartPerDay),
-									Datasets: []chart.Dataset{{
-										Label:           personalCurrency(vmodel),
-										Data:            common.ChartValues(vmodel.ChartPerDay),
-										BackgroundColor: common.ChartColor(0),
-									}},
-								},
-							})
+							@common.CostChart(vmodel.ChartPerDay, vmodel.ChartCoveredPerDay, personalCurrency(vmodel))
 						}
 					} else {
 						@common.SectionEmpty(common.EmptyStateProps{
 							Icon:        icon.ChartColumn,
 							Title:       "Aucune consommation sur la période",
-							Description: "Vos requêtes facturées apparaîtront ici dès votre premier appel.",
+							Description: "Vos requêtes apparaîtront ici dès votre premier appel.",
 						})
 					}
 				}
@@ -229,7 +217,7 @@ templ DashboardPage(vmodel DashboardPageVModel) {
 						for _, row := range common.RankedRows(vmodel.ChartPerProvider) {
 							@common.RankedRow(row, common.RankedRowProps{
 								Mono:  true,
-								Value: common.FormatCost(int64(row.Value*1_000_000), personalCurrency(vmodel)),
+								Value: common.ProviderCostValue(row.Value, personalCurrency(vmodel), vmodel.PlanCoveredProviders[row.Label]),
 							})
 						}
 					}

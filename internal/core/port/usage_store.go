@@ -64,11 +64,15 @@ type UsageStore interface {
 	// starting at `since`. Used to display when the window will next free up. Returns a zero
 	// time when no such record exists.
 	EarliestPlanUsageSince(ctx context.Context, orgID model.OrgID, providerID model.ProviderID, since time.Time) (time.Time, error)
-	// AggregateCostByDimension returns PAYG (plan_covered=false) cost sub-totals grouped by
-	// the given dimension, the record's org and currency, honoring the filter. It lets the
+	// AggregateCostByDimension returns cost sub-totals grouped by the given dimension, the
+	// record's org, currency and billing arrangement, honoring the filter. It lets the
 	// usage/dashboard charts bucket costs in SQL instead of loading every record into memory.
 	// The org and currency are returned so callers can convert each sub-total to a display
 	// currency exactly as a per-record loop would.
+	//
+	// Subscription-covered records are included, flagged by DimensionCost.PlanCovered, and
+	// carry their equivalent PAYG value: a caller charting billed spend only sets
+	// UsageFilter.PlanCovered to false.
 	AggregateCostByDimension(ctx context.Context, filter UsageFilter, dimension UsageDimension) ([]DimensionCost, error)
 	// AggregatePlanTokensByUser returns subscription-covered (plan_covered=true) token
 	// sub-totals grouped by user, honoring the filter.
@@ -90,14 +94,31 @@ const (
 	UsageDimensionProvider UsageDimension = "provider"
 )
 
-// DimensionCost is a PAYG cost sub-total for one value of a grouping dimension,
-// scoped to a single org and currency. Callers convert Cost from Currency to the
-// display currency of OrgID.
+// DimensionCost is a cost sub-total for one value of a grouping dimension, scoped
+// to a single org, currency and billing arrangement. Callers convert Cost from
+// Currency to the display currency of OrgID.
 type DimensionCost struct {
 	Key      string
 	OrgID    model.OrgID
 	Currency string
 	Cost     int64
+	// PlanCovered is true when the sub-total gathers requests served by a
+	// subscription provider: Cost is then their equivalent PAYG value, not an
+	// amount billed.
+	PlanCovered bool
+}
+
+// SplitPlanCovered separates the pay-as-you-go sub-totals from the ones covered
+// by a subscription, preserving their order.
+func SplitPlanCovered(rows []DimensionCost) (payg, covered []DimensionCost) {
+	for _, row := range rows {
+		if row.PlanCovered {
+			covered = append(covered, row)
+		} else {
+			payg = append(payg, row)
+		}
+	}
+	return payg, covered
 }
 
 // UserTokenUsage is a token count aggregated for a single user.

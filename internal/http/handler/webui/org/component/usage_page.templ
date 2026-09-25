@@ -175,29 +175,13 @@ templ OrgUsagePage(vmodel OrgUsagePageVModel) {
 					}
 					if len(vmodel.ChartPerDay) > 0 {
 						@common.SectionBody() {
-							@chart.Chart(chart.Props{
-								Variant:     chart.VariantBar,
-								ShowXLabels: true,
-								ShowYLabels: true,
-								ShowYGrid:   true,
-								ShowLegend:  false,
-								BeginAtZero: &trueVal,
-								Class:       "h-64",
-								Data: chart.Data{
-									Labels: common.ChartLabels(vmodel.ChartPerDay),
-									Datasets: []chart.Dataset{{
-										Label:           vmodel.Currency,
-										Data:            common.ChartValues(vmodel.ChartPerDay),
-										BackgroundColor: common.ChartColor(0),
-									}},
-								},
-							})
+							@common.CostChart(vmodel.ChartPerDay, vmodel.ChartCoveredPerDay, vmodel.Currency)
 						}
 					} else {
 						@common.SectionEmpty(common.EmptyStateProps{
 							Icon:        icon.ChartColumn,
 							Title:       "Aucune consommation sur la période",
-							Description: "Les requêtes facturées apparaîtront ici dès qu'un modèle de l'organisation sera appelé.",
+							Description: "Les requêtes apparaîtront ici dès qu'un modèle de l'organisation sera appelé.",
 						})
 					}
 				}
@@ -261,7 +245,7 @@ templ OrgUsagePage(vmodel OrgUsagePageVModel) {
 							for _, row := range common.RankedRows(vmodel.ChartPerProvider) {
 								@common.RankedRow(row, common.RankedRowProps{
 									Mono:  true,
-									Value: common.FormatCost(int64(row.Value*1_000_000), vmodel.Currency),
+									Value: common.ProviderCostValue(row.Value, vmodel.Currency, vmodel.PlanCoveredProviders[row.Label]),
 								})
 							}
 						}

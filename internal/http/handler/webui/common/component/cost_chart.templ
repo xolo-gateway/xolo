@@ -1,0 +1,25 @@
+package component
+
+import "github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/chart"
+
+// CostChart draws the cost of a period, one bar per bucket, the value covered
+// by a subscription stacked on the pay-as-you-go spend.
+//
+// `payg` and `covered` come from StackedCostSeries, so their points line up bar
+// for bar. When nothing was covered on the period the chart keeps a single
+// series and no legend: a legend naming an empty series is noise.
+templ CostChart(payg, covered []ChartDataPoint, currency string) {
+	{{ trueVal := true }}
+	{{ stacked := HasValue(covered) }}
+	@chart.Chart(chart.Props{
+		Variant:     chart.VariantBar,
+		ShowXLabels: true,
+		ShowYLabels: true,
+		ShowYGrid:   true,
+		ShowLegend:  stacked,
+		Stacked:     stacked,
+		BeginAtZero: &trueVal,
+		Class:       "h-64",
+		Data:        CostChartData(payg, covered, currency),
+	})
+}

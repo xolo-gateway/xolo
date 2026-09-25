@@ -376,10 +376,11 @@ func dimensionGroupExpr(db *gorm.DB, d port.UsageDimension) (string, error) {
 // AggregateCostByDimension implements port.UsageStore.
 func (s *Store) AggregateCostByDimension(ctx context.Context, filter port.UsageFilter, dimension port.UsageDimension) ([]port.DimensionCost, error) {
 	var rows []struct {
-		GroupKey string
-		OrgID    string
-		Currency string
-		Cost     int64
+		GroupKey    string
+		OrgID       string
+		Currency    string
+		PlanCovered int
+		Cost        int64
 	}
 
 	err := s.withRetry(ctx, false, func(ctx context.Context, db *gorm.DB) error {
@@ -389,10 +390,9 @@ func (s *Store) AggregateCostByDimension(ctx context.Context, filter port.UsageF
 		}
 
 		query := db.Model(&UsageRecord{}).
-			Select(groupExpr + " as group_key, org_id as org_id, currency as currency, COALESCE(SUM(cost), 0) as cost").
-			Where("plan_covered = 0")
+			Select(groupExpr + " as group_key, org_id as org_id, currency as currency, plan_covered as plan_covered, COALESCE(SUM(cost), 0) as cost")
 		query = applyUsageFilter(query, filter)
-		query = query.Group(groupExpr).Group("org_id").Group("currency")
+		query = query.Group(groupExpr).Group("org_id").Group("currency").Group("plan_covered")
 		return errors.WithStack(query.Scan(&rows).Error)
 	})
 	if err != nil {
@@ -402,10 +402,11 @@ func (s *Store) AggregateCostByDimension(ctx context.Context, filter port.UsageF
 	result := make([]port.DimensionCost, 0, len(rows))
 	for _, r := range rows {
 		result = append(result, port.DimensionCost{
-			Key:      r.GroupKey,
-			OrgID:    model.OrgID(r.OrgID),
-			Currency: r.Currency,
-			Cost:     r.Cost,
+			Key:         r.GroupKey,
+			OrgID:       model.OrgID(r.OrgID),
+			Currency:    r.Currency,
+			Cost:        r.Cost,
+			PlanCovered: r.PlanCovered != 0,
 		})
 	}
 	return result, nil

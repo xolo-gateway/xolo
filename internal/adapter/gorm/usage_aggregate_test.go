@@ -34,6 +34,12 @@ func costByKey(rows []port.DimensionCost) map[string]int64 {
 	return out
 }
 
+// paygCostByKey sums the pay-as-you-go sub-totals only.
+func paygCostByKey(rows []port.DimensionCost) map[string]int64 {
+	payg, _ := port.SplitPlanCovered(rows)
+	return costByKey(payg)
+}
+
 func TestAggregateCostByDimension(t *testing.T) {
 	eachBackend(t, scenarioAggregateCostByDimension)
 }
@@ -46,18 +52,18 @@ func scenarioAggregateCostByDimension(t *testing.T, store *xologorm.Store) {
 	recordUsage(t, store, "u1", "p1", "m-gpt", "gpt-4", "", "USD", 1000, 10, 20, false)
 	recordUsage(t, store, "u1", "p1", "m-gpt", "virtual", "gpt-4", "USD", 2000, 10, 20, false)
 	recordUsage(t, store, "u2", "p2", "m-claude", "claude", "", "EUR", 500, 5, 5, false)
-	// Subscription-covered record: excluded from every cost aggregation.
+	// Subscription-covered record: returned apart, flagged PlanCovered.
 	recordUsage(t, store, "u1", "p1", "m-gpt", "gpt-4", "", "USD", 999999, 40, 60, true)
 
 	since := time.Now().Add(-time.Hour)
 	filter := port.UsageFilter{OrgID: &orgID, Since: &since}
 
-	t.Run("by model (effective name, plan excluded)", func(t *testing.T) {
+	t.Run("by model (effective name)", func(t *testing.T) {
 		rows, err := store.AggregateCostByDimension(ctx, filter, port.UsageDimensionModel)
 		if err != nil {
 			t.Fatalf("AggregateCostByDimension: %v", err)
 		}
-		got := costByKey(rows)
+		got := paygCostByKey(rows)
 		if got["gpt-4"] != 3000 {
 			t.Errorf("gpt-4: expected 3000, got %d", got["gpt-4"])
 		}
@@ -83,7 +89,7 @@ func scenarioAggregateCostByDimension(t *testing.T, store *xologorm.Store) {
 		if err != nil {
 			t.Fatalf("AggregateCostByDimension: %v", err)
 		}
-		got := costByKey(rows)
+		got := paygCostByKey(rows)
 		if got["u1"] != 3000 {
 			t.Errorf("u1: expected 3000 (plan-covered excluded), got %d", got["u1"])
 		}
@@ -97,7 +103,7 @@ func scenarioAggregateCostByDimension(t *testing.T, store *xologorm.Store) {
 		if err != nil {
 			t.Fatalf("AggregateCostByDimension: %v", err)
 		}
-		got := costByKey(rows)
+		got := paygCostByKey(rows)
 		if got["p1"] != 3000 {
 			t.Errorf("p1: expected 3000, got %d", got["p1"])
 		}
@@ -116,6 +122,9 @@ func scenarioAggregateCostByDimension(t *testing.T, store *xologorm.Store) {
 		dates := map[string]struct{}{}
 		for _, r := range rows {
 			dates[r.Key] = struct{}{}
+			if r.PlanCovered {
+				continue
+			}
 			switch r.Currency {
 			case "USD":
 				totalUSD += r.Cost
@@ -128,6 +137,52 @@ func scenarioAggregateCostByDimension(t *testing.T, store *xologorm.Store) {
 		}
 		if totalUSD != 3000 || totalEUR != 500 {
 			t.Errorf("expected USD=3000 EUR=500, got USD=%d EUR=%d", totalUSD, totalEUR)
+		}
+	})
+}
+
+func TestAggregateCostByDimensionPlanCovered(t *testing.T) {
+	eachBackend(t, scenarioAggregateCostByDimensionPlanCovered)
+}
+
+func scenarioAggregateCostByDimensionPlanCovered(t *testing.T, store *xologorm.Store) {
+	ctx := context.Background()
+	orgID := model.OrgID("org-1")
+
+	recordUsage(t, store, "u1", "p1", "m-gpt", "gpt-4", "", "EUR", 1000, 10, 20, false)
+	recordUsage(t, store, "u1", "p2", "m-sub", "sub", "", "EUR", 700, 10, 20, true)
+	recordUsage(t, store, "u1", "p2", "m-sub", "sub", "", "EUR", 300, 10, 20, true)
+
+	since := time.Now().Add(-time.Hour)
+
+	t.Run("covered requests are returned apart, at their PAYG value", func(t *testing.T) {
+		rows, err := store.AggregateCostByDimension(ctx, port.UsageFilter{OrgID: &orgID, Since: &since}, port.UsageDimensionDay)
+		if err != nil {
+			t.Fatalf("AggregateCostByDimension: %v", err)
+		}
+		payg, covered := port.SplitPlanCovered(rows)
+		if len(payg) != 1 || payg[0].Cost != 1000 {
+			t.Errorf("expected a single PAYG row of 1000, got %+v", payg)
+		}
+		if len(covered) != 1 || covered[0].Cost != 1000 {
+			t.Errorf("expected a single covered row of 1000, got %+v", covered)
+		}
+	})
+
+	t.Run("a PAYG-only filter drops the covered requests", func(t *testing.T) {
+		paygOnly := false
+		rows, err := store.AggregateCostByDimension(ctx, port.UsageFilter{OrgID: &orgID, Since: &since, PlanCovered: &paygOnly}, port.UsageDimensionProvider)
+		if err != nil {
+			t.Fatalf("AggregateCostByDimension: %v", err)
+		}
+		got := costByKey(rows)
+		if len(got) != 1 || got["p1"] != 1000 {
+			t.Errorf("expected only p1=1000, got %v", got)
+		}
+		for _, r := range rows {
+			if r.PlanCovered {
+				t.Errorf("unexpected covered row %+v", r)
+			}
 		}
 	})
 }

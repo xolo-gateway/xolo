@@ -123,11 +123,12 @@ func (h *Handler) overviewOrgs(ctx context.Context, orgs []model.Organization, s
 // one query per organisation, then are converted and bucketed in memory.
 //
 // Only organisations that actually consumed pay-as-you-go end up in the result:
-// AggregateCostByDimension excludes the requests covered by a subscription, so
-// an organisation billed entirely on a plan has nothing to draw — and must not
-// appear in the legend either, which is built from these series.
+// the requests covered by a subscription are filtered out, so an organisation
+// billed entirely on a plan has nothing to draw — and must not appear in the
+// legend either, which is built from these series.
 func (h *Handler) overviewCostSeries(ctx context.Context, orgs []component.OverviewOrg, since time.Time, currency string) component.OverviewCostSeries {
-	rows, err := h.usageStore.AggregateCostByDimension(ctx, port.UsageFilter{Since: &since}, port.UsageDimensionDay)
+	paygOnly := false
+	rows, err := h.usageStore.AggregateCostByDimension(ctx, port.UsageFilter{Since: &since, PlanCovered: &paygOnly}, port.UsageDimensionDay)
 	if err != nil {
 		slog.WarnContext(ctx, "could not aggregate platform cost by day", slogx.Error(err))
 		return component.OverviewCostSeries{}

@@ -232,6 +232,11 @@ func (h *Handler) getUsagePage(w http.ResponseWriter, r *http.Request) {
 	// Cost charts are aggregated in SQL (GROUP BY) instead of loading every record of the
 	// period into memory. All records belong to this org so each sub-total is converted
 	// from its stored currency to the org currency.
+	//
+	// The sub-totals include the requests covered by a subscription, at their equivalent
+	// PAYG value: an org served entirely by a plan would otherwise face empty charts over
+	// a list of requests. The daily chart stacks the two apart; the model and provider
+	// breakdowns add them up; the leaderboard keeps to billed spend, as it announces.
 	convertToOrg := func(rows []port.DimensionCost) map[string]int64 {
 		out := make(map[string]int64, len(rows))
 		for _, row := range rows {
@@ -247,24 +252,36 @@ func (h *Handler) getUsagePage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	perModel := convertToOrg(h.aggregateCostRows(ctx, chartFilter, port.UsageDimensionModel))
-	perDay := convertToOrg(h.aggregateCostRows(ctx, chartFilter, port.UsageDimensionDay))
 
-	// Per-user cost, keyed by display name (two ids sharing a name merge, as before).
+	paygDayRows, coveredDayRows := port.SplitPlanCovered(h.aggregateCostRows(ctx, chartFilter, port.UsageDimensionDay))
+	perDay := convertToOrg(paygDayRows)
+	coveredPerDay := convertToOrg(coveredDayRows)
+
+	// Per-user PAYG cost, keyed by display name (two ids sharing a name merge, as before).
+	// The subscription consumption is charted apart, in tokens, below.
+	paygUserRows, _ := port.SplitPlanCovered(h.aggregateCostRows(ctx, chartFilter, port.UsageDimensionUser))
 	perUser := make(map[string]int64)
-	for key, cost := range convertToOrg(h.aggregateCostRows(ctx, chartFilter, port.UsageDimensionUser)) {
+	for key, cost := range convertToOrg(paygUserRows) {
 		perUser[h.usageUserLabel(ctx, model.UserID(key), userMap)] += cost
 	}
 
 	// Per-provider cost, keyed by provider id.
+	providerRows := h.aggregateCostRows(ctx, chartFilter, port.UsageDimensionProvider)
 	perProvider := make(map[model.ProviderID]int64)
-	for key, cost := range convertToOrg(h.aggregateCostRows(ctx, chartFilter, port.UsageDimensionProvider)) {
+	for key, cost := range convertToOrg(providerRows) {
 		perProvider[model.ProviderID(key)] += cost
+	}
+	coveredProviders := make(map[model.ProviderID]bool)
+	for _, row := range providerRows {
+		if row.PlanCovered {
+			coveredProviders[model.ProviderID(row.Key)] = true
+		}
 	}
 
 	// Consommation en tokens des requêtes couvertes par un abonnement, par utilisateur.
 	// Les requêtes couvertes par un abonnement ont un coût forfaitaire fixe : leur coût
-	// par token est une estimation fictive qui gonflerait artificiellement les graphiques
-	// de coût (les cartes de coût total et les agrégations ci-dessus excluent déjà
+	// par token est une estimation fictive qui gonflerait artificiellement le classement
+	// des consommateurs (les cartes de coût total et le classement ci-dessus excluent
 	// plan_covered). On les comptabilise à part, en volume de tokens consommés.
 	subTokensPerUser := make(map[string]int64)
 	if planRows, err := h.usageStore.AggregatePlanTokensByUser(ctx, chartFilter); err != nil {
@@ -361,6 +378,8 @@ func (h *Handler) getUsagePage(w http.ResponseWriter, r *http.Request) {
 	// Build subscription provider consumption data.
 	subscriptionProviders := h.buildSubscriptionProviderUsage(ctx, orgID)
 
+	costPerDay := common.StackedCostSeries([]map[string]int64{perDay, coveredPerDay}, since, time.Now(), rangeParam)
+
 	vmodel := component.OrgUsagePageVModel{
 		Org:                   org,
 		Aggregate:             agg,
@@ -381,10 +400,12 @@ func (h *Handler) getUsagePage(w http.ResponseWriter, r *http.Request) {
 		MonthlyCost:           monthlyCost,
 		YearlyCost:            yearlyCost,
 		Currency:              orgCurrency,
-		ChartPerDay:           common.CostSeries(perDay, since, time.Now(), rangeParam),
+		ChartPerDay:           costPerDay[0],
+		ChartCoveredPerDay:    costPerDay[1],
 		ChartSharesPerModel:   common.ChartShares(common.TopNChartDataPoints(chartByValue(perModel), 5)),
 		ChartPerUser:          chartByValue(perUser),
 		ChartPerProvider:      chartByProvider(perProvider, providerNames),
+		PlanCoveredProviders:  common.PlanCoveredLabels(coveredProviders, providerNames),
 		ChartSubTokensPerUser: chartTokensByValue(subTokensPerUser),
 		TotalEnergyWh:         totalEnergyWh,
 		TotalCO2GramsMid:      totalCO2GramsMid,
@@ -407,7 +428,7 @@ func (h *Handler) getUsagePage(w http.ResponseWriter, r *http.Request) {
 
 func intPtr(n int) *int { return &n }
 
-// aggregateCostRows fetches the PAYG cost sub-totals for a dimension, logging and
+// aggregateCostRows fetches the cost sub-totals for a dimension, logging and
 // returning nil on error so a failed chart never blocks the whole page.
 func (h *Handler) aggregateCostRows(ctx context.Context, filter port.UsageFilter, dim port.UsageDimension) []port.DimensionCost {
 	rows, err := h.usageStore.AggregateCostByDimension(ctx, filter, dim)
