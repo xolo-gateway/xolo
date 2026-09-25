@@ -81,8 +81,8 @@ func detectLanguage(ctx context.Context, detector goanon.LanguageDetector, sampl
 }
 
 // detectionSample construit un échantillon de texte représentatif de la langue
-// de la conversation. Les messages utilisateur sont prioritaires : ce sont eux
-// qui portent la langue réelle de l'échange, les prompts système étant souvent
+// de la conversation. Il est tiré des messages utilisateur : ce sont eux qui
+// portent la langue réelle de l'échange, les prompts système étant souvent
 // rédigés dans une autre langue.
 //
 // Ils sont lus du plus ancien au plus récent, pour que la langue reste la même
@@ -115,8 +115,11 @@ func detectionSample(messages []map[string]any, maxLen int) string {
 		return b.Len() < maxLen
 	}
 
-	// Première passe : messages utilisateur, du plus ancien au plus récent.
-	// Seconde passe : les autres messages, si l'échantillon est encore trop court.
+	// Messages utilisateur seuls, du plus ancien au plus récent. Les autres
+	// messages ne servent que s'il n'y a aucun texte utilisateur : les ajouter
+	// à la suite placerait le texte utilisateur d'un nouveau tour avant celui
+	// des réponses déjà échantillonnées, et l'échantillon ne ferait plus que
+	// s'allonger.
 	for _, userOnly := range []bool{true, false} {
 		for _, msg := range messages {
 			role, _ := msg["role"].(string)
@@ -128,6 +131,9 @@ func detectionSample(messages []map[string]any, maxLen int) string {
 					return b.String()
 				}
 			}
+		}
+		if b.Len() > 0 {
+			break
 		}
 	}
 
