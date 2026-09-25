@@ -96,10 +96,12 @@ hachage SHA-256, comme pour tout jeton créé par l'application.
 | `prov-acme-openai` | openai | USD | payg (retry + rate limit configurés) | actif |
 | `prov-acme-mistral` | mistral | EUR | payg | actif |
 | `prov-acme-local` | openai (Ollama) | EUR | payg | **désactivé** |
+| `prov-acme-plan` | anthropic | EUR | **abonnement** (fenêtre glissante 7 j) | actif |
 | `prov-globex-plan` | anthropic | USD | **abonnement** (fenêtre 5 h + concurrence) | actif |
 
 Modèles : `acme/gpt-4o`, `acme/gpt-4o-mini`, `acme/mistral-small` (avec
-`extra_body`), `acme/text-embedding-3-small` (embeddings), `globex/claude-sonnet`,
+`extra_body`), `acme/text-embedding-3-small` (embeddings), `acme/claude-sonnet`
+(couvert par l'abonnement d'Acme), `globex/claude-sonnet`,
 `globex/claude-haiku` (**désactivé**). Les tarifs sont exprimés en microcents par
 1 000 tokens et reflètent les grilles publiques.
 
@@ -138,6 +140,11 @@ heures ouvrées, avec une part de trafic week-end pour les comptes de service.
 Le coût est calculé exactement comme dans `internal/adapter/proxy/usage_tracker.go`
 (tokens non cachés / cachés / complétion), puis converti dans la devise de
 l'organisation via les taux figés insérés dans `exchange_rates` (USD→EUR 0,92).
+
+Alice et Bob mêlent pay-as-you-go et `acme/claude-sonnet` : les requêtes couvertes
+par l'abonnement (`plan_covered = 1`) portent leur valeur équivalente PAYG, que
+les graphiques de coût empilent sur la dépense facturée. Elles n'entrent pas
+dans les quotas monétaires.
 Les requêtes servies par le fournisseur à l'abonnement portent `plan_covered=1`
 et conservent leur coût PAYG équivalent dans `provider_cost`.
 

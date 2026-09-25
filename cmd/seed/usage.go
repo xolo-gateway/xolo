@@ -43,6 +43,18 @@ func callers() []caller {
 			promptScale: 1, weekdaysOnly: true,
 		},
 		{
+			// Acme's subscription: alice and bob mix it with pay-as-you-go, so
+			// their dashboards stack the covered value on the billed spend.
+			label: "alice/plan", userID: userAlice, orgID: orgAcme, tokenID: "tok-alice-acme",
+			models: []string{modelAcmeSonnet}, minReq: 0, maxReq: 12,
+			promptScale: 1.8, weekdaysOnly: true,
+		},
+		{
+			label: "bob/plan", userID: userBob, orgID: orgAcme,
+			models: []string{modelAcmeSonnet}, minReq: 0, maxReq: 6,
+			promptScale: 1.2, weekdaysOnly: true,
+		},
+		{
 			label: "carol/acme", userID: userCarol, orgID: orgAcme, tokenID: "tok-carol-acme",
 			models: []string{modelAcmeMistral, modelAcmeEmbeddings}, minReq: 10, maxReq: 30,
 			promptScale: 0.8, weekdaysOnly: false,

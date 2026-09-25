@@ -42,12 +42,14 @@ const (
 	providerAcmeOpenAI  = "prov-acme-openai"
 	providerAcmeMistral = "prov-acme-mistral"
 	providerAcmeLocal   = "prov-acme-local"
+	providerAcmePlan    = "prov-acme-plan"
 	providerGlobexPlan  = "prov-globex-plan"
 
 	modelAcmeGPT4oMini  = "mdl-acme-gpt4o-mini"
 	modelAcmeGPT4o      = "mdl-acme-gpt4o"
 	modelAcmeMistral    = "mdl-acme-mistral-small"
 	modelAcmeEmbeddings = "mdl-acme-embeddings"
+	modelAcmeSonnet     = "mdl-acme-sonnet"
 	modelGlobexSonnet   = "mdl-globex-sonnet"
 	modelGlobexHaiku    = "mdl-globex-haiku"
 
@@ -517,6 +519,7 @@ func (s *seeder) seedProviders(ctx context.Context) error {
 	maxConcurrent := 5
 	tokenBudget := int64(20_000_000)
 	valueBudget := int64(50_000_000) // 50 USD in microcents
+	acmeTokenBudget := int64(200_000_000)
 
 	providers := []*gormadapter.Provider{
 		{
@@ -543,6 +546,25 @@ func (s *seeder) seedProviders(ctx context.Context) error {
 			OrgID: orgAcme, Name: "Ollama (local)", Type: "openai", BaseURL: "http://localhost:11434/v1",
 			APIKey: apiKey, Active: 0, Currency: "EUR",
 			BillingMode: string(model.BillingModePayg),
+		},
+		{
+			// Subscription next to pay-as-you-go: the usage charts of Acme stack
+			// the value covered by the plan on the billed spend.
+			ID: providerAcmePlan, CreatedAt: now.AddDate(0, -1, 0), UpdatedAt: now.AddDate(0, 0, -3),
+			OrgID: orgAcme, Name: "Anthropic (abonnement)", Type: "anthropic", BaseURL: "https://api.anthropic.com",
+			APIKey: otherKey, Active: 1, Currency: "EUR", CloudTier: 1,
+			BillingMode: string(model.BillingModeSubscription),
+			SubscriptionPlan: gormadapter.JSONColumn[model.SubscriptionPlan]{Val: &model.SubscriptionPlan{
+				Label: "Team — fenêtre hebdomadaire",
+				Constraints: []model.PlanConstraint{
+					{
+						Kind:        model.ConstraintRollingWindow,
+						Label:       "Fenêtre 7j",
+						Duration:    model.PlanDuration(7 * 24 * time.Hour),
+						TokenBudget: &acmeTokenBudget,
+					},
+				},
+			}},
 		},
 		{
 			ID: providerGlobexPlan, CreatedAt: now.AddDate(0, -5, 0), UpdatedAt: now.AddDate(0, 0, -2),
@@ -649,6 +671,20 @@ func (s *seeder) seedModels(ctx context.Context) error {
 				PromptCostPer1KTokens: 20,
 				ContextWindow:         8_191,
 				CapEmbeddings:         1,
+			},
+		},
+		{
+			orgID: orgAcme, currency: "EUR",
+			entity: &gormadapter.LLMModel{
+				ID: modelAcmeSonnet, CreatedAt: now.AddDate(0, -1, 0), UpdatedAt: now.AddDate(0, 0, -3),
+				ProviderID: providerAcmePlan, OrgID: orgAcme,
+				ProxyName: "claude-sonnet", RealModel: "claude-sonnet-4-5",
+				Description: "Modèle couvert par l'abonnement de l'équipe.",
+				Enabled:     1,
+				PromptCostPer1KTokens: 3000, CachedPromptCostPer1KTokens: 300, CompletionCostPer1KTokens: 15000,
+				ContextWindow: 200_000, OutputWindow: 64_000,
+				TokensPerSecLow: 40, TokensPerSecHigh: 90,
+				CapTools: 1, CapVision: 1, CapReasoning: 1,
 			},
 		},
 		{
