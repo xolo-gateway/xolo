@@ -169,7 +169,9 @@ func passthroughOutput() *proto.PreRequestOutput {
 //
 // A derived nonce does not weaken the protection against injected
 // placeholders: go-anon refuses any ⟦…⟧ already present in the source text,
-// whatever its nonce.
+// whatever its nonce. It is predictable from the org, user and node IDs and
+// the same across a sender's conversations, which tells the provider nothing
+// it does not already know from the API key the request comes with.
 func newSession(ctx context.Context, reqCtx *proto.RequestContext) *anonymizer.Session {
 	if reqCtx.GetUserId() == "" && reqCtx.GetOrgId() == "" {
 		// The host always resolves a user before a pipeline runs, so this
@@ -185,7 +187,9 @@ func newSession(ctx context.Context, reqCtx *proto.RequestContext) *anonymizer.S
 		Nonce:   hex.EncodeToString(digest[:3]),
 	})
 	if err != nil {
-		// Unreachable: the state carries the current version.
+		// Unreachable while the state carries the current version. Logged all
+		// the same: a random nonce would break the prompt cache on every turn.
+		slog.WarnContext(ctx, "pseudonymizer: could not derive the placeholder nonce, falling back to a random one", slog.Any("error", err))
 		return anonymizer.NewSession()
 	}
 	return session
