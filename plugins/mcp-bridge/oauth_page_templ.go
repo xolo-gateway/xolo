@@ -43,7 +43,7 @@ func connectPage(pd connectPageData) templ.Component {
 		var templ_7745c5c3_Var2 string
 		templ_7745c5c3_Var2, templ_7745c5c3_Err = templ.JoinStringErrs(pd.BasePath)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `oauth_page.templ`, Line: 16, Col: 27}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `plugins/mcp-bridge/oauth_page.templ`, Line: 16, Col: 27}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var2))
 		if templ_7745c5c3_Err != nil {
@@ -81,7 +81,7 @@ func connectPage(pd connectPageData) templ.Component {
 					var templ_7745c5c3_Var5 string
 					templ_7745c5c3_Var5, templ_7745c5c3_Err = templ.JoinStringErrs(pd.Error)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `oauth_page.templ`, Line: 24, Col: 16}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `plugins/mcp-bridge/oauth_page.templ`, Line: 24, Col: 16}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var5))
 					if templ_7745c5c3_Err != nil {
@@ -131,7 +131,7 @@ func connectPage(pd connectPageData) templ.Component {
 					var templ_7745c5c3_Var8 string
 					templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.JoinStringErrs(pd.Host)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `oauth_page.templ`, Line: 30, Col: 47}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `plugins/mcp-bridge/oauth_page.templ`, Line: 30, Col: 47}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var8))
 					if templ_7745c5c3_Err != nil {
@@ -161,7 +161,7 @@ func connectPage(pd connectPageData) templ.Component {
 			var templ_7745c5c3_Var9 string
 			templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.JoinStringErrs(pd.NodeID)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `oauth_page.templ`, Line: 35, Col: 57}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `plugins/mcp-bridge/oauth_page.templ`, Line: 35, Col: 57}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var9))
 			if templ_7745c5c3_Err != nil {
@@ -174,7 +174,7 @@ func connectPage(pd connectPageData) templ.Component {
 			var templ_7745c5c3_Var10 string
 			templ_7745c5c3_Var10, templ_7745c5c3_Err = templ.JoinStringErrs(pd.Endpoint)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `oauth_page.templ`, Line: 36, Col: 61}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `plugins/mcp-bridge/oauth_page.templ`, Line: 36, Col: 61}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var10))
 			if templ_7745c5c3_Err != nil {
@@ -215,7 +215,7 @@ func connectPage(pd connectPageData) templ.Component {
 					var templ_7745c5c3_Var13 string
 					templ_7745c5c3_Var13, templ_7745c5c3_Err = templ.JoinStringErrs(pd.Host)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `oauth_page.templ`, Line: 41, Col: 25}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `plugins/mcp-bridge/oauth_page.templ`, Line: 41, Col: 25}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var13))
 					if templ_7745c5c3_Err != nil {
@@ -228,7 +228,7 @@ func connectPage(pd connectPageData) templ.Component {
 					var templ_7745c5c3_Var14 string
 					templ_7745c5c3_Var14, templ_7745c5c3_Err = templ.JoinStringErrs(pd.Endpoint)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `oauth_page.templ`, Line: 41, Col: 51}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `plugins/mcp-bridge/oauth_page.templ`, Line: 41, Col: 51}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var14))
 					if templ_7745c5c3_Err != nil {

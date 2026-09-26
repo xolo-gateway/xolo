@@ -1739,6 +1739,9 @@
   .pt-5 {
     padding-top: calc(var(--spacing) * 5);
   }
+  .pt-6 {
+    padding-top: calc(var(--spacing) * 6);
+  }
   .pt-\[3px\] {
     padding-top: 3px;
   }
