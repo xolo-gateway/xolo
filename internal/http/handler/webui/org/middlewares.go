@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/a-h/templ"
+	"github.com/pkg/errors"
 	"github.com/xolo-gateway/xolo/internal/core/model"
 	"github.com/xolo-gateway/xolo/internal/core/port"
 	"github.com/xolo-gateway/xolo/internal/core/rbac"
@@ -15,7 +16,6 @@ import (
 	httpCtx "github.com/xolo-gateway/xolo/internal/http/context"
 	common "github.com/xolo-gateway/xolo/internal/http/handler/webui/common/component"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/org/component"
-	"github.com/pkg/errors"
 )
 
 func (h *Handler) getMiddlewaresPage(w http.ResponseWriter, r *http.Request) {
@@ -151,6 +151,15 @@ func (h *Handler) getEditMiddlewarePage(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	// The store loads by ID only, so a {middlewareID} belonging to another org is
+	// resolvable through this route. Treat the mismatch as a 404 rather than
+	// surfacing a middleware that does not belong to the org the request came in
+	// for. Mirrors getEditVirtualModelPage's ownership check.
+	if mw.OrgID() != org.ID() {
+		http.NotFound(w, r)
+		return
+	}
+
 	options := h.middlewareTargetOptions(ctx, org)
 	selected := make(map[string]bool, len(mw.Targets()))
 	for _, t := range mw.Targets() {
@@ -201,7 +210,8 @@ func (h *Handler) updateMiddleware(w http.ResponseWriter, r *http.Request) {
 	orgSlug := r.PathValue("orgSlug")
 	middlewareID := r.PathValue("middlewareID")
 
-	if _, err := h.orgFromSlug(ctx, orgSlug); err != nil {
+	org, err := h.orgFromSlug(ctx, orgSlug)
+	if err != nil {
 		http.Error(w, "Organization not found", http.StatusNotFound)
 		return
 	}
@@ -214,6 +224,12 @@ func (h *Handler) updateMiddleware(w http.ResponseWriter, r *http.Request) {
 		}
 		slog.ErrorContext(ctx, "could not get middleware", slog.Any("error", err))
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+
+	// See getEditMiddlewarePage — reject cross-org access through this route.
+	if mw.OrgID() != org.ID() {
+		http.NotFound(w, r)
 		return
 	}
 
@@ -266,7 +282,8 @@ func (h *Handler) toggleMiddleware(w http.ResponseWriter, r *http.Request) {
 	orgSlug := r.PathValue("orgSlug")
 	middlewareID := r.PathValue("middlewareID")
 
-	if _, err := h.orgFromSlug(ctx, orgSlug); err != nil {
+	org, err := h.orgFromSlug(ctx, orgSlug)
+	if err != nil {
 		http.Error(w, "Organization not found", http.StatusNotFound)
 		return
 	}
@@ -279,6 +296,12 @@ func (h *Handler) toggleMiddleware(w http.ResponseWriter, r *http.Request) {
 		}
 		slog.ErrorContext(ctx, "could not get middleware", slog.Any("error", err))
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+
+	// See getEditMiddlewarePage — reject cross-org access through this route.
+	if mw.OrgID() != org.ID() {
+		http.NotFound(w, r)
 		return
 	}
 
@@ -310,6 +333,12 @@ func (h *Handler) deleteMiddleware(w http.ResponseWriter, r *http.Request) {
 	orgSlug := r.PathValue("orgSlug")
 	middlewareID := r.PathValue("middlewareID")
 
+	org, err := h.orgFromSlug(ctx, orgSlug)
+	if err != nil {
+		http.Error(w, "Organization not found", http.StatusNotFound)
+		return
+	}
+
 	mw, err := h.middlewareStore.GetMiddlewareByID(ctx, model.MiddlewareID(middlewareID))
 	if err != nil {
 		if errors.Is(err, port.ErrNotFound) {
@@ -318,6 +347,12 @@ func (h *Handler) deleteMiddleware(w http.ResponseWriter, r *http.Request) {
 		}
 		slog.ErrorContext(ctx, "could not get middleware", slog.Any("error", err))
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+
+	// See getEditMiddlewarePage — reject cross-org access through this route.
+	if mw.OrgID() != org.ID() {
+		http.NotFound(w, r)
 		return
 	}
 
@@ -357,6 +392,12 @@ func (h *Handler) getMiddlewarePipelineEditorPage(w http.ResponseWriter, r *http
 			return
 		}
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+
+	// See getEditMiddlewarePage — reject cross-org access through this route.
+	if mw.OrgID() != org.ID() {
+		http.NotFound(w, r)
 		return
 	}
 
