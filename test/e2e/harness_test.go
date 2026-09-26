@@ -46,6 +46,12 @@ const (
 	tokenAlice    = "xolo-e2e-alice-acme"
 	tokenCarol    = "xolo-e2e-carol-acme" // Carol carries a user quota, Alice does not
 
+	// tokenAppAcmeCI belongs to the seeded application "app-acme-ci" (see
+	// cmd/seed/fixtures.go). The application's shadow user has no
+	// membership, so #48 used to make GET /api/v1/models return an empty
+	// catalogue with this token.
+	tokenAppAcmeCI = "xolo-e2e-app-acme-ci"
+
 	providerAcmeOpenAI = "prov-acme-openai"
 	modelAcmeGPT4oMini = "mdl-acme-gpt4o-mini"
 	modelAcmeGPT4o     = "mdl-acme-gpt4o"

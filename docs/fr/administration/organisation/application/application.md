@@ -123,6 +123,28 @@ curl -X POST https://xolo.example.com/v1/chat/completions \
   }'
 ```
 
+### Portée d'un token et endpoint `GET /api/v1/models`
+
+Un token (application ou utilisateur) est rattaché à **une seule organisation** :
+celle dans laquelle il a été émis. Cette portée s'applique de la même
+manière à toutes les requêtes authentifiées par ce token, y compris
+`GET /api/v1/models`, qui renvoie uniquement les modèles activés de cette
+organisation.
+
+Concrètement :
+
+- **Jeton d'application** : `GET /api/v1/models` renvoie les modèles activés de l'organisation de l'application.
+- **Jeton d'utilisateur multi-organisations** : `GET /api/v1/models` ne renvoie que les modèles activés de l'organisation du jeton (les autres appartenances de l'utilisateur sont ignorées, comme pour le proxy). Les modèles virtuels personnels (`~/...`) suivent une règle distincte : ils sont inclus dès lors que l'utilisateur dispose de la permission `personal-vm:create` (ou du rôle owner) dans **au moins une** des organisations retenues par le scope ci-dessus. La liste n'est cependant pas filtrée par organisation : le modèle de données (`internal/core/model/personal_virtual_model.go`) rattache chaque modèle virtuel personnel à son `user_id` sans colonne `OrgID`, donc tous les `~/...` appartenant à cet utilisateur sont renvoyés.
+- **Session OIDC (utilisateur humain)** : `GET /api/v1/models` renvoie l'union des modèles activés de toutes les organisations dont l'utilisateur est membre.
+- **Session issue de `POST /auth/token/login`** : la session est créée à partir d'un jeton Xolo (utilisateur ou application) et `authn.User.OrgID` est rempli avec l'organisation du jeton (`internal/http/middleware/authn/token/login.go`). `GET /api/v1/models` ne renvoie alors que les modèles activés de cette organisation, comme pour le cas « Jeton » correspondant (les autres appartenances de l'utilisateur sont ignorées ; pour une application, c'est précisément l'organisation de l'application). Ce cas se distingue du précédent uniquement par le canal d'authentification (cookie de session au lieu de header `Authorization`).
+
+> **Note** : Avant la correction du bug [#48](https://github.com/xolo-gateway/xolo/issues/48),
+> un jeton d'application renvoyait une liste vide sur `GET /api/v1/models`
+> parce que l'utilisateur « fantôme » associé à l'application n'a
+> aucune appartenance organisationnelle. Ce comportement est désormais
+> corrigé : l'application voit les modèles de son organisation, comme
+> le proxy le faisait déjà.
+
 ## Intégration avec OpenWebUI
 
 OpenWebUI peut être configuré pour utiliser Xolo comme backend LLM.

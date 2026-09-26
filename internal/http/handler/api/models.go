@@ -8,12 +8,12 @@ import (
 	"strings"
 
 	"github.com/bornholm/go-x/slogx"
-	proxyAdapter "github.com/xolo-gateway/xolo/internal/adapter/proxy"
 	"github.com/xolo-gateway/xolo/internal/core/model"
 	"github.com/xolo-gateway/xolo/internal/core/port"
 	"github.com/xolo-gateway/xolo/internal/core/rbac"
 	"github.com/xolo-gateway/xolo/internal/core/service"
 	httpCtx "github.com/xolo-gateway/xolo/internal/http/context"
+	"github.com/xolo-gateway/xolo/internal/http/middleware/authn"
 	proto "github.com/xolo-gateway/xolo/pkg/pluginsdk/proto"
 )
 
@@ -164,7 +164,20 @@ func (h *Handler) handleModels(w http.ResponseWriter, r *http.Request) {
 
 	var orgIDs []model.OrgID
 
-	if orgID := model.OrgID(proxyAdapter.OrgIDFromContext(ctx)); orgID != "" {
+	// Resolve the scope in this order:
+	//   1. OrgID stamped on the authn context by the token authenticator
+	//      (authn.User.OrgID). This is the same source the proxy path uses
+	//      via XoloAuthExtractor, and is the only one populated for an
+	//      application's shadow user — which has no membership. Reading it
+	//      directly here mirrors the proxy's answer to "which org is this
+	//      token in" for callers like GET /api/v1/models.
+	//   2. The full set of org memberships (e.g. a user authenticated via
+	//      an OIDC session, whose authn.User.OrgID is empty by design).
+	var orgID model.OrgID
+	if authnUser := authn.OptionalContextUser(ctx); authnUser != nil {
+		orgID = model.OrgID(authnUser.OrgID)
+	}
+	if orgID != "" {
 		orgIDs = []model.OrgID{orgID}
 	} else {
 		user := httpCtx.User(ctx)

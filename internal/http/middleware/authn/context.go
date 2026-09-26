@@ -28,10 +28,10 @@ func ContextUser(ctx context.Context) *User {
 	return user
 }
 
-// OptionalContextUser returns the authenticated identity on ctx, or nil if
-// none is attached. It never panics, so it is safe for hooks whose position
-// in the chain is not guaranteed — pre-authn routes, defensive callers, and
-// any helper that shares context plumbing with the auth extractor.
+// OptionalContextUser returns the authenticated identity attached to ctx by the
+// authn middleware, or nil when none is present. Useful for handlers that may
+// run with or without an authenticated principal and need to avoid the panic
+// raised by [ContextUser].
 func OptionalContextUser(ctx context.Context) *User {
 	user, _ := ctx.Value(keyUser).(*User)
 	return user
