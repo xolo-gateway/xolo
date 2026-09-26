@@ -1,4 +1,35 @@
-@import "tailwindcss";
+/* `source(none)` désactive la détection automatique de Tailwind v4, qui
+   scannerait sinon les .go et .md du dépôt et transformerait chaque mot
+   courant ("isolate", "container", "top-2"…) en règle CSS — voir #65.
+   Les rares classes qui survivent malgré tout (ex. `invisible`, dans un
+   commentaire HTML) sont des pertes acceptables : le scan balayant le
+   texte brut, neutraliser les commentaires est hors de portée. */
+@import "tailwindcss" source(none);
+
+/* Classes Tailwind — six endroits du dépôt :
+
+   .templ sous internal/http/handler/webui/, composants UI ;
+   .templ sous internal/http/middleware/authn/, pages de login ;
+   .templ sous plugins, UIs de chaque plugin ;
+   .templ/.go sous templx, renderer des formulaires JSON ;
+   .go sous internal/http/handler/webui/, utilitaires assemblés
+   dynamiquement via tailwind-merge-go ;
+   .js bundlés sous internal/http/handler/webui/common/assets/js/,
+   où templui construit des classes côté navigateur (DatePicker,
+   Calendar, Selectbox) qui doivent être présentes dans la feuille générée.
+
+   Le catalogue d'icônes du composant templui-icon déclare ses noms par
+   la fonction Icon, par exemple Icon("columns-2"). Scanné naïvement il
+   réintroduit .container, .columns-2/3/4, .scale-3d, .shrink, .text-wrap
+   qui ne sont jamais employés comme classes. Les deux fichiers sont
+   exclus explicitement par @source not. */
+@source "../../internal/**/*.templ";
+@source "../../internal/http/handler/webui/**/*.go";
+@source "../../internal/http/handler/webui/common/assets/js/*.js";
+@source "../../plugins/**/*.templ";
+@source "../../templx/**/*.{go,templ}";
+@source not "../../internal/http/handler/webui/templui/component/icon/icon_defs.go";
+@source not "../../internal/http/handler/webui/templui/component/icon/icon_data.go";
 
 /* Le produit est en thème clair uniquement : le bloc `.dark` a été supprimé.
    Cette variante est conservée — et volontairement inatteignable, puisque
