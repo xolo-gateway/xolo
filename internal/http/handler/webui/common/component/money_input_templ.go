@@ -18,6 +18,11 @@ type MoneyInputProps struct {
 	// Currency is an ISO 4217 code; its symbol is what the affix shows.
 	Currency string
 	Disabled bool
+	// HasError propagates to the underlying input. The component flips its
+	// border to the destructive palette and adds aria-invalid="true" so a
+	// screen reader announces the field as invalid. Set this when the form
+	// is re-rendered after a parse failure on a budget input (issue #88).
+	HasError bool
 	Class    string
 }
 
@@ -73,7 +78,7 @@ func MoneyInput(props MoneyInputProps) templ.Component {
 		var templ_7745c5c3_Var4 string
 		templ_7745c5c3_Var4, templ_7745c5c3_Err = templ.JoinStringErrs(CurrencySymbol(props.Currency))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/common/component/money_input.templ`, Line: 25, Col: 35}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/common/component/money_input.templ`, Line: 30, Col: 35}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var4))
 		if templ_7745c5c3_Err != nil {
@@ -90,6 +95,7 @@ func MoneyInput(props MoneyInputProps) templ.Component {
 			Value:       props.Value,
 			Placeholder: props.Placeholder,
 			Disabled:    props.Disabled,
+			HasError:    props.HasError,
 			Class:       "pl-10 tnum",
 			Attributes:  templ.Attributes{"step": "any", "min": "0"},
 		}).Render(ctx, templ_7745c5c3_Buffer)

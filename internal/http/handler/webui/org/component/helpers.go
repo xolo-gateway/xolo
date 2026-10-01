@@ -211,6 +211,67 @@ func budgetFieldValue(vmodel QuotaPageVModel, scope budgetScope) string {
 	return formatBudgetField(*budget)
 }
 
+// budgetInputValue resolves the value to display in a budget input.
+//
+// The Submitted map, when populated by quotaFormSubmitted, carries only
+// fields the operator actually POSTed: a present key holds whatever the
+// operator typed (including the empty string for "I cleared this field
+// on purpose"), and an absent key means "I did not touch this field".
+//
+// On a re-render after a rejected submit, the operator typed at least one
+// bad value; the fields they did not touch must keep their stored budget
+// so the next save does not silently wipe them out — which was the
+// silent-data-loss regression Conclave review #2 caught (issue #88). The
+// implementation falls back to budgetFieldValue when the key is absent;
+// a present key (including the empty string) wins so the re-render echoes
+// the operator's input verbatim.
+//
+// On a fresh GET vmodel.Submitted is nil and budgetFieldValue returns the
+// stored value or "" for an unset ceiling — the unlimited default.
+func budgetInputValue(vmodel QuotaPageVModel, field string, scope budgetScope) string {
+	if vmodel.Submitted != nil {
+		if v, ok := vmodel.Submitted[field]; ok {
+			return v
+		}
+	}
+	return budgetFieldValue(vmodel, scope)
+}
+
+// quotaFieldError returns the field-level error message for a budget input,
+// or "" if the field parsed cleanly. The empty default keeps the templating
+// branch (HasError, form.Message) a single conditional.
+func quotaFieldError(fieldErrors map[string]string, field string) string {
+	if fieldErrors == nil {
+		return ""
+	}
+	return fieldErrors[field]
+}
+
+// quotaFormErrorSummary builds the top-of-form alert description: one line
+// per offending field, prefixed with its label. The alert itself is rendered
+// by the template; this helper only formats the prose so the error copy
+// stays in one place and tests can pin it.
+func quotaFormErrorSummary(fieldErrors map[string]string) string {
+	if len(fieldErrors) == 0 {
+		return ""
+	}
+	labels := map[string]string{
+		"daily_budget":   "Journalier",
+		"monthly_budget": "Mensuel",
+		"yearly_budget":  "Annuel",
+	}
+	// Stable order matches the form layout (daily → monthly → yearly), so
+	// the alert reads top-to-bottom the same way the inputs do.
+	order := []string{"daily_budget", "monthly_budget", "yearly_budget"}
+	var lines []string
+	for _, f := range order {
+		if msg, ok := fieldErrors[f]; ok {
+			lines = append(lines, fmt.Sprintf("%s : %s", labels[f], msg))
+		}
+	}
+	return strings.Join(lines, "\n")
+}
+
 // cachedTokensNote states the share of prompt tokens served from the provider's
 // cache — the figure that explains a token count far above the billed cost.
 func cachedTokensNote(agg *port.UsageAggregate) string {

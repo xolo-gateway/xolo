@@ -5,6 +5,7 @@ import (
 
 	"github.com/xolo-gateway/xolo/internal/core/rbac"
 	common "github.com/xolo-gateway/xolo/internal/http/handler/webui/common/component"
+	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/alert"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/button"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/form"
 )
@@ -38,7 +39,19 @@ templ QuotaPage(vmodel QuotaPageVModel) {
 					@common.InfoBanner(common.ToneNegative, vmodel.LoadError)
 				</div>
 			}
-			<form method="POST" action={ templ.SafeURL(action) } class="space-y-3.5">
+			if len(vmodel.FieldErrors) > 0 {
+				<div class="mb-3.5">
+					@alert.Alert(alert.Props{Variant: alert.VariantDestructive}) {
+						@alert.Title() {
+							Plafond invalide
+						}
+						@alert.Description() {
+							{ quotaFormErrorSummary(vmodel.FieldErrors) }
+						}
+					}
+				</div>
+			}
+			<form method="POST" action={ templ.SafeURL(action) } class="space-y-3.5" novalidate>
 				@common.Section() {
 					@common.SectionHeader() {
 						@common.SectionTitle() {
@@ -50,12 +63,12 @@ templ QuotaPage(vmodel QuotaPageVModel) {
 					}
 					@common.SectionBody(common.SectionBodyProps{Class: "space-y-3.5"}) {
 						<div class="grid gap-3.5 sm:grid-cols-3">
-							@budgetField("quota-daily", "daily_budget", "Journalier", "10.00", budgetFieldValue(vmodel, budgetScopeDaily), vmodel.Org.Currency(), readonly)
-							@budgetField("quota-monthly", "monthly_budget", "Mensuel", "100.00", budgetFieldValue(vmodel, budgetScopeMonthly), vmodel.Org.Currency(), readonly)
-							@budgetField("quota-yearly", "yearly_budget", "Annuel", "1000.00", budgetFieldValue(vmodel, budgetScopeYearly), vmodel.Org.Currency(), readonly)
+							@budgetField("quota-daily", "daily_budget", "Journalier", "10.00", budgetInputValue(vmodel, "daily_budget", budgetScopeDaily), vmodel.Org.Currency(), readonly, quotaFieldError(vmodel.FieldErrors, "daily_budget"))
+							@budgetField("quota-monthly", "monthly_budget", "Mensuel", "100.00", budgetInputValue(vmodel, "monthly_budget", budgetScopeMonthly), vmodel.Org.Currency(), readonly, quotaFieldError(vmodel.FieldErrors, "monthly_budget"))
+							@budgetField("quota-yearly", "yearly_budget", "Annuel", "1000.00", budgetInputValue(vmodel, "yearly_budget", budgetScopeYearly), vmodel.Org.Currency(), readonly, quotaFieldError(vmodel.FieldErrors, "yearly_budget"))
 						</div>
 						<p class="text-xs text-muted-foreground">
-							Un champ vide vaut « illimité ». Pour changer la devise, passez par les
+							Un champ vide vaut « illimité ». Saisissez 0 pour geler immédiatement les dépenses (toute nouvelle requête payante reçoit un 429). Pour changer la devise, passez par les
 							<a href={ templ.SafeURL(common.BaseURLString(ctx, common.WithPath("/orgs/", vmodel.Org.Slug(), "/admin/settings"))) } class="font-medium underline">paramètres de l'organisation</a>.
 						</p>
 					}
@@ -94,7 +107,7 @@ templ QuotaPage(vmodel QuotaPageVModel) {
 	}
 }
 
-templ budgetField(id string, name string, label string, placeholder string, value string, currency string, readonly bool) {
+templ budgetField(id string, name string, label string, placeholder string, value string, currency string, readonly bool, errMsg string) {
 	@form.Item() {
 		@form.Label(form.LabelProps{For: id}) {
 			{ label }
@@ -106,7 +119,13 @@ templ budgetField(id string, name string, label string, placeholder string, valu
 			Placeholder: placeholder,
 			Currency:    currency,
 			Disabled:    readonly,
+			HasError:    errMsg != "",
 		})
+		if errMsg != "" {
+			@form.Message(form.MessageProps{Variant: form.MessageVariantError}) {
+				{ errMsg }
+			}
+		}
 	}
 }
 

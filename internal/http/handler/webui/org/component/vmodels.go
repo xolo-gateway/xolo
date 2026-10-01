@@ -80,6 +80,19 @@ type QuotaPageVModel struct {
 	// a banner warns the operator so the displayed numbers do not silently
 	// disagree with what the enforcer actually enforces.
 	LoadError string
+	// Submitted carries the raw form values when the page is re-rendered
+	// after a save validation failure (issue #88). When non-nil, the budget
+	// fields display the operator's input verbatim instead of the stored
+	// values, so a typo that was rejected does not silently become the
+	// previous cap.
+	Submitted map[string]string
+	// FieldErrors maps a form field name ("daily_budget", …) to the
+	// message parseBudgetField returned for it. The page marks the
+	// offending MoneyInput as invalid and surfaces the first error at the
+	// top of the form, so a hand-crafted POST that bypasses the browser's
+	// HTML5 validation still gets a readable response (HTTP 422 with the
+	// form re-rendered) rather than a silent no-op save.
+	FieldErrors map[string]string
 }
 
 type InvitesPageVModel struct {
@@ -196,12 +209,12 @@ type OrgUsagePageVModel struct {
 	// Subscription providers plan consumption
 	SubscriptionProviders []SubscriptionProviderUsage
 	// Chart/quota fields
-	OrgQuota            model.Quota // may be nil if no quota defined
-	DailyCost           int64       // today's org cost in org currency (microcents)
-	MonthlyCost         int64       // this month's org cost in org currency (microcents)
-	YearlyCost          int64       // this year's org cost in org currency (microcents)
-	Currency            string      // org currency
-	ChartPerDay         []ChartDataPoint
+	OrgQuota    model.Quota // may be nil if no quota defined
+	DailyCost   int64       // today's org cost in org currency (microcents)
+	MonthlyCost int64       // this month's org cost in org currency (microcents)
+	YearlyCost  int64       // this year's org cost in org currency (microcents)
+	Currency    string      // org currency
+	ChartPerDay []ChartDataPoint
 	// ChartCoveredPerDay is the value of the requests covered by a subscription,
 	// stacked on ChartPerDay bar for bar.
 	ChartCoveredPerDay  []ChartDataPoint

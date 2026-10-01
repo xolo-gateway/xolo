@@ -634,7 +634,9 @@ func parseSubscriptionPlanFromForm(r *http.Request) (*model.SubscriptionPlan, er
 			if tb := parsePlanTokenBudget(r.FormValue(prefix + "token_budget")); tb != nil {
 				c.TokenBudget = tb
 			}
-			if vb := parseBudgetField(r.FormValue(prefix + "value_budget")); vb != nil {
+			if vb, err := parseBudgetField(r.FormValue(prefix + "value_budget")); err != nil {
+				fail(errors.Wrapf(err, "contrainte « %s » : plafond valeur", c.Label))
+			} else if vb != nil {
 				c.ValueBudget = vb
 			}
 			// A "reset dans" countdown turns the window into a fixed (tumbling) window

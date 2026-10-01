@@ -9,16 +9,26 @@ import (
 	"github.com/xolo-gateway/xolo/internal/core/port"
 )
 
-// stubOrgStore resolves a single organization by slug and fails every other
-// call. Only GetOrgBySlug is exercised by resolveOrgAndApplication.
+// stubOrgStore resolves a single organization by slug and a single
+// membership by id, and fails every other call. resolveOrgAndApplication
+// exercises GetOrgBySlug; the member quota handlers exercise
+// GetMembership via membershipFromQuotaPath.
 type stubOrgStore struct {
 	port.OrgStore
-	org model.Organization
+	org        model.Organization
+	membership model.Membership
 }
 
 func (s *stubOrgStore) GetOrgBySlug(_ context.Context, _ model.TenantID, slug string) (model.Organization, error) {
 	if s.org != nil && s.org.Slug() == slug {
 		return s.org, nil
+	}
+	return nil, port.ErrNotFound
+}
+
+func (s *stubOrgStore) GetMembership(_ context.Context, id model.MembershipID) (model.Membership, error) {
+	if s.membership != nil && s.membership.ID() == id {
+		return s.membership, nil
 	}
 	return nil, port.ErrNotFound
 }
