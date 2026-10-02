@@ -65,6 +65,18 @@ Le type `anthropic` envoie `max_tokens` à chaque requête, l'API l'exigeant : l
 
 Vérifiez aussi l'**extra_body** des modèles migrés : ses entrées partent en champs de premier niveau de la requête, et l'API Messages n'accepte que les siens. Une clé propre au format OpenAI comme `reasoning_effort` fait échouer toutes les requêtes du modèle.
 
+### Relais des requêtes Messages en streaming
+
+Une requête `POST /api/v1/messages` avec `"stream": true` vers un modèle de type `anthropic` est **relayée** telle quelle au lieu d'être traduite : Xolo ne réécrit que le modèle, la clé et les champs **extra_body**, transmet les en-têtes `anthropic-*` du client (`anthropic-beta` compris) et renvoie les événements de l'amont sans les reconstruire. Les champs que Xolo ne connaît pas passent donc aussi, dans les deux sens. Un client peut ainsi activer toute fonctionnalité de l'API sur la clé du fournisseur, outils serveur compris (recherche web, serveurs MCP distants). Xolo ne comptabilise que les tokens : les frais facturés à la requête par Anthropic, comme la recherche web, n'apparaissent ni dans l'usage ni dans les quotas. C'est ce que demande Claude Code pour la vérification côté serveur du mode auto : sans le champ `safeguards` à l'aller et `safeguard_results` au retour, il refait lui-même cette vérification et la facture en tokens.
+
+Authentification, quotas, suivi de l'usage et pseudonymisation s'appliquent comme sur une requête traduite. Les instructions système qu'un nœud ajoute en tête de conversation (pseudonymiseur, `system-prompt`) rejoignent le champ `system`, après celles du client. Le jeton Xolo du client n'est jamais transmis à l'amont. Un rejet de l'amont (statut, en-têtes comme `retry-after`, corps) revient au client sans modification.
+
+La requête repasse par la traduction dans ces cas :
+
+- requête sans `"stream": true` ;
+- modèle virtuel dont le nœud terminal combine plusieurs modèles, comme un repli entre modèles ;
+- modèle avec une **limite de tokens** : le limiteur de tokens ne sait pas compter une réponse relayée.
+
 ## Tester la connexion
 
 Après avoir créé un fournisseur, utilisez le bouton **Tester la connexion** pour vérifier que Xolo peut communiquer avec le fournisseur.

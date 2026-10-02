@@ -2,8 +2,10 @@ package proxy
 
 import (
 	"context"
+	"net/http"
 
 	"github.com/bornholm/genai/llm"
+	"github.com/pkg/errors"
 )
 
 // extraFieldsClient wraps an llm.Client to inject a fixed set of provider-specific
@@ -44,10 +46,30 @@ func (c *extraFieldsClient) Embeddings(ctx context.Context, inputs []string, fun
 	return c.inner.Embeddings(ctx, inputs, funcs...)
 }
 
+// RelayMessages implements llm.MessagesRelayClient: the fields are merged into
+// the relayed body, where they override the client's, as they override the
+// options of a translated request.
+func (c *extraFieldsClient) RelayMessages(ctx context.Context, body []byte, header http.Header) (<-chan llm.StreamChunk, error) {
+	merged, err := setBodyFields(body, c.fields)
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+	return llm.RelayMessages(ctx, c.inner, merged, header)
+}
+
+// SupportsMessagesRelay reports on the wrapped client, see
+// llm.SupportsMessagesRelay.
+func (c *extraFieldsClient) SupportsMessagesRelay() bool {
+	return llm.SupportsMessagesRelay(c.inner)
+}
+
 // Transcription is passed through unchanged: the configured extra fields target
 // chat completions only.
 func (c *extraFieldsClient) Transcription(ctx context.Context, audio []byte, funcs ...llm.TranscriptionOptionFunc) (llm.TranscriptionResponse, error) {
 	return c.inner.Transcription(ctx, audio, funcs...)
 }
 
-var _ llm.Client = (*extraFieldsClient)(nil)
+var (
+	_ llm.Client              = (*extraFieldsClient)(nil)
+	_ llm.MessagesRelayClient = (*extraFieldsClient)(nil)
+)

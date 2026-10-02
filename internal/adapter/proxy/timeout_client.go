@@ -69,10 +69,31 @@ func (c *timeoutClient) ChatCompletion(ctx context.Context, funcs ...llm.ChatCom
 }
 
 func (c *timeoutClient) ChatCompletionStream(ctx context.Context, funcs ...llm.ChatCompletionOptionFunc) (<-chan llm.StreamChunk, error) {
+	return c.watch(ctx, func(callCtx context.Context) (<-chan llm.StreamChunk, error) {
+		return c.inner.ChatCompletionStream(callCtx, funcs...)
+	})
+}
+
+// RelayMessages implements llm.MessagesRelayClient under the same watchdog as
+// a streamed completion.
+func (c *timeoutClient) RelayMessages(ctx context.Context, body []byte, header http.Header) (<-chan llm.StreamChunk, error) {
+	return c.watch(ctx, func(callCtx context.Context) (<-chan llm.StreamChunk, error) {
+		return llm.RelayMessages(callCtx, c.inner, body, header)
+	})
+}
+
+// SupportsMessagesRelay reports on the wrapped client, see
+// llm.SupportsMessagesRelay.
+func (c *timeoutClient) SupportsMessagesRelay() bool {
+	return llm.SupportsMessagesRelay(c.inner)
+}
+
+// watch opens a stream under the watchdog described on timeoutClient.
+func (c *timeoutClient) watch(ctx context.Context, open func(context.Context) (<-chan llm.StreamChunk, error)) (<-chan llm.StreamChunk, error) {
 	callCtx, cancel := context.WithCancelCause(ctx)
 	watchdog := time.AfterFunc(c.timeout, func() { cancel(errUpstreamTimeout) })
 
-	stream, err := c.inner.ChatCompletionStream(callCtx, funcs...)
+	stream, err := open(callCtx)
 	if err != nil {
 		watchdog.Stop()
 		cancel(nil)
@@ -140,4 +161,7 @@ func (c *timeoutClient) Transcription(ctx context.Context, audio []byte, funcs .
 	return res, nil
 }
 
-var _ llm.Client = (*timeoutClient)(nil)
+var (
+	_ llm.Client              = (*timeoutClient)(nil)
+	_ llm.MessagesRelayClient = (*timeoutClient)(nil)
+)

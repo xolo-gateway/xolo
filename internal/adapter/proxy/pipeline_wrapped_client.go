@@ -177,9 +177,7 @@ func (c *PipelineWrappedClient) streamPassthrough(ctx context.Context, sourceCh 
 		var lastTokens *pipeline.TokensUsed
 
 		for chunk := range sourceCh {
-			if d := chunk.Delta(); d != nil {
-				buf.WriteString(d.Content())
-			}
+			buf.WriteString(chunkText(chunk))
 			if u := chunk.Usage(); u != nil {
 				lastTokens = &pipeline.TokensUsed{
 					Prompt:     u.PromptTokens(),

@@ -275,6 +275,8 @@ type chatRequest struct {
 	Messages []chatMessage `json:"messages"`
 	// Raw keeps the body as received, for assertions on anything else.
 	Raw string `json:"-"`
+	// Header keeps the request headers, for the Messages endpoint only.
+	Header http.Header `json:"-"`
 }
 
 type chatMessage struct {
@@ -353,10 +355,33 @@ func (p *fakeProvider) handleMessages(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	req.Raw = string(body)
+	req.Header = r.Header.Clone()
 
 	p.mu.Lock()
 	p.requests = append(p.requests, req)
 	p.mu.Unlock()
+
+	// The API takes system instructions in the top-level field only.
+	for _, m := range req.Messages {
+		if m.Role == "system" {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			_ = json.NewEncoder(w).Encode(map[string]any{"type": "error", "error": map[string]any{
+				"type": "invalid_request_error", "message": `messages: Unexpected role "system"`,
+			}})
+			return
+		}
+	}
+
+	// Like the real API, answer a request for classifier review with a
+	// verdict on message_delta — none here, the turn calls no tool.
+	messageDelta := map[string]any{"stop_reason": "end_turn", "stop_sequence": nil}
+	if strings.Contains(req.Raw, `"safeguards"`) {
+		messageDelta["safeguard_results"] = []any{map[string]any{
+			"type":   "dangerous_tool_use",
+			"status": map[string]any{"type": "available", "tool_uses": map[string]any{}},
+		}}
+	}
 
 	answer := "Bien reçu : " + lastUserText(req.Messages)
 	events := []struct {
@@ -377,7 +402,7 @@ func (p *fakeProvider) handleMessages(w http.ResponseWriter, r *http.Request) {
 			"delta": map[string]any{"type": "text_delta", "text": answer}}},
 		{"content_block_stop", map[string]any{"type": "content_block_stop", "index": 0}},
 		{"message_delta", map[string]any{"type": "message_delta",
-			"delta": map[string]any{"stop_reason": "end_turn", "stop_sequence": nil},
+			"delta": messageDelta,
 			"usage": map[string]any{"output_tokens": fakeMessagesOutputTokens}}},
 		{"message_stop", map[string]any{"type": "message_stop"}},
 	}

@@ -237,7 +237,23 @@ func (a *PipelineHookAdapter) finishForwardExecution(ctx context.Context, req *g
 	// messages array, apply it to the actual LLM request by overriding
 	// req.ChatOptions. ChatOptions is normally fixed before hooks run, but
 	// genai/proxy re-reads it after RunPreRequest, so this is the last word.
-	applyModifiedMessages(ctx, req, ec, forwardExec)
+	if err := applyModifiedMessages(ctx, req, ec, forwardExec); err != nil {
+		// The body would go upstream without the pipeline's rewrite — for the
+		// pseudonymizer, with the very data it exists to hide.
+		slog.ErrorContext(ctx, "pipeline: could not carry the modified messages over the request body",
+			slog.String("model", req.Model),
+			slog.Any("error", err))
+		return &genaiProxy.HookResult{
+			Response: &genaiProxy.ProxyResponse{
+				StatusCode: http.StatusInternalServerError,
+				Body: map[string]any{"error": map[string]any{
+					"type":    "server_error",
+					"message": "Pipeline for model \"" + req.Model + "\" produced messages that cannot be sent: " + err.Error(),
+					"code":    "pipeline_error",
+				}},
+			},
+		}
+	}
 
 	// Store the execution result for ResolveModel.
 	req.Metadata[metaPipelineExecution] = forwardExec
@@ -630,10 +646,12 @@ func (a *PipelineHookAdapter) buildEC(ctx context.Context, req *genaiProxy.Proxy
 // final messages JSON back into []llm.Message according to the wire format
 // of the incoming request (Anthropic Messages vs. OpenAI chat completions),
 // and appends llm.WithMessages to req.ChatOptions, which fully replaces
-// opts.Messages and is applied last by genai/proxy.
-func applyModifiedMessages(ctx context.Context, req *genaiProxy.ProxyRequest, ec pipeline.ExecutionContext, forwardExec *pipeline.ForwardExecution) {
+// opts.Messages and is applied last by genai/proxy. On the Messages route it
+// also rewrites req.Body, and fails when it cannot: a relayed request is sent
+// from the body.
+func applyModifiedMessages(ctx context.Context, req *genaiProxy.ProxyRequest, ec pipeline.ExecutionContext, forwardExec *pipeline.ForwardExecution) error {
 	if forwardExec.FinalMessagesJSON == "" || forwardExec.FinalMessagesJSON == ec.MessagesJSON {
-		return
+		return nil
 	}
 
 	var convertedMsgs []llm.Message
@@ -647,7 +665,7 @@ func applyModifiedMessages(ctx context.Context, req *genaiProxy.ProxyRequest, ec
 		slog.WarnContext(ctx, "pipeline: failed to apply modified messages, ignoring",
 			slog.String("model", req.Model),
 			slog.Any("error", convErr))
-		return
+		return nil
 	}
 
 	// On the Messages route the system prompt is a top-level field, outside the
@@ -672,6 +690,19 @@ func applyModifiedMessages(ctx context.Context, req *genaiProxy.ProxyRequest, ec
 	}
 
 	req.ChatOptions = append(req.ChatOptions, llm.WithMessages(convertedMsgs...))
+
+	// A request relayed to an Anthropic upstream is sent from the body, not
+	// rebuilt from ChatOptions (see genaiProxy.ProxyRequest.Body): the body has
+	// to carry the rewritten conversation too. Last, since the client's own
+	// system prompt was read from the body above.
+	if req.Type == genaiProxy.RequestTypeMessage {
+		body, err := withPipelineMessages(req.Body, ec.MessagesJSON, forwardExec.FinalMessagesJSON)
+		if err != nil {
+			return err
+		}
+		req.Body = body
+	}
+	return nil
 }
 
 // requestSystemMessages converts the top-level "system" field of an Anthropic
