@@ -1,6 +1,7 @@
 package model
 
 import (
+	"strings"
 	"time"
 
 	"github.com/rs/xid"
@@ -60,7 +61,22 @@ func (t *BaseInviteToken) Org() Organization           { return t.org }
 
 var _ InviteToken = &BaseInviteToken{}
 
+// NormalizeEmail is the form invitee addresses are stored and looked up in. The
+// case an administrator types and the one an identity provider returns rarely
+// agree, and an address pasted from a mail client often drags a space along.
+func NormalizeEmail(email string) string {
+	return strings.ToLower(strings.TrimSpace(email))
+}
+
 func NewInviteToken(orgID OrgID, role string, inviteeEmail *string, expiresAt *time.Time, maxUses *int, createdByUserID UserID) *BaseInviteToken {
+	if inviteeEmail != nil {
+		if normalized := NormalizeEmail(*inviteeEmail); normalized != "" {
+			inviteeEmail = &normalized
+		} else {
+			inviteeEmail = nil
+		}
+	}
+
 	return &BaseInviteToken{
 		id:              NewInviteTokenID(),
 		orgID:           orgID,

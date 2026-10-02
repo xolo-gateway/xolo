@@ -3,9 +3,12 @@ package bridge
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"net/http"
 	"slices"
+	"strings"
 
+	"github.com/bornholm/go-x/slogx"
 	"github.com/xolo-gateway/xolo/internal/core/model"
 	"github.com/xolo-gateway/xolo/internal/core/port"
 	httpCtx "github.com/xolo-gateway/xolo/internal/http/context"
@@ -33,7 +36,7 @@ type Options struct {
 	DefaultAdmins []string
 }
 
-func Middleware(userStore port.UserStore, emitter port.EventEmitter, opts Options) func(http.Handler) http.Handler {
+func Middleware(userStore port.UserStore, inviteStore port.InviteStore, emitter port.EventEmitter, opts Options) func(http.Handler) http.Handler {
 	emitLoginFailed := func(ctx context.Context, authnUser *authn.User, reason string) {
 		if emitter == nil || authnUser == nil {
 			return
@@ -64,7 +67,12 @@ func Middleware(userStore port.UserStore, emitter port.EventEmitter, opts Option
 				return
 			}
 
-			isDefaultAdmin := slices.Contains(opts.DefaultAdmins, authnUser.Email)
+			// Compared case-insensitively, like invitee addresses: an admin who
+			// writes Jean.Dupont@corp.tld while the provider returns
+			// jean.dupont@corp.tld must not be locked out of a fresh instance.
+			isDefaultAdmin := authnUser.Email != "" && slices.ContainsFunc(opts.DefaultAdmins, func(email string) bool {
+				return strings.EqualFold(strings.TrimSpace(email), authnUser.Email)
+			})
 
 			// An application authenticates through a shadow user that is
 			// created lazily on its first request. Its lifecycle is governed by
@@ -84,7 +92,14 @@ func Middleware(userStore port.UserStore, emitter port.EventEmitter, opts Option
 				// The identity authenticated successfully but Xolo knows
 				// nothing about it. Default admins are the exception: they are
 				// the only way to bootstrap an instance that has no user yet.
-				if !opts.AutoCreateUsers && !isDefaultAdmin && !isApplication {
+				//
+				// So is an identity holding a pending invitation, pre-provisioned
+				// by definition: an administrator named that address on purpose.
+				// The invitee cannot reach /join/{token} otherwise — this
+				// middleware runs before every route, so refusing here makes every
+				// invitation unusable as soon as AutoCreateUsers is off. Checked
+				// last so the lookup only runs when it decides the outcome.
+				if !opts.AutoCreateUsers && !isDefaultAdmin && !isApplication && !hasPendingInvite(ctx, inviteStore, tenant.ID(), authnUser.Email) {
 					emitLoginFailed(ctx, authnUser, "aucun compte ne correspond à cette identité et la création automatique est désactivée")
 					common.HandleError(w, r, common.NewError(
 						"user account auto-creation is disabled",
@@ -94,6 +109,13 @@ func Middleware(userStore port.UserStore, emitter port.EventEmitter, opts Option
 					return
 				}
 
+				// An invitation grants the account, not its activation:
+				// ActiveByDefault keeps deciding that, as it does for any other
+				// identity. Nothing is lost by waiting — /join/{token} is the one
+				// route that does not assert authz.Active(), so an invitee whose
+				// account is still inactive accepts the invitation and gets the
+				// membership and role right away; only the rest of the instance
+				// waits for an administrator.
 				user = model.NewUser(
 					tenant.ID(),
 					authnUser.Provider, authnUser.Subject, authnUser.Email, authnUser.DisplayName,
@@ -170,4 +192,25 @@ func Middleware(userStore port.UserStore, emitter port.EventEmitter, opts Option
 
 		return fn
 	}
+}
+
+// hasPendingInvite reports whether a still-acceptable invitation targets this
+// e-mail inside this tenant. A lookup failure is never fatal: it only means the
+// identity falls back to the configured provisioning policy.
+func hasPendingInvite(ctx context.Context, inviteStore port.InviteStore, tenantID model.TenantID, email string) bool {
+	if inviteStore == nil || email == "" {
+		return false
+	}
+
+	// The store only returns invitations issued by organizations of this
+	// tenant: one issued elsewhere grants nothing here.
+	invites, err := inviteStore.ListPendingInvitesForEmail(ctx, tenantID, email)
+	if err != nil {
+		slog.ErrorContext(ctx, "could not list pending invites for identity", slogx.Error(err))
+		return false
+	}
+
+	// The store filters on revocation and expiry only; IsInviteValid also
+	// rejects an invitation whose uses are exhausted.
+	return slices.ContainsFunc(invites, model.IsInviteValid)
 }

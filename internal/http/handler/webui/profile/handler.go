@@ -247,7 +247,7 @@ func (h *Handler) getInvitationsPage(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	user := httpCtx.User(ctx)
 
-	invites, err := h.inviteStore.ListPendingInvitesForEmail(ctx, user.Email())
+	invites, err := h.inviteStore.ListPendingInvitesForEmail(ctx, httpCtx.Tenant(ctx).ID(), user.Email())
 	if err != nil {
 		slog.ErrorContext(ctx, "could not fetch invitations", slogx.Error(err))
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)

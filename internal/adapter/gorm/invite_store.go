@@ -93,12 +93,16 @@ func (s *Store) IncrementInviteUses(ctx context.Context, id model.InviteTokenID)
 }
 
 // ListPendingInvitesForEmail implements port.InviteStore.
-func (s *Store) ListPendingInvitesForEmail(ctx context.Context, email string) ([]model.InviteToken, error) {
+func (s *Store) ListPendingInvitesForEmail(ctx context.Context, tenantID model.TenantID, email string) ([]model.InviteToken, error) {
 	var tokens []*InviteToken
 	now := time.Now()
 	err := s.withRetry(ctx, false, func(ctx context.Context, db *gorm.DB) error {
+		// Invitee addresses are stored normalized (model.NewInviteToken and
+		// migration 202609300001), so normalizing the argument is enough to
+		// match case-insensitively while keeping the invitee_email index usable.
 		return errors.WithStack(db.Preload("Org").
-			Where("invitee_email = ? AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at > ?)", email, now).
+			Where("invitee_email = ? AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at > ?)", model.NormalizeEmail(email), now).
+			Where("org_id IN (SELECT id FROM organizations WHERE tenant_id = ?)", string(tenantID)).
 			Order("created_at DESC").
 			Find(&tokens).Error)
 	})

@@ -2,8 +2,10 @@ package join
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"net/http"
+	"strings"
 
 	"github.com/a-h/templ"
 	"github.com/bornholm/go-x/slogx"
@@ -36,6 +38,7 @@ func NewHandler(orgStore port.OrgStore, roleStore port.RoleStore, inviteStore po
 
 	h.mux.HandleFunc("GET /{tokenID}", h.getJoinPage)
 	h.mux.HandleFunc("POST /{tokenID}", h.acceptInvite)
+	h.mux.HandleFunc("POST /{tokenID}/decline", h.declineInvite)
 
 	return h
 }
@@ -45,7 +48,7 @@ func (h *Handler) getJoinPage(w http.ResponseWriter, r *http.Request) {
 	user := httpCtx.User(ctx)
 	tokenID := r.PathValue("tokenID")
 
-	invite, err := h.inviteStore.GetInviteByID(ctx, model.InviteTokenID(tokenID))
+	invite, err := h.getInvite(ctx, tokenID)
 	if err != nil {
 		if errors.Is(err, port.ErrNotFound) {
 			h.renderError(w, r, user, "Cette invitation est introuvable ou a expiré.")
@@ -61,15 +64,17 @@ func (h *Handler) getJoinPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Targeted invites can only be accepted by their addressee.
-	if user != nil && invite.InviteeEmail() != nil && *invite.InviteeEmail() != user.Email() {
+	// Targeted invites can only be accepted by their addressee. The comparison
+	// is case-insensitive: the case an administrator typed and the one the
+	// identity provider returns rarely agree.
+	if user != nil && invite.InviteeEmail() != nil && !strings.EqualFold(*invite.InviteeEmail(), user.Email()) {
 		h.renderError(w, r, user, "Cette invitation n'est pas destinée à votre adresse email.")
 		return
 	}
 
 	baseURL := httpCtx.BaseURL(ctx)
 	loginURL := baseURL.JoinPath("/auth/oidc/login").String()
-	declineURL := baseURL.JoinPath("/no-org/invitations/" + tokenID + "/decline").String()
+	declineURL := baseURL.JoinPath("/join/" + tokenID + "/decline").String()
 
 	vmodel := component.JoinPageVModel{
 		User:       user,
@@ -91,7 +96,7 @@ func (h *Handler) acceptInvite(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	invite, err := h.inviteStore.GetInviteByID(ctx, model.InviteTokenID(tokenID))
+	invite, err := h.getInvite(ctx, tokenID)
 	if err != nil {
 		if errors.Is(err, port.ErrNotFound) {
 			h.renderError(w, r, user, "Cette invitation est introuvable ou a expiré.")
@@ -108,7 +113,7 @@ func (h *Handler) acceptInvite(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Check if targeted invite matches current user's email
-	if invite.InviteeEmail() != nil && *invite.InviteeEmail() != user.Email() {
+	if invite.InviteeEmail() != nil && !strings.EqualFold(*invite.InviteeEmail(), user.Email()) {
 		h.renderError(w, r, user, "Cette invitation n'est pas destinée à votre adresse email.")
 		return
 	}
@@ -162,6 +167,73 @@ func (h *Handler) acceptInvite(w http.ResponseWriter, r *http.Request) {
 	}
 
 	templ.Handler(component.JoinSuccess(vmodel)).ServeHTTP(w, r)
+}
+
+// declineInvite lives next to acceptInvite, outside the authz.Active() wrapper,
+// so an invitee whose account is still inactive can decline as well as accept.
+func (h *Handler) declineInvite(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	user := httpCtx.User(ctx)
+	tokenID := r.PathValue("tokenID")
+	noOrgURL := httpCtx.BaseURL(ctx).JoinPath("/no-org").String()
+
+	if user == nil {
+		http.Redirect(w, r, "/auth/oidc/login", http.StatusSeeOther)
+		return
+	}
+
+	invite, err := h.getInvite(ctx, tokenID)
+	if err != nil {
+		if !errors.Is(err, port.ErrNotFound) {
+			slog.ErrorContext(ctx, "could not get invite", slogx.Error(err))
+		}
+		// Invite not found or already gone — redirect silently.
+		http.Redirect(w, r, noOrgURL, http.StatusSeeOther)
+		return
+	}
+
+	// Open invites just get a cookie hiding them from /no-org.
+	if invite.InviteeEmail() == nil {
+		http.SetCookie(w, &http.Cookie{
+			Name:   fmt.Sprintf("declined_invite_%s", tokenID),
+			Value:  "1",
+			Path:   "/",
+			MaxAge: 86400,
+		})
+		http.Redirect(w, r, noOrgURL, http.StatusSeeOther)
+		return
+	}
+
+	// Targeted invites are deleted, which only their addressee may do: the ID
+	// travels in the clear inside /join links.
+	if !strings.EqualFold(*invite.InviteeEmail(), user.Email()) {
+		h.renderError(w, r, user, "Cette invitation n'est pas destinée à votre adresse email.")
+		return
+	}
+
+	if err := h.inviteStore.DeleteInvite(ctx, invite.ID()); err != nil {
+		slog.WarnContext(ctx, "could not delete targeted invite after decline", slogx.Error(err))
+	}
+
+	http.Redirect(w, r, noOrgURL, http.StatusSeeOther)
+}
+
+// getInvite fetches an invitation of the request tenant. One issued by an
+// organization of another tenant answers port.ErrNotFound, as if it did not
+// exist: invitation IDs are globally unique, tenants are not supposed to see
+// each other's.
+func (h *Handler) getInvite(ctx context.Context, tokenID string) (model.InviteToken, error) {
+	invite, err := h.inviteStore.GetInviteByID(ctx, model.InviteTokenID(tokenID))
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+
+	tenant := httpCtx.Tenant(ctx)
+	if tenant == nil || invite.Org() == nil || invite.Org().TenantID() != tenant.ID() {
+		return nil, errors.WithStack(port.ErrNotFound)
+	}
+
+	return invite, nil
 }
 
 // assignInviteRole assigns a role to the given membership.

@@ -368,6 +368,23 @@ func createGetDatabase(db *gorm.DB) func(ctx context.Context) (*gorm.DB, error) 
 						return errors.WithStack(tx.Exec("DELETE FROM " + quotaUsageTable + " WHERE scope = 'application'").Error)
 					},
 				},
+				{
+					// Invitee addresses are now stored normalized (model.NormalizeEmail)
+					// and looked up by plain equality, which keeps the invitee_email
+					// index usable. Bring the rows written before that to the same form.
+					ID: "202609300001",
+					Migrate: func(tx *gorm.DB) error {
+						if !tx.Migrator().HasTable(&InviteToken{}) {
+							return nil
+						}
+						return errors.WithStack(tx.Exec("UPDATE invite_tokens SET invitee_email = NULLIF(LOWER(TRIM(invitee_email)), '') WHERE invitee_email IS NOT NULL").Error)
+					},
+					Rollback: func(tx *gorm.DB) error {
+						// The original case is not kept anywhere, and the normalized
+						// form is what every reader expects anyway.
+						return nil
+					},
+				},
 			})
 
 			m.InitSchema(func(tx *gorm.DB) error {

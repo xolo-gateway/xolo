@@ -91,7 +91,6 @@ func NewHandler(
 
 	mount(h.mux, "/", isActive(http.HandlerFunc(h.getHomePage)))
 	mount(h.mux, "/no-org", isActive(http.HandlerFunc(h.getNoOrgPage)))
-	h.mux.Handle("POST /no-org/invitations/{tokenID}/decline", isActive(http.HandlerFunc(h.declineInvitation)))
 	mount(h.mux, "/switcher", isActive(http.HandlerFunc(h.getSwitcherFragment)))
 	mount(h.mux, "/usage", isActive(http.HandlerFunc(h.getDashboardPage)))
 	mount(h.mux, "/events", isActive(http.HandlerFunc(h.getPersonalEventsRedirect)))

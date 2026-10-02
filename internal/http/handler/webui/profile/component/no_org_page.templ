@@ -109,7 +109,7 @@ templ NoOrgPage(vmodel NoOrgPageVModel) {
 								}) {
 									Rejoindre l'organisation
 								}
-								<form method="POST" action={ common.BaseURL(ctx, common.WithPath("/no-org/invitations/", string(inv.ID()), "/decline")) } class="flex-1">
+								<form method="POST" action={ common.BaseURL(ctx, common.WithPath("/join/", string(inv.ID()), "/decline")) } class="flex-1">
 									@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantOutline, Size: button.SizeSm, Class: "w-full"}) {
 										Décliner
 									}

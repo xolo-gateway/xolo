@@ -246,7 +246,7 @@ func scenarioInviteStoreLifecycle(t *testing.T, store *xologorm.Store) {
 		t.Errorf("expected 2 invites, got %d", len(invites))
 	}
 
-	pending, err := store.ListPendingInvitesForEmail(ctx, "invitee@example.com")
+	pending, err := store.ListPendingInvitesForEmail(ctx, testTenantID, "invitee@example.com")
 	if err != nil {
 		t.Fatalf("ListPendingInvitesForEmail: %v", err)
 	}
@@ -276,7 +276,7 @@ func scenarioInviteStoreLifecycle(t *testing.T, store *xologorm.Store) {
 	if loaded.RevokedAt() == nil {
 		t.Error("expected the invite to carry a revocation date")
 	}
-	pending, err = store.ListPendingInvitesForEmail(ctx, "invitee@example.com")
+	pending, err = store.ListPendingInvitesForEmail(ctx, testTenantID, "invitee@example.com")
 	if err != nil {
 		t.Fatalf("ListPendingInvitesForEmail (after revoke): %v", err)
 	}
@@ -312,7 +312,7 @@ func scenarioInviteStoreExpiredNotPending(t *testing.T, store *xologorm.Store) {
 		t.Fatalf("CreateInvite: %v", err)
 	}
 
-	pending, err := store.ListPendingInvitesForEmail(ctx, "late@example.com")
+	pending, err := store.ListPendingInvitesForEmail(ctx, testTenantID, "late@example.com")
 	if err != nil {
 		t.Fatalf("ListPendingInvitesForEmail: %v", err)
 	}
