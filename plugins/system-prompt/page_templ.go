@@ -49,7 +49,7 @@ func page(pd uiPageData) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "\"><link rel=\"stylesheet\" href=\"/assets/templui.css\"></head><body class=\"bg-background text-foreground min-h-screen p-4 space-y-4\"><h1 class=\"text-lg font-semibold\">System Prompt</h1><p class=\"text-sm text-muted-foreground\">Injecte un prompt système fixe dans les messages de requête LLM. Le prompt sera ajouté avant les autres messages.</p>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "\"><link rel=\"stylesheet\" href=\"/assets/templui.css\"></head><body class=\"bg-background text-foreground min-h-screen p-4 space-y-4\"><h1 class=\"text-lg font-semibold\">System Prompt</h1><p class=\"text-sm text-muted-foreground\">Injecte un prompt système fixe dans les messages de requête LLM. En mode \"remplacer\", les éventuels messages système du client sont supprimés ; en mode \"ajouter\", le premier message système du client (s'il existe) est concaténé.</p>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -200,7 +200,7 @@ func page(pd uiPageData) templ.Component {
 				var templ_7745c5c3_Var10 string
 				templ_7745c5c3_Var10, templ_7745c5c3_Err = templ.JoinStringErrs(pd.Config.SystemPrompt)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `plugins/system-prompt/page.templ`, Line: 48, Col: 32}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `plugins/system-prompt/page.templ`, Line: 49, Col: 32}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var10))
 				if templ_7745c5c3_Err != nil {
@@ -216,7 +216,7 @@ func page(pd uiPageData) templ.Component {
 						return templ_7745c5c3_Err
 					}
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 12, "> <label for=\"append\" class=\"text-sm cursor-pointer\">Ajouter au prompt système existant (si présent)</label></div></div>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 12, "> <label for=\"append\" class=\"text-sm cursor-pointer\">Concaténer avec le prompt système existant (sinon, remplacer)</label></div></div>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
