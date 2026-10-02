@@ -19,6 +19,27 @@ type TokensPageVModel struct {
 	OrgMemberships  []model.Membership
 	CreatedToken    string
 	DeletedToken    bool
+
+	// Error carries the failure code of the previous create-token request.
+	// Rendered as an alert at the top of the dialog and, when non-empty,
+	// causes the dialog to open again so the user can fix the form without
+	// hunting for the "New key" button.
+	Error string
+
+	// OpenDialog forces the dialog to its open state on first render. Set
+	// when the previous request bounced back with an error, so the user can
+	// fix the form without hunting for the "New key" button. A successful
+	// create does NOT reopen it: the clear-text token is shown in a
+	// page-level alert, and opening the modal on top would dim that alert
+	// behind the overlay.
+	OpenDialog bool
+
+	// FormLabel / FormOrgID / FormExpiresAt round-trip the user's draft
+	// across a redirect so a missing organisation does not throw away the
+	// name or the expiry they just typed.
+	FormLabel     string
+	FormOrgID     model.OrgID
+	FormExpiresAt string
 }
 
 templ TokensPage(vmodel TokensPageVModel) {
@@ -104,7 +125,7 @@ templ TokensPage(vmodel TokensPageVModel) {
 			}
 		</div>
 		<!-- Token Creation Dialog -->
-		@dialog.Dialog(dialog.Props{ID: "token-create-dialog"}) {
+		@dialog.Dialog(dialog.Props{ID: "token-create-dialog", Open: vmodel.OpenDialog}) {
 			@dialog.Content() {
 				@dialog.Header() {
 					@dialog.Title(dialog.TitleProps{}) {
@@ -112,63 +133,87 @@ templ TokensPage(vmodel TokensPageVModel) {
 					}
 				}
 				<div class="space-y-4">
+					if vmodel.Error != "" && !orgErrorSuppressedByEmptyMemberships(vmodel) {
+						@common.FlashError(vmodel.Error, "")
+					}
 					<div class="p-3 rounded-md bg-warning-tint text-warning text-sm">
 						<strong>Important :</strong> La clé API ne sera affichée qu'une seule fois après sa création. Assurez-vous de la copier dans un endroit sûr.
 					</div>
-					<form id="token-create-form" method="POST" action={ common.BaseURL(ctx, common.WithPath("/profile/tokens")) } class="space-y-4">
-						@form.Item() {
-							@form.Label(form.LabelProps{For: "token-label"}) {
-								Nom de la clé
-							}
-							@input.Input(input.Props{
-								Name:        "label",
-								ID:          "token-label",
-								Placeholder: "Ex: Application mobile, Script de sauvegarde...",
-							})
-						}
-						@form.Item() {
-							@form.Label(form.LabelProps{For: "token-org-trigger"}) {
-								Organisation <span class="text-destructive">*</span>
-							}
-							if len(vmodel.OrgMemberships) == 0 {
-								@form.Description() {
-									Vous n’appartenez à aucune organisation. Contactez un administrateur pour rejoindre une organisation avant de créer une clé API.
+					<form id="token-create-form" method="POST" action={ common.BaseURL(ctx, common.WithPath("/profile/tokens")) } class="space-y-4" novalidate>
+							@form.Item() {
+								@form.Label(form.LabelProps{For: "token-label"}) {
+									Nom de la clé
 								}
-							} else {
-								@selectbox.SelectBox(selectbox.Props{ID: "token-org"}) {
-									@selectbox.Trigger(selectbox.TriggerProps{
-										ID:         "token-org-trigger",
-										Name:       "org_id",
-										Attributes: templ.Attributes{"required": "required"},
-									}) {
-										@selectbox.Value(selectbox.ValueProps{Placeholder: "— Sélectionnez une organisation —"})
+								@input.Input(input.Props{
+									Name:        "label",
+									ID:          "token-label",
+									Placeholder: "Ex: Application mobile, Script de sauvegarde...",
+									Value:       vmodel.FormLabel,
+									HasError:    vmodel.Error == "label_required",
+								})
+								if vmodel.Error == "label_required" {
+									@form.Message(form.MessageProps{Variant: form.MessageVariantError}) {
+										Le nom de la clé est obligatoire.
 									}
-									@selectbox.Content(selectbox.ContentProps{NoSearch: true}) {
-										@selectbox.Group() {
-											for _, m := range vmodel.OrgMemberships {
-												if m.Org() != nil {
-													@selectbox.Item(selectbox.ItemProps{Value: string(m.OrgID())}) {
-														{ m.Org().Name() }
+								}
+							}
+							@form.Item() {
+								@form.Label(form.LabelProps{For: "token-org-trigger"}) {
+									Organisation <span class="text-destructive">*</span>
+								}
+								if len(vmodel.OrgMemberships) == 0 {
+									@form.Description() {
+										Vous n’appartenez à aucune organisation. Contactez un administrateur pour rejoindre une organisation avant de créer une clé API.
+									}
+								} else {
+									@selectbox.SelectBox(selectbox.Props{ID: "token-org"}) {
+										@selectbox.Trigger(selectbox.TriggerProps{
+											ID:       "token-org-trigger",
+											Name:     "org_id",
+											HasError: vmodel.Error == "org_required",
+										}) {
+											@selectbox.Value(selectbox.ValueProps{Placeholder: "— Sélectionnez une organisation —"})
+										}
+										@selectbox.Content(selectbox.ContentProps{NoSearch: true}) {
+											@selectbox.Group() {
+												for _, m := range vmodel.OrgMemberships {
+													if m.Org() != nil {
+														@selectbox.Item(selectbox.ItemProps{
+															Value:    string(m.OrgID()),
+															Selected: vmodel.FormOrgID != "" && m.OrgID() == vmodel.FormOrgID,
+														}) {
+															{ m.Org().Name() }
+														}
 													}
 												}
 											}
 										}
 									}
+									if vmodel.Error == "org_required" {
+										@form.Message(form.MessageProps{Variant: form.MessageVariantError}) {
+											Veuillez sélectionner une organisation.
+										}
+									}
 								}
 							}
-						}
-						@form.Item() {
-							@form.Label(form.LabelProps{For: "token-expires"}) {
-								Date d'expiration (optionnel)
+							@form.Item() {
+								@form.Label(form.LabelProps{For: "token-expires"}) {
+									Date d'expiration (optionnel)
+								}
+								@input.Input(input.Props{ID: "token-expires", Name: "expires_at", Type: input.TypeDate, Value: vmodel.FormExpiresAt})
 							}
-							@input.Input(input.Props{ID: "token-expires", Name: "expires_at", Type: input.TypeDate})
-						}
-					</form>
+						</form>
 				</div>
 				@dialog.Footer(dialog.FooterProps{}) {
 					<!-- Le bouton vit dans le pied du dialogue, hors du <form>.
-					L'attribut `form` de HTML5 le rattache au formulaire par son id :
-					pas de JavaScript, et la validation native s'applique. -->
+					L'attribut `form` de HTML5 le rattache au formulaire par son id,
+					sans JavaScript. La validation native est délibérément désactivée
+					par `novalidate` sur le formulaire : les `required` que le selectbox
+					dépose sur des `<input>` nichés dans un `<button>` ne sont pas
+					fiables d'un navigateur à l'autre (le contenu d'un bouton ne peut
+					pas accueillir d'élément interactif selon la spec), et la
+					validation côté serveur renvoie déjà un message clair via
+					`?error=<code>`. -->
 					@button.Button(button.Props{
 						Type:     button.TypeSubmit,
 						Form:     "token-create-form",
@@ -181,6 +226,19 @@ templ TokensPage(vmodel TokensPageVModel) {
 			}
 		}
 	}
+}
+
+// orgErrorSuppressedByEmptyMemberships hides the dialog-level org_required
+// alert when the user belongs to no organisation at all: the form below
+// already tells them to contact an admin, and a stacked "Veuillez
+// sélectionner une organisation" reads as a contradiction rather than a
+// helpful cue. Other error codes (label_required, invalid_form, etc.)
+// keep their alert unchanged.
+func orgErrorSuppressedByEmptyMemberships(vmodel TokensPageVModel) bool {
+	if vmodel.Error != "org_required" {
+		return false
+	}
+	return len(vmodel.OrgMemberships) == 0
 }
 
 func tokenOrgName(token model.AuthToken, memberships []model.Membership) string {
