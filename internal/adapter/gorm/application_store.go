@@ -45,7 +45,7 @@ func fromAuthTokenForApplication(t model.AuthToken) *AuthToken {
 }
 
 // CreateApplication implements port.ApplicationStore.
-func (s *Store) CreateApplication(ctx context.Context, app model.Application) error {
+func (s *Store) createApplication(ctx context.Context, app model.Application) error {
 	err := s.withRetry(ctx, true, func(ctx context.Context, db *gorm.DB) error {
 		gormApp := fromApplication(app)
 
@@ -108,7 +108,7 @@ func (s *Store) QueryApplications(ctx context.Context, orgID model.OrgID) ([]mod
 }
 
 // UpdateApplication implements port.ApplicationStore.
-func (s *Store) UpdateApplication(ctx context.Context, app model.Application) error {
+func (s *Store) updateApplication(ctx context.Context, app model.Application) error {
 	err := s.withRetry(ctx, true, func(ctx context.Context, db *gorm.DB) error {
 		gormApp := fromApplication(app)
 
@@ -135,7 +135,7 @@ func (s *Store) UpdateApplication(ctx context.Context, app model.Application) er
 }
 
 // DeleteApplication implements port.ApplicationStore.
-func (s *Store) DeleteApplication(ctx context.Context, appID model.ApplicationID) error {
+func (s *Store) deleteApplication(ctx context.Context, appID model.ApplicationID) error {
 	err := s.withRetry(ctx, true, func(ctx context.Context, db *gorm.DB) error {
 		result := db.Delete(&Application{}, "id = ?", string(appID))
 		if result.Error != nil {
@@ -154,8 +154,7 @@ func (s *Store) DeleteApplication(ctx context.Context, appID model.ApplicationID
 
 		// Same reasoning for the application's own budget: QuotaScopeApplication
 		// rows are not covered by a FK constraint on applications, so an
-		// explicit DELETE here matches the cascade deleteOrgWithin runs on
-		// org deletion. Without it, an operator who creates a per-application
+		// explicit DELETE here completes the application's footprint. Without it, an operator who creates a per-application
 		// budget from the admin UI and then deletes the application leaves a
 		// row that the enforcer can no longer reach through the proxy, but
 		// that still consumes storage and could be inherited by a recycled
@@ -183,6 +182,14 @@ func (s *Store) FindApplicationAuthToken(ctx context.Context, token string) (mod
 				return errors.WithStack(port.ErrNotFound)
 			}
 			return errors.WithStack(err)
+		}
+		guard := lifecycleTable{table: "auth_tokens", org: "r.org_id", member: "r.owner_id"}
+		var n int64
+		if err := db.Table("auth_tokens").Where("id = ?", authToken.ID).Where("EXISTS (SELECT 1 FROM resource_deletions d WHERE " + guard.predicate("auth_tokens") + ")").Count(&n).Error; err != nil {
+			return err
+		}
+		if n > 0 {
+			return port.ErrNotFound
 		}
 		return nil
 	})
@@ -277,4 +284,27 @@ func (s *Store) DeleteApplicationAuthToken(ctx context.Context, tokenID model.Au
 	}
 
 	return nil
+}
+
+func (s *Store) CreateApplication(ctx context.Context, app model.Application) error {
+	return s.mutate(ctx, "application", string(app.ID()), func(bound *Store) error { return bound.createApplication(ctx, app) })
+}
+
+func (s *Store) UpdateApplication(ctx context.Context, app model.Application) error {
+	return s.mutate(ctx, "application", string(app.ID()), func(bound *Store) error { return bound.updateApplication(ctx, app) })
+}
+
+func (s *Store) DeleteApplication(ctx context.Context, appID model.ApplicationID) error {
+	return s.mutate(ctx, "application", string(appID), func(bound *Store) error {
+		q, err := bound.GetQuota(ctx, model.QuotaScopeApplication, string(appID))
+		if err != nil && !errors.Is(err, port.ErrNotFound) {
+			return err
+		}
+		if q != nil {
+			if err := bound.track(ctx, "quota", string(q.ID())); err != nil {
+				return err
+			}
+		}
+		return bound.deleteApplication(ctx, appID)
+	})
 }

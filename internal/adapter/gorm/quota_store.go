@@ -3,15 +3,15 @@ package gorm
 import (
 	"context"
 
+	"github.com/pkg/errors"
 	"github.com/xolo-gateway/xolo/internal/core/model"
 	"github.com/xolo-gateway/xolo/internal/core/port"
-	"github.com/pkg/errors"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
 
 // SetQuota implements port.QuotaStore.
-func (s *Store) SetQuota(ctx context.Context, quota model.Quota) error {
+func (s *Store) setQuota(ctx context.Context, quota model.Quota) error {
 	return s.withRetry(ctx, true, func(ctx context.Context, db *gorm.DB) error {
 		return errors.WithStack(db.Clauses(clause.OnConflict{
 			Columns:   []clause.Column{{Name: "scope"}, {Name: "scope_id"}},
@@ -150,3 +150,17 @@ func minPtr(a, b *int64) *int64 {
 }
 
 var _ port.QuotaStore = &Store{}
+
+func (s *Store) SetQuota(ctx context.Context, quota model.Quota) error {
+	return s.identityTransaction(ctx, func(tx *Store) error {
+		row := fromQuota(quota)
+		old, err := tx.GetQuota(ctx, quota.Scope(), quota.ScopeID())
+		if err != nil && !errors.Is(err, port.ErrNotFound) {
+			return err
+		}
+		if err == nil {
+			row.ID = string(old.ID())
+		}
+		return tx.mutate(ctx, "quota", row.ID, func(bound *Store) error { return bound.setQuota(ctx, &wrappedQuota{row}) })
+	})
+}

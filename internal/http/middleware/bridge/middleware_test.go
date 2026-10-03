@@ -48,7 +48,13 @@ func newStore(t *testing.T) *xologorm.Store {
 		t.Fatalf("open db: %v", err)
 	}
 
-	return xologorm.NewStore(db)
+	store := xologorm.NewStore(db)
+	tenant := model.NewTenant("test", "Test", "")
+	tenant.SetID(testTenantID)
+	if err := store.CreateTenant(context.Background(), tenant); err != nil {
+		t.Fatal(err)
+	}
+	return store
 }
 
 type callResult struct {
@@ -95,10 +101,11 @@ func call(t *testing.T, store port.UserStore, opts bridge.Options, identity *aut
 
 func newIdentity(subject, email, displayName string) *authn.User {
 	return &authn.User{
-		Provider:    "openid-connect",
-		Subject:     subject,
-		Email:       email,
-		DisplayName: displayName,
+		Provider:      "openid-connect",
+		EmailVerified: true,
+		Subject:       subject,
+		Email:         email,
+		DisplayName:   displayName,
 	}
 }
 
@@ -270,7 +277,7 @@ func TestExistingUserSynchronization(t *testing.T) {
 // testTenantID is the tenant every fixture of this package belongs to.
 // Tenancy is not what these tests exercise: they only need a stable, shared
 // owner so the tenant-scoped unique keys behave like the pre-tenant ones.
-const testTenantID = model.TenantID("test-tenant")
+const testTenantID = model.TenantID("11111111-1111-4111-8111-111111111111")
 
 // testTenant is what the tenant middleware would have injected in the request
 // context. Only its identifier matters here: the bridge scopes the identity

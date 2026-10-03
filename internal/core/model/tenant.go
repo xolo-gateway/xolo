@@ -3,13 +3,13 @@ package model
 import (
 	"time"
 
-	"github.com/rs/xid"
+	"github.com/google/uuid"
 )
 
 type TenantID string
 
 func NewTenantID() TenantID {
-	return TenantID(xid.New().String())
+	return TenantID(uuid.NewString())
 }
 
 // DefaultTenantSlug is the slug of the tenant every Xolo instance owns. It is
@@ -72,9 +72,7 @@ func WithTenantDescription(desc string) TenantOption {
 }
 func WithTenantActive(active bool) TenantOption { return func(t *BaseTenant) { t.active = active } }
 
-// UpdateTenant copies the tenant and applies the options. The slug is
-// deliberately absent: it is the stable handle external systems reconcile on,
-// and in multi-tenant mode it is also part of the hostname.
+// UpdateTenant copies the tenant and applies the options. The UUID is immutable.
 func UpdateTenant(tenant Tenant, opts ...TenantOption) *BaseTenant {
 	b := &BaseTenant{
 		id:          tenant.ID(),
@@ -90,3 +88,7 @@ func UpdateTenant(tenant Tenant, opts ...TenantOption) *BaseTenant {
 	}
 	return b
 }
+
+func (v *BaseTenant) SetID(id TenantID) { v.id = id }
+
+func WithTenantSlug(slug string) TenantOption { return func(t *BaseTenant) { t.slug = slug } }

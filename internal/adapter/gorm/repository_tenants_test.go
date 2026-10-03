@@ -191,7 +191,7 @@ func TestDeleteTenant(t *testing.T) {
 			t.Fatalf("save other user: %v", err)
 		}
 
-		if err := store.DeleteTenant(ctx, tenant.ID()); err != nil {
+		if err := deleteAndPurgeTenant(t, store, tenant.ID()); err != nil {
 			t.Fatalf("delete tenant: %v", err)
 		}
 

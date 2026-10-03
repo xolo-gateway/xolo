@@ -12,7 +12,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
-	"sync"
+	"time"
 
 	"github.com/bornholm/go-x/slogx"
 	"github.com/pkg/errors"
@@ -26,44 +26,24 @@ import (
 type Resolver struct {
 	store port.TenantStore
 
-	// hostPrefix and hostSuffix frame the tenant slug inside the host. They are
-	// derived once from the configured pattern: matching a host is then a
-	// prefix/suffix test, with no regexp to compile per request.
-	hostPrefix string
-	hostSuffix string
-
-	defaultSlug string
-	multiTenant bool
-
-	// singleTenantHost is the canonical host used in single-tenant mode. It is
-	// derived from the configured base URL, never from the request: the only
-	// tenant of a single-tenant deployment is served on whatever hostname the
-	// operator chose, regardless of which Host header the client sends.
+	domains interface {
+		GetDomain(context.Context, string) (model.Domain, error)
+	}
+	defaultSlug      string
+	multiTenant      bool
 	singleTenantHost string
-
-	// defaultTenant memoizes the single-tenant resolution: it never varies
-	// across requests, so it is worth not hitting the store on every one. Only
-	// a success is memoized — a transient store failure on the first request
-	// must not disable the instance for the lifetime of the process.
-	defaultMutex  sync.RWMutex
-	defaultTenant model.Tenant
+	baseURL          string
 }
 
 // NewResolver builds a tenant resolver from the multitenancy configuration
-// and the configured public base URL. The base URL is only consulted in
-// single-tenant mode, where it gives CanonicalHost a server-controlled host
-// to return instead of echoing whatever Host header a client sent.
+// and the configured public base URL. The shared host and generated URL
+// scheme, port and path are controlled by configuration.
 func NewResolver(store port.TenantStore, conf config.Multitenancy, baseURL string) *Resolver {
-	prefix, suffix, _ := strings.Cut(stripPort(conf.HostPattern), config.TenantHostPlaceholder)
+	domains, _ := store.(interface {
+		GetDomain(context.Context, string) (model.Domain, error)
+	})
+	return &Resolver{store: store, domains: domains, defaultSlug: conf.DefaultTenantSlug, multiTenant: conf.Enabled, singleTenantHost: canonicalHostFromBaseURL(baseURL), baseURL: baseURL}
 
-	return &Resolver{
-		store:            store,
-		hostPrefix:       strings.ToLower(prefix),
-		hostSuffix:       strings.ToLower(suffix),
-		defaultSlug:      conf.DefaultTenantSlug,
-		multiTenant:      conf.Enabled,
-		singleTenantHost: canonicalHostFromBaseURL(baseURL),
-	}
 }
 
 // ErrNoTenant reports a request no tenant can be resolved for. It is answered
@@ -73,105 +53,64 @@ var ErrNoTenant = errors.New("no tenant matches this request")
 
 // Resolve returns the tenant addressed by the request.
 func (r *Resolver) Resolve(ctx context.Context, host string) (model.Tenant, error) {
-	if !r.multiTenant {
-		return r.resolveDefault(ctx)
-	}
-
-	slug, ok := r.slugFromHost(host)
-	if !ok {
-		return nil, errors.WithStack(ErrNoTenant)
-	}
-
-	tenant, err := r.store.GetTenantBySlug(ctx, slug)
-	if err != nil {
-		if errors.Is(err, port.ErrNotFound) {
-			return nil, errors.WithStack(ErrNoTenant)
+	var tenant model.Tenant
+	var err error
+	normalized := strings.ToLower(stripPort(host))
+	if !r.multiTenant && (r.singleTenantHost == "" || bracketIfIPv6(normalized) == r.singleTenantHost) {
+		if shared, ok := r.store.(interface {
+			GetSharedTenant(context.Context, string) (model.Tenant, error)
+		}); ok {
+			tenant, err = shared.GetSharedTenant(ctx, r.defaultSlug)
+		} else {
+			tenant, err = r.store.GetTenantBySlug(ctx, r.defaultSlug)
 		}
-		return nil, errors.WithStack(err)
+	} else {
+		if r.domains == nil {
+			return nil, ErrNoTenant
+		}
+		hostname, e := model.NormalizeHostname(normalized)
+		if e != nil {
+			return nil, ErrNoTenant
+		}
+		domain, e := r.domains.GetDomain(ctx, hostname)
+		if errors.Is(e, port.ErrNotFound) {
+			return nil, ErrNoTenant
+		}
+		if e != nil {
+			return nil, e
+		}
+		if domain.Status != model.StatusActive {
+			return nil, ErrNoTenant
+		}
+		tenant, err = r.store.GetTenantByID(ctx, domain.TenantID)
 	}
-
-	// A deactivated tenant is indistinguishable from an unknown one: suspending
-	// a customer must not leave its login page reachable.
+	if errors.Is(err, port.ErrNotFound) {
+		return nil, ErrNoTenant
+	}
+	if err != nil {
+		return nil, err
+	}
 	if !tenant.Active() {
-		return nil, errors.WithStack(ErrNoTenant)
+		return nil, ErrNoTenant
 	}
-
 	return tenant, nil
 }
 
-// CanonicalHost returns the normalized host designated by host, without
-// querying the store: it answers "could this host name a tenant", not "does
-// that tenant exist". In multi-tenant mode it extracts the tenant slug with
-// the same validation used by Resolve, then rebuilds the host from the
-// configured pattern — an empty or out-of-pattern input is rejected with
-// ok=false. In single-tenant mode the request host is ignored entirely and
-// the host of the configured base URL is returned: there is no tenant slug
-// to extract, and the only safe answer is one derived from configuration
-// rather than from the client. A missing or relative base URL is rejected
-// with ok=false on this branch. The contract holds on both branches:
-// neither a forged host, its casing, nor a client-supplied port can leak
-// into a generated URL.
+// CanonicalHost verifies the persistent route before using a client host in a URL.
 func (r *Resolver) CanonicalHost(host string) (string, bool) {
-	if r.multiTenant {
-		slug, ok := r.slugFromHost(host)
-		if !ok {
-			return "", false
-		}
-
-		return r.hostPrefix + slug + r.hostSuffix, true
-	}
-
-	if r.singleTenantHost == "" {
-		return "", false
-	}
-
-	return r.singleTenantHost, true
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	return r.CanonicalHostContext(ctx, host)
 }
-
-// slugFromHost extracts the tenant slug framed by the configured pattern.
-func (r *Resolver) slugFromHost(host string) (string, bool) {
-	host = strings.ToLower(stripPort(host))
-
-	if len(host) <= len(r.hostPrefix)+len(r.hostSuffix) {
+func (r *Resolver) CanonicalHostContext(ctx context.Context, host string) (string, bool) {
+	if !r.multiTenant {
+		return r.singleTenantHost, r.singleTenantHost != ""
+	}
+	if _, err := r.Resolve(ctx, host); err != nil {
 		return "", false
 	}
-	if !strings.HasPrefix(host, r.hostPrefix) || !strings.HasSuffix(host, r.hostSuffix) {
-		return "", false
-	}
-
-	slug := host[len(r.hostPrefix) : len(host)-len(r.hostSuffix)]
-
-	// A subdomain label is a DNS label, which is exactly what a slug is: a host
-	// carrying anything else can not designate a tenant, and rejecting it here
-	// keeps the value out of the store query.
-	if !model.IsValidSlug(slug) {
-		return "", false
-	}
-
-	return slug, true
-}
-
-// resolveDefault returns the tenant every request lands on when multi-tenancy
-// is disabled.
-func (r *Resolver) resolveDefault(ctx context.Context) (model.Tenant, error) {
-	r.defaultMutex.RLock()
-	cached := r.defaultTenant
-	r.defaultMutex.RUnlock()
-
-	if cached != nil {
-		return cached, nil
-	}
-
-	tenant, err := r.store.GetTenantBySlug(ctx, r.defaultSlug)
-	if err != nil {
-		return nil, errors.WithStack(err)
-	}
-
-	r.defaultMutex.Lock()
-	r.defaultTenant = tenant
-	r.defaultMutex.Unlock()
-
-	return tenant, nil
+	h, err := model.NormalizeHostname(stripPort(host))
+	return h, err == nil
 }
 
 // stripPort removes the ":port" suffix of a host, if any. It tolerates a host
@@ -242,6 +181,18 @@ func Middleware(resolver *Resolver, notFound http.Handler) func(http.Handler) ht
 			}
 
 			ctx = httpCtx.SetTenant(ctx, tenant)
+			if base, err := url.Parse(resolver.baseURL); err == nil && base.Host != "" {
+				host := resolver.singleTenantHost
+				if resolver.multiTenant || bracketIfIPv6(strings.ToLower(stripPort(r.Host))) != resolver.singleTenantHost {
+					host = strings.ToLower(stripPort(r.Host))
+				}
+				if port := base.Port(); port != "" {
+					base.Host = net.JoinHostPort(strings.Trim(host, "[]"), port)
+				} else {
+					base.Host = bracketIfIPv6(host)
+				}
+				ctx = httpCtx.SetBaseURL(ctx, base.String())
+			}
 
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})

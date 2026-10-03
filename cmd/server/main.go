@@ -73,6 +73,23 @@ func main() {
 		servers = append(servers, namedServer{name: "provisionning-api", address: conf.ProvisionningAPI.Address, run: provisionningAPIServer.Run})
 	}
 
+	worker, err := setup.NewWebhookWorkerFromConfig(ctx, conf)
+	if err != nil {
+		slog.ErrorContext(ctx, "could not setup webhook worker", slog.Any("error", err))
+		os.Exit(1)
+	}
+	if worker != nil {
+		servers = append(servers, namedServer{name: "webhooks", run: worker.Run})
+	}
+
+	lifecycle, err := setup.NewLifecycleServiceFromConfig(ctx, conf)
+	if err != nil {
+		slog.ErrorContext(ctx, "could not setup lifecycle worker", "error", err)
+		os.Exit(1)
+	}
+	if lifecycle != nil {
+		servers = append(servers, namedServer{name: "lifecycle", run: lifecycle.Run})
+	}
 	if err := run(ctx, cancel, servers); err != nil {
 		os.Exit(1)
 	}

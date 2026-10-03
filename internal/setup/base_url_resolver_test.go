@@ -1,22 +1,22 @@
 package setup
 
 import (
+	"context"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
-
-	"github.com/xolo-gateway/xolo/internal/config"
-	"github.com/xolo-gateway/xolo/internal/core/model"
-	"github.com/xolo-gateway/xolo/internal/http/middleware/tenant"
 )
 
 func TestNewTenantBaseURLResolver(t *testing.T) {
-	tenantResolver := tenant.NewResolver(nil, config.Multitenancy{
-		Enabled:           true,
-		HostPattern:       "{tenant}.XOLO.Example.Com",
-		DefaultTenantSlug: model.DefaultTenantSlug,
-	}, "")
-	canonicalHost := tenantResolver.CanonicalHost
+	canonicalHost := func(ctx context.Context, host string) (string, bool) {
+		if h, _, e := net.SplitHostPort(host); e == nil {
+			host = h
+		}
+		host = strings.ToLower(host)
+		return host, host == "acme.xolo.example.com"
+	}
 
 	t.Run("refuses a base url that is not absolute", func(t *testing.T) {
 		if _, err := newTenantBaseURLResolver("/", canonicalHost); err == nil {
@@ -49,7 +49,7 @@ func TestNewTenantBaseURLResolver(t *testing.T) {
 			host:    "AcMe.xolo.example.com:9999",
 			want:    "https://acme.xolo.example.com:3002/gateway",
 		},
-		"a host outside the pattern falls back": {
+		"an unregistered host falls back": {
 			baseURL: "https://xolo.example.com",
 			host:    "evil.example.com",
 			want:    "https://xolo.example.com",

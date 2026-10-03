@@ -20,7 +20,7 @@ func TestMultitenancyValidate(t *testing.T) {
 		},
 		"enabled without a host pattern": {
 			conf:    config.Multitenancy{Enabled: true, DefaultTenantSlug: "default"},
-			wantErr: "XOLO_MULTITENANCY_HOST_PATTERN is required",
+			wantErr: "",
 		},
 		"enabled without the placeholder": {
 			conf:    config.Multitenancy{Enabled: true, HostPattern: "xolo.example.com", DefaultTenantSlug: "default"},

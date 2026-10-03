@@ -1,6 +1,7 @@
 package admin
 
 import (
+	webcommon "github.com/xolo-gateway/xolo/internal/http/handler/webui/common"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -8,12 +9,12 @@ import (
 
 	"github.com/a-h/templ"
 	"github.com/bornholm/go-x/slogx"
+	"github.com/pkg/errors"
 	"github.com/xolo-gateway/xolo/internal/core/model"
 	"github.com/xolo-gateway/xolo/internal/core/port"
 	httpCtx "github.com/xolo-gateway/xolo/internal/http/context"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/admin/component"
 	common "github.com/xolo-gateway/xolo/internal/http/handler/webui/common/component"
-	"github.com/pkg/errors"
 )
 
 func (h *Handler) getOrgsPage(w http.ResponseWriter, r *http.Request) {
@@ -141,6 +142,9 @@ func (h *Handler) createOrg(w http.ResponseWriter, r *http.Request) {
 
 	org := model.NewOrganization(httpCtx.TenantID(ctx), slug, name, description)
 	if err := h.orgStore.CreateOrg(ctx, org); err != nil {
+		if webcommon.RejectOwnership(w, r, err) {
+			return
+		}
 		slog.ErrorContext(ctx, "could not create org", slogx.Error(err))
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
@@ -215,6 +219,9 @@ func (h *Handler) updateOrg(w http.ResponseWriter, r *http.Request) {
 	)
 
 	if err := h.orgStore.SaveOrg(ctx, updated); err != nil {
+		if webcommon.RejectOwnership(w, r, err) {
+			return
+		}
 		slog.ErrorContext(ctx, "could not save org", slogx.Error(err))
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return

@@ -126,13 +126,13 @@ type roleDTO struct {
 	ID             string          `json:"id"`
 	OrganizationID string          `json:"organizationId"`
 	Name           string          `json:"name"`
-	Description string          `json:"description"`
-	Builtin     bool            `json:"builtin"`
-	BuiltinKind string          `json:"builtinKind,omitempty"`
-	Permissions []string        `json:"permissions"`
-	ModelGrants []modelGrantDTO `json:"modelGrants"`
-	CreatedAt   time.Time       `json:"createdAt"`
-	UpdatedAt   time.Time       `json:"updatedAt"`
+	Description    string          `json:"description"`
+	Builtin        bool            `json:"builtin"`
+	BuiltinKind    string          `json:"builtinKind,omitempty"`
+	Permissions    []string        `json:"permissions"`
+	ModelGrants    []modelGrantDTO `json:"modelGrants"`
+	CreatedAt      time.Time       `json:"createdAt"`
+	UpdatedAt      time.Time       `json:"updatedAt"`
 }
 
 func newRoleDTO(role model.Role) roleDTO {
@@ -149,14 +149,14 @@ func newRoleDTO(role model.Role) roleDTO {
 	return roleDTO{
 		ID:             string(role.ID()),
 		OrganizationID: string(role.OrgID()),
-		Name:        role.Name(),
-		Description: role.Description(),
-		Builtin:     role.Builtin(),
-		BuiltinKind: role.BuiltinKind(),
-		Permissions: permissions,
-		ModelGrants: grants,
-		CreatedAt:   role.CreatedAt(),
-		UpdatedAt:   role.UpdatedAt(),
+		Name:           role.Name(),
+		Description:    role.Description(),
+		Builtin:        role.Builtin(),
+		BuiltinKind:    role.BuiltinKind(),
+		Permissions:    permissions,
+		ModelGrants:    grants,
+		CreatedAt:      role.CreatedAt(),
+		UpdatedAt:      role.UpdatedAt(),
 	}
 }
 
@@ -187,18 +187,18 @@ type membershipDTO struct {
 	ID             string       `json:"id"`
 	OrganizationID string       `json:"organizationId"`
 	UserID         string       `json:"userId"`
-	User      *userRefDTO  `json:"user,omitempty"`
-	Roles     []roleRefDTO `json:"roles"`
-	CreatedAt time.Time    `json:"createdAt"`
+	User           *userRefDTO  `json:"user,omitempty"`
+	Roles          []roleRefDTO `json:"roles"`
+	CreatedAt      time.Time    `json:"createdAt"`
 }
 
 func newMembershipDTO(membership model.Membership) membershipDTO {
 	dto := membershipDTO{
 		ID:             string(membership.ID()),
 		OrganizationID: string(membership.OrgID()),
-		UserID:    string(membership.UserID()),
-		Roles:     newRoleRefDTOs(membership.Roles()),
-		CreatedAt: membership.CreatedAt(),
+		UserID:         string(membership.UserID()),
+		Roles:          newRoleRefDTOs(membership.Roles()),
+		CreatedAt:      membership.CreatedAt(),
 	}
 
 	if user := membership.User(); user != nil {
@@ -271,26 +271,10 @@ type userIdentityRequest struct {
 	Active      *bool   `json:"active"`
 }
 
-type createTenantRequest struct {
-	Slug        string `json:"slug"`
-	Name        string `json:"name"`
-	Description string `json:"description"`
-	Active      *bool  `json:"active"`
-}
-
 type updateTenantRequest struct {
 	Name        *string `json:"name"`
 	Description *string `json:"description"`
 	Active      *bool   `json:"active"`
-}
-
-type createOrganizationRequest struct {
-	Slug        string               `json:"slug"`
-	Name        string               `json:"name"`
-	Description string               `json:"description"`
-	Currency    string               `json:"currency"`
-	Active      *bool                `json:"active"`
-	Owner       *userIdentityRequest `json:"owner"`
 }
 
 type updateOrganizationRequest struct {
@@ -299,13 +283,6 @@ type updateOrganizationRequest struct {
 	Active            *bool   `json:"active"`
 	Currency          *string `json:"currency"`
 	ShareQuotaEqually *bool   `json:"shareQuotaEqually"`
-}
-
-type addMemberRequest struct {
-	UserID       string               `json:"userId"`
-	User         *userIdentityRequest `json:"user"`
-	RoleIDs      []string             `json:"roleIds"`
-	BuiltinRoles []string             `json:"builtinRoles"`
 }
 
 type setMemberRolesRequest struct {
@@ -318,12 +295,6 @@ type roleRequest struct {
 	Description *string         `json:"description"`
 	Permissions []string        `json:"permissions"`
 	ModelGrants []modelGrantDTO `json:"modelGrants"`
-}
-
-type updateUserRequest struct {
-	Email       *string `json:"email"`
-	DisplayName *string `json:"displayName"`
-	Active      *bool   `json:"active"`
 }
 
 func toModelGrants(grants []modelGrantDTO) []model.ModelGrant {

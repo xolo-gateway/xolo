@@ -8,11 +8,9 @@ import (
 // ClientIdentity describes the client certificate that authenticated a
 // Provisionning API request.
 //
-// It carries no authorization decision: any client holding a certificate signed
-// by the configured authority administers the instance. It is recorded so
-// requests can be attributed in the logs, and so per-certificate scopes can be
-// introduced later without reworking the request plumbing.
+// Only the verified, authorized URI grants authority. Other fields are metadata.
 type ClientIdentity struct {
+	URI          string
 	CommonName   string
 	SerialNumber string
 	Subject      string

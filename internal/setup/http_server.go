@@ -277,7 +277,7 @@ func NewHTTPServerFromConfig(ctx context.Context, conf *config.Config) (*http.Se
 
 	// Tenant resolution wraps the whole server: authentication resolves a user
 	// within a tenant, so no route may run before the tenant is known. A host
-	// matching none answers 404 — an unknown subdomain must not reveal whether
+	// matching no active domain answers 404 — an unknown host must not reveal whether
 	// the instance exists.
 	tenantResolver := tenant.NewResolver(tenantStore, conf.Multitenancy, conf.HTTP.BaseURL)
 
@@ -345,7 +345,7 @@ func NewHTTPServerFromConfig(ctx context.Context, conf *config.Config) (*http.Se
 	// each tenant is served on its own hostname, and every link, redirect and
 	// OAuth callback must stay on the host the request came in on.
 	if conf.Multitenancy.Enabled {
-		resolveBaseURL, err := newTenantBaseURLResolver(conf.HTTP.BaseURL, tenantResolver.CanonicalHost)
+		resolveBaseURL, err := newTenantBaseURLResolver(conf.HTTP.BaseURL, tenantResolver.CanonicalHostContext)
 		if err != nil {
 			return nil, errors.WithStack(err)
 		}

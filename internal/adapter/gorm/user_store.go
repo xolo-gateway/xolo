@@ -33,37 +33,6 @@ func fromAuthToken(t model.AuthToken) *AuthToken {
 	}
 }
 
-// FindOrCreateUser implements port.UserStore.
-func (s *Store) FindOrCreateUser(ctx context.Context, tenantID model.TenantID, provider, subject string) (model.User, error) {
-	var user model.User
-	err := s.withRetry(ctx, true, func(ctx context.Context, db *gorm.DB) error {
-		var u User
-
-		err := db.Where("tenant_id = ? AND provider = ? AND subject = ?", string(tenantID), provider, subject).
-			Preload("Roles").
-			Preload("Preferences").
-			Attrs(&User{
-				ID:       string(model.NewUserID()),
-				TenantID: string(tenantID),
-				Provider: provider,
-				Subject:  subject,
-				Active:   true,
-			}).
-			FirstOrCreate(&u).Error
-		if err != nil {
-			return errors.WithStack(err)
-		}
-
-		user = &wrappedUser{&u}
-		return nil
-	})
-	if err != nil {
-		return nil, errors.WithStack(err)
-	}
-
-	return user, nil
-}
-
 // GetUserByID implements port.UserStore.
 func (s *Store) GetUserByID(ctx context.Context, userID model.UserID) (model.User, error) {
 	var user User
@@ -84,32 +53,83 @@ func (s *Store) GetUserByID(ctx context.Context, userID model.UserID) (model.Use
 	return &wrappedUser{&user}, nil
 }
 
-// GetUserByIdentity implements port.UserStore.
+// GetUserByIdentity resolves legacy provider aliases only through the explicit
+// startup mapping. Ambiguous pre-existing links are refused, never merged.
 func (s *Store) GetUserByIdentity(ctx context.Context, tenantID model.TenantID, provider, subject string) (model.User, error) {
-	var user User
-
+	if provider == "" || subject == "" {
+		return nil, port.ErrNotFound
+	}
+	var users []User
 	err := s.withRetry(ctx, false, func(ctx context.Context, db *gorm.DB) error {
-		err := db.Preload("Roles").Preload("Preferences").
-			Where("tenant_id = ? AND provider = ? AND subject = ?", string(tenantID), provider, subject).
-			First(&user).Error
-		if err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				return errors.WithStack(port.ErrNotFound)
-			}
-			return errors.WithStack(err)
-		}
-		return nil
+		return db.Preload("Roles").Preload("Preferences").Where("tenant_id = ? AND provider IN ? AND subject = ?", tenantID, s.identityAliases(provider), subject).Limit(2).Find(&users).Error
 	})
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
-
-	return &wrappedUser{&user}, nil
+	if len(users) == 0 {
+		return nil, port.ErrNotFound
+	}
+	if len(users) != 1 {
+		return nil, port.ErrAlreadyExists
+	}
+	return &wrappedUser{&users[0]}, nil
 }
 
 // SaveUser implements port.UserStore.
-func (s *Store) SaveUser(ctx context.Context, user model.User) error {
+func (s *Store) saveUser(ctx context.Context, user model.User) error {
 	err := s.withRetry(ctx, true, func(ctx context.Context, db *gorm.DB) error {
+		if _, err := model.ParseUserID(string(user.ID())); err != nil {
+			return port.ErrInvalid
+		}
+		var parent Tenant
+		if err := db.First(&parent, "id = ?", string(user.TenantID())).Error; err != nil {
+			return invitationReadError(err)
+		}
+		var previous User
+		err := db.First(&previous, "id = ?", string(user.ID())).Error
+		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+			return err
+		}
+		if err == nil && previous.TenantID != string(user.TenantID()) {
+			return port.ErrAlreadyExists
+		}
+		if !user.TenantRole().Valid() || (user.Provider() == "") != (user.Subject() == "") {
+			return port.ErrInvalid
+		}
+
+		if identity := user.DeclaredIdentity(); identity != nil {
+			if !identity.Valid() {
+				return port.ErrInvalid
+			}
+			if user.Provider() != "" && (s.identityIssuer(user.Provider()) != identity.Issuer || user.Subject() != identity.Subject) {
+				return port.ErrAlreadyExists
+			}
+			if previous.Provider != "" {
+				issuer := s.identityIssuer(previous.Provider)
+				if identity.Issuer != issuer || identity.Subject != previous.Subject {
+					return port.ErrAlreadyExists
+				}
+			}
+			providers := s.identityAliases(identity.Issuer)
+			var other User
+			err := db.Where("tenant_id = ? AND id <> ? AND ((identity_issuer = ? AND identity_subject = ?) OR (provider IN ? AND subject = ?))", user.TenantID(), user.ID(), identity.Issuer, identity.Subject, providers, identity.Subject).First(&other).Error
+			if err == nil {
+				return port.ErrAlreadyExists
+			}
+			if err != gorm.ErrRecordNotFound {
+				return err
+			}
+		}
+		if user.Provider() != "" {
+			var other User
+			err := db.Where("tenant_id = ? AND id <> ? AND ((identity_issuer = ? AND identity_subject = ?) OR (provider IN ? AND subject = ?))", user.TenantID(), user.ID(), s.identityIssuer(user.Provider()), user.Subject(), s.identityAliases(user.Provider()), user.Subject()).First(&other).Error
+			if err == nil {
+				return port.ErrAlreadyExists
+			}
+			if err != gorm.ErrRecordNotFound {
+				return err
+			}
+		}
 		gormUser := fromUser(user)
 
 		// Use Clauses with OnConflict to handle upsert
@@ -117,6 +137,9 @@ func (s *Store) SaveUser(ctx context.Context, user model.User) error {
 			Columns:   []clause.Column{{Name: "id"}},
 			UpdateAll: true,
 		}).Omit("Roles", "Preferences").Create(gormUser).Error; err != nil {
+			if isUniqueViolation(err, "users", "identity") || isUniqueViolation(err, "idx_declared_identity") || isUniqueViolation(err, "users", "provider", "subject") {
+				return errors.Wrap(port.ErrAlreadyExists, "provider identity is already bound")
+			}
 			if isUniqueViolation(err, "users", "email") {
 				return errors.Wrapf(port.ErrAlreadyExists, "email %q is already used by another user", gormUser.Email)
 			}
@@ -172,6 +195,14 @@ func (s *Store) FindAuthToken(ctx context.Context, token string) (model.AuthToke
 				return errors.WithStack(port.ErrNotFound)
 			}
 			return errors.WithStack(err)
+		}
+		var n int64
+		guard := lifecycleTable{table: "auth_tokens", org: "r.org_id", member: "r.owner_id"}
+		if err := db.Table("auth_tokens").Where("id = ?", authToken.ID).Where("EXISTS (SELECT 1 FROM resource_deletions d WHERE " + guard.predicate("auth_tokens") + ")").Count(&n).Error; err != nil {
+			return err
+		}
+		if n > 0 {
+			return port.ErrNotFound
 		}
 		return nil
 	})
@@ -246,80 +277,6 @@ func (s *Store) DeleteAuthToken(ctx context.Context, tokenID model.AuthTokenID) 
 	}
 
 	return nil
-}
-
-// DeleteUser implements port.UserStore.
-func (s *Store) DeleteUser(ctx context.Context, userID model.UserID) error {
-	err := s.withRetry(ctx, true, func(ctx context.Context, db *gorm.DB) error {
-		deleted, err := deleteUsersWithin(db, []string{string(userID)})
-		if err != nil {
-			return err
-		}
-
-		if deleted == 0 {
-			return errors.WithStack(port.ErrNotFound)
-		}
-
-		return nil
-	})
-	if err != nil {
-		return errors.WithStack(err)
-	}
-
-	return nil
-}
-
-// deleteUsersWithin removes the given users and every row keyed on them, and
-// returns the number of users actually deleted. memberships and
-// membership_roles have no database-level cascade, so they must go first or the
-// user deletion fails on a foreign key constraint. Personal alerts only make
-// sense for their owner and follow them; org alerts, usage records and events
-// stay with the organization. Any new user-scoped table must be added here.
-func deleteUsersWithin(db *gorm.DB, userIDs []string) (int64, error) {
-	if len(userIDs) == 0 {
-		return 0, nil
-	}
-
-	membershipIDs := db.Model(&Membership{}).Select("id").Where("user_id IN ?", userIDs)
-	if err := db.Where("membership_id IN (?)", membershipIDs).Delete(&MembershipRole{}).Error; err != nil {
-		return 0, errors.WithStack(err)
-	}
-	if err := db.Where("user_id IN ?", userIDs).Delete(&Membership{}).Error; err != nil {
-		return 0, errors.WithStack(err)
-	}
-
-	personalAlertIDs := db.Model(&Alert{}).Select("id").Where("scope = ? AND owner_id IN ?", string(model.AlertScopePersonal), userIDs)
-	if err := db.Where("alert_id IN (?)", personalAlertIDs).Delete(&AlertIncident{}).Error; err != nil {
-		return 0, errors.WithStack(err)
-	}
-	if err := db.Where("scope = ? AND owner_id IN ?", string(model.AlertScopePersonal), userIDs).Delete(&Alert{}).Error; err != nil {
-		return 0, errors.WithStack(err)
-	}
-
-	userScoped := []any{
-		&UserRole{},
-		&UserPreferences{},
-		&PersonalVirtualModel{},
-	}
-	for _, m := range userScoped {
-		if err := db.Where("user_id IN ?", userIDs).Delete(m).Error; err != nil {
-			return 0, errors.WithStack(err)
-		}
-	}
-
-	if err := db.Where("owner_id IN ?", userIDs).Delete(&AuthToken{}).Error; err != nil {
-		return 0, errors.WithStack(err)
-	}
-	if err := db.Where("scope = ? AND scope_id IN ?", string(model.QuotaScopeUser), userIDs).Delete(&Quota{}).Error; err != nil {
-		return 0, errors.WithStack(err)
-	}
-
-	result := db.Where("id IN ?", userIDs).Delete(&User{})
-	if result.Error != nil {
-		return 0, errors.WithStack(result.Error)
-	}
-
-	return result.RowsAffected, nil
 }
 
 // applyUserSearch restricts a user query to the rows whose display name, email
@@ -437,4 +394,39 @@ func (s *Store) QueryUsers(ctx context.Context, opts port.QueryUsersOptions) ([]
 	}
 
 	return wrappedUsers, nil
+}
+
+func (s *Store) SaveUser(ctx context.Context, user model.User) error {
+	return s.mutate(ctx, "member", string(user.ID()), func(bound *Store) error { return bound.saveUser(ctx, user) })
+}
+
+func (s *Store) DeleteUser(ctx context.Context, id model.UserID) error {
+	parent, err := s.GetUserByID(ctx, id)
+	if err != nil {
+		return err
+	}
+	return s.localDeletion(ctx, model.CommonScope{Family: "member", TenantID: string(parent.TenantID())}, string(id))
+}
+
+func (s *Store) FindOrCreateUser(ctx context.Context, tenantID model.TenantID, provider, subject string) (model.User, error) {
+	if provider == "" || subject == "" {
+		return nil, port.ErrInvalid
+	}
+	var user model.User
+	err := s.identityTransaction(ctx, func(bound *Store) error {
+		var err error
+		user, err = bound.GetUserByIdentity(ctx, tenantID, provider, subject)
+		if err == nil {
+			return nil
+		}
+		if !errors.Is(err, port.ErrNotFound) {
+			return err
+		}
+		user = model.NewUser(tenantID, provider, subject, "", "", true)
+		return bound.SaveUser(ctx, user)
+	})
+	if err != nil {
+		return nil, err
+	}
+	return user, nil
 }

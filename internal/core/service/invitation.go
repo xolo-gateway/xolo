@@ -79,6 +79,13 @@ func prepareInvitation(ctx context.Context, tx port.InvitationTx, tenantID model
 	if tenantID == "" {
 		return nil, port.ErrNotFound
 	}
+	tenant, err := tx.GetTenantByID(ctx, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	if !tenant.Active() {
+		return nil, port.ErrNotAllowed
+	}
 	invite, org, err := NewInvitationResolver(tx, tx).Resolve(ctx, tenantID, id)
 	if err != nil {
 		return nil, err

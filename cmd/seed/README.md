@@ -31,7 +31,7 @@ fournisseurs sont chiffrées en AES-GCM avec cette clé.
 
 ## Déterminisme
 
-Tous les identifiants sont écrits à la main (`org-acme`, `usr-alice`,
+Tous les identifiants sont écrits à la main (`00000000-0000-4000-8000-000000000001`, `00000000-0000-4000-8000-000000000005`,
 `mdl-acme-gpt4o`, `usg-000001`…) et les jetons d'API sont des constantes, donc
 les assertions E2E peuvent viser des valeurs et des URL stables. Le volume et la
 répartition de l'historique d'usage dérivent de la graine `-seed`.
@@ -47,9 +47,9 @@ catalogue de permissions courant. Retrouvez-les via `(org_id, builtin_kind)`.
 
 | ID | Slug | Devise | État | Particularité |
 |---|---|---|---|---|
-| `org-acme` | `acme` | EUR | actif | multi-fournisseurs, quotas, pipelines |
-| `org-globex` | `globex` | USD | actif | facturation à l'abonnement, quota partagé équitablement |
-| `org-initech` | `initech` | USD | **inactif** | tests de rejet d'accès |
+| `00000000-0000-4000-8000-000000000001` | `acme` | EUR | actif | multi-fournisseurs, quotas, pipelines |
+| `00000000-0000-4000-8000-000000000002` | `globex` | USD | actif | facturation à l'abonnement, quota partagé équitablement |
+| `00000000-0000-4000-8000-000000000003` | `initech` | USD | **inactif** | tests de rejet d'accès |
 
 ### Utilisateurs
 

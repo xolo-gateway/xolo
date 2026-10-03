@@ -97,7 +97,7 @@ func TestInvitationValidation(t *testing.T) {
 			{"wrong recipient", port.ErrNotFound},
 			{"inactive user", port.ErrNotAllowed}, {"inactive organization", port.ErrInvalid},
 			{"foreign role", port.ErrInvalid}, {"deleted role", port.ErrInvalid},
-			{"unknown role", port.ErrInvalid}, {"missing builtin", port.ErrInvalid},
+			{"unknown role", port.ErrInvalid},
 			{"expired", port.ErrInvalid}, {"revoked", port.ErrInvalid}, {"exhausted", port.ErrInvalid},
 			{"targeted already consumed", port.ErrInvalid}, {"missing invitation", port.ErrNotFound},
 			{"missing user", port.ErrNotFound}, {"empty tenant", port.ErrNotFound},
@@ -127,11 +127,7 @@ func TestInvitationValidation(t *testing.T) {
 					require.NoError(t, store.DeleteRole(f.ctx, f.role.ID()))
 				case "unknown role":
 					role = "unknown-role"
-				case "missing builtin":
-					role = model.RoleMember
-					f.org = f.foreignOrg
-					tenant = f.foreignTenant.ID()
-					user = f.foreignUser.ID()
+
 				case "expired":
 					when := time.Now().Add(-time.Hour)
 					expires = &when
@@ -293,8 +289,9 @@ func TestInvitationAcceptanceAndDecline(t *testing.T) {
 		// sent to "Recipient@…" while the account stores "recipient@…".
 		t.Run("recipient case is ignored", func(t *testing.T) {
 			f := newInvitationFixture(t, store)
-			inv := f.invite(t, true, "", nil, nil)
-			f.user.SetEmail(strings.ToLower(f.user.Email()))
+			email := strings.ToUpper(f.user.Email())
+			inv := model.NewInviteToken(f.org.ID(), string(f.role.ID()), &email, nil, nil, f.other.ID())
+			require.NoError(t, store.CreateInvite(f.ctx, inv))
 			require.NotEqual(t, *inv.InviteeEmail(), f.user.Email())
 			require.NoError(t, store.SaveUser(f.ctx, f.user))
 			pending, err := store.ListPendingInvitesForEmail(f.ctx, f.tenant.ID(), f.user.Email())

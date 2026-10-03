@@ -5,7 +5,8 @@ package oauth2token
 type Provider struct {
 	// ID is the provider identifier, reused as the authn.User provider so the
 	// resulting Xolo user is keyed consistently with OIDC/oidctoken logins.
-	ID string
+	ID     string
+	Issuer string
 	// IntrospectionURL is the RFC 7662 introspection endpoint.
 	IntrospectionURL string
 	// UserInfoURL, when set, is the OIDC UserInfo endpoint used to enrich the

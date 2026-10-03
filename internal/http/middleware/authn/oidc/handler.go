@@ -8,6 +8,7 @@ import (
 	"github.com/bornholm/go-x/slogx"
 	"github.com/gorilla/sessions"
 	"github.com/pkg/errors"
+	"github.com/xolo-gateway/xolo/internal/core/port"
 	httpCtx "github.com/xolo-gateway/xolo/internal/http/context"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/common"
 	"github.com/xolo-gateway/xolo/internal/http/middleware/authn/oauth2token"
@@ -37,6 +38,7 @@ type ProviderWithJWKS struct {
 }
 
 type Handler struct {
+	sessions          port.SessionRegistry
 	mux               *http.ServeMux
 	sessionStore      sessions.Store
 	sessionName       string
@@ -54,6 +56,7 @@ func NewHandler(sessionStore sessions.Store, funcs ...OptionFunc) *Handler {
 	opts := NewOptions(funcs...)
 	h := &Handler{
 		mux:               http.NewServeMux(),
+		sessions:          opts.Sessions,
 		sessionStore:      sessionStore,
 		sessionName:       opts.SessionName,
 		providers:         opts.Providers,
@@ -61,6 +64,7 @@ func NewHandler(sessionStore sessions.Store, funcs ...OptionFunc) *Handler {
 		resolveProvider:   opts.ResolveProvider,
 	}
 
+	h.mux.HandleFunc("POST /providers/{provider}/backchannel-logout", h.handleBackchannelLogout)
 	h.mux.HandleFunc("GET /login", h.getLoginPage)
 	h.mux.Handle("GET /providers/{provider}", h.withContextProvider(http.HandlerFunc(h.handleProvider)))
 	h.mux.Handle("GET /providers/{provider}/callback", h.withContextProvider(http.HandlerFunc(h.handleProviderCallback)))
@@ -80,6 +84,7 @@ func (h *Handler) ProvidersWithJWKS() []oidctoken.Provider {
 			DiscoveryURL: p.DiscoveryURL,
 			Issuer:       p.Issuer,
 			JWKSURL:      p.JWKSURL,
+			ClientID:     p.ClientID,
 		})
 	}
 	return providers
@@ -98,6 +103,7 @@ func (h *Handler) ProvidersForTokenValidation() []oauth2token.Provider {
 		}
 		providers = append(providers, oauth2token.Provider{
 			ID:               p.ID,
+			Issuer:           p.Issuer,
 			IntrospectionURL: p.IntrospectionURL,
 			ClientID:         p.ClientID,
 			ClientSecret:     p.ClientSecret,

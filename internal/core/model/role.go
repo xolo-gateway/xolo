@@ -57,17 +57,17 @@ type BaseRole struct {
 
 func (r *BaseRole) ID() RoleID                { return r.id }
 func (r *BaseRole) OrgID() OrgID              { return r.orgID }
-func (r *BaseRole) Name() string             { return r.name }
+func (r *BaseRole) Name() string              { return r.name }
 func (r *BaseRole) Description() string       { return r.description }
-func (r *BaseRole) Builtin() bool            { return r.builtin }
+func (r *BaseRole) Builtin() bool             { return r.builtin }
 func (r *BaseRole) BuiltinKind() string       { return r.builtinKind }
 func (r *BaseRole) Permissions() []string     { return r.permissions }
 func (r *BaseRole) ModelGrants() []ModelGrant { return r.modelGrants }
 func (r *BaseRole) CreatedAt() time.Time      { return r.createdAt }
 func (r *BaseRole) UpdatedAt() time.Time      { return r.updatedAt }
 
-func (r *BaseRole) SetPermissions(permissions []string)  { r.permissions = permissions }
-func (r *BaseRole) SetModelGrants(grants []ModelGrant)    { r.modelGrants = grants }
+func (r *BaseRole) SetPermissions(permissions []string) { r.permissions = permissions }
+func (r *BaseRole) SetModelGrants(grants []ModelGrant)  { r.modelGrants = grants }
 
 var _ Role = &BaseRole{}
 
@@ -127,3 +127,6 @@ func UpdateRole(role Role, opts ...RoleOption) *BaseRole {
 	}
 	return b
 }
+
+// SetID assigns the caller-owned provisioning key before persistence.
+func (v *BaseRole) SetID(id RoleID) { v.id = id }

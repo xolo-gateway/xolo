@@ -11,8 +11,12 @@ import (
 )
 
 // CreateTenant implements port.TenantStore.
-func (s *Store) CreateTenant(ctx context.Context, tenant model.Tenant) error {
+func (s *Store) createTenant(ctx context.Context, tenant model.Tenant) error {
 	return s.withRetry(ctx, true, func(ctx context.Context, db *gorm.DB) error {
+		if _, err := model.ParseTenantID(string(tenant.ID())); err != nil {
+			return port.ErrInvalid
+		}
+
 		if err := db.Create(fromTenant(tenant)).Error; err != nil {
 			if isUniqueViolation(err, "tenants", "slug") {
 				return errors.Wrapf(port.ErrAlreadyExists, "slug %q is already used by another tenant", tenant.Slug())
@@ -92,51 +96,34 @@ func (s *Store) ListTenants(ctx context.Context, opts port.ListTenantsOptions) (
 }
 
 // SaveTenant implements port.TenantStore.
-func (s *Store) SaveTenant(ctx context.Context, tenant model.Tenant) error {
+func (s *Store) saveTenant(ctx context.Context, tenant model.Tenant) error {
+	if _, err := model.ParseTenantID(string(tenant.ID())); err != nil {
+		return port.ErrInvalid
+	}
 	return s.withRetry(ctx, true, func(ctx context.Context, db *gorm.DB) error {
-		return errors.WithStack(db.Clauses(clause.OnConflict{
+		err := db.Clauses(clause.OnConflict{
 			Columns:   []clause.Column{{Name: "id"}},
 			UpdateAll: true,
-		}).Create(fromTenant(tenant)).Error)
+		}).Create(fromTenant(tenant)).Error
+		if isUniqueViolation(err, "tenants", "slug") {
+			return port.ErrAlreadyExists
+		}
+		return errors.WithStack(err)
 	})
 }
 
-// DeleteTenant implements port.TenantStore. It replays the organization cascade
-// for every organization the tenant owns, then removes the tenant users and the
-// rows keyed on them: users are tenant-scoped, so nothing outside this tenant
-// can reference them.
+func (s *Store) CreateTenant(ctx context.Context, tenant model.Tenant) error {
+	return s.mutate(ctx, "tenant", string(tenant.ID()), func(bound *Store) error { return bound.createTenant(ctx, tenant) })
+}
+
+func (s *Store) SaveTenant(ctx context.Context, tenant model.Tenant) error {
+	return s.mutate(ctx, "tenant", string(tenant.ID()), func(bound *Store) error { return bound.saveTenant(ctx, tenant) })
+}
+
+// DeleteTenant schedules a frozen exportable scope; physical cleanup requires a receipt.
 func (s *Store) DeleteTenant(ctx context.Context, id model.TenantID) error {
-	return s.withRetry(ctx, true, func(ctx context.Context, db *gorm.DB) error {
-		var exists Tenant
-		if err := db.Select("id").First(&exists, "id = ?", string(id)).Error; err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				return errors.WithStack(port.ErrNotFound)
-			}
-			return errors.WithStack(err)
-		}
-
-		var orgIDs []string
-		if err := db.Model(&Organization{}).Where("tenant_id = ?", string(id)).Pluck("id", &orgIDs).Error; err != nil {
-			return errors.WithStack(err)
-		}
-		for _, orgID := range orgIDs {
-			if err := deleteOrgWithin(db, model.OrgID(orgID)); err != nil {
-				return err
-			}
-		}
-
-		// Materialized rather than kept as a subquery: the users are deleted
-		// below, which would empty the subquery before the statements that
-		// depend on it have run.
-		var userIDs []string
-		if err := db.Model(&User{}).Where("tenant_id = ?", string(id)).Pluck("id", &userIDs).Error; err != nil {
-			return errors.WithStack(err)
-		}
-
-		if _, err := deleteUsersWithin(db, userIDs); err != nil {
-			return err
-		}
-
-		return errors.WithStack(db.Delete(&Tenant{}, "id = ?", string(id)).Error)
-	})
+	if _, err := s.GetTenantByID(ctx, id); err != nil {
+		return err
+	}
+	return s.localDeletion(ctx, model.CommonScope{Family: "tenant"}, string(id))
 }

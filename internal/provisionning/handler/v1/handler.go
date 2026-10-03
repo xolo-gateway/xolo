@@ -26,51 +26,57 @@ const (
 // provisioning service, converts the result to an API representation and maps
 // domain errors to HTTP statuses. It holds no store and no business rule.
 type Handler struct {
-	provisioning *service.ProvisioningService
-	mux          *http.ServeMux
+	businessEnabled bool
+	lifecycle       *service.LifecycleService
+	webhooksEnabled bool
+	provisioning    *service.ProvisioningService
+	mux             *http.ServeMux
+	version         string
 }
 
-func NewHandler(provisioning *service.ProvisioningService) *Handler {
+func NewHandler(provisioning *service.ProvisioningService, version ...string) *Handler {
 	h := &Handler{
 		provisioning: provisioning,
 		mux:          http.NewServeMux(),
 	}
 
-	h.mux.HandleFunc("GET /v1/healthz", h.handleHealthz)
-	h.mux.HandleFunc("GET /v1/permissions", h.handlePermissions)
-
-	h.mux.HandleFunc("GET /v1/tenants", h.handleListTenants)
-	h.mux.HandleFunc("POST /v1/tenants", h.handleCreateTenant)
-	h.mux.HandleFunc("GET /v1/tenants/{tenantID}", h.handleGetTenant)
-	h.mux.HandleFunc("PATCH /v1/tenants/{tenantID}", h.handleUpdateTenant)
-	h.mux.HandleFunc("DELETE /v1/tenants/{tenantID}", h.handleDeleteTenant)
-
-	const orgPath = "/v1/tenants/{tenantID}/organizations"
-
-	h.mux.HandleFunc("GET "+orgPath, h.handleListOrganizations)
-	h.mux.HandleFunc("POST "+orgPath, h.handleCreateOrganization)
-	h.mux.HandleFunc("GET "+orgPath+"/{orgID}", h.handleGetOrganization)
-	h.mux.HandleFunc("PATCH "+orgPath+"/{orgID}", h.handleUpdateOrganization)
-	h.mux.HandleFunc("DELETE "+orgPath+"/{orgID}", h.handleDeleteOrganization)
-
-	h.mux.HandleFunc("GET "+orgPath+"/{orgID}/members", h.handleListMembers)
-	h.mux.HandleFunc("POST "+orgPath+"/{orgID}/members", h.handleAddMember)
-	h.mux.HandleFunc("GET "+orgPath+"/{orgID}/members/{membershipID}", h.handleGetMember)
-	h.mux.HandleFunc("DELETE "+orgPath+"/{orgID}/members/{membershipID}", h.handleRemoveMember)
-	h.mux.HandleFunc("PUT "+orgPath+"/{orgID}/members/{membershipID}/roles", h.handleSetMemberRoles)
-
-	h.mux.HandleFunc("GET "+orgPath+"/{orgID}/roles", h.handleListRoles)
-	h.mux.HandleFunc("POST "+orgPath+"/{orgID}/roles", h.handleCreateRole)
-	h.mux.HandleFunc("GET "+orgPath+"/{orgID}/roles/{roleID}", h.handleGetRole)
-	h.mux.HandleFunc("PUT "+orgPath+"/{orgID}/roles/{roleID}", h.handleUpdateRole)
-	h.mux.HandleFunc("DELETE "+orgPath+"/{orgID}/roles/{roleID}", h.handleDeleteRole)
-
-	// Users hang from the tenant: (provider, subject) is only unique within
-	// one, so an instance-wide /v1/users upsert would have no key to act on.
-	h.mux.HandleFunc("GET /v1/tenants/{tenantID}/users", h.handleListUsers)
-	h.mux.HandleFunc("PUT /v1/tenants/{tenantID}/users", h.handlePutUser)
-	h.mux.HandleFunc("GET /v1/tenants/{tenantID}/users/{userID}", h.handleGetUser)
-	h.mux.HandleFunc("PATCH /v1/tenants/{tenantID}/users/{userID}", h.handleUpdateUser)
+	h.version = "development"
+	if len(version) > 0 && version[0] != "" {
+		h.version = version[0]
+	}
+	h.mux.HandleFunc("GET /v1/manifest", h.handleManifest)
+	h.mux.HandleFunc("GET /v1/xolo/extensions", h.handleExtensions)
+	h.mux.HandleFunc("GET /v1/xolo/export", h.handleExport)
+	h.mux.HandleFunc("PUT /v1/tenants/{tenantID}", h.handleCommonPut)
+	h.mux.HandleFunc("PUT /v1/tenants/{tenantID}/domains/{hostname}", h.handleCommonPut)
+	h.mux.HandleFunc("PUT /v1/tenants/{tenantID}/organizations/{orgID}", h.handleCommonPut)
+	h.mux.HandleFunc("PUT /v1/tenants/{tenantID}/members/{memberID}", h.handleCommonPut)
+	h.mux.HandleFunc("PUT /v1/tenants/{tenantID}/organizations/{orgID}/members/{memberID}", h.handleCommonPut)
+	for _, path := range []string{"/v1/tenants/{tenantID}", "/v1/tenants/{tenantID}/domains/{hostname}", "/v1/tenants/{tenantID}/organizations/{orgID}", "/v1/tenants/{tenantID}/members/{memberID}", "/v1/tenants/{tenantID}/organizations/{orgID}/members/{memberID}"} {
+		h.mux.HandleFunc("GET "+path, h.handleCommonGet)
+	}
+	for _, path := range []string{"/v1/tenants", "/v1/tenants/{tenantID}/domains", "/v1/tenants/{tenantID}/organizations", "/v1/tenants/{tenantID}/members", "/v1/tenants/{tenantID}/organizations/{orgID}/members"} {
+		h.mux.HandleFunc("GET "+path, h.handleCommonList)
+	}
+	h.mux.HandleFunc("GET /v1/events/cursor", h.handleEventCursor)
+	h.mux.HandleFunc("GET /v1/events", h.handleEvents)
+	// Xolo-specific operations have a separate extension namespace.
+	const ext = "/v1/xolo"
+	h.mux.HandleFunc("GET "+ext+"/healthz", h.handleHealthz)
+	h.mux.HandleFunc("GET "+ext+"/permissions", h.handlePermissions)
+	h.mux.HandleFunc("GET "+ext+"/tenants/{tenantID}", h.handleGetTenant)
+	h.mux.HandleFunc("PATCH "+ext+"/tenants/{tenantID}", h.handleUpdateTenant)
+	const orgPath = ext + "/tenants/{tenantID}/organizations/{orgID}"
+	h.mux.HandleFunc("GET "+orgPath, h.handleGetOrganization)
+	h.mux.HandleFunc("PATCH "+orgPath, h.handleUpdateOrganization)
+	h.mux.HandleFunc("GET "+orgPath+"/roles", h.handleListRoles)
+	h.mux.HandleFunc("POST "+orgPath+"/roles", h.handleCreateRole)
+	h.mux.HandleFunc("GET "+orgPath+"/roles/{roleID}", h.handleGetRole)
+	h.mux.HandleFunc("PUT "+orgPath+"/roles/{roleID}", h.handleUpdateRole)
+	h.mux.HandleFunc("DELETE "+orgPath+"/roles/{roleID}", h.handleDeleteRole)
+	h.mux.HandleFunc("PUT "+orgPath+"/members/{membershipID}/roles", h.handleSetMemberRoles)
+	h.mux.HandleFunc("PUT "+ext+"/tenants/{tenantID}/users", h.handlePutUser)
+	h.mux.HandleFunc("GET "+ext+"/tenants/{tenantID}/users", h.handleListUsers)
 
 	// Catch-all so an unknown route answers with the same error envelope as
 	// everything else.
@@ -80,6 +86,15 @@ func NewHandler(provisioning *service.ProvisioningService) *Handler {
 }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if r.URL.RawQuery != "" && !strings.HasPrefix(r.URL.Path, "/v1/xolo/") && (r.Method != "GET" || r.URL.Path == "/v1/manifest" || r.URL.Path == "/v1/events/cursor") {
+		writeError(w, 400, "invalid_parameter", "unsupported query parameter")
+		return
+	}
+	if r.Method == http.MethodHead {
+		h.handleNotFound(w, r)
+		return
+	}
+	r = r.WithContext(model.WithWriteAuthority(r.Context(), model.OwnerControlPlane))
 	h.mux.ServeHTTP(w, r)
 }
 
@@ -91,43 +106,9 @@ func (h *Handler) handlePermissions(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"groups": newPermissionCatalogDTO()})
 }
 
-// routableMethods are the methods this API uses. They are probed to tell an
-// unknown resource apart from a known one addressed with the wrong method.
-var routableMethods = []string{
-	http.MethodGet,
-	http.MethodPost,
-	http.MethodPut,
-	http.MethodPatch,
-	http.MethodDelete,
-}
-
-// handleNotFound serves every request no route matched. Registering it makes
-// the catch-all shadow the mux's own 404 and 405 replies, so it re-derives the
-// distinction to keep a single error envelope across the whole API.
+// Unsupported methods and unknown routes share the contract error envelope.
 func (h *Handler) handleNotFound(w http.ResponseWriter, r *http.Request) {
-	allowed := make([]string, 0, len(routableMethods))
-
-	for _, method := range routableMethods {
-		if method == r.Method {
-			continue
-		}
-
-		probe := r.Clone(r.Context())
-		probe.Method = method
-
-		if _, pattern := h.mux.Handler(probe); pattern != "" && pattern != "/" {
-			allowed = append(allowed, method)
-		}
-	}
-
-	if len(allowed) > 0 {
-		w.Header().Set("Allow", strings.Join(allowed, ", "))
-		writeError(w, http.StatusMethodNotAllowed, codeMethodNotAllowed, "method not allowed for this resource")
-
-		return
-	}
-
-	writeError(w, http.StatusNotFound, codeNotFound, "unknown resource")
+	writeError(w, http.StatusNotFound, codeNotFound, "unknown resource or method")
 }
 
 // decodeJSON reads a JSON request body. Unknown fields are rejected: a

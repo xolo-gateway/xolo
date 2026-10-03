@@ -4,12 +4,12 @@ import (
 	"context"
 	"testing"
 
+	_ "github.com/ncruces/go-sqlite3/embed"
+	"github.com/ncruces/go-sqlite3/gormlite"
 	eventsAdapter "github.com/xolo-gateway/xolo/internal/adapter/events"
 	xologorm "github.com/xolo-gateway/xolo/internal/adapter/gorm"
 	"github.com/xolo-gateway/xolo/internal/core/model"
 	httpCtx "github.com/xolo-gateway/xolo/internal/http/context"
-	_ "github.com/ncruces/go-sqlite3/embed"
-	"github.com/ncruces/go-sqlite3/gormlite"
 	gormpkg "gorm.io/gorm"
 )
 
@@ -27,7 +27,13 @@ func newStore(t *testing.T) *xologorm.Store {
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}
-	return xologorm.NewStore(db)
+	store := xologorm.NewStore(db)
+	tenant := model.NewTenant("test", "Test", "")
+	tenant.SetID(testTenantID)
+	if err := store.CreateTenant(context.Background(), tenant); err != nil {
+		t.Fatal(err)
+	}
+	return store
 }
 
 func withActor(ctx context.Context) context.Context {
@@ -181,4 +187,4 @@ func TestApplicationStore_TokenEvents(t *testing.T) {
 // testTenantID is the tenant every fixture of this package belongs to.
 // Tenancy is not what these tests exercise: they only need a stable, shared
 // owner so the tenant-scoped unique keys behave like the pre-tenant ones.
-const testTenantID = model.TenantID("test-tenant")
+const testTenantID = model.TenantID("11111111-1111-4111-8111-111111111111")

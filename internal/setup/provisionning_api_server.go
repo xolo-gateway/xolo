@@ -2,11 +2,12 @@ package setup
 
 import (
 	"context"
+	"github.com/xolo-gateway/xolo/internal/build"
 
+	"github.com/pkg/errors"
 	"github.com/xolo-gateway/xolo/internal/config"
 	"github.com/xolo-gateway/xolo/internal/provisionning"
 	v1 "github.com/xolo-gateway/xolo/internal/provisionning/handler/v1"
-	"github.com/pkg/errors"
 )
 
 // NewProvisionningAPIServerFromConfig assembles the Provisionning API server.
@@ -20,6 +21,10 @@ func NewProvisionningAPIServerFromConfig(ctx context.Context, conf *config.Confi
 		return nil, nil
 	}
 
+	if err := conf.ProvisionningAPI.Validate(); err != nil {
+		return nil, err
+	}
+
 	provisioning, err := getProvisioningServiceFromConfig(ctx, conf)
 	if err != nil {
 		return nil, errors.WithStack(err)
@@ -29,15 +34,35 @@ func NewProvisionningAPIServerFromConfig(ctx context.Context, conf *config.Confi
 		conf.ProvisionningAPI.TLSCertFile,
 		conf.ProvisionningAPI.TLSKeyFile,
 		conf.ProvisionningAPI.TLSClientCAFile,
+		conf.ProvisionningAPI.AuthorizedURIs...,
 	)
 	if err != nil {
 		return nil, errors.Wrap(err, "could not load provisionning api tls configuration")
 	}
 
+	handler := v1.NewHandler(provisioning, build.ShortVersion)
+	if conf.BusinessResources {
+		handler.WithBusiness()
+	}
+	lifecycle, err := NewLifecycleServiceFromConfig(ctx, conf)
+	if err != nil {
+		return nil, err
+	}
+	if lifecycle != nil {
+		handler.WithLifecycle(lifecycle)
+	}
+	worker, err := NewWebhookWorkerFromConfig(ctx, conf)
+	if err != nil {
+		return nil, err
+	}
+	if worker != nil {
+		handler.WithWebhooks(worker.WebhookService)
+	}
 	return provisionning.NewServer(
 		provisionning.WithAddress(conf.ProvisionningAPI.Address),
+		provisionning.WithClientPolicy(conf.ProvisionningAPI.AuthorizedURIs, conf.ProvisionningAPI.RateLimit, conf.ProvisionningAPI.RateBurst),
 		provisionning.WithTLSConfig(tlsConfig),
-		provisionning.WithHandler(v1.NewHandler(provisioning)),
+		provisionning.WithHandler(handler),
 		provisionning.WithShutdownTimeout(conf.ProvisionningAPI.ShutdownTimeout),
 	), nil
 }

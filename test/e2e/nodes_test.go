@@ -82,8 +82,8 @@ func TestNodes_LogicPipeline(t *testing.T) {
 	if got := portString(t, evt, "canary"); got != "stable-model" {
 		t.Errorf("port.canary = %q, want stable-model", got)
 	}
-	if got := portString(t, evt, "user_id"); got != "usr-alice" {
-		t.Errorf("port.user_id = %q, want usr-alice", got)
+	if got := portString(t, evt, "user_id"); got != "00000000-0000-4000-8000-000000000005" {
+		t.Errorf("port.user_id = %q, want 00000000-0000-4000-8000-000000000005", got)
 	}
 	if got := portString(t, evt, "weekday"); got == "" {
 		t.Error("port.weekday is empty")

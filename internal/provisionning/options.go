@@ -8,6 +8,9 @@ import (
 )
 
 type Options struct {
+	AuthorizedURIs    []string
+	RequestsPerSecond float64
+	Burst             int
 	// Address is the listen address used when no Listener is provided.
 	Address string
 
@@ -32,7 +35,8 @@ type OptionFunc func(*Options)
 
 func NewOptions(funcs ...OptionFunc) *Options {
 	opts := &Options{
-		Address:         ":3003",
+		Address:           ":3003",
+		RequestsPerSecond: 10, Burst: 20,
 		ShutdownTimeout: 10 * time.Second,
 	}
 
@@ -70,5 +74,13 @@ func WithListener(listener net.Listener) OptionFunc {
 func WithShutdownTimeout(timeout time.Duration) OptionFunc {
 	return func(opts *Options) {
 		opts.ShutdownTimeout = timeout
+	}
+}
+
+func WithClientPolicy(uris []string, requestsPerSecond float64, burst int) OptionFunc {
+	return func(o *Options) {
+		o.AuthorizedURIs = append([]string(nil), uris...)
+		o.RequestsPerSecond = requestsPerSecond
+		o.Burst = burst
 	}
 }

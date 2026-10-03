@@ -7,10 +7,12 @@ import (
 )
 
 type Membership struct {
-	ID        string `gorm:"primaryKey;autoIncrement:false"`
-	CreatedAt time.Time
-	UserID    string `gorm:"index;not null"`
-	OrgID     string `gorm:"index;not null"`
+	CommonRole string `gorm:"not null;default:member"`
+	Status     string `gorm:"not null;default:active"`
+	ID         string `gorm:"primaryKey;autoIncrement:false"`
+	CreatedAt  time.Time
+	UserID     string `gorm:"index;not null"`
+	OrgID      string `gorm:"index;not null"`
 
 	User  *User         `gorm:"foreignKey:UserID"`
 	Org   *Organization `gorm:"foreignKey:OrgID"`
@@ -22,9 +24,9 @@ type wrappedMembership struct {
 }
 
 func (w *wrappedMembership) ID() model.MembershipID { return model.MembershipID(w.m.ID) }
-func (w *wrappedMembership) UserID() model.UserID    { return model.UserID(w.m.UserID) }
-func (w *wrappedMembership) OrgID() model.OrgID      { return model.OrgID(w.m.OrgID) }
-func (w *wrappedMembership) CreatedAt() time.Time    { return w.m.CreatedAt }
+func (w *wrappedMembership) UserID() model.UserID   { return model.UserID(w.m.UserID) }
+func (w *wrappedMembership) OrgID() model.OrgID     { return model.OrgID(w.m.OrgID) }
+func (w *wrappedMembership) CreatedAt() time.Time   { return w.m.CreatedAt }
 func (w *wrappedMembership) User() model.User {
 	if w.m.User == nil {
 		return nil
@@ -49,8 +51,15 @@ var _ model.Membership = &wrappedMembership{}
 
 func fromMembership(m model.Membership) *Membership {
 	return &Membership{
-		ID:     string(m.ID()),
-		UserID: string(m.UserID()),
-		OrgID:  string(m.OrgID()),
+		ID:         string(m.ID()),
+		CommonRole: string(m.CommonRole()),
+		Status:     string(m.Status()),
+		UserID:     string(m.UserID()),
+		OrgID:      string(m.OrgID()),
 	}
 }
+
+func (w *wrappedMembership) CommonRole() model.MembershipRole {
+	return model.MembershipRole(w.m.CommonRole)
+}
+func (w *wrappedMembership) Status() model.Status { return model.Status(w.m.Status) }

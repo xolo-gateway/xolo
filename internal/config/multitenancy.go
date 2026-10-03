@@ -15,24 +15,20 @@ const TenantHostPlaceholder = "{tenant}"
 // standard instance owns a single tenant, created by the schema migration and
 // never surfaced to its users — no subdomain, no UI, no change of URL.
 //
-// Once enabled, the tenant is identified by the request host, and a host that
-// resolves to no tenant is a 404.
+// Once enabled, persistent active domain records resolve hosts to tenants.
+// A host with no active route returns 404.
 type Multitenancy struct {
 	Enabled bool `env:"ENABLED" envDefault:"false"`
 
-	// HostPattern is the hostname template identifying a tenant, for instance
-	// "{tenant}.xolo.example.com". It may carry a port, which is ignored when
-	// matching.
+	// HostPattern is an optional legacy hostname template. It is materialized
+	// once into explicit domains during upgrade, never used for request routing.
 	HostPattern string `env:"HOST_PATTERN,expand"`
 
 	// DefaultTenantSlug names the tenant served when multi-tenancy is disabled.
 	DefaultTenantSlug string `env:"DEFAULT_TENANT_SLUG" envDefault:"default"`
 }
 
-// Validate refuses a configuration that enables multi-tenancy without a usable
-// host pattern: without it no request could ever resolve a tenant, so every
-// route would answer 404. An incomplete configuration is a startup failure,
-// never a degraded mode.
+// Validate checks the shared tenant setting and any legacy migration pattern.
 func (c *Multitenancy) Validate() error {
 	if slug := strings.TrimSpace(c.DefaultTenantSlug); slug == "" {
 		return errors.New("XOLO_MULTITENANCY_DEFAULT_TENANT_SLUG can not be empty")
@@ -46,7 +42,7 @@ func (c *Multitenancy) Validate() error {
 
 	pattern := strings.TrimSpace(c.HostPattern)
 	if pattern == "" {
-		return errors.New("XOLO_MULTITENANCY_HOST_PATTERN is required but not set when XOLO_MULTITENANCY_ENABLED is true")
+		return nil // Explicit domains do not require a hostname pattern.
 	}
 
 	if !strings.Contains(pattern, TenantHostPlaceholder) {

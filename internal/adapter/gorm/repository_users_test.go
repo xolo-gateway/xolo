@@ -5,10 +5,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/pkg/errors"
 	xologorm "github.com/xolo-gateway/xolo/internal/adapter/gorm"
 	"github.com/xolo-gateway/xolo/internal/core/model"
 	"github.com/xolo-gateway/xolo/internal/core/port"
-	"github.com/pkg/errors"
 )
 
 // newUser builds a user ready to be persisted. NewUser leaves Preferences nil,
@@ -86,7 +86,7 @@ func scenarioUserStoreLifecycle(t *testing.T, store *xologorm.Store) {
 		t.Errorf("expected roles to be replaced by [user], got %v", got)
 	}
 
-	if err := store.DeleteUser(ctx, user.ID()); err != nil {
+	if err := deleteAndPurgeUser(t, store, user.ID()); err != nil {
 		t.Fatalf("DeleteUser: %v", err)
 	}
 	if _, err := store.GetUserByID(ctx, user.ID()); !errors.Is(err, port.ErrNotFound) {
@@ -246,7 +246,7 @@ func scenarioUserStoreAuthTokens(t *testing.T, store *xologorm.Store) {
 	}
 
 	// Deleting the owner cascades to its remaining tokens.
-	if err := store.DeleteUser(ctx, user.ID()); err != nil {
+	if err := deleteAndPurgeUser(t, store, user.ID()); err != nil {
 		t.Fatalf("DeleteUser: %v", err)
 	}
 	tokens, err = store.GetUserAuthTokens(ctx, user.ID())
@@ -291,7 +291,7 @@ func scenarioUserStoreDeleteUserWithMemberships(t *testing.T, store *xologorm.St
 		t.Fatalf("SetMembershipRoles: %v", err)
 	}
 
-	if err := store.DeleteUser(ctx, user.ID()); err != nil {
+	if err := deleteAndPurgeUser(t, store, user.ID()); err != nil {
 		t.Fatalf("DeleteUser: %v", err)
 	}
 	if _, err := store.GetUserByID(ctx, user.ID()); !errors.Is(err, port.ErrNotFound) {

@@ -3,15 +3,15 @@ package setup
 import (
 	"context"
 
+	"github.com/pkg/errors"
 	"github.com/xolo-gateway/xolo/internal/config"
 	"github.com/xolo-gateway/xolo/internal/core/service"
-	"github.com/pkg/errors"
 )
 
 // getProvisioningServiceFromConfig builds the provisioning service on top of
-// the very same store instances the public HTTP server uses — cache and event
-// decorators included. No second database connection, no second repository
-// implementation.
+// the repositories used by the public server. Writes rebind those repositories
+// to the shared GORM transaction; readers inside it never use decorators or
+// caches. No second database connection or repository implementation is created.
 var getProvisioningServiceFromConfig = createFromConfigOnce(func(ctx context.Context, conf *config.Config) (*service.ProvisioningService, error) {
 	tenantStore, err := getTenantStoreFromConfig(ctx, conf)
 	if err != nil {

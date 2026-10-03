@@ -6,16 +6,23 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
+	"github.com/xolo-gateway/xolo/internal/core/model"
 	"github.com/xolo-gateway/xolo/internal/core/port"
 	"gorm.io/gorm"
 )
 
 type Store struct {
-	getDatabase func(ctx context.Context) (*gorm.DB, error)
-	// Invitation callbacks own the transaction and the retry boundary: on a
-	// store bound by WithInvitationTransaction, withRetry runs fn exactly once
+	lifecycleRetention *time.Duration
+	businessEnabled    bool
+	businessSecretKey  string
+	identityProviders  map[string]string
+	ownership          model.OwnershipPolicy
+	mutations          *mutationState
+	getDatabase        func(ctx context.Context) (*gorm.DB, error)
+	// Use-case callbacks own the transaction and the retry boundary: on a
+	// transaction-bound store, withRetry runs fn exactly once
 	// on that transaction and never opens its own.
-	invitationTx bool
+	transactionBound bool
 }
 
 // withRetry runs fn, replaying it with an exponential backoff while the
@@ -25,9 +32,9 @@ func (s *Store) withRetry(ctx context.Context, withTx bool, fn func(ctx context.
 	if err != nil {
 		return errors.WithStack(err)
 	}
-	if s.invitationTx {
-		// db is already the invitation transaction: withTx is ignored and a
-		// failure goes back to WithInvitationTransaction, which replays the
+	if s.transactionBound {
+		// db is already the use-case transaction: withTx is ignored and a
+		// failure goes back to identityTransaction, which replays the
 		// whole callback.
 		return fn(ctx, db.WithContext(ctx))
 	}
@@ -64,7 +71,7 @@ func (s *Store) withRetry(ctx context.Context, withTx bool, fn func(ctx context.
 				continue
 			}
 
-			return errors.WithStack(err)
+			return errors.WithStack(lifecycleError(err))
 		}
 
 		return nil

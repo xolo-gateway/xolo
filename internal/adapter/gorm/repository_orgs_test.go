@@ -4,10 +4,10 @@ import (
 	"context"
 	"testing"
 
+	"github.com/pkg/errors"
 	xologorm "github.com/xolo-gateway/xolo/internal/adapter/gorm"
 	"github.com/xolo-gateway/xolo/internal/core/model"
 	"github.com/xolo-gateway/xolo/internal/core/port"
-	"github.com/pkg/errors"
 )
 
 func TestOrgStore_Lifecycle(t *testing.T) {
@@ -62,7 +62,7 @@ func scenarioOrgStoreLifecycle(t *testing.T, store *xologorm.Store) {
 			byID.Name(), byID.Active(), byID.ShareQuotaEqually())
 	}
 
-	if err := store.DeleteOrg(ctx, org.ID()); err != nil {
+	if err := deleteAndPurgeOrg(t, store, org.ID()); err != nil {
 		t.Fatalf("DeleteOrg: %v", err)
 	}
 	if _, err := store.GetOrgByID(ctx, org.ID()); !errors.Is(err, port.ErrNotFound) {
@@ -98,7 +98,7 @@ func scenarioOrgStoreDeletePurgesScopedData(t *testing.T, store *xologorm.Store)
 		t.Fatalf("EnsureBuiltinRoles: %v", err)
 	}
 
-	if err := store.DeleteOrg(ctx, org.ID()); err != nil {
+	if err := deleteAndPurgeOrg(t, store, org.ID()); err != nil {
 		t.Fatalf("DeleteOrg: %v", err)
 	}
 
@@ -237,7 +237,7 @@ func scenarioOrgStoreMemberships(t *testing.T, store *xologorm.Store) {
 	}
 
 	// Deleting an org cascades to the memberships it still holds.
-	if err := store.DeleteOrg(ctx, otherOrg.ID()); err != nil {
+	if err := deleteAndPurgeOrg(t, store, otherOrg.ID()); err != nil {
 		t.Fatalf("DeleteOrg: %v", err)
 	}
 	memberships, err = store.GetUserMemberships(ctx, member.ID())

@@ -81,11 +81,12 @@ func getOIDCAuthnHandlerFromConfig(ctx context.Context, conf *config.Config) (*o
 		})
 
 		providersWithJWKS = append(providersWithJWKS, oidc.ProviderWithJWKS{
-			ID:      "google",
-			Label:   "Google",
-			Icon:    "log-in",
-			Issuer:  "https://accounts.google.com",
-			JWKSURL: "https://www.googleapis.com/oauth2/v3/certs",
+			ID:       "google",
+			Label:    "Google",
+			Icon:     "log-in",
+			Issuer:   "https://accounts.google.com",
+			ClientID: key,
+			JWKSURL:  "https://www.googleapis.com/oauth2/v3/certs",
 		})
 	}
 
@@ -104,17 +105,6 @@ func getOIDCAuthnHandlerFromConfig(ctx context.Context, conf *config.Config) (*o
 			Icon:  "github",
 		})
 
-		issuer := "https://github.com"
-		if conf.HTTP.BaseURL != "" && conf.HTTP.BaseURL != "/" {
-			issuer = conf.HTTP.BaseURL
-		}
-		providersWithJWKS = append(providersWithJWKS, oidc.ProviderWithJWKS{
-			ID:      "github",
-			Label:   "Github",
-			Icon:    "github",
-			Issuer:  issuer,
-			JWKSURL: "https://token.actions.githubusercontent.com/.well-known/jwks",
-		})
 	}
 
 	if conf.HTTP.Authn.Providers.Gitea.Key != "" && conf.HTTP.Authn.Providers.Gitea.Secret != "" {
@@ -149,7 +139,17 @@ func getOIDCAuthnHandlerFromConfig(ctx context.Context, conf *config.Config) (*o
 		providersWithJWKS = append(providersWithJWKS, *withJWKS)
 	}
 
+	registry, err := getGormStoreFromConfig(ctx, conf)
+	if err != nil {
+		return nil, err
+	}
+	mapping := map[string]string{}
+	for _, p := range providersWithJWKS {
+		mapping[p.ID] = p.Issuer
+	}
+	registry.ConfigureIdentityProviders(mapping)
 	opts := []oidc.OptionFunc{
+		oidc.WithSessionRegistry(registry),
 		oidc.WithProviders(providers...),
 		oidc.WithProvidersWithJWKS(providersWithJWKS),
 	}
@@ -162,13 +162,9 @@ func getOIDCAuthnHandlerFromConfig(ctx context.Context, conf *config.Config) (*o
 		return nil, errors.WithStack(err)
 	}
 
-	if conf.Multitenancy.Enabled {
-		// Each tenant is served on its own hostname, so each needs its own
-		// redirect URI: a provider registered once at startup would send every
-		// tenant back to a single host, where its session — bound to both the
-		// hostname and the tenant — could not be used.
-		opts = append(opts, oidc.WithProviderResolver(newHostScopedProviders(factories).Resolve))
-	}
+	// Dedicated domains can also address the default tenant. Build callbacks
+	// from the validated request base URL in both deployment modes.
+	opts = append(opts, oidc.WithProviderResolver(newHostScopedProviders(factories).Resolve))
 
 	gothic.Store = sessionStore
 

@@ -21,6 +21,8 @@ const (
 )
 
 type Membership interface {
+	CommonRole() MembershipRole
+	Status() Status
 	WithID[MembershipID]
 
 	UserID() UserID
@@ -34,30 +36,39 @@ type Membership interface {
 }
 
 type BaseMembership struct {
-	id        MembershipID
-	userID    UserID
-	orgID     OrgID
-	createdAt time.Time
-	user      User
-	org       Organization
-	roles     []Role
+	commonRole MembershipRole
+	status     Status
+	id         MembershipID
+	userID     UserID
+	orgID      OrgID
+	createdAt  time.Time
+	user       User
+	org        Organization
+	roles      []Role
 }
 
-func (m *BaseMembership) ID() MembershipID   { return m.id }
-func (m *BaseMembership) UserID() UserID      { return m.userID }
-func (m *BaseMembership) OrgID() OrgID        { return m.orgID }
+func (m *BaseMembership) ID() MembershipID     { return m.id }
+func (m *BaseMembership) UserID() UserID       { return m.userID }
+func (m *BaseMembership) OrgID() OrgID         { return m.orgID }
 func (m *BaseMembership) CreatedAt() time.Time { return m.createdAt }
-func (m *BaseMembership) User() User          { return m.user }
-func (m *BaseMembership) Org() Organization   { return m.org }
-func (m *BaseMembership) Roles() []Role       { return m.roles }
+func (m *BaseMembership) User() User           { return m.user }
+func (m *BaseMembership) Org() Organization    { return m.org }
+func (m *BaseMembership) Roles() []Role        { return m.roles }
 
 var _ Membership = &BaseMembership{}
 
 func NewMembership(userID UserID, orgID OrgID) *BaseMembership {
 	return &BaseMembership{
-		id:        NewMembershipID(),
-		userID:    userID,
-		orgID:     orgID,
-		createdAt: time.Now(),
+		id:         NewMembershipID(),
+		status:     StatusActive,
+		commonRole: MembershipRoleMember,
+		userID:     userID,
+		orgID:      orgID,
+		createdAt:  time.Now(),
 	}
 }
+
+func (m *BaseMembership) CommonRole() MembershipRole        { return m.commonRole }
+func (m *BaseMembership) Status() Status                    { return m.status }
+func (m *BaseMembership) SetCommonRole(role MembershipRole) { m.commonRole = role }
+func (m *BaseMembership) SetStatus(status Status)           { m.status = status }

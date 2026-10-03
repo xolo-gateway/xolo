@@ -4,21 +4,24 @@ import (
 	"context"
 	"crypto/rsa"
 	"encoding/base64"
+	"encoding/json"
 	"log/slog"
 	"math/big"
 	"net/http"
 	"strings"
 	"time"
 
-	"github.com/xolo-gateway/xolo/internal/http/middleware/authn"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/pkg/errors"
+	"github.com/xolo-gateway/xolo/internal/http/middleware/authn"
 )
 
 var errInvalidToken = errors.New("invalid token")
 
 type claims struct {
+	Events json.RawMessage `json:"events"`
 	jwt.RegisteredClaims
+	EmailVerified     bool   `json:"email_verified"`
 	Email             string `json:"email"`
 	PreferredUsername string `json:"preferred_username"`
 	Name              string `json:"name"`
@@ -127,7 +130,11 @@ func (h *Handler) validateToken(ctx context.Context, rawToken string, provider P
 
 	parseOpts := []jwt.ParserOption{
 		jwt.WithIssuer(provider.Issuer),
+		jwt.WithValidMethods([]string{"RS256"}),
 		jwt.WithExpirationRequired(),
+	}
+	if provider.ClientID != "" {
+		parseOpts = append(parseOpts, jwt.WithAudience(provider.ClientID))
 	}
 	if h.options.ExpiryLeeway > 0 {
 		parseOpts = append(parseOpts, jwt.WithLeeway(h.options.ExpiryLeeway))
@@ -163,14 +170,16 @@ func (h *Handler) validateToken(ctx context.Context, rawToken string, provider P
 		return nil, errInvalidToken
 	}
 
-	if cl.Subject == "" {
+	if cl.Subject == "" || len(cl.Events) != 0 {
 		return nil, errInvalidToken
 	}
 
 	user := &authn.User{
-		Email:    cl.Email,
-		Provider: provider.ID,
-		Subject:  cl.Subject,
+		Email:         cl.Email,
+		EmailVerified: cl.EmailVerified,
+		Issuer:        provider.Issuer,
+		Provider:      provider.ID,
+		Subject:       cl.Subject,
 	}
 
 	if cl.PreferredUsername != "" {

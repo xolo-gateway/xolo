@@ -111,3 +111,6 @@ type EffectiveQuota struct {
 	MonthlyBudget *int64
 	YearlyBudget  *int64
 }
+
+// SetID assigns the caller-owned provisioning key before persistence.
+func (v *BaseQuota) SetID(id QuotaID) { v.id = id }

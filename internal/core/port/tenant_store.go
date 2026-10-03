@@ -7,8 +7,7 @@ import (
 )
 
 // TenantStore persists the outermost isolation boundary. Tenant slugs are
-// unique instance-wide: in multi-tenant mode they are the hostname label used
-// to route a request, so two tenants can never share one.
+// unique instance-wide; routing uses explicit domain records.
 type TenantStore interface {
 	CreateTenant(ctx context.Context, tenant model.Tenant) error
 	GetTenantByID(ctx context.Context, id model.TenantID) (model.Tenant, error)

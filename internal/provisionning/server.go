@@ -2,8 +2,11 @@ package provisionning
 
 import (
 	"context"
+	"crypto/tls"
 	"log/slog"
+	"math"
 	"net/http"
+	"time"
 
 	"github.com/bornholm/go-x/slogx"
 	"github.com/pkg/errors"
@@ -45,14 +48,24 @@ func (s *Server) Run(ctx context.Context) error {
 		return errors.New("provisionning api server requires a handler")
 	}
 
-	handler := requireClientCert(s.opts.Handler)
+	if len(s.opts.AuthorizedURIs) == 0 || s.opts.RequestsPerSecond <= 0 || math.IsNaN(s.opts.RequestsPerSecond) || math.IsInf(s.opts.RequestsPerSecond, 0) || s.opts.Burst < 1 {
+		return errors.New("invalid provisioning client authorization or rate limits")
+	}
+	if s.opts.TLSConfig.MinVersion < tls.VersionTLS13 || s.opts.TLSConfig.ClientAuth != tls.RequireAndVerifyClientCert || s.opts.TLSConfig.ClientCAs == nil {
+		return errors.New("provisioning requires TLS 1.3 and verified client certificates")
+	}
+	handler := requireClientCert(s.opts.Handler, s.opts.AuthorizedURIs, s.opts.RequestsPerSecond, s.opts.Burst)
 	handler = sloghttp.Recovery(handler)
 	handler = sloghttp.New(slog.Default())(handler)
+	handler = requestCorrelation(handler)
 
 	server := &http.Server{
-		Addr:      s.opts.Address,
-		Handler:   handler,
-		TLSConfig: s.opts.TLSConfig,
+		Addr:              s.opts.Address,
+		Handler:           handler,
+		TLSConfig:         s.opts.TLSConfig,
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		WriteTimeout:      30 * time.Second,
 	}
 
 	shutdownDone := make(chan struct{})

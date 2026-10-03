@@ -2,6 +2,7 @@ package oidc
 
 import (
 	"github.com/pkg/errors"
+	"github.com/xolo-gateway/xolo/internal/core/port"
 	"github.com/xolo-gateway/xolo/internal/http/middleware/authn/oidc/component"
 )
 
@@ -21,6 +22,7 @@ var ErrProviderNotFound = errors.New("oidc provider not found")
 type ProviderResolver func(providerID string, baseURL string) (string, error)
 
 type Options struct {
+	Sessions          port.SessionRegistry
 	Providers         []component.Provider
 	ProvidersWithJWKS []ProviderWithJWKS
 	SessionName       string
@@ -66,4 +68,8 @@ func WithProvidersWithJWKS(providers []ProviderWithJWKS) OptionFunc {
 	return func(opts *Options) {
 		(opts).ProvidersWithJWKS = providers
 	}
+}
+
+func WithSessionRegistry(registry port.SessionRegistry) OptionFunc {
+	return func(o *Options) { o.Sessions = registry }
 }

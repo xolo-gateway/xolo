@@ -12,9 +12,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/xolo-gateway/xolo/internal/http/middleware/authn"
 	"github.com/hashicorp/golang-lru/v2/expirable"
 	"github.com/pkg/errors"
+	"github.com/xolo-gateway/xolo/internal/http/middleware/authn"
 )
 
 var errInvalidToken = errors.New("invalid token")
@@ -65,6 +65,7 @@ type introspectionResponse struct {
 	Username          string          `json:"username"`
 	PreferredUsername string          `json:"preferred_username"`
 	Name              string          `json:"name"`
+	EmailVerified     bool            `json:"email_verified"`
 	Email             string          `json:"email"`
 	Scope             string          `json:"scope"`
 	Audience          json.RawMessage `json:"aud"`
@@ -163,9 +164,11 @@ func (h *Handler) resolveViaUserInfo(ctx context.Context, token string, provider
 	}
 
 	user := &authn.User{
-		Provider: provider.ID,
-		Subject:  info.Subject,
-		Email:    info.Email,
+		Provider:      provider.ID,
+		Issuer:        provider.Issuer,
+		Subject:       info.Subject,
+		Email:         info.Email,
+		EmailVerified: info.EmailVerified,
 	}
 	switch {
 	case info.PreferredUsername != "":
@@ -239,9 +242,11 @@ func (h *Handler) introspect(ctx context.Context, token string, provider Provide
 	}
 
 	user := &authn.User{
-		Provider: provider.ID,
-		Subject:  subject,
-		Email:    out.Email,
+		Provider:      provider.ID,
+		Issuer:        provider.Issuer,
+		Subject:       subject,
+		Email:         out.Email,
+		EmailVerified: out.EmailVerified,
 	}
 	switch {
 	case out.PreferredUsername != "":
@@ -272,6 +277,7 @@ func (h *Handler) introspect(ctx context.Context, token string, provider Provide
 // userInfoResponse is the subset of OIDC UserInfo fields we consume.
 type userInfoResponse struct {
 	Subject           string `json:"sub"`
+	EmailVerified     bool   `json:"email_verified"`
 	Email             string `json:"email"`
 	PreferredUsername string `json:"preferred_username"`
 	Name              string `json:"name"`
@@ -327,6 +333,7 @@ func (h *Handler) enrichFromUserInfo(ctx context.Context, token string, provider
 
 	if user.Email == "" {
 		user.Email = info.Email
+		user.EmailVerified = info.EmailVerified
 	}
 	if user.DisplayName == "" {
 		switch {

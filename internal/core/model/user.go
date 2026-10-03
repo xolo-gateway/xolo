@@ -3,6 +3,7 @@ package model
 import (
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/rs/xid"
 )
 
@@ -17,10 +18,18 @@ const (
 type UserID string
 
 func NewUserID() UserID {
-	return UserID(xid.New().String())
+	return UserID(uuid.NewString())
 }
 
+type Identity struct {
+	Issuer  string `json:"issuer"`
+	Subject string `json:"subject"`
+}
+
+// DeclaredIdentity is tenant-scoped; authenticated links remain independent.
 type User interface {
+	DeclaredIdentity() *Identity
+	TenantRole() TenantRole
 	WithID[UserID]
 
 	// TenantID is the owning tenant. The identity tuple (provider, subject) is
@@ -43,6 +52,8 @@ type User interface {
 }
 
 type BaseUser struct {
+	identity    *Identity
+	tenantRole  TenantRole
 	id          UserID
 	tenantID    TenantID
 	displayName string
@@ -103,7 +114,9 @@ var _ User = &BaseUser{}
 
 func CopyUser(user User) *BaseUser {
 	return &BaseUser{
+		identity:    user.DeclaredIdentity(),
 		id:          user.ID(),
+		tenantRole:  user.TenantRole(),
 		tenantID:    user.TenantID(),
 		displayName: user.DisplayName(),
 		email:       user.Email(),
@@ -118,9 +131,10 @@ func CopyUser(user User) *BaseUser {
 func NewUser(tenantID TenantID, provider, subject, email string, displayName string, active bool, roles ...string) *BaseUser {
 	return &BaseUser{
 		id:          NewUserID(),
+		tenantRole:  TenantRoleMember,
 		tenantID:    tenantID,
 		displayName: displayName,
-		email:       email,
+		email:       NormalizeEmail(email),
 		subject:     subject,
 		provider:    provider,
 		roles:       roles,
@@ -138,7 +152,7 @@ func (u *BaseUser) SetActive(active bool) {
 }
 
 func (u *BaseUser) SetEmail(email string) {
-	u.email = email
+	u.email = NormalizeEmail(email)
 }
 
 func (u *BaseUser) SetRoles(roles ...string) {
@@ -261,3 +275,25 @@ func NewUserPreferences(setters ...BaseUserPreferencesSetter) *BaseUserPreferenc
 }
 
 var _ UserPreferences = &BaseUserPreferences{}
+
+func (u *BaseUser) TenantRole() TenantRole               { return u.tenantRole }
+func (u *BaseUser) SetTenantRole(role TenantRole)        { u.tenantRole = role }
+func (u *BaseUser) SetIdentity(provider, subject string) { u.provider, u.subject = provider, subject }
+
+// SetID accepts a validated external UUID; callers should use ParseUserID first.
+func (u *BaseUser) SetID(id UserID) { u.id = id }
+
+func (u *BaseUser) DeclaredIdentity() *Identity {
+	if u.identity == nil {
+		return nil
+	}
+	v := *u.identity
+	return &v
+}
+func (u *BaseUser) SetDeclaredIdentity(v *Identity) {
+	u.identity = nil
+	if v != nil {
+		c := *v
+		u.identity = &c
+	}
+}

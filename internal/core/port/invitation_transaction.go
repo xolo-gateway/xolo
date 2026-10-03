@@ -17,6 +17,7 @@ type InvitationTransaction interface {
 // Invitation, parent, user and role reads are protected against concurrent
 // changes until commit. Implementations must not retry individual statements.
 type InvitationTx interface {
+	GetTenantByID(context.Context, model.TenantID) (model.Tenant, error)
 	GetInviteByID(context.Context, model.InviteTokenID) (model.InviteToken, error)
 	GetOrgByID(context.Context, model.OrgID) (model.Organization, error)
 	GetUserByID(context.Context, model.UserID) (model.User, error)

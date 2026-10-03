@@ -5,8 +5,9 @@ import (
 	"net/http"
 
 	"github.com/a-h/templ"
-	"github.com/xolo-gateway/xolo/internal/http/handler/webui/common/component"
 	"github.com/pkg/errors"
+	"github.com/xolo-gateway/xolo/internal/core/port"
+	"github.com/xolo-gateway/xolo/internal/http/handler/webui/common/component"
 )
 
 type HTTPError interface {
@@ -28,6 +29,15 @@ func HandleError(w http.ResponseWriter, r *http.Request, err error) {
 	vmodel := component.ErrorPageVModel{}
 
 	statusCode := http.StatusInternalServerError
+	if errors.Is(err, port.ErrResourceDeleted) {
+		statusCode = http.StatusGone
+	}
+	if errors.Is(err, port.ErrLifecycleDisabled) {
+		statusCode = http.StatusConflict
+	}
+	if errors.Is(err, port.ErrNotAllowed) {
+		statusCode = http.StatusForbidden
+	}
 
 	var httpErr HTTPError
 	if errors.As(err, &httpErr) {

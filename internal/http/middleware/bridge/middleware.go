@@ -4,170 +4,82 @@ import (
 	"context"
 	"errors"
 	"net/http"
-	"slices"
 
 	"github.com/xolo-gateway/xolo/internal/core/model"
 	"github.com/xolo-gateway/xolo/internal/core/port"
+	"github.com/xolo-gateway/xolo/internal/core/service"
 	httpCtx "github.com/xolo-gateway/xolo/internal/http/context"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/common"
 	"github.com/xolo-gateway/xolo/internal/http/middleware/authn"
-	"github.com/xolo-gateway/xolo/internal/http/middleware/authz"
 )
 
-// Options configures how the bridge turns an authenticated identity into a
-// Xolo user.
+// Options configures transactional identity resolution. Managed members must
+// exist before login; verified default administrators remain a bootstrap path.
 type Options struct {
-	// ActiveByDefault is the initial state of an account created here. An
-	// inactive account exists but is refused by the authorization middleware
-	// until an administrator activates it.
 	ActiveByDefault bool
-
-	// AutoCreateUsers allows an identity unknown to Xolo to get an account on
-	// its first successful authentication. When false, only pre-provisioned
-	// identities can sign in — DefaultAdmins excepted, so a fresh instance can
-	// still be bootstrapped.
 	AutoCreateUsers bool
-
-	// DefaultAdmins lists the e-mail addresses that are granted the platform
-	// admin role on sign-in.
-	DefaultAdmins []string
+	Managed         bool
+	DefaultAdmins   []string
 }
 
 func Middleware(userStore port.UserStore, emitter port.EventEmitter, opts Options) func(http.Handler) http.Handler {
-	emitLoginFailed := func(ctx context.Context, authnUser *authn.User, reason string) {
-		if emitter == nil || authnUser == nil {
-			return
+	resolve := func(ctx context.Context, tid model.TenantID, proof *authn.User) (model.User, error) {
+		// An internal API token authenticates an account UUID independently of an
+		// external identity declaration. It never provisions or updates a profile.
+		if proof.AccountID != "" {
+			user, err := userStore.GetUserByID(ctx, model.UserID(proof.AccountID))
+			if err != nil {
+				return nil, err
+			}
+			if user.TenantID() != tid {
+				return nil, port.ErrNotAllowed
+			}
+			return user, nil
 		}
-		emitter.Emit(ctx, model.NewEvent(model.EventSourcePlatform, model.EventTypeAuthLoginFailed,
-			model.WithEventSeverity(model.SeverityWarning),
-			model.WithEventMessage("Échec de connexion: "+reason),
-			model.WithEventAttribute("email", authnUser.Email),
-			model.WithEventAttribute("provider", authnUser.Provider),
-			model.WithEventAttribute("reason", reason),
-		))
+		transactions, ok := userStore.(port.ProvisioningTransaction)
+		if !ok {
+			return nil, errors.New("bridge requires transactional identity storage")
+		}
+		return service.ResolveAuthenticatedIdentity(ctx, transactions, tid, service.AuthenticatedIdentity{
+			Provider: proof.Provider, Issuer: proof.Issuer, Subject: proof.Subject, Email: proof.Email, DisplayName: proof.DisplayName, EmailVerified: proof.EmailVerified,
+		}, service.LoginPolicy{AutoCreate: opts.AutoCreateUsers, ActiveByDefault: opts.ActiveByDefault, Managed: opts.Managed, DefaultAdmins: opts.DefaultAdmins})
 	}
-
-	return func(h http.Handler) http.Handler {
-		var fn http.HandlerFunc = func(w http.ResponseWriter, r *http.Request) {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			ctx := r.Context()
-			authnUser := authn.ContextUser(ctx)
-			if authnUser == nil {
+			proof := authn.ContextUser(ctx)
+			if proof == nil {
 				common.HandleError(w, r, common.NewHTTPError(http.StatusUnauthorized))
 				return
 			}
-
-			// The tenant middleware runs before this one and answers 404 when it
-			// resolves none, so a request reaching here always carries one.
 			tenant := httpCtx.Tenant(ctx)
 			if tenant == nil {
 				common.HandleError(w, r, common.NewHTTPError(http.StatusNotFound))
 				return
 			}
-
-			isDefaultAdmin := slices.Contains(opts.DefaultAdmins, authnUser.Email)
-
-			// An application authenticates through a shadow user that is
-			// created lazily on its first request. Its lifecycle is governed by
-			// the application itself (the token authenticator already refuses a
-			// deactivated application), so the account-provisioning policy
-			// (AutoCreateUsers, ActiveByDefault) must not apply to it: a shadow
-			// user created inactive would answer 403 on every API call.
-			isApplication := authnUser.Provider == model.ApplicationProvider
-
-			user, err := userStore.GetUserByIdentity(ctx, tenant.ID(), authnUser.Provider, authnUser.Subject)
+			user, err := resolve(ctx, tenant.ID(), proof)
 			if err != nil {
-				if !errors.Is(err, port.ErrNotFound) {
-					common.HandleError(w, r, err)
-					return
-				}
-
-				// The identity authenticated successfully but Xolo knows
-				// nothing about it. Default admins are the exception: they are
-				// the only way to bootstrap an instance that has no user yet.
-				if !opts.AutoCreateUsers && !isDefaultAdmin && !isApplication {
-					emitLoginFailed(ctx, authnUser, "aucun compte ne correspond à cette identité et la création automatique est désactivée")
-					common.HandleError(w, r, common.NewError(
-						"user account auto-creation is disabled",
-						"Aucun compte Xolo n'est associé à cette identité. Contactez un administrateur pour qu'il vous crée un accès.",
-						http.StatusForbidden,
-					))
-					return
-				}
-
-				user = model.NewUser(
-					tenant.ID(),
-					authnUser.Provider, authnUser.Subject, authnUser.Email, authnUser.DisplayName,
-					opts.ActiveByDefault || isDefaultAdmin || isApplication,
-					authz.RoleUser,
-				)
-
-				if err := userStore.SaveUser(ctx, user); err != nil {
-					if errors.Is(err, port.ErrAlreadyExists) {
-						emitLoginFailed(ctx, authnUser, "un compte existe déjà avec cette adresse email")
-						common.HandleError(w, r, common.NewError(
-							err.Error(),
-							"Un compte existe déjà avec cette adresse email. Contactez un administrateur pour faire fusionner vos comptes.",
-							http.StatusConflict,
-						))
-						return
+				if errors.Is(err, port.ErrNotAllowed) || errors.Is(err, port.ErrAlreadyExists) || errors.Is(err, port.ErrResourceDeleted) {
+					if emitter != nil {
+						emitter.Emit(ctx, model.NewEvent(model.EventSourcePlatform, model.EventTypeAuthLoginFailed,
+							model.WithEventSeverity(model.SeverityWarning), model.WithEventMessage("Échec de connexion : identité refusée"),
+							model.WithEventAttribute("provider", proof.Provider), model.WithEventAttribute("reason", "identity_refused")))
 					}
-
-					common.HandleError(w, r, err)
-					return
-				}
-			}
-
-			missingRole := len(user.Roles()) == 0
-			shouldBeAdmin := isDefaultAdmin && !slices.Contains(user.Roles(), authz.RoleAdmin)
-
-			// Never overwrite a stored value with an empty incoming one: some
-			// authenticators (e.g. OAuth2 introspection) resolve an identity
-			// without an email or display name.
-			changed := (authnUser.DisplayName != "" && user.DisplayName() != authnUser.DisplayName) ||
-				(authnUser.Email != "" && user.Email() != authnUser.Email)
-
-			if changed || shouldBeAdmin || missingRole {
-				updatable := model.CopyUser(user)
-				if authnUser.DisplayName != "" {
-					updatable.SetDisplayName(authnUser.DisplayName)
-				}
-				if authnUser.Email != "" {
-					updatable.SetEmail(authnUser.Email)
-				}
-
-				if missingRole {
-					updatable.SetRoles(authz.RoleUser)
-				}
-
-				if shouldBeAdmin {
-					newRoles := append(user.Roles(), authz.RoleAdmin)
-					updatable.SetRoles(newRoles...)
-					updatable.SetActive(true)
-				}
-
-				if err := userStore.SaveUser(ctx, updatable); err != nil {
+					status := http.StatusForbidden
 					if errors.Is(err, port.ErrAlreadyExists) {
-						common.HandleError(w, r, common.NewError(
-							err.Error(),
-							"Un compte existe déjà avec cette adresse email. Contactez un administrateur pour faire fusionner vos comptes.",
-							http.StatusConflict,
-						))
-						return
+						status = http.StatusConflict
 					}
-
+					common.HandleError(w, r, common.NewHTTPError(status))
+				} else {
 					common.HandleError(w, r, err)
-					return
 				}
-
-				user = updatable
+				return
 			}
-
-			ctx = httpCtx.SetUser(ctx, user)
-			r = r.WithContext(ctx)
-
-			h.ServeHTTP(w, r)
-		}
-
-		return fn
+			actor := model.ActorFromContext(ctx)
+			actor.UserID = user.ID()
+			actor.URI = ""
+			ctx = model.WithActor(ctx, actor)
+			next.ServeHTTP(w, r.WithContext(httpCtx.SetUser(ctx, user)))
+		})
 	}
 }

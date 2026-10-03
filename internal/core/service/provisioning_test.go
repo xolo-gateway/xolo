@@ -4,6 +4,7 @@ import (
 	"context"
 	"slices"
 	"testing"
+	"time"
 
 	_ "github.com/ncruces/go-sqlite3/embed"
 	"github.com/ncruces/go-sqlite3/gormlite"
@@ -297,28 +298,36 @@ func TestOrganizationLifecycle(t *testing.T) {
 		}
 	})
 
-	t.Run("delete removes the organization and its dependents", func(t *testing.T) {
+	t.Run("delete freezes the organization and retains its dependents", func(t *testing.T) {
 		svc, store, testTenantID := newTestService(t)
 
 		org := createOrganization(t, svc, testTenantID, "acme", ownerParams())
 
+		store.ConfigureLifecycle(true, time.Second)
 		if err := svc.DeleteOrganization(ctx, testTenantID, org.Org.ID()); err != nil {
 			t.Fatalf("delete organization: %v", err)
 		}
 
-		if _, err := store.GetOrgByID(ctx, org.Org.ID()); !errors.Is(err, port.ErrNotFound) {
-			t.Errorf("organization: got %v, want %v", err, port.ErrNotFound)
+		if _, err := store.GetOrgByID(ctx, org.Org.ID()); err != nil {
+			t.Fatal(err)
 		}
-		if _, err := store.GetMembership(ctx, org.OwnerMembership.ID()); !errors.Is(err, port.ErrNotFound) {
-			t.Errorf("membership: got %v, want %v", err, port.ErrNotFound)
+		if _, err := store.GetMembership(ctx, org.OwnerMembership.ID()); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := store.GetOrgBySlug(ctx, testTenantID, "acme"); !errors.Is(err, port.ErrNotFound) {
+			t.Fatalf("frozen organization accessible: %v", err)
+		}
+		d, err := store.ReadDeletion(ctx, model.CommonScope{Family: "organization", TenantID: string(testTenantID)}, string(org.Org.ID()))
+		if err != nil || d.ConfirmedAt != nil {
+			t.Fatalf("invalid schedule: %+v, %v", d, err)
 		}
 
 		roles, err := store.ListOrgRoles(ctx, org.Org.ID())
 		if err != nil {
 			t.Fatalf("list org roles: %v", err)
 		}
-		if len(roles) != 0 {
-			t.Errorf("roles: got %d, want 0", len(roles))
+		if len(roles) == 0 {
+			t.Error("roles must survive until confirmed purge")
 		}
 	})
 

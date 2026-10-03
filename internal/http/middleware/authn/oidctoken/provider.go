@@ -1,13 +1,14 @@
 package oidctoken
 
 type Provider struct {
-	ID          string
-	Label      string
-	Icon       string
+	ClientID     string
+	ID           string
+	Label        string
+	Icon         string
 	DiscoveryURL string
-	Issuer      string
-	JWKSURL     string
-	CookieNames []string
+	Issuer       string
+	JWKSURL      string
+	CookieNames  []string
 }
 
 type JWKS struct {

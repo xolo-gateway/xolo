@@ -162,6 +162,9 @@ func (h *Handler) deleteInvite(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.inviteStore.DeleteInvite(ctx, model.InviteTokenID(inviteID)); err != nil {
+		if webcommon.RejectOwnership(w, r, err) {
+			return
+		}
 		if errors.Is(err, port.ErrNotFound) {
 			http.Error(w, "Invite not found", http.StatusNotFound)
 			return

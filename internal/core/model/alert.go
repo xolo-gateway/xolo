@@ -117,32 +117,32 @@ type BaseAlert struct {
 	updatedAt       time.Time
 }
 
-func (a *BaseAlert) ID() AlertID                   { return a.id }
-func (a *BaseAlert) OrgID() OrgID                  { return a.orgID }
-func (a *BaseAlert) OwnerID() UserID               { return a.ownerID }
+func (a *BaseAlert) ID() AlertID     { return a.id }
+func (a *BaseAlert) OrgID() OrgID    { return a.orgID }
+func (a *BaseAlert) OwnerID() UserID { return a.ownerID }
 func (a *BaseAlert) Scope() AlertScope {
 	if a.scope == "" {
 		return AlertScopeOrg
 	}
 	return a.scope
 }
-func (a *BaseAlert) Name() string                 { return a.name }
+func (a *BaseAlert) Name() string                  { return a.name }
 func (a *BaseAlert) Description() string           { return a.description }
-func (a *BaseAlert) Query() string                { return a.query }
+func (a *BaseAlert) Query() string                 { return a.query }
 func (a *BaseAlert) Aggregation() AlertAggregation { return a.aggregation }
 func (a *BaseAlert) Window() time.Duration         { return a.window }
 func (a *BaseAlert) Comparator() AlertComparator   { return a.comparator }
 func (a *BaseAlert) Threshold() float64            { return a.threshold }
 func (a *BaseAlert) For() time.Duration            { return a.forDuration }
-func (a *BaseAlert) Enabled() bool                { return a.enabled }
-func (a *BaseAlert) State() AlertState            { return a.state }
+func (a *BaseAlert) Enabled() bool                 { return a.enabled }
+func (a *BaseAlert) State() AlertState             { return a.state }
 func (a *BaseAlert) PendingSince() *time.Time      { return a.pendingSince }
 func (a *BaseAlert) LastEvaluatedAt() *time.Time   { return a.lastEvaluatedAt }
-func (a *BaseAlert) CreatedAt() time.Time         { return a.createdAt }
-func (a *BaseAlert) UpdatedAt() time.Time         { return a.updatedAt }
+func (a *BaseAlert) CreatedAt() time.Time          { return a.createdAt }
+func (a *BaseAlert) UpdatedAt() time.Time          { return a.updatedAt }
 
-func (a *BaseAlert) SetState(s AlertState)          { a.state = s }
-func (a *BaseAlert) SetPendingSince(t *time.Time)   { a.pendingSince = t }
+func (a *BaseAlert) SetState(s AlertState)           { a.state = s }
+func (a *BaseAlert) SetPendingSince(t *time.Time)    { a.pendingSince = t }
 func (a *BaseAlert) SetLastEvaluatedAt(t *time.Time) { a.lastEvaluatedAt = t }
 
 var _ Alert = &BaseAlert{}
@@ -219,3 +219,6 @@ func UpdateAlert(alert Alert, opts ...AlertOption) *BaseAlert {
 	}
 	return a
 }
+
+// SetID assigns the caller-owned provisioning key before persistence.
+func (v *BaseAlert) SetID(id AlertID) { v.id = id }

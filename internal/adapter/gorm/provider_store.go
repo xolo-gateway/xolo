@@ -3,15 +3,15 @@ package gorm
 import (
 	"context"
 
+	"github.com/pkg/errors"
 	"github.com/xolo-gateway/xolo/internal/core/model"
 	"github.com/xolo-gateway/xolo/internal/core/port"
-	"github.com/pkg/errors"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
 
 // CreateProvider implements port.ProviderStore.
-func (s *Store) CreateProvider(ctx context.Context, p model.Provider) error {
+func (s *Store) createProvider(ctx context.Context, p model.Provider) error {
 	return s.withRetry(ctx, true, func(ctx context.Context, db *gorm.DB) error {
 		return errors.WithStack(db.Create(fromProvider(p)).Error)
 	})
@@ -52,7 +52,7 @@ func (s *Store) ListProviders(ctx context.Context, orgID model.OrgID) ([]model.P
 }
 
 // SaveProvider implements port.ProviderStore.
-func (s *Store) SaveProvider(ctx context.Context, p model.Provider) error {
+func (s *Store) saveProvider(ctx context.Context, p model.Provider) error {
 	return s.withRetry(ctx, true, func(ctx context.Context, db *gorm.DB) error {
 		return errors.WithStack(db.Clauses(clause.OnConflict{
 			Columns:   []clause.Column{{Name: "id"}},
@@ -62,7 +62,7 @@ func (s *Store) SaveProvider(ctx context.Context, p model.Provider) error {
 }
 
 // DeleteProvider implements port.ProviderStore.
-func (s *Store) DeleteProvider(ctx context.Context, id model.ProviderID) error {
+func (s *Store) deleteProvider(ctx context.Context, id model.ProviderID) error {
 	return s.withRetry(ctx, true, func(ctx context.Context, db *gorm.DB) error {
 		result := db.Delete(&Provider{}, "id = ?", string(id))
 		if result.Error != nil {
@@ -177,3 +177,15 @@ func (s *Store) DeleteLLMModel(ctx context.Context, id model.LLMModelID) error {
 }
 
 var _ port.ProviderStore = &Store{}
+
+func (s *Store) CreateProvider(ctx context.Context, p model.Provider) error {
+	return s.mutate(ctx, "provider", string(p.ID()), func(bound *Store) error { return bound.createProvider(ctx, p) })
+}
+
+func (s *Store) SaveProvider(ctx context.Context, p model.Provider) error {
+	return s.mutate(ctx, "provider", string(p.ID()), func(bound *Store) error { return bound.saveProvider(ctx, p) })
+}
+
+func (s *Store) DeleteProvider(ctx context.Context, id model.ProviderID) error {
+	return s.mutate(ctx, "provider", string(id), func(bound *Store) error { return bound.deleteProvider(ctx, id) })
+}

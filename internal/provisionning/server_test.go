@@ -4,9 +4,11 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"github.com/stretchr/testify/require"
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -21,7 +23,7 @@ func TestLoadTLSConfig(t *testing.T) {
 	serverCert, serverKey := pki.issue(t, "server", true)
 
 	t.Run("requires and verifies client certificates", func(t *testing.T) {
-		tlsConfig, err := provisionning.LoadTLSConfig(serverCert, serverKey, pki.caCertFile)
+		tlsConfig, err := provisionning.LoadTLSConfig(serverCert, serverKey, pki.caCertFile, "urn:xolo:test:console")
 		if err != nil {
 			t.Fatalf("load tls config: %v", err)
 		}
@@ -32,8 +34,8 @@ func TestLoadTLSConfig(t *testing.T) {
 		if tlsConfig.ClientCAs == nil {
 			t.Error("client certificate authorities should be configured")
 		}
-		if tlsConfig.MinVersion < tls.VersionTLS12 {
-			t.Errorf("min version: got %v, want at least TLS 1.2", tlsConfig.MinVersion)
+		if tlsConfig.MinVersion < tls.VersionTLS13 {
+			t.Errorf("min version: got %v, want at least TLS 1.3", tlsConfig.MinVersion)
 		}
 		if len(tlsConfig.Certificates) != 1 {
 			t.Errorf("certificates: got %d, want 1", len(tlsConfig.Certificates))
@@ -58,7 +60,7 @@ func TestLoadTLSConfig(t *testing.T) {
 			"ca without pem": {serverCert, serverKey, emptyCA},
 		} {
 			t.Run(name, func(t *testing.T) {
-				if _, err := provisionning.LoadTLSConfig(args[0], args[1], args[2]); err == nil {
+				if _, err := provisionning.LoadTLSConfig(args[0], args[1], args[2], "urn:xolo:test:console"); err == nil {
 					t.Error("an error was expected")
 				}
 			})
@@ -82,7 +84,7 @@ func TestServerMutualTLS(t *testing.T) {
 	rogue := newTestPKI(t, "rogue-ca")
 	rogueCert, rogueKey := rogue.issue(t, "rogue-client", false)
 
-	tlsConfig, err := provisionning.LoadTLSConfig(serverCert, serverKey, pki.caCertFile)
+	tlsConfig, err := provisionning.LoadTLSConfig(serverCert, serverKey, pki.caCertFile, "urn:xolo:test:console")
 	if err != nil {
 		t.Fatalf("load tls config: %v", err)
 	}
@@ -154,7 +156,7 @@ func TestServerRequiresConfiguration(t *testing.T) {
 
 	pki := newTestPKI(t, "xolo-test-ca")
 	serverCert, serverKey := pki.issue(t, "server", true)
-	tlsConfig, err := provisionning.LoadTLSConfig(serverCert, serverKey, pki.caCertFile)
+	tlsConfig, err := provisionning.LoadTLSConfig(serverCert, serverKey, pki.caCertFile, "urn:xolo:test:console")
 	if err != nil {
 		t.Fatalf("load tls config: %v", err)
 	}
@@ -176,6 +178,7 @@ func startServer(t *testing.T, tlsConfig *tls.Config, handler http.Handler) stri
 
 	server := provisionning.NewServer(
 		provisionning.WithTLSConfig(tlsConfig),
+		provisionning.WithClientPolicy([]string{"urn:xolo:test:console"}, 100, 100),
 		provisionning.WithHandler(handler),
 		provisionning.WithListener(listener),
 		provisionning.WithShutdownTimeout(time.Second),
@@ -211,7 +214,7 @@ func newTLSClient(t *testing.T, caPEM []byte, certFile, keyFile string) *http.Cl
 		t.Fatal("could not append ca certificate")
 	}
 
-	tlsConfig := &tls.Config{RootCAs: pool, MinVersion: tls.VersionTLS12}
+	tlsConfig := &tls.Config{RootCAs: pool, MinVersion: tls.VersionTLS13}
 
 	if certFile != "" && keyFile != "" {
 		certificate, err := tls.LoadX509KeyPair(certFile, keyFile)
@@ -225,4 +228,36 @@ func newTLSClient(t *testing.T, caPEM []byte, certFile, keyFile string) *http.Cl
 		Timeout:   5 * time.Second,
 		Transport: &http.Transport{TLSClientConfig: tlsConfig},
 	}
+}
+
+func TestRejectedCertificateURIs(t *testing.T) {
+	pki := newTestPKI(t, "authority")
+	serverCert, serverKey := pki.issue(t, "server", true)
+	cfg, err := provisionning.LoadTLSConfig(serverCert, serverKey, pki.caCertFile, "urn:xolo:test:console")
+	require.NoError(t, err)
+	address := startServer(t, cfg, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(200) }))
+	for name, customize := range map[string]func(*x509.Certificate){
+		"no URI":      func(c *x509.Certificate) { c.URIs = nil },
+		"two URIs":    func(c *x509.Certificate) { c.URIs = append(c.URIs, c.URIs[0]) },
+		"unknown URI": func(c *x509.Certificate) { u, _ := url.Parse("urn:unknown"); c.URIs = []*url.URL{u} },
+		"expired":     func(c *x509.Certificate) { c.NotAfter = time.Now().Add(-time.Minute) },
+	} {
+		t.Run(name, func(t *testing.T) {
+			cert, key := pki.issue(t, name, false, customize)
+			client := newTLSClient(t, pki.caCertPEM, cert, key)
+			resp, err := client.Get(address + "/v1/manifest")
+			if resp != nil {
+				resp.Body.Close()
+			}
+			require.Error(t, err)
+		})
+	}
+	cert, key := pki.issue(t, "tls12", false)
+	client := newTLSClient(t, pki.caCertPEM, cert, key)
+	client.Transport.(*http.Transport).TLSClientConfig.MaxVersion = tls.VersionTLS12
+	resp, err := client.Get(address + "/v1/manifest")
+	if resp != nil {
+		resp.Body.Close()
+	}
+	require.Error(t, err)
 }

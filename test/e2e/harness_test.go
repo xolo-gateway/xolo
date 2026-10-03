@@ -27,22 +27,20 @@ import (
 	"testing"
 	"time"
 
+	_ "github.com/ncruces/go-sqlite3/driver"
+	_ "github.com/ncruces/go-sqlite3/embed"
 	"github.com/ncruces/go-sqlite3/gormlite"
-	"gorm.io/gorm"
-	"gorm.io/gorm/logger"
-
 	gormadapter "github.com/xolo-gateway/xolo/internal/adapter/gorm"
 	"github.com/xolo-gateway/xolo/internal/core/model"
 	"github.com/xolo-gateway/xolo/internal/core/port"
-
-	_ "github.com/ncruces/go-sqlite3/driver"
-	_ "github.com/ncruces/go-sqlite3/embed"
+	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 )
 
 // Values pinned by cmd/seed (see cmd/seed/README.md).
 const (
 	seedSecretKey = "0e2ec2e6d5aa74c1b96c65d1b4a0f4d9ad48c6b1f3ff7a1c5f0f5f2ae4c1d3b7"
-	orgAcme       = "org-acme"
+	orgAcme       = "00000000-0000-4000-8000-000000000001"
 	tokenAlice    = "xolo-e2e-alice-acme"
 	tokenCarol    = "xolo-e2e-carol-acme" // Carol carries a user quota, Alice does not
 

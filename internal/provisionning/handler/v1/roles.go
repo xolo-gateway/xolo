@@ -8,6 +8,10 @@ import (
 )
 
 func (h *Handler) handleListRoles(w http.ResponseWriter, r *http.Request) {
+	if h.businessEnabled {
+		h.handleBusinessList(w, r)
+		return
+	}
 	ctx := r.Context()
 
 	org, ok := h.resolveOrganization(w, r)
@@ -60,6 +64,10 @@ func (h *Handler) handleCreateRole(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) handleGetRole(w http.ResponseWriter, r *http.Request) {
+	if h.businessEnabled {
+		h.handleBusinessGet(w, r)
+		return
+	}
 	ctx := r.Context()
 
 	org, ok := h.resolveOrganization(w, r)
@@ -80,6 +88,10 @@ func (h *Handler) handleGetRole(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) handleUpdateRole(w http.ResponseWriter, r *http.Request) {
+	if h.businessEnabled {
+		h.handleBusinessPut(w, r)
+		return
+	}
 	ctx := r.Context()
 
 	org, ok := h.resolveOrganization(w, r)

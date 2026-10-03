@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -94,20 +93,17 @@ func TestInvitationConcurrentAcceptance(t *testing.T) {
 	})
 }
 
-// Both transactions must see the membership absent before inserting. This pins
-// the ON CONFLICT path on PostgreSQL and full snapshot retry on SQLite.
-type synchronizedInsert struct {
-	port.InvitationTx
+// The publication clock now serializes validation before membership reads.
+// Synchronize competing requests before acquiring that database lock.
+type synchronizedInvitationTransaction struct {
+	port.InvitationTransaction
 	barrier *sync.WaitGroup
-	entered *atomic.Int32
 }
 
-func (tx synchronizedInsert) InsertInvitationMember(ctx context.Context, m model.Membership) (bool, error) {
-	if tx.entered.Add(1) <= 2 {
-		tx.barrier.Done()
-		tx.barrier.Wait()
-	}
-	return tx.InvitationTx.InsertInvitationMember(ctx, m)
+func (tx synchronizedInvitationTransaction) WithInvitationTransaction(ctx context.Context, fn func(port.InvitationTx) error) error {
+	tx.barrier.Done()
+	tx.barrier.Wait()
+	return tx.InvitationTransaction.WithInvitationTransaction(ctx, fn)
 }
 func TestInvitationMembershipInsertConflict(t *testing.T) {
 	eachBackend(t, func(t *testing.T, store *xologorm.Store) {
@@ -115,8 +111,7 @@ func TestInvitationMembershipInsertConflict(t *testing.T) {
 		a, b := f.invite(t, false, "", nil, nil), f.invite(t, false, model.RoleOrgOwner, nil, nil)
 		barrier := &sync.WaitGroup{}
 		barrier.Add(2)
-		entered := &atomic.Int32{}
-		txs := invitationTxWrapper{store, func(tx port.InvitationTx) port.InvitationTx { return synchronizedInsert{tx, barrier, entered} }}
+		txs := synchronizedInvitationTransaction{store, barrier}
 		svc := service.NewInvitationService(events.NewInvitationTransaction(txs, f.recorder))
 		ctx, cancel := context.WithTimeout(f.ctx, 15*time.Second)
 		defer cancel()
@@ -271,7 +266,8 @@ func TestInvitationRetryDiscardsResultsAndEvents(t *testing.T) {
 					case "retry deleted role":
 						require.NoError(t, store.DeleteRole(f.ctx, f.role.ID()))
 					case "retry foreign organization":
-						require.NoError(t, store.SaveOrg(f.ctx, foreignInvitationOrg{Organization: f.org, tenant: f.foreignTenant.ID()}))
+						require.ErrorIs(t, store.SaveOrg(f.ctx, foreignInvitationOrg{Organization: f.org, tenant: f.foreignTenant.ID()}), port.ErrAlreadyExists)
+						require.NoError(t, store.SaveOrg(f.ctx, model.UpdateOrganization(f.org, model.WithOrgActive(false))))
 					}
 				}
 				svc := service.NewInvitationService(events.NewInvitationTransaction(replay, f.recorder))

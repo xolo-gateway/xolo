@@ -94,3 +94,6 @@ func NewApplication(orgID OrgID, name, description string, active bool) *BaseApp
 func (a *BaseApplication) SetName(name string)        { a.name = name }
 func (a *BaseApplication) SetDescription(desc string) { a.description = desc }
 func (a *BaseApplication) SetActive(active bool)      { a.active = active }
+
+// SetID assigns the caller-owned provisioning key before persistence.
+func (v *BaseApplication) SetID(id ApplicationID) { v.id = id }
