@@ -140,7 +140,7 @@ require (
 
 require (
 	github.com/RealAlexandreAI/json-repair v0.0.14 // indirect
-	github.com/google/uuid v1.6.0 // indirect
+	github.com/google/uuid v1.6.0
 	github.com/jinzhu/inflection v1.0.0 // indirect
 	github.com/jinzhu/now v1.1.5 // indirect
 	github.com/ncruces/julianday v1.0.0 // indirect

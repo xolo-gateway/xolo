@@ -3,7 +3,9 @@ package config
 import "time"
 
 type Storage struct {
-	Database Database `envPrefix:"DATABASE_"`
+	// AutoMigrate applies pending schema changes before starting the server.
+	AutoMigrate bool     `env:"AUTO_MIGRATE" envDefault:"true"`
+	Database    Database `envPrefix:"DATABASE_"`
 }
 
 type Database struct {

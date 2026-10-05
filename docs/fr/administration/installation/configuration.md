@@ -72,6 +72,7 @@ Comme pour les fournisseurs OIDC nommés, `jwks_uri` est optionnel : en son abse
 
 | Variable | Défaut | Description |
 | --- | --- | --- |
+| `XOLO_STORAGE_AUTO_MIGRATE` | `true` | Applique les migrations au démarrage. Avec `false`, vérifie seulement le schéma et refuse les migrations en attente. Voir la [procédure UUID](./uuid-migration.md), qui impose l’arrêt de tous les anciens réplicas. |
 | `XOLO_STORAGE_DATABASE_DSN` | `data.sqlite` | Base de données. Un DSN commençant par `postgres://` (ou une chaîne libpq `host=… dbname=…`) cible PostgreSQL ; toute autre valeur est interprétée comme un chemin de fichier SQLite. |
 | `XOLO_STORAGE_DATABASE_POOL_MAX_OPEN_CONNS` | `25` | Connexions ouvertes maximum (PostgreSQL uniquement ; SQLite reste sur une seule connexion). |
 | `XOLO_STORAGE_DATABASE_POOL_MAX_IDLE_CONNS` | `5` | Connexions inactives conservées dans le pool (PostgreSQL uniquement). |

@@ -48,8 +48,8 @@ func TestMigrateToDefaultTenant(t *testing.T) {
 	}
 
 	orgs := []legacyOrganization{
-		{ID: "org-1", Slug: "acme", Name: "Acme", Active: 1, Currency: "EUR"},
-		{ID: "org-2", Slug: "globex", Name: "Globex", Active: 1, Currency: "USD"},
+		{ID: "11111111-1111-4111-8111-111111111111", Slug: "acme", Name: "Acme", Active: 1, Currency: "EUR"},
+		{ID: "22222222-2222-4222-8222-222222222222", Slug: "globex", Name: "Globex", Active: 1, Currency: "USD"},
 	}
 	for _, org := range orgs {
 		if err := db.Table("organizations").Create(&org).Error; err != nil {
@@ -58,8 +58,8 @@ func TestMigrateToDefaultTenant(t *testing.T) {
 	}
 
 	users := []legacyUser{
-		{ID: "user-1", Provider: "openid-connect", Subject: "sub-1", Email: "jean@acme.tld", Active: true},
-		{ID: "user-2", Provider: "openid-connect", Subject: "sub-2", Email: "marie@globex.tld", Active: true},
+		{ID: "33333333-3333-4333-8333-333333333333", Provider: "openid-connect", Subject: "sub-1", Email: "jean@acme.tld", Active: true},
+		{ID: "44444444-4444-4444-8444-444444444444", Provider: "openid-connect", Subject: "sub-2", Email: "marie@globex.tld", Active: true},
 	}
 	for _, user := range users {
 		if err := db.Table("users").Create(&user).Error; err != nil {

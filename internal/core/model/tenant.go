@@ -3,13 +3,13 @@ package model
 import (
 	"time"
 
-	"github.com/rs/xid"
+	"github.com/google/uuid"
 )
 
 type TenantID string
 
 func NewTenantID() TenantID {
-	return TenantID(xid.New().String())
+	return TenantID(uuid.NewString())
 }
 
 // DefaultTenantSlug is the slug of the tenant every Xolo instance owns. It is
@@ -90,3 +90,5 @@ func UpdateTenant(tenant Tenant, opts ...TenantOption) *BaseTenant {
 	}
 	return b
 }
+
+func (v *BaseTenant) SetID(id TenantID) { v.id = id }

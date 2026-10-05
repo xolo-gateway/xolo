@@ -8,11 +8,10 @@ import (
 	"strings"
 	"time"
 
-	"gorm.io/gorm"
-
 	gormadapter "github.com/xolo-gateway/xolo/internal/adapter/gorm"
 	"github.com/xolo-gateway/xolo/internal/core/model"
 	"github.com/xolo-gateway/xolo/internal/crypto"
+	"gorm.io/gorm"
 )
 
 // Plugins built from the working tree and served to the server under test.
@@ -575,7 +574,7 @@ func createPersonalHashModels(db *gorm.DB) error {
 		modelNode("llm", modelFast).sink("out").
 		edge("gen.request", "pseudo.request").edge("pseudo.request", "llm.request").edge("llm.response", "out.response")
 	now := time.Now()
-	for _, user := range []string{"usr-alice", "usr-carol"} {
+	for _, user := range []string{"00000000-0000-4000-8000-000000000005", "00000000-0000-4000-8000-000000000007"} {
 		vm := &gormadapter.PersonalVirtualModel{ID: "pvm-e2e-hash-" + user, UserID: user, Name: "e2e-personal-hash", GraphJSON: g.json(), CreatedAt: now, UpdatedAt: now}
 		if err := db.Create(vm).Error; err != nil {
 			return err
@@ -585,5 +584,5 @@ func createPersonalHashModels(db *gorm.DB) error {
 	if err != nil {
 		return err
 	}
-	return db.Create(&gormadapter.PluginNodeSecret{ID: "secret-e2e-personal-hash", OrgID: "~:usr-alice", PluginName: "pseudonymizer", NodeID: "pseudo", Key: "hash_key", ValueEncrypted: encrypted, CreatedAt: now, UpdatedAt: now}).Error
+	return db.Create(&gormadapter.PluginNodeSecret{ID: "secret-e2e-personal-hash", OrgID: "~:00000000-0000-4000-8000-000000000005", PluginName: "pseudonymizer", NodeID: "pseudo", Key: "hash_key", ValueEncrypted: encrypted, CreatedAt: now, UpdatedAt: now}).Error
 }

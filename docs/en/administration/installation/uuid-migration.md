@@ -1,0 +1,112 @@
+# UUID upgrade and offline migrations
+
+Migration `202610020001` converts tenant, organization and user IDs to UUIDs.
+It preserves existing UUIDs, rewrites relations and retains platform roles.
+Other identifiers (tokens, models, graph nodes, etc.) keep their existing format.
+
+**Stop every old server, replica, worker and database writer before applying
+this upgrade. Rolling upgrades are unsupported.** An old binary can still write
+retired IDs into usage and quota records: those rows become orphaned and spend
+can disappear from quota accounting. The migration lock serializes new migration
+processes; it cannot stop old binaries. Startup logs an explicit warning.
+
+## Recommended procedure
+
+1. Back up the database using your database's consistent backup procedure.
+   Include SQLite WAL state; copying only an active `.sqlite` file is insufficient.
+2. Rehearse the commands below on a restored copy.
+3. Stop all writers on the live database and take a final backup.
+4. Generate and review a recovery plan against that stopped database; resolve
+   every diagnostic, then apply the exact saved plan.
+5. Start only the new binaries and verify login, organizations, API tokens,
+   alert queries and quota totals before reopening traffic.
+
+The release archives and Docker image include `xolo-migrate`. From source,
+`make build-migrate` produces `bin/migrate`; substitute that path below.
+Only `XOLO_STORAGE_DATABASE_DSN` is required. The CLI does not load `.env` itself.
+Use the existing SQLite file or a PostgreSQL DSN through this environment variable.
+
+```bash
+export XOLO_STORAGE_DATABASE_DSN=/data/data.sqlite
+xolo-migrate diagnose
+xolo-migrate plan -out recovery.json
+# Review recovery.json and add any required explicit corrections.
+xolo-migrate diagnose -plan recovery.json
+xolo-migrate apply -plan recovery.json -writers-stopped
+export XOLO_STORAGE_AUTO_MIGRATE=false
+xolo-server
+```
+
+`diagnose` and `plan` use a read-only database snapshot and never migrate. A failed
+diagnostic returns a nonzero exit code and an actionable JSON report. `plan`
+still saves its artifact when the report has blocking issues, so you can resolve
+them. The output file is created with permissions `0600`; an existing file is
+never overwritten. Keep the mapping and artifact securely, and reuse them for retries.
+
+`apply` executes the complete migration chain in one transaction, including its
+migration markers. It revalidates the plan under the migration lock. A failure
+rolls everything back. Reapplying the same successful plan is idempotent; an
+artifact with different decisions is rejected after migration. The saved artifact
+is also recorded in the database's recovery checkpoint.
+
+For a fresh installation, or an upgrade needing no operator decisions, use
+`xolo-migrate apply -writers-stopped` without a plan. Fresh installations do not
+need `plan`, which expects the previous release's tenant/user/organization schema.
+
+## Resolve diagnostics
+
+| Case | Resolution |
+| --- | --- |
+| Legacy IDs, including non-xid values such as `org-acme` | Converted automatically. Keep the generated `ids` mapping; valid UUIDs must stay unchanged. |
+| Emails differing only by case or surrounding spaces in one tenant | Add `email_overrides` keyed by **old user ID**, with a distinct valid email for each affected account. No accounts are merged or deleted. |
+| Exact EventQL matches on `user`, `org`, `actor_id`, `user_id`, `org_id` and other recognized ID attributes | Rewritten automatically using the matching ID family. Indexed selectors support `user`/`org`; `user_id`/`actor_id` are pipeline attributes. Historical event ID attributes are rewritten too. |
+| Graph references in recognized ID fields or exact string `value` fields | Rewritten automatically; graph topology IDs and edges remain unchanged. |
+| EventQL regex containing an old ID, opaque graph script/configuration or ambiguous ID | The report names the table, row, column and, for graphs, JSON path. Add a `serialized_overrides` entry as described below. |
+| Invalid query or JSON | Repair it with a valid serialized override. Unknown EventQL selectors such as `{user_id="..."}` must become a supported selector or attribute filter. |
+| Incomplete, stale, duplicate or invalid UUID mapping | Regenerate an unapplied plan from the final stopped database and review it again. Never edit an already applied mapping. |
+| Empty primary ID, orphaned relation, partial/duplicate identity or foreign membership/role | Repair the source data on a backup-tested copy before replanning. Diagnostics never discard affected rows. |
+| Ambiguous membership builtin role | Set `membership_roles[old_membership_id]` to the chosen existing builtin role (`member`, `admin`, `owner`). Custom roles are preserved. |
+| Invalid tenant owner or domain decision | Correct `tenant_owners`, `domains` or `reserved_hostnames`; owners must be active users of the same tenant and domains must be unique and nonreserved. These optional decisions use old IDs. |
+
+An email correction added to the existing plan looks like:
+
+```json
+"email_overrides": {
+  "old-user-id": "distinct@example.com"
+}
+```
+
+For a serialized correction, add the following array to the existing plan. Obtain
+the actual new UUID from `ids.users` (or the appropriate family):
+
+```json
+"serialized_overrides": [{
+  "table": "alerts",
+  "id": "existing-alert-id",
+  "column": "query",
+  "before": "{user=~\"old-user-id\"}",
+  "after": "{user=\"UUID-FROM-THE-PLAN\"}"
+}]
+```
+
+`before` must exactly match the stored field. A concurrent edit makes the plan
+stale and blocks application. `after` replaces the whole query or JSON field, so
+include every intended change and preserve unrelated configuration. Equal
+`before`/`after` values explicitly acknowledge intentionally literal text. Allowed
+targets are alert queries, virtual/personal model and middleware graphs, and
+historical event attributes. Unknown targets and duplicate overrides are rejected.
+
+## Startup policy and recovery
+
+`XOLO_STORAGE_AUTO_MIGRATE` defaults to `true`, preserving automatic startup
+migration. It does **not** make a rolling upgrade safe. With `false`, both startup
+and later store access only check migration history: pending or unknown migrations
+refuse startup with a diagnostic, without applying schema changes.
+
+If an automatic upgrade is blocked, keep writers stopped and use the CLI to
+produce, correct, diagnose and apply a plan. A failed transaction leaves the old
+database intact. After a successful UUID conversion, returning to an old binary
+requires restoring the pre-upgrade backup; there is no reverse UUID migration.
+External consumers that store Xolo IDs must update their references using the
+saved mapping. This change preserves the provisioning routes; their replacement
+belongs to a separate release change.

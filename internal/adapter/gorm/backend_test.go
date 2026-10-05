@@ -1,6 +1,7 @@
 package gorm_test
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -10,6 +11,7 @@ import (
 	_ "github.com/ncruces/go-sqlite3/embed"
 	"github.com/ncruces/go-sqlite3/gormlite"
 	xologorm "github.com/xolo-gateway/xolo/internal/adapter/gorm"
+	"github.com/xolo-gateway/xolo/internal/core/model"
 	"gorm.io/driver/postgres"
 	gormpkg "gorm.io/gorm"
 )
@@ -76,7 +78,7 @@ func sqliteBackend() backend {
 		newDB: newDB,
 		newStore: func(t *testing.T) *xologorm.Store {
 			t.Helper()
-			return newStoreOn(t, newDB(t))
+			return newSeededStore(t, newDB(t))
 		},
 	}
 }
@@ -140,7 +142,7 @@ func newPostgresBackend(dsn string) backend {
 		newDB: newDB,
 		newStore: func(t *testing.T) *xologorm.Store {
 			t.Helper()
-			return newStoreOn(t, newDB(t))
+			return newSeededStore(t, newDB(t))
 		},
 	}
 }
@@ -188,4 +190,17 @@ func closeDB(t *testing.T, db *gormpkg.DB) {
 // postgresDSNFromEnv returns the DSN of an externally provisioned server, if any.
 func postgresDSNFromEnv() string {
 	return os.Getenv(testPostgresDSNEnv)
+}
+
+func newSeededStore(t *testing.T, db *gormpkg.DB) *xologorm.Store {
+	store := xologorm.NewStore(db)
+	if err := store.Migrate(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	tenant := model.NewTenant("test", "Test", "")
+	tenant.SetID(testTenantID)
+	if err := store.CreateTenant(context.Background(), tenant); err != nil {
+		t.Fatal(err)
+	}
+	return store
 }

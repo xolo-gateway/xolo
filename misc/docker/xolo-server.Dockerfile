@@ -8,6 +8,7 @@ RUN apk add \
   && update-ca-certificates
 
 COPY xolo-server /usr/local/bin/xolo-server
+COPY xolo-migrate /usr/local/bin/xolo-migrate
 
 RUN mkdir -p /plugins
 COPY xolo-plugin-time-restriction /plugins/time-restriction

@@ -7,13 +7,12 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
-	"gorm.io/gorm"
-
 	gormadapter "github.com/xolo-gateway/xolo/internal/adapter/gorm"
 	"github.com/xolo-gateway/xolo/internal/core/model"
 	"github.com/xolo-gateway/xolo/internal/core/rbac"
 	"github.com/xolo-gateway/xolo/internal/crypto"
 	"github.com/xolo-gateway/xolo/internal/http/middleware/authz"
+	"gorm.io/gorm"
 )
 
 // defaultSecretKey is the AES-GCM key used to encrypt the fake provider API
@@ -21,20 +20,20 @@ import (
 // same XOLO_SECRET_KEY, hence a well-known constant here.
 const defaultSecretKey = "0e2ec2e6d5aa74c1b96c65d1b4a0f4d9ad48c6b1f3ff7a1c5f0f5f2ae4c1d3b7"
 
-// Well-known identifiers. They are hand-written (instead of xid-generated) so
+// Well-known identifiers. Tenant/org/user IDs use canonical UUIDs so
 // E2E tests can address any entity by a stable ID and stable URLs.
 const (
-	orgAcme    = "org-acme"
-	orgGlobex  = "org-globex"
-	orgInitech = "org-initech"
+	orgAcme    = "00000000-0000-4000-8000-000000000001"
+	orgGlobex  = "00000000-0000-4000-8000-000000000002"
+	orgInitech = "00000000-0000-4000-8000-000000000003"
 
-	userRoot  = "usr-root"
-	userAlice = "usr-alice"
-	userBob   = "usr-bob"
-	userCarol = "usr-carol"
-	userDave  = "usr-dave"
-	userErin  = "usr-erin"
-	userFrank = "usr-frank"
+	userRoot  = "00000000-0000-4000-8000-000000000004"
+	userAlice = "00000000-0000-4000-8000-000000000005"
+	userBob   = "00000000-0000-4000-8000-000000000006"
+	userCarol = "00000000-0000-4000-8000-000000000007"
+	userDave  = "00000000-0000-4000-8000-000000000008"
+	userErin  = "00000000-0000-4000-8000-000000000009"
+	userFrank = "00000000-0000-4000-8000-000000000010"
 
 	appAcmeCI    = "app-acme-ci"
 	appGlobexBot = "app-globex-bot"
@@ -288,6 +287,10 @@ func (s *seeder) seedUsers(ctx context.Context) error {
 
 	for _, user := range users {
 		user.TenantID = s.tenantID
+		user.TenantRole = string(model.TenantRoleMember)
+		if user.ID == userRoot {
+			user.TenantRole = string(model.TenantRoleOwner)
+		}
 
 		roles := user.Roles
 		prefs := user.Preferences
@@ -366,10 +369,12 @@ func (s *seeder) seedMemberships(ctx context.Context) error {
 
 	for _, m := range memberships {
 		if err := s.create(&gormadapter.Membership{
-			ID:        m.id,
-			CreatedAt: now.AddDate(0, -3, 0),
-			UserID:    m.userID,
-			OrgID:     m.orgID,
+			ID:         m.id,
+			CommonRole: m.builtin,
+			Status:     string(model.StatusActive),
+			CreatedAt:  now.AddDate(0, -3, 0),
+			UserID:     m.userID,
+			OrgID:      m.orgID,
 		}); err != nil {
 			return errors.WithStack(err)
 		}
@@ -620,8 +625,8 @@ func (s *seeder) seedModels(ctx context.Context) error {
 				ID: modelAcmeGPT4oMini, CreatedAt: now.AddDate(0, -13, 0), UpdatedAt: now.AddDate(0, 0, -10),
 				ProviderID: providerAcmeOpenAI, OrgID: orgAcme,
 				ProxyName: "gpt-4o-mini", RealModel: "gpt-4o-mini",
-				Description: "Modèle économique par défaut.",
-				Enabled:     1,
+				Description:           "Modèle économique par défaut.",
+				Enabled:               1,
 				PromptCostPer1KTokens: 150, CachedPromptCostPer1KTokens: 75, CompletionCostPer1KTokens: 600,
 				ContextWindow: 128_000, OutputWindow: 16_384, ActiveParams: 8_000_000_000,
 				TokensPerSecLow: 60, TokensPerSecHigh: 110,
@@ -634,8 +639,8 @@ func (s *seeder) seedModels(ctx context.Context) error {
 				ID: modelAcmeGPT4o, CreatedAt: now.AddDate(0, -13, 0), UpdatedAt: now.AddDate(0, 0, -10),
 				ProviderID: providerAcmeOpenAI, OrgID: orgAcme,
 				ProxyName: "gpt-4o", RealModel: "gpt-4o",
-				Description: "Modèle généraliste haut de gamme.",
-				Enabled:     1,
+				Description:           "Modèle généraliste haut de gamme.",
+				Enabled:               1,
 				PromptCostPer1KTokens: 2500, CachedPromptCostPer1KTokens: 1250, CompletionCostPer1KTokens: 10000,
 				ContextWindow: 128_000, OutputWindow: 16_384,
 				TokensPerSecLow: 30, TokensPerSecHigh: 70,
@@ -649,8 +654,8 @@ func (s *seeder) seedModels(ctx context.Context) error {
 				ID: modelAcmeMistral, CreatedAt: now.AddDate(0, -8, 0), UpdatedAt: now.AddDate(0, 0, -5),
 				ProviderID: providerAcmeMistral, OrgID: orgAcme,
 				ProxyName: "mistral-small", RealModel: "mistral-small-latest",
-				Description: "Modèle souverain, facturé en euros.",
-				Enabled:     1,
+				Description:           "Modèle souverain, facturé en euros.",
+				Enabled:               1,
 				PromptCostPer1KTokens: 200, CachedPromptCostPer1KTokens: 100, CompletionCostPer1KTokens: 600,
 				ContextWindow: 32_000, OutputWindow: 8_192,
 				TokensPerSecLow: 80, TokensPerSecHigh: 140,
@@ -666,8 +671,8 @@ func (s *seeder) seedModels(ctx context.Context) error {
 				ID: modelAcmeEmbeddings, CreatedAt: now.AddDate(0, -6, 0), UpdatedAt: now.AddDate(0, -6, 0),
 				ProviderID: providerAcmeOpenAI, OrgID: orgAcme,
 				ProxyName: "text-embedding-3-small", RealModel: "text-embedding-3-small",
-				Description: "Embeddings pour la recherche interne.",
-				Enabled:     1,
+				Description:           "Embeddings pour la recherche interne.",
+				Enabled:               1,
 				PromptCostPer1KTokens: 20,
 				ContextWindow:         8_191,
 				CapEmbeddings:         1,
@@ -679,8 +684,8 @@ func (s *seeder) seedModels(ctx context.Context) error {
 				ID: modelAcmeSonnet, CreatedAt: now.AddDate(0, -1, 0), UpdatedAt: now.AddDate(0, 0, -3),
 				ProviderID: providerAcmePlan, OrgID: orgAcme,
 				ProxyName: "claude-sonnet", RealModel: "claude-sonnet-4-5",
-				Description: "Modèle couvert par l'abonnement de l'équipe.",
-				Enabled:     1,
+				Description:           "Modèle couvert par l'abonnement de l'équipe.",
+				Enabled:               1,
 				PromptCostPer1KTokens: 3000, CachedPromptCostPer1KTokens: 300, CompletionCostPer1KTokens: 15000,
 				ContextWindow: 200_000, OutputWindow: 64_000,
 				TokensPerSecLow: 40, TokensPerSecHigh: 90,
@@ -693,8 +698,8 @@ func (s *seeder) seedModels(ctx context.Context) error {
 				ID: modelGlobexSonnet, CreatedAt: now.AddDate(0, -5, 0), UpdatedAt: now.AddDate(0, 0, -2),
 				ProviderID: providerGlobexPlan, OrgID: orgGlobex,
 				ProxyName: "claude-sonnet", RealModel: "claude-sonnet-4-5",
-				Description: "Modèle principal couvert par l'abonnement.",
-				Enabled:     1,
+				Description:           "Modèle principal couvert par l'abonnement.",
+				Enabled:               1,
 				PromptCostPer1KTokens: 3000, CachedPromptCostPer1KTokens: 300, CompletionCostPer1KTokens: 15000,
 				ContextWindow: 200_000, OutputWindow: 64_000,
 				TokensPerSecLow: 40, TokensPerSecHigh: 90,
@@ -708,8 +713,8 @@ func (s *seeder) seedModels(ctx context.Context) error {
 				ID: modelGlobexHaiku, CreatedAt: now.AddDate(0, -5, 0), UpdatedAt: now.AddDate(0, 0, -2),
 				ProviderID: providerGlobexPlan, OrgID: orgGlobex,
 				ProxyName: "claude-haiku", RealModel: "claude-haiku-4-5",
-				Description: "Modèle rapide, temporairement désactivé.",
-				Enabled:     0,
+				Description:           "Modèle rapide, temporairement désactivé.",
+				Enabled:               0,
 				PromptCostPer1KTokens: 100, CachedPromptCostPer1KTokens: 10, CompletionCostPer1KTokens: 500,
 				ContextWindow: 200_000, OutputWindow: 32_000,
 			},

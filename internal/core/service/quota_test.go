@@ -320,3 +320,6 @@ func TestQuotaService_ResolveEffectiveQuotaForApplication_OrgTakesPrecedenceOnCu
 		t.Errorf("currency = %q, want EUR (org takes precedence)", got.Currency)
 	}
 }
+
+func (*fakeMembership) CommonRole() model.MembershipRole { return model.MembershipRoleMember }
+func (*fakeMembership) Status() model.Status             { return model.StatusActive }

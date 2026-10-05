@@ -33,37 +33,6 @@ func fromAuthToken(t model.AuthToken) *AuthToken {
 	}
 }
 
-// FindOrCreateUser implements port.UserStore.
-func (s *Store) FindOrCreateUser(ctx context.Context, tenantID model.TenantID, provider, subject string) (model.User, error) {
-	var user model.User
-	err := s.withRetry(ctx, true, func(ctx context.Context, db *gorm.DB) error {
-		var u User
-
-		err := db.Where("tenant_id = ? AND provider = ? AND subject = ?", string(tenantID), provider, subject).
-			Preload("Roles").
-			Preload("Preferences").
-			Attrs(&User{
-				ID:       string(model.NewUserID()),
-				TenantID: string(tenantID),
-				Provider: provider,
-				Subject:  subject,
-				Active:   true,
-			}).
-			FirstOrCreate(&u).Error
-		if err != nil {
-			return errors.WithStack(err)
-		}
-
-		user = &wrappedUser{&u}
-		return nil
-	})
-	if err != nil {
-		return nil, errors.WithStack(err)
-	}
-
-	return user, nil
-}
-
 // GetUserByID implements port.UserStore.
 func (s *Store) GetUserByID(ctx context.Context, userID model.UserID) (model.User, error) {
 	var user User
@@ -86,6 +55,9 @@ func (s *Store) GetUserByID(ctx context.Context, userID model.UserID) (model.Use
 
 // GetUserByIdentity implements port.UserStore.
 func (s *Store) GetUserByIdentity(ctx context.Context, tenantID model.TenantID, provider, subject string) (model.User, error) {
+	if provider == "" || subject == "" {
+		return nil, port.ErrNotFound
+	}
 	var user User
 
 	err := s.withRetry(ctx, false, func(ctx context.Context, db *gorm.DB) error {
@@ -108,8 +80,27 @@ func (s *Store) GetUserByIdentity(ctx context.Context, tenantID model.TenantID, 
 }
 
 // SaveUser implements port.UserStore.
-func (s *Store) SaveUser(ctx context.Context, user model.User) error {
+func (s *Store) saveUser(ctx context.Context, user model.User) error {
 	err := s.withRetry(ctx, true, func(ctx context.Context, db *gorm.DB) error {
+		if _, err := model.ParseUserID(string(user.ID())); err != nil {
+			return port.ErrInvalid
+		}
+		var parent Tenant
+		if err := db.First(&parent, "id = ?", string(user.TenantID())).Error; err != nil {
+			return invitationReadError(err)
+		}
+		var previous User
+		err := db.First(&previous, "id = ?", string(user.ID())).Error
+		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+			return err
+		}
+		if err == nil && previous.TenantID != string(user.TenantID()) {
+			return port.ErrAlreadyExists
+		}
+		if !user.TenantRole().Valid() || (user.Provider() == "") != (user.Subject() == "") {
+			return port.ErrInvalid
+		}
+
 		gormUser := fromUser(user)
 
 		// Use Clauses with OnConflict to handle upsert
@@ -117,6 +108,9 @@ func (s *Store) SaveUser(ctx context.Context, user model.User) error {
 			Columns:   []clause.Column{{Name: "id"}},
 			UpdateAll: true,
 		}).Omit("Roles", "Preferences").Create(gormUser).Error; err != nil {
+			if isUniqueViolation(err, "users", "identity") || isUniqueViolation(err, "users", "provider", "subject") {
+				return errors.Wrap(port.ErrAlreadyExists, "provider identity is already bound")
+			}
 			if isUniqueViolation(err, "users", "email") {
 				return errors.Wrapf(port.ErrAlreadyExists, "email %q is already used by another user", gormUser.Email)
 			}
@@ -249,7 +243,7 @@ func (s *Store) DeleteAuthToken(ctx context.Context, tokenID model.AuthTokenID) 
 }
 
 // DeleteUser implements port.UserStore.
-func (s *Store) DeleteUser(ctx context.Context, userID model.UserID) error {
+func (s *Store) deleteUser(ctx context.Context, userID model.UserID) error {
 	err := s.withRetry(ctx, true, func(ctx context.Context, db *gorm.DB) error {
 		deleted, err := deleteUsersWithin(db, []string{string(userID)})
 		if err != nil {
@@ -437,4 +431,40 @@ func (s *Store) QueryUsers(ctx context.Context, opts port.QueryUsersOptions) ([]
 	}
 
 	return wrappedUsers, nil
+}
+
+func (s *Store) SaveUser(ctx context.Context, user model.User) error {
+	return s.mutate(ctx, "member", string(user.ID()), func(bound *Store) error { return bound.saveUser(ctx, user) })
+}
+
+func (s *Store) DeleteUser(ctx context.Context, userID model.UserID) error {
+	return s.mutate(ctx, "member", string(userID), func(bound *Store) error {
+		if err := bound.trackDependents(ctx, "member", string(userID)); err != nil {
+			return err
+		}
+		return bound.deleteUser(ctx, userID)
+	})
+}
+
+func (s *Store) FindOrCreateUser(ctx context.Context, tenantID model.TenantID, provider, subject string) (model.User, error) {
+	if provider == "" || subject == "" {
+		return nil, port.ErrInvalid
+	}
+	var user model.User
+	err := s.identityTransaction(ctx, func(bound *Store) error {
+		var err error
+		user, err = bound.GetUserByIdentity(ctx, tenantID, provider, subject)
+		if err == nil {
+			return nil
+		}
+		if !errors.Is(err, port.ErrNotFound) {
+			return err
+		}
+		user = model.NewUser(tenantID, provider, subject, "", "", true)
+		return bound.SaveUser(ctx, user)
+	})
+	if err != nil {
+		return nil, err
+	}
+	return user, nil
 }

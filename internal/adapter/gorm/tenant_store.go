@@ -11,8 +11,12 @@ import (
 )
 
 // CreateTenant implements port.TenantStore.
-func (s *Store) CreateTenant(ctx context.Context, tenant model.Tenant) error {
+func (s *Store) createTenant(ctx context.Context, tenant model.Tenant) error {
 	return s.withRetry(ctx, true, func(ctx context.Context, db *gorm.DB) error {
+		if _, err := model.ParseTenantID(string(tenant.ID())); err != nil {
+			return port.ErrInvalid
+		}
+
 		if err := db.Create(fromTenant(tenant)).Error; err != nil {
 			if isUniqueViolation(err, "tenants", "slug") {
 				return errors.Wrapf(port.ErrAlreadyExists, "slug %q is already used by another tenant", tenant.Slug())
@@ -92,7 +96,10 @@ func (s *Store) ListTenants(ctx context.Context, opts port.ListTenantsOptions) (
 }
 
 // SaveTenant implements port.TenantStore.
-func (s *Store) SaveTenant(ctx context.Context, tenant model.Tenant) error {
+func (s *Store) saveTenant(ctx context.Context, tenant model.Tenant) error {
+	if _, err := model.ParseTenantID(string(tenant.ID())); err != nil {
+		return port.ErrInvalid
+	}
 	return s.withRetry(ctx, true, func(ctx context.Context, db *gorm.DB) error {
 		return errors.WithStack(db.Clauses(clause.OnConflict{
 			Columns:   []clause.Column{{Name: "id"}},
@@ -105,7 +112,7 @@ func (s *Store) SaveTenant(ctx context.Context, tenant model.Tenant) error {
 // for every organization the tenant owns, then removes the tenant users and the
 // rows keyed on them: users are tenant-scoped, so nothing outside this tenant
 // can reference them.
-func (s *Store) DeleteTenant(ctx context.Context, id model.TenantID) error {
+func (s *Store) deleteTenant(ctx context.Context, id model.TenantID) error {
 	return s.withRetry(ctx, true, func(ctx context.Context, db *gorm.DB) error {
 		var exists Tenant
 		if err := db.Select("id").First(&exists, "id = ?", string(id)).Error; err != nil {
@@ -138,5 +145,22 @@ func (s *Store) DeleteTenant(ctx context.Context, id model.TenantID) error {
 		}
 
 		return errors.WithStack(db.Delete(&Tenant{}, "id = ?", string(id)).Error)
+	})
+}
+
+func (s *Store) CreateTenant(ctx context.Context, tenant model.Tenant) error {
+	return s.mutate(ctx, "tenant", string(tenant.ID()), func(bound *Store) error { return bound.createTenant(ctx, tenant) })
+}
+
+func (s *Store) SaveTenant(ctx context.Context, tenant model.Tenant) error {
+	return s.mutate(ctx, "tenant", string(tenant.ID()), func(bound *Store) error { return bound.saveTenant(ctx, tenant) })
+}
+
+func (s *Store) DeleteTenant(ctx context.Context, id model.TenantID) error {
+	return s.mutate(ctx, "tenant", string(id), func(bound *Store) error {
+		if err := bound.trackDependents(ctx, "tenant", string(id)); err != nil {
+			return err
+		}
+		return bound.deleteTenant(ctx, id)
 	})
 }

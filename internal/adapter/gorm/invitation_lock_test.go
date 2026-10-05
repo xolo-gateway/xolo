@@ -2,7 +2,6 @@ package gorm_test
 
 import (
 	"context"
-	"errors"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -64,35 +63,21 @@ func TestInvitationParentLocksAndSnapshotRetry(t *testing.T) {
 							require.Equal(t, "55P03", pgErr.Code)
 							return
 						}
-						// SQLite allows the concurrent write while this transaction only read.
-						// Its next write must fail BUSY_SNAPSHOT, and all validation must run anew.
-						switch parent {
-						case "organization":
-							require.NoError(t, store.SaveOrg(f.ctx, model.UpdateOrganization(f.org, model.WithOrgActive(false))))
-						case "user":
-							f.user.SetActive(false)
-							require.NoError(t, store.SaveUser(f.ctx, f.user))
-						case "role":
-							require.NoError(t, store.DeleteRole(f.ctx, f.role.ID()))
-						case "invitation":
-							require.NoError(t, store.RevokeInvite(f.ctx, inv.ID()))
-						}
+						// SQLite now takes its writer lock before reading parents.
+						// A different connection must fail promptly instead of changing a
+						// parent under a validated transaction.
+						otherCtx, cancel := context.WithTimeout(f.ctx, 50*time.Millisecond)
+						defer cancel()
+						err := db.WithContext(otherCtx).Exec("UPDATE publication_clocks SET sequence = sequence WHERE id = 1").Error
+						require.Error(t, err)
+
 					}}
 				}}
 				svc := service.NewInvitationService(events.NewInvitationTransaction(txs, f.recorder))
 				result, err := svc.Accept(f.ctx, f.tenant.ID(), inv.ID(), f.user.ID())
-				if db.Dialector.Name() == "postgres" {
-					require.NoError(t, err)
-					require.NotNil(t, result)
-					require.Len(t, f.recorder.snapshot(), 3)
-				} else {
-					require.True(t, errors.Is(err, port.ErrInvalid) || errors.Is(err, port.ErrNotAllowed), "%v", err)
-					require.Nil(t, result)
-					require.Empty(t, f.recorder.snapshot())
-					member, err := store.IsMember(f.ctx, f.user.ID(), f.org.ID())
-					require.NoError(t, err)
-					require.False(t, member)
-				}
+				require.NoError(t, err)
+				require.NotNil(t, result)
+				require.Len(t, f.recorder.snapshot(), 3)
 			})
 		}
 	})

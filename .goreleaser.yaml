@@ -16,6 +16,17 @@ builds:
     ldflags:
       - -w -s -X 'github.com/xolo-gateway/xolo/internal/build.ShortVersion={{ .Version }}' -X 'github.com/xolo-gateway/xolo/internal/build.LongVersion={{ .Version }}'
 
+  - id: xolo-migrate
+    goos: [linux]
+    goarch: [amd64, arm64]
+    mod_timestamp: "{{ .CommitTimestamp }}"
+    dir: ./cmd/migrate
+    binary: xolo-migrate
+    flags:
+      - -trimpath
+    ldflags:
+      - -w -s
+
   - id: xolo-plugin-time-restriction
     goos: [linux]
     goarch: [amd64, arm64]
@@ -189,6 +200,7 @@ dockers:
   - id: xolo-server
     ids:
       - xolo-server
+      - xolo-migrate
       - xolo-plugin-time-restriction
       - xolo-plugin-dummy-model
       - xolo-plugin-fuzzy-evaluator

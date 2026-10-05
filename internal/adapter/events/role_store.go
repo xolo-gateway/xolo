@@ -123,3 +123,17 @@ func (s *RoleStore) SetApplicationRoles(ctx context.Context, appID model.Applica
 }
 
 var _ port.RoleStore = &RoleStore{}
+
+// ApplicationRoleStore keeps events for application assignments while common
+// role/membership mutations are already recorded by the transactional backend.
+type ApplicationRoleStore struct {
+	port.RoleStore
+	applicationEvents *RoleStore
+}
+
+func NewApplicationRoleStore(backend port.RoleStore, emitter port.EventEmitter, principals principalResolver) *ApplicationRoleStore {
+	return &ApplicationRoleStore{RoleStore: backend, applicationEvents: NewRoleStore(backend, emitter, principals)}
+}
+func (s *ApplicationRoleStore) SetApplicationRoles(ctx context.Context, id model.ApplicationID, roles []model.RoleID) error {
+	return s.applicationEvents.SetApplicationRoles(ctx, id, roles)
+}

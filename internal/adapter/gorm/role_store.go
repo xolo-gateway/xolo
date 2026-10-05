@@ -3,17 +3,30 @@ package gorm
 import (
 	"context"
 
+	"github.com/pkg/errors"
 	"github.com/xolo-gateway/xolo/internal/core/model"
 	"github.com/xolo-gateway/xolo/internal/core/port"
 	"github.com/xolo-gateway/xolo/internal/core/rbac"
-	"github.com/pkg/errors"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
 
 // CreateRole implements port.RoleStore.
-func (s *Store) CreateRole(ctx context.Context, role model.Role) error {
+func (s *Store) createRole(ctx context.Context, role model.Role) error {
 	return s.withRetry(ctx, true, func(ctx context.Context, db *gorm.DB) error {
+		var parent Organization
+		if err := db.First(&parent, "id = ?", string(role.OrgID())).Error; err != nil {
+			return invitationReadError(err)
+		}
+		var previous Role
+		err := db.First(&previous, "id = ?", string(role.ID())).Error
+		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+			return err
+		}
+		if err == nil && previous.OrgID != string(role.OrgID()) {
+			return port.ErrNotFound
+		}
+
 		if err := db.Create(fromRole(role)).Error; err != nil {
 			// The (org_id, name) index is spelled "roles.org_id, roles.name" by
 			// SQLite and "role_org_name_index" by PostgreSQL, whose Detail line
@@ -67,8 +80,21 @@ func (s *Store) ListOrgRoles(ctx context.Context, orgID model.OrgID) ([]model.Ro
 
 // SaveRole implements port.RoleStore. It upserts the role and fully replaces
 // its permissions and model grants.
-func (s *Store) SaveRole(ctx context.Context, role model.Role) error {
+func (s *Store) saveRole(ctx context.Context, role model.Role) error {
 	return s.withRetry(ctx, true, func(ctx context.Context, db *gorm.DB) error {
+		var parent Organization
+		if err := db.First(&parent, "id = ?", string(role.OrgID())).Error; err != nil {
+			return invitationReadError(err)
+		}
+		var previous Role
+		err := db.First(&previous, "id = ?", string(role.ID())).Error
+		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+			return err
+		}
+		if err == nil && previous.OrgID != string(role.OrgID()) {
+			return port.ErrNotFound
+		}
+
 		gormRole := fromRole(role)
 
 		if err := db.Clauses(clause.OnConflict{
@@ -105,7 +131,7 @@ func (s *Store) SaveRole(ctx context.Context, role model.Role) error {
 }
 
 // DeleteRole implements port.RoleStore. It refuses to delete builtin roles.
-func (s *Store) DeleteRole(ctx context.Context, id model.RoleID) error {
+func (s *Store) deleteRole(ctx context.Context, id model.RoleID) error {
 	return s.withRetry(ctx, true, func(ctx context.Context, db *gorm.DB) error {
 		var role Role
 		if err := db.First(&role, "id = ?", string(id)).Error; err != nil {
@@ -129,8 +155,30 @@ func (s *Store) DeleteRole(ctx context.Context, id model.RoleID) error {
 
 // SetMembershipRoles implements port.RoleStore. It replaces the full set of
 // roles assigned to a membership.
-func (s *Store) SetMembershipRoles(ctx context.Context, membershipID model.MembershipID, roleIDs []model.RoleID) error {
+func (s *Store) setMembershipRoles(ctx context.Context, membershipID model.MembershipID, roleIDs []model.RoleID) error {
 	return s.withRetry(ctx, true, func(ctx context.Context, db *gorm.DB) error {
+		var member Membership
+		if err := db.First(&member, "id = ?", string(membershipID)).Error; err != nil {
+			return invitationReadError(err)
+		}
+		common := "member"
+		for _, id := range roleIDs {
+			var role Role
+			if err := db.First(&role, "id = ?", string(id)).Error; err != nil {
+				return invitationReadError(err)
+			}
+			if role.OrgID != member.OrgID {
+				return port.ErrNotFound
+			}
+			if role.BuiltinKind == "owner" {
+				common = "owner"
+			} else if role.BuiltinKind == "admin" && common != "owner" {
+				common = "admin"
+			}
+		}
+		if err := db.Model(&Membership{}).Where("id = ?", string(membershipID)).Update("common_role", common).Error; err != nil {
+			return err
+		}
 		if err := db.Where("membership_id = ?", string(membershipID)).Delete(&MembershipRole{}).Error; err != nil {
 			return errors.WithStack(err)
 		}
@@ -239,6 +287,21 @@ func (s *Store) ResolveEffectivePermissions(ctx context.Context, userID model.Us
 			}
 			return errors.WithStack(err)
 		}
+		var org Organization
+		var tenant Tenant
+		var user User
+		if err := db.First(&org, "id = ?", string(orgID)).Error; err != nil {
+			return invitationReadError(err)
+		}
+		if err := db.First(&tenant, "id = ?", org.TenantID).Error; err != nil {
+			return invitationReadError(err)
+		}
+		if err := db.First(&user, "id = ?", string(userID)).Error; err != nil {
+			return invitationReadError(err)
+		}
+		if m.Status != "active" || org.Active == 0 || tenant.Active == 0 || !user.Active || user.TenantID != org.TenantID {
+			return nil
+		}
 		return errors.WithStack(db.Preload("Permissions").Preload("ModelGrants").
 			Joins("JOIN membership_roles mr ON mr.role_id = roles.id").
 			Where("mr.membership_id = ?", m.ID).
@@ -267,6 +330,17 @@ func (s *Store) ResolveApplicationPermissions(ctx context.Context, appID model.A
 		}
 		if !app.Active {
 			return nil // deactivated application: no permissions
+		}
+		var org Organization
+		var tenant Tenant
+		if err := db.First(&org, "id = ?", string(orgID)).Error; err != nil {
+			return invitationReadError(err)
+		}
+		if err := db.First(&tenant, "id = ?", org.TenantID).Error; err != nil {
+			return invitationReadError(err)
+		}
+		if org.Active == 0 || tenant.Active == 0 {
+			return nil
 		}
 		// Only roles owned by the same organization are honoured, so a role that
 		// was moved or mis-assigned can never widen the application's scope.
@@ -345,3 +419,19 @@ func builtinRoleSpecs() []builtinRoleSpec {
 }
 
 var _ port.RoleStore = &Store{}
+
+func (s *Store) CreateRole(ctx context.Context, role model.Role) error {
+	return s.mutate(ctx, "role", string(role.ID()), func(bound *Store) error { return bound.createRole(ctx, role) })
+}
+
+func (s *Store) SaveRole(ctx context.Context, role model.Role) error {
+	return s.mutate(ctx, "role", string(role.ID()), func(bound *Store) error { return bound.saveRole(ctx, role) })
+}
+
+func (s *Store) DeleteRole(ctx context.Context, id model.RoleID) error {
+	return s.mutate(ctx, "role", string(id), func(bound *Store) error { return bound.deleteRole(ctx, id) })
+}
+
+func (s *Store) SetMembershipRoles(ctx context.Context, membershipID model.MembershipID, roleIDs []model.RoleID) error {
+	return s.mutate(ctx, "membership", string(membershipID), func(bound *Store) error { return bound.setMembershipRoles(ctx, membershipID, roleIDs) })
+}

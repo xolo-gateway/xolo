@@ -1,5 +1,7 @@
 # Installation & déploiement
 
+Avant de mettre à niveau une base existante, suivez la [procédure de migration UUID](./uuid-migration.md). Tous les anciens réplicas et workers doivent être arrêtés.
+
 Xolo est un binaire Go unique (`xolo-server`) qui embarque le serveur HTTP, l'interface web d'administration et le proxy LLM. Les plugins sont des binaires séparés, découverts au démarrage dans un répertoire dédié.
 
 ## Prérequis
@@ -43,7 +45,7 @@ make build          # compile bin/server et les plugins dans bin/plugins/
 make CMD='bin/server' run-with-env
 ```
 
-`make build` enchaîne `build-server`, `build-frontend` et la compilation de tous les plugins présents sous `plugins/`. Si vous modifiez des fichiers `.templ` ou le CSS Tailwind, lancez `make generate` avant `make build`.
+`make build` enchaîne `build-server`, `build-migrate`, `build-frontend` et la compilation de tous les plugins présents sous `plugins/`. Si vous modifiez des fichiers `.templ` ou le CSS Tailwind, lancez `make generate` avant `make build`.
 
 Pour un rechargement à chaud en développement, `make watch` (nécessite `.env` et l'outil `modd`, récupéré automatiquement dans `tools/`).
 

@@ -7,10 +7,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/pkg/errors"
 	"github.com/rs/cors"
 	sloghttp "github.com/samber/slog-http"
-
+	"github.com/xolo-gateway/xolo/internal/core/model"
 	httpCtx "github.com/xolo-gateway/xolo/internal/http/context"
 	"github.com/xolo-gateway/xolo/internal/http/middleware/colorscheme"
 	"github.com/xolo-gateway/xolo/internal/http/middleware/httpmetrics"
@@ -51,7 +52,7 @@ func (s *Server) Run(ctx context.Context) error {
 
 	handler = func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			ctx := r.Context()
+			ctx := model.WithActor(r.Context(), model.Actor{URI: "urn:xolo:operator:http", RequestID: uuid.NewString()})
 
 			ctx = httpCtx.SetBaseURL(ctx, s.opts.BaseURLResolver(r))
 			ctx = httpCtx.SetCurrentURL(ctx, r.URL)

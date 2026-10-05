@@ -400,4 +400,7 @@ func TestSwitcherGroupLabel(t *testing.T) {
 // testTenantID is the tenant every fixture of this package belongs to.
 // Tenancy is not what these tests exercise: they only need a stable, shared
 // owner so the tenant-scoped unique keys behave like the pre-tenant ones.
-const testTenantID = model.TenantID("test-tenant")
+const testTenantID = model.TenantID("11111111-1111-4111-8111-111111111111")
+
+func (fakeMembership) CommonRole() model.MembershipRole { return model.MembershipRoleMember }
+func (fakeMembership) Status() model.Status             { return model.StatusActive }

@@ -11,8 +11,24 @@ import (
 )
 
 // CreateOrg implements port.OrgStore.
-func (s *Store) CreateOrg(ctx context.Context, org model.Organization) error {
+func (s *Store) createOrg(ctx context.Context, org model.Organization) error {
 	return s.withRetry(ctx, true, func(ctx context.Context, db *gorm.DB) error {
+		if _, err := model.ParseOrgID(string(org.ID())); err != nil {
+			return port.ErrInvalid
+		}
+		var parent Tenant
+		if err := db.First(&parent, "id = ?", string(org.TenantID())).Error; err != nil {
+			return invitationReadError(err)
+		}
+		var previous Organization
+		err := db.First(&previous, "id = ?", string(org.ID())).Error
+		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+			return err
+		}
+		if err == nil && previous.TenantID != string(org.TenantID()) {
+			return port.ErrAlreadyExists
+		}
+
 		if err := db.Create(fromOrganization(org)).Error; err != nil {
 			if isUniqueViolation(err, "organizations", "slug") {
 				return errors.Wrapf(port.ErrAlreadyExists, "slug %q is already used by another organization", org.Slug())
@@ -96,8 +112,24 @@ func (s *Store) ListOrgs(ctx context.Context, opts port.ListOrgsOptions) ([]mode
 }
 
 // SaveOrg implements port.OrgStore.
-func (s *Store) SaveOrg(ctx context.Context, org model.Organization) error {
+func (s *Store) saveOrg(ctx context.Context, org model.Organization) error {
 	return s.withRetry(ctx, true, func(ctx context.Context, db *gorm.DB) error {
+		if _, err := model.ParseOrgID(string(org.ID())); err != nil {
+			return port.ErrInvalid
+		}
+		var parent Tenant
+		if err := db.First(&parent, "id = ?", string(org.TenantID())).Error; err != nil {
+			return invitationReadError(err)
+		}
+		var previous Organization
+		err := db.First(&previous, "id = ?", string(org.ID())).Error
+		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+			return err
+		}
+		if err == nil && previous.TenantID != string(org.TenantID()) {
+			return port.ErrAlreadyExists
+		}
+
 		return errors.WithStack(db.Clauses(clause.OnConflict{
 			Columns:   []clause.Column{{Name: "id"}},
 			UpdateAll: true,
@@ -110,7 +142,7 @@ func (s *Store) SaveOrg(ctx context.Context, org model.Organization) error {
 // `organizations` have no database-level cascade, and the remaining org-scoped
 // tables would otherwise be orphaned — in particular the applications and their
 // auth tokens, which stay resolvable by FindAuthToken as long as they exist.
-func (s *Store) DeleteOrg(ctx context.Context, id model.OrgID) error {
+func (s *Store) deleteOrg(ctx context.Context, id model.OrgID) error {
 	return s.withRetry(ctx, true, func(ctx context.Context, db *gorm.DB) error {
 		var exists Organization
 		if err := db.Select("id").First(&exists, "id = ?", string(id)).Error; err != nil {
@@ -196,8 +228,11 @@ func deleteOrgWithin(db *gorm.DB, id model.OrgID) error {
 }
 
 // AddMember implements port.OrgStore.
-func (s *Store) AddMember(ctx context.Context, membership model.Membership) error {
+func (s *Store) addMember(ctx context.Context, membership model.Membership) error {
 	return s.withRetry(ctx, true, func(ctx context.Context, db *gorm.DB) error {
+		if err := validateMemberParents(db, membership); err != nil {
+			return err
+		}
 		return errors.WithStack(db.Create(fromMembership(membership)).Error)
 	})
 }
@@ -205,7 +240,7 @@ func (s *Store) AddMember(ctx context.Context, membership model.Membership) erro
 // RemoveMember implements port.OrgStore. The membership_roles rows are deleted
 // first: the join table references the membership and has no database-level
 // cascade, so removing a member holding any role would otherwise fail.
-func (s *Store) RemoveMember(ctx context.Context, id model.MembershipID) error {
+func (s *Store) removeMember(ctx context.Context, id model.MembershipID) error {
 	return s.withRetry(ctx, true, func(ctx context.Context, db *gorm.DB) error {
 		if err := db.Where("membership_id = ?", string(id)).Delete(&MembershipRole{}).Error; err != nil {
 			return errors.WithStack(err)
@@ -316,8 +351,11 @@ func (s *Store) GetUserMemberships(ctx context.Context, userID model.UserID) ([]
 func (s *Store) IsMember(ctx context.Context, userID model.UserID, orgID model.OrgID) (bool, error) {
 	var count int64
 	err := s.withRetry(ctx, false, func(ctx context.Context, db *gorm.DB) error {
-		return errors.WithStack(db.Model(&Membership{}).
-			Where("user_id = ? AND org_id = ?", string(userID), string(orgID)).
+		return errors.WithStack(db.Table("memberships AS m").
+			Joins("JOIN organizations o ON o.id = m.org_id").
+			Joins("JOIN tenants t ON t.id = o.tenant_id").
+			Joins("JOIN users u ON u.id = m.user_id AND u.tenant_id = o.tenant_id").
+			Where("m.user_id = ? AND m.org_id = ? AND m.status = ? AND u.active = ? AND o.active <> 0 AND t.active <> 0", string(userID), string(orgID), "active", true).
 			Count(&count).Error)
 	})
 	if err != nil {
@@ -327,3 +365,33 @@ func (s *Store) IsMember(ctx context.Context, userID model.UserID, orgID model.O
 }
 
 var _ port.OrgStore = &Store{}
+
+func (s *Store) CreateOrg(ctx context.Context, org model.Organization) error {
+	return s.mutate(ctx, "organization", string(org.ID()), func(bound *Store) error {
+		if err := bound.createOrg(ctx, org); err != nil {
+			return err
+		}
+		return bound.EnsureBuiltinRoles(ctx, org.ID())
+	})
+}
+
+func (s *Store) SaveOrg(ctx context.Context, org model.Organization) error {
+	return s.mutate(ctx, "organization", string(org.ID()), func(bound *Store) error { return bound.saveOrg(ctx, org) })
+}
+
+func (s *Store) DeleteOrg(ctx context.Context, id model.OrgID) error {
+	return s.mutate(ctx, "organization", string(id), func(bound *Store) error {
+		if err := bound.trackDependents(ctx, "organization", string(id)); err != nil {
+			return err
+		}
+		return bound.deleteOrg(ctx, id)
+	})
+}
+
+func (s *Store) AddMember(ctx context.Context, membership model.Membership) error {
+	return s.mutate(ctx, "membership", string(membership.ID()), func(bound *Store) error { return bound.addMember(ctx, membership) })
+}
+
+func (s *Store) RemoveMember(ctx context.Context, id model.MembershipID) error {
+	return s.mutate(ctx, "membership", string(id), func(bound *Store) error { return bound.removeMember(ctx, id) })
+}
