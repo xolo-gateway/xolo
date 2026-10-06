@@ -4,7 +4,7 @@ go 1.26.0
 
 require (
 	github.com/Oudwins/tailwind-merge-go v0.2.1
-	github.com/bornholm/genai v0.42.0
+	github.com/bornholm/genai v0.44.0
 	github.com/bornholm/go-anon v0.3.0
 	github.com/bornholm/go-fuzzy v0.0.0-20250815131223-76b121e8632d
 	github.com/bornholm/go-x v0.0.0-20260127104343-c6737ea35324
@@ -15,7 +15,7 @@ require (
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/gorilla/sessions v1.2.0
 	github.com/hashicorp/go-hclog v1.6.3
-	github.com/hashicorp/go-plugin v1.7.0
+	github.com/hashicorp/go-plugin v1.8.0
 	github.com/hashicorp/golang-lru/v2 v2.0.7
 	github.com/jackc/pgx/v5 v5.10.0
 	github.com/markbates/goth v1.82.0
@@ -59,7 +59,7 @@ require (
 	github.com/docker/go-connections v0.7.0 // indirect
 	github.com/docker/go-units v0.5.0 // indirect
 	github.com/ebitengine/purego v0.10.1 // indirect
-	github.com/fatih/color v1.16.0 // indirect
+	github.com/fatih/color v1.18.0 // indirect
 	github.com/felixge/httpsnoop v1.1.0 // indirect
 	github.com/go-chi/chi/v5 v5.2.2 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
@@ -83,7 +83,7 @@ require (
 	github.com/klauspost/compress v1.18.6 // indirect
 	github.com/lufia/plan9stats v0.0.0-20260330125221-c963978e514e // indirect
 	github.com/magiconair/properties v1.8.10 // indirect
-	github.com/mattn/go-colorable v0.1.13 // indirect
+	github.com/mattn/go-colorable v0.1.14 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/mattn/go-runewidth v0.0.23 // indirect
 	github.com/moby/docker-image-spec v1.3.1 // indirect
@@ -113,7 +113,6 @@ require (
 	github.com/shirou/gopsutil/v4 v4.26.6 // indirect
 	github.com/sirupsen/logrus v1.9.4 // indirect
 	github.com/standard-webhooks/standard-webhooks/libraries v0.0.1 // indirect
-	github.com/stretchr/testify v1.11.1 // indirect
 	github.com/tidwall/gjson v1.18.0 // indirect
 	github.com/tidwall/match v1.1.1 // indirect
 	github.com/tidwall/pretty v1.2.1 // indirect
@@ -128,7 +127,6 @@ require (
 	go.yaml.in/yaml/v4 v4.0.0-rc.2 // indirect
 	golang.org/x/crypto v0.54.0 // indirect
 	golang.org/x/image v0.43.0 // indirect
-	golang.org/x/oauth2 v0.36.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260311181403-84a4fc48630c // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 )
@@ -160,7 +158,9 @@ require (
 // replace github.com/bornholm/go-anon => ../go-anon
 
 require (
+	github.com/stretchr/testify v1.11.1
 	github.com/xolo-gateway/xolo/pkg/pluginsdk v0.0.0-00010101000000-000000000000
+	golang.org/x/oauth2 v0.36.0
 	golang.org/x/sync v0.22.0
 )
 
