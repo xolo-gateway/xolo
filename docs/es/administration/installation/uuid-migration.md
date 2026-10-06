@@ -12,6 +12,14 @@ cuotas, dejando filas huérfanas y gastos fuera de la contabilidad. El bloqueo d
 migración coordina los nuevos procesos de migración, pero no detiene los binarios
 antiguos. El arranque muestra una advertencia explícita.
 
+Las esperas de bloqueo conservan su comportamiento actual. Con el tiempo de
+espera de SQLite predeterminado de 5 segundos (`busy_timeout`), 11 intentos y diez
+pausas de 100 ms dan una ventana de reintento de aproximadamente 56 segundos bajo
+contención; otra configuración cambia esa duración. PostgreSQL no tiene un tiempo
+máximo de espera para el bloqueo consultivo definido por la aplicación: la espera
+termina al adquirir el bloqueo, cancelar el contexto o vencer un tiempo límite de
+la base o la sesión.
+
 ## Procedimiento recomendado
 
 1. Haga una copia coherente con las herramientas de su base. En SQLite incluya
@@ -68,6 +76,34 @@ que espera el esquema de tenants, usuarios y organizaciones de la versión anter
 | Mapping incompleto, obsoleto, UUID inválido o duplicado | Regenere un plan todavía no aplicado contra la base detenida y revíselo. Nunca cambie un mapping ya aplicado. |
 | ID primario vacío o relación huérfana | Repare los datos tras ensayar sobre una copia y vuelva a planificar. El diagnóstico nunca descarta filas. |
 
+La eliminación normal de un usuario conserva referencias históricas:
+propietarios de alertas de organización, creadores de invitaciones, ámbitos
+personales de secretos de plugins (`~:<userID>`) y claves OAuth de `mcp-bridge`
+(`oauth:<userID>`). La migración reescribe estos valores si el usuario tiene un
+mapping y los conserva sin cambios si ya no existe. Un ámbito antiguo de alerta
+vacío o NULL significa organización. Los propietarios de alertas personales y
+las demás relaciones obligatorias siguen bloqueando la migración si quedan
+huérfanos. El ámbito de organización de un secreto de plugin debe seguir apuntando
+a una organización. Los eventos, registros de uso y contadores de cuotas conservan
+su política histórica. No se descartan filas ni valores cifrados; cualquier
+referencia a un ID antiguo incluido en el mapping que permanezca en estas columnas
+relacionales sigue provocando un fallo de verificación.
+
+Los diagnósticos relacionales y de mapping se agrupan por tabla/columna, ámbito
+y categoría. Cada grupo indica el total de valores distintos, hasta cinco ejemplos
+ordenados entre comillas y el número de ejemplos omitidos:
+
+```text
+orphan: quota.scope_id [references users; scope = 'user']: 7 distinct values; examples: "missing-0", "missing-1", "missing-2", "missing-3", "missing-4"; 2 omitted
+missing mapping key: users.id: 1 distinct values; examples: "user-alice"
+invalid UUID: users.id: 1 distinct values; examples: "user-alice" -> "bad-uuid"
+```
+
+También se identifican las claves inesperadas del mapping. Los diagnósticos de
+destinos duplicados indican el UUID de destino y los IDs de origen, incluidos
+ambos orígenes de una colisión entre dos IDs. Las referencias históricas de usuarios
+eliminados descritas arriba no generan diagnósticos de relación huérfana.
+
 Los planes utilizan la **versión 2** y contienen únicamente los mappings `ids`
 y las correcciones opcionales `serialized_overrides`. Los planes de versión 1
 se rechazan: regenérelos con `xolo-migrate plan -out recovery-v2.json` sobre la base
@@ -82,7 +118,10 @@ migración posterior.
 Los mappings se cargan por lotes en una tabla temporal indexada. Cada referencia
 relacional declarada se reescribe mediante una operación SQL; los campos
 serializados se leen en páginas de 1 000 filas y se actualizan por lotes. Todos
-los lotes permanecen en la misma transacción atómica. El bloqueo solo se usa para
+los lotes permanecen en la misma transacción atómica. El análisis de grafos reutiliza
+un buscador de subcadenas por bytes, construido una vez por recorrido serializado
+a partir de los IDs modificados; las referencias opacas con puntuación o IDs
+solapados siguen necesitando correcciones explícitas. El bloqueo solo se usa para
 migraciones; las operaciones ordinarias mantienen sus transacciones y caché configurada.
 
 Para una corrección serializada, añada esta lista al plan existente. Obtenga el

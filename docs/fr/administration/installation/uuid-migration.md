@@ -12,6 +12,14 @@ quotas : ces lignes deviennent orphelines et des dépenses peuvent échapper aux
 quotas. Le verrou de migration sérialise les nouvelles migrations, mais ne bloque
 pas les anciens binaires. Le démarrage affiche un avertissement explicite.
 
+Les attentes de verrou conservent leur comportement actuel. Avec le délai
+SQLite par défaut de 5 secondes (`busy_timeout`), 11 tentatives et dix pauses de
+100 ms donnent une fenêtre de reprise d'environ 56 secondes en cas de contention ;
+une autre configuration du délai modifie cette durée. PostgreSQL n'a aucun délai
+maximal de verrou consultatif défini par l'application : l'attente cesse à
+l'acquisition du verrou, à l'annulation du contexte ou à l'expiration d'un délai
+configuré sur la base ou la session.
+
 ## Procédure recommandée
 
 1. Sauvegardez la base avec une procédure cohérente adaptée au moteur. Pour
@@ -69,6 +77,34 @@ Pour une installation neuve ou une migration sans décision manuelle, utilisez
 | Mapping incomplet, périmé, UUID invalide ou dupliqué | Régénérez un plan non appliqué depuis la base définitivement arrêtée et relisez-le. Ne modifiez jamais un mapping déjà appliqué. |
 | ID primaire vide ou relation orpheline | Réparez les données source après répétition sur sauvegarde, puis régénérez le plan. Le diagnostic ne supprime aucune ligne. |
 
+La suppression normale d'un utilisateur conserve des références historiques :
+propriétaires des alertes d'organisation, créateurs des invitations, périmètres
+personnels des secrets de plugins (`~:<userID>`) et clés OAuth de `mcp-bridge`
+(`oauth:<userID>`). La migration réécrit ces valeurs si l'utilisateur figure dans
+le mapping et les conserve à l'identique s'il n'existe plus. Un périmètre d'alerte
+ancien vide ou NULL désigne une alerte d'organisation. Les propriétaires des
+alertes personnelles et les autres relations obligatoires restent bloquants
+s'ils sont orphelins. Le périmètre organisationnel d'un secret de plugin doit
+toujours correspondre à une organisation. Les événements, usages et compteurs
+de quotas gardent leur politique historique. Aucune ligne ni valeur chiffrée
+n'est supprimée ; toute référence à un ancien ID présent dans le mapping qui
+subsiste dans ces colonnes relationnelles fait toujours échouer la vérification.
+
+Les diagnostics relationnels et de mapping sont regroupés par table/colonne,
+périmètre et catégorie. Chaque groupe donne le nombre total de valeurs distinctes,
+au plus cinq exemples triés entre guillemets et le nombre d'exemples omis :
+
+```text
+orphan: quota.scope_id [references users; scope = 'user']: 7 distinct values; examples: "missing-0", "missing-1", "missing-2", "missing-3", "missing-4"; 2 omitted
+missing mapping key: users.id: 1 distinct values; examples: "user-alice"
+invalid UUID: users.id: 1 distinct values; examples: "user-alice" -> "bad-uuid"
+```
+
+Les clés de mapping inattendues sont aussi identifiées. Pour une cible dupliquée,
+le diagnostic indique l'UUID cible et les IDs source, dont les deux sources d'une
+collision entre deux IDs. Les références historiques d'utilisateurs supprimés
+décrites ci-dessus ne produisent pas de diagnostic de relation orpheline.
+
 Les plans utilisent la **version 2** et contiennent uniquement les mappings
 `ids` et les corrections facultatives `serialized_overrides`. Les plans version 1
 sont refusés : régénérez-les avec `xolo-migrate plan -out recovery-v2.json` sur la
@@ -83,7 +119,10 @@ relèvent d'une migration ultérieure.
 Les mappings sont chargés par lots dans une table temporaire indexée. Chaque
 référence relationnelle déclarée est réécrite par une opération SQL ; les champs
 sérialisés sont lus par pages de 1 000 lignes et mis à jour par lots. Tous les lots
-restent dans la même transaction atomique. Le verrou est réservé aux migrations ;
+restent dans la même transaction atomique. Le parcours des graphes réutilise un
+moteur de recherche de sous-chaînes par octets, construit une fois par parcours
+sérialisé à partir des IDs modifiés ; les références opaques avec ponctuation ou
+IDs qui se chevauchent nécessitent toujours une correction explicite. Le verrou est réservé aux migrations ;
 les écritures ordinaires gardent leurs transactions et le cache configuré.
 
 Pour une correction sérialisée, ajoutez ce tableau au plan existant. Remplacez le

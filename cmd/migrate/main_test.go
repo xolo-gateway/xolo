@@ -9,6 +9,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 	adapter "github.com/xolo-gateway/xolo/internal/adapter/gorm"
+	"github.com/xolo-gateway/xolo/internal/core/model"
 )
 
 func TestOfflineMigrationWorkflow(t *testing.T) {
@@ -19,10 +20,23 @@ func TestOfflineMigrationWorkflow(t *testing.T) {
 	pool, err := db.DB()
 	require.NoError(t, err)
 	t.Cleanup(func() { pool.Close() })
-	require.NoError(t, adapter.NewStore(db).Migrate(t.Context()))
+	store := adapter.NewStore(db)
+	require.NoError(t, store.Migrate(t.Context()))
 	require.NoError(t, db.Create(&adapter.Tenant{ID: "tenant-acme", Slug: "acme", Name: "Acme", Active: 1}).Error)
 	require.NoError(t, db.Create(&adapter.User{ID: "user-one", TenantID: "tenant-acme", Email: "One@example.test"}).Error)
 	require.NoError(t, db.Create(&adapter.User{ID: "user-two", TenantID: "tenant-acme", Provider: "oidc", Subject: "two", Email: "one@example.test"}).Error)
+	require.NoError(t, db.Create(&adapter.User{
+		ID: "user-deleted", TenantID: "tenant-acme", Provider: "oidc", Subject: "deleted", Email: "deleted@example.test",
+	}).Error)
+	require.NoError(t, db.Create(&adapter.Organization{ID: "org-acme", TenantID: "tenant-acme", Slug: "acme"}).Error)
+	for _, id := range []string{"user-one", "user-deleted"} {
+		require.NoError(t, db.Create(&adapter.Alert{ID: id, OrgID: "org-acme", OwnerID: id, Scope: "org"}).Error)
+		require.NoError(t, db.Create(&adapter.InviteToken{ID: id, OrgID: "org-acme", CreatedByUserID: id, Role: "member"}).Error)
+		require.NoError(t, db.Create(&adapter.PluginNodeSecret{
+			ID: id, OrgID: "~:" + id, PluginName: "mcp-bridge", NodeID: "node", Key: "oauth:" + id, ValueEncrypted: "preserved",
+		}).Error)
+	}
+	require.NoError(t, store.DeleteUser(t.Context(), model.UserID("user-deleted")))
 	require.NoError(t, db.Exec("DELETE FROM migrations WHERE id = ?", "202610020001").Error)
 	before, err := os.ReadFile(path)
 	require.NoError(t, err)
@@ -50,6 +64,24 @@ func TestOfflineMigrationWorkflow(t *testing.T) {
 	var user adapter.User
 	require.NoError(t, db.First(&user, "id = ?", artifact.IDs["users"]["user-two"]).Error)
 	require.Equal(t, "one@example.test", user.Email)
+	for _, id := range []string{"user-one", "user-deleted"} {
+		want := id
+		if next, ok := artifact.IDs["users"][id]; ok {
+			want = next
+		}
+		var alert adapter.Alert
+		require.NoError(t, db.First(&alert, "id = ?", id).Error)
+		require.Equal(t, want, alert.OwnerID)
+		var invite adapter.InviteToken
+		require.NoError(t, db.First(&invite, "id = ?", id).Error)
+		require.Equal(t, want, invite.CreatedByUserID)
+		var secret adapter.PluginNodeSecret
+		require.NoError(t, db.First(&secret, "id = ?", id).Error)
+		require.Equal(t, "~:"+want, secret.OrgID)
+		require.Equal(t, "oauth:"+want, secret.Key)
+		require.Equal(t, "preserved", secret.ValueEncrypted)
+	}
+
 	require.NoError(t, adapter.CheckDatabaseSchema(t.Context(), db))
 }
 

@@ -44,6 +44,7 @@ func recoveryLabelMappings(a *RecoveryArtifact) map[string]map[string]string {
 // scanSerializedRecovery holds at most one page of rows and corrections.
 // A nil consume callback diagnoses without retaining or applying corrections.
 func scanSerializedRecovery(db *gorm.DB, a *RecoveryArtifact, consume func([]RecoverySerializedOverride) error) ([]string, error) {
+	rewriter := newRecoveryJSONRewriter(a)
 	type key struct{ table, id, column string }
 	overrides := map[key]RecoverySerializedOverride{}
 	var issues []string
@@ -94,9 +95,9 @@ func scanSerializedRecovery(db *gorm.DB, a *RecoveryArtifact, consume func([]Rec
 				} else if row.Value == "" {
 					change.After = row.Value
 				} else if column == "query" {
-					change.After, err = eventql.RewriteIdentifiers(row.Value, recoveryLabelMappings(a))
+					change.After, err = eventql.RewriteIdentifiers(row.Value, rewriter.mappings)
 				} else {
-					change.After, err = rewriteRecoveryJSON(row.Value, a, column == "graph_json")
+					change.After, err = rewriter.rewrite(row.Value, column == "graph_json")
 				}
 				if err != nil {
 					issues = append(issues, fmt.Sprintf("%s[%s].%s: %v", table, row.ID, column, err))
@@ -122,7 +123,29 @@ func scanSerializedRecovery(db *gorm.DB, a *RecoveryArtifact, consume func([]Rec
 	return issues, nil
 }
 
-func rewriteRecoveryJSON(raw string, a *RecoveryArtifact, graph bool) (string, error) {
+type recoveryJSONRewriter struct {
+	artifact *RecoveryArtifact
+	mappings map[string]map[string]string
+	legacy   *recoverySubstringMatcher
+}
+
+func newRecoveryJSONRewriter(a *RecoveryArtifact) *recoveryJSONRewriter {
+	patterns := map[string]bool{}
+	for _, mapping := range a.IDs {
+		for old, next := range mapping {
+			if old != next {
+				patterns[old] = true
+			}
+		}
+	}
+	return &recoveryJSONRewriter{
+		artifact: a,
+		mappings: recoveryLabelMappings(a),
+		legacy:   newRecoverySubstringMatcher(patterns),
+	}
+}
+
+func (r *recoveryJSONRewriter) rewrite(raw string, graph bool) (string, error) {
 	if !json.Valid([]byte(raw)) {
 		return "", fmt.Errorf("invalid JSON; provide a serialized override")
 	}
@@ -132,7 +155,6 @@ func rewriteRecoveryJSON(raw string, a *RecoveryArtifact, graph bool) (string, e
 	if err := decoder.Decode(&value); err != nil {
 		return "", err
 	}
-	mappings := recoveryLabelMappings(a)
 	changed := false
 	var walk func(any, string, string, bool) (any, error)
 	walk = func(value any, field, path string, structural bool) (any, error) {
@@ -164,7 +186,7 @@ func rewriteRecoveryJSON(raw string, a *RecoveryArtifact, graph bool) (string, e
 				v[i] = child
 			}
 		case string:
-			if next, ok := mappings[field][v]; ok && next != v {
+			if next, ok := r.mappings[field][v]; ok && next != v {
 				changed = true
 				return next, nil
 			}
@@ -173,7 +195,7 @@ func rewriteRecoveryJSON(raw string, a *RecoveryArtifact, graph bool) (string, e
 				// unambiguous mapping across identifier families.
 				var next string
 				for _, family := range []string{"tenants", "organizations", "users"} {
-					mapped, ok := a.IDs[family][v]
+					mapped, ok := r.artifact.IDs[family][v]
 					if ok && mapped != v && field == "value" {
 						if next != "" && next != mapped {
 							return nil, fmt.Errorf("ambiguous ID at %s; provide a serialized override", path)
@@ -185,12 +207,8 @@ func rewriteRecoveryJSON(raw string, a *RecoveryArtifact, graph bool) (string, e
 					changed = true
 					return next, nil
 				}
-				for _, mapping := range a.IDs {
-					for old, next := range mapping {
-						if old != next && strings.Contains(v, old) {
-							return nil, fmt.Errorf("opaque legacy reference at %s; provide a serialized override", path)
-						}
-					}
+				if r.legacy.contains(v) {
+					return nil, fmt.Errorf("opaque legacy reference at %s; provide a serialized override", path)
 				}
 			}
 		}

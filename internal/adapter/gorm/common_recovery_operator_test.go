@@ -170,6 +170,8 @@ func TestRecoveryLateFailureRollsBackCorrections(t *testing.T) {
 		require.NoError(t, db.Create(&adapter.Alert{ID: "alert", OrgID: "org-acme", Query: query}).Error)
 		a, err := adapter.PlanCommonRecovery(t.Context(), db)
 		require.NoError(t, err)
+		graph := `{"nodes":[{"id":"user-alice","data":{"value":"user-alice"}}]}`
+		require.NoError(t, db.Create(&adapter.VirtualModel{ID: "vm", OrgID: "org-acme", Name: "vm", GraphJSON: graph}).Error)
 		failure := errors.New("checkpoint failure")
 		require.NoError(t, db.Callback().Create().Before("gorm:create").Register("fail_checkpoint", func(tx *gormpkg.DB) {
 			if tx.Statement.Table == "common_recoveries" {
@@ -186,6 +188,9 @@ func TestRecoveryLateFailureRollsBackCorrections(t *testing.T) {
 		require.NoError(t, db.First(&alert, "id = ?", "alert").Error)
 		require.Equal(t, query, alert.Query)
 		require.Equal(t, "org-acme", alert.OrgID)
+		var vm adapter.VirtualModel
+		require.NoError(t, db.First(&vm, "id = ?", "vm").Error)
+		require.Equal(t, graph, vm.GraphJSON)
 		require.NoError(t, adapter.MigrateDatabase(t.Context(), db, a))
 	})
 }
@@ -276,6 +281,13 @@ func TestRecoveryPagesAndQueryScaling(t *testing.T) {
 					events = append(events, map[string]any{"id": fmt.Sprintf("event-%04d", i), "org_id": "org-acme", "user_id": id, "attributes": fmt.Sprintf(`{"actor_id":%q}`, id)})
 				}
 				require.NoError(t, db.Table("events").CreateInBatches(&events, 200).Error)
+				graphs := make([]map[string]any, 0, 2001)
+				for i := 0; i < 2001; i++ {
+					id := fmt.Sprintf("legacy-%04d", i%users)
+					name := fmt.Sprintf("graph-%04d", i)
+					graphs = append(graphs, map[string]any{"id": name, "name": name, "org_id": "org-acme", "graph_json": fmt.Sprintf(`{"value":%q,"script":"unmatched"}`, id)})
+				}
+				require.NoError(t, db.Table("virtual_models").CreateInBatches(&graphs, 200).Error)
 				a, err := adapter.PlanCommonRecovery(t.Context(), db)
 				require.NoError(t, err)
 				counter := &recoveryQueryCounter{Interface: db.Logger}
@@ -291,6 +303,10 @@ func TestRecoveryPagesAndQueryScaling(t *testing.T) {
 				var count int64
 				require.NoError(t, db.Table("events").Count(&count).Error)
 				require.Equal(t, int64(2001), count)
+				require.NoError(t, db.Table("virtual_models").Where("graph_json LIKE '%legacy-%'").Count(&remaining).Error)
+				require.Zero(t, remaining)
+				require.NoError(t, db.Table("virtual_models").Count(&count).Error)
+				require.EqualValues(t, 2001, count)
 			})
 		})
 	}

@@ -88,8 +88,22 @@ func recoveryReferences() []recoveryReference {
 	for _, t := range []string{"memberships", "user_roles", "user_preferences", "personal_virtual_models", "usage_records", "events"} {
 		refs = append(refs, recoveryReference{t, "user_id", "users", "", "", t == "events" || t == "usage_records"})
 	}
-	refs = append(refs, recoveryReference{"auth_tokens", "owner_id", "users", "", "", false}, recoveryReference{"alerts", "owner_id", "users", "", "", false}, recoveryReference{"invite_tokens", "created_by_user_id", "users", "", "", false}, recoveryReference{"plugin_node_secrets", "org_id", "organizations", "org_id NOT LIKE '~:%'", "", false}, recoveryReference{"plugin_node_secrets", "org_id", "users", "org_id LIKE '~:%'", "~:", false})
-	refs = append(refs, recoveryReference{"plugin_node_secrets", "key", "users", "plugin_name = 'mcp-bridge' AND key LIKE 'oauth:%'", "oauth:", false})
+	refs = append(refs,
+		recoveryReference{table: "auth_tokens", column: "owner_id", family: "users"},
+		// Normal deletion retains organization alerts, invitations and plugin
+		// secrets. Empty/NULL alert scopes predate personal alerts and mean org.
+		recoveryReference{table: "alerts", column: "owner_id", family: "users",
+			where: "scope = 'org' OR scope = '' OR scope IS NULL", historical: true},
+		recoveryReference{table: "alerts", column: "owner_id", family: "users",
+			where: "scope IS NOT NULL AND scope NOT IN ('org', '')"},
+		recoveryReference{table: "invite_tokens", column: "created_by_user_id", family: "users", historical: true},
+		recoveryReference{table: "plugin_node_secrets", column: "org_id", family: "organizations",
+			where: "org_id NOT LIKE '~:%'"},
+		recoveryReference{table: "plugin_node_secrets", column: "org_id", family: "users",
+			where: "org_id LIKE '~:%'", prefix: "~:", historical: true},
+		recoveryReference{table: "plugin_node_secrets", column: "key", family: "users",
+			where: "plugin_name = 'mcp-bridge' AND key LIKE 'oauth:%'", prefix: "oauth:", historical: true},
+	)
 	for _, t := range []string{"quota", "quota_usages"} {
 		for scope, family := range map[string]string{"org": "organizations", "user": "users"} {
 			refs = append(refs, recoveryReference{t, "scope_id", family, "scope = '" + scope + "'", "", t == "quota_usages"})
@@ -161,9 +175,6 @@ func DiagnoseCommonRecovery(ctx context.Context, db *gorm.DB, a *RecoveryArtifac
 	if a.Version != recoveryArtifactVersion {
 		return nil, recoveryVersionError(a.Version)
 	}
-	if len(a.IDs) != 3 {
-		return nil, fmt.Errorf("recovery artifact requires tenants, organizations and users mappings")
-	}
 	if db.Migrator().HasTable(&CommonRecovery{}) {
 		var checkpoint CommonRecovery
 		checkpointErr := db.First(&checkpoint, 1).Error
@@ -199,26 +210,8 @@ func DiagnoseCommonRecovery(ctx context.Context, db *gorm.DB, a *RecoveryArtifac
 	if err != nil {
 		return nil, err
 	}
-	seen := map[string]bool{}
-	for family, values := range ids {
-		if len(a.IDs[family]) != len(values) {
-			report.Issues = append(report.Issues, "incomplete mapping: "+family)
-		}
-		for _, old := range values {
-			next, ok := a.IDs[family][old]
-			if !ok {
-				report.Issues = append(report.Issues, "missing mapping: "+family)
-				continue
-			}
-			if _, err := model.ParseTenantID(next); err != nil || seen[next] {
-				report.Issues = append(report.Issues, "invalid or duplicate UUID: "+family)
-			}
-			if _, err := model.ParseTenantID(old); err == nil && old != next {
-				report.Issues = append(report.Issues, "existing UUID must be preserved: "+family)
-			}
-			seen[next] = true
-		}
-	}
+	diagnostics := recoveryDiagnostics{}
+	diagnoseRecoveryMappings(ids, a, diagnostics)
 	tables, err := db.Migrator().GetTables()
 	if err != nil {
 		return nil, err
@@ -238,7 +231,7 @@ func DiagnoseCommonRecovery(ctx context.Context, db *gorm.DB, a *RecoveryArtifac
 		var values []string
 		q := db.Table(ref.table).Where(ref.column + " IS NOT NULL AND " + ref.column + " <> ''")
 		if ref.where != "" {
-			q = q.Where(ref.where)
+			q = q.Where("(" + ref.where + ")")
 		}
 		if err := q.Distinct(ref.column).Pluck(ref.column, &values).Error; err != nil {
 			return nil, err
@@ -246,8 +239,7 @@ func DiagnoseCommonRecovery(ctx context.Context, db *gorm.DB, a *RecoveryArtifac
 		for _, value := range values {
 			old := strings.TrimPrefix(value, ref.prefix)
 			if _, ok := a.IDs[ref.family][old]; !ok && !ref.historical {
-				report.Issues = append(report.Issues, "orphan: "+ref.table+"."+ref.column)
-				break
+				diagnostics.add("orphan", ref.location(), value, "")
 			}
 		}
 	}
@@ -255,8 +247,8 @@ func DiagnoseCommonRecovery(ctx context.Context, db *gorm.DB, a *RecoveryArtifac
 	if err != nil {
 		return nil, err
 	}
-	report.Issues = append(report.Issues, issues...)
-
+	report.Issues = append(diagnostics.issues(), issues...)
+	sort.Strings(report.Issues)
 	return report, nil
 }
 func artifactDigest(a *RecoveryArtifact) string {
@@ -446,7 +438,7 @@ func checkRecoveredReferences(db *gorm.DB, a *RecoveryArtifact) error {
 		mapping := db.Raw("SELECT ? || key FROM "+source+" WHERE key <> value", ref.prefix, string(encoded))
 		q := db.Table(ref.table).Where(db.Statement.Quote(ref.column)+" IN (?)", mapping)
 		if ref.where != "" {
-			q = q.Where(ref.where)
+			q = q.Where("(" + ref.where + ")")
 		}
 		var count int64
 		if err := db.Table("(?) AS remaining", q.Select("1").Limit(1)).Count(&count).Error; err != nil {

@@ -10,6 +10,12 @@ retired IDs into usage and quota records: those rows become orphaned and spend
 can disappear from quota accounting. The migration lock serializes new migration
 processes; it cannot stop old binaries. Startup logs an explicit warning.
 
+Lock waits keep their existing behavior. With SQLite's default 5-second
+busy timeout, 11 attempts and ten 100 ms pauses give an approximately 56-second
+retry window under contention; a different busy timeout changes that duration.
+PostgreSQL has no application-defined advisory-lock timeout: waiting ends when
+the lock is acquired, the context is cancelled or a database/session timeout fires.
+
 ## Recommended procedure
 
 1. Back up the database using your database's consistent backup procedure.
@@ -66,6 +72,31 @@ need `plan`, which expects the previous release's tenant/user/organization schem
 | Incomplete, stale, duplicate or invalid UUID mapping | Regenerate an unapplied plan from the final stopped database and review it again. Never edit an already applied mapping. |
 | Empty primary ID or orphaned relation | Repair source data on a backup-tested copy before replanning. Diagnostics never discard affected rows. |
 
+Normal user deletion leaves historical references: owners of organization
+alerts, invitation creators, personal plugin-secret scopes (`~:<userID>`) and
+`mcp-bridge` OAuth keys (`oauth:<userID>`). Migration rewrites these values when
+the user has an ID mapping and preserves them unchanged when the user no longer
+exists. Empty or NULL legacy alert scopes mean organization scope. Personal-alert
+owners and other required relationships still block migration when orphaned.
+Organization scopes of plugin secrets must still resolve to an organization.
+Events, usage records and quota usage retain their existing historical policy.
+No rows or encrypted secret values are discarded, and any reference to a mapped
+old ID remaining in these relational locations still fails verification.
+
+Relational and mapping diagnostics are grouped by table/column, reference scope
+and issue category. Each group gives the total number of distinct offending
+values, up to five sorted, quoted examples, and the number omitted. For example:
+
+```text
+orphan: quota.scope_id [references users; scope = 'user']: 7 distinct values; examples: "missing-0", "missing-1", "missing-2", "missing-3", "missing-4"; 2 omitted
+missing mapping key: users.id: 1 distinct values; examples: "user-alice"
+invalid UUID: users.id: 1 distinct values; examples: "user-alice" -> "bad-uuid"
+```
+
+Unexpected mapping keys are also named. Duplicate-target diagnostics identify
+the target UUID and its source IDs, including both sources of a two-ID collision.
+Historical deleted-user references described above do not produce orphan issues.
+
 Plans use **version 2** and contain only `ids` mappings and optional
 `serialized_overrides`. Version 1 plans are rejected: regenerate with
 `xolo-migrate plan -out recovery-v2.json` against the stopped, pre-migration
@@ -79,7 +110,9 @@ new role/status concepts and publication counters belong to a later migration.
 Mappings are loaded into an indexed temporary table in batches. Each declared
 relational reference is rewritten by one SQL operation; serialized fields are
 read in pages of 1,000 rows and updated in batches. All batches remain inside the
-same atomic transaction. The migration lock is used only for migrations;
+same atomic transaction. Graph scans reuse a byte-based substring matcher built once
+per serialized scan from changed IDs; opaque references containing punctuation or
+overlapping IDs still require explicit overrides. The migration lock is used only for migrations;
 ordinary store operations retain their existing transactions and configured cache.
 
 For a serialized correction, add the following array to the existing plan. Obtain

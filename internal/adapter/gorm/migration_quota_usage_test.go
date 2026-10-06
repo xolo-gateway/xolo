@@ -201,7 +201,8 @@ func TestUpgradeFromExistingDatabase(t *testing.T) {
 		}
 	}
 
-	if _, err := createGetDatabase(db)(context.Background()); err != nil {
+	store := NewStore(db)
+	if err := store.Migrate(context.Background()); err != nil {
 		t.Fatalf("run migrations: %v", err)
 	}
 
@@ -248,7 +249,6 @@ func TestUpgradeFromExistingDatabase(t *testing.T) {
 	}
 
 	// A record written after the upgrade keeps adding to the same counters.
-	store := &Store{getDatabase: createGetDatabase(db)}
 	record := model.NewUsageRecord("user-a", "", "org-1", "p", "m",
 		"fast", "", 10, 0, 10, 300, "USD", model.CostSourceComputed, "")
 	if err := store.RecordUsage(context.Background(), record); err != nil {
@@ -323,7 +323,8 @@ func TestUpgradeReplaysApplicationBackfill(t *testing.T) {
 		}
 	}
 
-	if _, err := createGetDatabase(db)(context.Background()); err != nil {
+	store := NewStore(db)
+	if err := store.Migrate(context.Background()); err != nil {
 		t.Fatalf("run migrations: %v", err)
 	}
 

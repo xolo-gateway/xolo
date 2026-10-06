@@ -35,12 +35,6 @@ func withoutForeignKeys(tx *gorm.DB, fn func() error) error {
 	return nil
 }
 
-// createGetDatabase preserves lazy migration for adapter callers.
-func createGetDatabase(db *gorm.DB) func(context.Context) (*gorm.DB, error) {
-	initialize := createDatabaseInitializer(db)
-	return func(ctx context.Context) (*gorm.DB, error) { return initialize(ctx, true) }
-}
-
 func createDatabaseInitializer(db *gorm.DB) func(context.Context, bool) (*gorm.DB, error) {
 	var mu sync.Mutex
 	ready := false

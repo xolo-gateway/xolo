@@ -57,6 +57,8 @@ func TestRecoveryLargeFixture(t *testing.T) {
 		require.NoError(t, db.Create(&adapter.Organization{ID: "legacy-org", TenantID: "legacy-tenant", Slug: "benchmark", Name: "Benchmark", Active: 1}).Error)
 		const users = 2000
 		const events = 300000
+		const graphs = 2000
+		const nodesPerGraph = 10
 		require.NoError(t, db.Transaction(func(tx *gorm.DB) error {
 			for start := 0; start < users; start += 500 {
 				rows := make([]map[string]any, 0, 500)
@@ -65,6 +67,19 @@ func TestRecoveryLargeFixture(t *testing.T) {
 					rows = append(rows, map[string]any{"id": id, "tenant_id": "legacy-tenant", "provider": "fixture", "subject": id, "email": fmt.Sprintf("user%d@example.test", i), "active": true})
 				}
 				if err := tx.Table("users").Create(&rows).Error; err != nil {
+					return err
+				}
+			}
+			for start := 0; start < graphs; start += 100 {
+				rows := make([]map[string]any, 0, 100)
+				for i := start; i < start+100; i++ {
+					user := fmt.Sprintf("legacy-user-%04d", i%users)
+					node := fmt.Sprintf(`{"id":"node","data":{"value":%q,"notes":[%s"tail"],"script":"unmatched configuration"}}`,
+						user, strings.Repeat(`"unmatched descriptive string",`, 16))
+					graph := `{"nodes":[` + strings.Repeat(node+",", nodesPerGraph-1) + node + `],"edges":[]}`
+					rows = append(rows, map[string]any{"id": fmt.Sprintf("graph-%04d", i), "org_id": "legacy-org", "name": fmt.Sprintf("graph-%04d", i), "graph_json": graph})
+				}
+				if err := tx.Table("virtual_models").Create(&rows).Error; err != nil {
 					return err
 				}
 			}
@@ -115,9 +130,13 @@ func TestRecoveryLargeFixture(t *testing.T) {
 		<-done
 		runtime.ReadMemStats(&after)
 		require.NoError(t, err)
-		t.Logf("users=%d events=%d duration=%s allocated_bytes=%d peak_heap_bytes=%d queries=%d event_reads=%d event_updates=%d", users, events, elapsed, after.TotalAlloc-before.TotalAlloc, peak.Load(), counter.queries.Load(), counter.eventReads.Load(), counter.eventWrites.Load())
+		t.Logf("users=%d events=%d graphs=%d nodes_per_graph=%d duration=%s allocated_bytes=%d allocations=%d peak_heap_bytes=%d queries=%d event_reads=%d event_updates=%d", users, events, graphs, nodesPerGraph, elapsed, after.TotalAlloc-before.TotalAlloc, after.Mallocs-before.Mallocs, peak.Load(), counter.queries.Load(), counter.eventReads.Load(), counter.eventWrites.Load())
 		var count int64
 		require.NoError(t, db.Table("events").Where("user_id LIKE 'legacy-%' OR org_id = 'legacy-org' OR attributes LIKE '%legacy-user-%'").Count(&count).Error)
 		require.Zero(t, count)
+		require.NoError(t, db.Table("virtual_models").Where("org_id = 'legacy-org' OR graph_json LIKE '%legacy-user-%'").Count(&count).Error)
+		require.Zero(t, count)
+		require.NoError(t, db.Table("virtual_models").Count(&count).Error)
+		require.EqualValues(t, graphs, count)
 	})
 }
