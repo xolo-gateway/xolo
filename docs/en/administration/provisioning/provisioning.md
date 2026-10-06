@@ -44,6 +44,8 @@ first-request failure.
 | `XOLO_PROVISIONNING_API_RATE_BURST` | `20` | Burst allowance per URI |
 | `XOLO_PROVISIONNING_API_SHUTDOWN_TIMEOUT` | `10s` | Graceful shutdown budget |
 
+The rate and burst apply to each process: with N replicas, a given URI gets N times the configured values.
+
 Multi-tenancy is configured on the instance, not on this API:
 
 | Variable | Default | Description |
@@ -264,3 +266,12 @@ curl -s --cacert dev-pki/ca.crt --cert dev-pki/client.crt --key dev-pki/client.k
   -X POST "https://localhost:3003/v1/tenants/$TENANT/organizations" \
   -d '{"slug":"acme","name":"Acme","owner":{"provider":"openid-connect","subject":"sub-123","email":"owner@acme.tld","displayName":"Owner"}}'
 ```
+
+In production, use a managed certificate authority (Vault, cert-manager, internal PKI) and rotate client certificates.
+
+## Out of current scope
+
+- Providers, LLM models, virtual models, middlewares, applications and their tokens, quotas, alerts and event settings: they remain managed through the web UI.
+- Per-certificate scopes: any authorized URI administers the whole instance.
+- Pre-provisioning by email: the [invitation](../organisation/invitation/invitation.md) mechanism remains the email-based path, through the web UI.
+- No OpenAPI specification is generated yet.

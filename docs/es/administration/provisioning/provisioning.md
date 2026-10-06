@@ -35,6 +35,8 @@ o duplicado impide el arranque. Los clientes deben admitir TLS 1.3.
 | `XOLO_PROVISIONNING_API_RATE_BURST` | `20` | Ráfaga permitida por URI |
 | `XOLO_PROVISIONNING_API_SHUTDOWN_TIMEOUT` | `10s` | Plazo de cierre |
 
+La tasa y la ráfaga se aplican a cada proceso: con N réplicas, un mismo URI dispone de N veces los valores configurados.
+
 Los presupuestos son locales al proceso, se asignan únicamente a identidades
 configuradas y se comparten entre certificados con el mismo URI. Si se supera el
 límite, la respuesta es `429`, con `rate_limited` y `Retry-After` en segundos.
@@ -138,3 +140,12 @@ curl -s --cacert dev-pki/ca.crt --cert dev-pki/client.crt --key dev-pki/client.k
   -X POST "https://localhost:3003/v1/tenants/$TENANT/organizations" \
   -d '{"slug":"acme","name":"Acme","owner":{"provider":"openid-connect","subject":"sub-123","email":"owner@acme.tld","displayName":"Owner"}}'
 ```
+
+En producción, utilice una autoridad de certificación gestionada (Vault, cert-manager, PKI interna) y rote los certificados de cliente.
+
+## Fuera del alcance actual
+
+- Los proveedores, modelos LLM, modelos virtuales, middlewares, aplicaciones y sus tokens, cuotas, alertas y parámetros de eventos: siguen gestionándose desde la interfaz web.
+- Los alcances por certificado: cualquier URI autorizado administra la instancia completa.
+- El preaprovisionamiento por correo electrónico: el mecanismo de [invitación](../organisation/invitation/invitation.md) sigue siendo la vía por correo, desde la interfaz web.
+- Todavía no se genera ninguna especificación OpenAPI.

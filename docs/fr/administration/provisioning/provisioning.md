@@ -52,6 +52,8 @@ Le matériel TLS est chargé au démarrage : un certificat, une clé ou un bundl
 | `XOLO_PROVISIONNING_API_RATE_BURST` | `20` | Rafale autorisée par URI. |
 | `XOLO_PROVISIONNING_API_SHUTDOWN_TIMEOUT` | `10s` | Délai d'arrêt gracieux. |
 
+Le débit et la rafale s'appliquent à chaque processus : avec N réplicas, un même URI dispose de N fois les valeurs configurées.
+
 Le multi-tenant se configure au niveau de l'instance, pas de cette API :
 
 | Variable | Défaut | Description |

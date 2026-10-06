@@ -62,6 +62,7 @@ func (s *Server) Run(ctx context.Context) error {
 	if tlsConfig.GetConfigForClient != nil {
 		return errors.New("provisioning does not support alternate TLS configurations")
 	}
+	// LoadTLSConfig already enforces the allowlist, but a caller may supply its own TLSConfig.
 	previousVerify := tlsConfig.VerifyConnection
 	tlsConfig.VerifyConnection = func(state tls.ConnectionState) error {
 		if _, ok := authorizedURI(&state, allowed); !ok {

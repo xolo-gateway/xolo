@@ -25,6 +25,11 @@ func requestCorrelation(next http.Handler) http.Handler {
 			id = values[0]
 		} else {
 			id = model.NewRequestID()
+			if len(values) > 0 {
+				// The supplied value is uncontrolled input: never log it.
+				slog.DebugContext(r.Context(), "supplied X-Request-ID rejected, replaced by a generated one",
+					slog.Int("values", len(values)), slog.String("requestID", id))
+			}
 		}
 		// Downstream access logging must never observe an invalid supplied value.
 		r = r.Clone(r.Context())

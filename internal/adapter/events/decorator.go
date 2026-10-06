@@ -26,15 +26,18 @@ func emit(ctx context.Context, emitter port.EventEmitter, orgID model.OrgID, sev
 	if attrs == nil {
 		attrs = map[string]string{}
 	}
+	// actor_uri and request_id record the transport origin; actor and actor_id
+	// name who acted, an authenticated user taking precedence over the URI.
 	if actor.RequestID != "" {
-		attrs["actor"] = actor.URI
 		attrs["actor_uri"] = actor.URI
-		attrs["actor_id"] = string(actor.UserID)
 		attrs["request_id"] = actor.RequestID
 	}
 	if user != nil {
 		attrs["actor"] = user.DisplayName()
 		attrs["actor_id"] = string(user.ID())
+	} else {
+		attrs["actor"] = actor.URI
+		attrs["actor_id"] = string(actor.UserID)
 	}
 
 	emitter.Emit(ctx, model.NewEvent(model.EventSourcePlatform, typ,

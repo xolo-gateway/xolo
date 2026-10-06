@@ -48,6 +48,12 @@ func (s *ProvisioningTransaction) WithProvisioningTransaction(ctx context.Contex
 	return nil
 }
 
+// provisioningTx records which cache entries to invalidate after commit. Only
+// SaveUser, DeleteOrg and DeleteTenant invalidate: CacheableUser holds nothing
+// derived from organizations, so DeleteRole and RemoveMember invalidate nothing
+// and DeleteOrg does not sweep the organization's members. If roles,
+// permissions or memberships ever enter the user cache, these paths must start
+// invalidating the affected users.
 type provisioningTx struct {
 	port.ProvisioningTx
 	*provisioningInvalidations
