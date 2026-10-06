@@ -88,9 +88,11 @@ the tenant is then asserted by the service layer.
 
 Disabled by default: the schema migration creates a single `default` tenant,
 attaches every pre-existing row to it, and the tenant is never surfaced (no
-subdomain, no change of URL). `XOLO_MULTITENANCY_ENABLED=true` plus
-`XOLO_MULTITENANCY_HOST_PATTERN={tenant}.example.com` switches the resolution to
-the request host; a host matching no active tenant answers 404.
+subdomain, no change of URL). `XOLO_MULTITENANCY_ENABLED=true` switches the
+resolution to the request host, through the domains persisted per tenant
+(declared by the Provisionning API); a host that is no active domain of an
+active tenant answers 404. `XOLO_MULTITENANCY_HOST_PATTERN` only serves the
+upgrade: it is expanded once into one domain per existing tenant.
 See `internal/http/middleware/tenant/`.
 
 **Mandatory parent checks:** an organization permission applies only to the
@@ -111,11 +113,14 @@ transaction-bound readers; an earlier resolution does not guarantee atomicity.
 
 ### Provisionning API
 
-Machine-to-machine provisioning of tenants, the organizations they own, their
-members, roles and users, on a dedicated listener authenticated by mutual TLS
-only (`XOLO_PROVISIONNING_API_*`, disabled by default). It never grants
-platform-wide privileges and shares the same store instances as the public
-server. Creating a second tenant is refused while multi-tenancy is disabled.
+Machine-to-machine provisioning of tenants, their domains, the organizations
+they own, their members, roles and users, on a dedicated listener authenticated
+by mutual TLS only (`XOLO_PROVISIONNING_API_*`, disabled by default). The root of
+`/v1` is the common contract (idempotent PUTs, client-chosen UUIDs); Xolo
+specific operations live under `/v1/xolo`. It never grants nor modifies
+platform-wide privileges, never modifies a platform administrator, and shares
+the same store instances as the public server. Creating a second tenant is
+refused while multi-tenancy is disabled.
 See `internal/provisionning/README.md`.
 
 ### UI / templating

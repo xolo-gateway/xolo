@@ -1,6 +1,8 @@
 # API de provisioning
 
-L'API de provisioning (*Provisionning API*) permet à un système externe — plan de contrôle, opérateur Kubernetes, provider Terraform, playbook Ansible ou simple script — de créer et de réconcilier les tenants, les organisations, les membres et les rôles d'une instance Xolo **sans aucune interaction humaine**.
+L'API de provisioning (*Provisionning API*) permet à un système externe — plan de contrôle, opérateur Kubernetes, provider Terraform, playbook Ansible ou simple script — de créer et de réconcilier les tenants, leurs domaines, les organisations, les membres et les rôles d'une instance Xolo **sans aucune interaction humaine**.
+
+Elle expose un **contrat commun** — des `PUT` idempotents de tenants, domaines, organisations, membres et adhésions, identifiés par des UUID choisis par le client — et, sous `/v1/xolo`, les opérations propres à Xolo. Ce contrat remplace les routes précédentes : voir [Migration depuis les routes précédentes](#migration-depuis-les-routes-precedentes).
 
 Elle ne fait délibérément pas partie de l'API `/api/v1/` utilisée par l'interface web : son périmètre de sécurité est différent (privilèges à l'échelle de l'instance, aucun contexte utilisateur). Elle dispose donc de son propre écouteur, sur son propre port, avec sa propre configuration TLS et son propre mécanisme d'authentification.
 
@@ -14,7 +16,7 @@ Les deux serveurs partagent les **mêmes instances de stockage** (caches et déc
 
 > **Hiérarchie.** Un **tenant** contient des **organisations**, qui contiennent des **membres** et des **rôles**. Les utilisateurs appartiennent au tenant, pas à l'organisation : le couple `(provider, subject)` n'est unique qu'au sein d'un tenant, si bien qu'une même personne connectée sur deux tenants dispose de deux comptes distincts.
 >
-> Par défaut, une instance ne possède qu'un seul tenant, `default`, créé automatiquement à la migration. Il est invisible pour les utilisateurs — aucun sous-domaine, aucune URL modifiée — mais c'est lui qui fournit le `{tenantID}` attendu par les routes ci-dessous.
+> Par défaut, une instance ne possède qu'un seul tenant, `default`, créé automatiquement à la migration. Il est invisible pour les utilisateurs — aucun sous-domaine, aucune URL modifiée — mais c'est lui qui fournit le `{tenantID}` attendu par les routes ci-dessous. Son identifiant se lit avec `GET /v1/xolo/tenants?slug=default`.
 
 ## Authentification : TLS mutuel
 
@@ -34,7 +36,7 @@ renouvelé avec le même URI conserve son identité et son budget de requêtes.
 **Mise à niveau obligatoire si l'écouteur est déjà activé :** réémettez les
 certificats clients avec un URI SAN unique et configurez la liste autorisée avant
 le redémarrage. Une liste vide, un URI invalide ou un doublon bloque le démarrage.
-Les clients doivent prendre en charge TLS 1.3. Les routes, corps et réponses restent identiques.
+Les clients doivent prendre en charge TLS 1.3.
 
 Le matériel TLS est chargé au démarrage : un certificat, une clé ou un bundle d'autorité manquant ou incohérent provoque un échec au démarrage, jamais à la première requête.
 
@@ -58,101 +60,232 @@ Le multi-tenant se configure au niveau de l'instance, pas de cette API :
 
 | Variable | Défaut | Description |
 | --- | --- | --- |
-| `XOLO_MULTITENANCY_ENABLED` | `false` | Autorise plus d'un tenant. |
-| `XOLO_MULTITENANCY_HOST_PATTERN` | _(requis si activé)_ | Modèle de nom d'hôte, par exemple `{tenant}.xolo.example.com`. |
+| `XOLO_MULTITENANCY_ENABLED` | `false` | Autorise plus d'un tenant et route les requêtes par domaine. |
+| `XOLO_MULTITENANCY_HOST_PATTERN` | — | Mise à niveau uniquement : développé une seule fois en un domaine par tenant existant, voir [Domaines et routage](#domaines-et-routage). |
 | `XOLO_MULTITENANCY_DEFAULT_TENANT_SLUG` | `default` | Tenant servi lorsque le multi-tenant est désactivé. |
 
 N'exposez pas ce port sur un réseau public : réservez-le au réseau d'administration ou au maillage de services interne.
 
-## Endpoints
+## Contrat commun
 
-| Méthode | Route | Notes |
+| Méthode | Route | Corps |
 | --- | --- | --- |
-| `GET` | `/v1/healthz` | Également derrière TLS mutuel. |
-| `GET` | `/v1/permissions` | Catalogue RBAC : seule source des codes de permission valides. |
-| `GET` | `/v1/tenants` | `?slug=` pour une recherche exacte, sinon `?page=&limit=`. |
-| `POST` | `/v1/tenants` | **Refusé avec `409` sur une instance mono-tenant.** |
-| `GET` | `/v1/tenants/{tenantID}` | |
-| `PATCH` | `/v1/tenants/{tenantID}` | `name`, `description`, `active`. Le slug est immuable. |
-| `DELETE` | `/v1/tenants/{tenantID}` | Supprime le tenant et tout ce qu'il contient. |
-| `GET` | `/v1/tenants/{tenantID}/organizations` | `?slug=` pour une recherche exacte, sinon `?page=&limit=`. |
-| `POST` | `/v1/tenants/{tenantID}/organizations` | Crée l'organisation, ses rôles intégrés et, optionnellement, son propriétaire initial. |
-| `GET` | `/v1/tenants/{tenantID}/organizations/{orgID}` | |
-| `PATCH` | `/v1/tenants/{tenantID}/organizations/{orgID}` | `name`, `description`, `active`, `currency`, `shareQuotaEqually`. Le slug est immuable. |
-| `DELETE` | `/v1/tenants/{tenantID}/organizations/{orgID}` | Supprime l'organisation et toutes ses données. |
-| `GET` | `/v1/tenants/{tenantID}/organizations/{orgID}/members` | Paginé. |
-| `POST` | `/v1/tenants/{tenantID}/organizations/{orgID}/members` | `userId` **ou** `user{provider,subject,…}`, plus `roleIds[]` et/ou `builtinRoles[]`. |
-| `GET` | `/v1/tenants/{tenantID}/organizations/{orgID}/members/{membershipID}` | |
-| `PUT` | `/v1/tenants/{tenantID}/organizations/{orgID}/members/{membershipID}/roles` | Remplacement complet du jeu de rôles. |
-| `DELETE` | `/v1/tenants/{tenantID}/organizations/{orgID}/members/{membershipID}` | |
-| `GET` | `/v1/tenants/{tenantID}/organizations/{orgID}/roles` | Rôles intégrés et personnalisés. |
-| `POST` | `/v1/tenants/{tenantID}/organizations/{orgID}/roles` | Rôle personnalisé. |
-| `GET` | `/v1/tenants/{tenantID}/organizations/{orgID}/roles/{roleID}` | |
-| `PUT` | `/v1/tenants/{tenantID}/organizations/{orgID}/roles/{roleID}` | Rôles personnalisés uniquement. |
-| `DELETE` | `/v1/tenants/{tenantID}/organizations/{orgID}/roles/{roleID}` | Rôles personnalisés uniquement. |
-| `GET` | `/v1/tenants/{tenantID}/users` | `?provider=&subject=` pour une recherche exacte, sinon `?search=&active=&page=&limit=`. |
-| `PUT` | `/v1/tenants/{tenantID}/users` | Upsert idempotent sur `(provider, subject)` : `201` à la création, `200` sinon. |
-| `GET` | `/v1/tenants/{tenantID}/users/{userID}` | |
-| `PATCH` | `/v1/tenants/{tenantID}/users/{userID}` | `email`, `displayName`, `active`. |
+| `GET` | `/v1/manifest` | — renvoie `{"name","version","contract_version"}` |
+| `PUT` | `/v1/tenants/{tenantID}` | `{"slug","name","status"}` |
+| `PUT` | `/v1/tenants/{tenantID}/domains/{hostname}` | `{"status"}` |
+| `PUT` | `/v1/tenants/{tenantID}/organizations/{orgID}` | `{"slug","name","status"}` |
+| `PUT` | `/v1/tenants/{tenantID}/members/{memberID}` | `{"email","tenant_role","status"}`, `"display_name"` facultatif |
+| `PUT` | `/v1/tenants/{tenantID}/organizations/{orgID}/members/{memberID}` | `{"role","status"}` |
 
-### Instances mono-tenant
+- **Les identifiants** sont des UUID canoniques en minuscules choisis par le
+  client. Toute autre valeur est refusée avec `400 invalid_parameter`. Un membre
+  est un utilisateur : `memberID` est l'identifiant de l'utilisateur.
+- **Chaque `PUT` répond `200`**, création comprise, avec la représentation
+  enregistrée. Un `PUT` identique à l'état enregistré ne change rien et n'écrit
+  pas d'audit : un client peut rejouer tout son état souhaité.
+- **Un `PUT` remplace la représentation.** Un `display_name` omis est vide. Les
+  champs hors contrat — descriptions, devises, identités, rôles de plateforme,
+  rôles personnalisés — ne sont jamais modifiés.
+- **Valeurs :** `status` vaut `active` ou `suspended` ; `tenant_role` vaut
+  `owner` ou `member` ; le `role` d'une organisation vaut `owner`, `admin` ou
+  `member`. Les slugs sont mis en minuscules ; les noms font 1 à 200 caractères,
+  sans caractère de contrôle.
+- **Les corps** sont un objet JSON de chaînes avec
+  `Content-Type: application/json` (sinon `415 unsupported_media_type`), de
+  1 Mio au plus. Un champ inconnu, une valeur non textuelle ou un Unicode
+  invalide donne `400 invalid_json` ; un champ requis absent ou `null` donne
+  `400 invalid_representation`. Les routes communes n'acceptent aucun paramètre
+  de requête (`400 invalid_parameter`).
 
-Sur une installation par défaut, commencez par récupérer l'identifiant du tenant unique :
+### Tenants
 
-```bash
-curl -s --cacert dev-pki/ca.crt --cert dev-pki/client.crt --key dev-pki/client.key \
-  "https://localhost:3003/v1/tenants?slug=default"
-```
+`PUT /v1/tenants/{tenantID}` crée le tenant ou le renomme : slug et nom changent
+librement, les domaines restent attachés. La création d'un second tenant est
+refusée avec `409` tant que `XOLO_MULTITENANCY_ENABLED` vaut `false`. Le tenant
+`default` garde son slug et reste `active` : c'est celui que résout toute
+instance mono-tenant. Son identifiant se lit avec
+`GET /v1/xolo/tenants?slug=default`.
 
-Toutes les routes ci-dessus s'utilisent ensuite avec cet identifiant. La création d'un second tenant est refusée avec `409` tant que `XOLO_MULTITENANCY_ENABLED` vaut `false` : aucun nom d'hôte ne permettrait de l'atteindre, ses organisations seraient donc inaccessibles.
+Un tenant `suspended` répond `404` sur tous ses domaines.
 
-Les charges utiles sont en JSON *camelCase*, les horodatages au format RFC 3339, et les collections sont renvoyées sous la forme `{"items": […], "page": 1, "limit": 50, "total": 123}`. Les champs inconnus sont rejetés : un nom de champ mal orthographié est signalé plutôt qu'ignoré silencieusement.
+### Organisations
 
-### Erreurs
+`PUT …/organizations/{orgID}` crée l'organisation avec ses rôles intégrés, ou
+met à jour son slug, son nom et son statut. Un identifiant d'organisation déjà
+utilisé par un autre tenant donne `409`.
 
-Toutes les erreurs utilisent la même enveloppe :
+### Membres
+
+`PUT …/members/{memberID}` met à jour un utilisateur du tenant : email, nom
+affiché, rôle de tenant et statut. `suspended` désactive le compte. L'identité
+d'authentification et les rôles de plateforme ne sont jamais modifiés.
+
+**Un membre se provisionne une fois qu'il s'est connecté.** Un `PUT` sur un
+utilisateur inconnu répond `404` : un compte créé sans identité bloquerait la
+première connexion de la personne sur son email. Le plan de contrôle retrouve le
+compte avec `GET /v1/xolo/tenants/{tenantID}/users?provider=&subject=`, ou le
+laisse se créer inactif à la connexion (`XOLO_HTTP_AUTHN_ACTIVE_BY_DEFAULT=false`)
+puis le récupère avec `GET /v1/xolo/tenants/{tenantID}/users?active=false`.
+
+`tenant_role` déclare les propriétaires du tenant ; il n'accorde aucun privilège
+de plateforme. Un tenant garde un propriétaire actif dès qu'il en a un :
+rétrograder ou suspendre le dernier est refusé avec `409 last_owner`.
+
+**Les administrateurs de plateforme sont protégés.** Tout `PUT` qui modifierait
+un compte portant le rôle de plateforme `admin` — email, nom affiché, statut ou
+rôle de tenant — est refusé avec `409 platform_admin_protected` ; un `PUT`
+identique répond toujours `200`. La même protection s'applique à
+`PUT /v1/xolo/tenants/{tenantID}/users`. Le provisioning n'agit jamais sur les
+privilèges de plateforme.
+
+### Adhésions
+
+`PUT …/organizations/{orgID}/members/{memberID}` ajoute le membre à
+l'organisation ou met à jour son adhésion. `role` fixe le rôle intégré de
+l'adhésion ; les rôles personnalisés attribués via `/v1/xolo` sont conservés.
+Une adhésion `suspended` ne donne aucun accès à l'organisation et garde ses
+rôles.
+
+Une organisation garde un propriétaire actif dès qu'elle en a un : rétrograder
+ou suspendre le dernier est refusé avec `409 last_owner`. Une organisation ou un
+membre d'un autre tenant donne `404 parent_not_found`.
+
+## Domaines et routage
+
+`PUT /v1/tenants/{tenantID}/domains/{hostname}` déclare un nom d'hôte du tenant
+ou change son statut. Le nom d'hôte doit déjà être en minuscules, sans port ni
+adresse IP (sinon `400 invalid_hostname`), et appartient à un seul tenant (sinon
+`409`). Un tenant peut posséder plusieurs domaines.
+
+Avec `XOLO_MULTITENANCY_ENABLED=true`, le serveur public route chaque requête par
+ces domaines : l'hôte de la requête doit être un domaine `active` d'un tenant
+`active`, sinon la requête répond `404`. Liens, redirections et callbacks OAuth
+gardent le schéma, le port et le chemin de `XOLO_HTTP_BASE_URL` et prennent le
+domaine comme hôte. Sur une instance mono-tenant, les domaines sont enregistrés
+mais ne servent pas au routage.
+
+Au premier démarrage multi-tenant d'une instance mise à niveau,
+`XOLO_MULTITENANCY_HOST_PATTERN`, s'il est défini, est développé une seule fois en
+un domaine `active` par tenant existant : chaque tenant reste joignable sur son
+ancien nom d'hôte. Ce développement ne se rejoue jamais : les tenants créés
+ensuite doivent déclarer leurs domaines via l'API, et la variable peut être
+retirée. Un nom d'hôte déjà déclaré est conservé et journalisé, jamais réattribué.
+
+## Extensions Xolo
+
+Les opérations propres à Xolo sont sous `/v1/xolo`. Leurs corps sont en JSON
+camelCase, les horodatages en RFC 3339, les collections au format
+`{"items": […], "page": 1, "limit": 50, "total": 123}`, et les champs inconnus
+sont refusés.
+
+| Méthode | Route | Remarques |
+| --- | --- | --- |
+| `GET` | `/v1/xolo/healthz` | Également derrière le TLS mutuel. |
+| `GET` | `/v1/xolo/permissions` | Le catalogue RBAC : seule source des codes de permission valides. |
+| `GET` | `/v1/xolo/tenants` | `?slug=` pour une recherche exacte, sinon `?page=&limit=`. |
+| `GET` | `/v1/xolo/tenants/{tenantID}` | |
+| `PATCH` | `/v1/xolo/tenants/{tenantID}` | `name`, `description`, `active`. |
+| `GET` | `/v1/xolo/tenants/{tenantID}/organizations` | `?slug=` pour une recherche exacte, sinon `?page=&limit=`. |
+| `GET` | `/v1/xolo/tenants/{tenantID}/organizations/{orgID}` | |
+| `PATCH` | `/v1/xolo/tenants/{tenantID}/organizations/{orgID}` | `name`, `description`, `active`, `currency`, `shareQuotaEqually`. |
+| `GET` | `/v1/xolo/tenants/{tenantID}/organizations/{orgID}/members` | Paginé. |
+| `GET` | `/v1/xolo/tenants/{tenantID}/organizations/{orgID}/members/{membershipID}` | |
+| `PUT` | `/v1/xolo/tenants/{tenantID}/organizations/{orgID}/members/{membershipID}/roles` | Remplacement complet des rôles. |
+| `GET` | `/v1/xolo/tenants/{tenantID}/organizations/{orgID}/roles` | Rôles intégrés et personnalisés. |
+| `POST` | `/v1/xolo/tenants/{tenantID}/organizations/{orgID}/roles` | Rôle personnalisé. |
+| `GET` | `/v1/xolo/tenants/{tenantID}/organizations/{orgID}/roles/{roleID}` | |
+| `PUT` | `/v1/xolo/tenants/{tenantID}/organizations/{orgID}/roles/{roleID}` | Rôles personnalisés uniquement. |
+| `DELETE` | `/v1/xolo/tenants/{tenantID}/organizations/{orgID}/roles/{roleID}` | Rôles personnalisés uniquement. |
+| `GET` | `/v1/xolo/tenants/{tenantID}/users` | `?provider=&subject=` pour une recherche exacte, sinon `?search=&active=&page=&limit=`. |
+| `PUT` | `/v1/xolo/tenants/{tenantID}/users` | Upsert idempotent sur `(provider, subject)` : `201` à la création, `200` sinon. |
+| `GET` | `/v1/xolo/tenants/{tenantID}/users/{userID}` | |
+
+## Erreurs
+
+Toutes les erreurs partagent la même enveloppe :
 
 ```json
-{"error": {"code": "conflict", "message": "organization with slug \"acme\" already exists in this tenant (id: c9m2…)"}}
+{"error": {"code": "last_owner", "message": "…"}}
 ```
 
 | Code | HTTP | Cause |
 | --- | --- | --- |
-| `invalid_request` | 400 | Corps mal formé, champ inconnu, paramètre de requête invalide. |
-| `client_certificate_rejected` | 403 | Certificat ou URI non autorisé. |
-| `rate_limited` | 429 | Budget par URI dépassé ; attendre les secondes indiquées par `Retry-After`. |
-| `not_found` | 404 | Ressource inconnue, ou appartenant à un autre tenant ou à une autre organisation. |
+| `invalid_parameter` | 400 | Identifiant qui n'est pas un UUID canonique, ou paramètre de requête sur une route commune. |
+| `invalid_json` | 400 | Route commune : JSON mal formé, champ inconnu, valeur non textuelle, Unicode invalide. |
+| `invalid_representation` | 400 | Route commune : champ requis absent ou `null`. |
+| `invalid_hostname` | 400 | Nom d'hôte pas en minuscules, avec port, adresse IP ou label invalide. |
+| `invalid_request` | 400 | `/v1/xolo` : corps mal formé, champ inconnu, paramètre de requête invalide. |
+| `client_certificate_rejected` | 403 | Certificat ou URI client non autorisé. |
+| `not_found` | 404 | Ressource ou route inconnue, ou ressource d'un autre tenant ou d'une autre organisation. |
+| `parent_not_found` | 404 | Le tenant, l'organisation ou le membre dont dépend la ressource n'existe pas dans ce périmètre. |
 | `method_not_allowed` | 405 | Ressource connue, mauvaise méthode. |
-| `conflict` | 409 | Ressource existante, ou invariant métier qui refuse la modification. |
+| `unsupported_media_type` | 415 | Route commune sans `Content-Type: application/json`. |
+| `conflict` | 409 | Identifiant ou nom d'hôte détenu par un autre tenant, slug déjà utilisé, ou invariant métier. |
+| `last_owner` | 409 | La modification laisserait un tenant ou une organisation sans propriétaire actif. |
+| `platform_admin_protected` | 409 | La modification vise un administrateur de plateforme. |
 | `unprocessable` | 422 | Valeur bien formée mais refusée par le domaine. |
-| `internal_error` | 500 | Échec inattendu. |
+| `rate_limited` | 429 | Budget par URI dépassé ; attendre les secondes indiquées par `Retry-After`. |
+| `internal_error` | 500 | Erreur inattendue. |
 
-Les messages sont toujours construits explicitement : ni traces d'exécution, ni erreurs SQL, ni chemins de fichiers, ni détails TLS, ni secrets ne parviennent au client. Le détail complet est journalisé côté serveur.
-
-## Modèle d'identité
-
-Un utilisateur est identifié par le couple `provider` + `subject`, la même clé que celle utilisée par l'authentification interactive : un utilisateur provisionné peut donc se connecter ensuite. L'API n'offre délibérément aucune identité fondée sur l'email — `email` est un champ de profil, jamais un identifiant.
-
-### Provisionner avant la première connexion
-
-`POST /v1/tenants/{tenantID}/organizations` crée son propriétaire avant même que cette personne ne se connecte. Cela suppose que l'appelant connaisse son `subject` à l'avance, ce qui est le cas lorsque le plan de contrôle pilote aussi le fournisseur d'identité, ou lorsque le sujet est dérivé de façon déterministe.
-
-Lorsque le sujet ne peut pas être connu à l'avance, ne désactivez pas `XOLO_HTTP_AUTHN_AUTO_CREATE_USERS` : les personnes concernées ne pourraient plus se connecter. Utilisez plutôt `XOLO_HTTP_AUTHN_ACTIVE_BY_DEFAULT=false`. Le compte est alors créé à la première connexion mais reste inactif et n'accorde aucun droit. Le plan de contrôle le récupère avec `GET /v1/tenants/{tenantID}/users?active=false`, le rattache à une organisation via `POST /v1/tenants/{tenantID}/organizations/{orgID}/members`, puis l'active avec `PATCH /v1/tenants/{tenantID}/users/{userID} {"active": true}`.
+Les messages sont toujours construits explicitement. Traces d'exécution, erreurs SQL, chemins de fichiers, détails TLS et secrets n'atteignent jamais le client : le détail complet est journalisé côté serveur.
 
 ## Invariants
 
-- Provisionner un administrateur d'organisation **n'accorde jamais** de privilèges à l'échelle de la plateforme. Un utilisateur créé via cette API reçoit exactement le rôle plateforme `user`, et les rôles plateforme d'un utilisateur existant ne sont jamais modifiés.
-- Les adresses listées dans `XOLO_HTTP_AUTHN_DEFAULT_ADMINS` sont **réservées** : l'API refuse (`422`) de les affecter à un utilisateur, faute de quoi ce dernier deviendrait administrateur plateforme à sa prochaine connexion.
-- Une organisation conserve toujours au moins un propriétaire : retirer ou rétrograder le dernier est refusé avec un `409`.
-- Un rôle ne peut être affecté qu'à un membre de l'organisation à laquelle il appartient. Tout autre cas donne un `422`, sans qu'aucun rôle ne soit modifié.
-- Un membre ou un rôle appartenant à une autre organisation est signalé comme `404`, tout comme une organisation ou un utilisateur appartenant à un autre tenant.
-- Le tenant `default` ne peut être ni supprimé ni désactivé : c'est celui vers lequel toute instance mono-tenant se rabat.
-- Les rôles intégrés ne peuvent être ni modifiés, ni supprimés.
-- Seuls les codes de permission présents dans le catalogue RBAC sont acceptés.
+- Le provisioning n'accorde ni ne modifie **jamais** de privilège de plateforme.
+  Un utilisateur créé via `PUT /v1/xolo/tenants/{tenantID}/users` reçoit
+  exactement le rôle de plateforme `user`, les rôles de plateforme ne sont jamais
+  modifiés, et un administrateur de plateforme n'est jamais modifié du tout.
+- Les adresses de `XOLO_HTTP_AUTHN_DEFAULT_ADMINS` sont réservées : les écrire
+  sur un utilisateur est refusé avec `422`. Le bridge d'authentification accorde
+  le rôle d'administrateur à quiconque se connecte avec l'une d'elles ;
+  l'accepter ici serait une élévation de privilèges indirecte.
+- Un tenant ou une organisation garde au moins un propriétaire actif dès qu'il
+  en a un.
+- Une adhésion suspendue ne donne rien ; un domaine ou un tenant suspendu ne
+  route rien.
+- Un rôle ne peut être attribué qu'à une adhésion de son organisation. Sinon
+  `422`, et aucun rôle n'est modifié.
+- Une adhésion ou un rôle d'une autre organisation donne `404`, de même qu'une
+  organisation ou un utilisateur d'un autre tenant.
+- Le tenant `default` garde son slug et reste actif.
+- Les rôles intégrés ne peuvent être ni modifiés ni supprimés.
+- Seuls les codes de permission du catalogue RBAC sont acceptés.
 
-## Réconciliation
+## Migration depuis les routes précédentes
 
-Les identifiants sont stables, `PUT /v1/tenants/{tenantID}/users` est idempotent, la création d'un tenant ou d'une organisation sur un slug existant répond `409` en incluant l'identifiant existant, et les endpoints de lecture permettent de relire l'état courant intégralement. Le seul effet de bord de `POST /v1/tenants/{tenantID}/organizations` est documenté : la création des rôles intégrés de l'organisation.
+Toutes les routes précédentes ont été déplacées ou remplacées, sans alias. Les
+identifiants ne changent pas : une ressource existante s'adresse par son UUID
+actuel.
+
+| Avant | Maintenant |
+| --- | --- |
+| `GET /v1/healthz`, `GET /v1/permissions` | `GET /v1/xolo/healthz`, `GET /v1/xolo/permissions` |
+| `GET /v1/tenants` | `GET /v1/xolo/tenants` |
+| `POST /v1/tenants` `{slug, name, description, active}` | `PUT /v1/tenants/{tenantID}` `{slug, name, status}` avec un UUID de votre choix ; `description` via `PATCH /v1/xolo/tenants/{tenantID}` |
+| `GET /v1/tenants/{tenantID}` | `GET /v1/xolo/tenants/{tenantID}` |
+| `PATCH /v1/tenants/{tenantID}` `{name, description, active}` | `PATCH /v1/xolo/tenants/{tenantID}` (même corps), ou `PUT /v1/tenants/{tenantID}` `{slug, name, status}` |
+| `DELETE /v1/tenants/{tenantID}` | Supprimée : `PUT /v1/tenants/{tenantID}` avec `"status": "suspended"` |
+| `GET /v1/tenants/{tenantID}/organizations[/{orgID}]` | `GET /v1/xolo/tenants/{tenantID}/organizations[/{orgID}]` |
+| `POST /v1/tenants/{tenantID}/organizations` `{slug, name, description, currency, active, owner}` | `PUT /v1/tenants/{tenantID}/organizations/{orgID}` `{slug, name, status}` ; `description` et `currency` via `PATCH /v1/xolo/…/organizations/{orgID}` ; le propriétaire via `PUT …/organizations/{orgID}/members/{userID}` `{"role": "owner", "status": "active"}` une fois connecté |
+| `PATCH /v1/tenants/{tenantID}/organizations/{orgID}` | `PATCH /v1/xolo/tenants/{tenantID}/organizations/{orgID}` (même corps) |
+| `DELETE /v1/tenants/{tenantID}/organizations/{orgID}` | Supprimée : `PUT …/organizations/{orgID}` avec `"status": "suspended"` |
+| `GET …/organizations/{orgID}/members[/{membershipID}]` | `GET /v1/xolo/…/organizations/{orgID}/members[/{membershipID}]` |
+| `POST …/organizations/{orgID}/members` `{userId \| user, roleIds, builtinRoles}` | `PUT /v1/tenants/{tenantID}/organizations/{orgID}/members/{userID}` `{role, status}` ; rôles personnalisés via `PUT /v1/xolo/…/members/{membershipID}/roles` |
+| `PUT …/members/{membershipID}/roles` | `PUT /v1/xolo/…/members/{membershipID}/roles` (même corps) |
+| `DELETE …/members/{membershipID}` | Supprimée : `PUT …/organizations/{orgID}/members/{userID}` avec `"status": "suspended"` |
+| `…/organizations/{orgID}/roles[/{roleID}]` (toutes méthodes) | `/v1/xolo/…/organizations/{orgID}/roles[/{roleID}]` (mêmes corps) |
+| `GET`, `PUT /v1/tenants/{tenantID}/users` | `GET`, `PUT /v1/xolo/tenants/{tenantID}/users` (mêmes corps) |
+| `GET /v1/tenants/{tenantID}/users/{userID}` | `GET /v1/xolo/tenants/{tenantID}/users/{userID}` |
+| `PATCH /v1/tenants/{tenantID}/users/{userID}` `{email, displayName, active}` | `PUT /v1/tenants/{tenantID}/members/{userID}` `{email, display_name, tenant_role, status}` |
+
+**Arrêtez tous les serveurs avant la mise à niveau.** La migration
+`202610070001` ajoute les domaines, les rôles de tenant et les statuts
+d'adhésion. Un ancien serveur encore actif continuerait de router selon le
+modèle d'hôte et donnerait accès via des adhésions suspendues. La migration ne
+peut pas être annulée. Avec `XOLO_STORAGE_AUTO_MIGRATE=false`, arrêtez tous les
+écrivains, sauvegardez la base puis exécutez `bin/migrate apply -writers-stopped`
+avant le démarrage. Le développement de `XOLO_MULTITENANCY_HOST_PATTERN` en
+domaines est fait par le serveur au démarrage, dans les deux modes.
 
 ## Transactions, audit et corrélation
 
@@ -164,7 +297,7 @@ PostgreSQL rejouent l'opération entière avec une attente bornée et annulable.
 Aucun verrou de publication global n'est utilisé.
 
 `mutation_audits` conserve un état avant/après par ressource effectivement modifiée :
-tenant, organisation, utilisateur, adhésion ou rôle, y compris les associations de
+tenant, domaine, organisation, utilisateur, adhésion ou rôle, y compris les associations de
 rôles et les suppressions en cascade. Les changements successifs sont regroupés ;
 une opération sans changement ne produit pas d'audit. Les états excluent les secrets
 et les horodatages techniques. L'historique et son périmètre tenant/organisation
@@ -191,9 +324,6 @@ dépassement renvoie `429`, `rate_limited`, `Retry-After` en secondes et l'ident
 
 La migration `202610060001`, après celle des UUID, crée l'audit sur une installation
 neuve comme sur une mise à niveau. Son rollback refuse d'effacer l'historique.
-Avec `XOLO_STORAGE_AUTO_MIGRATE=false`, arrêtez tous les écrivains, sauvegardez la base puis exécutez
-`bin/migrate apply -writers-stopped` avant le démarrage.
-La migration UUID et ses artefacts de récupération sont préservés.
 
 ## Mise en place d'une PKI de développement
 
@@ -234,18 +364,19 @@ bin/server
 Premiers appels :
 
 ```bash
-CURL="curl -s --cacert dev-pki/ca.crt --cert dev-pki/client.crt --key dev-pki/client.key"
+CURL="curl -s --cacert dev-pki/ca.crt --cert dev-pki/client.crt --key dev-pki/client.key -H Content-Type:application/json"
 
 # Refusé : aucun certificat client
-curl -sk https://localhost:3003/v1/permissions
+curl -sk https://localhost:3003/v1/manifest
 
 # Accepté : on récupère d'abord l'identifiant du tenant
-$CURL "https://localhost:3003/v1/tenants?slug=default"
+$CURL "https://localhost:3003/v1/xolo/tenants?slug=default"
 TENANT=…  # l'identifiant lu ci-dessus
 
-# Puis on crée une organisation et son propriétaire
-$CURL -X POST "https://localhost:3003/v1/tenants/$TENANT/organizations" \
-  -d '{"slug":"acme","name":"Acme","owner":{"provider":"openid-connect","subject":"sub-123","email":"owner@acme.tld","displayName":"Owner"}}'
+# Puis on crée une organisation avec un identifiant choisi
+ORG=$(uuidgen | tr A-Z a-z)
+$CURL -X PUT "https://localhost:3003/v1/tenants/$TENANT/organizations/$ORG" \
+  -d '{"slug":"acme","name":"Acme","status":"active"}'
 ```
 
 En production, utilisez une autorité de certification gérée (Vault, cert-manager, PKI interne) et faites tourner les certificats clients.
@@ -254,5 +385,7 @@ En production, utilisez une autorité de certification gérée (Vault, cert-mana
 
 - Les fournisseurs, modèles LLM, modèles virtuels, middlewares, applications et leurs jetons, quotas, alertes et paramètres d'événements : ils restent gérés par l'interface web.
 - Les portées par certificat : tout URI autorisé administre l'instance entière.
-- Le pré-provisionnement par email : le mécanisme d'[invitation](../organisation/invitation/invitation.md) reste la voie par email, via l'interface web.
+- La création d'un membre avant sa première connexion : un membre se provisionne une fois connecté. Le mécanisme d'[invitation](../organisation/invitation/invitation.md) reste la voie par email, via l'interface web.
+- La suppression de tenants, domaines, organisations ou adhésions : suspendez-les.
+- Les écritures conditionnelles (`ETag`/`If-Match`), les lectures communes paginées, le flux d'événements et les webhooks.
 - Aucune spécification OpenAPI n'est générée à ce jour.

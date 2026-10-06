@@ -12,7 +12,7 @@ Au-dessus de l'organisation se trouve le **tenant**, la frontière d'isolation l
 
 **Vous n'avez normalement pas à vous en soucier.** Par défaut, Xolo fonctionne avec un tenant unique nommé `default`, créé automatiquement : aucun sous-domaine n'est nécessaire, aucune URL ne change, et le tenant n'apparaît nulle part dans l'interface.
 
-Il ne devient visible que sur une instance mutualisée, où plusieurs clients cohabitent. Le multi-tenant s'active alors par configuration (`XOLO_MULTITENANCY_ENABLED`), et chaque tenant est identifié par son sous-domaine selon un modèle configurable, par exemple `acme.xolo.example.com`. Un sous-domaine qui ne correspond à aucun tenant actif renvoie une erreur 404.
+Il ne devient visible que sur une instance mutualisée, où plusieurs clients cohabitent. Le multi-tenant s'active alors par configuration (`XOLO_MULTITENANCY_ENABLED`), et chaque tenant est identifié par les domaines déclarés pour lui, par exemple `acme.xolo.example.com`. Un hôte qui n'est le domaine actif d'aucun tenant actif renvoie une erreur 404.
 
 Deux tenants peuvent héberger une organisation portant le même slug, et une même identité peut y disposer de deux comptes distincts, sans aucune collision. La gestion des tenants passe exclusivement par l'[API de provisioning](../administration/provisioning/provisioning.md) ; il n'existe pas d'interface dédiée.
 
