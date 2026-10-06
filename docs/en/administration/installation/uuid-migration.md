@@ -58,23 +58,29 @@ need `plan`, which expects the previous release's tenant/user/organization schem
 | Case | Resolution |
 | --- | --- |
 | Legacy IDs, including non-xid values such as `org-acme` | Converted automatically. Keep the generated `ids` mapping; valid UUIDs must stay unchanged. |
-| Emails differing only by case or surrounding spaces in one tenant | Add `email_overrides` keyed by **old user ID**, with a distinct valid email for each affected account. No accounts are merged or deleted. |
+| Emails differing only by case or surrounding spaces in one tenant | Preserved exactly, including case and spaces. This migration does not normalize emails or merge accounts. |
 | Exact EventQL matches on `user`, `org`, `actor_id`, `user_id`, `org_id` and other recognized ID attributes | Rewritten automatically using the matching ID family. Indexed selectors support `user`/`org`; `user_id`/`actor_id` are pipeline attributes. Historical event ID attributes are rewritten too. |
 | Graph references in recognized ID fields or exact string `value` fields | Rewritten automatically; graph topology IDs and edges remain unchanged. |
 | EventQL regex containing an old ID, opaque graph script/configuration or ambiguous ID | The report names the table, row, column and, for graphs, JSON path. Add a `serialized_overrides` entry as described below. |
 | Invalid query or JSON | Repair it with a valid serialized override. Unknown EventQL selectors such as `{user_id="..."}` must become a supported selector or attribute filter. |
 | Incomplete, stale, duplicate or invalid UUID mapping | Regenerate an unapplied plan from the final stopped database and review it again. Never edit an already applied mapping. |
-| Empty primary ID, orphaned relation, partial/duplicate identity or foreign membership/role | Repair the source data on a backup-tested copy before replanning. Diagnostics never discard affected rows. |
-| Ambiguous membership builtin role | Set `membership_roles[old_membership_id]` to the chosen existing builtin role (`member`, `admin`, `owner`). Custom roles are preserved. |
-| Invalid tenant owner or domain decision | Correct `tenant_owners`, `domains` or `reserved_hostnames`; owners must be active users of the same tenant and domains must be unique and nonreserved. These optional decisions use old IDs. |
+| Empty primary ID or orphaned relation | Repair source data on a backup-tested copy before replanning. Diagnostics never discard affected rows. |
 
-An email correction added to the existing plan looks like:
+Plans use **version 2** and contain only `ids` mappings and optional
+`serialized_overrides`. Version 1 plans are rejected: regenerate with
+`xolo-migrate plan -out recovery-v2.json` against the stopped, pre-migration
+database and review every correction again. Do not change the version number by
+hand. Unknown fields are rejected rather than silently ignored.
 
-```json
-"email_overrides": {
-  "old-user-id": "distinct@example.com"
-}
-```
+Emails, provider/subject identities and all platform and membership role
+assignments are preserved, including multiple builtin roles. Domain management,
+new role/status concepts and publication counters belong to a later migration.
+
+Mappings are loaded into an indexed temporary table in batches. Each declared
+relational reference is rewritten by one SQL operation; serialized fields are
+read in pages of 1,000 rows and updated in batches. All batches remain inside the
+same atomic transaction. The migration lock is used only for migrations;
+ordinary store operations retain their existing transactions and configured cache.
 
 For a serialized correction, add the following array to the existing plan. Obtain
 the actual new UUID from `ids.users` (or the appropriate family):

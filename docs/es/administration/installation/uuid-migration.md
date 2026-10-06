@@ -60,23 +60,30 @@ que espera el esquema de tenants, usuarios y organizaciones de la versión anter
 | Caso | Resolución |
 | --- | --- |
 | IDs antiguos, incluidos valores no xid como `org-acme` | Conversión automática. Conserve el mapping `ids`; los UUID válidos no se cambian. |
-| Emails que solo difieren por mayúsculas o espacios dentro de un tenant | Añada `email_overrides` con el **antiguo ID de usuario** y direcciones válidas y distintas. No se fusionan ni eliminan cuentas. |
+| Emails que solo difieren por mayúsculas o espacios dentro de un tenant | Se conservan exactamente, incluidas mayúsculas y espacios. Esta migración no normaliza emails ni fusiona cuentas. |
 | Comparaciones EventQL exactas sobre `user`, `org`, `actor_id`, `user_id`, `org_id` y otros atributos de ID reconocidos | Se reescriben con la familia correcta. Los selectores indexados aceptan `user`/`org`; `user_id`/`actor_id` son filtros de atributos. También se actualizan los atributos históricos de eventos. |
 | Referencias de grafos en campos de ID reconocidos o campos `value` exactos | Reescritura automática; se conservan los IDs de nodos y las aristas. |
 | Expresión regular con un ID antiguo, script/configuración opaca o ID ambiguo | El informe identifica tabla, fila, columna y ruta JSON. Añada una entrada `serialized_overrides` como se muestra abajo. |
 | Consulta o JSON inválido | Proporcione una corrección serializada válida. Selectores desconocidos como `{user_id="..."}` deben convertirse a un selector reconocido o filtro de atributo. |
 | Mapping incompleto, obsoleto, UUID inválido o duplicado | Regenere un plan todavía no aplicado contra la base detenida y revíselo. Nunca cambie un mapping ya aplicado. |
-| ID primario vacío, relación huérfana, identidad parcial/duplicada o relación con otro padre | Repare los datos tras ensayar sobre una copia y vuelva a planificar. El diagnóstico nunca descarta filas. |
-| Varios roles integrados en una membresía | Indique en `membership_roles[id_antiguo]` el rol integrado existente elegido: `member`, `admin` u `owner`. Se conservan los roles personalizados. |
-| Propietario o dominio inválido | Corrija `tenant_owners`, `domains` o `reserved_hostnames`. Los propietarios deben estar activos y pertenecer al tenant; los dominios deben ser únicos y no reservados. Estas decisiones opcionales usan IDs antiguos. |
+| ID primario vacío o relación huérfana | Repare los datos tras ensayar sobre una copia y vuelva a planificar. El diagnóstico nunca descarta filas. |
 
-Ejemplo de campo que puede añadir al plan existente para corregir un email:
+Los planes utilizan la **versión 2** y contienen únicamente los mappings `ids`
+y las correcciones opcionales `serialized_overrides`. Los planes de versión 1
+se rechazan: regenérelos con `xolo-migrate plan -out recovery-v2.json` sobre la base
+detenida, anterior a la migración, y revise cada corrección. No cambie el número
+de versión a mano. Los campos desconocidos se rechazan.
 
-```json
-"email_overrides": {
-  "id-antiguo-usuario": "distinct@example.com"
-}
-```
+Se conservan los emails, las identidades provider/subject y todas las asignaciones
+de roles de plataforma y membresía, incluso varios roles integrados. Los dominios,
+nuevos conceptos de roles/estados y contadores de publicación tendrán su propia
+migración posterior.
+
+Los mappings se cargan por lotes en una tabla temporal indexada. Cada referencia
+relacional declarada se reescribe mediante una operación SQL; los campos
+serializados se leen en páginas de 1 000 filas y se actualizan por lotes. Todos
+los lotes permanecen en la misma transacción atómica. El bloqueo solo se usa para
+migraciones; las operaciones ordinarias mantienen sus transacciones y caché configurada.
 
 Para una corrección serializada, añada esta lista al plan existente. Obtenga el
 nuevo UUID de `ids.users` o de la familia correspondiente:

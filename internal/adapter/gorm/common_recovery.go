@@ -1,6 +1,7 @@
 package gorm
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -16,18 +17,43 @@ import (
 	"gorm.io/gorm"
 )
 
-// RecoveryArtifact records migration decisions, never runtime aliases.
-// Optional owner and domain overrides use old IDs.
+// RecoveryArtifact records UUID mappings and explicit serialized corrections.
+// It never changes emails, identities or role assignments.
 type RecoveryArtifact struct {
 	Version             int                          `json:"version"`
-	EmailOverrides      map[string]string            `json:"email_overrides,omitempty"`
 	SerializedOverrides []RecoverySerializedOverride `json:"serialized_overrides,omitempty"`
 	IDs                 map[string]map[string]string `json:"ids"`
-	TenantOwners        map[string][]string          `json:"tenant_owners"`
-	MembershipRoles     map[string]string            `json:"membership_roles"`
-	Domains             []model.Domain               `json:"domains"`
-	ReservedHostnames   []string                     `json:"reserved_hostnames"`
 }
+
+const recoveryArtifactVersion = 2
+
+func recoveryVersionError(version int) error {
+	return fmt.Errorf("unsupported recovery plan version %d; regenerate with xolo-migrate plan -out <new-file>; do not edit the version by hand", version)
+}
+
+// UnmarshalJSON checks the version before decoding decisions. Old decisions
+// must never disappear silently when reading an artifact from an earlier binary.
+func (a *RecoveryArtifact) UnmarshalJSON(data []byte) error {
+	var header struct {
+		Version int `json:"version"`
+	}
+	if err := json.Unmarshal(data, &header); err != nil {
+		return err
+	}
+	if header.Version != recoveryArtifactVersion {
+		return recoveryVersionError(header.Version)
+	}
+	type artifact RecoveryArtifact
+	var decoded artifact
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&decoded); err != nil {
+		return err
+	}
+	*a = RecoveryArtifact(decoded)
+	return nil
+}
+
 type RecoveryReport struct {
 	BeforeCounts map[string]int64 `json:"before_counts,omitempty"`
 	Digest       string           `json:"artifact_sha256"`
@@ -108,7 +134,7 @@ func PlanCommonRecovery(ctx context.Context, db *gorm.DB) (*RecoveryArtifact, er
 	if err != nil {
 		return nil, err
 	}
-	a := &RecoveryArtifact{Version: 1, EmailOverrides: map[string]string{}, IDs: map[string]map[string]string{}, TenantOwners: map[string][]string{}, MembershipRoles: map[string]string{}}
+	a := &RecoveryArtifact{Version: recoveryArtifactVersion, IDs: map[string]map[string]string{}}
 	for family, values := range ids {
 		a.IDs[family] = map[string]string{}
 		for _, old := range values {
@@ -129,8 +155,14 @@ func PlanCommonRecovery(ctx context.Context, db *gorm.DB) (*RecoveryArtifact, er
 func DiagnoseCommonRecovery(ctx context.Context, db *gorm.DB, a *RecoveryArtifact) (*RecoveryReport, error) {
 	db = db.WithContext(ctx)
 	report := &RecoveryReport{Digest: artifactDigest(a), Counts: map[string]int64{}, Issues: []string{}}
-	if a == nil || a.Version != 1 || len(a.IDs) != 3 {
-		return nil, fmt.Errorf("unsupported recovery artifact")
+	if a == nil {
+		return nil, fmt.Errorf("missing recovery artifact")
+	}
+	if a.Version != recoveryArtifactVersion {
+		return nil, recoveryVersionError(a.Version)
+	}
+	if len(a.IDs) != 3 {
+		return nil, fmt.Errorf("recovery artifact requires tenants, organizations and users mappings")
 	}
 	if db.Migrator().HasTable(&CommonRecovery{}) {
 		var checkpoint CommonRecovery
@@ -219,114 +251,7 @@ func DiagnoseCommonRecovery(ctx context.Context, db *gorm.DB, a *RecoveryArtifac
 			}
 		}
 	}
-	var users []User
-	if err := db.Select("id, tenant_id, provider, subject, email, active").Find(&users).Error; err != nil {
-		return nil, err
-	}
-	emails := map[string]string{}
-	identities := map[string]bool{}
-	byID := map[string]User{}
-	for _, u := range users {
-		byID[u.ID] = u
-		email := model.NormalizeEmail(u.Email)
-		if override, ok := a.EmailOverrides[u.ID]; ok {
-			email = model.NormalizeEmail(override)
-			if email == "" || len(email) > 320 || !strings.Contains(email, "@") || strings.ContainsAny(email, "\r\n\t ") {
-				report.Issues = append(report.Issues, "invalid email override for user "+u.ID)
-			}
-		}
-		key := u.TenantID + "\x00" + email
-		if previous, ok := emails[key]; email != "" && ok {
-			report.Issues = append(report.Issues, fmt.Sprintf("normalized email collision in tenant %s between users %s and %s; set email_overrides using old user IDs", u.TenantID, previous, u.ID))
-		}
-		emails[key] = u.ID
-		if (u.Provider == "") != (u.Subject == "") {
-			report.Issues = append(report.Issues, "partial provider identity")
-		}
-		if u.Provider != "" {
-			key = u.TenantID + "\x00" + u.Provider + "\x00" + u.Subject
-			if identities[key] {
-				report.Issues = append(report.Issues, "duplicate provider identity")
-			}
-			identities[key] = true
-		}
-	}
-	for id := range a.EmailOverrides {
-		if _, ok := byID[id]; !ok {
-			report.Issues = append(report.Issues, "unknown user in email_overrides: "+id)
-		}
-	}
-	for tenant := range a.TenantOwners {
-		if _, ok := a.IDs["tenants"][tenant]; !ok {
-			report.Issues = append(report.Issues, "unknown tenant owner decision")
-		}
-	}
-	for _, tenant := range ids["tenants"] {
-		owners := a.TenantOwners[tenant]
-		for _, owner := range owners {
-			u, ok := byID[owner]
-			if !ok || u.TenantID != tenant || !u.Active {
-				report.Issues = append(report.Issues, "invalid tenant owner: "+tenant)
-			}
-		}
-	}
-	var memberships []Membership
-	if err := db.Select("id, user_id, org_id").Preload("Roles").Preload("Org").Find(&memberships).Error; err != nil {
-		return nil, err
-	}
-	pairs := map[string]bool{}
-	for _, m := range memberships {
-		key := m.OrgID + "\x00" + m.UserID
-		if pairs[key] {
-			report.Issues = append(report.Issues, "duplicate membership")
-		}
-		pairs[key] = true
-		if m.Org == nil || byID[m.UserID].TenantID != m.Org.TenantID {
-			report.Issues = append(report.Issues, "foreign membership parent")
-		}
-		kinds := map[string]bool{}
-		for _, r := range m.Roles {
-			if r.OrgID != m.OrgID {
-				report.Issues = append(report.Issues, "foreign membership role")
-			}
-			if r.Builtin {
-				kinds[r.BuiltinKind] = true
-			}
-		}
-		decision := a.MembershipRoles[m.ID]
-		if len(kinds) > 1 && decision == "" {
-			report.Issues = append(report.Issues, "ambiguous membership role: "+m.ID)
-		}
-		if decision != "" && (!model.MembershipRole(decision).Valid() || (len(kinds) > 0 && !kinds[decision]) || (len(kinds) == 0 && decision != "member")) {
-			report.Issues = append(report.Issues, "invalid membership role decision")
-		}
-	}
-	membershipIDs := map[string]bool{}
-	for _, m := range memberships {
-		membershipIDs[m.ID] = true
-	}
-	for id := range a.MembershipRoles {
-		if !membershipIDs[id] {
-			report.Issues = append(report.Issues, "unknown membership role decision")
-		}
-	}
-	hosts := map[string]bool{}
-	reserved := map[string]bool{}
-	for _, h := range a.ReservedHostnames {
-		n, e := model.NormalizeHostname(h)
-		if e != nil {
-			return nil, e
-		}
-		reserved[n] = true
-	}
-	for _, d := range a.Domains {
-		h, e := model.NormalizeHostname(d.Hostname)
-		if e != nil || h != d.Hostname || hosts[h] || reserved[h] || !d.Status.Valid() || a.IDs["tenants"][string(d.TenantID)] == "" {
-			report.Issues = append(report.Issues, "invalid, reserved or duplicate domain")
-		}
-		hosts[h] = true
-	}
-	_, issues, err := planSerializedRecovery(db, a)
+	issues, err := scanSerializedRecovery(db, a, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -341,13 +266,13 @@ func artifactDigest(a *RecoveryArtifact) string {
 }
 
 // ApplyCommonRecovery requires all writers stopped. DDL, rewritten references,
-// semantic backfill and checkpoint commit together on both supported backends.
+// serialized corrections and checkpoint commit together on both supported backends.
 func ApplyCommonRecovery(ctx context.Context, db *gorm.DB, a *RecoveryArtifact) (*RecoveryReport, error) {
 	var report *RecoveryReport
 	err := withMigrationLock(ctx, db, func(tx *gorm.DB) error {
 		warnCommonMigration(tx)
 		var err error
-		report, err = applyCommonRecovery(ctx, tx, a, true, true)
+		report, err = applyCommonRecovery(ctx, tx, a, true)
 		return err
 	})
 	if report != nil {
@@ -356,7 +281,7 @@ func ApplyCommonRecovery(ctx context.Context, db *gorm.DB, a *RecoveryArtifact) 
 	return report, err
 }
 
-func applyCommonRecovery(ctx context.Context, db *gorm.DB, a *RecoveryArtifact, markMigration, replaceBuiltinRoles bool) (*RecoveryReport, error) {
+func applyCommonRecovery(ctx context.Context, db *gorm.DB, a *RecoveryArtifact, markMigration bool) (*RecoveryReport, error) {
 	var final *RecoveryReport
 	err := db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if isPostgres(tx) {
@@ -397,119 +322,39 @@ func applyCommonRecovery(ctx context.Context, db *gorm.DB, a *RecoveryArtifact, 
 			// Original constraint modes are restored before committing.
 
 		}
-		changes, _, err := planSerializedRecovery(tx, a)
+		if err := installRecoveryMappings(tx, a); err != nil {
+			return err
+		}
+		issues, err := scanSerializedRecovery(tx, a, func(changes []RecoverySerializedOverride) error {
+			return applySerializedRecoveryBatch(tx, changes)
+		})
 		if err != nil {
 			return err
 		}
-		for _, change := range changes {
-			if err := tx.Table(change.Table).Where("id = ?", change.ID).UpdateColumn(change.Column, change.After).Error; err != nil {
-				return err
-			}
+		if len(issues) != 0 {
+			return fmt.Errorf("serialized recovery blocked: %s", strings.Join(issues, "; "))
 		}
-		// Drop the email index transactionally so explicit corrections can swap
-		// addresses; installCommonSchema reinstalls it after normalization.
-		if err := tx.Exec("DROP INDEX IF EXISTS idx_users_tenant_email_nonempty").Error; err != nil {
-			return err
-		}
-		for old, email := range a.EmailOverrides {
-			if err := tx.Table("users").Where("id = ?", old).UpdateColumn("email", model.NormalizeEmail(email)).Error; err != nil {
-				return err
-			}
-		}
-		// Do not invoke stores: historical resources must generate no creation facts.
+		// Raw SQL preserves timestamps and emits no runtime creation events.
 		for _, ref := range recoveryReferences() {
 			if !tx.Migrator().HasTable(ref.table) || !tx.Migrator().HasColumn(ref.table, ref.column) {
 				continue
 			}
-			for old, next := range a.IDs[ref.family] {
-				if old == next {
-					continue
-				}
-				q := tx.Table(ref.table).Where(ref.column+" = ?", ref.prefix+old)
-				if ref.where != "" {
-					q = q.Where(ref.where)
-				}
-				if err := q.UpdateColumn(ref.column, ref.prefix+next).Error; err != nil {
-					return err
-				}
+			if err := rewriteRecoveryReference(tx, ref); err != nil {
+				return err
 			}
 		}
 		for _, family := range []string{"tenants", "organizations", "users"} {
-			for old, next := range a.IDs[family] {
-				if old != next {
-					if err := tx.Table(family).Where("id = ?", old).UpdateColumn("id", next).Error; err != nil {
-						return err
-					}
-				}
-			}
-		}
-		// Normalize before installing the unique index; diagnostics already refused
-		// collisions and never choose a survivor automatically.
-		var users []User
-		if err := tx.Select("id, tenant_id, provider, subject, email, active").Find(&users).Error; err != nil {
-			return err
-		}
-		for _, u := range users {
-			if err := tx.Table("users").Where("id = ?", u.ID).UpdateColumn("email", model.NormalizeEmail(u.Email)).Error; err != nil {
-				return err
-			}
-		}
-		if isPostgres(tx) {
-			if err := tx.Exec("SET CONSTRAINTS ALL IMMEDIATE").Error; err != nil {
-				return err
-			}
-		}
-		if err := installCommonSchema(tx); err != nil {
-			return err
-		}
-		for _, owners := range a.TenantOwners {
-			for _, old := range owners {
-				if err := tx.Model(&User{}).Where("id = ?", a.IDs["users"][old]).UpdateColumn("tenant_role", "owner").Error; err != nil {
-					return err
-				}
-			}
-		}
-		var memberships []Membership
-		if err := tx.Select("id, user_id, org_id").Preload("Roles").Find(&memberships).Error; err != nil {
-			return err
-		}
-		for _, m := range memberships {
-			role := "member"
-			for _, r := range m.Roles {
-				if r.Builtin {
-					role = r.BuiltinKind
-				}
-			}
-			if chosen := a.MembershipRoles[m.ID]; chosen != "" {
-				role = chosen
-			}
-			if err := tx.Model(&Membership{}).Where("id = ?", m.ID).Updates(map[string]any{"common_role": role, "status": "active"}).Error; err != nil {
-				return err
-			}
-			// An explicit decision replaces only builtin assignments.
-			if replaceBuiltinRoles && a.MembershipRoles[m.ID] != "" {
-				for _, r := range m.Roles {
-					if r.Builtin && r.BuiltinKind != role {
-						if err := tx.Where("membership_id = ? AND role_id = ?", m.ID, r.ID).Delete(&MembershipRole{}).Error; err != nil {
-							return err
-						}
-					}
-				}
-			}
-		}
-		for _, h := range a.ReservedHostnames {
-			n, _ := model.NormalizeHostname(h)
-			if err := tx.Create(&ReservedDomain{Hostname: n}).Error; err != nil {
-				return err
-			}
-		}
-		for _, d := range a.Domains {
-			if err := tx.Create(&Domain{Hostname: d.Hostname, TenantID: a.IDs["tenants"][string(d.TenantID)], Status: string(d.Status)}).Error; err != nil {
+			if err := rewriteRecoveryReference(tx, recoveryReference{table: family, column: "id", family: family}); err != nil {
 				return err
 			}
 		}
 		if err := checkRecoveredReferences(tx, a); err != nil {
 			return err
+		}
+		for _, table := range []string{"uuid_recovery_changes", "uuid_recovery_ids"} {
+			if err := tx.Exec("DROP TABLE " + table).Error; err != nil {
+				return err
+			}
 		}
 		if err := requireCommonIDs(tx); err != nil {
 			return err
@@ -519,13 +364,7 @@ func applyCommonRecovery(ctx context.Context, db *gorm.DB, a *RecoveryArtifact, 
 			if err := tx.Table(table).Count(&after).Error; err != nil {
 				return err
 			}
-			if table == "reserved_domains" {
-				count += int64(len(a.ReservedHostnames))
-			}
-			if table == "domains" {
-				count += int64(len(a.Domains))
-			}
-			if after != count && table != "membership_roles" {
+			if after != count {
 				return fmt.Errorf("row count changed: %s", table)
 			}
 		}
@@ -589,27 +428,32 @@ func applyCommonRecovery(ctx context.Context, db *gorm.DB, a *RecoveryArtifact, 
 	return final, err
 }
 
-// Check the declared reference inventory, including non-FK and personal scopes.
+// Check the reference inventory with one set query per column. JSON-derived
+// mappings also work in diagnose's read-only transaction after a checkpoint.
 func checkRecoveredReferences(db *gorm.DB, a *RecoveryArtifact) error {
 	for _, ref := range recoveryReferences() {
 		if !db.Migrator().HasTable(ref.table) || !db.Migrator().HasColumn(ref.table, ref.column) {
 			continue
 		}
-		for old, next := range a.IDs[ref.family] {
-			if old == next {
-				continue
-			}
-			var count int64
-			q := db.Table(ref.table).Where(ref.column+" = ?", ref.prefix+old)
-			if ref.where != "" {
-				q = q.Where(ref.where)
-			}
-			if err := q.Count(&count).Error; err != nil {
-				return err
-			}
-			if count != 0 {
-				return fmt.Errorf("legacy reference remains in %s.%s", ref.table, ref.column)
-			}
+		encoded, err := json.Marshal(a.IDs[ref.family])
+		if err != nil {
+			return err
+		}
+		source := "json_each(?)"
+		if isPostgres(db) {
+			source = "jsonb_each_text(CAST(? AS jsonb))"
+		}
+		mapping := db.Raw("SELECT ? || key FROM "+source+" WHERE key <> value", ref.prefix, string(encoded))
+		q := db.Table(ref.table).Where(db.Statement.Quote(ref.column)+" IN (?)", mapping)
+		if ref.where != "" {
+			q = q.Where(ref.where)
+		}
+		var count int64
+		if err := db.Table("(?) AS remaining", q.Select("1").Limit(1)).Count(&count).Error; err != nil {
+			return err
+		}
+		if count != 0 {
+			return fmt.Errorf("legacy reference remains in %s.%s", ref.table, ref.column)
 		}
 	}
 	return nil

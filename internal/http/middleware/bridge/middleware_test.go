@@ -48,13 +48,7 @@ func newStore(t *testing.T) *xologorm.Store {
 		t.Fatalf("open db: %v", err)
 	}
 
-	store := xologorm.NewStore(db)
-	tenant := model.NewTenant("test", "Test", "")
-	tenant.SetID(testTenantID)
-	if err := store.CreateTenant(context.Background(), tenant); err != nil {
-		t.Fatal(err)
-	}
-	return store
+	return xologorm.NewStore(db)
 }
 
 type callResult struct {
@@ -105,34 +99,6 @@ func newIdentity(subject, email, displayName string) *authn.User {
 		Subject:     subject,
 		Email:       email,
 		DisplayName: displayName,
-	}
-}
-
-type countingUserStore struct {
-	port.UserStore
-	writes int
-}
-
-func (s *countingUserStore) SaveUser(ctx context.Context, user model.User) error {
-	s.writes++
-	return s.UserStore.SaveUser(ctx, user)
-}
-
-func TestNormalizedEmailDoesNotWriteOnEveryRequest(t *testing.T) {
-	store := newStore(t)
-	user := model.NewUser(testTenantID, "openid-connect", "stable", "alice@example.test", "Alice", true, authz.RoleUser)
-	if err := store.SaveUser(t.Context(), user); err != nil {
-		t.Fatal(err)
-	}
-	counted := &countingUserStore{UserStore: store}
-	for range 2 {
-		result := call(t, counted, bridge.Options{}, newIdentity("stable", " Alice@Example.test ", "Alice"))
-		if !result.served {
-			t.Fatalf("unchanged identity was rejected: %d", result.status)
-		}
-	}
-	if counted.writes != 0 {
-		t.Fatalf("normalized email triggered %d unnecessary writes", counted.writes)
 	}
 }
 
@@ -304,7 +270,7 @@ func TestExistingUserSynchronization(t *testing.T) {
 // testTenantID is the tenant every fixture of this package belongs to.
 // Tenancy is not what these tests exercise: they only need a stable, shared
 // owner so the tenant-scoped unique keys behave like the pre-tenant ones.
-const testTenantID = model.TenantID("11111111-1111-4111-8111-111111111111")
+const testTenantID = model.TenantID("test-tenant")
 
 // testTenant is what the tenant middleware would have injected in the request
 // context. Only its identifier matters here: the bridge scopes the identity

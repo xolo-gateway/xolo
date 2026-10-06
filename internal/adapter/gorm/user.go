@@ -8,8 +8,7 @@ import (
 )
 
 type User struct {
-	TenantRole string `gorm:"not null;default:member"`
-	ID         string `gorm:"primaryKey;autoIncrement:false"`
+	ID string `gorm:"primaryKey;autoIncrement:false"`
 
 	CreatedAt time.Time
 	UpdatedAt time.Time
@@ -19,7 +18,7 @@ type User struct {
 	TenantID string `gorm:"index;uniqueIndex:idx_users_tenant_identity,priority:1;uniqueIndex:idx_users_tenant_email_nonempty,priority:1;not null"`
 
 	Subject  string `gorm:"index;uniqueIndex:idx_users_tenant_identity,priority:2"`
-	Provider string `gorm:"index;uniqueIndex:idx_users_tenant_identity,priority:3,where:provider != '' AND subject != ''"`
+	Provider string `gorm:"index;uniqueIndex:idx_users_tenant_identity,priority:3"`
 
 	DisplayName string
 	Email       string `gorm:"uniqueIndex:idx_users_tenant_email_nonempty,priority:2,where:email != ''"`
@@ -62,9 +61,8 @@ func fromUser(u model.User) *User {
 		Subject:     u.Subject(),
 		Provider:    u.Provider(),
 		DisplayName: u.DisplayName(),
-		Email:       model.NormalizeEmail(u.Email()),
+		Email:       u.Email(),
 		Active:      u.Active(),
-		TenantRole:  string(u.TenantRole()),
 	}
 
 	user.Preferences = &UserPreferences{
@@ -256,5 +254,3 @@ func (w *wrappedApplicationAuthToken) OrgID() model.OrgID    { return model.OrgI
 func (w *wrappedApplicationAuthToken) ExpiresAt() *time.Time { return w.t.ExpiresAt }
 
 var _ model.AuthToken = &wrappedApplicationAuthToken{}
-
-func (w *wrappedUser) TenantRole() model.TenantRole { return model.TenantRole(w.u.TenantRole) }

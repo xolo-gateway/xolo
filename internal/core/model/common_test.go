@@ -14,13 +14,3 @@ func TestCommonUUIDs(t *testing.T) {
 		}
 	}
 }
-func TestHostnameNormalization(t *testing.T) {
-	if got, err := NormalizeHostname(" A.Example.test "); err != nil || got != "a.example.test" {
-		t.Fatalf("%q %v", got, err)
-	}
-	for _, host := range []string{"example.test.", "127.0.0.1", "https://example.test", "example.test:443", "a..test", "-a.test", "*.test"} {
-		if _, err := NormalizeHostname(host); err == nil {
-			t.Errorf("accepted %q", host)
-		}
-	}
-}

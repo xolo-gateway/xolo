@@ -41,7 +41,9 @@ func recoveryLabelMappings(a *RecoveryArtifact) map[string]map[string]string {
 	}
 }
 
-func planSerializedRecovery(db *gorm.DB, a *RecoveryArtifact) ([]RecoverySerializedOverride, []string, error) {
+// scanSerializedRecovery holds at most one page of rows and corrections.
+// A nil consume callback diagnoses without retaining or applying corrections.
+func scanSerializedRecovery(db *gorm.DB, a *RecoveryArtifact, consume func([]RecoverySerializedOverride) error) ([]string, error) {
 	type key struct{ table, id, column string }
 	overrides := map[key]RecoverySerializedOverride{}
 	var issues []string
@@ -52,54 +54,72 @@ func planSerializedRecovery(db *gorm.DB, a *RecoveryArtifact) ([]RecoverySeriali
 		}
 		overrides[k] = override
 	}
-	var changes []RecoverySerializedOverride
 	for _, spec := range recoverySerializedColumns {
 		table, column := spec[0], spec[1]
 		if !db.Migrator().HasTable(table) || !db.Migrator().HasColumn(table, column) {
 			continue
 		}
-		var rows []struct{ ID, Value string }
-		if err := db.Table(table).Select("id, " + column + " AS value").Order("id").Find(&rows).Error; err != nil {
-			return nil, nil, err
-		}
-		for _, row := range rows {
-			k := key{table, row.ID, column}
-			change := RecoverySerializedOverride{Table: table, ID: row.ID, Column: column, Before: row.Value}
-			override, explicit := overrides[k]
-			delete(overrides, k)
-			var err error
-			if explicit {
-				if override.Before != row.Value {
-					err = fmt.Errorf("serialized override is stale; regenerate its before value")
-				} else {
-					change.After = override.After
-					if column == "query" {
-						_, err = eventql.Compile(change.After)
-					} else if !json.Valid([]byte(change.After)) {
-						err = fmt.Errorf("serialized override must be valid JSON")
+		var cursor string
+		hasCursor := false
+		for {
+			var rows []struct{ ID, Value string }
+			q := db.Table(table).Select("id, " + column + " AS value").Order("id").Limit(recoveryPageSize)
+			if hasCursor {
+				q = q.Where("id > ?", cursor)
+			}
+			if err := q.Find(&rows).Error; err != nil {
+				return nil, err
+			}
+			if len(rows) == 0 {
+				break
+			}
+			changes := make([]RecoverySerializedOverride, 0, len(rows))
+			for _, row := range rows {
+				k := key{table, row.ID, column}
+				change := RecoverySerializedOverride{Table: table, ID: row.ID, Column: column, Before: row.Value}
+				override, explicit := overrides[k]
+				delete(overrides, k)
+				var err error
+				if explicit {
+					if override.Before != row.Value {
+						err = fmt.Errorf("serialized override is stale; regenerate its before value")
+					} else {
+						change.After = override.After
+						if column == "query" {
+							_, err = eventql.Compile(change.After)
+						} else if !json.Valid([]byte(change.After)) {
+							err = fmt.Errorf("serialized override must be valid JSON")
+						}
 					}
+				} else if row.Value == "" {
+					change.After = row.Value
+				} else if column == "query" {
+					change.After, err = eventql.RewriteIdentifiers(row.Value, recoveryLabelMappings(a))
+				} else {
+					change.After, err = rewriteRecoveryJSON(row.Value, a, column == "graph_json")
 				}
-			} else if row.Value == "" {
-				change.After = row.Value
-			} else if column == "query" {
-				change.After, err = eventql.RewriteIdentifiers(row.Value, recoveryLabelMappings(a))
-			} else {
-				change.After, err = rewriteRecoveryJSON(row.Value, a, column == "graph_json")
+				if err != nil {
+					issues = append(issues, fmt.Sprintf("%s[%s].%s: %v", table, row.ID, column, err))
+					continue
+				}
+				if change.Before != change.After {
+					changes = append(changes, change)
+				}
 			}
-			if err != nil {
-				issues = append(issues, fmt.Sprintf("%s[%s].%s: %v", table, row.ID, column, err))
-				continue
+			if consume != nil {
+				if err := consume(changes); err != nil {
+					return nil, err
+				}
 			}
-			if change.Before != change.After {
-				changes = append(changes, change)
-			}
+			cursor, hasCursor = rows[len(rows)-1].ID, true
 		}
+
 	}
 	for k := range overrides {
 		issues = append(issues, fmt.Sprintf("unknown serialized override target: %s[%s].%s", k.table, k.id, k.column))
 	}
 	sort.Strings(issues)
-	return changes, issues, nil
+	return issues, nil
 }
 
 func rewriteRecoveryJSON(raw string, a *RecoveryArtifact, graph bool) (string, error) {

@@ -22,13 +22,12 @@ func TestOfflineMigrationWorkflow(t *testing.T) {
 	require.NoError(t, adapter.NewStore(db).Migrate(t.Context()))
 	require.NoError(t, db.Create(&adapter.Tenant{ID: "tenant-acme", Slug: "acme", Name: "Acme", Active: 1}).Error)
 	require.NoError(t, db.Create(&adapter.User{ID: "user-one", TenantID: "tenant-acme", Email: "One@example.test"}).Error)
-	require.NoError(t, db.Create(&adapter.User{ID: "user-two", TenantID: "tenant-acme", Email: "one@example.test"}).Error)
+	require.NoError(t, db.Create(&adapter.User{ID: "user-two", TenantID: "tenant-acme", Provider: "oidc", Subject: "two", Email: "one@example.test"}).Error)
 	require.NoError(t, db.Exec("DELETE FROM migrations WHERE id = ?", "202610020001").Error)
 	before, err := os.ReadFile(path)
 	require.NoError(t, err)
 	var out bytes.Buffer
-	require.ErrorContains(t, run(t.Context(), []string{"diagnose"}, &out), "migration blocked")
-	require.Contains(t, out.String(), "normalized email collision")
+	require.NoError(t, run(t.Context(), []string{"diagnose"}, &out))
 	planPath := filepath.Join(t.TempDir(), "recovery.json")
 	require.NoError(t, run(t.Context(), []string{"plan", "-out", planPath}, &out))
 	after, err := os.ReadFile(path)
@@ -42,10 +41,7 @@ func TestOfflineMigrationWorkflow(t *testing.T) {
 	require.NoError(t, err)
 	var artifact adapter.RecoveryArtifact
 	require.NoError(t, json.Unmarshal(raw, &artifact))
-	artifact.EmailOverrides = map[string]string{"user-two": "two@example.test"}
-	raw, err = json.Marshal(artifact)
-	require.NoError(t, err)
-	require.NoError(t, os.WriteFile(planPath, raw, 0600))
+	require.Equal(t, 2, artifact.Version)
 	require.NoError(t, run(t.Context(), []string{"diagnose", "-plan", planPath}, &out))
 	require.ErrorContains(t, run(t.Context(), []string{"apply", "-plan", planPath}, &out), "writers-stopped")
 	require.NoError(t, run(t.Context(), []string{"apply", "-plan", planPath, "-writers-stopped"}, &out))
@@ -53,7 +49,7 @@ func TestOfflineMigrationWorkflow(t *testing.T) {
 	require.NoError(t, run(t.Context(), []string{"diagnose"}, &out))
 	var user adapter.User
 	require.NoError(t, db.First(&user, "id = ?", artifact.IDs["users"]["user-two"]).Error)
-	require.Equal(t, "two@example.test", user.Email)
+	require.Equal(t, "one@example.test", user.Email)
 	require.NoError(t, adapter.CheckDatabaseSchema(t.Context(), db))
 }
 
@@ -84,4 +80,20 @@ func TestApplyFreshDatabase(t *testing.T) {
 	require.NoError(t, err)
 	defer pool.Close()
 	require.NoError(t, adapter.CheckDatabaseSchema(t.Context(), db))
+}
+
+func TestRecoveryPlanRejectsObsoleteOrUnknownDecisions(t *testing.T) {
+	for _, tc := range []struct{ name, plan, message string }{
+		{name: "version one", plan: `{"version":1,"email_overrides":{"old":"new@example.test"},"ids":{}}`, message: "regenerate with xolo-migrate plan"},
+		{name: "unknown version", plan: `{"version":3,"ids":{}}`, message: "regenerate with xolo-migrate plan"},
+		{name: "obsolete decision in v2", plan: `{"version":2,"tenant_owners":{},"ids":{}}`, message: "unknown field"},
+		{name: "unknown correction field", plan: `{"version":2,"ids":{},"serialized_overrides":[{"typo":"ignored"}]}`, message: "unknown field"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "plan.json")
+			require.NoError(t, os.WriteFile(path, []byte(tc.plan), 0600))
+			var out bytes.Buffer
+			require.ErrorContains(t, run(t.Context(), []string{"apply", "-plan", path, "-writers-stopped"}, &out), tc.message)
+		})
+	}
 }

@@ -4,9 +4,7 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/google/uuid"
 	sloghttp "github.com/samber/slog-http"
-	"github.com/xolo-gateway/xolo/internal/core/model"
 )
 
 // unauthorizedBody mirrors the error envelope of the v1 handler so machine
@@ -38,12 +36,6 @@ func requireClientCert(next http.Handler) http.Handler {
 		sloghttp.AddCustomAttributes(r, slog.String("clientCommonName", identity.CommonName))
 		sloghttp.AddCustomAttributes(r, slog.String("clientSerialNumber", identity.SerialNumber))
 
-		ctx := setClientIdentity(r.Context(), identity)
-		uri := "urn:xolo:console:certificate:" + identity.SerialNumber
-		if len(r.TLS.PeerCertificates[0].URIs) == 1 {
-			uri = r.TLS.PeerCertificates[0].URIs[0].String()
-		}
-		ctx = model.WithActor(ctx, model.Actor{URI: uri, RequestID: uuid.NewString()})
-		next.ServeHTTP(w, r.WithContext(ctx))
+		next.ServeHTTP(w, r.WithContext(setClientIdentity(r.Context(), identity)))
 	})
 }

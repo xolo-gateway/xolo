@@ -61,23 +61,30 @@ Pour une installation neuve ou une migration sans décision manuelle, utilisez
 | Cas | Résolution |
 | --- | --- |
 | Anciens identifiants, y compris non-xid comme `org-acme` | Conversion automatique. Conservez le mapping `ids` généré ; les UUID valides restent inchangés. |
-| Emails ne différant que par la casse ou les espaces dans un tenant | Ajoutez `email_overrides`, indexé par **ancien identifiant utilisateur**, avec des emails valides et distincts. Aucun compte n'est fusionné ni supprimé. |
+| Emails ne différant que par la casse ou les espaces dans un tenant | Conservés exactement, casse et espaces compris. Cette migration ne normalise pas les emails et ne fusionne aucun compte. |
 | Comparaisons EventQL exactes sur `user`, `org`, `actor_id`, `user_id`, `org_id` et les autres attributs d'identifiant reconnus | Réécriture automatique avec la bonne famille. Les sélecteurs indexés acceptent `user`/`org` ; `user_id`/`actor_id` sont des filtres d'attributs. Les attributs historiques des événements sont également réécrits. |
 | Références de graphe dans des champs d'identifiant reconnus ou des valeurs `value` exactes | Réécriture automatique ; les identifiants de nœuds et les arêtes sont conservés. |
 | Expression régulière EventQL contenant un ancien ID, script/configuration opaque ou ID ambigu | Le rapport indique table, ligne, colonne et chemin JSON du graphe. Ajoutez une entrée `serialized_overrides` comme ci-dessous. |
 | Requête ou JSON invalide | Fournissez une correction sérialisée valide. Un sélecteur inconnu comme `{user_id="..."}` doit devenir un sélecteur reconnu ou un filtre d'attribut. |
 | Mapping incomplet, périmé, UUID invalide ou dupliqué | Régénérez un plan non appliqué depuis la base définitivement arrêtée et relisez-le. Ne modifiez jamais un mapping déjà appliqué. |
-| ID primaire vide, relation orpheline, identité partielle/dupliquée, adhésion ou rôle d'un autre parent | Réparez les données source après répétition sur sauvegarde, puis régénérez le plan. Le diagnostic ne supprime aucune ligne. |
-| Plusieurs rôles intégrés sur une adhésion | Renseignez `membership_roles[ancien_id_adhésion]` avec le rôle intégré existant retenu : `member`, `admin` ou `owner`. Les rôles personnalisés sont conservés. |
-| Décision de propriétaire de tenant ou de domaine invalide | Corrigez `tenant_owners`, `domains` ou `reserved_hostnames`. Le propriétaire doit être actif et appartenir au tenant ; les domaines doivent être uniques et non réservés. Ces décisions facultatives utilisent les anciens IDs. |
+| ID primaire vide ou relation orpheline | Réparez les données source après répétition sur sauvegarde, puis régénérez le plan. Le diagnostic ne supprime aucune ligne. |
 
-Exemple de champ à ajouter au plan existant pour corriger un email :
+Les plans utilisent la **version 2** et contiennent uniquement les mappings
+`ids` et les corrections facultatives `serialized_overrides`. Les plans version 1
+sont refusés : régénérez-les avec `xolo-migrate plan -out recovery-v2.json` sur la
+base arrêtée, antérieure à la migration, puis relisez chaque correction.
+Ne changez pas le numéro de version à la main. Les champs inconnus sont refusés.
 
-```json
-"email_overrides": {
-  "ancien-id-utilisateur": "distinct@example.com"
-}
-```
+Les emails, identités provider/subject et toutes les affectations de rôles
+plateforme et d'adhésion sont conservés, même avec plusieurs rôles intégrés.
+Les domaines, nouvelles notions de rôles/statuts et compteurs de publication
+relèvent d'une migration ultérieure.
+
+Les mappings sont chargés par lots dans une table temporaire indexée. Chaque
+référence relationnelle déclarée est réécrite par une opération SQL ; les champs
+sérialisés sont lus par pages de 1 000 lignes et mis à jour par lots. Tous les lots
+restent dans la même transaction atomique. Le verrou est réservé aux migrations ;
+les écritures ordinaires gardent leurs transactions et le cache configuré.
 
 Pour une correction sérialisée, ajoutez ce tableau au plan existant. Remplacez le
 nouvel UUID par celui de `ids.users` ou de la famille concernée :

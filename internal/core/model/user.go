@@ -22,7 +22,6 @@ func NewUserID() UserID {
 }
 
 type User interface {
-	TenantRole() TenantRole
 	WithID[UserID]
 
 	// TenantID is the owning tenant. The identity tuple (provider, subject) is
@@ -45,7 +44,6 @@ type User interface {
 }
 
 type BaseUser struct {
-	tenantRole  TenantRole
 	id          UserID
 	tenantID    TenantID
 	displayName string
@@ -107,7 +105,6 @@ var _ User = &BaseUser{}
 func CopyUser(user User) *BaseUser {
 	return &BaseUser{
 		id:          user.ID(),
-		tenantRole:  user.TenantRole(),
 		tenantID:    user.TenantID(),
 		displayName: user.DisplayName(),
 		email:       user.Email(),
@@ -122,10 +119,9 @@ func CopyUser(user User) *BaseUser {
 func NewUser(tenantID TenantID, provider, subject, email string, displayName string, active bool, roles ...string) *BaseUser {
 	return &BaseUser{
 		id:          NewUserID(),
-		tenantRole:  TenantRoleMember,
 		tenantID:    tenantID,
 		displayName: displayName,
-		email:       NormalizeEmail(email),
+		email:       email,
 		subject:     subject,
 		provider:    provider,
 		roles:       roles,
@@ -143,7 +139,7 @@ func (u *BaseUser) SetActive(active bool) {
 }
 
 func (u *BaseUser) SetEmail(email string) {
-	u.email = NormalizeEmail(email)
+	u.email = email
 }
 
 func (u *BaseUser) SetRoles(roles ...string) {
@@ -266,10 +262,6 @@ func NewUserPreferences(setters ...BaseUserPreferencesSetter) *BaseUserPreferenc
 }
 
 var _ UserPreferences = &BaseUserPreferences{}
-
-func (u *BaseUser) TenantRole() TenantRole               { return u.tenantRole }
-func (u *BaseUser) SetTenantRole(role TenantRole)        { u.tenantRole = role }
-func (u *BaseUser) SetIdentity(provider, subject string) { u.provider, u.subject = provider, subject }
 
 // SetID accepts a validated external UUID; callers should use ParseUserID first.
 func (u *BaseUser) SetID(id UserID) { u.id = id }

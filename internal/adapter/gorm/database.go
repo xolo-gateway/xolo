@@ -168,7 +168,7 @@ func MigrateDatabase(ctx context.Context, db *gorm.DB, artifact *RecoveryArtifac
 				if err := migratePluginSecretScope(tx); err != nil {
 					return err
 				}
-				return installCommonSchema(tx)
+				return nil
 			})
 		})
 		return m.Migrate()
@@ -528,7 +528,7 @@ func schemaMigrations(artifact *RecoveryArtifact) []*gormigrate.Migration {
 				return migrateCommonSchema(tx)
 			}
 			warnCommonMigration(tx)
-			_, err := applyCommonRecovery(tx.Statement.Context, tx, artifact, false, true)
+			_, err := applyCommonRecovery(tx.Statement.Context, tx, artifact, false)
 			return err
 		}},
 	}

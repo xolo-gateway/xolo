@@ -3,6 +3,7 @@ package gorm
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/xolo-gateway/xolo/internal/core/model"
 	"github.com/xolo-gateway/xolo/internal/core/port"
@@ -14,13 +15,32 @@ import (
 // on SQLite snapshot conflicts and PostgreSQL deadlocks. The bound store never
 // migrates, retries a statement, or starts a nested/default write transaction.
 func (s *Store) WithInvitationTransaction(ctx context.Context, fn func(port.InvitationTx) error) error {
-	return s.identityTransaction(ctx, func(bound *Store) error {
-		db, err := bound.getDatabase(ctx)
-		if err != nil {
+	db, err := s.getDatabase(ctx)
+	if err != nil {
+		return err
+	}
+	for attempt := 0; ; attempt++ {
+		err = db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+			tx = tx.Session(&gorm.Session{SkipDefaultTransaction: true})
+			bound := &Store{
+				getDatabase:  func(context.Context) (*gorm.DB, error) { return tx, nil },
+				invitationTx: true,
+			}
+			return fn(&invitationTx{Store: bound, db: tx})
+		})
+		if err == nil || !isRetryableError(err) || attempt >= 10 {
 			return err
 		}
-		return fn(&invitationTx{Store: bound, db: db})
-	})
+		// Bounded, cancelable backoff; never wait with a transaction open.
+		delay := min(10*time.Millisecond<<attempt, 500*time.Millisecond)
+		timer := time.NewTimer(delay)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return ctx.Err()
+		case <-timer.C:
+		}
+	}
 }
 
 // invitationTx binds a Store to the transaction opened by
@@ -94,12 +114,6 @@ func (tx *invitationTx) ListOrgRoles(ctx context.Context, orgID model.OrgID) ([]
 }
 
 func (tx *invitationTx) InsertInvitationMember(ctx context.Context, membership model.Membership) (bool, error) {
-	if err := validateMemberParents(tx.db, membership); err != nil {
-		return false, err
-	}
-	if err := tx.track(ctx, "membership", string(membership.ID())); err != nil {
-		return false, err
-	}
 	result := tx.db.WithContext(ctx).Omit(clause.Associations).Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "user_id"}, {Name: "org_id"}},
 		DoNothing: true,

@@ -11,13 +11,12 @@ import (
 )
 
 type Store struct {
-	mutations          *mutationState
 	getDatabase        func(ctx context.Context) (*gorm.DB, error)
 	initializeDatabase func(context.Context, bool) (*gorm.DB, error)
-	// Use-case callbacks own the transaction and the retry boundary: on a
+	// Invitation callbacks own the transaction and the retry boundary: on a
 	// transaction-bound store, withRetry runs fn exactly once
 	// on that transaction and never opens its own.
-	transactionBound bool
+	invitationTx bool
 }
 
 // withRetry runs fn, replaying it with an exponential backoff while the
@@ -27,9 +26,9 @@ func (s *Store) withRetry(ctx context.Context, withTx bool, fn func(ctx context.
 	if err != nil {
 		return errors.WithStack(err)
 	}
-	if s.transactionBound {
-		// db is already the use-case transaction: withTx is ignored and a
-		// failure goes back to identityTransaction, which replays the
+	if s.invitationTx {
+		// db is already the invitation transaction: withTx is ignored and a
+		// failure goes back to WithInvitationTransaction, which replays the
 		// whole callback.
 		return fn(ctx, db.WithContext(ctx))
 	}

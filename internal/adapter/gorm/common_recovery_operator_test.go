@@ -76,29 +76,23 @@ func TestRecoveryRewritesQueriesGraphsAndHistoricalActors(t *testing.T) {
 	})
 }
 
-func TestRecoveryEmailCollisionAndExplicitResolution(t *testing.T) {
+func TestRecoveryPreservesEmailCaseAndIdentity(t *testing.T) {
 	eachBackendDB(t, func(t *testing.T, db *gormpkg.DB) {
 		seedLegacyRecovery(t, db)
-		require.NoError(t, db.Create(&adapter.User{ID: "user-other", TenantID: "tenant-acme", Email: "alice@example.test", Active: true}).Error)
+		require.NoError(t, db.Create(&adapter.User{ID: "user-other", TenantID: "tenant-acme", Provider: "oidc", Subject: "other", Email: "alice@example.test", Active: true}).Error)
 		a, err := adapter.PlanCommonRecovery(t.Context(), db)
 		require.NoError(t, err)
 		report, err := adapter.DiagnoseCommonRecovery(t.Context(), db, a)
 		require.NoError(t, err)
-		require.Contains(t, strings.Join(report.Issues, " "), "user-alice and user-other")
-		require.ErrorContains(t, adapter.MigrateDatabase(t.Context(), db, a), "normalized email collision")
-		var original adapter.User
-		require.NoError(t, db.First(&original, "id = ?", "user-alice").Error)
-		require.Equal(t, "Alice@Example.test", original.Email)
-		a.EmailOverrides["user-other"] = " Other@example.test "
-		report, err = adapter.DiagnoseCommonRecovery(t.Context(), db, a)
-		require.NoError(t, err)
 		require.Empty(t, report.Issues)
 		require.NoError(t, adapter.MigrateDatabase(t.Context(), db, a))
-		var users []adapter.User
-		require.NoError(t, db.Where("tenant_id = ?", a.IDs["tenants"]["tenant-acme"]).Order("email").Find(&users).Error)
-		require.Len(t, users, 2)
-		require.Equal(t, "alice@example.test", users[0].Email)
-		require.Equal(t, "other@example.test", users[1].Email)
+		var original, other adapter.User
+		require.NoError(t, db.First(&original, "id = ?", a.IDs["users"]["user-alice"]).Error)
+		require.NoError(t, db.First(&other, "id = ?", a.IDs["users"]["user-other"]).Error)
+		require.Equal(t, "Alice@Example.test", original.Email)
+		require.Equal(t, "alice@example.test", other.Email)
+		require.Equal(t, "oidc", other.Provider)
+		require.Equal(t, "other", other.Subject)
 	})
 }
 
@@ -124,7 +118,7 @@ func TestRecoveryOpaqueReferenceAndStaleOverride(t *testing.T) {
 		require.NoError(t, db.First(&vm, "id = ?", "vm").Error)
 		require.Equal(t, a.SerializedOverrides[0].After, vm.GraphJSON)
 		changed := *a
-		changed.EmailOverrides = map[string]string{"user-alice": "wrong@example.test"}
+		changed.SerializedOverrides = nil
 		require.ErrorContains(t, adapter.MigrateDatabase(t.Context(), db, &changed), "different artifact")
 	})
 }
@@ -159,7 +153,7 @@ func TestRecoveryPlanKeepsUUIDs(t *testing.T) {
 	eachBackendDB(t, func(t *testing.T, db *gormpkg.DB) {
 		seedLegacyRecovery(t, db)
 		id := string(model.NewUserID())
-		require.NoError(t, db.Create(&adapter.User{ID: id, TenantID: "tenant-acme", Email: "uuid@example.test"}).Error)
+		require.NoError(t, db.Create(&adapter.User{ID: id, TenantID: "tenant-acme", Email: "uuid@example.test", Provider: "oidc", Subject: "uuid"}).Error)
 		a, err := adapter.PlanCommonRecovery(t.Context(), db)
 		require.NoError(t, err)
 		require.Equal(t, id, a.IDs["users"][id])
@@ -176,7 +170,6 @@ func TestRecoveryLateFailureRollsBackCorrections(t *testing.T) {
 		require.NoError(t, db.Create(&adapter.Alert{ID: "alert", OrgID: "org-acme", Query: query}).Error)
 		a, err := adapter.PlanCommonRecovery(t.Context(), db)
 		require.NoError(t, err)
-		a.EmailOverrides["user-alice"] = "corrected@example.test"
 		failure := errors.New("checkpoint failure")
 		require.NoError(t, db.Callback().Create().Before("gorm:create").Register("fail_checkpoint", func(tx *gormpkg.DB) {
 			if tx.Statement.Table == "common_recoveries" {
@@ -203,5 +196,128 @@ func TestRecoveryDoesNotPretendToApplyToCurrentSchema(t *testing.T) {
 		a, err := adapter.PlanCommonRecovery(t.Context(), db)
 		require.NoError(t, err)
 		require.ErrorContains(t, adapter.MigrateDatabase(t.Context(), db, a), "already applied without this recovery plan")
+	})
+}
+
+func TestRecoveryReferenceScopes(t *testing.T) {
+	eachBackendDB(t, func(t *testing.T, db *gormpkg.DB) {
+		require.NoError(t, adapter.NewStore(db).Migrate(t.Context()))
+		// Shared arbitrary keys across families must use their declared scope,
+		// including characters which must never be interpreted as SQL or LIKE syntax.
+		const old = "same'_%~:legacy"
+		require.NoError(t, db.Create(&adapter.Tenant{ID: old, Slug: "shared", Name: "Shared", Active: 1}).Error)
+		require.NoError(t, db.Create(&adapter.Organization{ID: old, TenantID: old, Slug: "shared", Name: "Shared", Active: 1}).Error)
+		require.NoError(t, db.Create(&adapter.User{ID: old, TenantID: old, Provider: "OIDC", Subject: " Mixed Case ", Email: " Mixed@Example.test ", Active: true}).Error)
+		for _, scope := range []string{"org", "user", "application"} {
+			require.NoError(t, db.Create(&adapter.Quota{ID: scope, Scope: scope, ScopeID: old}).Error)
+		}
+		for _, secret := range []adapter.PluginNodeSecret{
+			{ID: "org", OrgID: old, PluginName: "mcp-bridge", NodeID: "node", Key: "oauth:" + old, ValueEncrypted: "keep"},
+			{ID: "personal", OrgID: "~:" + old, PluginName: "mcp-bridge", NodeID: "node", Key: "oauth:" + old, ValueEncrypted: "keep"},
+			{ID: "literal", OrgID: old, PluginName: "other", NodeID: "node", Key: "oauth:" + old, ValueEncrypted: "keep"},
+		} {
+			require.NoError(t, db.Create(&secret).Error)
+		}
+		require.NoError(t, db.Table("events").Create(map[string]any{"id": "historical", "user_id": "deleted-user", "org_id": "deleted-org", "attributes": "{}"}).Error)
+		require.NoError(t, db.Exec("DELETE FROM migrations WHERE id = ?", "202610020001").Error)
+		a, err := adapter.PlanCommonRecovery(t.Context(), db)
+		require.NoError(t, err)
+		require.NoError(t, adapter.MigrateDatabase(t.Context(), db, a))
+		uid, oid := a.IDs["users"][old], a.IDs["organizations"][old]
+		for scope, want := range map[string]string{"org": oid, "user": uid, "application": old} {
+			var quota adapter.Quota
+			require.NoError(t, db.First(&quota, "id = ?", scope).Error)
+			require.Equal(t, want, quota.ScopeID)
+		}
+		for id, want := range map[string]string{"org": oid, "personal": "~:" + uid, "literal": oid} {
+			var secret adapter.PluginNodeSecret
+			require.NoError(t, db.First(&secret, "id = ?", id).Error)
+			require.Equal(t, want, secret.OrgID)
+			key := "oauth:" + uid
+			if id == "literal" {
+				key = "oauth:" + old
+			}
+			require.Equal(t, key, secret.Key)
+			require.Equal(t, "keep", secret.ValueEncrypted)
+		}
+		var user adapter.User
+		require.NoError(t, db.First(&user, "id = ?", uid).Error)
+		require.Equal(t, " Mixed@Example.test ", user.Email)
+		require.Equal(t, "OIDC", user.Provider)
+		require.Equal(t, " Mixed Case ", user.Subject)
+		require.NoError(t, db.Transaction(func(tx *gormpkg.DB) error {
+			if db.Dialector.Name() == "postgres" {
+				if err := tx.Exec("SET TRANSACTION READ ONLY").Error; err != nil {
+					return err
+				}
+			}
+			report, err := adapter.DiagnoseCommonRecovery(t.Context(), tx, a)
+			require.NoError(t, err)
+			require.True(t, report.Applied)
+			return nil
+		}))
+	})
+}
+
+func TestRecoveryPagesAndQueryScaling(t *testing.T) {
+	for _, users := range []int{2, 1002} {
+		t.Run(fmt.Sprintf("users=%d", users), func(t *testing.T) {
+			eachBackendDB(t, func(t *testing.T, db *gormpkg.DB) {
+				seedLegacyRecovery(t, db)
+				rows := make([]map[string]any, 0, users)
+				for i := 0; i < users; i++ {
+					id := fmt.Sprintf("legacy-%04d", i)
+					rows = append(rows, map[string]any{"id": id, "tenant_id": "tenant-acme", "provider": "test", "subject": id})
+				}
+				require.NoError(t, db.Table("users").CreateInBatches(&rows, 200).Error)
+				events := make([]map[string]any, 0, 2001)
+				for i := 0; i < 2001; i++ {
+					id := fmt.Sprintf("legacy-%04d", i%users)
+					events = append(events, map[string]any{"id": fmt.Sprintf("event-%04d", i), "org_id": "org-acme", "user_id": id, "attributes": fmt.Sprintf(`{"actor_id":%q}`, id)})
+				}
+				require.NoError(t, db.Table("events").CreateInBatches(&events, 200).Error)
+				a, err := adapter.PlanCommonRecovery(t.Context(), db)
+				require.NoError(t, err)
+				counter := &recoveryQueryCounter{Interface: db.Logger}
+				measured := db.Session(&gormpkg.Session{Logger: counter})
+				require.NoError(t, adapter.MigrateDatabase(t.Context(), measured, a))
+				// Three serialized pages plus the two declared relational references.
+				require.Equal(t, int64(5), counter.eventWrites.Load())
+				require.Less(t, counter.eventReads.Load(), int64(64), "event scans must stay bounded as IDs increase")
+				t.Logf("event reads=%d, updates=%d", counter.eventReads.Load(), counter.eventWrites.Load())
+				var remaining int64
+				require.NoError(t, db.Table("events").Where("user_id LIKE 'legacy-%' OR attributes LIKE '%legacy-%'").Count(&remaining).Error)
+				require.Zero(t, remaining)
+				var count int64
+				require.NoError(t, db.Table("events").Count(&count).Error)
+				require.Equal(t, int64(2001), count)
+			})
+		})
+	}
+}
+
+func TestUUIDSchemaAndOrdinaryWrites(t *testing.T) {
+	eachBackendDB(t, func(t *testing.T, db *gormpkg.DB) {
+		store := adapter.NewStore(db)
+		require.NoError(t, store.Migrate(t.Context()))
+		for _, table := range []string{"domains", "reserved_domains", "publications", "mutation_audits", "publication_clocks"} {
+			require.False(t, db.Migrator().HasTable(table), table)
+		}
+		for _, column := range [][2]string{{"users", "tenant_role"}, {"memberships", "common_role"}, {"memberships", "status"}} {
+			require.False(t, db.Migrator().HasColumn(column[0], column[1]))
+		}
+		// Migration state is initialized: subsequent store calls have no migration
+		// lock dependency. No global publication counter exists in this schema.
+		require.NoError(t, db.Migrator().DropTable("migration_lock"))
+		tenant, err := store.GetTenantBySlug(t.Context(), model.DefaultTenantSlug)
+		require.NoError(t, err)
+		user, err := store.FindOrCreateUser(t.Context(), tenant.ID(), "oidc", "ordinary")
+		require.NoError(t, err)
+		copy := model.CopyUser(user)
+		copy.SetEmail("Keep.Case@Example.test")
+		require.NoError(t, store.SaveUser(t.Context(), copy))
+		stored, err := store.GetUserByIdentity(t.Context(), tenant.ID(), "oidc", "ordinary")
+		require.NoError(t, err)
+		require.Equal(t, copy.Email(), stored.Email())
 	})
 }

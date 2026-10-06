@@ -2,8 +2,6 @@ package setup
 
 import (
 	"context"
-	"net"
-	"net/url"
 
 	"github.com/pkg/errors"
 	gormAdapter "github.com/xolo-gateway/xolo/internal/adapter/gorm"
@@ -26,10 +24,5 @@ var getGormStoreFromConfig = createFromConfigOnce(func(ctx context.Context, conf
 		return nil, errors.WithStack(err)
 	}
 
-	if u, err := url.Parse(conf.HTTP.BaseURL); err == nil && u.Hostname() != "" && net.ParseIP(u.Hostname()) == nil {
-		if err := store.ReserveDomain(ctx, u.Hostname()); err != nil {
-			return nil, errors.Wrap(err, "reserve shared application hostname")
-		}
-	}
 	return store, nil
 })

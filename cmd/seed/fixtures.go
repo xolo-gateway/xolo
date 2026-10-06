@@ -287,10 +287,6 @@ func (s *seeder) seedUsers(ctx context.Context) error {
 
 	for _, user := range users {
 		user.TenantID = s.tenantID
-		user.TenantRole = string(model.TenantRoleMember)
-		if user.ID == userRoot {
-			user.TenantRole = string(model.TenantRoleOwner)
-		}
 
 		roles := user.Roles
 		prefs := user.Preferences
@@ -369,12 +365,10 @@ func (s *seeder) seedMemberships(ctx context.Context) error {
 
 	for _, m := range memberships {
 		if err := s.create(&gormadapter.Membership{
-			ID:         m.id,
-			CommonRole: m.builtin,
-			Status:     string(model.StatusActive),
-			CreatedAt:  now.AddDate(0, -3, 0),
-			UserID:     m.userID,
-			OrgID:      m.orgID,
+			ID:        m.id,
+			CreatedAt: now.AddDate(0, -3, 0),
+			UserID:    m.userID,
+			OrgID:     m.orgID,
 		}); err != nil {
 			return errors.WithStack(err)
 		}

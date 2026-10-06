@@ -101,10 +101,6 @@ func Middleware(userStore port.UserStore, emitter port.EventEmitter, opts Option
 					authz.RoleUser,
 				)
 
-				actor := model.ActorFromContext(ctx)
-				actor.UserID = user.ID()
-				actor.URI = ""
-				ctx = model.WithActor(ctx, actor)
 				if err := userStore.SaveUser(ctx, user); err != nil {
 					if errors.Is(err, port.ErrAlreadyExists) {
 						emitLoginFailed(ctx, authnUser, "un compte existe déjà avec cette adresse email")
@@ -121,27 +117,22 @@ func Middleware(userStore port.UserStore, emitter port.EventEmitter, opts Option
 				}
 			}
 
-			actor := model.ActorFromContext(ctx)
-			actor.UserID = user.ID()
-			actor.URI = ""
-			ctx = model.WithActor(ctx, actor)
 			missingRole := len(user.Roles()) == 0
 			shouldBeAdmin := isDefaultAdmin && !slices.Contains(user.Roles(), authz.RoleAdmin)
 
 			// Never overwrite a stored value with an empty incoming one: some
 			// authenticators (e.g. OAuth2 introspection) resolve an identity
 			// without an email or display name.
-			email := model.NormalizeEmail(authnUser.Email)
 			changed := (authnUser.DisplayName != "" && user.DisplayName() != authnUser.DisplayName) ||
-				(email != "" && user.Email() != email)
+				(authnUser.Email != "" && user.Email() != authnUser.Email)
 
 			if changed || shouldBeAdmin || missingRole {
 				updatable := model.CopyUser(user)
 				if authnUser.DisplayName != "" {
 					updatable.SetDisplayName(authnUser.DisplayName)
 				}
-				if email != "" {
-					updatable.SetEmail(email)
+				if authnUser.Email != "" {
+					updatable.SetEmail(authnUser.Email)
 				}
 
 				if missingRole {
