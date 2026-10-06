@@ -15,7 +15,7 @@ func (h *Handler) handleListRoles(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	roles, err := h.provisioning.ListRoles(ctx, org.ID())
+	roles, err := h.provisioning.ListRoles(ctx, org.TenantID(), org.ID())
 	if err != nil {
 		writeServiceError(ctx, w, err, "organization not found")
 		return
@@ -68,7 +68,7 @@ func (h *Handler) handleGetRole(w http.ResponseWriter, r *http.Request) {
 	}
 
 	role, err := h.provisioning.GetRole(ctx,
-		org.ID(),
+		org.TenantID(), org.ID(),
 		model.RoleID(r.PathValue("roleID")),
 	)
 	if err != nil {

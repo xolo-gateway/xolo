@@ -412,17 +412,9 @@ func (s *ProvisioningService) completeOrganizationCreation(ctx context.Context, 
 // organization belonging to another tenant is reported as not found: the
 // Provisionning API must not let a caller probe another tenant's identifiers.
 func (s *ProvisioningService) GetOrganization(ctx context.Context, tenantID model.TenantID, orgID model.OrgID) (model.Organization, error) {
-	if _, err := s.GetTenant(ctx, tenantID); err != nil {
-		return nil, errors.WithStack(err)
-	}
-
-	org, err := s.getOrganizationParent(ctx, orgID)
+	org, err := s.getOrganizationParent(ctx, tenantID, orgID)
 	if err != nil {
 		return nil, errors.WithStack(err)
-	}
-
-	if org.TenantID() != tenantID {
-		return nil, errors.Wrapf(port.ErrNotFound, "organization %q does not belong to tenant %q", orgID, tenantID)
 	}
 
 	return org, nil
@@ -801,8 +793,8 @@ func (s *ProvisioningService) AddMember(ctx context.Context, tenantID model.Tena
 	return stored, nil
 }
 
-func (s *ProvisioningService) ListMembers(ctx context.Context, orgID model.OrgID, opts port.ListOrgMembersOptions) ([]model.Membership, int64, error) {
-	if _, err := s.getOrganizationParent(ctx, orgID); err != nil {
+func (s *ProvisioningService) ListMembers(ctx context.Context, tenantID model.TenantID, orgID model.OrgID, opts port.ListOrgMembersOptions) ([]model.Membership, int64, error) {
+	if _, err := s.getOrganizationParent(ctx, tenantID, orgID); err != nil {
 		return nil, 0, errors.WithStack(err)
 	}
 
@@ -817,8 +809,8 @@ func (s *ProvisioningService) ListMembers(ctx context.Context, orgID model.OrgID
 // GetMember returns a membership scoped to the given organization. A membership
 // belonging to another organization is reported as not found: the Provisionning API
 // must not let a caller probe another organization's identifiers.
-func (s *ProvisioningService) GetMember(ctx context.Context, orgID model.OrgID, membershipID model.MembershipID) (model.Membership, error) {
-	org, err := s.getOrganizationParent(ctx, orgID)
+func (s *ProvisioningService) GetMember(ctx context.Context, tenantID model.TenantID, orgID model.OrgID, membershipID model.MembershipID) (model.Membership, error) {
+	org, err := s.getOrganizationParent(ctx, tenantID, orgID)
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
@@ -860,7 +852,7 @@ func (s *ProvisioningService) SetMemberRoles(ctx context.Context, tenantID model
 		return nil, err
 	}
 
-	membership, err := s.GetMember(ctx, orgID, membershipID)
+	membership, err := s.GetMember(ctx, tenantID, orgID, membershipID)
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
@@ -898,7 +890,7 @@ func (s *ProvisioningService) RemoveMember(ctx context.Context, tenantID model.T
 		return err
 	}
 
-	membership, err := s.GetMember(ctx, orgID, membershipID)
+	membership, err := s.GetMember(ctx, tenantID, orgID, membershipID)
 	if err != nil {
 		return errors.WithStack(err)
 	}
@@ -916,8 +908,8 @@ func (s *ProvisioningService) RemoveMember(ctx context.Context, tenantID model.T
 	return nil
 }
 
-func (s *ProvisioningService) ListRoles(ctx context.Context, orgID model.OrgID) ([]model.Role, error) {
-	if _, err := s.getOrganizationParent(ctx, orgID); err != nil {
+func (s *ProvisioningService) ListRoles(ctx context.Context, tenantID model.TenantID, orgID model.OrgID) ([]model.Role, error) {
+	if _, err := s.getOrganizationParent(ctx, tenantID, orgID); err != nil {
 		return nil, errors.WithStack(err)
 	}
 
@@ -931,8 +923,8 @@ func (s *ProvisioningService) ListRoles(ctx context.Context, orgID model.OrgID) 
 
 // GetRole returns a role scoped to the given organization. A role belonging to
 // another organization is reported as not found.
-func (s *ProvisioningService) GetRole(ctx context.Context, orgID model.OrgID, roleID model.RoleID) (model.Role, error) {
-	if _, err := s.getOrganizationParent(ctx, orgID); err != nil {
+func (s *ProvisioningService) GetRole(ctx context.Context, tenantID model.TenantID, orgID model.OrgID, roleID model.RoleID) (model.Role, error) {
+	if _, err := s.getOrganizationParent(ctx, tenantID, orgID); err != nil {
 		return nil, errors.WithStack(err)
 	}
 
@@ -1023,7 +1015,7 @@ func (s *ProvisioningService) UpdateRole(ctx context.Context, tenantID model.Ten
 		return nil, err
 	}
 
-	role, err := s.GetRole(ctx, orgID, roleID)
+	role, err := s.GetRole(ctx, tenantID, orgID, roleID)
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
@@ -1076,7 +1068,7 @@ func (s *ProvisioningService) DeleteRole(ctx context.Context, tenantID model.Ten
 		return err
 	}
 
-	role, err := s.GetRole(ctx, orgID, roleID)
+	role, err := s.GetRole(ctx, tenantID, orgID, roleID)
 	if err != nil {
 		return errors.WithStack(err)
 	}
@@ -1275,13 +1267,19 @@ func (s *ProvisioningService) transaction(ctx context.Context, fn func(*Provisio
 	})
 }
 
-func (s *ProvisioningService) getOrganizationParent(ctx context.Context, orgID model.OrgID) (model.Organization, error) {
+// getOrganizationParent loads an organization by its global ID and asserts it
+// belongs to tenantID. A foreign organization is reported as not found, like a
+// missing one.
+func (s *ProvisioningService) getOrganizationParent(ctx context.Context, tenantID model.TenantID, orgID model.OrgID) (model.Organization, error) {
+	if _, err := s.GetTenant(ctx, tenantID); err != nil {
+		return nil, err
+	}
 	org, err := s.orgStore.GetOrgByID(ctx, orgID)
 	if err != nil {
 		return nil, err
 	}
-	if _, err := s.GetTenant(ctx, org.TenantID()); err != nil {
-		return nil, err
+	if org.TenantID() != tenantID {
+		return nil, errors.Wrapf(port.ErrNotFound, "organization %q does not belong to tenant %q", orgID, tenantID)
 	}
 	return org, nil
 }

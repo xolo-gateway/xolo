@@ -335,6 +335,42 @@ func TestOrganizationLifecycle(t *testing.T) {
 			t.Errorf("delete: got %v, want %v", err, port.ErrNotFound)
 		}
 	})
+
+	t.Run("organization of another tenant is reported as not found", func(t *testing.T) {
+		svc, store, testTenantID := newTestService(t)
+
+		// Created through the store: the service refuses a second tenant on a
+		// single-tenant instance.
+		foreignTenant := model.NewTenant("foreign", "Foreign", "")
+		if err := store.CreateTenant(ctx, foreignTenant); err != nil {
+			t.Fatalf("create tenant: %v", err)
+		}
+		foreign := createOrganization(t, svc, foreignTenant.ID(), "foreign", ownerParams())
+		roles, err := svc.ListRoles(ctx, foreignTenant.ID(), foreign.Org.ID())
+		if err != nil {
+			t.Fatalf("list roles: %v", err)
+		}
+
+		orgID := foreign.Org.ID()
+		checks := map[string]func() error{
+			"get organization": func() error { _, err := svc.GetOrganization(ctx, testTenantID, orgID); return err },
+			"list members": func() error {
+				_, _, err := svc.ListMembers(ctx, testTenantID, orgID, port.ListOrgMembersOptions{})
+				return err
+			},
+			"get member": func() error {
+				_, err := svc.GetMember(ctx, testTenantID, orgID, foreign.OwnerMembership.ID())
+				return err
+			},
+			"list roles": func() error { _, err := svc.ListRoles(ctx, testTenantID, orgID); return err },
+			"get role":   func() error { _, err := svc.GetRole(ctx, testTenantID, orgID, roles[0].ID()); return err },
+		}
+		for name, check := range checks {
+			if err := check(); !errors.Is(err, port.ErrNotFound) {
+				t.Errorf("%s: got %v, want %v", name, err, port.ErrNotFound)
+			}
+		}
+	})
 }
 
 func TestMembers(t *testing.T) {
@@ -427,7 +463,7 @@ func TestMembers(t *testing.T) {
 		acme := createOrganization(t, svc, testTenantID, "acme", ownerParams())
 		other := createOrganization(t, svc, testTenantID, "other", nil)
 
-		otherRoles, err := svc.ListRoles(ctx, other.Org.ID())
+		otherRoles, err := svc.ListRoles(ctx, testTenantID, other.Org.ID())
 		if err != nil {
 			t.Fatalf("list other roles: %v", err)
 		}
@@ -445,7 +481,7 @@ func TestMembers(t *testing.T) {
 			t.Fatalf("error: got %v, want %v", err, port.ErrInvalid)
 		}
 
-		unchanged, err := svc.GetMember(ctx, acme.Org.ID(), membership.ID())
+		unchanged, err := svc.GetMember(ctx, testTenantID, acme.Org.ID(), membership.ID())
 		if err != nil {
 			t.Fatalf("get member: %v", err)
 		}
@@ -493,13 +529,13 @@ func TestMembers(t *testing.T) {
 		acme := createOrganization(t, svc, testTenantID, "acme", ownerParams())
 		other := createOrganization(t, svc, testTenantID, "other", nil)
 
-		if _, err := svc.GetMember(ctx, other.Org.ID(), acme.OwnerMembership.ID()); !errors.Is(err, port.ErrNotFound) {
+		if _, err := svc.GetMember(ctx, testTenantID, other.Org.ID(), acme.OwnerMembership.ID()); !errors.Is(err, port.ErrNotFound) {
 			t.Errorf("get: got %v, want %v", err, port.ErrNotFound)
 		}
 		if err := svc.RemoveMember(ctx, testTenantID, other.Org.ID(), acme.OwnerMembership.ID()); !errors.Is(err, port.ErrNotFound) {
 			t.Errorf("remove: got %v, want %v", err, port.ErrNotFound)
 		}
-		if _, err := svc.GetMember(ctx, acme.Org.ID(), model.MembershipID("nope")); !errors.Is(err, port.ErrNotFound) {
+		if _, err := svc.GetMember(ctx, testTenantID, acme.Org.ID(), model.MembershipID("nope")); !errors.Is(err, port.ErrNotFound) {
 			t.Errorf("unknown membership: got %v, want %v", err, port.ErrNotFound)
 		}
 	})
@@ -579,7 +615,7 @@ func TestRoles(t *testing.T) {
 
 		org := createOrganization(t, svc, testTenantID, "acme", nil)
 
-		roles, err := svc.ListRoles(ctx, org.Org.ID())
+		roles, err := svc.ListRoles(ctx, testTenantID, org.Org.ID())
 		if err != nil {
 			t.Fatalf("list roles: %v", err)
 		}
@@ -608,12 +644,12 @@ func TestRoles(t *testing.T) {
 		acme := createOrganization(t, svc, testTenantID, "acme", nil)
 		other := createOrganization(t, svc, testTenantID, "other", nil)
 
-		otherRoles, err := svc.ListRoles(ctx, other.Org.ID())
+		otherRoles, err := svc.ListRoles(ctx, testTenantID, other.Org.ID())
 		if err != nil {
 			t.Fatalf("list roles: %v", err)
 		}
 
-		if _, err := svc.GetRole(ctx, acme.Org.ID(), otherRoles[0].ID()); !errors.Is(err, port.ErrNotFound) {
+		if _, err := svc.GetRole(ctx, testTenantID, acme.Org.ID(), otherRoles[0].ID()); !errors.Is(err, port.ErrNotFound) {
 			t.Errorf("get: got %v, want %v", err, port.ErrNotFound)
 		}
 	})

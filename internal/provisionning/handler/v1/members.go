@@ -24,7 +24,7 @@ func (h *Handler) handleListMembers(w http.ResponseWriter, r *http.Request) {
 
 	offset := page - 1
 
-	members, total, err := h.provisioning.ListMembers(ctx, org.ID(), port.ListOrgMembersOptions{
+	members, total, err := h.provisioning.ListMembers(ctx, org.TenantID(), org.ID(), port.ListOrgMembersOptions{
 		Page:  &offset,
 		Limit: &limit,
 	})
@@ -83,7 +83,7 @@ func (h *Handler) handleGetMember(w http.ResponseWriter, r *http.Request) {
 	}
 
 	membership, err := h.provisioning.GetMember(ctx,
-		org.ID(),
+		org.TenantID(), org.ID(),
 		model.MembershipID(r.PathValue("membershipID")),
 	)
 	if err != nil {
