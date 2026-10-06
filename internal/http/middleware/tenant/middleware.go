@@ -24,22 +24,16 @@ import (
 
 // Resolver turns a request into a tenant.
 type Resolver struct {
-	store port.TenantStore
-
-	// hostPrefix and hostSuffix frame the tenant slug inside the host. They are
-	// derived once from the configured pattern: matching a host is then a
-	// prefix/suffix test, with no regexp to compile per request.
-	hostPrefix string
-	hostSuffix string
+	tenants port.TenantStore
+	domains port.DomainStore
 
 	defaultSlug string
 	multiTenant bool
 
-	// singleTenantHost is the canonical host used in single-tenant mode. It is
-	// derived from the configured base URL, never from the request: the only
-	// tenant of a single-tenant deployment is served on whatever hostname the
-	// operator chose, regardless of which Host header the client sends.
-	singleTenantHost string
+	// baseURL is the configured public base URL. In multi-tenant mode, the
+	// base URL of a request keeps its scheme, port and path and takes the
+	// validated domain as host.
+	baseURL *url.URL
 
 	// defaultTenant memoizes the single-tenant resolution: it never varies
 	// across requests, so it is worth not hitting the store on every one. Only
@@ -50,20 +44,27 @@ type Resolver struct {
 }
 
 // NewResolver builds a tenant resolver from the multitenancy configuration
-// and the configured public base URL. The base URL is only consulted in
-// single-tenant mode, where it gives CanonicalHost a server-controlled host
-// to return instead of echoing whatever Host header a client sent.
-func NewResolver(store port.TenantStore, conf config.Multitenancy, baseURL string) *Resolver {
-	prefix, suffix, _ := strings.Cut(stripPort(conf.HostPattern), config.TenantHostPlaceholder)
-
-	return &Resolver{
-		store:            store,
-		hostPrefix:       strings.ToLower(prefix),
-		hostSuffix:       strings.ToLower(suffix),
-		defaultSlug:      conf.DefaultTenantSlug,
-		multiTenant:      conf.Enabled,
-		singleTenantHost: canonicalHostFromBaseURL(baseURL),
+// and the configured public base URL. In multi-tenant mode a request host is
+// routed through the persisted domains; the base URL must then be absolute.
+func NewResolver(tenants port.TenantStore, domains port.DomainStore, conf config.Multitenancy, baseURL string) (*Resolver, error) {
+	resolver := &Resolver{
+		tenants:     tenants,
+		domains:     domains,
+		defaultSlug: conf.DefaultTenantSlug,
+		multiTenant: conf.Enabled,
 	}
+	if !conf.Enabled {
+		return resolver, nil
+	}
+	parsed, err := url.Parse(strings.TrimSpace(baseURL))
+	if err != nil {
+		return nil, errors.Wrapf(err, "could not parse base url %q", baseURL)
+	}
+	if parsed.Scheme == "" || parsed.Host == "" {
+		return nil, errors.Errorf("base url %q must be absolute (scheme and host) when multi-tenancy is enabled", baseURL)
+	}
+	resolver.baseURL = parsed
+	return resolver, nil
 }
 
 // ErrNoTenant reports a request no tenant can be resolved for. It is answered
@@ -71,18 +72,29 @@ func NewResolver(store port.TenantStore, conf config.Multitenancy, baseURL strin
 // whether the instance exists at all.
 var ErrNoTenant = errors.New("no tenant matches this request")
 
-// Resolve returns the tenant addressed by the request.
+// Resolve returns the tenant addressed by the request host.
 func (r *Resolver) Resolve(ctx context.Context, host string) (model.Tenant, error) {
 	if !r.multiTenant {
 		return r.resolveDefault(ctx)
 	}
 
-	slug, ok := r.slugFromHost(host)
+	hostname, ok := requestHostname(host)
 	if !ok {
 		return nil, errors.WithStack(ErrNoTenant)
 	}
 
-	tenant, err := r.store.GetTenantBySlug(ctx, slug)
+	domain, err := r.domains.GetDomain(ctx, hostname)
+	if err != nil {
+		if errors.Is(err, port.ErrNotFound) {
+			return nil, errors.WithStack(ErrNoTenant)
+		}
+		return nil, errors.WithStack(err)
+	}
+	if domain.Status != model.StatusActive {
+		return nil, errors.WithStack(ErrNoTenant)
+	}
+
+	tenant, err := r.tenants.GetTenantByID(ctx, domain.TenantID)
 	if err != nil {
 		if errors.Is(err, port.ErrNotFound) {
 			return nil, errors.WithStack(ErrNoTenant)
@@ -99,56 +111,38 @@ func (r *Resolver) Resolve(ctx context.Context, host string) (model.Tenant, erro
 	return tenant, nil
 }
 
-// CanonicalHost returns the normalized host designated by host, without
-// querying the store: it answers "could this host name a tenant", not "does
-// that tenant exist". In multi-tenant mode it extracts the tenant slug with
-// the same validation used by Resolve, then rebuilds the host from the
-// configured pattern — an empty or out-of-pattern input is rejected with
-// ok=false. In single-tenant mode the request host is ignored entirely and
-// the host of the configured base URL is returned: there is no tenant slug
-// to extract, and the only safe answer is one derived from configuration
-// rather than from the client. A missing or relative base URL is rejected
-// with ok=false on this branch. The contract holds on both branches:
-// neither a forged host, its casing, nor a client-supplied port can leak
-// into a generated URL.
-func (r *Resolver) CanonicalHost(host string) (string, bool) {
-	if r.multiTenant {
-		slug, ok := r.slugFromHost(host)
-		if !ok {
-			return "", false
-		}
-
-		return r.hostPrefix + slug + r.hostSuffix, true
-	}
-
-	if r.singleTenantHost == "" {
+// tenantBaseURL builds the public base URL of a request whose host resolved
+// to a tenant. Only the normalized hostname of the request is kept: the
+// scheme, the port and the path come from the configured base URL, so neither
+// a client-supplied port nor the casing of the Host header can leak into a
+// generated URL.
+func (r *Resolver) tenantBaseURL(host string) (string, bool) {
+	if !r.multiTenant {
 		return "", false
 	}
-
-	return r.singleTenantHost, true
+	hostname, ok := requestHostname(host)
+	if !ok {
+		return "", false
+	}
+	perHost := *r.baseURL
+	perHost.Host = hostname
+	if port := r.baseURL.Port(); port != "" {
+		perHost.Host = net.JoinHostPort(hostname, port)
+	}
+	return perHost.String(), true
 }
 
-// slugFromHost extracts the tenant slug framed by the configured pattern.
-func (r *Resolver) slugFromHost(host string) (string, bool) {
-	host = strings.ToLower(stripPort(host))
-
-	if len(host) <= len(r.hostPrefix)+len(r.hostSuffix) {
+// requestHostname normalizes the hostname of a Host header. IP literals and
+// anything else that is not a DNS hostname name no domain.
+func requestHostname(host string) (string, bool) {
+	if h, _, err := net.SplitHostPort(host); err == nil {
+		host = h
+	}
+	hostname, err := model.NormalizeHostname(host)
+	if err != nil {
 		return "", false
 	}
-	if !strings.HasPrefix(host, r.hostPrefix) || !strings.HasSuffix(host, r.hostSuffix) {
-		return "", false
-	}
-
-	slug := host[len(r.hostPrefix) : len(host)-len(r.hostSuffix)]
-
-	// A subdomain label is a DNS label, which is exactly what a slug is: a host
-	// carrying anything else can not designate a tenant, and rejecting it here
-	// keeps the value out of the store query.
-	if !model.IsValidSlug(slug) {
-		return "", false
-	}
-
-	return slug, true
+	return hostname, true
 }
 
 // resolveDefault returns the tenant every request lands on when multi-tenancy
@@ -162,7 +156,7 @@ func (r *Resolver) resolveDefault(ctx context.Context) (model.Tenant, error) {
 		return cached, nil
 	}
 
-	tenant, err := r.store.GetTenantBySlug(ctx, r.defaultSlug)
+	tenant, err := r.tenants.GetTenantBySlug(ctx, r.defaultSlug)
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
@@ -174,55 +168,11 @@ func (r *Resolver) resolveDefault(ctx context.Context) (model.Tenant, error) {
 	return tenant, nil
 }
 
-// stripPort removes the ":port" suffix of a host, if any. It tolerates a host
-// with no port, which net.SplitHostPort reports as an error. net.SplitHostPort
-// unbrackets IPv6 literals, so callers that need to use the host as a URL
-// authority must re-bracket the result themselves.
-func stripPort(host string) string {
-	if h, _, err := net.SplitHostPort(host); err == nil {
-		return h
-	}
-	return host
-}
-
-// bracketIfIPv6 wraps a bare IPv6 literal (one containing ":") in square
-// brackets. RFC 3986 §3.2.2 reserves colons as authority delimiters, so a
-// value going into a URL host field must keep its brackets whenever the
-// source did. A value already wrapped is returned unchanged.
-func bracketIfIPv6(host string) string {
-	if strings.HasPrefix(host, "[") {
-		return host
-	}
-	if strings.Contains(host, ":") {
-		return "[" + host + "]"
-	}
-	return host
-}
-
-// canonicalHostFromBaseURL extracts the lower-cased host (port stripped) of a
-// configured base URL. An empty, relative or malformed URL yields an empty
-// string: the resolver then refuses to forge a canonical host in single-tenant
-// mode rather than echoing the request. IPv6 literals are kept in brackets so
-// the returned value is valid as a URL authority.
-func canonicalHostFromBaseURL(baseURL string) string {
-	baseURL = strings.TrimSpace(baseURL)
-	if baseURL == "" {
-		return ""
-	}
-
-	parsed, err := url.Parse(baseURL)
-	if err != nil || parsed.Host == "" {
-		return ""
-	}
-
-	host := bracketIfIPv6(stripPort(parsed.Host))
-
-	return strings.ToLower(host)
-}
-
-// Middleware injects the resolved tenant in the request context. notFound
-// serves the requests no tenant could be resolved for, so the web UI and the
-// API each answer in their own format.
+// Middleware injects the resolved tenant in the request context and, in
+// multi-tenant mode, the base URL of the domain the request came in on, so
+// links, redirects and OAuth callbacks stay on that host. notFound serves the
+// requests no tenant could be resolved for, so the web UI and the API each
+// answer in their own format.
 func Middleware(resolver *Resolver, notFound http.Handler) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -242,6 +192,9 @@ func Middleware(resolver *Resolver, notFound http.Handler) func(http.Handler) ht
 			}
 
 			ctx = httpCtx.SetTenant(ctx, tenant)
+			if baseURL, ok := resolver.tenantBaseURL(r.Host); ok {
+				ctx = httpCtx.SetBaseURL(ctx, baseURL)
+			}
 
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})

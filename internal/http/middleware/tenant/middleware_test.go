@@ -14,12 +14,36 @@ import (
 	"github.com/xolo-gateway/xolo/internal/http/middleware/tenant"
 )
 
-// stubTenantStore serves the tenants declared by a test, by slug.
+// stubTenantStore serves the tenants and domains declared by a test.
 type stubTenantStore struct {
 	port.TenantStore
-	bySlug map[string]model.Tenant
-	calls  int
+	bySlug  map[string]model.Tenant
+	domains map[string]model.Domain
+	calls   int
 }
+
+func (s *stubTenantStore) GetTenantByID(_ context.Context, id model.TenantID) (model.Tenant, error) {
+	for _, tenant := range s.bySlug {
+		if tenant.ID() == id {
+			return tenant, nil
+		}
+	}
+	return nil, errors.WithStack(port.ErrNotFound)
+}
+
+func (s *stubTenantStore) GetDomain(_ context.Context, hostname string) (model.Domain, error) {
+	domain, ok := s.domains[hostname]
+	if !ok {
+		return model.Domain{}, errors.WithStack(port.ErrNotFound)
+	}
+	return domain, nil
+}
+
+func (s *stubTenantStore) ListTenantDomains(context.Context, model.TenantID) ([]model.Domain, error) {
+	return nil, nil
+}
+
+func (s *stubTenantStore) SaveDomain(context.Context, model.Domain) error { return nil }
 
 func (s *stubTenantStore) GetTenantBySlug(_ context.Context, slug string) (model.Tenant, error) {
 	s.calls++
@@ -37,15 +61,32 @@ func newStore(tenants ...model.Tenant) *stubTenantStore {
 	for _, tenant := range tenants {
 		bySlug[tenant.Slug()] = tenant
 	}
-	return &stubTenantStore{bySlug: bySlug}
+	return &stubTenantStore{bySlug: bySlug, domains: map[string]model.Domain{}}
+}
+
+func newResolver(t *testing.T, store *stubTenantStore, conf config.Multitenancy, baseURL string) *tenant.Resolver {
+	t.Helper()
+	resolver, err := tenant.NewResolver(store, store, conf, baseURL)
+	if err != nil {
+		t.Fatalf("new resolver: %v", err)
+	}
+	return resolver
 }
 
 // serve runs the middleware for a host and reports the resolved tenant.
 func serve(t *testing.T, resolver *tenant.Resolver, host string) (status int, resolved model.Tenant) {
 	t.Helper()
+	status, resolved, _ = serveWithBaseURL(t, resolver, host)
+	return status, resolved
+}
+
+// serveWithBaseURL also reports the base URL the middleware left in context.
+func serveWithBaseURL(t *testing.T, resolver *tenant.Resolver, host string) (status int, resolved model.Tenant, baseURL string) {
+	t.Helper()
 
 	terminal := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		resolved = httpCtx.Tenant(r.Context())
+		baseURL = httpCtx.BaseURL(r.Context()).String()
 	})
 
 	notFound := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -54,11 +95,13 @@ func serve(t *testing.T, resolver *tenant.Resolver, host string) (status int, re
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	req.Host = host
+	// The HTTP server sets the configured base URL before tenant resolution.
+	req = req.WithContext(httpCtx.SetBaseURL(req.Context(), "https://configured.example"))
 
 	rec := httptest.NewRecorder()
 	tenant.Middleware(resolver, notFound)(terminal).ServeHTTP(rec, req)
 
-	return rec.Code, resolved
+	return rec.Code, resolved, baseURL
 }
 
 func TestSingleTenant(t *testing.T) {
@@ -66,7 +109,7 @@ func TestSingleTenant(t *testing.T) {
 
 	t.Run("serves the default tenant whatever the host", func(t *testing.T) {
 		store := newStore(model.NewTenant(model.DefaultTenantSlug, "Default", ""))
-		resolver := tenant.NewResolver(store, conf, "")
+		resolver := newResolver(t, store, conf, "")
 
 		for _, host := range []string{"xolo.example.com", "localhost:3002", "10.0.0.1", "anything.at.all"} {
 			status, resolved := serve(t, resolver, host)
@@ -82,7 +125,7 @@ func TestSingleTenant(t *testing.T) {
 
 	t.Run("resolves the default tenant only once", func(t *testing.T) {
 		store := newStore(model.NewTenant(model.DefaultTenantSlug, "Default", ""))
-		resolver := tenant.NewResolver(store, conf, "")
+		resolver := newResolver(t, store, conf, "")
 
 		for range 3 {
 			serve(t, resolver, "xolo.example.com")
@@ -97,7 +140,7 @@ func TestSingleTenant(t *testing.T) {
 		// No default tenant: every request must retry rather than latch the
 		// failure for the lifetime of the process.
 		store := newStore()
-		resolver := tenant.NewResolver(store, conf, "")
+		resolver := newResolver(t, store, conf, "")
 
 		for range 3 {
 			if status, _ := serve(t, resolver, "xolo.example.com"); status != http.StatusInternalServerError {
@@ -112,225 +155,71 @@ func TestSingleTenant(t *testing.T) {
 }
 
 func TestMultiTenant(t *testing.T) {
-	conf := config.Multitenancy{
-		Enabled:           true,
-		HostPattern:       "{tenant}.xolo.example.com",
-		DefaultTenantSlug: model.DefaultTenantSlug,
-	}
+	conf := config.Multitenancy{Enabled: true, DefaultTenantSlug: model.DefaultTenantSlug}
 
+	acme := model.NewTenant("acme", "Acme", "")
+	renamed := model.NewTenant("renamed", "Renamed", "")
 	suspended := model.UpdateTenant(model.NewTenant("suspended", "Suspended", ""), model.WithTenantActive(false))
-
-	store := newStore(
-		model.NewTenant("acme", "Acme", ""),
-		model.NewTenant(model.DefaultTenantSlug, "Default", ""),
-		suspended,
-	)
-	resolver := tenant.NewResolver(store, conf, "")
+	store := newStore(acme, renamed, suspended, model.NewTenant(model.DefaultTenantSlug, "Default", ""))
+	for host, domain := range map[string]model.Domain{
+		"acme.xolo.example.com":        {TenantID: acme.ID(), Status: model.StatusActive},
+		"llm.acme.example":             {TenantID: acme.ID(), Status: model.StatusActive},
+		"old.acme.example":             {TenantID: acme.ID(), Status: model.StatusSuspended},
+		"former-slug.xolo.example.com": {TenantID: renamed.ID(), Status: model.StatusActive},
+		"suspended.xolo.example.com":   {TenantID: suspended.ID(), Status: model.StatusActive},
+		"orphan.xolo.example.com":      {TenantID: model.NewTenantID(), Status: model.StatusActive},
+	} {
+		domain.Hostname = host
+		store.domains[host] = domain
+	}
+	resolver := newResolver(t, store, conf, "https://xolo.example.com:8443/base")
 
 	for name, testCase := range map[string]struct {
-		host       string
-		wantStatus int
-		wantSlug   string
+		host        string
+		wantStatus  int
+		wantSlug    string
+		wantBaseURL string
 	}{
-		"known subdomain":              {"acme.xolo.example.com", http.StatusOK, "acme"},
-		"known subdomain with port":    {"acme.xolo.example.com:3002", http.StatusOK, "acme"},
-		"uppercase host":               {"ACME.Xolo.Example.Com", http.StatusOK, "acme"},
-		"default tenant is no special": {"default.xolo.example.com", http.StatusOK, model.DefaultTenantSlug},
-		"unknown subdomain":            {"nope.xolo.example.com", http.StatusNotFound, ""},
-		"deactivated tenant":           {"suspended.xolo.example.com", http.StatusNotFound, ""},
-		"bare domain":                  {"xolo.example.com", http.StatusNotFound, ""},
-		"foreign domain":               {"acme.example.org", http.StatusNotFound, ""},
-		"deeper subdomain":             {"a.b.xolo.example.com", http.StatusNotFound, ""},
-		"empty label":                  {".xolo.example.com", http.StatusNotFound, ""},
-		"bare ip":                      {"10.0.0.1", http.StatusNotFound, ""},
+		"declared domain":            {"acme.xolo.example.com", http.StatusOK, "acme", "https://acme.xolo.example.com:8443/base"},
+		"second domain of a tenant":  {"llm.acme.example", http.StatusOK, "acme", "https://llm.acme.example:8443/base"},
+		"client port is ignored":     {"acme.xolo.example.com:3002", http.StatusOK, "acme", "https://acme.xolo.example.com:8443/base"},
+		"uppercase host":             {"ACME.Xolo.Example.Com", http.StatusOK, "acme", "https://acme.xolo.example.com:8443/base"},
+		"domain survives a rename":   {"former-slug.xolo.example.com", http.StatusOK, "renamed", "https://former-slug.xolo.example.com:8443/base"},
+		"suspended domain":           {"old.acme.example", http.StatusNotFound, "", ""},
+		"deactivated tenant":         {"suspended.xolo.example.com", http.StatusNotFound, "", ""},
+		"domain of a missing tenant": {"orphan.xolo.example.com", http.StatusNotFound, "", ""},
+		"slug without a domain":      {"default.xolo.example.com", http.StatusNotFound, "", ""},
+		"base url host":              {"xolo.example.com", http.StatusNotFound, "", ""},
+		"bare ip":                    {"10.0.0.1", http.StatusNotFound, "", ""},
+		"invalid host":               {"acme_xolo.example.com", http.StatusNotFound, "", ""},
 	} {
 		t.Run(name, func(t *testing.T) {
-			status, resolved := serve(t, resolver, testCase.host)
+			status, resolved, baseURL := serveWithBaseURL(t, resolver, testCase.host)
 
 			if status != testCase.wantStatus {
 				t.Fatalf("status: got %d, want %d", status, testCase.wantStatus)
 			}
-
 			if testCase.wantSlug == "" {
 				if resolved != nil {
 					t.Errorf("no tenant should have been injected, got %q", resolved.Slug())
 				}
 				return
 			}
-
 			if resolved == nil || resolved.Slug() != testCase.wantSlug {
 				t.Errorf("resolved: got %v, want %q", resolved, testCase.wantSlug)
 			}
-		})
-	}
-}
-
-func TestCanonicalHostMatching(t *testing.T) {
-	multi := config.Multitenancy{
-		Enabled:           true,
-		HostPattern:       "{tenant}.xolo.example.com",
-		DefaultTenantSlug: model.DefaultTenantSlug,
-	}
-
-	for name, testCase := range map[string]struct {
-		conf config.Multitenancy
-		host string
-		want bool
-		// baseURL configures the resolver's single-tenant base URL. It is
-		// ignored on the multi-tenant branch.
-		baseURL  string
-		wantHost string
-	}{
-		"framed by the pattern":       {conf: multi, host: "acme.xolo.example.com", want: true},
-		"port is ignored":             {conf: multi, host: "acme.xolo.example.com:3002", want: true},
-		"case is ignored":             {conf: multi, host: "ACME.Xolo.Example.Com", want: true},
-		"outside the pattern":         {conf: multi, host: "evil.example.com", want: false},
-		"bare suffix names no tenant": {conf: multi, host: "xolo.example.com", want: false},
-		"slug is not a dns label":     {conf: multi, host: "not_a_label.xolo.example.com", want: false},
-		"empty host":                  {conf: multi, host: "", want: false},
-		"single tenant without a configured base url rejects any host": {
-			conf: config.Multitenancy{Enabled: false, DefaultTenantSlug: model.DefaultTenantSlug},
-			host: "whatever.example.com",
-			want: false,
-		},
-		"single tenant ignores the request host entirely": {
-			conf:     config.Multitenancy{Enabled: false, DefaultTenantSlug: model.DefaultTenantSlug},
-			host:     "evil.example.com",
-			baseURL:  "http://XOLO.Example.Com:3002",
-			want:     true,
-			wantHost: "xolo.example.com",
-		},
-		"single tenant returns the configured host and ignores the request": {
-			conf:     config.Multitenancy{Enabled: false, DefaultTenantSlug: model.DefaultTenantSlug},
-			host:     "evil.example.com",
-			baseURL:  "https://xolo.example.com",
-			want:     true,
-			wantHost: "xolo.example.com",
-		},
-	} {
-		t.Run(name, func(t *testing.T) {
-			resolver := tenant.NewResolver(newStore(), testCase.conf, testCase.baseURL)
-
-			got, ok := resolver.CanonicalHost(testCase.host)
-			if ok != testCase.want {
-				t.Errorf("CanonicalHost(%q) matched: got %t, want %t", testCase.host, ok, testCase.want)
-			}
-			if testCase.wantHost != "" && got != testCase.wantHost {
-				t.Errorf("CanonicalHost(%q): got %q, want %q", testCase.host, got, testCase.wantHost)
+			if baseURL != testCase.wantBaseURL {
+				t.Errorf("base url: got %q, want %q", baseURL, testCase.wantBaseURL)
 			}
 		})
 	}
 }
 
-func TestResolverCanonicalHost(t *testing.T) {
-	resolver := tenant.NewResolver(newStore(), config.Multitenancy{
-		Enabled:           true,
-		HostPattern:       "{tenant}.XOLO.Example.Com:3002",
-		DefaultTenantSlug: model.DefaultTenantSlug,
-	}, "")
-
-	for name, testCase := range map[string]struct {
-		host string
-		want string
-		ok   bool
-	}{
-		"normalizes case from the pattern and request": {
-			host: "AcMe.Xolo.EXAMPLE.com",
-			want: "acme.xolo.example.com",
-			ok:   true,
-		},
-		"drops the request port": {
-			host: "acme.xolo.example.com:9999",
-			want: "acme.xolo.example.com",
-			ok:   true,
-		},
-		"rejects a foreign host": {
-			host: "acme.example.org",
-			ok:   false,
-		},
-	} {
-		t.Run(name, func(t *testing.T) {
-			got, ok := resolver.CanonicalHost(testCase.host)
-			if ok != testCase.ok {
-				t.Fatalf("matched: got %t, want %t", ok, testCase.ok)
-			}
-			if got != testCase.want {
-				t.Errorf("canonical host: got %q, want %q", got, testCase.want)
-			}
-		})
-	}
-}
-
-// TestResolverCanonicalHostSingleTenant asserts the contract on the
-// single-tenant branch (issue #30): the canonical host comes from the
-// configured base URL, never from the request, and an empty result is
-// rejected with ok=false.
-func TestResolverCanonicalHostSingleTenant(t *testing.T) {
-	single := config.Multitenancy{Enabled: false, DefaultTenantSlug: model.DefaultTenantSlug}
-
-	for name, testCase := range map[string]struct {
-		baseURL string
-		host    string
-		want    string
-		ok      bool
-	}{
-		"single tenant returns the configured host instead of the request": {
-			baseURL: "https://xolo.example.com",
-			host:    "evil.example.com",
-			want:    "xolo.example.com",
-			ok:      true,
-		},
-		"lowercases and strips the port from the configured base url": {
-			baseURL: "http://XOLO.Example.Com:3002",
-			host:    "anything",
-			want:    "xolo.example.com",
-			ok:      true,
-		},
-		"the request port is irrelevant when a base url is configured": {
-			baseURL: "https://xolo.example.com",
-			host:    "xolo.example.com:9999",
-			want:    "xolo.example.com",
-			ok:      true,
-		},
-		"rejects when no base url host is configured": {
-			baseURL: "",
-			host:    "xolo.example.com",
-			ok:      false,
-		},
-		"the request host is irrelevant when a base url is configured": {
-			baseURL: "https://xolo.example.com",
-			host:    "",
-			want:    "xolo.example.com",
-			ok:      true,
-		},
-		"rejects a relative base url": {
-			baseURL: "/xolo",
-			host:    "xolo.example.com",
-			ok:      false,
-		},
-		"keeps ipv6 brackets when the configured base url has a port": {
-			baseURL: "http://[::1]:8080",
-			host:    "anything",
-			want:    "[::1]",
-			ok:      true,
-		},
-		"keeps ipv6 brackets when the configured base url has no port": {
-			baseURL: "http://[::1]",
-			host:    "anything",
-			want:    "[::1]",
-			ok:      true,
-		},
-	} {
-		t.Run(name, func(t *testing.T) {
-			resolver := tenant.NewResolver(newStore(), single, testCase.baseURL)
-
-			got, ok := resolver.CanonicalHost(testCase.host)
-			if ok != testCase.ok {
-				t.Fatalf("matched: got %t, want %t", ok, testCase.ok)
-			}
-			if got != testCase.want {
-				t.Errorf("canonical host: got %q, want %q", got, testCase.want)
-			}
-		})
+func TestNewResolverRequiresAbsoluteBaseURL(t *testing.T) {
+	conf := config.Multitenancy{Enabled: true, DefaultTenantSlug: model.DefaultTenantSlug}
+	for _, baseURL := range []string{"", "/", "xolo.example.com"} {
+		if _, err := tenant.NewResolver(newStore(), newStore(), conf, baseURL); err == nil {
+			t.Errorf("base url %q: got no error, want one", baseURL)
+		}
 	}
 }

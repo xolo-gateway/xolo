@@ -24,5 +24,14 @@ var getGormStoreFromConfig = createFromConfigOnce(func(ctx context.Context, conf
 		return nil, errors.WithStack(err)
 	}
 
+	// Routing data rather than schema: it also runs when the schema is
+	// migrated by hand. The legacy host pattern only matters to a multi-tenant
+	// instance upgrading from host-pattern routing.
+	if conf.Multitenancy.Enabled {
+		if err := store.InitializeDomainRouting(ctx, conf.Multitenancy.HostPattern); err != nil {
+			return nil, errors.WithStack(err)
+		}
+	}
+
 	return store, nil
 })

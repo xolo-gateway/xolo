@@ -275,11 +275,19 @@ func NewHTTPServerFromConfig(ctx context.Context, conf *config.Config) (*http.Se
 		return nil, errors.WithStack(err)
 	}
 
+	domainStore, err := getDomainStoreFromConfig(ctx, conf)
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+
 	// Tenant resolution wraps the whole server: authentication resolves a user
 	// within a tenant, so no route may run before the tenant is known. A host
-	// matching none answers 404 — an unknown subdomain must not reveal whether
-	// the instance exists.
-	tenantResolver := tenant.NewResolver(tenantStore, conf.Multitenancy, conf.HTTP.BaseURL)
+	// matching no active domain answers 404 — an unknown host must not reveal
+	// whether the instance exists.
+	tenantResolver, err := tenant.NewResolver(tenantStore, domainStore, conf.Multitenancy, conf.HTTP.BaseURL)
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
 
 	tenantMiddleware := tenant.Middleware(
 		tenantResolver,
@@ -339,18 +347,6 @@ func NewHTTPServerFromConfig(ctx context.Context, conf *config.Config) (*http.Se
 		http.WithRoute("GET /api/personal-models/pipeline-node-types", rateLimiter(apiAuthChain(apiHandler))),
 		http.WithRoute("GET /api/personal-models/pipeline-models", rateLimiter(apiAuthChain(apiHandler))),
 		http.WithMount("/", authChain(withMemberships(webuiHandler))),
-	}
-
-	// In multi-tenant mode the public base URL is not an instance-wide constant:
-	// each tenant is served on its own hostname, and every link, redirect and
-	// OAuth callback must stay on the host the request came in on.
-	if conf.Multitenancy.Enabled {
-		resolveBaseURL, err := newTenantBaseURLResolver(conf.HTTP.BaseURL, tenantResolver.CanonicalHost)
-		if err != nil {
-			return nil, errors.WithStack(err)
-		}
-
-		options = append(options, http.WithBaseURLResolver(resolveBaseURL))
 	}
 
 	server := http.NewServer(options...)

@@ -18,9 +18,15 @@ func TestMultitenancyValidate(t *testing.T) {
 		"enabled with a valid pattern": {
 			conf: config.Multitenancy{Enabled: true, HostPattern: "{tenant}.xolo.example.com", DefaultTenantSlug: "default"},
 		},
-		"enabled without a host pattern": {
-			conf:    config.Multitenancy{Enabled: true, DefaultTenantSlug: "default"},
-			wantErr: "XOLO_MULTITENANCY_HOST_PATTERN is required",
+		"enabled without a host pattern routes on declared domains only": {
+			conf: config.Multitenancy{Enabled: true, DefaultTenantSlug: "default"},
+		},
+		"pattern with a port": {
+			conf: config.Multitenancy{Enabled: true, HostPattern: "{tenant}.xolo.example.com:3002", DefaultTenantSlug: "default"},
+		},
+		"pattern that is not a hostname": {
+			conf:    config.Multitenancy{Enabled: true, HostPattern: "{tenant}_xolo.example.com", DefaultTenantSlug: "default"},
+			wantErr: "does not expand to a valid hostname",
 		},
 		"enabled without the placeholder": {
 			conf:    config.Multitenancy{Enabled: true, HostPattern: "xolo.example.com", DefaultTenantSlug: "default"},

@@ -15,3 +15,11 @@ var getTenantStoreFromConfig = createFromConfigOnce(func(ctx context.Context, co
 	}
 	return store, nil
 })
+
+var getDomainStoreFromConfig = createFromConfigOnce(func(ctx context.Context, conf *config.Config) (port.DomainStore, error) {
+	store, err := getGormStoreFromConfig(ctx, conf)
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+	return store, nil
+})
