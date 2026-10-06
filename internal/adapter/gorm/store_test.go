@@ -63,7 +63,7 @@ func TestInvitationTransactionRejectsSchemaOperations(t *testing.T) {
 				{name: "CheckSchema", run: schema.CheckSchema},
 			} {
 				t.Run(test.name, func(t *testing.T) {
-					require.ErrorContains(t, test.run(ctx), "invitation transaction")
+					require.ErrorContains(t, test.run(ctx), "schema within a transaction")
 				})
 			}
 			// Refusing schema operations must leave the caller's transaction usable.
