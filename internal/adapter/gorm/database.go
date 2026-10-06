@@ -37,21 +37,23 @@ func withoutForeignKeys(tx *gorm.DB, fn func() error) error {
 
 func createDatabaseInitializer(db *gorm.DB) func(context.Context, bool) (*gorm.DB, error) {
 	var mu sync.Mutex
-	ready := false
+	var checked, migrated bool
 	return func(ctx context.Context, migrate bool) (*gorm.DB, error) {
 		mu.Lock()
 		defer mu.Unlock()
-		if !ready {
-			var err error
-			if migrate {
-				err = MigrateDatabase(ctx, db, nil)
-			} else {
-				err = CheckDatabaseSchema(ctx, db)
-			}
-			if err != nil {
+		// Each operation is cached independently: checking must not suppress
+		// a later explicit migration, nor migration a later schema check.
+		if migrate && !migrated {
+			if err := MigrateDatabase(ctx, db, nil); err != nil {
 				return nil, err
 			}
-			ready = true
+			migrated = true
+		}
+		if !migrate && !checked {
+			if err := CheckDatabaseSchema(ctx, db); err != nil {
+				return nil, err
+			}
+			checked = true
 		}
 		return db, nil
 	}

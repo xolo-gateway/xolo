@@ -93,6 +93,7 @@ func NewStore(db *gorm.DB, options ...StoreOption) *Store {
 }
 
 // Migrate explicitly applies pending migrations, independently of WithAutoMigrate.
+// A successful migration is cached for this store; failures can be retried.
 // Application setup calls CheckSchema instead when automatic migration is disabled.
 func (s *Store) Migrate(ctx context.Context) error {
 	if s.invitationTx {
@@ -102,6 +103,8 @@ func (s *Store) Migrate(ctx context.Context) error {
 	return errors.WithStack(err)
 }
 
+// CheckSchema validates migration history without changing the database.
+// A successful check is cached independently of Migrate; failures can be retried.
 func (s *Store) CheckSchema(ctx context.Context) error {
 	if s.invitationTx {
 		return errors.New("cannot check schema within an invitation transaction")
