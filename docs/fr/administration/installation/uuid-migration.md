@@ -77,6 +77,28 @@ Pour une installation neuve ou une migration sans décision manuelle, utilisez
 | Mapping incomplet, périmé, UUID invalide ou dupliqué | Régénérez un plan non appliqué depuis la base définitivement arrêtée et relisez-le. Ne modifiez jamais un mapping déjà appliqué. |
 | ID primaire vide ou relation orpheline | Réparez les données source après répétition sur sauvegarde, puis régénérez le plan. Le diagnostic ne supprime aucune ligne. |
 
+Les attributs d'événements sont réécrits uniquement sous les clés d'identifiant
+reconnues : `user`, `user_id`, `actor_id`, `owner_id`, `member_user_id`,
+`created_by_user_id`, `org`, `org_id`, `organization_id` et `tenant_id`. Les autres
+clés, notamment celles des plugins comme `tenant_user`, conservent leurs valeurs.
+Avant migration, `diagnose` et `plan` signalent les anciens IDs potentiels dans
+ces valeurs, même intégrés à un texte, dans le champ `notices`. Le regroupement
+se fait par clé, avec le nombre de valeurs distinctes et au plus cinq exemples
+triés. Ces indications sont informatives et ne bloquent pas `apply` ; seuls les
+éléments de `issues` sont bloquants. La migration automatique et `apply` les
+journalisent aussi au niveau INFO. Exemple :
+
+```text
+unmapped event attribute: events.attributes [key "tenant_user"]: 1 distinct values; examples: "user-alice"
+```
+
+Vérifiez les filtres d'alertes utilisant ces attributs personnalisés. Si nécessaire,
+une correction sérialisée sur `events.attributes` peut modifier une valeur ; des
+valeurs `before`/`after` identiques confirment un texte littéral. Une correction
+explicite supprime cette indication pour l'événement, tout en restant soumise aux
+vérifications habituelles du JSON et de la valeur `before`. Les plans restent en
+version 2.
+
 La suppression normale d'un utilisateur conserve des références historiques :
 propriétaires des alertes d'organisation, créateurs des invitations, périmètres
 personnels des secrets de plugins (`~:<userID>`) et clés OAuth de `mcp-bridge`

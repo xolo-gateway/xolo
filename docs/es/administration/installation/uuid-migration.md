@@ -76,6 +76,27 @@ que espera el esquema de tenants, usuarios y organizaciones de la versión anter
 | Mapping incompleto, obsoleto, UUID inválido o duplicado | Regenere un plan todavía no aplicado contra la base detenida y revíselo. Nunca cambie un mapping ya aplicado. |
 | ID primario vacío o relación huérfana | Repare los datos tras ensayar sobre una copia y vuelva a planificar. El diagnóstico nunca descarta filas. |
 
+Los atributos de eventos solo se reescriben bajo las claves de ID reconocidas:
+`user`, `user_id`, `actor_id`, `owner_id`, `member_user_id`, `created_by_user_id`,
+`org`, `org_id`, `organization_id` y `tenant_id`. Las demás claves, incluidas las
+definidas por plugins como `tenant_user`, conservan sus valores originales.
+Antes de migrar, `diagnose` y `plan` indican posibles IDs antiguos en estos valores,
+incluso dentro de un texto, en `notices`. Se agrupan por clave, con el total de
+valores distintos y hasta cinco ejemplos ordenados. Son avisos informativos y no
+bloquean `apply`; solo los elementos de `issues` lo bloquean. La migración automática
+y `apply` también los registran en los logs con nivel INFO. Por ejemplo:
+
+```text
+unmapped event attribute: events.attributes [key "tenant_user"]: 1 distinct values; examples: "user-alice"
+```
+
+Revise los filtros de alertas que utilizan estos atributos personalizados. Si
+procede, use una corrección serializada de `events.attributes` para modificar un
+valor, o valores `before`/`after` idénticos para confirmar texto literal. Una
+corrección explícita elimina el aviso de ese evento, pero sigue sujeta a las
+comprobaciones habituales de JSON y de la coincidencia de `before`. Los planes
+siguen en la versión 2.
+
 La eliminación normal de un usuario conserva referencias históricas:
 propietarios de alertas de organización, creadores de invitaciones, ámbitos
 personales de secretos de plugins (`~:<userID>`) y claves OAuth de `mcp-bridge`

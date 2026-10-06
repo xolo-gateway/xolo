@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"maps"
 	"sort"
 	"strings"
@@ -60,6 +61,8 @@ type RecoveryReport struct {
 	Counts       map[string]int64 `json:"counts"`
 	Issues       []string         `json:"issues"`
 	Applied      bool             `json:"applied"`
+	// Notices are informational; only Issues prevent application.
+	Notices []string `json:"notices,omitempty"`
 }
 type recoveryFK struct {
 	TableName         string
@@ -243,11 +246,12 @@ func DiagnoseCommonRecovery(ctx context.Context, db *gorm.DB, a *RecoveryArtifac
 			}
 		}
 	}
-	issues, err := scanSerializedRecovery(db, a, nil)
+	issues, notices, err := scanSerializedRecovery(db, a, nil)
 	if err != nil {
 		return nil, err
 	}
 	report.Issues = append(diagnostics.issues(), issues...)
+	report.Notices = notices
 	sort.Strings(report.Issues)
 	return report, nil
 }
@@ -293,6 +297,13 @@ func applyCommonRecovery(ctx context.Context, db *gorm.DB, a *RecoveryArtifact, 
 		if len(report.Issues) > 0 {
 			return fmt.Errorf("common migration blocked: %s", strings.Join(report.Issues, "; "))
 		}
+		for _, notice := range report.Notices {
+			slog.InfoContext(
+				ctx,
+				"UUID recovery will preserve an unrecognized event attribute",
+				"diagnostic", notice,
+			)
+		}
 		var constraints []recoveryFK
 		if isSQLite(tx) {
 			if err := tx.Exec("PRAGMA defer_foreign_keys = ON").Error; err != nil {
@@ -317,7 +328,7 @@ func applyCommonRecovery(ctx context.Context, db *gorm.DB, a *RecoveryArtifact, 
 		if err := installRecoveryMappings(tx, a); err != nil {
 			return err
 		}
-		issues, err := scanSerializedRecovery(tx, a, func(changes []RecoverySerializedOverride) error {
+		issues, _, err := scanSerializedRecovery(tx, a, func(changes []RecoverySerializedOverride) error {
 			return applySerializedRecoveryBatch(tx, changes)
 		})
 		if err != nil {

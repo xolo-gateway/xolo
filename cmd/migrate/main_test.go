@@ -37,11 +37,22 @@ func TestOfflineMigrationWorkflow(t *testing.T) {
 		}).Error)
 	}
 	require.NoError(t, store.DeleteUser(t.Context(), model.UserID("user-deleted")))
+	require.NoError(t, db.Table("events").Create(map[string]any{
+		"id": "plugin-event", "org_id": "org-acme",
+		"attributes": `{"actor_id":"user-two","tenant_user":"user-two"}`,
+	}).Error)
 	require.NoError(t, db.Exec("DELETE FROM migrations WHERE id = ?", "202610020001").Error)
 	before, err := os.ReadFile(path)
 	require.NoError(t, err)
 	var out bytes.Buffer
 	require.NoError(t, run(t.Context(), []string{"diagnose"}, &out))
+	var diagnostic adapter.RecoveryReport
+	require.NoError(t, json.Unmarshal(out.Bytes(), &diagnostic))
+	require.Empty(t, diagnostic.Issues)
+	require.Equal(t, []string{
+		`unmapped event attribute: events.attributes [key "tenant_user"]: 1 distinct values; examples: "user-two"`,
+	}, diagnostic.Notices)
+	out.Reset()
 	planPath := filepath.Join(t.TempDir(), "recovery.json")
 	require.NoError(t, run(t.Context(), []string{"plan", "-out", planPath}, &out))
 	after, err := os.ReadFile(path)
@@ -82,6 +93,10 @@ func TestOfflineMigrationWorkflow(t *testing.T) {
 		require.Equal(t, "preserved", secret.ValueEncrypted)
 	}
 
+	var event adapter.Event
+	require.NoError(t, db.First(&event, "id = ?", "plugin-event").Error)
+	require.Equal(t, "user-two", (*event.Attributes.Val)["tenant_user"])
+	require.Equal(t, artifact.IDs["users"]["user-two"], (*event.Attributes.Val)["actor_id"])
 	require.NoError(t, adapter.CheckDatabaseSchema(t.Context(), db))
 }
 

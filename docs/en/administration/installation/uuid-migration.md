@@ -72,6 +72,26 @@ need `plan`, which expects the previous release's tenant/user/organization schem
 | Incomplete, stale, duplicate or invalid UUID mapping | Regenerate an unapplied plan from the final stopped database and review it again. Never edit an already applied mapping. |
 | Empty primary ID or orphaned relation | Repair source data on a backup-tested copy before replanning. Diagnostics never discard affected rows. |
 
+Event attributes are rewritten only under recognized ID keys: `user`, `user_id`,
+`actor_id`, `owner_id`, `member_user_id`, `created_by_user_id`, `org`, `org_id`,
+`organization_id` and `tenant_id`. Other keys, including plugin-defined keys such
+as `tenant_user`, keep their original values. Before migration, `diagnose` and
+`plan` report possible legacy IDs in those values (including embedded IDs) in
+`notices`, grouped by key with distinct-value counts and up to five sorted
+examples. These notices are informational: they do not block `apply`; only
+`issues` block it. Automatic migration and `apply` also log them at INFO level.
+For example:
+
+```text
+unmapped event attribute: events.attributes [key "tenant_user"]: 1 distinct values; examples: "user-alice"
+```
+
+Review any alert filters using these custom attributes. If appropriate, use an
+`events.attributes` serialized override to correct a value, or identical
+`before`/`after` values to acknowledge literal text. An explicit override
+suppresses the notice for that event; it still undergoes the usual JSON and
+stale-value validation. Recovery plans remain at version 2.
+
 Normal user deletion leaves historical references: owners of organization
 alerts, invitation creators, personal plugin-secret scopes (`~:<userID>`) and
 `mcp-bridge` OAuth keys (`oauth:<userID>`). Migration rewrites these values when

@@ -43,7 +43,12 @@ func recoveryLabelMappings(a *RecoveryArtifact) map[string]map[string]string {
 
 // scanSerializedRecovery holds at most one page of rows and corrections.
 // A nil consume callback diagnoses without retaining or applying corrections.
-func scanSerializedRecovery(db *gorm.DB, a *RecoveryArtifact, consume func([]RecoverySerializedOverride) error) ([]string, error) {
+// It returns blocking issues separately from informational event-attribute notices.
+func scanSerializedRecovery(
+	db *gorm.DB,
+	a *RecoveryArtifact,
+	consume func([]RecoverySerializedOverride) error,
+) ([]string, []string, error) {
 	rewriter := newRecoveryJSONRewriter(a)
 	type key struct{ table, id, column string }
 	overrides := map[key]RecoverySerializedOverride{}
@@ -69,7 +74,7 @@ func scanSerializedRecovery(db *gorm.DB, a *RecoveryArtifact, consume func([]Rec
 				q = q.Where("id > ?", cursor)
 			}
 			if err := q.Find(&rows).Error; err != nil {
-				return nil, err
+				return nil, nil, err
 			}
 			if len(rows) == 0 {
 				break
@@ -109,7 +114,7 @@ func scanSerializedRecovery(db *gorm.DB, a *RecoveryArtifact, consume func([]Rec
 			}
 			if consume != nil {
 				if err := consume(changes); err != nil {
-					return nil, err
+					return nil, nil, err
 				}
 			}
 			cursor, hasCursor = rows[len(rows)-1].ID, true
@@ -120,13 +125,14 @@ func scanSerializedRecovery(db *gorm.DB, a *RecoveryArtifact, consume func([]Rec
 		issues = append(issues, fmt.Sprintf("unknown serialized override target: %s[%s].%s", k.table, k.id, k.column))
 	}
 	sort.Strings(issues)
-	return issues, nil
+	return issues, rewriter.notices.issues(), nil
 }
 
 type recoveryJSONRewriter struct {
 	artifact *RecoveryArtifact
 	mappings map[string]map[string]string
 	legacy   *recoverySubstringMatcher
+	notices  recoveryDiagnostics
 }
 
 func newRecoveryJSONRewriter(a *RecoveryArtifact) *recoveryJSONRewriter {
@@ -142,6 +148,7 @@ func newRecoveryJSONRewriter(a *RecoveryArtifact) *recoveryJSONRewriter {
 		artifact: a,
 		mappings: recoveryLabelMappings(a),
 		legacy:   newRecoverySubstringMatcher(patterns),
+		notices:  recoveryDiagnostics{},
 	}
 }
 
@@ -209,6 +216,18 @@ func (r *recoveryJSONRewriter) rewrite(raw string, graph bool) (string, error) {
 				}
 				if r.legacy.contains(v) {
 					return nil, fmt.Errorf("opaque legacy reference at %s; provide a serialized override", path)
+				}
+			}
+			if !graph {
+				// Plugins may use arbitrary attribute keys. Keep historical text
+				// intact, but surface possible references without blocking recovery.
+				if _, known := r.mappings[field]; !known && r.legacy.contains(v) {
+					r.notices.add(
+						"unmapped event attribute",
+						"events.attributes [key "+strconv.Quote(field)+"]",
+						v,
+						"",
+					)
 				}
 			}
 		}
