@@ -36,7 +36,7 @@ func newTestHandler(t *testing.T) (handler *v1.Handler, db *gormpkg.DB, tenantBa
 		t.Fatalf("get default tenant: %v", err)
 	}
 
-	handler = v1.NewHandler(service.NewProvisioningService(store, store, store, store))
+	handler = v1.NewHandler(service.NewProvisioningService(store, store, store, store, service.WithProvisioningTransaction(store)))
 
 	return handler, db, "/v1/tenants/" + string(tenant.ID())
 }
@@ -666,7 +666,7 @@ func newMultiTenantHandler(t *testing.T) (*v1.Handler, string) {
 		t.Fatalf("get default tenant: %v", err)
 	}
 
-	handler := v1.NewHandler(service.NewProvisioningService(store, store, store, store,
+	handler := v1.NewHandler(service.NewProvisioningService(store, store, store, store, service.WithProvisioningTransaction(store),
 		service.WithMultiTenant(true),
 	))
 

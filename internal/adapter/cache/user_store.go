@@ -37,6 +37,7 @@ func (s *UserStore) DeleteAuthToken(ctx context.Context, tokenID model.AuthToken
 // otherwise keep authenticating until the cache TTL elapsed — up to an hour
 // with the default configuration.
 func (s *UserStore) FindAuthToken(ctx context.Context, token string) (model.AuthToken, error) {
+	generation := s.authTokenCache.Generation()
 	lookupKey := crypto.HashToken(token)
 
 	if authToken, exists := s.authTokenCache.Get(lookupKey); exists {
@@ -53,7 +54,7 @@ func (s *UserStore) FindAuthToken(ctx context.Context, token string) (model.Auth
 		return nil, err
 	}
 
-	s.authTokenCache.Add(NewCacheableAuthToken(authToken, lookupKey))
+	s.authTokenCache.AddIfGeneration(NewCacheableAuthToken(authToken, lookupKey), generation)
 
 	return authToken, nil
 }
@@ -67,6 +68,7 @@ func isExpired(token model.AuthToken) bool {
 
 // FindOrCreateUser implements [port.UserStore].
 func (s *UserStore) FindOrCreateUser(ctx context.Context, tenantID model.TenantID, provider string, subject string) (model.User, error) {
+	generation := s.userCache.Generation()
 	if user, exists := s.userCache.Get(getUserProviderSubjectCacheKey(tenantID, provider, subject)); exists {
 		return user, nil
 	}
@@ -76,13 +78,14 @@ func (s *UserStore) FindOrCreateUser(ctx context.Context, tenantID model.TenantI
 		return nil, err
 	}
 
-	s.userCache.Add(NewCacheableUser(user))
+	s.userCache.AddIfGeneration(NewCacheableUser(user), generation)
 
 	return user, nil
 }
 
 // GetUserByIdentity implements [port.UserStore].
 func (s *UserStore) GetUserByIdentity(ctx context.Context, tenantID model.TenantID, provider string, subject string) (model.User, error) {
+	generation := s.userCache.Generation()
 	if user, exists := s.userCache.Get(getUserProviderSubjectCacheKey(tenantID, provider, subject)); exists {
 		return user, nil
 	}
@@ -92,7 +95,7 @@ func (s *UserStore) GetUserByIdentity(ctx context.Context, tenantID model.Tenant
 		return nil, err
 	}
 
-	s.userCache.Add(NewCacheableUser(user))
+	s.userCache.AddIfGeneration(NewCacheableUser(user), generation)
 
 	return user, nil
 }

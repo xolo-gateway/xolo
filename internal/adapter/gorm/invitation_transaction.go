@@ -19,28 +19,16 @@ func (s *Store) WithInvitationTransaction(ctx context.Context, fn func(port.Invi
 	if err != nil {
 		return err
 	}
-	for attempt := 0; ; attempt++ {
-		err = db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	return retryTransaction(ctx, func() error {
+		return db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 			tx = tx.Session(&gorm.Session{SkipDefaultTransaction: true})
 			bound := &Store{
-				getDatabase:  func(context.Context) (*gorm.DB, error) { return tx, nil },
-				invitationTx: true,
+				getDatabase:      func(context.Context) (*gorm.DB, error) { return tx, nil },
+				transactionBound: true,
 			}
 			return fn(&invitationTx{Store: bound, db: tx})
 		})
-		if err == nil || !isRetryableError(err) || attempt >= 10 {
-			return err
-		}
-		// Bounded, cancelable backoff; never wait with a transaction open.
-		delay := min(10*time.Millisecond<<attempt, 500*time.Millisecond)
-		timer := time.NewTimer(delay)
-		select {
-		case <-ctx.Done():
-			timer.Stop()
-			return ctx.Err()
-		case <-timer.C:
-		}
-	}
+	})
 }
 
 // invitationTx binds a Store to the transaction opened by
@@ -123,3 +111,23 @@ func (tx *invitationTx) InsertInvitationMember(ctx context.Context, membership m
 
 var _ port.InvitationTransaction = (*Store)(nil)
 var _ port.InvitationTx = (*invitationTx)(nil)
+
+// retryTransaction never waits with a transaction open and only retries whole callbacks.
+func retryTransaction(ctx context.Context, operation func() error) error {
+	for attempt := 0; ; attempt++ {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		err := operation()
+		if err == nil || !isRetryableError(err) || attempt >= 10 {
+			return err
+		}
+		timer := time.NewTimer(min(10*time.Millisecond<<attempt, 500*time.Millisecond))
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return ctx.Err()
+		case <-timer.C:
+		}
+	}
+}

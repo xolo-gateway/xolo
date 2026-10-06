@@ -18,5 +18,11 @@ func User(ctx context.Context) model.User {
 }
 
 func SetUser(ctx context.Context, user model.User) context.Context {
-	return context.WithValue(ctx, keyUser, user)
+	actor := model.ActorFromContext(ctx)
+	if user != nil {
+		actor.UserID = user.ID()
+	} else {
+		actor.UserID = ""
+	}
+	return context.WithValue(model.WithActor(ctx, actor), keyUser, user)
 }

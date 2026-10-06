@@ -13,10 +13,10 @@ import (
 type Store struct {
 	getDatabase        func(ctx context.Context) (*gorm.DB, error)
 	initializeDatabase func(context.Context, bool) (*gorm.DB, error)
-	// Invitation callbacks own the transaction and the retry boundary: on a
+	// Invitation and provisioning callbacks own the transaction and retry boundary: on a
 	// transaction-bound store, withRetry runs fn exactly once
 	// on that transaction and never opens its own.
-	invitationTx bool
+	transactionBound bool
 }
 
 // withRetry runs fn, replaying it with an exponential backoff while the
@@ -26,9 +26,9 @@ func (s *Store) withRetry(ctx context.Context, withTx bool, fn func(ctx context.
 	if err != nil {
 		return errors.WithStack(err)
 	}
-	if s.invitationTx {
-		// db is already the invitation transaction: withTx is ignored and a
-		// failure goes back to WithInvitationTransaction, which replays the
+	if s.transactionBound {
+		// db is already bound: withTx is ignored and a
+		// failure goes back to the transaction adapter, which replays the
 		// whole callback.
 		return fn(ctx, db.WithContext(ctx))
 	}
@@ -96,8 +96,8 @@ func NewStore(db *gorm.DB, options ...StoreOption) *Store {
 // A successful migration is cached for this store; failures can be retried.
 // Application setup calls CheckSchema instead when automatic migration is disabled.
 func (s *Store) Migrate(ctx context.Context) error {
-	if s.invitationTx {
-		return errors.New("cannot migrate schema within an invitation transaction")
+	if s.transactionBound {
+		return errors.New("cannot migrate schema within a transaction")
 	}
 	_, err := s.initializeDatabase(ctx, true)
 	return errors.WithStack(err)
@@ -106,8 +106,8 @@ func (s *Store) Migrate(ctx context.Context) error {
 // CheckSchema validates migration history without changing the database.
 // A successful check is cached independently of Migrate; failures can be retried.
 func (s *Store) CheckSchema(ctx context.Context) error {
-	if s.invitationTx {
-		return errors.New("cannot check schema within an invitation transaction")
+	if s.transactionBound {
+		return errors.New("cannot check schema within a transaction")
 	}
 	_, err := s.initializeDatabase(ctx, false)
 	return errors.WithStack(err)

@@ -156,6 +156,8 @@ func MigrateDatabase(ctx context.Context, db *gorm.DB, artifact *RecoveryArtifac
 					&ExchangeRate{},
 					// Plugin node secrets
 					&PluginNodeSecret{},
+					// Provisioning audit
+					&MutationAudit{},
 					// Event system
 					&Event{}, &Alert{}, &AlertIncident{}, &EventSettings{},
 				)
@@ -538,5 +540,10 @@ func schemaMigrations(artifact *RecoveryArtifact) []*gormigrate.Migration {
 			_, err := applyCommonRecovery(tx.Statement.Context, tx, artifact)
 			return err
 		}},
+		{
+			ID:       mutationAuditMigrationID,
+			Migrate:  func(tx *gorm.DB) error { return tx.AutoMigrate(&MutationAudit{}) },
+			Rollback: func(*gorm.DB) error { return errors.New("mutation audit history cannot be rolled back") },
+		},
 	}
 }

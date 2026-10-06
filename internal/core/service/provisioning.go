@@ -2,15 +2,13 @@ package service
 
 import (
 	"context"
-	"log/slog"
 	"slices"
 	"strings"
 
-	"github.com/bornholm/go-x/slogx"
+	"github.com/pkg/errors"
 	"github.com/xolo-gateway/xolo/internal/core/model"
 	"github.com/xolo-gateway/xolo/internal/core/port"
 	"github.com/xolo-gateway/xolo/internal/core/rbac"
-	"github.com/pkg/errors"
 )
 
 // ProvisioningService orchestrates the multi-store workflows needed to
@@ -22,10 +20,12 @@ import (
 // a tenant boundary, and provisioning an organization administrator never
 // grants platform-wide privileges.
 type ProvisioningService struct {
-	tenantStore port.TenantStore
-	orgStore    port.OrgStore
-	userStore   port.UserStore
-	roleStore   port.RoleStore
+	transactions port.ProvisioningTransaction
+	bound        bool
+	tenantStore  port.ProvisioningTenantStore
+	orgStore     port.ProvisioningOrgStore
+	userStore    port.ProvisioningUserStore
+	roleStore    port.ProvisioningRoleStore
 
 	// multiTenant reports whether the instance may hold more than one tenant.
 	// When false, the API serves the single default tenant but refuses to
@@ -89,6 +89,20 @@ type CreateTenantParams struct {
 // without multi-tenancy no hostname resolves to a second tenant, so its
 // organizations would be unreachable.
 func (s *ProvisioningService) CreateTenant(ctx context.Context, params CreateTenantParams) (model.Tenant, error) {
+	if !s.bound {
+		ctx = model.EnsureActor(ctx)
+		var result model.Tenant
+		err := s.transaction(ctx, func(tx *ProvisioningService) error {
+			var err error
+			result, err = tx.CreateTenant(ctx, params)
+			return err
+		})
+		if err != nil {
+			return nil, err
+		}
+		return result, nil
+	}
+
 	if !s.multiTenant {
 		return nil, errors.Wrap(port.ErrNotAllowed, "this instance runs in single-tenant mode; set XOLO_MULTITENANCY_ENABLED=true to provision additional tenants")
 	}
@@ -157,6 +171,20 @@ type UpdateTenantParams struct {
 // immutable: it is the stable handle external systems reconcile on, and in
 // multi-tenant mode it is also the hostname label routing to the tenant.
 func (s *ProvisioningService) UpdateTenant(ctx context.Context, tenantID model.TenantID, params UpdateTenantParams) (model.Tenant, error) {
+	if !s.bound {
+		ctx = model.EnsureActor(ctx)
+		var result model.Tenant
+		err := s.transaction(ctx, func(tx *ProvisioningService) error {
+			var err error
+			result, err = tx.UpdateTenant(ctx, tenantID, params)
+			return err
+		})
+		if err != nil {
+			return nil, err
+		}
+		return result, nil
+	}
+
 	tenant, err := s.tenantStore.GetTenantByID(ctx, tenantID)
 	if err != nil {
 		return nil, errors.WithStack(err)
@@ -194,6 +222,11 @@ func (s *ProvisioningService) UpdateTenant(ctx context.Context, tenantID model.T
 // never deletable: it is the fallback every single-tenant instance resolves to,
 // and losing it would leave the instance unusable.
 func (s *ProvisioningService) DeleteTenant(ctx context.Context, tenantID model.TenantID) error {
+	if !s.bound {
+		ctx = model.EnsureActor(ctx)
+		return s.transaction(ctx, func(tx *ProvisioningService) error { return tx.DeleteTenant(ctx, tenantID) })
+	}
+
 	tenant, err := s.tenantStore.GetTenantByID(ctx, tenantID)
 	if err != nil {
 		return errors.WithStack(err)
@@ -264,11 +297,26 @@ type CreateOrganizationResult struct {
 // CreateOrganization creates an organization, its builtin roles and, optionally, its
 // initial owner.
 //
-// The stores expose no cross-store transaction, so any failure occurring after
-// the organization row exists triggers a best-effort compensation: the
-// organization is deleted (memberships cascade) to avoid leaving a half
-// provisioned organization behind. A pre-existing user is never deleted.
+// Every validation, parent read and write belongs to the same transaction.
 func (s *ProvisioningService) CreateOrganization(ctx context.Context, params CreateOrganizationParams) (*CreateOrganizationResult, error) {
+	if !s.bound {
+		ctx = model.EnsureActor(ctx)
+		var result *CreateOrganizationResult
+		err := s.transaction(ctx, func(tx *ProvisioningService) error {
+			var err error
+			result, err = tx.CreateOrganization(ctx, params)
+			return err
+		})
+		if err != nil {
+			return nil, err
+		}
+		return result, nil
+	}
+
+	if _, err := s.GetTenant(ctx, params.TenantID); err != nil {
+		return nil, err
+	}
+
 	if err := validateSlug(params.Slug); err != nil {
 		return nil, errors.WithStack(err)
 	}
@@ -309,7 +357,6 @@ func (s *ProvisioningService) CreateOrganization(ctx context.Context, params Cre
 
 	result, err := s.completeOrganizationCreation(ctx, org, params.Owner)
 	if err != nil {
-		s.rollbackOrganization(ctx, org.ID())
 		return nil, errors.WithStack(err)
 	}
 
@@ -317,7 +364,7 @@ func (s *ProvisioningService) CreateOrganization(ctx context.Context, params Cre
 }
 
 // completeOrganizationCreation performs every step following the organization
-// insertion. It is split out so the caller can compensate on any failure.
+// insertion, in the same transaction as the parent row.
 func (s *ProvisioningService) completeOrganizationCreation(ctx context.Context, org model.Organization, owner *UserIdentityParams) (*CreateOrganizationResult, error) {
 	if err := s.roleStore.EnsureBuiltinRoles(ctx, org.ID()); err != nil {
 		return nil, errors.WithStack(err)
@@ -361,20 +408,15 @@ func (s *ProvisioningService) completeOrganizationCreation(ctx context.Context, 
 	return result, nil
 }
 
-// rollbackOrganization compensates a partially created organization. Failures are logged
-// rather than returned: the caller is already reporting the original error.
-func (s *ProvisioningService) rollbackOrganization(ctx context.Context, orgID model.OrgID) {
-	if err := s.orgStore.DeleteOrg(ctx, orgID); err != nil {
-		slog.ErrorContext(ctx, "could not rollback partially created organization",
-			slog.String("orgID", string(orgID)), slogx.Error(errors.WithStack(err)))
-	}
-}
-
 // GetOrganization returns an organization scoped to the given tenant. An
 // organization belonging to another tenant is reported as not found: the
 // Provisionning API must not let a caller probe another tenant's identifiers.
 func (s *ProvisioningService) GetOrganization(ctx context.Context, tenantID model.TenantID, orgID model.OrgID) (model.Organization, error) {
-	org, err := s.orgStore.GetOrgByID(ctx, orgID)
+	if _, err := s.GetTenant(ctx, tenantID); err != nil {
+		return nil, errors.WithStack(err)
+	}
+
+	org, err := s.getOrganizationParent(ctx, orgID)
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
@@ -413,6 +455,20 @@ type UpdateOrganizationParams struct {
 // UpdateOrganization applies the provided fields to an existing organization. The slug is
 // immutable: it is the stable handle external systems reconcile on.
 func (s *ProvisioningService) UpdateOrganization(ctx context.Context, tenantID model.TenantID, orgID model.OrgID, params UpdateOrganizationParams) (model.Organization, error) {
+	if !s.bound {
+		ctx = model.EnsureActor(ctx)
+		var result model.Organization
+		err := s.transaction(ctx, func(tx *ProvisioningService) error {
+			var err error
+			result, err = tx.UpdateOrganization(ctx, tenantID, orgID, params)
+			return err
+		})
+		if err != nil {
+			return nil, err
+		}
+		return result, nil
+	}
+
 	org, err := s.GetOrganization(ctx, tenantID, orgID)
 	if err != nil {
 		return nil, errors.WithStack(err)
@@ -454,6 +510,11 @@ func (s *ProvisioningService) UpdateOrganization(ctx context.Context, tenantID m
 }
 
 func (s *ProvisioningService) DeleteOrganization(ctx context.Context, tenantID model.TenantID, orgID model.OrgID) error {
+	if !s.bound {
+		ctx = model.EnsureActor(ctx)
+		return s.transaction(ctx, func(tx *ProvisioningService) error { return tx.DeleteOrganization(ctx, tenantID, orgID) })
+	}
+
 	if _, err := s.GetOrganization(ctx, tenantID, orgID); err != nil {
 		return errors.WithStack(err)
 	}
@@ -471,6 +532,25 @@ func (s *ProvisioningService) DeleteOrganization(ctx context.Context, tenantID m
 // an organization must never turn into administering the Xolo instance. The platform
 // roles of an already known user are never modified here.
 func (s *ProvisioningService) ProvisionUser(ctx context.Context, tenantID model.TenantID, params UserIdentityParams) (model.User, bool, error) {
+	if !s.bound {
+		ctx = model.EnsureActor(ctx)
+		var result model.User
+		var created bool
+		err := s.transaction(ctx, func(tx *ProvisioningService) error {
+			var err error
+			result, created, err = tx.ProvisionUser(ctx, tenantID, params)
+			return err
+		})
+		if err != nil {
+			return nil, false, err
+		}
+		return result, created, nil
+	}
+
+	if _, err := s.GetTenant(ctx, tenantID); err != nil {
+		return nil, false, err
+	}
+
 	if err := validateIdentity(params); err != nil {
 		return nil, false, errors.WithStack(err)
 	}
@@ -518,16 +598,6 @@ func (s *ProvisioningService) ProvisionUser(ctx context.Context, tenantID model.
 	}
 
 	if err := s.userStore.SaveUser(ctx, user); err != nil {
-		// The user row already exists but holds none of the requested fields.
-		// Drop it so a retry starts from a clean state — but only when we are the
-		// ones who created it: a row handed back by a concurrent provisioning
-		// belongs to that request, and deleting it would revoke its auth tokens.
-		if fresh {
-			if deleteErr := s.userStore.DeleteUser(ctx, user.ID()); deleteErr != nil {
-				slog.ErrorContext(ctx, "could not rollback partially created user",
-					slog.String("userID", string(user.ID())), slogx.Error(errors.WithStack(deleteErr)))
-			}
-		}
 		return nil, false, errors.WithStack(err)
 	}
 
@@ -537,6 +607,10 @@ func (s *ProvisioningService) ProvisionUser(ctx context.Context, tenantID model.
 // GetUser returns a user scoped to the given tenant. A user belonging to
 // another tenant is reported as not found.
 func (s *ProvisioningService) GetUser(ctx context.Context, tenantID model.TenantID, userID model.UserID) (model.User, error) {
+	if _, err := s.GetTenant(ctx, tenantID); err != nil {
+		return nil, errors.WithStack(err)
+	}
+
 	user, err := s.userStore.GetUserByID(ctx, userID)
 	if err != nil {
 		return nil, errors.WithStack(err)
@@ -580,6 +654,20 @@ type UpdateUserParams struct {
 // UpdateUser updates the profile fields of a user. Platform roles are
 // deliberately not exposed: the Provisionning API never grants instance-wide privileges.
 func (s *ProvisioningService) UpdateUser(ctx context.Context, tenantID model.TenantID, userID model.UserID, params UpdateUserParams) (model.User, error) {
+	if !s.bound {
+		ctx = model.EnsureActor(ctx)
+		var result model.User
+		err := s.transaction(ctx, func(tx *ProvisioningService) error {
+			var err error
+			result, err = tx.UpdateUser(ctx, tenantID, userID, params)
+			return err
+		})
+		if err != nil {
+			return nil, err
+		}
+		return result, nil
+	}
+
 	user, err := s.GetUser(ctx, tenantID, userID)
 	if err != nil {
 		return nil, errors.WithStack(err)
@@ -646,8 +734,22 @@ type AddMemberParams struct {
 // AddMember adds a user to an organization and assigns its initial roles. The
 // user is resolved within the organization's own tenant, which is what makes
 // cross-tenant membership impossible.
-func (s *ProvisioningService) AddMember(ctx context.Context, orgID model.OrgID, params AddMemberParams) (model.Membership, error) {
-	org, err := s.orgStore.GetOrgByID(ctx, orgID)
+func (s *ProvisioningService) AddMember(ctx context.Context, tenantID model.TenantID, orgID model.OrgID, params AddMemberParams) (model.Membership, error) {
+	if !s.bound {
+		ctx = model.EnsureActor(ctx)
+		var result model.Membership
+		err := s.transaction(ctx, func(tx *ProvisioningService) error {
+			var err error
+			result, err = tx.AddMember(ctx, tenantID, orgID, params)
+			return err
+		})
+		if err != nil {
+			return nil, err
+		}
+		return result, nil
+	}
+
+	org, err := s.GetOrganization(ctx, tenantID, orgID)
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
@@ -687,10 +789,6 @@ func (s *ProvisioningService) AddMember(ctx context.Context, orgID model.OrgID, 
 
 	if len(roleIDs) > 0 {
 		if err := s.roleStore.SetMembershipRoles(ctx, membership.ID(), roleIDs); err != nil {
-			if removeErr := s.orgStore.RemoveMember(ctx, membership.ID()); removeErr != nil {
-				slog.ErrorContext(ctx, "could not rollback partially created membership",
-					slog.String("membershipID", string(membership.ID())), slogx.Error(errors.WithStack(removeErr)))
-			}
 			return nil, errors.WithStack(err)
 		}
 	}
@@ -704,7 +802,7 @@ func (s *ProvisioningService) AddMember(ctx context.Context, orgID model.OrgID, 
 }
 
 func (s *ProvisioningService) ListMembers(ctx context.Context, orgID model.OrgID, opts port.ListOrgMembersOptions) ([]model.Membership, int64, error) {
-	if _, err := s.orgStore.GetOrgByID(ctx, orgID); err != nil {
+	if _, err := s.getOrganizationParent(ctx, orgID); err != nil {
 		return nil, 0, errors.WithStack(err)
 	}
 
@@ -720,6 +818,11 @@ func (s *ProvisioningService) ListMembers(ctx context.Context, orgID model.OrgID
 // belonging to another organization is reported as not found: the Provisionning API
 // must not let a caller probe another organization's identifiers.
 func (s *ProvisioningService) GetMember(ctx context.Context, orgID model.OrgID, membershipID model.MembershipID) (model.Membership, error) {
+	org, err := s.getOrganizationParent(ctx, orgID)
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+
 	membership, err := s.orgStore.GetMembership(ctx, membershipID)
 	if err != nil {
 		return nil, errors.WithStack(err)
@@ -729,13 +832,34 @@ func (s *ProvisioningService) GetMember(ctx context.Context, orgID model.OrgID, 
 		return nil, errors.Wrapf(port.ErrNotFound, "membership %q does not belong to organization %q", membershipID, orgID)
 	}
 
+	if _, err := s.GetUser(ctx, org.TenantID(), membership.UserID()); err != nil {
+		return nil, errors.WithStack(err)
+	}
 	return membership, nil
 }
 
 // SetMemberRoles fully replaces the roles of a membership. Every role must
 // belong to the membership's organization, and the organization must keep at least one
 // owner.
-func (s *ProvisioningService) SetMemberRoles(ctx context.Context, orgID model.OrgID, membershipID model.MembershipID, roleIDs []model.RoleID, builtinRoles []string) (model.Membership, error) {
+func (s *ProvisioningService) SetMemberRoles(ctx context.Context, tenantID model.TenantID, orgID model.OrgID, membershipID model.MembershipID, roleIDs []model.RoleID, builtinRoles []string) (model.Membership, error) {
+	if !s.bound {
+		ctx = model.EnsureActor(ctx)
+		var result model.Membership
+		err := s.transaction(ctx, func(tx *ProvisioningService) error {
+			var err error
+			result, err = tx.SetMemberRoles(ctx, tenantID, orgID, membershipID, roleIDs, builtinRoles)
+			return err
+		})
+		if err != nil {
+			return nil, err
+		}
+		return result, nil
+	}
+
+	if _, err := s.GetOrganization(ctx, tenantID, orgID); err != nil {
+		return nil, err
+	}
+
 	membership, err := s.GetMember(ctx, orgID, membershipID)
 	if err != nil {
 		return nil, errors.WithStack(err)
@@ -764,7 +888,16 @@ func (s *ProvisioningService) SetMemberRoles(ctx context.Context, orgID model.Or
 	return updated, nil
 }
 
-func (s *ProvisioningService) RemoveMember(ctx context.Context, orgID model.OrgID, membershipID model.MembershipID) error {
+func (s *ProvisioningService) RemoveMember(ctx context.Context, tenantID model.TenantID, orgID model.OrgID, membershipID model.MembershipID) error {
+	if !s.bound {
+		ctx = model.EnsureActor(ctx)
+		return s.transaction(ctx, func(tx *ProvisioningService) error { return tx.RemoveMember(ctx, tenantID, orgID, membershipID) })
+	}
+
+	if _, err := s.GetOrganization(ctx, tenantID, orgID); err != nil {
+		return err
+	}
+
 	membership, err := s.GetMember(ctx, orgID, membershipID)
 	if err != nil {
 		return errors.WithStack(err)
@@ -784,7 +917,7 @@ func (s *ProvisioningService) RemoveMember(ctx context.Context, orgID model.OrgI
 }
 
 func (s *ProvisioningService) ListRoles(ctx context.Context, orgID model.OrgID) ([]model.Role, error) {
-	if _, err := s.orgStore.GetOrgByID(ctx, orgID); err != nil {
+	if _, err := s.getOrganizationParent(ctx, orgID); err != nil {
 		return nil, errors.WithStack(err)
 	}
 
@@ -799,6 +932,10 @@ func (s *ProvisioningService) ListRoles(ctx context.Context, orgID model.OrgID) 
 // GetRole returns a role scoped to the given organization. A role belonging to
 // another organization is reported as not found.
 func (s *ProvisioningService) GetRole(ctx context.Context, orgID model.OrgID, roleID model.RoleID) (model.Role, error) {
+	if _, err := s.getOrganizationParent(ctx, orgID); err != nil {
+		return nil, errors.WithStack(err)
+	}
+
 	role, err := s.roleStore.GetRoleByID(ctx, roleID)
 	if err != nil {
 		return nil, errors.WithStack(err)
@@ -818,8 +955,22 @@ type RoleParams struct {
 	ModelGrants []model.ModelGrant
 }
 
-func (s *ProvisioningService) CreateRole(ctx context.Context, orgID model.OrgID, params RoleParams) (model.Role, error) {
-	if _, err := s.orgStore.GetOrgByID(ctx, orgID); err != nil {
+func (s *ProvisioningService) CreateRole(ctx context.Context, tenantID model.TenantID, orgID model.OrgID, params RoleParams) (model.Role, error) {
+	if !s.bound {
+		ctx = model.EnsureActor(ctx)
+		var result model.Role
+		err := s.transaction(ctx, func(tx *ProvisioningService) error {
+			var err error
+			result, err = tx.CreateRole(ctx, tenantID, orgID, params)
+			return err
+		})
+		if err != nil {
+			return nil, err
+		}
+		return result, nil
+	}
+
+	if _, err := s.GetOrganization(ctx, tenantID, orgID); err != nil {
 		return nil, errors.WithStack(err)
 	}
 
@@ -853,7 +1004,25 @@ func (s *ProvisioningService) CreateRole(ctx context.Context, orgID model.OrgID,
 // UpdateRole updates a custom role. Builtin roles are immutable: their
 // permissions are part of the domain definition and the rest of the codebase
 // relies on them.
-func (s *ProvisioningService) UpdateRole(ctx context.Context, orgID model.OrgID, roleID model.RoleID, params RoleParams) (model.Role, error) {
+func (s *ProvisioningService) UpdateRole(ctx context.Context, tenantID model.TenantID, orgID model.OrgID, roleID model.RoleID, params RoleParams) (model.Role, error) {
+	if !s.bound {
+		ctx = model.EnsureActor(ctx)
+		var result model.Role
+		err := s.transaction(ctx, func(tx *ProvisioningService) error {
+			var err error
+			result, err = tx.UpdateRole(ctx, tenantID, orgID, roleID, params)
+			return err
+		})
+		if err != nil {
+			return nil, err
+		}
+		return result, nil
+	}
+
+	if _, err := s.GetOrganization(ctx, tenantID, orgID); err != nil {
+		return nil, err
+	}
+
 	role, err := s.GetRole(ctx, orgID, roleID)
 	if err != nil {
 		return nil, errors.WithStack(err)
@@ -897,7 +1066,16 @@ func (s *ProvisioningService) UpdateRole(ctx context.Context, orgID model.OrgID,
 	return updated, nil
 }
 
-func (s *ProvisioningService) DeleteRole(ctx context.Context, orgID model.OrgID, roleID model.RoleID) error {
+func (s *ProvisioningService) DeleteRole(ctx context.Context, tenantID model.TenantID, orgID model.OrgID, roleID model.RoleID) error {
+	if !s.bound {
+		ctx = model.EnsureActor(ctx)
+		return s.transaction(ctx, func(tx *ProvisioningService) error { return tx.DeleteRole(ctx, tenantID, orgID, roleID) })
+	}
+
+	if _, err := s.GetOrganization(ctx, tenantID, orgID); err != nil {
+		return err
+	}
+
 	role, err := s.GetRole(ctx, orgID, roleID)
 	if err != nil {
 		return errors.WithStack(err)
@@ -1077,4 +1255,33 @@ func normalizeCurrency(currency string) (string, error) {
 		return "", errors.Wrapf(port.ErrInvalid, "unsupported currency %q", currency)
 	}
 	return currency, nil
+}
+
+func WithProvisioningTransaction(tx port.ProvisioningTransaction) ProvisioningServiceOptionFunc {
+	return func(s *ProvisioningService) { s.transactions = tx }
+}
+func (s *ProvisioningService) transaction(ctx context.Context, fn func(*ProvisioningService) error) error {
+	if s.transactions == nil {
+		return errors.New("provisioning requires a transaction adapter")
+	}
+	return s.transactions.WithProvisioningTransaction(ctx, func(tx port.ProvisioningTx) error {
+		bound := *s
+		bound.bound = true
+		bound.tenantStore = tx
+		bound.orgStore = tx
+		bound.userStore = tx
+		bound.roleStore = tx
+		return fn(&bound)
+	})
+}
+
+func (s *ProvisioningService) getOrganizationParent(ctx context.Context, orgID model.OrgID) (model.Organization, error) {
+	org, err := s.orgStore.GetOrgByID(ctx, orgID)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := s.GetTenant(ctx, org.TenantID()); err != nil {
+		return nil, err
+	}
+	return org, nil
 }

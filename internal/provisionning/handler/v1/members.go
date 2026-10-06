@@ -65,7 +65,7 @@ func (h *Handler) handleAddMember(w http.ResponseWriter, r *http.Request) {
 		params.User = &user
 	}
 
-	membership, err := h.provisioning.AddMember(ctx, org.ID(), params)
+	membership, err := h.provisioning.AddMember(ctx, org.TenantID(), org.ID(), params)
 	if err != nil {
 		writeServiceError(ctx, w, err, "could not add member")
 		return
@@ -107,7 +107,7 @@ func (h *Handler) handleSetMemberRoles(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	membership, err := h.provisioning.SetMemberRoles(ctx,
+	membership, err := h.provisioning.SetMemberRoles(ctx, org.TenantID(),
 		org.ID(),
 		model.MembershipID(r.PathValue("membershipID")),
 		toRoleIDs(payload.RoleIDs),
@@ -129,7 +129,7 @@ func (h *Handler) handleRemoveMember(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err := h.provisioning.RemoveMember(ctx,
+	err := h.provisioning.RemoveMember(ctx, org.TenantID(),
 		org.ID(),
 		model.MembershipID(r.PathValue("membershipID")),
 	)

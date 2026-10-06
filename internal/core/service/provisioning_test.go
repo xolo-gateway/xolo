@@ -34,7 +34,7 @@ func newTestService(t *testing.T) (*service.ProvisioningService, *xologorm.Store
 		t.Fatalf("get default tenant: %v", err)
 	}
 
-	svc := service.NewProvisioningService(store, store, store, store)
+	svc := service.NewProvisioningService(store, store, store, store, service.WithProvisioningTransaction(store))
 
 	return svc, store, tenant.ID()
 }
@@ -354,7 +354,7 @@ func TestMembers(t *testing.T) {
 
 		org := createOrganization(t, svc, testTenantID, "acme", ownerParams())
 
-		membership, err := svc.AddMember(ctx, org.Org.ID(), service.AddMemberParams{
+		membership, err := svc.AddMember(ctx, testTenantID, org.Org.ID(), service.AddMemberParams{
 			User:         memberParams("sub-member"),
 			BuiltinRoles: []string{model.BuiltinKindMember},
 		})
@@ -372,11 +372,11 @@ func TestMembers(t *testing.T) {
 
 		org := createOrganization(t, svc, testTenantID, "acme", ownerParams())
 
-		if _, err := svc.AddMember(ctx, org.Org.ID(), service.AddMemberParams{User: memberParams("sub-member")}); err != nil {
+		if _, err := svc.AddMember(ctx, testTenantID, org.Org.ID(), service.AddMemberParams{User: memberParams("sub-member")}); err != nil {
 			t.Fatalf("add member: %v", err)
 		}
 
-		_, err := svc.AddMember(ctx, org.Org.ID(), service.AddMemberParams{User: memberParams("sub-member")})
+		_, err := svc.AddMember(ctx, testTenantID, org.Org.ID(), service.AddMemberParams{User: memberParams("sub-member")})
 		if !errors.Is(err, port.ErrAlreadyExists) {
 			t.Errorf("error: got %v, want %v", err, port.ErrAlreadyExists)
 		}
@@ -387,13 +387,13 @@ func TestMembers(t *testing.T) {
 
 		org := createOrganization(t, svc, testTenantID, "acme", ownerParams())
 
-		if _, err := svc.AddMember(ctx, model.OrgID("nope"), service.AddMemberParams{User: memberParams("sub-member")}); !errors.Is(err, port.ErrNotFound) {
+		if _, err := svc.AddMember(ctx, testTenantID, model.OrgID("nope"), service.AddMemberParams{User: memberParams("sub-member")}); !errors.Is(err, port.ErrNotFound) {
 			t.Errorf("unknown organization: got %v, want %v", err, port.ErrNotFound)
 		}
-		if _, err := svc.AddMember(ctx, org.Org.ID(), service.AddMemberParams{UserID: model.UserID("nope")}); !errors.Is(err, port.ErrNotFound) {
+		if _, err := svc.AddMember(ctx, testTenantID, org.Org.ID(), service.AddMemberParams{UserID: model.UserID("nope")}); !errors.Is(err, port.ErrNotFound) {
 			t.Errorf("unknown user: got %v, want %v", err, port.ErrNotFound)
 		}
-		if _, err := svc.AddMember(ctx, org.Org.ID(), service.AddMemberParams{}); !errors.Is(err, port.ErrInvalid) {
+		if _, err := svc.AddMember(ctx, testTenantID, org.Org.ID(), service.AddMemberParams{}); !errors.Is(err, port.ErrInvalid) {
 			t.Errorf("missing identity: got %v, want %v", err, port.ErrInvalid)
 		}
 	})
@@ -403,7 +403,7 @@ func TestMembers(t *testing.T) {
 
 		org := createOrganization(t, svc, testTenantID, "acme", ownerParams())
 
-		membership, err := svc.AddMember(ctx, org.Org.ID(), service.AddMemberParams{
+		membership, err := svc.AddMember(ctx, testTenantID, org.Org.ID(), service.AddMemberParams{
 			User:         memberParams("sub-member"),
 			BuiltinRoles: []string{model.BuiltinKindMember},
 		})
@@ -411,7 +411,7 @@ func TestMembers(t *testing.T) {
 			t.Fatalf("add member: %v", err)
 		}
 
-		updated, err := svc.SetMemberRoles(ctx, org.Org.ID(), membership.ID(), nil, []string{model.BuiltinKindAdmin})
+		updated, err := svc.SetMemberRoles(ctx, testTenantID, org.Org.ID(), membership.ID(), nil, []string{model.BuiltinKindAdmin})
 		if err != nil {
 			t.Fatalf("set member roles: %v", err)
 		}
@@ -432,7 +432,7 @@ func TestMembers(t *testing.T) {
 			t.Fatalf("list other roles: %v", err)
 		}
 
-		membership, err := svc.AddMember(ctx, acme.Org.ID(), service.AddMemberParams{
+		membership, err := svc.AddMember(ctx, testTenantID, acme.Org.ID(), service.AddMemberParams{
 			User:         memberParams("sub-member"),
 			BuiltinRoles: []string{model.BuiltinKindMember},
 		})
@@ -440,7 +440,7 @@ func TestMembers(t *testing.T) {
 			t.Fatalf("add member: %v", err)
 		}
 
-		_, err = svc.SetMemberRoles(ctx, acme.Org.ID(), membership.ID(), []model.RoleID{otherRoles[0].ID()}, nil)
+		_, err = svc.SetMemberRoles(ctx, testTenantID, acme.Org.ID(), membership.ID(), []model.RoleID{otherRoles[0].ID()}, nil)
 		if !errors.Is(err, port.ErrInvalid) {
 			t.Fatalf("error: got %v, want %v", err, port.ErrInvalid)
 		}
@@ -460,12 +460,12 @@ func TestMembers(t *testing.T) {
 		org := createOrganization(t, svc, testTenantID, "acme", ownerParams())
 		ownerMembership := org.OwnerMembership
 
-		_, err := svc.SetMemberRoles(ctx, org.Org.ID(), ownerMembership.ID(), nil, []string{model.BuiltinKindMember})
+		_, err := svc.SetMemberRoles(ctx, testTenantID, org.Org.ID(), ownerMembership.ID(), nil, []string{model.BuiltinKindMember})
 		if !errors.Is(err, port.ErrNotAllowed) {
 			t.Errorf("downgrade: got %v, want %v", err, port.ErrNotAllowed)
 		}
 
-		if err := svc.RemoveMember(ctx, org.Org.ID(), ownerMembership.ID()); !errors.Is(err, port.ErrNotAllowed) {
+		if err := svc.RemoveMember(ctx, testTenantID, org.Org.ID(), ownerMembership.ID()); !errors.Is(err, port.ErrNotAllowed) {
 			t.Errorf("removal: got %v, want %v", err, port.ErrNotAllowed)
 		}
 	})
@@ -475,14 +475,14 @@ func TestMembers(t *testing.T) {
 
 		org := createOrganization(t, svc, testTenantID, "acme", ownerParams())
 
-		if _, err := svc.AddMember(ctx, org.Org.ID(), service.AddMemberParams{
+		if _, err := svc.AddMember(ctx, testTenantID, org.Org.ID(), service.AddMemberParams{
 			User:         memberParams("sub-second-owner"),
 			BuiltinRoles: []string{model.BuiltinKindOwner},
 		}); err != nil {
 			t.Fatalf("add second owner: %v", err)
 		}
 
-		if err := svc.RemoveMember(ctx, org.Org.ID(), org.OwnerMembership.ID()); err != nil {
+		if err := svc.RemoveMember(ctx, testTenantID, org.Org.ID(), org.OwnerMembership.ID()); err != nil {
 			t.Fatalf("remove first owner: %v", err)
 		}
 	})
@@ -496,7 +496,7 @@ func TestMembers(t *testing.T) {
 		if _, err := svc.GetMember(ctx, other.Org.ID(), acme.OwnerMembership.ID()); !errors.Is(err, port.ErrNotFound) {
 			t.Errorf("get: got %v, want %v", err, port.ErrNotFound)
 		}
-		if err := svc.RemoveMember(ctx, other.Org.ID(), acme.OwnerMembership.ID()); !errors.Is(err, port.ErrNotFound) {
+		if err := svc.RemoveMember(ctx, testTenantID, other.Org.ID(), acme.OwnerMembership.ID()); !errors.Is(err, port.ErrNotFound) {
 			t.Errorf("remove: got %v, want %v", err, port.ErrNotFound)
 		}
 		if _, err := svc.GetMember(ctx, acme.Org.ID(), model.MembershipID("nope")); !errors.Is(err, port.ErrNotFound) {
@@ -513,7 +513,7 @@ func TestRoles(t *testing.T) {
 
 		org := createOrganization(t, svc, testTenantID, "acme", nil)
 
-		role, err := svc.CreateRole(ctx, org.Org.ID(), service.RoleParams{
+		role, err := svc.CreateRole(ctx, testTenantID, org.Org.ID(), service.RoleParams{
 			Name:        strPtr("auditor"),
 			Description: strPtr("Read-only access"),
 			Permissions: []string{string(rbac.PermUsageRead)},
@@ -522,7 +522,7 @@ func TestRoles(t *testing.T) {
 			t.Fatalf("create role: %v", err)
 		}
 
-		updated, err := svc.UpdateRole(ctx, org.Org.ID(), role.ID(), service.RoleParams{
+		updated, err := svc.UpdateRole(ctx, testTenantID, org.Org.ID(), role.ID(), service.RoleParams{
 			Permissions: []string{string(rbac.PermUsageRead), string(rbac.PermMembersRead)},
 		})
 		if err != nil {
@@ -532,7 +532,7 @@ func TestRoles(t *testing.T) {
 			t.Errorf("permissions: got %v", updated.Permissions())
 		}
 
-		if err := svc.DeleteRole(ctx, org.Org.ID(), role.ID()); err != nil {
+		if err := svc.DeleteRole(ctx, testTenantID, org.Org.ID(), role.ID()); err != nil {
 			t.Fatalf("delete role: %v", err)
 		}
 	})
@@ -542,7 +542,7 @@ func TestRoles(t *testing.T) {
 
 		org := createOrganization(t, svc, testTenantID, "acme", nil)
 
-		_, err := svc.CreateRole(ctx, org.Org.ID(), service.RoleParams{
+		_, err := svc.CreateRole(ctx, testTenantID, org.Org.ID(), service.RoleParams{
 			Name:        strPtr("bogus"),
 			Permissions: []string{"not:a:permission"},
 		})
@@ -550,7 +550,7 @@ func TestRoles(t *testing.T) {
 			t.Errorf("permission: got %v, want %v", err, port.ErrInvalid)
 		}
 
-		_, err = svc.CreateRole(ctx, org.Org.ID(), service.RoleParams{
+		_, err = svc.CreateRole(ctx, testTenantID, org.Org.ID(), service.RoleParams{
 			Name:        strPtr("bogus"),
 			ModelGrants: []model.ModelGrant{{ModelID: "m1", Kind: "wat"}},
 		})
@@ -564,11 +564,11 @@ func TestRoles(t *testing.T) {
 
 		org := createOrganization(t, svc, testTenantID, "acme", nil)
 
-		if _, err := svc.CreateRole(ctx, org.Org.ID(), service.RoleParams{Name: strPtr("auditor")}); err != nil {
+		if _, err := svc.CreateRole(ctx, testTenantID, org.Org.ID(), service.RoleParams{Name: strPtr("auditor")}); err != nil {
 			t.Fatalf("create role: %v", err)
 		}
 
-		_, err := svc.CreateRole(ctx, org.Org.ID(), service.RoleParams{Name: strPtr("auditor")})
+		_, err := svc.CreateRole(ctx, testTenantID, org.Org.ID(), service.RoleParams{Name: strPtr("auditor")})
 		if !errors.Is(err, port.ErrAlreadyExists) {
 			t.Errorf("error: got %v, want %v", err, port.ErrAlreadyExists)
 		}
@@ -594,10 +594,10 @@ func TestRoles(t *testing.T) {
 			t.Fatal("no builtin owner role found")
 		}
 
-		if _, err := svc.UpdateRole(ctx, org.Org.ID(), builtin.ID(), service.RoleParams{Name: strPtr("hacked")}); !errors.Is(err, port.ErrNotAllowed) {
+		if _, err := svc.UpdateRole(ctx, testTenantID, org.Org.ID(), builtin.ID(), service.RoleParams{Name: strPtr("hacked")}); !errors.Is(err, port.ErrNotAllowed) {
 			t.Errorf("update: got %v, want %v", err, port.ErrNotAllowed)
 		}
-		if err := svc.DeleteRole(ctx, org.Org.ID(), builtin.ID()); !errors.Is(err, port.ErrNotAllowed) {
+		if err := svc.DeleteRole(ctx, testTenantID, org.Org.ID(), builtin.ID()); !errors.Is(err, port.ErrNotAllowed) {
 			t.Errorf("delete: got %v, want %v", err, port.ErrNotAllowed)
 		}
 	})
@@ -685,7 +685,7 @@ func TestProvisionUser(t *testing.T) {
 		}
 
 		store := xologorm.NewStore(db)
-		svc := service.NewProvisioningService(store, store, store, store,
+		svc := service.NewProvisioningService(store, store, store, store, service.WithProvisioningTransaction(store),
 			service.WithReservedEmails("boss@corp.tld"),
 		)
 

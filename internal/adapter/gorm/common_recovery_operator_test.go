@@ -354,7 +354,7 @@ func TestUUIDSchemaAndOrdinaryWrites(t *testing.T) {
 	eachBackendDB(t, func(t *testing.T, db *gormpkg.DB) {
 		store := adapter.NewStore(db)
 		require.NoError(t, store.Migrate(t.Context()))
-		for _, table := range []string{"domains", "reserved_domains", "publications", "mutation_audits", "publication_clocks"} {
+		for _, table := range []string{"domains", "reserved_domains", "publications", "publication_clocks"} {
 			require.False(t, db.Migrator().HasTable(table), table)
 		}
 		for _, column := range [][2]string{{"users", "tenant_role"}, {"memberships", "common_role"}, {"memberships", "status"}} {
