@@ -58,12 +58,18 @@ func (p *Plugin) PreRequest(_ context.Context, in *proto.PreRequestInput) (*prot
 			modified = messages
 		}
 	} else {
-		// Replace mode: prepend (current behavior)
+		// Replace mode: remove any existing system messages, then prepend the configured one
+		filtered := make([]map[string]interface{}, 0, len(messages))
+		for _, msg := range messages {
+			if msg["role"] != "system" {
+				filtered = append(filtered, msg)
+			}
+		}
 		systemMsg := map[string]interface{}{
 			"role":    "system",
 			"content": cfg.SystemPrompt,
 		}
-		modified = append([]map[string]interface{}{systemMsg}, messages...)
+		modified = append([]map[string]interface{}{systemMsg}, filtered...)
 	}
 
 	b, _ := json.Marshal(modified)

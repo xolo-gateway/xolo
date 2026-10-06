@@ -20,7 +20,8 @@ templ page(pd uiPageData) {
 			<h1 class="text-lg font-semibold">System Prompt</h1>
 			<p class="text-sm text-muted-foreground">
 				Injecte un prompt système fixe dans les messages de requête LLM.
-				Le prompt sera ajouté avant les autres messages.
+				En mode "remplacer", les éventuels messages système du client sont supprimés ;
+				en mode "ajouter", le premier message système du client (s'il existe) est concaténé.
 			</p>
 
 			if pd.Success {
@@ -57,7 +58,7 @@ templ page(pd uiPageData) {
 									}
 								/>
 								<label for="append" class="text-sm cursor-pointer">
-									Ajouter au prompt système existant (si présent)
+									Concaténer avec le prompt système existant (sinon, remplacer)
 								</label>
 							</div>
 						</div>
