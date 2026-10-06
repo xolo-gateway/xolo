@@ -69,10 +69,13 @@ need `plan`, which expects the previous release's tenant/user/organization schem
 | Emails differing only by case or surrounding spaces in one tenant | Preserved exactly, including case and spaces. This migration does not normalize emails or merge accounts. |
 | Exact EventQL matches on `user`, `org`, `actor_id`, `user_id`, `org_id` and other recognized ID attributes | Rewritten automatically using the matching ID family. Indexed selectors support `user`/`org`; `user_id`/`actor_id` are pipeline attributes. Historical event ID attributes are rewritten too. |
 | Graph references in recognized ID fields or exact string `value` fields | Rewritten automatically; graph topology IDs and edges remain unchanged. |
-| EventQL regex containing an old ID, opaque graph script/configuration or ambiguous ID | The report names the table, row, column and, for graphs, JSON path. Add a `serialized_overrides` entry as described below. |
+| EventQL regex on a recognized ID selector or attribute containing an old ID, opaque graph script/configuration or ambiguous ID | The report names the table, row, column and, for graphs, JSON path. Add a `serialized_overrides` entry as described below. |
 | Invalid query or JSON | Repair it with a valid serialized override. Unknown EventQL selectors such as `{user_id="..."}` must become a supported selector or attribute filter. |
 | Incomplete, stale, duplicate or invalid UUID mapping | Regenerate an unapplied plan from the final stopped database and review it again. Never edit an already applied mapping. |
 | Empty primary ID or orphaned relation | Repair source data on a backup-tested copy before replanning. Diagnostics never discard affected rows. |
+
+Line filters (`|=`, `|~`, `!=`, `!~`) search `events.message`, which the migration
+preserves unchanged; they are therefore neither rewritten nor reported.
 
 Event attributes are rewritten only under recognized ID keys: `user`, `user_id`,
 `actor_id`, `owner_id`, `member_user_id`, `created_by_user_id`, `org`, `org_id`,

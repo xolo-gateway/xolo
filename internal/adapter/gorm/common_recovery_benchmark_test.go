@@ -19,12 +19,16 @@ import (
 type recoveryQueryCounter struct {
 	logger.Interface
 	queries, eventReads, eventWrites atomic.Int64
+	foreignKeyChecks                 atomic.Int64
 }
 
 func (c *recoveryQueryCounter) Trace(_ context.Context, _ time.Time, sql func() (string, int64), _ error) {
 	c.queries.Add(1)
 	query, _ := sql()
 	query = strings.ToLower(query)
+	if query == "pragma foreign_key_check" {
+		c.foreignKeyChecks.Add(1)
+	}
 	if strings.Contains(query, "events") {
 		if strings.HasPrefix(query, "select") {
 			c.eventReads.Add(1)

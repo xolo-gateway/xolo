@@ -74,10 +74,13 @@ Pour une installation neuve ou une migration sans décision manuelle, utilisez
 | Emails ne différant que par la casse ou les espaces dans un tenant | Conservés exactement, casse et espaces compris. Cette migration ne normalise pas les emails et ne fusionne aucun compte. |
 | Comparaisons EventQL exactes sur `user`, `org`, `actor_id`, `user_id`, `org_id` et les autres attributs d'identifiant reconnus | Réécriture automatique avec la bonne famille. Les sélecteurs indexés acceptent `user`/`org` ; `user_id`/`actor_id` sont des filtres d'attributs. Les attributs historiques des événements sont également réécrits. |
 | Références de graphe dans des champs d'identifiant reconnus ou des valeurs `value` exactes | Réécriture automatique ; les identifiants de nœuds et les arêtes sont conservés. |
-| Expression régulière EventQL contenant un ancien ID, script/configuration opaque ou ID ambigu | Le rapport indique table, ligne, colonne et chemin JSON du graphe. Ajoutez une entrée `serialized_overrides` comme ci-dessous. |
+| Expression régulière EventQL contenant un ancien ID dans un sélecteur ou attribut d'identifiant reconnu, script/configuration opaque ou ID ambigu | Le rapport indique table, ligne, colonne et chemin JSON du graphe. Ajoutez une entrée `serialized_overrides` comme ci-dessous. |
 | Requête ou JSON invalide | Fournissez une correction sérialisée valide. Un sélecteur inconnu comme `{user_id="..."}` doit devenir un sélecteur reconnu ou un filtre d'attribut. |
 | Mapping incomplet, périmé, UUID invalide ou dupliqué | Régénérez un plan non appliqué depuis la base définitivement arrêtée et relisez-le. Ne modifiez jamais un mapping déjà appliqué. |
 | ID primaire vide ou relation orpheline | Réparez les données source après répétition sur sauvegarde, puis régénérez le plan. Le diagnostic ne supprime aucune ligne. |
+
+Les filtres de ligne (`|=`, `|~`, `!=`, `!~`) recherchent dans `events.message`,
+que la migration conserve inchangé ; ils ne sont donc ni réécrits ni signalés.
 
 Les attributs d'événements sont réécrits uniquement sous les clés d'identifiant
 reconnues : `user`, `user_id`, `actor_id`, `owner_id`, `member_user_id`,

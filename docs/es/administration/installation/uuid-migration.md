@@ -73,10 +73,13 @@ que espera el esquema de tenants, usuarios y organizaciones de la versión anter
 | Emails que solo difieren por mayúsculas o espacios dentro de un tenant | Se conservan exactamente, incluidas mayúsculas y espacios. Esta migración no normaliza emails ni fusiona cuentas. |
 | Comparaciones EventQL exactas sobre `user`, `org`, `actor_id`, `user_id`, `org_id` y otros atributos de ID reconocidos | Se reescriben con la familia correcta. Los selectores indexados aceptan `user`/`org`; `user_id`/`actor_id` son filtros de atributos. También se actualizan los atributos históricos de eventos. |
 | Referencias de grafos en campos de ID reconocidos o campos `value` exactos | Reescritura automática; se conservan los IDs de nodos y las aristas. |
-| Expresión regular con un ID antiguo, script/configuración opaca o ID ambiguo | El informe identifica tabla, fila, columna y ruta JSON. Añada una entrada `serialized_overrides` como se muestra abajo. |
+| Expresión regular EventQL con un ID antiguo en un selector o atributo de ID reconocido, script/configuración opaca o ID ambiguo | El informe identifica tabla, fila, columna y ruta JSON. Añada una entrada `serialized_overrides` como se muestra abajo. |
 | Consulta o JSON inválido | Proporcione una corrección serializada válida. Selectores desconocidos como `{user_id="..."}` deben convertirse a un selector reconocido o filtro de atributo. |
 | Mapping incompleto, obsoleto, UUID inválido o duplicado | Regenere un plan todavía no aplicado contra la base detenida y revíselo. Nunca cambie un mapping ya aplicado. |
 | ID primario vacío o relación huérfana | Repare los datos tras ensayar sobre una copia y vuelva a planificar. El diagnóstico nunca descarta filas. |
+
+Los filtros de línea (`|=`, `|~`, `!=`, `!~`) buscan en `events.message`, que la
+migración conserva sin cambios; por tanto, no se reescriben ni se notifican.
 
 Los atributos de eventos solo se reescriben bajo las claves de ID reconocidas:
 `user`, `user_id`, `actor_id`, `owner_id`, `member_user_id`, `created_by_user_id`,

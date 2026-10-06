@@ -88,27 +88,37 @@ func CheckDatabaseSchema(ctx context.Context, db *gorm.DB) error {
 // MigrateDatabase applies the complete migration chain under the startup lock.
 // A recovery artifact fixes the UUID mapping and operator decisions for an upgrade.
 func MigrateDatabase(ctx context.Context, db *gorm.DB, artifact *RecoveryArtifact) error {
-	return withMigrationLock(ctx, db, func(db *gorm.DB) error {
+	return withMigrationLock(ctx, db, func(db *gorm.DB) (bool, error) {
+		migrationExecuted := false
 		if artifact != nil {
 			report, err := DiagnoseCommonRecovery(ctx, db, artifact)
 			if err != nil {
-				return err
+				return false, err
 			}
 			if len(report.Issues) != 0 {
-				return fmt.Errorf("recovery plan is invalid: %v", report.Issues)
+				return false, fmt.Errorf("recovery plan is invalid: %v", report.Issues)
 			}
 			if !report.Applied && db.Migrator().HasTable("migrations") {
 				var applied int64
 				if err := db.Table("migrations").Where("id = ?", commonMigrationID).Count(&applied).Error; err != nil {
-					return err
+					return false, err
 				}
 				if applied != 0 {
-					return fmt.Errorf("UUID migration is already applied without this recovery plan; do not use recovery to edit a current database")
+					return false, fmt.Errorf("UUID migration is already applied without this recovery plan; do not use recovery to edit a current database")
 				}
 			}
 		}
-		m := gormigrate.New(db, gormigrate.DefaultOptions, schemaMigrations(artifact))
+		migrations := schemaMigrations(artifact)
+		for _, migration := range migrations {
+			migrate := migration.Migrate
+			migration.Migrate = func(tx *gorm.DB) error {
+				migrationExecuted = true
+				return migrate(tx)
+			}
+		}
+		m := gormigrate.New(db, gormigrate.DefaultOptions, migrations)
 		m.InitSchema(func(tx *gorm.DB) error {
+			migrationExecuted = true
 			return withoutForeignKeys(tx, func() error {
 				// Drop the deprecated index if exists (used in old migration)
 				tx.Exec("DROP INDEX IF EXISTS " + tx.Statement.Quote("idx_users_email"))
@@ -165,7 +175,8 @@ func MigrateDatabase(ctx context.Context, db *gorm.DB, artifact *RecoveryArtifac
 				return nil
 			})
 		})
-		return m.Migrate()
+		err := m.Migrate()
+		return migrationExecuted, err
 	})
 }
 
@@ -522,7 +533,7 @@ func schemaMigrations(artifact *RecoveryArtifact) []*gormigrate.Migration {
 				return migrateCommonSchema(tx)
 			}
 			warnCommonMigration(tx)
-			_, err := applyCommonRecovery(tx.Statement.Context, tx, artifact, false)
+			_, err := applyCommonRecovery(tx.Statement.Context, tx, artifact)
 			return err
 		}},
 	}

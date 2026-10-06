@@ -12,7 +12,7 @@ import (
 // Serialize startup before inspecting migration history. The complete upgrade,
 // including its markers, commits atomically. SQLite's write lock and PostgreSQL's
 // advisory transaction lock also cover fresh installs and concurrent replicas.
-func withMigrationLock(ctx context.Context, db *gorm.DB, migrate func(*gorm.DB) error) error {
+func withMigrationLock(ctx context.Context, db *gorm.DB, migrate func(*gorm.DB) (migrationExecuted bool, err error)) error {
 	for attempt := 0; ; attempt++ {
 		err := db.WithContext(ctx).Connection(func(conn *gorm.DB) (migrationErr error) {
 			conn = conn.Session(&gorm.Session{NewDB: true})
@@ -37,6 +37,7 @@ func withMigrationLock(ctx context.Context, db *gorm.DB, migrate func(*gorm.DB) 
 						return err
 					}
 				} else {
+					// migration_lock is a persistent table used to acquire SQLite's write lock.
 					// This is the first statement: acquire the writer lock before
 					// taking a read snapshot, including when the table already exists.
 					if err := tx.Exec("CREATE TABLE IF NOT EXISTS migration_lock (id integer PRIMARY KEY)").Error; err != nil {
@@ -49,10 +50,11 @@ func withMigrationLock(ctx context.Context, db *gorm.DB, migrate func(*gorm.DB) 
 						return err
 					}
 				}
-				if err := migrate(tx); err != nil {
+				migrationExecuted, err := migrate(tx)
+				if err != nil {
 					return err
 				}
-				if isSQLite(tx) {
+				if isSQLite(tx) && migrationExecuted {
 					var violations []map[string]any
 					if err := tx.Raw("PRAGMA foreign_key_check").Scan(&violations).Error; err != nil {
 						return err

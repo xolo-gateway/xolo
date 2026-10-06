@@ -35,7 +35,7 @@ func migrateCommonSchema(tx *gorm.DB) error {
 	if err != nil {
 		return err
 	}
-	_, err = applyCommonRecovery(tx.Statement.Context, tx, a, false)
+	_, err = applyCommonRecovery(tx.Statement.Context, tx, a)
 	return err
 }
 

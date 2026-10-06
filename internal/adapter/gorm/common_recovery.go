@@ -261,23 +261,7 @@ func artifactDigest(a *RecoveryArtifact) string {
 	return hex.EncodeToString(h[:])
 }
 
-// ApplyCommonRecovery requires all writers stopped. DDL, rewritten references,
-// serialized corrections and checkpoint commit together on both supported backends.
-func ApplyCommonRecovery(ctx context.Context, db *gorm.DB, a *RecoveryArtifact) (*RecoveryReport, error) {
-	var report *RecoveryReport
-	err := withMigrationLock(ctx, db, func(tx *gorm.DB) error {
-		warnCommonMigration(tx)
-		var err error
-		report, err = applyCommonRecovery(ctx, tx, a, true)
-		return err
-	})
-	if report != nil {
-		report.Applied = err == nil
-	}
-	return report, err
-}
-
-func applyCommonRecovery(ctx context.Context, db *gorm.DB, a *RecoveryArtifact, markMigration bool) (*RecoveryReport, error) {
+func applyCommonRecovery(ctx context.Context, db *gorm.DB, a *RecoveryArtifact) (*RecoveryReport, error) {
 	var final *RecoveryReport
 	err := db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if isPostgres(tx) {
@@ -405,11 +389,6 @@ func applyCommonRecovery(ctx context.Context, db *gorm.DB, a *RecoveryArtifact, 
 		}
 		if err := tx.Create(&CommonRecovery{ID: 1, Digest: artifactDigest(a), Artifact: string(artifactJSON)}).Error; err != nil {
 			return err
-		}
-		if markMigration {
-			if err := tx.Exec("INSERT INTO migrations (id) VALUES (?) ON CONFLICT DO NOTHING", commonMigrationID).Error; err != nil {
-				return err
-			}
 		}
 		tables, err := tx.Migrator().GetTables()
 		if err != nil {

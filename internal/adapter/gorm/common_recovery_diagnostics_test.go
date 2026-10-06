@@ -57,7 +57,7 @@ func TestRecoveryRequiredReferenceDiagnostics(t *testing.T) {
 			require.Equal(t, report.Issues, repeated.Issues)
 		}
 		require.ErrorContains(t, adapter.NewStore(db).Migrate(t.Context()), "orphan: alerts.owner_id")
-		_, err = adapter.ApplyCommonRecovery(t.Context(), db, plan)
+		err = adapter.MigrateDatabase(t.Context(), db, plan)
 		require.ErrorContains(t, err, "orphan: alerts.owner_id")
 		var user adapter.User
 		require.NoError(t, db.First(&user, "id = ?", "user-alice").Error)

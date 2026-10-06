@@ -64,12 +64,12 @@ func TestRecoveryUnknownEventAttributesAreInformational(t *testing.T) {
 					require.NoError(t, err)
 					a = &adapter.RecoveryArtifact{}
 					require.NoError(t, json.Unmarshal(encoded, a))
-					applied, err := adapter.ApplyCommonRecovery(t.Context(), db, a)
-					require.NoError(t, err)
-					require.True(t, applied.Applied)
-					require.Empty(t, applied.Issues)
-					require.Equal(t, wantNotices, applied.Notices)
+					require.NoError(t, adapter.MigrateDatabase(t.Context(), db, a))
 				}
+				applied, err := adapter.DiagnoseCommonRecovery(t.Context(), db, a)
+				require.NoError(t, err)
+				require.True(t, applied.Applied)
+				require.Empty(t, applied.Issues)
 				require.Equal(t, 2, a.Version)
 				var events []adapter.Event
 				require.NoError(t, db.Order("id").Find(&events).Error)

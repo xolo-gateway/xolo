@@ -7,8 +7,10 @@ import (
 )
 
 // RewriteIdentifiers updates exact equality/inequality matchers using mappings
-// keyed by label or attribute name. Other tokens, formatting and messages stay
-// unchanged. Regexes containing a retired identifier require an explicit edit.
+// keyed by selector or recognized ID attribute name. Regexes on these selectors
+// and attributes containing a retired identifier require an explicit edit.
+// Line filters (|=, |~, !=, !~) search the unchanged events.message and are neither
+// rewritten nor reported. Other tokens and formatting stay unchanged.
 func RewriteIdentifiers(input string, mappings map[string]map[string]string) (string, error) {
 	if _, err := Compile(input); err != nil {
 		return "", err

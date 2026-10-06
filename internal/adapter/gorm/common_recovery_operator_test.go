@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/rs/xid"
 	"github.com/stretchr/testify/require"
 	adapter "github.com/xolo-gateway/xolo/internal/adapter/gorm"
 	"github.com/xolo-gateway/xolo/internal/core/eventql"
@@ -21,6 +22,43 @@ func seedLegacyRecovery(t *testing.T, db *gormpkg.DB) {
 	require.NoError(t, db.Create(&adapter.Organization{ID: "org-acme", TenantID: "tenant-acme", Slug: "acme", Name: "Acme", Active: 1}).Error)
 	require.NoError(t, db.Create(&adapter.User{ID: "user-alice", TenantID: "tenant-acme", Email: "Alice@Example.test", Active: true}).Error)
 	require.NoError(t, db.Exec("DELETE FROM migrations WHERE id = ?", "202610020001").Error)
+}
+
+func TestRecoveryAppliesPendingMigrations(t *testing.T) {
+	eachBackendDB(t, func(t *testing.T, db *gormpkg.DB) {
+		seedLegacyRecovery(t, db)
+		prepareInvitationUpgrade(t, db)
+		invite := adapter.InviteToken{
+			ID: xid.New().String(), OrgID: "org-acme", CreatedByUserID: "user-alice",
+		}
+		require.NoError(t, db.Create(&invite).Error)
+		artifact, err := adapter.PlanCommonRecovery(t.Context(), db)
+		require.NoError(t, err)
+
+		// Observe the earlier migrations before the UUID checkpoint is written.
+		var earlierMarkers int64
+		require.NoError(t, db.Callback().Create().Before("gorm:create").Register("check_earlier_migrations", func(tx *gormpkg.DB) {
+			if tx.Statement.Table == "common_recoveries" {
+				err := tx.Session(&gormpkg.Session{NewDB: true}).Table("migrations").
+					Where("id IN (?, ?)", "202609300001", "202609300002").Count(&earlierMarkers).Error
+				tx.AddError(err)
+			}
+		}))
+		err = adapter.MigrateDatabase(t.Context(), db, artifact)
+		require.NoError(t, db.Callback().Create().Remove("check_earlier_migrations"))
+		require.NoError(t, err)
+		require.EqualValues(t, 2, earlierMarkers)
+		require.NoError(t, adapter.CheckDatabaseSchema(t.Context(), db))
+		require.True(t, db.Migrator().HasIndex(&adapter.Membership{}, "idx_memberships_user_org"))
+		var migrated adapter.InviteToken
+		require.NoError(t, db.First(&migrated, "id = ?", invite.ID).Error)
+		require.NotNil(t, migrated.RevokedAt)
+		require.Equal(t, artifact.IDs["organizations"]["org-acme"], migrated.OrgID)
+		require.Equal(t, artifact.IDs["users"]["user-alice"], migrated.CreatedByUserID)
+		report, err := adapter.DiagnoseCommonRecovery(t.Context(), db, artifact)
+		require.NoError(t, err)
+		require.True(t, report.Applied)
+	})
 }
 
 func TestRecoveryRewritesQueriesGraphsAndHistoricalActors(t *testing.T) {

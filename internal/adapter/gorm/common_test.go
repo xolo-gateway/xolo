@@ -66,7 +66,7 @@ func TestCommonRecovery(t *testing.T) {
 				if automatic {
 					err = adapter.NewStore(db).Migrate(ctx)
 				} else {
-					_, err = adapter.ApplyCommonRecovery(ctx, db, artifact)
+					err = adapter.MigrateDatabase(ctx, db, artifact)
 				}
 				require.Error(t, err)
 				require.NoError(t, db.Callback().Create().Remove("interrupt_recovery"))
@@ -94,11 +94,11 @@ func TestCommonRecovery(t *testing.T) {
 					artifact = &adapter.RecoveryArtifact{}
 					require.NoError(t, json.Unmarshal([]byte(checkpoint.Artifact), artifact))
 				} else {
-					report, err = adapter.ApplyCommonRecovery(ctx, db, artifact)
+					require.NoError(t, adapter.MigrateDatabase(ctx, db, artifact))
+					report, err = adapter.DiagnoseCommonRecovery(ctx, db, artifact)
 					require.NoError(t, err)
 					require.True(t, report.Applied)
-					_, err = adapter.ApplyCommonRecovery(ctx, db, artifact)
-					require.NoError(t, err)
+					require.NoError(t, adapter.MigrateDatabase(ctx, db, artifact))
 				}
 				migrated := adapter.NewStore(db)
 				require.NoError(t, migrated.Migrate(ctx))
