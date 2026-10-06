@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/pkg/errors"
+	"github.com/xolo-gateway/xolo/internal/build"
 	"github.com/xolo-gateway/xolo/internal/config"
 	"github.com/xolo-gateway/xolo/internal/provisionning"
 	v1 "github.com/xolo-gateway/xolo/internal/provisionning/handler/v1"
@@ -43,7 +44,7 @@ func NewProvisionningAPIServerFromConfig(ctx context.Context, conf *config.Confi
 		provisionning.WithClientPolicy(conf.ProvisionningAPI.AuthorizedURIs, conf.ProvisionningAPI.RateLimit, conf.ProvisionningAPI.RateBurst),
 		provisionning.WithAddress(conf.ProvisionningAPI.Address),
 		provisionning.WithTLSConfig(tlsConfig),
-		provisionning.WithHandler(v1.NewHandler(provisioning)),
+		provisionning.WithHandler(v1.NewHandler(provisioning, build.ShortVersion)),
 		provisionning.WithShutdownTimeout(conf.ProvisionningAPI.ShutdownTimeout),
 	), nil
 }

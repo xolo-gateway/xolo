@@ -65,6 +65,11 @@ var env struct {
 	dsn      string
 	provider *fakeProvider
 	logPath  string
+
+	// serverBin and pluginsDir let a test start another server process with
+	// its own configuration.
+	serverBin  string
+	pluginsDir string
 }
 
 func TestMain(m *testing.M) {
@@ -103,6 +108,7 @@ func run(m *testing.M) (int, error) {
 
 	serverBin := filepath.Join(work, "server")
 	pluginsDir := filepath.Join(work, "plugins")
+	env.serverBin, env.pluginsDir = serverBin, pluginsDir
 	if err := os.MkdirAll(pluginsDir, 0o755); err != nil {
 		return 1, err
 	}
@@ -182,30 +188,40 @@ func freePort() (int, error) {
 // startServer launches the server binary on the seeded database and returns
 // a function stopping it.
 func startServer(bin, pluginsDir string, port int) (func(), error) {
-	logFile, err := os.Create(env.logPath)
+	provisioningEnv, endpoint, err := configureProvisioning(filepath.Dir(env.logPath))
 	if err != nil {
 		return nil, err
 	}
+	provisioningEndpoint = endpoint
 
-	provisioningEnv, err := configureProvisioning(filepath.Dir(env.logPath))
+	return launchServer(bin, env.logPath, append(serverEnv(pluginsDir, port, env.baseURL, env.dsn), provisioningEnv...))
+}
+
+// serverEnv is the configuration every server process of the suite shares.
+func serverEnv(pluginsDir string, port int, baseURL, dsn string) []string {
+	return []string{
+		"XOLO_HTTP_ADDRESS=127.0.0.1:" + fmt.Sprint(port),
+		"XOLO_HTTP_BASE_URL=" + baseURL,
+		"XOLO_HTTP_SESSION_KEYS=e2e-session-key-0000000000000001",
+		"XOLO_STORAGE_DATABASE_DSN=" + dsn,
+		"XOLO_SECRET_KEY=" + seedSecretKey,
+		"XOLO_PLUGINS_DIR=" + pluginsDir,
+		"XOLO_LOGGER_LEVEL=0",
+	}
+}
+
+// launchServer runs the server binary with the given configuration, logging
+// to logPath, and returns a function stopping it.
+func launchServer(bin, logPath string, config []string) (func(), error) {
+	logFile, err := os.Create(logPath)
 	if err != nil {
-		logFile.Close()
 		return nil, err
 	}
 
 	cmd := exec.Command(bin)
 	cmd.Stdout = logFile
 	cmd.Stderr = logFile
-	cmd.Env = append(os.Environ(),
-		"XOLO_HTTP_ADDRESS=127.0.0.1:"+fmt.Sprint(port),
-		"XOLO_HTTP_BASE_URL="+env.baseURL,
-		"XOLO_HTTP_SESSION_KEYS=e2e-session-key-0000000000000001",
-		"XOLO_STORAGE_DATABASE_DSN="+env.dsn,
-		"XOLO_SECRET_KEY="+seedSecretKey,
-		"XOLO_PLUGINS_DIR="+pluginsDir,
-		"XOLO_LOGGER_LEVEL=0",
-	)
-	cmd.Env = append(cmd.Env, provisioningEnv...)
+	cmd.Env = append(os.Environ(), config...)
 	if err := cmd.Start(); err != nil {
 		logFile.Close()
 		return nil, fmt.Errorf("start server: %w", err)

@@ -73,56 +73,6 @@ func (h *Handler) handleListOrganizations(w http.ResponseWriter, r *http.Request
 	writeJSON(w, http.StatusOK, newListDTO(items, page, limit, total))
 }
 
-func (h *Handler) handleCreateOrganization(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-
-	tenant, ok := h.resolveTenant(w, r)
-	if !ok {
-		return
-	}
-
-	var payload createOrganizationRequest
-	if !decodeJSON(w, r, &payload) {
-		return
-	}
-
-	params := service.CreateOrganizationParams{
-		TenantID:    tenant.ID(),
-		Slug:        payload.Slug,
-		Name:        payload.Name,
-		Description: payload.Description,
-		Currency:    payload.Currency,
-		Active:      payload.Active,
-	}
-
-	if payload.Owner != nil {
-		owner := toIdentityParams(*payload.Owner)
-		params.Owner = &owner
-	}
-
-	result, err := h.provisioning.CreateOrganization(ctx, params)
-	if err != nil {
-		writeServiceError(ctx, w, err, "could not create organization")
-		return
-	}
-
-	response := createOrganizationResponse{
-		Organization: newOrganizationDTO(result.Org),
-		OwnerCreated: result.OwnerCreated,
-	}
-
-	if result.Owner != nil {
-		owner := newUserDTO(result.Owner)
-		response.Owner = &owner
-	}
-	if result.OwnerMembership != nil {
-		membership := newMembershipDTO(result.OwnerMembership)
-		response.Membership = &membership
-	}
-
-	writeJSON(w, http.StatusCreated, response)
-}
-
 func (h *Handler) handleGetOrganization(w http.ResponseWriter, r *http.Request) {
 	org, ok := h.resolveOrganization(w, r)
 	if !ok {
@@ -158,22 +108,6 @@ func (h *Handler) handleUpdateOrganization(w http.ResponseWriter, r *http.Reques
 	}
 
 	writeJSON(w, http.StatusOK, newOrganizationDTO(org))
-}
-
-func (h *Handler) handleDeleteOrganization(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-
-	tenant, ok := h.resolveTenant(w, r)
-	if !ok {
-		return
-	}
-
-	if err := h.provisioning.DeleteOrganization(ctx, tenant.ID(), model.OrgID(r.PathValue("orgID"))); err != nil {
-		writeServiceError(ctx, w, err, "organization not found")
-		return
-	}
-
-	w.WriteHeader(http.StatusNoContent)
 }
 
 func toIdentityParams(payload userIdentityRequest) service.UserIdentityParams {

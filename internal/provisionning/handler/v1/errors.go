@@ -8,20 +8,30 @@ import (
 	"strings"
 
 	"github.com/bornholm/go-x/slogx"
-	"github.com/xolo-gateway/xolo/internal/core/port"
 	"github.com/pkg/errors"
+	"github.com/xolo-gateway/xolo/internal/core/port"
 )
 
 // Machine-readable error codes. They are part of the API contract: a client
 // branches on the code, not on the message.
 const (
 	codeInvalidRequest   = "invalid_request"
+	codeInvalidParameter = "invalid_parameter"
 	codeMethodNotAllowed = "method_not_allowed"
 
-	codeNotFound      = "not_found"
-	codeConflict      = "conflict"
-	codeUnprocessable = "unprocessable"
-	codeInternalError = "internal_error"
+	// Common contract body errors.
+	codeUnsupportedMediaType  = "unsupported_media_type"
+	codeInvalidJSON           = "invalid_json"
+	codeInvalidRepresentation = "invalid_representation"
+
+	codeNotFound               = "not_found"
+	codeParentNotFound         = "parent_not_found"
+	codeConflict               = "conflict"
+	codeLastOwner              = "last_owner"
+	codePlatformAdminProtected = "platform_admin_protected"
+	codeInvalidHostname        = "invalid_hostname"
+	codeUnprocessable          = "unprocessable"
+	codeInternalError          = "internal_error"
 )
 
 type errorEnvelope struct {
@@ -79,6 +89,14 @@ func writeServiceError(ctx context.Context, w http.ResponseWriter, err error, fa
 // statusFromError maps the domain sentinels to their HTTP status.
 func statusFromError(err error) (int, string) {
 	switch {
+	case errors.Is(err, port.ErrParentNotFound):
+		return http.StatusNotFound, codeParentNotFound
+	case errors.Is(err, port.ErrLastOwner):
+		return http.StatusConflict, codeLastOwner
+	case errors.Is(err, port.ErrPlatformAdminProtected):
+		return http.StatusConflict, codePlatformAdminProtected
+	case errors.Is(err, port.ErrInvalidHostname):
+		return http.StatusBadRequest, codeInvalidHostname
 	case errors.Is(err, port.ErrNotFound):
 		return http.StatusNotFound, codeNotFound
 	case errors.Is(err, port.ErrAlreadyExists):

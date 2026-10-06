@@ -1167,7 +1167,7 @@ func (s *ProvisioningService) assertNotLastOwner(ctx context.Context, orgID mode
 	}
 
 	if IsLastOwner(members, membershipID) {
-		return errors.Wrap(port.ErrNotAllowed, "an organization must keep at least one owner")
+		return errors.Wrap(port.ErrLastOwner, "an organization must keep at least one owner")
 	}
 
 	return nil

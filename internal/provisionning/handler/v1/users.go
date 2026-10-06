@@ -5,10 +5,9 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/pkg/errors"
 	"github.com/xolo-gateway/xolo/internal/core/model"
 	"github.com/xolo-gateway/xolo/internal/core/port"
-	"github.com/xolo-gateway/xolo/internal/core/service"
-	"github.com/pkg/errors"
 )
 
 func (h *Handler) handleListUsers(w http.ResponseWriter, r *http.Request) {
@@ -127,32 +126,6 @@ func (h *Handler) handleGetUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	user, err := h.provisioning.GetUser(ctx, tenant.ID(), model.UserID(r.PathValue("userID")))
-	if err != nil {
-		writeServiceError(ctx, w, err, "user not found")
-		return
-	}
-
-	writeJSON(w, http.StatusOK, newUserDTO(user))
-}
-
-func (h *Handler) handleUpdateUser(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-
-	tenant, ok := h.resolveTenant(w, r)
-	if !ok {
-		return
-	}
-
-	var payload updateUserRequest
-	if !decodeJSON(w, r, &payload) {
-		return
-	}
-
-	user, err := h.provisioning.UpdateUser(ctx, tenant.ID(), model.UserID(r.PathValue("userID")), service.UpdateUserParams{
-		Email:       payload.Email,
-		DisplayName: payload.DisplayName,
-		Active:      payload.Active,
-	})
 	if err != nil {
 		writeServiceError(ctx, w, err, "user not found")
 		return

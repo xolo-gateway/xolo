@@ -54,31 +54,6 @@ func (h *Handler) handleListTenants(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, newListDTO(items, page, limit, total))
 }
 
-// handleCreateTenant provisions a tenant. On a single-tenant instance the
-// service refuses it with a conflict: no hostname would ever resolve to the new
-// tenant, so its organizations would be unreachable.
-func (h *Handler) handleCreateTenant(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-
-	var payload createTenantRequest
-	if !decodeJSON(w, r, &payload) {
-		return
-	}
-
-	tenant, err := h.provisioning.CreateTenant(ctx, service.CreateTenantParams{
-		Slug:        payload.Slug,
-		Name:        payload.Name,
-		Description: payload.Description,
-		Active:      payload.Active,
-	})
-	if err != nil {
-		writeServiceError(ctx, w, err, "could not create tenant")
-		return
-	}
-
-	writeJSON(w, http.StatusCreated, newTenantDTO(tenant))
-}
-
 func (h *Handler) handleGetTenant(w http.ResponseWriter, r *http.Request) {
 	tenant, ok := h.resolveTenant(w, r)
 	if !ok {
@@ -107,15 +82,4 @@ func (h *Handler) handleUpdateTenant(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, newTenantDTO(tenant))
-}
-
-func (h *Handler) handleDeleteTenant(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-
-	if err := h.provisioning.DeleteTenant(ctx, model.TenantID(r.PathValue("tenantID"))); err != nil {
-		writeServiceError(ctx, w, err, "tenant not found")
-		return
-	}
-
-	w.WriteHeader(http.StatusNoContent)
 }
