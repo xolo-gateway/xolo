@@ -115,6 +115,21 @@ func TestReadOnlyCommandsDoNotCreateDatabase(t *testing.T) {
 	}
 }
 
+func TestCommandHelp(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "missing.sqlite")
+	t.Setenv("XOLO_STORAGE_DATABASE_DSN", path)
+	for _, action := range []string{"diagnose", "plan", "apply"} {
+		for _, help := range []string{"-h", "-help"} {
+			t.Run(action+"/"+help, func(t *testing.T) {
+				var out bytes.Buffer
+				require.NoError(t, run(t.Context(), []string{action, help}, &out))
+				require.Contains(t, out.String(), "Usage of "+action+":")
+				require.NoFileExists(t, path)
+			})
+		}
+	}
+}
+
 func TestApplyFreshDatabase(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "fresh.sqlite")
 	t.Setenv("XOLO_STORAGE_DATABASE_DSN", path)

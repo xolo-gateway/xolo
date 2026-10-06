@@ -4,6 +4,8 @@ La migration `202610020001` convertit les identifiants des tenants, organisation
 et utilisateurs en UUID. Elle conserve les UUID existants, réécrit les relations
 et préserve les rôles plateforme. Les autres identifiants (tokens, modèles,
 nœuds des graphes, etc.) gardent leur format actuel.
+Les identifiants d’application restent des xids, y compris les valeurs `scope_id`
+des quotas avec `scope = 'application'` et les attributs d’événement `application_id`.
 
 **Arrêtez tous les anciens serveurs, réplicas, workers et processus écrivant en
 base avant cette mise à niveau. Le déploiement progressif est incompatible.** Un

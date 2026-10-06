@@ -47,6 +47,9 @@ func run(ctx context.Context, args []string, out io.Writer) error {
 	destination := flags.String("out", "", "new recovery artifact file (plan)")
 	stopped := flags.Bool("writers-stopped", false, "confirm all servers, workers and database writers are stopped (apply)")
 	if err := flags.Parse(args[1:]); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return nil
+		}
 		return err
 	}
 	if flags.NArg() != 0 || (action == "plan" && (*destination == "" || *planPath != "")) || (action != "plan" && *destination != "") {

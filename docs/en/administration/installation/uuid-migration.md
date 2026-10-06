@@ -3,6 +3,8 @@
 Migration `202610020001` converts tenant, organization and user IDs to UUIDs.
 It preserves existing UUIDs, rewrites relations and retains platform roles.
 Other identifiers (tokens, models, graph nodes, etc.) keep their existing format.
+Application IDs remain xids, including quota `scope_id` values for
+`scope = 'application'` and `application_id` event attributes.
 
 **Stop every old server, replica, worker and database writer before applying
 this upgrade. Rolling upgrades are unsupported.** An old binary can still write

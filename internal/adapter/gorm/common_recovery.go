@@ -355,7 +355,7 @@ func applyCommonRecovery(ctx context.Context, db *gorm.DB, a *RecoveryArtifact, 
 			return err
 		}
 		for _, table := range []string{"uuid_recovery_changes", "uuid_recovery_ids"} {
-			if err := tx.Exec("DROP TABLE " + table).Error; err != nil {
+			if err := tx.Exec("DROP TABLE " + recoveryTempTable(tx, table)).Error; err != nil {
 				return err
 			}
 		}

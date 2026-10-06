@@ -95,11 +95,17 @@ func NewStore(db *gorm.DB, options ...StoreOption) *Store {
 // Migrate explicitly applies pending migrations, independently of WithAutoMigrate.
 // Application setup calls CheckSchema instead when automatic migration is disabled.
 func (s *Store) Migrate(ctx context.Context) error {
+	if s.invitationTx {
+		return errors.New("cannot migrate schema within an invitation transaction")
+	}
 	_, err := s.initializeDatabase(ctx, true)
 	return errors.WithStack(err)
 }
 
 func (s *Store) CheckSchema(ctx context.Context) error {
+	if s.invitationTx {
+		return errors.New("cannot check schema within an invitation transaction")
+	}
 	_, err := s.initializeDatabase(ctx, false)
 	return errors.WithStack(err)
 }

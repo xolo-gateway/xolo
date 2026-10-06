@@ -4,6 +4,8 @@ La migración `202610020001` convierte los identificadores de tenants,
 organizaciones y usuarios a UUID. Conserva los UUID existentes, las relaciones y
 los roles de plataforma. Los demás identificadores (tokens, modelos, nodos de
 grafos, etc.) conservan su formato.
+Los identificadores de aplicaciones siguen siendo xids, incluidos los valores
+`scope_id` de cuotas con `scope = 'application'` y los atributos de eventos `application_id`.
 
 **Detenga todos los servidores, réplicas, workers y procesos antiguos que escriban
 en la base antes de actualizar. Las actualizaciones progresivas no son compatibles.**

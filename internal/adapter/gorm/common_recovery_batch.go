@@ -9,6 +9,15 @@ import (
 const recoveryPageSize = 1000
 const recoveryInsertBatchSize = 250
 
+// An explicit pg_temp late in search_path lets permanent tables shadow temporary
+// ones. Qualify every access, including cleanup, to stay on our connection's tables.
+func recoveryTempTable(db *gorm.DB, name string) string {
+	if isPostgres(db) {
+		return "pg_temp." + name
+	}
+	return name
+}
+
 // The tables belong to the migration connection and transaction. A rollback
 // removes their DDL; successful application drops them before the checkpoint.
 func installRecoveryMappings(tx *gorm.DB, a *RecoveryArtifact) error {
@@ -24,7 +33,7 @@ func installRecoveryMappings(tx *gorm.DB, a *RecoveryArtifact) error {
 		if len(rows) == 0 {
 			return nil
 		}
-		err := tx.Table("uuid_recovery_ids").Create(&rows).Error
+		err := tx.Table(recoveryTempTable(tx, "uuid_recovery_ids")).Create(&rows).Error
 		rows = rows[:0]
 		return err
 	}
@@ -53,7 +62,7 @@ func rewriteRecoveryReference(tx *gorm.DB, ref recoveryReference) error {
 	table, column := tx.Statement.Quote(ref.table), tx.Statement.Quote(ref.column)
 	// The correlated lookup uses the mapping's primary key. Even an unindexed
 	// historical reference scans its table once, independent of mapping size.
-	lookup := ` FROM uuid_recovery_ids AS mapping
+	lookup := ` FROM ` + recoveryTempTable(tx, "uuid_recovery_ids") + ` AS mapping
   WHERE mapping.family = ? AND mapping.old_id = substr(` + table + "." + column + `, ?)`
 	query := "UPDATE " + table + " SET " + column + " = (SELECT ? || mapping.new_id" + lookup + ")" +
 		" WHERE EXISTS (SELECT 1" + lookup + ")"
@@ -68,7 +77,8 @@ func applySerializedRecoveryBatch(tx *gorm.DB, changes []RecoverySerializedOverr
 	if len(changes) == 0 {
 		return nil
 	}
-	if err := tx.Exec("DELETE FROM uuid_recovery_changes").Error; err != nil {
+	changesTable := recoveryTempTable(tx, "uuid_recovery_changes")
+	if err := tx.Exec("DELETE FROM " + changesTable).Error; err != nil {
 		return err
 	}
 	type correction struct{ ID, BeforeValue, AfterValue string }
@@ -76,14 +86,14 @@ func applySerializedRecoveryBatch(tx *gorm.DB, changes []RecoverySerializedOverr
 	for _, change := range changes {
 		rows = append(rows, correction{ID: change.ID, BeforeValue: change.Before, AfterValue: change.After})
 	}
-	if err := tx.Table("uuid_recovery_changes").CreateInBatches(&rows, recoveryInsertBatchSize).Error; err != nil {
+	if err := tx.Table(changesTable).CreateInBatches(&rows, recoveryInsertBatchSize).Error; err != nil {
 		return err
 	}
 	table, column := tx.Statement.Quote(changes[0].Table), tx.Statement.Quote(changes[0].Column)
 	result := tx.Exec("UPDATE " + table + " SET " + column +
-		" = (SELECT after_value FROM uuid_recovery_changes WHERE id = " + table + ".id)" +
-		" WHERE id IN (SELECT id FROM uuid_recovery_changes) AND COALESCE(" + column + ", '')" +
-		" = (SELECT before_value FROM uuid_recovery_changes WHERE id = " + table + ".id)")
+		" = (SELECT after_value FROM " + changesTable + " WHERE id = " + table + ".id)" +
+		" WHERE id IN (SELECT id FROM " + changesTable + ") AND COALESCE(" + column + ", '')" +
+		" = (SELECT before_value FROM " + changesTable + " WHERE id = " + table + ".id)")
 	if result.Error != nil {
 		return result.Error
 	}
