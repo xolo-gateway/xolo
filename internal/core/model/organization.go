@@ -74,6 +74,7 @@ func NewOrganization(tenantID TenantID, slug, name, description string, currency
 
 type OrgOption func(*BaseOrganization)
 
+func WithOrgSlug(slug string) OrgOption { return func(o *BaseOrganization) { o.slug = slug } }
 func WithOrgName(name string) OrgOption { return func(o *BaseOrganization) { o.name = name } }
 func WithOrgDescription(desc string) OrgOption {
 	return func(o *BaseOrganization) { o.description = desc }

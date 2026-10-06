@@ -354,12 +354,11 @@ func TestUUIDSchemaAndOrdinaryWrites(t *testing.T) {
 	eachBackendDB(t, func(t *testing.T, db *gormpkg.DB) {
 		store := adapter.NewStore(db)
 		require.NoError(t, store.Migrate(t.Context()))
-		for _, table := range []string{"domains", "reserved_domains", "publications", "publication_clocks"} {
+		for _, table := range []string{"publications", "publication_clocks"} {
 			require.False(t, db.Migrator().HasTable(table), table)
 		}
-		for _, column := range [][2]string{{"users", "tenant_role"}, {"memberships", "common_role"}, {"memberships", "status"}} {
-			require.False(t, db.Migrator().HasColumn(column[0], column[1]))
-		}
+		// The common role is derived from builtin roles, never stored.
+		require.False(t, db.Migrator().HasColumn("memberships", "common_role"))
 		// Migration state is initialized: subsequent store calls have no migration
 		// lock dependency. No global publication counter exists in this schema.
 		require.NoError(t, db.Migrator().DropTable("migration_lock"))

@@ -25,6 +25,7 @@ type OrgStore interface {
 	ListOrgMembers(ctx context.Context, orgID model.OrgID, opts ListOrgMembersOptions) ([]model.Membership, int64, error)
 	GetUserMemberships(ctx context.Context, userID model.UserID) ([]model.Membership, error)
 	IsMember(ctx context.Context, userID model.UserID, orgID model.OrgID) (bool, error)
+	SetMembershipStatus(ctx context.Context, id model.MembershipID, status model.Status) error
 }
 
 type ListOrgsOptions struct {

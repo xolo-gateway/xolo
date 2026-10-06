@@ -17,7 +17,7 @@ func (s *Store) CreateOrg(ctx context.Context, org model.Organization) error {
 	}
 	return s.withRetry(ctx, true, func(ctx context.Context, db *gorm.DB) error {
 		if err := db.Create(fromOrganization(org)).Error; err != nil {
-			if isUniqueViolation(err, "organizations", "slug") {
+			if isUniqueViolation(err, "slug") {
 				return errors.Wrapf(port.ErrAlreadyExists, "slug %q is already used by another organization", org.Slug())
 			}
 			return errors.WithStack(err)
@@ -104,10 +104,16 @@ func (s *Store) SaveOrg(ctx context.Context, org model.Organization) error {
 		return port.ErrInvalid
 	}
 	return s.withRetry(ctx, true, func(ctx context.Context, db *gorm.DB) error {
-		return errors.WithStack(db.Clauses(clause.OnConflict{
+		if err := db.Clauses(clause.OnConflict{
 			Columns:   []clause.Column{{Name: "id"}},
 			UpdateAll: true,
-		}).Create(fromOrganization(org)).Error)
+		}).Create(fromOrganization(org)).Error; err != nil {
+			if isUniqueViolation(err, "slug") {
+				return errors.Wrapf(port.ErrAlreadyExists, "slug %q is already used by another organization", org.Slug())
+			}
+			return errors.WithStack(err)
+		}
+		return nil
 	})
 }
 
@@ -305,7 +311,7 @@ func (s *Store) GetUserMemberships(ctx context.Context, userID model.UserID) ([]
 	var members []*Membership
 	err := s.withRetry(ctx, false, func(ctx context.Context, db *gorm.DB) error {
 		return errors.WithStack(db.Preload("Org").Preload("Roles").Preload("Roles.Permissions").
-			Where("user_id = ?", string(userID)).
+			Where("user_id = ? AND status = ?", string(userID), string(model.StatusActive)).
 			Find(&members).Error)
 	})
 	if err != nil {
@@ -318,12 +324,29 @@ func (s *Store) GetUserMemberships(ctx context.Context, userID model.UserID) ([]
 	return result, nil
 }
 
+// SetMembershipStatus implements port.OrgStore.
+func (s *Store) SetMembershipStatus(ctx context.Context, id model.MembershipID, status model.Status) error {
+	if !status.Valid() {
+		return errors.WithStack(port.ErrInvalid)
+	}
+	return s.withRetry(ctx, true, func(ctx context.Context, db *gorm.DB) error {
+		result := db.Model(&Membership{}).Where("id = ?", string(id)).Update("status", string(status))
+		if result.Error != nil {
+			return errors.WithStack(result.Error)
+		}
+		if result.RowsAffected == 0 {
+			return errors.WithStack(port.ErrNotFound)
+		}
+		return nil
+	})
+}
+
 // IsMember implements port.OrgStore.
 func (s *Store) IsMember(ctx context.Context, userID model.UserID, orgID model.OrgID) (bool, error) {
 	var count int64
 	err := s.withRetry(ctx, false, func(ctx context.Context, db *gorm.DB) error {
 		return errors.WithStack(db.Model(&Membership{}).
-			Where("user_id = ? AND org_id = ?", string(userID), string(orgID)).
+			Where("user_id = ? AND org_id = ? AND status = ?", string(userID), string(orgID), string(model.StatusActive)).
 			Count(&count).Error)
 	})
 	if err != nil {

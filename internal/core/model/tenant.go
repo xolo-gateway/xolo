@@ -66,15 +66,16 @@ func NewTenant(slug, name, description string) *BaseTenant {
 
 type TenantOption func(*BaseTenant)
 
+// WithTenantSlug renames a tenant. Routing relies on persisted domains, so a
+// rename does not change the tenant's hostnames.
+func WithTenantSlug(slug string) TenantOption { return func(t *BaseTenant) { t.slug = slug } }
 func WithTenantName(name string) TenantOption { return func(t *BaseTenant) { t.name = name } }
 func WithTenantDescription(desc string) TenantOption {
 	return func(t *BaseTenant) { t.description = desc }
 }
 func WithTenantActive(active bool) TenantOption { return func(t *BaseTenant) { t.active = active } }
 
-// UpdateTenant copies the tenant and applies the options. The slug is
-// deliberately absent: it is the stable handle external systems reconcile on,
-// and in multi-tenant mode it is also part of the hostname.
+// UpdateTenant copies the tenant and applies the options.
 func UpdateTenant(tenant Tenant, opts ...TenantOption) *BaseTenant {
 	b := &BaseTenant{
 		id:          tenant.ID(),

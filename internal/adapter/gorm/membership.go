@@ -11,6 +11,9 @@ type Membership struct {
 	CreatedAt time.Time
 	UserID    string `gorm:"index;not null"`
 	OrgID     string `gorm:"index;not null"`
+	// Status is the common provisioning status; a suspended membership grants
+	// no access.
+	Status string `gorm:"not null;default:active"`
 
 	User  *User         `gorm:"foreignKey:UserID"`
 	Org   *Organization `gorm:"foreignKey:OrgID"`
@@ -22,9 +25,10 @@ type wrappedMembership struct {
 }
 
 func (w *wrappedMembership) ID() model.MembershipID { return model.MembershipID(w.m.ID) }
-func (w *wrappedMembership) UserID() model.UserID    { return model.UserID(w.m.UserID) }
-func (w *wrappedMembership) OrgID() model.OrgID      { return model.OrgID(w.m.OrgID) }
-func (w *wrappedMembership) CreatedAt() time.Time    { return w.m.CreatedAt }
+func (w *wrappedMembership) UserID() model.UserID   { return model.UserID(w.m.UserID) }
+func (w *wrappedMembership) OrgID() model.OrgID     { return model.OrgID(w.m.OrgID) }
+func (w *wrappedMembership) CreatedAt() time.Time   { return w.m.CreatedAt }
+func (w *wrappedMembership) Status() model.Status   { return model.Status(w.m.Status) }
 func (w *wrappedMembership) User() model.User {
 	if w.m.User == nil {
 		return nil
@@ -48,9 +52,14 @@ func (w *wrappedMembership) Roles() []model.Role {
 var _ model.Membership = &wrappedMembership{}
 
 func fromMembership(m model.Membership) *Membership {
+	status := m.Status()
+	if !status.Valid() {
+		status = model.StatusActive
+	}
 	return &Membership{
 		ID:     string(m.ID()),
 		UserID: string(m.UserID()),
 		OrgID:  string(m.OrgID()),
+		Status: string(status),
 	}
 }

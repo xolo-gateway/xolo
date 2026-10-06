@@ -233,9 +233,10 @@ func (s *Store) ResolveEffectivePermissions(ctx context.Context, userID model.Us
 	var roles []*Role
 	err := s.withRetry(ctx, false, func(ctx context.Context, db *gorm.DB) error {
 		var m Membership
-		if err := db.Where("user_id = ? AND org_id = ?", string(userID), string(orgID)).First(&m).Error; err != nil {
+		// A suspended membership grants nothing.
+		if err := db.Where("user_id = ? AND org_id = ? AND status = ?", string(userID), string(orgID), string(model.StatusActive)).First(&m).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
-				return nil // not a member: no permissions
+				return nil // not an active member: no permissions
 			}
 			return errors.WithStack(err)
 		}

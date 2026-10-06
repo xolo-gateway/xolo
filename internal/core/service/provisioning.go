@@ -1165,11 +1165,11 @@ func (s *ProvisioningService) assertNotLastOwner(ctx context.Context, orgID mode
 	return nil
 }
 
-// IsLastOwner reports whether the excluded membership is the only one holding a
-// builtin owner role among the given members.
+// IsLastOwner reports whether the excluded membership is the only active one
+// holding a builtin owner role among the given members.
 func IsLastOwner(members []model.Membership, exclude model.MembershipID) bool {
 	for _, member := range members {
-		if member.ID() == exclude {
+		if member.ID() == exclude || member.Status() == model.StatusSuspended {
 			continue
 		}
 		if hasOwnerRole(member.Roles()) {

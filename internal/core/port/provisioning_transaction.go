@@ -33,6 +33,7 @@ type ProvisioningOrgStore interface {
 	GetMembership(ctx context.Context, id model.MembershipID) (model.Membership, error)
 	GetUserOrgMembership(ctx context.Context, userID model.UserID, orgID model.OrgID) (model.Membership, error)
 	ListOrgMembers(ctx context.Context, orgID model.OrgID, opts ListOrgMembersOptions) ([]model.Membership, int64, error)
+	SetMembershipStatus(ctx context.Context, id model.MembershipID, status model.Status) error
 }
 
 // ProvisioningUserStore exposes only provisioning operations; all calls share the transaction.
@@ -62,4 +63,5 @@ type ProvisioningTx interface {
 	ProvisioningOrgStore
 	ProvisioningUserStore
 	ProvisioningRoleStore
+	DomainStore
 }

@@ -69,6 +69,7 @@ type fakeMembership struct{}
 
 func (m *fakeMembership) ID() model.MembershipID  { return "" }
 func (m *fakeMembership) OrgID() model.OrgID      { return "" }
+func (m *fakeMembership) Status() model.Status    { return model.StatusActive }
 func (m *fakeMembership) UserID() model.UserID    { return "" }
 func (m *fakeMembership) CreatedAt() time.Time    { return time.Time{} }
 func (m *fakeMembership) User() model.User        { return nil }

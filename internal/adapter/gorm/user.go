@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/xolo-gateway/xolo/internal/core/model"
+	"gorm.io/gorm/clause"
 )
 
 type User struct {
@@ -17,8 +18,10 @@ type User struct {
 	// key, so the same person signing in on two tenants owns two accounts.
 	TenantID string `gorm:"index;uniqueIndex:idx_users_tenant_identity,priority:1;uniqueIndex:idx_users_tenant_email_nonempty,priority:1;not null"`
 
+	// Users provisioned ahead of their first sign-in carry no identity, so the
+	// identity key only covers rows that have one.
 	Subject  string `gorm:"index;uniqueIndex:idx_users_tenant_identity,priority:2"`
-	Provider string `gorm:"index;uniqueIndex:idx_users_tenant_identity,priority:3"`
+	Provider string `gorm:"index;uniqueIndex:idx_users_tenant_identity,priority:3,where:provider != '' AND subject != ''"`
 
 	DisplayName string
 	Email       string `gorm:"uniqueIndex:idx_users_tenant_email_nonempty,priority:2,where:email != ''"`
@@ -28,8 +31,13 @@ type User struct {
 	Roles []*UserRole `gorm:"constraint:OnDelete:CASCADE;"`
 
 	Active      bool
+	TenantRole  string           `gorm:"not null;default:member"`
 	Preferences *UserPreferences `gorm:"foreignKey:UserID;constraint:OnDelete:CASCADE"`
 }
+
+// identityIndexPredicate repeats the predicate of idx_users_tenant_identity:
+// an ON CONFLICT clause can only target a partial index by restating it.
+var identityIndexPredicate = clause.Where{Exprs: []clause.Expression{clause.Expr{SQL: "provider <> '' AND subject <> ''"}}}
 
 // wrappedUserPreference implements model.UserPreferences
 type wrappedUserPreference struct {
@@ -63,6 +71,10 @@ func fromUser(u model.User) *User {
 		DisplayName: u.DisplayName(),
 		Email:       u.Email(),
 		Active:      u.Active(),
+		TenantRole:  string(u.TenantRole()),
+	}
+	if !u.TenantRole().Valid() {
+		user.TenantRole = string(model.TenantRoleMember)
 	}
 
 	user.Preferences = &UserPreferences{
@@ -193,6 +205,11 @@ func (w *wrappedUser) Roles() []string {
 			}
 		}
 	})
+}
+
+// TenantRole implements model.User.
+func (w *wrappedUser) TenantRole() model.TenantRole {
+	return model.TenantRole(w.u.TenantRole)
 }
 
 // Preferences implements model.User.

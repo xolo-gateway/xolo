@@ -100,10 +100,16 @@ func (s *Store) SaveTenant(ctx context.Context, tenant model.Tenant) error {
 		return port.ErrInvalid
 	}
 	return s.withRetry(ctx, true, func(ctx context.Context, db *gorm.DB) error {
-		return errors.WithStack(db.Clauses(clause.OnConflict{
+		if err := db.Clauses(clause.OnConflict{
 			Columns:   []clause.Column{{Name: "id"}},
 			UpdateAll: true,
-		}).Create(fromTenant(tenant)).Error)
+		}).Create(fromTenant(tenant)).Error; err != nil {
+			if isUniqueViolation(err, "tenants", "slug") {
+				return errors.Wrapf(port.ErrAlreadyExists, "slug %q is already used by another tenant", tenant.Slug())
+			}
+			return errors.WithStack(err)
+		}
+		return nil
 	})
 }
 
@@ -141,6 +147,10 @@ func (s *Store) DeleteTenant(ctx context.Context, id model.TenantID) error {
 
 		if _, err := deleteUsersWithin(db, userIDs); err != nil {
 			return err
+		}
+
+		if err := db.Delete(&Domain{}, "tenant_id = ?", string(id)).Error; err != nil {
+			return errors.WithStack(err)
 		}
 
 		return errors.WithStack(db.Delete(&Tenant{}, "id = ?", string(id)).Error)

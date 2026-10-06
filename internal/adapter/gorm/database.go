@@ -158,6 +158,8 @@ func MigrateDatabase(ctx context.Context, db *gorm.DB, artifact *RecoveryArtifac
 					&PluginNodeSecret{},
 					// Provisioning audit
 					&MutationAudit{},
+					// Domain routing
+					&Domain{}, &DomainRouting{},
 					// Event system
 					&Event{}, &Alert{}, &AlertIncident{}, &EventSettings{},
 				)
@@ -544,6 +546,13 @@ func schemaMigrations(artifact *RecoveryArtifact) []*gormigrate.Migration {
 			ID:       mutationAuditMigrationID,
 			Migrate:  func(tx *gorm.DB) error { return tx.AutoMigrate(&MutationAudit{}) },
 			Rollback: func(*gorm.DB) error { return errors.New("mutation audit history cannot be rolled back") },
+		},
+		{
+			ID:      commonAPIMigrationID,
+			Migrate: migrateCommonAPI,
+			Rollback: func(*gorm.DB) error {
+				return errors.New("common API migration cannot be rolled back: domains and suspended memberships would be lost")
+			},
 		},
 	}
 }

@@ -135,7 +135,7 @@ func TestCommonRecovery(t *testing.T) {
 				plaintext, err := crypto.Decrypt(secretKey, secret.ValueEncrypted)
 				require.NoError(t, err)
 				require.Equal(t, "fixture-secret", plaintext)
-				for _, table := range []string{"domains", "reserved_domains", "publications", "publication_clocks", "uuid_recovery_ids", "uuid_recovery_changes"} {
+				for _, table := range []string{"publications", "publication_clocks", "uuid_recovery_ids", "uuid_recovery_changes"} {
 					require.False(t, db.Migrator().HasTable(table), table)
 				}
 			})

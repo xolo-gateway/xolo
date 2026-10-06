@@ -61,7 +61,8 @@ func (tx *provisioningTx) FindOrCreateUser(ctx context.Context, tenantID model.T
 	}
 	// A concurrent insertion of this identity replays the serializable transaction.
 	if err := tx.db.Omit(clause.Associations).Clauses(clause.OnConflict{
-		Columns: []clause.Column{{Name: "tenant_id"}, {Name: "provider"}, {Name: "subject"}}, DoNothing: true,
+		Columns:     []clause.Column{{Name: "tenant_id"}, {Name: "provider"}, {Name: "subject"}},
+		TargetWhere: identityIndexPredicate, DoNothing: true,
 	}).Create(fromUser(u)).Error; err != nil {
 		return nil, err
 	}
@@ -168,6 +169,20 @@ func (tx *provisioningTx) SetMembershipRoles(ctx context.Context, id model.Membe
 		return err
 	}
 	return tx.Store.SetMembershipRoles(ctx, id, roles)
+}
+
+func (tx *provisioningTx) SetMembershipStatus(ctx context.Context, id model.MembershipID, status model.Status) error {
+	if err := tx.track("membership", string(id)); err != nil {
+		return err
+	}
+	return tx.Store.SetMembershipStatus(ctx, id, status)
+}
+
+func (tx *provisioningTx) SaveDomain(ctx context.Context, domain model.Domain) error {
+	if err := tx.track("domain", domain.Hostname); err != nil {
+		return err
+	}
+	return tx.Store.SaveDomain(ctx, domain)
 }
 
 func (tx *provisioningTx) CreateRole(ctx context.Context, role model.Role) error {

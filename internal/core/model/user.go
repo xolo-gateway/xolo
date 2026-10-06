@@ -38,6 +38,10 @@ type User interface {
 
 	Roles() []string
 
+	// TenantRole is the role declared by provisioning within the tenant. It
+	// grants no platform privilege.
+	TenantRole() TenantRole
+
 	Active() bool
 
 	Preferences() UserPreferences
@@ -51,8 +55,18 @@ type BaseUser struct {
 	subject     string
 	provider    string
 	roles       []string
+	tenantRole  TenantRole
 	active      bool
 	preferences UserPreferences
+}
+
+// TenantRole implements [User].
+func (u *BaseUser) TenantRole() TenantRole {
+	return u.tenantRole
+}
+
+func (u *BaseUser) SetTenantRole(role TenantRole) {
+	u.tenantRole = role
 }
 
 // Preferences implements [User].
@@ -113,6 +127,7 @@ func CopyUser(user User) *BaseUser {
 		active:      user.Active(),
 		preferences: user.Preferences(),
 		roles:       append([]string{}, user.Roles()...),
+		tenantRole:  user.TenantRole(),
 	}
 }
 
@@ -125,6 +140,7 @@ func NewUser(tenantID TenantID, provider, subject, email string, displayName str
 		subject:     subject,
 		provider:    provider,
 		roles:       roles,
+		tenantRole:  TenantRoleMember,
 		active:      active,
 		preferences: NewUserPreferences(),
 	}
