@@ -3,10 +3,10 @@ package setup
 import (
 	"context"
 
+	"github.com/pkg/errors"
 	"github.com/xolo-gateway/xolo/internal/config"
 	"github.com/xolo-gateway/xolo/internal/provisionning"
 	v1 "github.com/xolo-gateway/xolo/internal/provisionning/handler/v1"
-	"github.com/pkg/errors"
 )
 
 // NewProvisionningAPIServerFromConfig assembles the Provisionning API server.
@@ -20,6 +20,10 @@ func NewProvisionningAPIServerFromConfig(ctx context.Context, conf *config.Confi
 		return nil, nil
 	}
 
+	if err := conf.ProvisionningAPI.Validate(); err != nil {
+		return nil, errors.WithStack(err)
+	}
+
 	provisioning, err := getProvisioningServiceFromConfig(ctx, conf)
 	if err != nil {
 		return nil, errors.WithStack(err)
@@ -29,12 +33,14 @@ func NewProvisionningAPIServerFromConfig(ctx context.Context, conf *config.Confi
 		conf.ProvisionningAPI.TLSCertFile,
 		conf.ProvisionningAPI.TLSKeyFile,
 		conf.ProvisionningAPI.TLSClientCAFile,
+		conf.ProvisionningAPI.AuthorizedURIs...,
 	)
 	if err != nil {
 		return nil, errors.Wrap(err, "could not load provisionning api tls configuration")
 	}
 
 	return provisionning.NewServer(
+		provisionning.WithClientPolicy(conf.ProvisionningAPI.AuthorizedURIs, conf.ProvisionningAPI.RateLimit, conf.ProvisionningAPI.RateBurst),
 		provisionning.WithAddress(conf.ProvisionningAPI.Address),
 		provisionning.WithTLSConfig(tlsConfig),
 		provisionning.WithHandler(v1.NewHandler(provisioning)),

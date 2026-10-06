@@ -13,7 +13,7 @@ import (
 // It is called at startup, before the listener is opened, so a misconfigured
 // certificate, key or CA bundle fails the process immediately rather than on
 // the first request.
-func LoadTLSConfig(certFile, keyFile, clientCAFile string) (*tls.Config, error) {
+func LoadTLSConfig(certFile, keyFile, clientCAFile string, authorizedURIs ...string) (*tls.Config, error) {
 	if certFile == "" {
 		return nil, errors.New("no server certificate file provided")
 	}
@@ -39,6 +39,10 @@ func LoadTLSConfig(certFile, keyFile, clientCAFile string) (*tls.Config, error) 
 		return nil, errors.New("client certificate authority file contains no valid PEM certificate")
 	}
 
+	allowed, err := clientAllowlist(authorizedURIs)
+	if err != nil {
+		return nil, err
+	}
 	return &tls.Config{
 		Certificates: []tls.Certificate{certificate},
 		// The TLS stack itself rejects any connection without a client
@@ -46,6 +50,12 @@ func LoadTLSConfig(certFile, keyFile, clientCAFile string) (*tls.Config, error) 
 		// handler runs. There is no anonymous nor user-authenticated fallback.
 		ClientAuth: tls.RequireAndVerifyClientCert,
 		ClientCAs:  clientCAs,
-		MinVersion: tls.VersionTLS12,
+		MinVersion: tls.VersionTLS13,
+		VerifyConnection: func(state tls.ConnectionState) error {
+			if _, ok := authorizedURI(&state, allowed); !ok {
+				return errors.New("client certificate rejected")
+			}
+			return nil
+		},
 	}, nil
 }

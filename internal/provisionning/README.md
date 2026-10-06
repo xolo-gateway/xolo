@@ -22,8 +22,8 @@ The resources are nested the way the domain is: a **tenant** owns
 **organizations** and **users**, an organization owns **members** and **roles**.
 
 Both servers share the root context of `cmd/server`, and the Provisionning API uses the
-**same store instances** as the public server (cache and event decorators
-included): no second database connection, no second repository implementation.
+**same database** as the public server. Transactional writes use bound stores;
+cache invalidation and local events are deferred until commit.
 
 ## Authentication
 
@@ -31,16 +31,21 @@ Mutual TLS, and nothing else. There is no OIDC, no session, no cookie and no
 user API token on this port, and no Provisionning API endpoint is ever mounted on the
 public HTTP port. There is no anonymous fallback.
 
-The listener is configured with `tls.RequireAndVerifyClientCert`, so the TLS
-stack rejects any connection presenting no client certificate, or one that is
-not signed by the configured certificate authority, before any handler runs. The
-handler chain re-checks the peer certificate as defense in depth and answers
-`401` if it is missing.
+The listener requires **TLS 1.3**, a client certificate verified against the configured
+CA, and **exactly one URI SAN** matching `XOLO_PROVISIONNING_API_AUTHORIZED_URIS`
+exactly. The Common Name never authorizes a client. These checks run during the
+TLS handshake and in middleware around every route, including health, permissions,
+unknown routes and refused methods. HTTP rejections use `403` and
+`client_certificate_rejected` in the existing JSON error envelope.
 
-Any client holding a valid certificate administers the whole instance. Its
-identity (common name, serial number, subject) is recorded in the request
-context and in the logs; it is not used for authorization decisions today, but
-it is the anchor for per-certificate scopes later.
+An authorized URI administers the whole instance, with tenant and organization
+parent checks. There are no permissions per certificate. Renewing a certificate
+with the same authorized URI retains its identity and rate budget.
+
+**Upgrade requirement:** installations already enabling this listener must reissue
+client certificates with one URI SAN and configure the allowlist before restarting.
+An empty list, duplicate or invalid URI prevents startup. Clients must support TLS 1.3.
+Routes, request bodies and response schemas are unchanged.
 
 TLS material is loaded at startup, before the listener opens: a missing or
 inconsistent certificate, key or CA bundle is a startup failure, never a
@@ -55,6 +60,9 @@ first-request failure.
 | `XOLO_PROVISIONNING_API_TLS_CERT_FILE` | — | Server certificate (PEM), required when enabled |
 | `XOLO_PROVISIONNING_API_TLS_KEY_FILE` | — | Server private key (PEM), required when enabled |
 | `XOLO_PROVISIONNING_API_TLS_CLIENT_CA_FILE` | — | Authority verifying client certificates, required when enabled |
+| `XOLO_PROVISIONNING_API_AUTHORIZED_URIS` | — | Required comma-separated list of distinct absolute client URIs |
+| `XOLO_PROVISIONNING_API_RATE_LIMIT` | `10` | Requests/second per authorized URI, per process |
+| `XOLO_PROVISIONNING_API_RATE_BURST` | `20` | Burst allowance per URI |
 | `XOLO_PROVISIONNING_API_SHUTDOWN_TIMEOUT` | `10s` | Graceful shutdown budget |
 
 Multi-tenancy is configured on the instance, not on this API:
@@ -125,7 +133,8 @@ Every error uses the same envelope:
 | Code | HTTP | Cause |
 |---|---|---|
 | `invalid_request` | 400 | Malformed body, unknown field, invalid query parameter |
-| `unauthorized` | 401 | No verified client certificate |
+| `client_certificate_rejected` | 403 | Client certificate or URI is not authorized |
+| `rate_limited` | 429 | Per-URI budget exceeded; retry after the `Retry-After` seconds |
 | `not_found` | 404 | Unknown resource, or a resource belonging to another tenant or organization |
 | `method_not_allowed` | 405 | Known resource, wrong method |
 | `conflict` | 409 | Existing resource, or a business invariant that refuses the change |
@@ -191,11 +200,43 @@ state to be read back in full. The single side effect of
 `POST /v1/tenants/{tenantID}/organizations` is documented: it creates the
 builtin roles of the organization.
 
-`CreateOrganization` orchestrates several stores, and the ports expose no
-cross-store transaction. Any failure after the organization row exists triggers a
-best-effort compensation (the organization is deleted, memberships cascade),
-logged if it fails in turn. A pre-existing user is never deleted. A proper
-`port.TxManager` would be the clean fix; it is out of the MVP scope.
+## Transactions, audit and correlation
+
+Every provisioning mutation validates parents and performs its writes in one
+transaction. A failure rolls back the whole operation, including changes to an
+existing user, role assignments and the audit itself. PostgreSQL uses `SERIALIZABLE`;
+SQLite writer conflicts and PostgreSQL serialization failures replay the whole
+operation with bounded, cancelable backoff. There is no instance-wide publication lock.
+
+`mutation_audits` records one before/after pair per resource actually changed
+(tenants, organizations, users, memberships and roles), including role associations
+and cascading deletion. Repeated changes to a resource coalesce within the
+transaction; a no-op produces no audit. States exclude secrets and technical
+timestamps. Audits retain the tenant/organization scope after resource deletion.
+UUID audit identifiers do not imply commit order. This audit covers provisioning
+mutations only; reads and ordinary web UI operations do not write it.
+
+Send `X-Request-ID` as a single value of exactly 32 lowercase hexadecimal characters.
+Invalid, repeated or missing values are replaced. The retained value is returned in
+the response and used in logs, audit and local events, unchanged across retries.
+The actor URI comes only from the authorized certificate. Internal calls use
+`urn:xolo:operator:local` and a generated correlation ID when no actor is supplied.
+
+Existing local member and role events retain their types and messages, including
+separate member-added and role-assigned events. They are emitted only after commit
+through the existing asynchronous mechanism; they are not a durable outbox. The
+audit is persisted atomically. Transactional reads bypass the shared user cache;
+affected user entries, secondary keys and cascading token entries are invalidated
+after commit.
+
+Rate budgets are local to each process, allocated only for configured URIs and
+shared by certificates bearing the same URI. Exceeding the budget returns `429`
+with `Retry-After` (seconds), `rate_limited`, and the retained request ID.
+
+Migration `202610060001` follows the UUID migration and adds the audit table on
+upgrades and fresh installations. Its rollback refuses to erase audit history.
+With `XOLO_STORAGE_AUTO_MIGRATE=false`, stop all writers, back up the database, then run
+`bin/migrate apply -writers-stopped` before starting the server. The UUID migration and recovery artifacts remain unchanged.
 
 ## Development PKI
 
@@ -218,12 +259,13 @@ openssl req -newkey rsa:4096 -nodes -keyout client.key -out client.csr \
   -subj "/CN=control-plane"
 openssl x509 -req -in client.csr -CA ca.crt -CAkey ca.key -CAcreateserial \
   -out client.crt -days 365 \
-  -extfile <(printf "extendedKeyUsage=clientAuth")
+  -extfile <(printf "subjectAltName=URI:urn:xolo:client:control-plane\nextendedKeyUsage=clientAuth")
 ```
 
 ```bash
 XOLO_SECRET_KEY=$(openssl rand -hex 32) \
 XOLO_PROVISIONNING_API_ENABLED=true \
+XOLO_PROVISIONNING_API_AUTHORIZED_URIS=urn:xolo:client:control-plane \
 XOLO_PROVISIONNING_API_TLS_CERT_FILE=dev-pki/server.crt \
 XOLO_PROVISIONNING_API_TLS_KEY_FILE=dev-pki/server.key \
 XOLO_PROVISIONNING_API_TLS_CLIENT_CA_FILE=dev-pki/ca.crt \
@@ -251,8 +293,6 @@ curl -s --cacert dev-pki/ca.crt --cert dev-pki/client.crt --key dev-pki/client.k
   `port.*Store`: exposing them means adding a handler file and its DTOs, with no
   architectural change.
 - Per-certificate scopes.
-- Provisionning API mutations emit no Xolo event (they are logged server-side). This is
-  the documented behavior of the event decorators when no user is in context.
 - Email pre-provisioning: the existing `InviteToken` mechanism remains the email
   path, through the Web UI.
 - No generated OpenAPI specification.

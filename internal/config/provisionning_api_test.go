@@ -29,6 +29,7 @@ func TestParse_ProvisionningAPIEnabled(t *testing.T) {
 	t.Setenv("XOLO_SECRET_KEY", testSecretKey)
 	t.Setenv("XOLO_PROVISIONNING_API_ENABLED", "true")
 	t.Setenv("XOLO_PROVISIONNING_API_ADDRESS", ":4443")
+	t.Setenv("XOLO_PROVISIONNING_API_AUTHORIZED_URIS", "urn:xolo:test:console")
 	t.Setenv("XOLO_PROVISIONNING_API_TLS_CERT_FILE", "/etc/xolo/provisionning.crt")
 	t.Setenv("XOLO_PROVISIONNING_API_TLS_KEY_FILE", "/etc/xolo/provisionning.key")
 	t.Setenv("XOLO_PROVISIONNING_API_TLS_CLIENT_CA_FILE", "/etc/xolo/ca.crt")
@@ -88,5 +89,28 @@ func TestParse_ProvisionningAPIEnabledWithoutTLS(t *testing.T) {
 				t.Errorf("error should name %s, got %v", missing, err)
 			}
 		})
+	}
+}
+
+func TestProvisionningAuthorityValidation(t *testing.T) {
+	valid := ProvisionningAPI{Enabled: true, Address: ":3003", TLSCertFile: "cert", TLSKeyFile: "key", TLSClientCAFile: "ca", AuthorizedURIs: []string{"urn:example:console"}, RateLimit: 10, RateBurst: 20}
+	for _, uris := range [][]string{nil, {""}, {"relative"}, {" urn:example:console"}, {"urn:example:console", "urn:example:console"}} {
+		c := valid
+		c.AuthorizedURIs = uris
+		if err := c.Validate(); err == nil {
+			t.Errorf("invalid URI configuration accepted: %v", uris)
+		}
+	}
+	for _, rate := range []float64{0, -1} {
+		c := valid
+		c.RateLimit = rate
+		if err := c.Validate(); err == nil {
+			t.Error("invalid rate accepted")
+		}
+	}
+	c := valid
+	c.RateBurst = 0
+	if err := c.Validate(); err == nil {
+		t.Error("invalid burst accepted")
 	}
 }

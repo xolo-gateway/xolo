@@ -20,9 +20,21 @@ Les deux serveurs partagent les **mêmes instances de stockage** (caches et déc
 
 TLS mutuel, et rien d'autre. Pas d'OIDC, pas de session, pas de cookie, pas de jeton d'API utilisateur sur ce port — et aucune route de provisioning n'est montée sur le port HTTP public. Il n'existe aucun accès anonyme.
 
-L'écouteur est configuré en `RequireAndVerifyClientCert` : la couche TLS rejette toute connexion sans certificat client, ou dont le certificat n'est pas signé par l'autorité configurée, avant même qu'un handler ne s'exécute.
+L'écouteur impose **TLS 1.3**, un certificat client vérifié par l'autorité configurée et
+**exactement un URI SAN** correspondant à une entrée de
+`XOLO_PROVISIONNING_API_AUTHORIZED_URIS`. Le Common Name ne sert jamais à autoriser.
+Les contrôles sont effectués au handshake puis dans le middleware de toutes les
+routes, y compris santé, permissions, routes inconnues et méthodes refusées. Un
+refus HTTP utilise `403` et le code `client_certificate_rejected`.
 
-**Tout client porteur d'un certificat valide administre l'instance entière.** Son identité (*common name*, numéro de série, sujet) est enregistrée dans les journaux, mais n'est pas utilisée pour des décisions d'autorisation à ce jour. Traitez la clé privée du client comme un secret d'administration.
+Un client autorisé administre l'instance entière, avec vérification des parents
+tenant et organisation. Il n'y a pas de permissions par certificat. Un certificat
+renouvelé avec le même URI conserve son identité et son budget de requêtes.
+
+**Mise à niveau obligatoire si l'écouteur est déjà activé :** réémettez les
+certificats clients avec un URI SAN unique et configurez la liste autorisée avant
+le redémarrage. Une liste vide, un URI invalide ou un doublon bloque le démarrage.
+Les clients doivent prendre en charge TLS 1.3. Les routes, corps et réponses restent identiques.
 
 Le matériel TLS est chargé au démarrage : un certificat, une clé ou un bundle d'autorité manquant ou incohérent provoque un échec au démarrage, jamais à la première requête.
 
@@ -35,6 +47,9 @@ Le matériel TLS est chargé au démarrage : un certificat, une clé ou un bundl
 | `XOLO_PROVISIONNING_API_TLS_CERT_FILE` | _(requis si activé)_ | Certificat serveur (PEM). |
 | `XOLO_PROVISIONNING_API_TLS_KEY_FILE` | _(requis si activé)_ | Clé privée du serveur (PEM). |
 | `XOLO_PROVISIONNING_API_TLS_CLIENT_CA_FILE` | _(requis si activé)_ | Autorité vérifiant les certificats clients. |
+| `XOLO_PROVISIONNING_API_AUTHORIZED_URIS` | _(requis si activé)_ | URI absolus distincts, séparés par des virgules. |
+| `XOLO_PROVISIONNING_API_RATE_LIMIT` | `10` | Requêtes par seconde, par URI et par processus. |
+| `XOLO_PROVISIONNING_API_RATE_BURST` | `20` | Rafale autorisée par URI. |
 | `XOLO_PROVISIONNING_API_SHUTDOWN_TIMEOUT` | `10s` | Délai d'arrêt gracieux. |
 
 Le multi-tenant se configure au niveau de l'instance, pas de cette API :
@@ -102,7 +117,8 @@ Toutes les erreurs utilisent la même enveloppe :
 | Code | HTTP | Cause |
 | --- | --- | --- |
 | `invalid_request` | 400 | Corps mal formé, champ inconnu, paramètre de requête invalide. |
-| `unauthorized` | 401 | Aucun certificat client vérifié. |
+| `client_certificate_rejected` | 403 | Certificat ou URI non autorisé. |
+| `rate_limited` | 429 | Budget par URI dépassé ; attendre les secondes indiquées par `Retry-After`. |
 | `not_found` | 404 | Ressource inconnue, ou appartenant à un autre tenant ou à une autre organisation. |
 | `method_not_allowed` | 405 | Ressource connue, mauvaise méthode. |
 | `conflict` | 409 | Ressource existante, ou invariant métier qui refuse la modification. |
@@ -136,7 +152,46 @@ Lorsque le sujet ne peut pas être connu à l'avance, ne désactivez pas `XOLO_H
 
 Les identifiants sont stables, `PUT /v1/tenants/{tenantID}/users` est idempotent, la création d'un tenant ou d'une organisation sur un slug existant répond `409` en incluant l'identifiant existant, et les endpoints de lecture permettent de relire l'état courant intégralement. Le seul effet de bord de `POST /v1/tenants/{tenantID}/organizations` est documenté : la création des rôles intégrés de l'organisation.
 
-La création d'une organisation orchestre plusieurs magasins de données sans transaction transverse. Tout échec survenant après la création de la ligne d'organisation déclenche une compensation au mieux (l'organisation est supprimée, les rattachements suivent en cascade), journalisée si elle échoue à son tour. Un utilisateur préexistant n'est jamais supprimé.
+## Transactions, audit et corrélation
+
+Chaque mutation de provisioning revérifie ses parents et effectue toutes ses
+écritures dans une transaction unique. Une erreur annule aussi les modifications
+d'un utilisateur préexistant, les associations de rôles et l'audit. PostgreSQL utilise
+`SERIALIZABLE` ; les conflits d'écriture SQLite et les conflits de sérialisation
+PostgreSQL rejouent l'opération entière avec une attente bornée et annulable.
+Aucun verrou de publication global n'est utilisé.
+
+`mutation_audits` conserve un état avant/après par ressource effectivement modifiée :
+tenant, organisation, utilisateur, adhésion ou rôle, y compris les associations de
+rôles et les suppressions en cascade. Les changements successifs sont regroupés ;
+une opération sans changement ne produit pas d'audit. Les états excluent les secrets
+et les horodatages techniques. L'historique et son périmètre tenant/organisation
+survivent à la suppression des ressources. Les UUID d'audit ne donnent pas l'ordre
+des commits. Seules les mutations de provisioning alimentent ce nouvel audit.
+
+`X-Request-ID` doit contenir une seule valeur de 32 caractères hexadécimaux minuscules.
+Toute valeur absente, répétée ou invalide est remplacée. La valeur retenue est renvoyée
+dans la réponse et utilisée dans les journaux, l'audit et les événements, y compris
+après reprise. L'URI de l'acteur provient exclusivement du certificat autorisé.
+Sans acteur HTTP, les appels internes utilisent `urn:xolo:operator:local` avec une
+corrélation générée au début de l'opération.
+
+Les événements locaux de membres et de rôles gardent leurs types et messages,
+y compris les événements distincts d'ajout de membre et d'attribution de rôles.
+Ils sont émis après commit via le mécanisme asynchrone existant. Ils ne constituent
+pas une outbox durable ; seul l'audit est persisté atomiquement. Les lectures
+transactionnelles vont directement en base. Après commit, les utilisateurs concernés,
+leurs clés secondaires et les jetons supprimés en cascade sont invalidés dans le cache.
+
+Les budgets de requêtes sont locaux au processus et partagés entre certificats
+portant le même URI. Seules les identités configurées obtiennent un budget. Un
+dépassement renvoie `429`, `rate_limited`, `Retry-After` en secondes et l'identifiant de requête.
+
+La migration `202610060001`, après celle des UUID, crée l'audit sur une installation
+neuve comme sur une mise à niveau. Son rollback refuse d'effacer l'historique.
+Avec `XOLO_STORAGE_AUTO_MIGRATE=false`, arrêtez tous les écrivains, sauvegardez la base puis exécutez
+`bin/migrate apply -writers-stopped` avant le démarrage.
+La migration UUID et ses artefacts de récupération sont préservés.
 
 ## Mise en place d'une PKI de développement
 
@@ -159,7 +214,7 @@ openssl req -newkey rsa:4096 -nodes -keyout client.key -out client.csr \
   -subj "/CN=control-plane"
 openssl x509 -req -in client.csr -CA ca.crt -CAkey ca.key -CAcreateserial \
   -out client.crt -days 365 \
-  -extfile <(printf "extendedKeyUsage=clientAuth")
+  -extfile <(printf "subjectAltName=URI:urn:xolo:client:control-plane\nextendedKeyUsage=clientAuth")
 ```
 
 Démarrage du serveur avec l'API activée :
@@ -167,6 +222,7 @@ Démarrage du serveur avec l'API activée :
 ```bash
 XOLO_SECRET_KEY=$(openssl rand -hex 32) \
 XOLO_PROVISIONNING_API_ENABLED=true \
+XOLO_PROVISIONNING_API_AUTHORIZED_URIS=urn:xolo:client:control-plane \
 XOLO_PROVISIONNING_API_TLS_CERT_FILE=dev-pki/server.crt \
 XOLO_PROVISIONNING_API_TLS_KEY_FILE=dev-pki/server.key \
 XOLO_PROVISIONNING_API_TLS_CLIENT_CA_FILE=dev-pki/ca.crt \
@@ -195,7 +251,6 @@ En production, utilisez une autorité de certification gérée (Vault, cert-mana
 ## Hors périmètre actuel
 
 - Les fournisseurs, modèles LLM, modèles virtuels, middlewares, applications et leurs jetons, quotas, alertes et paramètres d'événements : ils restent gérés par l'interface web.
-- Les portées par certificat : tout certificat valide administre l'instance entière.
-- Les mutations effectuées via cette API n'émettent aucun événement Xolo (elles sont journalisées côté serveur) : c'est le comportement documenté lorsqu'aucun utilisateur n'est présent dans le contexte.
+- Les portées par certificat : tout URI autorisé administre l'instance entière.
 - Le pré-provisionnement par email : le mécanisme d'[invitation](../organisation/invitation/invitation.md) reste la voie par email, via l'interface web.
 - Aucune spécification OpenAPI n'est générée à ce jour.

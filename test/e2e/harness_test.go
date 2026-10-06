@@ -187,6 +187,12 @@ func startServer(bin, pluginsDir string, port int) (func(), error) {
 		return nil, err
 	}
 
+	provisioningEnv, err := configureProvisioning(filepath.Dir(env.logPath))
+	if err != nil {
+		logFile.Close()
+		return nil, err
+	}
+
 	cmd := exec.Command(bin)
 	cmd.Stdout = logFile
 	cmd.Stderr = logFile
@@ -199,6 +205,7 @@ func startServer(bin, pluginsDir string, port int) (func(), error) {
 		"XOLO_PLUGINS_DIR="+pluginsDir,
 		"XOLO_LOGGER_LEVEL=0",
 	)
+	cmd.Env = append(cmd.Env, provisioningEnv...)
 	if err := cmd.Start(); err != nil {
 		logFile.Close()
 		return nil, fmt.Errorf("start server: %w", err)

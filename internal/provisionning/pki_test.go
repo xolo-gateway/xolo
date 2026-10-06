@@ -9,6 +9,7 @@ import (
 	"encoding/pem"
 	"math/big"
 	"net"
+	"net/url"
 	"os"
 	"path/filepath"
 	"testing"
@@ -67,7 +68,7 @@ func newTestPKI(t *testing.T, name string) *testPKI {
 }
 
 // issue signs a leaf certificate and returns the paths of its PEM files.
-func (p *testPKI) issue(t *testing.T, name string, serverAuth bool) (certFile, keyFile string) {
+func (p *testPKI) issue(t *testing.T, name string, serverAuth bool, customize ...func(*x509.Certificate)) (certFile, keyFile string) {
 	t.Helper()
 
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
@@ -89,8 +90,13 @@ func (p *testPKI) issue(t *testing.T, name string, serverAuth bool) (certFile, k
 		template.IPAddresses = []net.IP{net.ParseIP("127.0.0.1"), net.ParseIP("::1")}
 	} else {
 		template.ExtKeyUsage = []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth}
+		uri, _ := url.Parse("urn:xolo:test:console")
+		template.URIs = []*url.URL{uri}
 	}
 
+	for _, f := range customize {
+		f(template)
+	}
 	der, err := x509.CreateCertificate(rand.Reader, template, p.caCert, &key.PublicKey, p.caKey)
 	if err != nil {
 		t.Fatalf("create certificate: %v", err)

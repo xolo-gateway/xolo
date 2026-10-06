@@ -1,6 +1,9 @@
 package config
 
 import (
+	"math"
+	"net/url"
+	"strings"
 	"time"
 
 	"github.com/pkg/errors"
@@ -13,6 +16,9 @@ import (
 // It is disabled by default: an instance that does not need machine
 // provisioning never opens that port.
 type ProvisionningAPI struct {
+	AuthorizedURIs  []string      `env:"AUTHORIZED_URIS" envSeparator:","`
+	RateLimit       float64       `env:"RATE_LIMIT" envDefault:"10"`
+	RateBurst       int           `env:"RATE_BURST" envDefault:"20"`
 	Enabled         bool          `env:"ENABLED" envDefault:"false"`
 	Address         string        `env:"ADDRESS,expand" envDefault:":3003"`
 	TLSCertFile     string        `env:"TLS_CERT_FILE,expand"`
@@ -46,5 +52,19 @@ func (c *ProvisionningAPI) Validate() error {
 		return errors.New("XOLO_PROVISIONNING_API_ADDRESS is required but not set when XOLO_PROVISIONNING_API_ENABLED is true")
 	}
 
+	if len(c.AuthorizedURIs) == 0 {
+		return errors.New("XOLO_PROVISIONNING_API_AUTHORIZED_URIS is required")
+	}
+	seen := map[string]bool{}
+	for _, raw := range c.AuthorizedURIs {
+		u, err := url.Parse(raw)
+		if err != nil || u.Scheme == "" || (u.Host == "" && u.Opaque == "" && u.Path == "") || strings.ContainsAny(raw, " \t\r\n") || seen[raw] {
+			return errors.New("XOLO_PROVISIONNING_API_AUTHORIZED_URIS must contain distinct absolute URIs")
+		}
+		seen[raw] = true
+	}
+	if c.RateLimit <= 0 || math.IsNaN(c.RateLimit) || math.IsInf(c.RateLimit, 0) || c.RateBurst < 1 {
+		return errors.New("XOLO_PROVISIONNING_API_RATE_LIMIT and RATE_BURST must be positive")
+	}
 	return nil
 }
