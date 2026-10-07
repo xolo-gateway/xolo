@@ -122,6 +122,24 @@ func webhookTenant(db *gorm.DB, tenant model.TenantID) error {
 	return nil
 }
 
+// lockWebhookTenant asserts that the tenant exists and, on PostgreSQL, locks
+// its row until commit: concurrent creations for one tenant then count its
+// subscriptions one after the other, so the cap holds at READ COMMITTED.
+// SQLite serializes writers already.
+func lockWebhookTenant(db *gorm.DB, tenant model.TenantID) error {
+	if !isPostgres(db) {
+		return webhookTenant(db, tenant)
+	}
+	var ids []string
+	if err := db.Model(&Tenant{}).Clauses(clause.Locking{Strength: "UPDATE"}).Where("id = ?", string(tenant)).Pluck("id", &ids).Error; err != nil {
+		return errors.WithStack(err)
+	}
+	if len(ids) != 1 {
+		return errors.WithStack(port.ErrParentNotFound)
+	}
+	return nil
+}
+
 // webhookRow loads a subscription of tenant: a subscription of another tenant
 // is reported missing.
 func webhookRow(db *gorm.DB, tenant model.TenantID, id model.WebhookID) (WebhookSubscription, error) {
@@ -173,7 +191,7 @@ func (s *Store) PutWebhook(ctx context.Context, tenant model.TenantID, id model.
 	}
 	var out model.WebhookSubscription
 	err = s.webhookTransaction(ctx, func(db *gorm.DB) error {
-		if err := webhookTenant(db, tenant); err != nil {
+		if err := lockWebhookTenant(db, tenant); err != nil {
 			return err
 		}
 		var row WebhookSubscription

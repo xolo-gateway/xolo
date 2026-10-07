@@ -157,7 +157,7 @@ func TestWebhookHTTPSBoundaries(t *testing.T) {
 		require.False(t, allowedAddress(netip.MustParseAddr(ip), false), ip)
 	}
 	// Special-use ranges stay refused even with private networks allowed.
-	for _, ip := range []string{"169.254.169.254", "fe80::1", "0.0.0.0", "192.88.99.1", "100::1", "fec0::1", "2001:db8::1", "224.0.0.1"} {
+	for _, ip := range []string{"169.254.169.254", "fe80::1", "0.0.0.0", "100.100.100.200", "192.88.99.1", "100::1", "fec0::1", "2001:db8::1", "224.0.0.1"} {
 		require.False(t, allowedAddress(netip.MustParseAddr(ip), true), ip)
 	}
 	require.True(t, allowedAddress(netip.MustParseAddr("10.0.0.1"), true))

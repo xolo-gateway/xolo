@@ -533,3 +533,48 @@ func TestWebhookPreparationIsolatesFailures(t *testing.T) {
 		require.Zero(t, stats.MaterializationLag, "every subscription is prepared")
 	})
 }
+
+// TestWebhookCapIsConcurrencySafe pins the per-tenant cap under concurrent
+// creations: exactly one of them takes the last place.
+func TestWebhookCapIsConcurrencySafe(t *testing.T) {
+	eachBackendDB(t, func(t *testing.T, db *gormpkg.DB) {
+		store := newSeededStore(t, db)
+		for range model.WebhookMaxSubscriptionsPerTenant - 1 {
+			putHook(t, store, testTenantID)
+		}
+		// Widen the window between the count and the insert, where a writer
+		// that did not wait for the others would count a stale total.
+		require.NoError(t, db.Callback().Create().Before("gorm:create").Register("test:webhook-cap-window", func(tx *gormpkg.DB) {
+			if tx.Statement.Table == "webhook_subscriptions" {
+				time.Sleep(200 * time.Millisecond)
+			}
+		}))
+		t.Cleanup(func() { _ = db.Callback().Create().Remove("test:webhook-cap-window") })
+		const writers = 8
+		start := make(chan struct{})
+		errs := make(chan error, writers)
+		var wg sync.WaitGroup
+		for range writers {
+			wg.Go(func() {
+				<-start
+				_, err := store.PutWebhook(context.Background(), testTenantID, model.WebhookID(uuid.NewString()), model.WebhookSettings{Destination: "https://hooks.example.test/in", Events: []string{"*"}, Enabled: true, EncryptedSecrets: testWebhookSecret, SecretCount: 1})
+				errs <- err
+			})
+		}
+		close(start)
+		wg.Wait()
+		close(errs)
+		created := 0
+		for err := range errs {
+			if err == nil {
+				created++
+				continue
+			}
+			require.ErrorIs(t, err, port.ErrWebhookCapacity)
+		}
+		require.Equal(t, 1, created)
+		var count int64
+		require.NoError(t, db.Model(&xologorm.WebhookSubscription{}).Where("tenant_id = ?", string(testTenantID)).Count(&count).Error)
+		require.Equal(t, int64(model.WebhookMaxSubscriptionsPerTenant), count)
+	})
+}
