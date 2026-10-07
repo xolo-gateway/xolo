@@ -30,8 +30,10 @@ func commonTarget(w http.ResponseWriter, r *http.Request, family string) (model.
 		}
 		return value, true
 	}
-	uuid := func(s string) (string, error) { id, err := model.ParseTenantID(s); return string(id), err }
-	tenantID, ok := parse("tenantID", uuid)
+	tenantUUID := func(s string) (string, error) { id, err := model.ParseTenantID(s); return string(id), err }
+	orgUUID := func(s string) (string, error) { id, err := model.ParseOrgID(s); return string(id), err }
+	userUUID := func(s string) (string, error) { id, err := model.ParseUserID(s); return string(id), err }
+	tenantID, ok := parse("tenantID", tenantUUID)
 	if !ok {
 		return scope, "", false
 	}
@@ -40,7 +42,7 @@ func commonTarget(w http.ResponseWriter, r *http.Request, family string) (model.
 	}
 	scope.TenantID = tenantID
 	if family == model.FamilyOrganizationMembership {
-		if scope.OrganizationID, ok = parse("orgID", uuid); !ok {
+		if scope.OrganizationID, ok = parse("orgID", orgUUID); !ok {
 			return scope, "", false
 		}
 	}
@@ -50,9 +52,9 @@ func commonTarget(w http.ResponseWriter, r *http.Request, family string) (model.
 		// The store refuses a hostname that is not already normalized.
 		key = r.PathValue("hostname")
 	case model.FamilyOrganization:
-		key, ok = parse("orgID", uuid)
+		key, ok = parse("orgID", orgUUID)
 	default:
-		key, ok = parse("memberID", uuid)
+		key, ok = parse("memberID", userUUID)
 	}
 	return scope, key, ok
 }

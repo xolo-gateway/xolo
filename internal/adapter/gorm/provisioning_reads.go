@@ -108,13 +108,21 @@ func validateCommonScope(scope model.CommonScope, key string) error {
 	if key == "" {
 		return nil
 	}
-	if scope.Family == model.FamilyTenantDomain {
+	var err error
+	switch scope.Family {
+	case model.FamilyTenantDomain:
 		if host, err := model.NormalizeHostname(key); err != nil || host != key {
 			return errors.WithStack(port.ErrInvalidHostname)
 		}
 		return nil
+	case model.FamilyTenant:
+		_, err = model.ParseTenantID(key)
+	case model.FamilyOrganization:
+		_, err = model.ParseOrgID(key)
+	case model.FamilyMember, model.FamilyOrganizationMembership:
+		_, err = model.ParseUserID(key)
 	}
-	if _, err := model.ParseTenantID(key); err != nil {
+	if err != nil {
 		return errors.WithStack(port.ErrInvalid)
 	}
 	return nil
