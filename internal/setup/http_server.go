@@ -238,6 +238,10 @@ func NewHTTPServerFromConfig(ctx context.Context, conf *config.Config) (*http.Se
 		return nil, errors.Wrap(err, "could not start provisioning event retention from config")
 	}
 
+	if _, err := startOIDCSessionSweepFromConfig(ctx, conf); err != nil {
+		return nil, errors.Wrap(err, "could not start oidc session sweep from config")
+	}
+
 	invitationService, err := getInvitationServiceFromConfig(ctx, conf)
 	if err != nil {
 		return nil, errors.Wrap(err, "could not create invitation service")
@@ -308,6 +312,10 @@ func NewHTTPServerFromConfig(ctx context.Context, conf *config.Config) (*http.Se
 		http.WithMount("/assets/", assets),
 		http.WithMount("/assets/pipeline/", pipelineAssets.NewAssetsHandler()),
 		http.WithMount("/auth/oidc/", rateLimiter(oidcAuthn)),
+		// The identity provider may send logouts in bursts from a single
+		// address, and a throttled one is lost: each request is authenticated
+		// by its signed logout token instead.
+		http.WithRoute("POST /auth/oidc/providers/{provider}/backchannel-logout", gohttp.StripPrefix("/auth/oidc", oidcAuthn)),
 		http.WithMount("/auth/token/", rateLimiter(tokenAuthn)),
 		http.WithMount("/metrics/", rateLimiter(authChain(metrics.NewHandler()))),
 		// LLM proxy traffic is intentionally NOT behind the per-IP rate limiter:

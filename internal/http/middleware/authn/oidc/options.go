@@ -1,7 +1,10 @@
 package oidc
 
 import (
+	"time"
+
 	"github.com/pkg/errors"
+	"github.com/xolo-gateway/xolo/internal/core/port"
 	"github.com/xolo-gateway/xolo/internal/http/middleware/authn/oidc/component"
 )
 
@@ -11,6 +14,9 @@ type Provider = component.Provider
 // errors that do not wrap this sentinel are operational failures and must not
 // be presented as an unknown route.
 var ErrProviderNotFound = errors.New("oidc provider not found")
+
+// DefaultSessionTTL bounds a session when no lifetime is configured.
+const DefaultSessionTTL = 24 * time.Hour
 
 // ProviderResolver returns the name the goth provider serving providerID is
 // registered under for a request whose public base URL is baseURL, registering
@@ -25,6 +31,8 @@ type Options struct {
 	ProvidersWithJWKS []ProviderWithJWKS
 	SessionName       string
 	ResolveProvider   ProviderResolver
+	Sessions          port.SessionRegistry
+	SessionTTL        time.Duration
 }
 
 type OptionFunc func(opts *Options)
@@ -33,6 +41,7 @@ func NewOptions(funcs ...OptionFunc) *Options {
 	opts := &Options{
 		Providers:   make([]Provider, 0),
 		SessionName: "xolo_auth_oidc",
+		SessionTTL:  DefaultSessionTTL,
 	}
 
 	for _, fn := range funcs {
@@ -65,5 +74,24 @@ func WithProviderResolver(resolve ProviderResolver) OptionFunc {
 func WithProvidersWithJWKS(providers []ProviderWithJWKS) OptionFunc {
 	return func(opts *Options) {
 		(opts).ProvidersWithJWKS = providers
+	}
+}
+
+// WithSessionRegistry registers every interactive session, so a logout, local
+// or back-channel, holds across restarts and replicas. Without it, a session
+// lives in its cookie alone.
+func WithSessionRegistry(registry port.SessionRegistry) OptionFunc {
+	return func(opts *Options) {
+		opts.Sessions = registry
+	}
+}
+
+// WithSessionTTL sets the lifetime of a registered session. A zero or
+// negative value keeps DefaultSessionTTL.
+func WithSessionTTL(ttl time.Duration) OptionFunc {
+	return func(opts *Options) {
+		if ttl > 0 {
+			opts.SessionTTL = ttl
+		}
 	}
 }

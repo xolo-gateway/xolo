@@ -71,7 +71,7 @@ type Cookie struct {
 	Path     string        `env:"PATH" envDefault:"/"`
 	HTTPOnly bool          `env:"HTTP_ONLY" envDefault:"true"`
 	Secure   bool          `env:"SECURE" envDefault:"false"`
-	MaxAge   time.Duration `env:"MAX_AGE" enDefault:"24h"`
+	MaxAge   time.Duration `env:"MAX_AGE" envDefault:"24h"`
 }
 
 type AuthProviders struct {

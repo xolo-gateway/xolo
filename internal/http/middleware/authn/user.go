@@ -32,6 +32,11 @@ type User struct {
 	// identity from one tenant to another: an authenticator that finds a
 	// mismatch treats the session as absent.
 	TenantID string
+
+	// SessionID designates the registered session an interactive OIDC
+	// sign-in opened. A session cookie without one, or whose session is no
+	// longer registered, authenticates nothing.
+	SessionID string
 }
 
 // IsTrue reads a boolean claim some identity providers encode as a string

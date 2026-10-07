@@ -1,3 +1,31 @@
+# Unreleased — durable OIDC sessions and back-channel logout
+
+An interactive OIDC sign-in now opens a session registered in the database, and
+its cookie only carries the session identifier. A logout closes the session for
+good: a copied cookie no longer authenticates. Sessions survive restarts and
+move between replicas sharing `XOLO_HTTP_SESSION_KEYS`. Identity providers can
+revoke the sessions of a subject through OpenID Connect Back-Channel Logout, at
+`/auth/oidc/providers/{provider}/backchannel-logout`. Every session of that
+issuer and subject is closed, in every tenant, and a sign-in started before the
+logout is refused. A replayed logout token changes nothing. Checking a session
+is a single read that takes no lock. Expired sessions and stale replay entries
+are swept every 10 minutes. Durable logout does not cover `oidctoken`,
+`oauth2token` and `/auth/token/login` sessions, which keep their own expiry.
+
+`XOLO_HTTP_SESSION_COOKIE_MAX_AGE` now defaults to `24h` as documented. A typo
+left it unset, so cookies used to last as long as the browser stayed open. This
+also applies to `/auth/token/login` sessions.
+
+Migration `202610110001` adds the session registry. Its rollback drops it.
+Cookies issued before the upgrade carry no session, so every OIDC user signs in
+once more. Stop every old replica before migrating: an old server accepts
+revoked sessions and issues cookies the new ones refuse.
+
+Details:
+[English](docs/en/administration/installation/configuration.md#oidc-sessions-and-back-channel-logout),
+[Français](docs/fr/administration/installation/configuration.md#sessions-oidc-et-deconnexion-back-channel),
+[Español](docs/es/administration/installation/configuration.md#sesiones-oidc-y-cierre-de-sesion-back-channel).
+
 # Unreleased — declared member identities
 
 A member `PUT` of the common provisioning contract now creates an unknown member

@@ -4,21 +4,40 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"time"
 
-	httpCtx "github.com/xolo-gateway/xolo/internal/http/context"
-	"github.com/xolo-gateway/xolo/internal/http/middleware/authn"
 	"github.com/bornholm/go-x/slogx"
 	"github.com/markbates/goth"
 	"github.com/markbates/goth/gothic"
 	"github.com/pkg/errors"
+	httpCtx "github.com/xolo-gateway/xolo/internal/http/context"
+	"github.com/xolo-gateway/xolo/internal/http/middleware/authn"
 )
 
 func (h *Handler) handleProvider(w http.ResponseWriter, r *http.Request) {
 	if _, err := gothic.CompleteUserAuth(w, r); err == nil {
 		http.Redirect(w, r, "/auth/oidc/logout", http.StatusTemporaryRedirect)
 	} else {
+		if h.sessions != nil {
+			if err := h.startAuthentication(w, r); err != nil {
+				slog.ErrorContext(r.Context(), "could not start authentication", slogx.Error(err))
+				http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+				return
+			}
+		}
 		gothic.BeginAuthHandler(w, r)
 	}
+}
+
+// startAuthentication records when the sign-in starts, before the redirection
+// to the identity provider.
+func (h *Handler) startAuthentication(w http.ResponseWriter, r *http.Request) error {
+	sess, err := h.getSession(r)
+	if err != nil {
+		return errors.WithStack(err)
+	}
+	sess.Values[authenticationStartedAttr] = time.Now().UnixNano()
+	return errors.WithStack(sess.Save(r, w))
 }
 
 func (h *Handler) handleProviderCallback(w http.ResponseWriter, r *http.Request) {
@@ -29,9 +48,7 @@ func (h *Handler) handleProviderCallback(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	ctx := r.Context()
-
-	slog.DebugContext(ctx, "authenticated user", slog.Any("user", gothUser))
+	// Never log gothUser: it carries the access, refresh and ID tokens.
 
 	// A multi-tenant instance registers one goth provider per tenant host, so the
 	// name goth hands back carries that host. Identities are keyed on

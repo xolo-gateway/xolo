@@ -7,7 +7,8 @@ Xolo se configure entièrement par variables d'environnement, préfixées `XOLO_
 | Variable | Défaut | Description |
 | --- | --- | --- |
 | `XOLO_SECRET_KEY` | _(requis)_ | Clé hexadécimale de 32 octets utilisée pour chiffrer les clés API des fournisseurs (AES-GCM). Générez-la avec `openssl rand -hex 32`. Le serveur refuse de démarrer si elle est absente. |
-| `XOLO_HTTP_SESSION_KEYS` | _(vide)_ | Liste de clés séparées par des virgules, utilisées pour signer/chiffrer les cookies de session. |
+| `XOLO_HTTP_SESSION_KEYS` | _(vide)_ | Liste de clés séparées par des virgules, utilisées pour signer/chiffrer les cookies de session. Vide, chaque processus tire une clé aléatoire : les sessions ne survivent alors ni à un redémarrage ni au passage d'un réplica à l'autre. |
+| `XOLO_HTTP_SESSION_COOKIE_MAX_AGE` | `24h` | Durée de vie d'un cookie de session, et de la [session OIDC](#sessions-oidc-et-deconnexion-back-channel) qu'il désigne. |
 
 ## HTTP
 
@@ -68,6 +69,32 @@ Qu'il passe par la découverte ou par la configuration statique, un fournisseur 
 Un fournisseur configuré avec uniquement `KEY` / `SECRET` est refusé au démarrage avec l'erreur `gitea provider requires either DISCOVERY_URL or both AUTH_URL and TOKEN_URL`. C'est un changement de comportement par rapport aux versions précédentes, qui acceptaient ce mode et échouaient à la première connexion ; l'erreur explicite permet aujourd'hui de repérer la mauvaise configuration dès le boot.
 
 Comme pour les fournisseurs OIDC nommés, `jwks_uri` est optionnel : en son absence, ou lorsqu'il est présent mais mal formé (URL relative, scheme non `http(s)`), un avertissement est émis au démarrage et la validation JWT des ID Tokens est désactivée pour ce fournisseur — l'introspection reste active si le document la publie.
+
+### Sessions OIDC et déconnexion back-channel
+
+Une connexion interactive par un fournisseur OAuth2/OIDC ouvre une session enregistrée en base ; le cookie ne porte que son identifiant. Chaque requête vérifie la session par une simple lecture : un cookie copié ne survit pas à la déconnexion, et une session reste valide après un redémarrage et d'un réplica à l'autre, pourvu que tous partagent `XOLO_HTTP_SESSION_KEYS`. Une session expire au bout de `XOLO_HTTP_SESSION_COOKIE_MAX_AGE`. Les sessions expirées et les entrées devenues inutiles sont supprimées toutes les 10 minutes par chaque réplica.
+
+Un fournisseur OIDC peut en outre révoquer les sessions par [OpenID Connect Back-Channel Logout](https://openid.net/specs/openid-connect-backchannel-1_0.html). Déclarez auprès de lui l'URL :
+
+```
+https://{hôte}/auth/oidc/providers/{fournisseur}/backchannel-logout
+```
+
+- Seuls les fournisseurs dont l'émetteur est prouvé, avec un identifiant client et un `jwks_uri` valide, l'acceptent : [fournisseurs OIDC nommés](#fournisseurs-oidc-nommes), Gitea avec `DISCOVERY_URL` et Google. Les autres répondent 404.
+- Le `logout_token` doit être signé (RS256, RS384 ou RS512) par l'émetteur, destiné à l'identifiant client, et contenir `sub` et `jti`. La révocation porte sur le **sujet** : toutes les sessions de cet émetteur et de ce sujet sont fermées, dans tous les tenants, et une connexion commencée avant la révocation est refusée. Un jeton ne portant qu'un `sid` est refusé (400).
+- Un jeton n'est accepté que dans les 5 minutes qui suivent son émission. Un jeton déjà traité répond 200 sans effet, ce qui permet au fournisseur de réessayer. Les horloges des réplicas et du fournisseur doivent concorder à 5 minutes près.
+- En multi-tenant, n'importe quel domaine actif convient : la révocation vaut pour tous les tenants. La route n'est pas soumise à la limitation de débit par IP, chaque requête étant authentifiée par son jeton signé.
+- Le compteur `xolo_oidc_backchannel_logouts_total` suit les résultats (`revoked`, `replayed`, `invalid`, `unavailable`).
+
+La déconnexion durable ne couvre que ces sessions interactives. Les autres modes d'authentification gardent leur propre mécanisme :
+
+| Mode | Fin de validité |
+| --- | --- |
+| ID Token OIDC présenté à l'API (`oidctoken`) | Son `exp`, prolongé de `XOLO_HTTP_AUTHN_OIDCTOKEN_EXPIRY_LEEWAY`. Une déconnexion ne le révoque pas. |
+| Jeton d'accès opaque (`oauth2token`) | Révoqué chez le fournisseur, il reste accepté jusqu'à l'expiration du cache de validation (`XOLO_HTTP_AUTHN_OAUTH2TOKEN_CACHE_TTL`, 60 s par défaut). |
+| Session ouverte par `/auth/token/login` | Son cookie, pendant `XOLO_HTTP_SESSION_COOKIE_MAX_AGE`. Le jeton API n'est pas revérifié pendant la session. |
+
+La déconnexion locale (`/auth/oidc/logout`) ferme la session Xolo ; elle ne ferme pas la session ouverte chez le fournisseur d'identité.
 
 ## Stockage
 

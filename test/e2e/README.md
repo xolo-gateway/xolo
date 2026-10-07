@@ -81,6 +81,12 @@ En cas d'échec de la mise en place, le journal du serveur est imprimé.
 | `TestCacheControl_StreamingRoundTrip` | `acme/e2e-claude-direct` | la route OpenAI en streaming traverse le provider Messages ; le faux amont flushe chaque événement SSE, les deltas reconstituent la réponse et les compteurs de cache sont enregistrés comme en non streamé |
 | `TestCacheControl_MissingCachedTariffFallsBackToFullRate` | `acme/e2e-claude-direct` | sans tarif de cache, les tokens en cache sont facturés au tarif plein, jamais gratuits |
 
+### Sessions OIDC (`oidc_session_test.go`)
+
+| Test | Attendu |
+|---|---|
+| `TestOIDCDurableSession` | un serveur dédié, configuré avec un fournisseur OIDC factice (`httptest` : discovery, authorize, token, userinfo, JWKS), ouvre une session à la connexion ; le cookie reste valide après un redémarrage ; un `logout_token` signé envoyé sur `/auth/oidc/providers/fakeidp/backchannel-logout` le révoque ; le rejeu du même jeton répond 200 sans toucher la session suivante, un jeton invalide répond 400 |
+
 Le pseudonymizer est branché par trois middlewares (`mw-e2e-pseudo-tag`,
 `mw-e2e-pseudo-hash`, `mw-e2e-pseudo-claude`) enveloppant chacun un seul modèle ; les autres scénarios
 passent par des modèles virtuels dédiés, tous déclarés dans `fixtures_test.go`

@@ -22,6 +22,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/xolo-gateway/xolo/internal/config"
 	"github.com/xolo-gateway/xolo/internal/core/model"
+	"github.com/xolo-gateway/xolo/internal/core/port"
 	"github.com/xolo-gateway/xolo/internal/http/middleware/authn/oidc"
 )
 
@@ -74,6 +75,19 @@ func getIdentityIssuersFromConfig(ctx context.Context, conf *config.Config) func
 	})
 }
 
+// getSessionRegistryFromConfig returns the store as the OIDC session registry.
+// It is bound in init: the store refers to this handler for the identity
+// issuers, so a direct reference would be an initialization cycle. At run time
+// there is none: the store resolves the issuers on first use, never while it
+// is being created.
+var getSessionRegistryFromConfig func(ctx context.Context, conf *config.Config) (port.SessionRegistry, error)
+
+func init() {
+	getSessionRegistryFromConfig = func(ctx context.Context, conf *config.Config) (port.SessionRegistry, error) {
+		return getGormStoreFromConfig(ctx, conf)
+	}
+}
+
 func getOIDCAuthnHandlerFromConfig(ctx context.Context, conf *config.Config) (*oidc.Handler, error) {
 	sessionStore, err := getSessionStoreFromConfig(ctx, conf)
 	if err != nil {
@@ -109,6 +123,7 @@ func getOIDCAuthnHandlerFromConfig(ctx context.Context, conf *config.Config) (*o
 			Issuer:       "https://accounts.google.com",
 			JWKSURL:      "https://www.googleapis.com/oauth2/v3/certs",
 			ProvesIssuer: true,
+			ClientID:     key,
 		})
 	}
 
@@ -175,9 +190,16 @@ func getOIDCAuthnHandlerFromConfig(ctx context.Context, conf *config.Config) (*o
 		providersWithJWKS = append(providersWithJWKS, *withJWKS)
 	}
 
+	sessionRegistry, err := getSessionRegistryFromConfig(ctx, conf)
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+
 	opts := []oidc.OptionFunc{
 		oidc.WithProviders(providers...),
 		oidc.WithProvidersWithJWKS(providersWithJWKS),
+		oidc.WithSessionRegistry(sessionRegistry),
+		oidc.WithSessionTTL(conf.HTTP.Session.Cookie.MaxAge),
 	}
 
 	if err := buildStartupOIDCProviders(

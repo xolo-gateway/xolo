@@ -4,11 +4,13 @@ import (
 	"context"
 	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/bornholm/go-x/slogx"
 	"github.com/gorilla/sessions"
 	"github.com/pkg/errors"
 	"github.com/xolo-gateway/xolo/internal/core/model"
+	"github.com/xolo-gateway/xolo/internal/core/port"
 	httpCtx "github.com/xolo-gateway/xolo/internal/http/context"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/common"
 	"github.com/xolo-gateway/xolo/internal/http/middleware/authn/oauth2token"
@@ -48,6 +50,8 @@ type Handler struct {
 	providers         []Provider
 	providersWithJWKS []ProviderWithJWKS
 	resolveProvider   ProviderResolver
+	sessions          port.SessionRegistry
+	sessionTTL        time.Duration
 }
 
 // ServeHTTP implements http.Handler.
@@ -64,7 +68,13 @@ func NewHandler(sessionStore sessions.Store, funcs ...OptionFunc) *Handler {
 		providers:         opts.Providers,
 		providersWithJWKS: opts.ProvidersWithJWKS,
 		resolveProvider:   opts.ResolveProvider,
+		sessions:          opts.Sessions,
+		sessionTTL:        opts.SessionTTL,
 	}
+
+	// Called by the identity provider, without cookie: it designates the
+	// configured provider ID, never the goth provider of a host.
+	h.mux.HandleFunc("POST /providers/{provider}/backchannel-logout", h.handleBackchannelLogout)
 
 	h.mux.HandleFunc("GET /login", h.getLoginPage)
 	h.mux.Handle("GET /providers/{provider}", h.withContextProvider(http.HandlerFunc(h.handleProvider)))

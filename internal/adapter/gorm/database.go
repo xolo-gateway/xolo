@@ -164,6 +164,8 @@ func MigrateDatabase(ctx context.Context, db *gorm.DB, artifact *RecoveryArtifac
 					&ProvisioningProjection{}, &ProvisioningEvent{}, &ProvisioningFeed{},
 					// Event system
 					&Event{}, &Alert{}, &AlertIncident{}, &EventSettings{},
+					// Interactive OIDC sessions
+					&OIDCIdentity{}, &OIDCSession{}, &OIDCLogoutReplay{},
 				)
 				if err != nil {
 					return errors.WithStack(err)
@@ -588,6 +590,11 @@ func schemaMigrations(artifact *RecoveryArtifact) []*gormigrate.Migration {
 			Rollback: func(*gorm.DB) error {
 				return errors.New("webhooks migration cannot be rolled back: pending deliveries would be lost")
 			},
+		},
+		{
+			ID:       oidcSessionsMigrationID,
+			Migrate:  migrateOIDCSessions,
+			Rollback: rollbackOIDCSessions,
 		},
 	}
 }
