@@ -217,15 +217,15 @@ func decodeCommon(w http.ResponseWriter, r *http.Request, required []string, opt
 			writeError(w, http.StatusBadRequest, codeInvalidRepresentation, "field "+field+" can not be null")
 			return nil, false
 		}
-		var text string
-		if json.Unmarshal(value, &text) != nil {
-			writeError(w, http.StatusBadRequest, codeInvalidJSON, "field "+field+" must be a string")
-			return nil, false
-		}
 		// encoding/json silently replaces unpaired UTF-16 surrogates: reject
 		// them before that lossy conversion, while accepting a genuine U+FFFD.
 		if !validJSONString(value) {
 			writeError(w, http.StatusBadRequest, codeInvalidJSON, "field "+field+" is not valid Unicode")
+			return nil, false
+		}
+		var text string
+		if json.Unmarshal(value, &text) != nil {
+			writeError(w, http.StatusBadRequest, codeInvalidJSON, "field "+field+" must be a string")
 			return nil, false
 		}
 		fields[field] = text

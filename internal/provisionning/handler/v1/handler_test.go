@@ -512,18 +512,22 @@ func TestCommonIdentifiers(t *testing.T) {
 func TestCommonQueryParameters(t *testing.T) {
 	env := newEnv(t)
 	orgID := uuid.NewString()
+	userID := uuid.NewString()
 
-	for _, target := range []string{
-		"/v1/manifest?pretty=1",
-		env.tenantBase + "/organizations/" + orgID + "?dry_run=true",
-		env.tenantBase + "/organizations/" + orgID + "?slug=acme",
+	for _, c := range []struct {
+		method string
+		target string
+		body   any
+	}{
+		{http.MethodGet, "/v1/manifest?pretty=1", nil},
+		{http.MethodPut, env.tenantBase + "?dry_run=true", resource("acme")},
+		{http.MethodPut, env.tenantBase + "/domains/acme.example.com?dry_run=true", map[string]any{"status": "active"}},
+		{http.MethodPut, env.tenantBase + "/organizations/" + orgID + "?dry_run=true", resource("acme")},
+		{http.MethodPut, env.tenantBase + "/organizations/" + orgID + "?slug=acme", resource("acme")},
+		{http.MethodPut, env.tenantBase + "/members/" + userID + "?dry_run=true", memberBody("alice@example.com")},
+		{http.MethodPut, env.tenantBase + "/organizations/" + orgID + "/members/" + userID + "?dry_run=true", membershipBody("owner")},
 	} {
-		method := http.MethodPut
-		if strings.HasPrefix(target, "/v1/manifest") {
-			method = http.MethodGet
-		}
-
-		rec := call(t, env.handler, method, target, resource("acme"))
+		rec := call(t, env.handler, c.method, c.target, c.body)
 		assertStatus(t, rec, http.StatusBadRequest)
 		assertErrorCode(t, rec, "invalid_parameter")
 	}
