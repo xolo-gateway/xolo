@@ -21,6 +21,17 @@ type Store struct {
 	// recorder collects the identity resources written by a bound store; the
 	// owner of the transaction publishes their projections before commit.
 	recorder *mutationRecorder
+	// identityIssuers returns the issuer each provider's sign-ins prove, so a
+	// link and a declared identity designating the same person are recognized.
+	// Resolved lazily: discovering them may need the network.
+	identityIssuers func() model.IdentityIssuers
+}
+
+func (s *Store) issuers() model.IdentityIssuers {
+	if s.identityIssuers == nil {
+		return nil
+	}
+	return s.identityIssuers()
 }
 
 // recorded runs a write to identity resources together with the publication
@@ -118,11 +129,21 @@ func (s *Store) withRetry(ctx context.Context, withTx bool, fn func(ctx context.
 }
 
 type StoreOption func(*storeOptions)
-type storeOptions struct{ autoMigrate bool }
+type storeOptions struct {
+	autoMigrate     bool
+	identityIssuers func() model.IdentityIssuers
+}
 
 // WithAutoMigrate controls implicit schema changes; explicit Migrate still works.
 func WithAutoMigrate(enabled bool) StoreOption {
 	return func(opts *storeOptions) { opts.autoMigrate = enabled }
+}
+
+// WithIdentityIssuers declares the issuer each authentication provider proves,
+// resolved on first use. A provider absent from the map never matches a
+// declared identity.
+func WithIdentityIssuers(issuers func() model.IdentityIssuers) StoreOption {
+	return func(opts *storeOptions) { opts.identityIssuers = issuers }
 }
 
 func NewStore(db *gorm.DB, options ...StoreOption) *Store {
@@ -134,6 +155,7 @@ func NewStore(db *gorm.DB, options ...StoreOption) *Store {
 	return &Store{
 		initializeDatabase: initialize,
 		getDatabase:        func(ctx context.Context) (*gorm.DB, error) { return initialize(ctx, opts.autoMigrate) },
+		identityIssuers:    opts.identityIssuers,
 	}
 }
 

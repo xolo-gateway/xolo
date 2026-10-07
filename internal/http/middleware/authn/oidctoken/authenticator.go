@@ -10,18 +10,19 @@ import (
 	"strings"
 	"time"
 
-	"github.com/xolo-gateway/xolo/internal/http/middleware/authn"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/pkg/errors"
+	"github.com/xolo-gateway/xolo/internal/http/middleware/authn"
 )
 
 var errInvalidToken = errors.New("invalid token")
 
 type claims struct {
 	jwt.RegisteredClaims
-	Email             string `json:"email"`
-	PreferredUsername string `json:"preferred_username"`
-	Name              string `json:"name"`
+	Email             string          `json:"email"`
+	EmailVerified     authn.BoolClaim `json:"email_verified"`
+	PreferredUsername string          `json:"preferred_username"`
+	Name              string          `json:"name"`
 }
 
 type Options struct {
@@ -168,9 +169,14 @@ func (h *Handler) validateToken(ctx context.Context, rawToken string, provider P
 	}
 
 	user := &authn.User{
-		Email:    cl.Email,
-		Provider: provider.ID,
-		Subject:  cl.Subject,
+		Email:         cl.Email,
+		EmailVerified: bool(cl.EmailVerified),
+		Provider:      provider.ID,
+		Subject:       cl.Subject,
+	}
+	// The parser already required the iss claim to equal it.
+	if provider.ProvesIssuer {
+		user.Issuer = provider.Issuer
 	}
 
 	if cl.PreferredUsername != "" {

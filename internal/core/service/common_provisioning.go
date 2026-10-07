@@ -20,14 +20,60 @@ type CommonResource struct {
 	Status model.Status
 }
 
-// CommonMember is the common representation of a tenant member. The
-// authentication identity and the platform roles are not part of it: a PUT
-// never changes them.
+// CommonMember is the common representation of a tenant member. The platform
+// roles are not part of it: a PUT never changes them. Identity says what the
+// PUT does to the declared identity and the sign-in link.
 type CommonMember struct {
 	Email       string
 	DisplayName string
 	TenantRole  model.TenantRole
 	Status      model.Status
+	Identity    IdentityChange
+}
+
+// IdentityChangeKind tells what a member PUT does to the declared identity.
+type IdentityChangeKind int
+
+const (
+	// IdentityKeep leaves the declared identity and the sign-in link as they
+	// are: a client unaware of the field never detaches anybody.
+	IdentityKeep IdentityChangeKind = iota
+	// IdentityUnlink removes the declared identity and detaches the sign-in
+	// link. The member signs in again only through a new declaration or an
+	// unambiguous verified email.
+	IdentityUnlink
+	// IdentityDeclare declares the identity. A sign-in link to another
+	// identity is never replaced implicitly: it must be unlinked first.
+	IdentityDeclare
+)
+
+// IdentityChange is the identity part of a member PUT.
+type IdentityChange struct {
+	Kind     IdentityChangeKind
+	Identity model.Identity
+}
+
+// unchanged reports whether applying the change to the user is a no-op.
+func (c IdentityChange) unchanged(user model.User) bool {
+	switch c.Kind {
+	case IdentityUnlink:
+		return user.DeclaredIdentity() == nil && user.Provider() == "" && user.Subject() == ""
+	case IdentityDeclare:
+		declared := user.DeclaredIdentity()
+		return declared != nil && *declared == c.Identity
+	}
+	return true
+}
+
+func (c IdentityChange) apply(user *model.BaseUser) {
+	switch c.Kind {
+	case IdentityUnlink:
+		user.SetDeclaredIdentity(nil)
+		user.SetAuthenticationLink("", "")
+	case IdentityDeclare:
+		identity := c.Identity
+		user.SetDeclaredIdentity(&identity)
+	}
 }
 
 // CommonMembership is the common representation of an organization membership.
@@ -216,20 +262,20 @@ func (s *ProvisioningService) PutOrganization(ctx context.Context, tenantID mode
 	return p, errors.WithStack(s.orgStore.SaveOrg(ctx, updated))
 }
 
-// PutTenantMember brings an existing user of the tenant to the given
-// representation. Its authentication identity and platform roles are always
-// preserved. A platform administrator is never modified: provisioning does not
-// act on platform-wide privileges.
-//
-// An unknown user is not created: until an identity can be declared with the
-// member, an account without one would block that person's first sign-in on
-// its email. Members are provisioned once they have signed in.
+// PutTenantMember creates the member or brings it to the given representation.
+// A created member has no sign-in link: it is linked at its first sign-in,
+// through its declared identity or an unambiguous verified email. Platform
+// roles are always preserved, and a platform administrator is never modified:
+// provisioning does not act on platform-wide privileges.
 func (s *ProvisioningService) PutTenantMember(ctx context.Context, tenantID model.TenantID, userID model.UserID, p CommonMember) (CommonMember, error) {
 	p.Email = strings.TrimSpace(p.Email)
 	p.DisplayName = strings.TrimSpace(p.DisplayName)
 	if !validCommonText(p.Email, 3, maxCommonEmailLength) || !strings.Contains(p.Email, "@") ||
 		!validCommonText(p.DisplayName, 0, maxCommonNameLength) || !p.TenantRole.Valid() || !p.Status.Valid() {
 		return p, errors.WithStack(port.ErrInvalid)
+	}
+	if p.Identity.Kind == IdentityDeclare && !p.Identity.Identity.Valid() {
+		return p, errors.Wrap(port.ErrInvalid, "invalid identity")
 	}
 	if !s.bound {
 		ctx = model.EnsureActor(ctx)
@@ -243,6 +289,9 @@ func (s *ProvisioningService) PutTenantMember(ctx context.Context, tenantID mode
 		return p, err
 	}
 	old, err := s.userStore.GetUserByID(ctx, userID)
+	if errors.Is(err, port.ErrNotFound) {
+		return p, s.createTenantMember(ctx, tenantID, userID, p)
+	}
 	if err != nil {
 		return p, errors.WithStack(err)
 	}
@@ -255,14 +304,15 @@ func (s *ProvisioningService) PutTenantMember(ctx context.Context, tenantID mode
 		return p, errors.Wrap(port.ErrNotFound, "user not found")
 	}
 	if old.Email() == p.Email && old.DisplayName() == p.DisplayName &&
-		old.TenantRole() == p.TenantRole && model.DeclaredStatus(old.Active()) == p.Status {
+		old.TenantRole() == p.TenantRole && model.DeclaredStatus(old.Active()) == p.Status &&
+		p.Identity.unchanged(old) {
 		return p, nil
 	}
 	if isPlatformAdmin(old) {
 		return p, errors.WithStack(port.ErrPlatformAdminProtected)
 	}
 	if !strings.EqualFold(old.Email(), p.Email) {
-		if err := s.assertEmailAllowed(&p.Email); err != nil {
+		if err := s.assertMemberEmailAvailable(ctx, tenantID, userID, p.Email); err != nil {
 			return p, err
 		}
 	}
@@ -272,7 +322,41 @@ func (s *ProvisioningService) PutTenantMember(ctx context.Context, tenantID mode
 	user.SetDisplayName(p.DisplayName)
 	user.SetActive(p.Status == model.StatusActive)
 	user.SetTenantRole(p.TenantRole)
+	p.Identity.apply(user)
 	return p, errors.WithStack(s.userStore.SaveUser(ctx, user))
+}
+
+// createTenantMember creates a member provisioned ahead of its first sign-in.
+// Unlinking an account that does not exist yet changes nothing.
+func (s *ProvisioningService) createTenantMember(ctx context.Context, tenantID model.TenantID, userID model.UserID, p CommonMember) error {
+	if err := s.assertMemberEmailAvailable(ctx, tenantID, userID, p.Email); err != nil {
+		return err
+	}
+	user := model.NewUser(tenantID, "", "", p.Email, p.DisplayName, p.Status == model.StatusActive, model.PlatformRoleUser)
+	user.SetID(userID)
+	user.SetTenantRole(p.TenantRole)
+	p.Identity.apply(user)
+	return errors.WithStack(s.userStore.SaveUser(ctx, user))
+}
+
+// assertMemberEmailAvailable refuses an email reserved for the instance
+// administrators, and one another account of the tenant already holds in a
+// different case: an ambiguous email can never attach a sign-in, so
+// provisioning must not create one. Historical ambiguities are left as is.
+func (s *ProvisioningService) assertMemberEmailAvailable(ctx context.Context, tenantID model.TenantID, userID model.UserID, email string) error {
+	if err := s.assertEmailAllowed(&email); err != nil {
+		return err
+	}
+	users, err := s.userStore.FindUsersByEmail(ctx, tenantID, email, 2)
+	if err != nil {
+		return errors.WithStack(err)
+	}
+	for _, u := range users {
+		if u.ID() != userID {
+			return errors.Wrapf(port.ErrAlreadyExists, "email %q is already used by another user", email)
+		}
+	}
+	return nil
 }
 
 // PutOrgMember adds the tenant member to the organization or brings the

@@ -69,12 +69,12 @@ Webhooks have their own variables, see [Webhooks](#webhooks).
 | `PUT` | `/v1/tenants/{tenantID}` | `{"slug","name","status"}` |
 | `PUT` | `/v1/tenants/{tenantID}/domains/{hostname}` | `{"status"}` |
 | `PUT` | `/v1/tenants/{tenantID}/organizations/{orgID}` | `{"slug","name","status"}` |
-| `PUT` | `/v1/tenants/{tenantID}/members/{memberID}` | `{"email","tenant_role","status"}`, optional `"display_name"` |
+| `PUT` | `/v1/tenants/{tenantID}/members/{memberID}` | `{"email","tenant_role","status"}`, optional `"display_name"` and `"identity"` |
 | `PUT` | `/v1/tenants/{tenantID}/organizations/{orgID}/members/{memberID}` | `{"role","status"}` |
 
 Each of these resources is also readable, listable and followed through the
 event feed: see [Reads, conditions and synchronization](#reads-conditions-and-synchronization).
-`capabilities` lists `conditional_writes`, `events` and `reads`.
+`capabilities` lists `conditional_writes`, `events`, `identity` and `reads`.
 
 - **Identifiers** are canonical lowercase UUIDs chosen by the client. Anything
   else is refused with `400 invalid_parameter`. A member is a user: `memberID`
@@ -84,12 +84,13 @@ event feed: see [Reads, conditions and synchronization](#reads-conditions-and-sy
   nothing, writes no audit and keeps its `ETag`, so a client can replay its
   whole desired state.
 - **A `PUT` replaces the representation.** An omitted `display_name` is empty.
-  Fields outside the contract — descriptions, currencies, identities, platform
-  roles, custom roles — are never touched.
+  An omitted `identity` is kept, see [Declared identity](#declared-identity).
+  Fields outside the contract — descriptions, currencies, sign-in links,
+  platform roles, custom roles — are never touched.
 - **Values:** `status` is `active` or `suspended`; `tenant_role` is `owner` or
   `member`; an organization `role` is `owner`, `admin` or `member`. Slugs are
   lower-cased; names are 1 to 200 characters without control characters.
-- **Bodies** are one JSON object of strings with `Content-Type: application/json`
+- **Bodies** are one JSON object of strings (except the member `identity`) with `Content-Type: application/json`
   (otherwise `415 unsupported_media_type`), at most 1 MiB. An unknown field, a
   non-string value or invalid Unicode is `400 invalid_json`; a missing required
   field or a `null` is `400 invalid_representation`. The `PUT`s accept no
@@ -113,27 +114,85 @@ by another tenant is a `409`.
 
 ### Members
 
-`PUT …/members/{memberID}` updates a user of the tenant: email, display name,
-tenant role and status. `suspended` deactivates the account. The authentication
-identity and the platform roles are never modified.
+`PUT …/members/{memberID}` creates the member or updates it: email, display
+name, tenant role, status and declared identity. `suspended` deactivates the
+account. The platform roles are never modified.
 
-**A member is provisioned once they have signed in.** A `PUT` on an unknown
-user answers `404`: an account created without an identity would block that
-person's first sign-in on its email. The control plane finds the account with
-`GET /v1/xolo/tenants/{tenantID}/users?provider=&subject=`, or lets it sign in
-inactive (`XOLO_HTTP_AUTHN_ACTIVE_BY_DEFAULT=false`) and picks it up with
-`GET /v1/xolo/tenants/{tenantID}/users?active=false`.
+**A member can be provisioned ahead of their first sign-in.** A `PUT` on an
+unknown identifier creates the account with the platform `user` role, linked to
+no sign-in yet: its first sign-in links it, through its declared identity or a
+verified email (see below). An email that another account of the tenant already
+holds, whatever its case, is refused with `409 conflict`. An API token keeps
+designating its owner, linked or not.
 
 `tenant_role` declares the tenant owners; it grants no platform privilege. A
 tenant always keeps one active owner once it has one: demoting or suspending the
 last one is refused with `409 last_owner`.
 
 **Platform administrators are protected.** Any `PUT` that would change an
-account holding the platform `admin` role — email, display name, status or
-tenant role — is refused with `409 platform_admin_protected`; an identical `PUT`
-still answers `200`. The same protection applies to
-`PUT /v1/xolo/tenants/{tenantID}/users`. Provisioning never acts on
-platform-wide privileges.
+account holding the platform `admin` role — email, display name, status, tenant
+role or identity — is refused with `409 platform_admin_protected`; an identical
+`PUT` still answers `200`. The same protection applies to
+`PUT /v1/xolo/tenants/{tenantID}/users`. A sign-in never attaches a platform
+administrator to a new identity either, neither through a declaration nor
+through an email. Provisioning never acts on platform-wide privileges.
+
+### Declared identity
+
+The optional `identity` field designates the sign-in of a member:
+
+```json
+{"email":"jane@corp.tld","tenant_role":"member","status":"active",
+ "identity":{"issuer":"https://id.corp.tld/realms/main","subject":"6f0c2a1e"}}
+```
+
+| `identity` | Effect |
+|---|---|
+| absent | The declared identity and the sign-in link are kept: a client unaware of the field never detaches anybody. |
+| `null` | The declared identity is removed and the sign-in link detached. The member signs in again only through a new declaration or a verified email. |
+| object | The identity is declared. A member already linked to another sign-in is refused with `409 conflict`: send `null` first. |
+
+- `issuer` is an exact HTTPS URL of at most 2048 bytes, with a host and without
+  userinfo, query, fragment, surrounding whitespace or control characters.
+  `subject` is an exact UTF-8 string of 1 to 255 bytes without control
+  characters. Nothing is normalized: case, spaces and a trailing slash are
+  significant. Any other value — `{}`, a missing, empty or extra field, a
+  non-string — is `400 invalid_representation`. Xolo calls no issuer.
+- An identity designates at most one member **per tenant**, declared or already
+  linked: declaring an identity another member holds is `409 conflict`. The same
+  identity can own a different member in each tenant.
+- `GET`, lists and the `ETag` include the declared identity. Events carry keys
+  and ETags only, never the identity.
+
+**At sign-in**, Xolo resolves the account in this order:
+
+1. the account already linked to that sign-in;
+2. the member whose declared identity is the issuer and subject the identity
+   provider proved;
+3. the only account of the tenant holding that email, compared regardless of
+   case, when the identity provider asserts it verified (`email_verified`, or
+   `verified_email` for Google) and the account is linked to no sign-in and
+   declares no identity;
+4. otherwise a new account, under `XOLO_HTTP_AUTHN_AUTO_CREATE_USERS`, the
+   default administrators and pending invitations, as before.
+
+A sign-in matches a declared identity only when its provider proves the issuer:
+named OIDC providers and Gitea with a discovery document (the discovered
+`issuer`), Google (`https://accounts.google.com`), and the token authenticators
+of these providers. GitHub OAuth and a Gitea without discovery prove none: their
+members sign in through a verified email.
+
+Nothing is ever merged nor reassigned. Several accounts whose emails differ
+only by case refuse the attachment, and are left as they are; a conflicting
+identity never falls back on the email. A refused sign-in answers `409` and
+records an `auth.login.failed` event. A request of an already linked account
+only reads it: no transaction, no lock. Linking a sign-in changes no projection
+and publishes no event.
+
+Known limits: the default administrators (`XOLO_HTTP_AUTHN_DEFAULT_ADMINS`) are
+recognized by the email the identity provider returns, verified or not; and each
+sign-in still copies the email and display name the identity provider returns
+onto the account.
 
 ### Memberships
 
@@ -457,7 +516,7 @@ Every error uses the same envelope:
 | `invalid_cursor` | 400 | Cursor altered, empty, or issued for another collection, limit or feed |
 | `invalid_precondition` | 400 | Malformed `If-Match`, or `If-None-Match` |
 | `invalid_json` | 400 | Common route: malformed JSON, unknown field, non-string value, invalid Unicode |
-| `invalid_representation` | 400 | Common route: missing required field or `null` |
+| `invalid_representation` | 400 | Common route: missing required field, `null`, or invalid member `identity` |
 | `invalid_hostname` | 400 | Hostname not in lower case, with a port, an IP literal or an invalid label |
 | `invalid_request` | 400 | `/v1/xolo`: malformed body, unknown field, invalid query parameter |
 | `client_certificate_rejected` | 403 | Client certificate or URI is not authorized |
@@ -465,7 +524,7 @@ Every error uses the same envelope:
 | `parent_not_found` | 404 | The tenant, organization or member a resource hangs from does not exist in that scope |
 | `method_not_allowed` | 405 | Known resource, wrong method |
 | `unsupported_media_type` | 415 | Common route without `Content-Type: application/json` |
-| `conflict` | 409 | Identifier or hostname owned by another tenant, slug already used, or a business invariant |
+| `conflict` | 409 | Identifier or hostname owned by another tenant, slug already used, identity or email held by another member, or a business invariant |
 | `last_owner` | 409 | The change would leave a tenant or an organization without an active owner |
 | `platform_admin_protected` | 409 | The change targets a platform administrator |
 | `webhook_capacity` | 409 | The tenant already holds the maximum number of webhook subscriptions |
@@ -482,9 +541,12 @@ server-side.
 ## Invariants
 
 - Provisioning **never** grants or modifies platform-wide privileges. A user
-  created through `PUT /v1/xolo/tenants/{tenantID}/users` receives exactly the
-  `user` platform role, platform roles are never modified, and a platform
-  administrator is never modified at all.
+  created through `PUT /v1/xolo/tenants/{tenantID}/users` or a member `PUT`
+  receives exactly the `user` platform role, platform roles are never modified,
+  and a platform administrator is never modified at all.
+- An identity designates at most one account per tenant. A sign-in never merges
+  accounts, never relinks a linked one and never attaches a platform
+  administrator.
 - The addresses listed in `XOLO_HTTP_AUTHN_DEFAULT_ADMINS` are reserved: writing
   one of them on a user is refused with `422`. The authentication bridge grants
   the platform admin role to whoever signs in with such an address, so accepting
@@ -514,7 +576,7 @@ unchanged: an existing resource is addressed by its current UUID.
 | `PATCH /v1/tenants/{tenantID}` `{name, description, active}` | `PATCH /v1/xolo/tenants/{tenantID}` (same body), or `PUT /v1/tenants/{tenantID}` `{slug, name, status}` |
 | `DELETE /v1/tenants/{tenantID}` | Removed: `PUT /v1/tenants/{tenantID}` with `"status": "suspended"` |
 | `GET /v1/tenants/{tenantID}/organizations[/{orgID}]` | `GET /v1/xolo/tenants/{tenantID}/organizations[/{orgID}]` |
-| `POST /v1/tenants/{tenantID}/organizations` `{slug, name, description, currency, active, owner}` | `PUT /v1/tenants/{tenantID}/organizations/{orgID}` `{slug, name, status}`; `description` and `currency` through `PATCH /v1/xolo/…/organizations/{orgID}`; the owner through `PUT …/organizations/{orgID}/members/{userID}` `{"role": "owner", "status": "active"}` once they have signed in |
+| `POST /v1/tenants/{tenantID}/organizations` `{slug, name, description, currency, active, owner}` | `PUT /v1/tenants/{tenantID}/organizations/{orgID}` `{slug, name, status}`; `description` and `currency` through `PATCH /v1/xolo/…/organizations/{orgID}`; the owner through `PUT …/organizations/{orgID}/members/{userID}` `{"role": "owner", "status": "active"}`, once declared with `PUT …/members/{userID}` |
 | `PATCH /v1/tenants/{tenantID}/organizations/{orgID}` | `PATCH /v1/xolo/tenants/{tenantID}/organizations/{orgID}` (same body) |
 | `DELETE /v1/tenants/{tenantID}/organizations/{orgID}` | Removed: `PUT …/organizations/{orgID}` with `"status": "suspended"` |
 | `GET …/organizations/{orgID}/members[/{membershipID}]` | `GET /v1/xolo/…/organizations/{orgID}/members[/{membershipID}]` |
@@ -632,8 +694,5 @@ In production, use a managed certificate authority (Vault, cert-manager, interna
 
 - Providers, LLM models, virtual models, middlewares, applications and their tokens, quotas, alerts and event settings: they remain managed through the web UI.
 - Per-certificate scopes: any authorized URI administers the whole instance.
-- Creating a member ahead of their first sign-in: a member is provisioned once
-  they have signed in. The [invitation](../organisation/invitation/invitation.md)
-  mechanism remains the email-based path, through the web UI.
 - Deleting tenants, domains, organizations or memberships: suspend them instead.
 - No OpenAPI specification is generated yet.

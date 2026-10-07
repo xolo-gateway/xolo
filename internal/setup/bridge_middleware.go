@@ -25,10 +25,16 @@ func getBridgeMiddlewareFromConfig(ctx context.Context, conf *config.Config) (fu
 		return nil, errors.WithStack(err)
 	}
 
+	transactions, err := getProvisioningTransactionFromConfig(ctx, conf)
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+
 	bridgeMiddleware := bridge.Middleware(userStore, inviteStore, emitter, bridge.Options{
 		ActiveByDefault: conf.HTTP.Authn.ActiveByDefault,
 		AutoCreateUsers: conf.HTTP.Authn.AutoCreateUsers,
 		DefaultAdmins:   conf.HTTP.Authn.DefaultAdmins,
+		Transactions:    transactions,
 	})
 
 	return bridgeMiddleware, nil

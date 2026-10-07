@@ -11,8 +11,12 @@ type CacheableUser struct {
 	model.User
 }
 
-// CacheKeys implements [Cacheable].
+// CacheKeys implements [Cacheable]. An account no sign-in is linked to has no
+// identity key: every such account of a tenant would share it.
 func (u *CacheableUser) CacheKeys() []string {
+	if u.Provider() == "" || u.Subject() == "" {
+		return []string{string(u.ID())}
+	}
 	return []string{
 		getUserProviderSubjectCacheKey(u.TenantID(), u.Provider(), u.Subject()),
 		string(u.ID()),

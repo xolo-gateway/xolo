@@ -26,6 +26,17 @@ func isPostgres(db *gorm.DB) bool {
 	return db.Dialector.Name() == dialectPostgres
 }
 
+// outsidePrintableASCII returns a predicate matching the values of column
+// holding a character other than printable ASCII. SQL LOWER and TRIM agree
+// with Go's case folding and space trimming only on printable ASCII; the
+// other values must be compared in Go.
+func outsidePrintableASCII(db *gorm.DB, column string) string {
+	if isPostgres(db) {
+		return column + " ~ '[^ -~]'"
+	}
+	return column + " GLOB '*[^ -~]*'"
+}
+
 // PostgreSQL SQLSTATE codes worth retrying: the transaction can succeed on a
 // second attempt without any change to the statements it runs.
 var retryablePGCodes = map[string]struct{}{

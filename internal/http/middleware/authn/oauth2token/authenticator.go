@@ -66,6 +66,8 @@ type introspectionResponse struct {
 	PreferredUsername string          `json:"preferred_username"`
 	Name              string          `json:"name"`
 	Email             string          `json:"email"`
+	EmailVerified     authn.BoolClaim `json:"email_verified"`
+	Issuer            string          `json:"iss"`
 	Scope             string          `json:"scope"`
 	Audience          json.RawMessage `json:"aud"`
 	Expiry            int64           `json:"exp"`
@@ -163,9 +165,11 @@ func (h *Handler) resolveViaUserInfo(ctx context.Context, token string, provider
 	}
 
 	user := &authn.User{
-		Provider: provider.ID,
-		Subject:  info.Subject,
-		Email:    info.Email,
+		Provider:      provider.ID,
+		Issuer:        provider.Issuer,
+		Subject:       info.Subject,
+		Email:         info.Email,
+		EmailVerified: bool(info.EmailVerified),
 	}
 	switch {
 	case info.PreferredUsername != "":
@@ -239,9 +243,15 @@ func (h *Handler) introspect(ctx context.Context, token string, provider Provide
 	}
 
 	user := &authn.User{
-		Provider: provider.ID,
-		Subject:  subject,
-		Email:    out.Email,
+		Provider:      provider.ID,
+		Subject:       subject,
+		Email:         out.Email,
+		EmailVerified: bool(out.EmailVerified),
+	}
+	// A username is no OIDC subject, and a token another issuer minted proves
+	// nothing about the configured one.
+	if out.Subject != "" && (out.Issuer == "" || out.Issuer == provider.Issuer) {
+		user.Issuer = provider.Issuer
 	}
 	switch {
 	case out.PreferredUsername != "":
@@ -271,10 +281,11 @@ func (h *Handler) introspect(ctx context.Context, token string, provider Provide
 
 // userInfoResponse is the subset of OIDC UserInfo fields we consume.
 type userInfoResponse struct {
-	Subject           string `json:"sub"`
-	Email             string `json:"email"`
-	PreferredUsername string `json:"preferred_username"`
-	Name              string `json:"name"`
+	Subject           string          `json:"sub"`
+	Email             string          `json:"email"`
+	EmailVerified     authn.BoolClaim `json:"email_verified"`
+	PreferredUsername string          `json:"preferred_username"`
+	Name              string          `json:"name"`
 }
 
 // fetchUserInfo calls the OIDC UserInfo endpoint with the access token as a
@@ -327,6 +338,7 @@ func (h *Handler) enrichFromUserInfo(ctx context.Context, token string, provider
 
 	if user.Email == "" {
 		user.Email = info.Email
+		user.EmailVerified = bool(info.EmailVerified)
 	}
 	if user.DisplayName == "" {
 		switch {

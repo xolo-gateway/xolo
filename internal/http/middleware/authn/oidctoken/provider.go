@@ -1,13 +1,16 @@
 package oidctoken
 
 type Provider struct {
-	ID          string
-	Label      string
-	Icon       string
+	ID           string
+	Label        string
+	Icon         string
 	DiscoveryURL string
-	Issuer      string
-	JWKSURL     string
-	CookieNames []string
+	Issuer       string
+	JWKSURL      string
+	// ProvesIssuer tells that a token validated against Issuer can match an
+	// identity declared by provisioning.
+	ProvesIssuer bool
+	CookieNames  []string
 }
 
 type JWKS struct {

@@ -41,6 +41,8 @@ type ProvisioningUserStore interface {
 	FindOrCreateUser(ctx context.Context, tenantID model.TenantID, provider, subject string) (model.User, error)
 	GetUserByID(ctx context.Context, userID model.UserID) (model.User, error)
 	GetUserByIdentity(ctx context.Context, tenantID model.TenantID, provider, subject string) (model.User, error)
+	GetUserByDeclaredIdentity(ctx context.Context, tenantID model.TenantID, identity model.Identity) (model.User, error)
+	FindUsersByEmail(ctx context.Context, tenantID model.TenantID, email string, limit int) ([]model.User, error)
 	QueryUsers(ctx context.Context, opts QueryUsersOptions) ([]model.User, error)
 	CountUsers(ctx context.Context, opts QueryUsersOptions) (int64, error)
 	SaveUser(ctx context.Context, user model.User) error

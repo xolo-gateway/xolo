@@ -38,15 +38,10 @@ var getProvisioningServiceFromConfig = createFromConfigOnce(func(ctx context.Con
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
-	emitter, err := getEventEmitterFromConfig(ctx, conf)
+	transactions, err := getProvisioningTransactionFromConfig(ctx, conf)
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
-	var transactions port.ProvisioningTransaction = backend
-	if cached, ok := userStore.(*cache.UserStore); ok {
-		transactions = cache.NewProvisioningTransaction(transactions, cached)
-	}
-	transactions = events.NewProvisioningTransaction(transactions, emitter)
 
 	// The default administrators are granted the platform admin role by the
 	// authentication bridge on sign-in: the API must not be able to hand one of
@@ -57,4 +52,27 @@ var getProvisioningServiceFromConfig = createFromConfigOnce(func(ctx context.Con
 		service.WithReservedEmails(conf.HTTP.Authn.DefaultAdmins...),
 		service.WithMultiTenant(conf.Multitenancy.Enabled),
 	), nil
+})
+
+// getProvisioningTransactionFromConfig opens the transactions shared by the
+// provisioning service and the sign-in resolution: database-bound stores, with
+// cache invalidation and local events after commit.
+var getProvisioningTransactionFromConfig = createFromConfigOnce(func(ctx context.Context, conf *config.Config) (port.ProvisioningTransaction, error) {
+	userStore, err := getUserStoreFromConfig(ctx, conf)
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+	backend, err := getGormStoreFromConfig(ctx, conf)
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+	emitter, err := getEventEmitterFromConfig(ctx, conf)
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+	var transactions port.ProvisioningTransaction = backend
+	if cached, ok := userStore.(*cache.UserStore); ok {
+		transactions = cache.NewProvisioningTransaction(transactions, cached)
+	}
+	return events.NewProvisioningTransaction(transactions, emitter), nil
 })

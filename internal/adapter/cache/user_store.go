@@ -100,6 +100,18 @@ func (s *UserStore) GetUserByIdentity(ctx context.Context, tenantID model.Tenant
 	return user, nil
 }
 
+// GetUserByDeclaredIdentity implements [port.UserStore]. Not cached: it only
+// runs for a sign-in no account is linked to yet.
+func (s *UserStore) GetUserByDeclaredIdentity(ctx context.Context, tenantID model.TenantID, identity model.Identity) (model.User, error) {
+	return s.backend.GetUserByDeclaredIdentity(ctx, tenantID, identity)
+}
+
+// FindUsersByEmail implements [port.UserStore]. Not cached, like
+// GetUserByDeclaredIdentity.
+func (s *UserStore) FindUsersByEmail(ctx context.Context, tenantID model.TenantID, email string, limit int) ([]model.User, error) {
+	return s.backend.FindUsersByEmail(ctx, tenantID, email, limit)
+}
+
 // GetUserAuthTokens implements [port.UserStore].
 func (s *UserStore) GetUserAuthTokens(ctx context.Context, userID model.UserID) ([]model.AuthToken, error) {
 	return s.backend.GetUserAuthTokens(ctx, userID)

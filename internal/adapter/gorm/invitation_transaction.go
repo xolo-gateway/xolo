@@ -28,6 +28,7 @@ func (s *Store) WithInvitationTransaction(ctx context.Context, fn func(port.Invi
 				getDatabase:      func(context.Context) (*gorm.DB, error) { return tx, nil },
 				transactionBound: true,
 				recorder:         recorder,
+				identityIssuers:  s.identityIssuers,
 			}
 			if err := fn(&invitationTx{Store: bound, db: tx}); err != nil {
 				return err

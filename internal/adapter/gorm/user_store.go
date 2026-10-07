@@ -35,6 +35,9 @@ func fromAuthToken(t model.AuthToken) *AuthToken {
 
 // FindOrCreateUser implements port.UserStore.
 func (s *Store) FindOrCreateUser(ctx context.Context, tenantID model.TenantID, provider, subject string) (model.User, error) {
+	if provider == "" || subject == "" {
+		return nil, errors.WithStack(port.ErrInvalid)
+	}
 	var user model.User
 	// The identifier is chosen first so that a creation is recorded; finding
 	// an existing user changes nothing.
@@ -45,15 +48,26 @@ func (s *Store) FindOrCreateUser(ctx context.Context, tenantID model.TenantID, p
 		err := db.Where("tenant_id = ? AND provider = ? AND subject = ?", string(tenantID), provider, subject).
 			Preload("Roles").
 			Preload("Preferences").
-			Attrs(&User{
-				ID:       string(id),
-				TenantID: string(tenantID),
-				Provider: provider,
-				Subject:  subject,
-				Active:   true,
-			}).
-			FirstOrCreate(&u).Error
-		if err != nil {
+			First(&u).Error
+		if err == nil {
+			user = &wrappedUser{&u}
+			return nil
+		}
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return errors.WithStack(err)
+		}
+
+		u = User{
+			ID:       string(id),
+			TenantID: string(tenantID),
+			Provider: provider,
+			Subject:  subject,
+			Active:   true,
+		}
+		if err := s.assertIdentityAvailable(db, &u); err != nil {
+			return err
+		}
+		if err := db.Omit(clause.Associations).Create(&u).Error; err != nil {
 			return errors.WithStack(err)
 		}
 
@@ -89,6 +103,12 @@ func (s *Store) GetUserByID(ctx context.Context, userID model.UserID) (model.Use
 
 // GetUserByIdentity implements port.UserStore.
 func (s *Store) GetUserByIdentity(ctx context.Context, tenantID model.TenantID, provider, subject string) (model.User, error) {
+	// An account no sign-in is linked to has neither: it must never answer
+	// for an identity.
+	if provider == "" || subject == "" {
+		return nil, errors.WithStack(port.ErrNotFound)
+	}
+
 	var user User
 
 	err := s.withRetry(ctx, false, func(ctx context.Context, db *gorm.DB) error {
@@ -110,6 +130,145 @@ func (s *Store) GetUserByIdentity(ctx context.Context, tenantID model.TenantID, 
 	return &wrappedUser{&user}, nil
 }
 
+// GetUserByDeclaredIdentity implements port.UserStore.
+func (s *Store) GetUserByDeclaredIdentity(ctx context.Context, tenantID model.TenantID, identity model.Identity) (model.User, error) {
+	var user model.User
+	err := s.withRetry(ctx, false, func(ctx context.Context, db *gorm.DB) error {
+		var err error
+		user, err = getUserByDeclaredIdentity(db, tenantID, identity)
+		return err
+	})
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+	return user, nil
+}
+
+func getUserByDeclaredIdentity(db *gorm.DB, tenantID model.TenantID, identity model.Identity) (model.User, error) {
+	if identity.Issuer == "" || identity.Subject == "" {
+		return nil, errors.WithStack(port.ErrNotFound)
+	}
+	var user User
+	err := db.Preload("Roles").Preload("Preferences").
+		Where("tenant_id = ? AND identity_issuer = ? AND identity_subject = ?", string(tenantID), identity.Issuer, identity.Subject).
+		First(&user).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, errors.WithStack(port.ErrNotFound)
+	}
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+	return &wrappedUser{&user}, nil
+}
+
+// FindUsersByEmail implements port.UserStore.
+func (s *Store) FindUsersByEmail(ctx context.Context, tenantID model.TenantID, email string, limit int) ([]model.User, error) {
+	var users []model.User
+	err := s.withRetry(ctx, false, func(ctx context.Context, db *gorm.DB) error {
+		var err error
+		users, err = findUsersByEmail(db, tenantID, email, limit)
+		return err
+	})
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+	return users, nil
+}
+
+// findUsersByEmail compares normalized emails without rewriting the stored
+// ones. SQL narrows the candidates, Go decides: printable ASCII values are
+// matched by LOWER(TRIM()), every other value is normalized in Go.
+func findUsersByEmail(db *gorm.DB, tenantID model.TenantID, email string, limit int) ([]model.User, error) {
+	email = model.NormalizeEmail(email)
+	if email == "" || limit <= 0 {
+		return nil, nil
+	}
+	other := outsidePrintableASCII(db, "email")
+	query := db.Preload("Roles").Preload("Preferences").
+		Where("tenant_id = ? AND email <> ''", string(tenantID))
+	if isPrintableASCII(email) {
+		query = query.Where("(LOWER(TRIM(email)) = ? OR "+other+")", email)
+	} else {
+		query = query.Where(other)
+	}
+	var rows []User
+	if err := query.Order("id").Find(&rows).Error; err != nil {
+		return nil, errors.WithStack(err)
+	}
+	var users []model.User
+	for i := range rows {
+		if model.NormalizeEmail(rows[i].Email) != email {
+			continue
+		}
+		users = append(users, &wrappedUser{&rows[i]})
+		if len(users) == limit {
+			break
+		}
+	}
+	return users, nil
+}
+
+func isPrintableASCII(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if s[i] < 0x20 || s[i] > 0x7e {
+			return false
+		}
+	}
+	return true
+}
+
+// assertIdentityAvailable keeps one identity designating at most one account
+// of a tenant, through a declaration or a sign-in link alike: a link is the
+// declared identity when its provider proves the declared issuer. A declared
+// identity must match the link of its own account. Only a change of link or
+// declaration is checked, so accounts written before this rule keep working.
+func (s *Store) assertIdentityAvailable(db *gorm.DB, u *User) error {
+	linked := u.Provider != "" && u.Subject != ""
+	if !linked && u.IdentityIssuer == "" {
+		return nil
+	}
+	issuers := s.issuers()
+	linkIssuer, proven := "", false
+	if linked {
+		linkIssuer, proven = issuers.Issuer(u.Provider)
+	}
+	if u.IdentityIssuer != "" && linked && (!proven || linkIssuer != u.IdentityIssuer || u.Subject != u.IdentitySubject) {
+		return errors.Wrap(port.ErrAlreadyExists, "the declared identity differs from the sign-in linked to the user")
+	}
+	issuer, subject := u.IdentityIssuer, u.IdentitySubject
+	if issuer == "" && proven {
+		issuer, subject = linkIssuer, u.Subject
+	}
+	if issuer == "" {
+		return nil
+	}
+
+	var stored []User
+	if err := db.Select("provider", "subject", "identity_issuer", "identity_subject").
+		Where("id = ?", u.ID).Limit(1).Find(&stored).Error; err != nil {
+		return errors.WithStack(err)
+	}
+	if len(stored) == 1 && stored[0].Provider == u.Provider && stored[0].Subject == u.Subject &&
+		stored[0].IdentityIssuer == u.IdentityIssuer && stored[0].IdentitySubject == u.IdentitySubject {
+		return nil
+	}
+
+	where, args := "identity_issuer = ? AND identity_subject = ?", []any{issuer, subject}
+	if providers := issuers.Providers(issuer); len(providers) != 0 {
+		where = "(" + where + ") OR (provider IN ? AND subject = ?)"
+		args = append(args, providers, subject)
+	}
+	var others []string
+	if err := db.Model(&User{}).Where("tenant_id = ? AND id <> ?", u.TenantID, u.ID).
+		Where("("+where+")", args...).Limit(1).Pluck("id", &others).Error; err != nil {
+		return errors.WithStack(err)
+	}
+	if len(others) != 0 {
+		return errors.Wrap(port.ErrAlreadyExists, "the identity is already bound to another user")
+	}
+	return nil
+}
+
 // SaveUser implements port.UserStore.
 func (s *Store) SaveUser(ctx context.Context, user model.User) error {
 	if _, err := model.ParseUserID(string(user.ID())); err != nil {
@@ -118,11 +277,23 @@ func (s *Store) SaveUser(ctx context.Context, user model.User) error {
 	err := s.recorded(ctx, tracking("user", string(user.ID())), func(ctx context.Context, db *gorm.DB) error {
 		gormUser := fromUser(user)
 
+		if err := s.assertIdentityAvailable(db, gormUser); err != nil {
+			return err
+		}
+
 		// Use Clauses with OnConflict to handle upsert
 		if err := db.Clauses(clause.OnConflict{
 			Columns:   []clause.Column{{Name: "id"}},
 			UpdateAll: true,
 		}).Omit("Roles", "Preferences").Create(gormUser).Error; err != nil {
+			// Matched on the index alone (SQLite names its column, PostgreSQL
+			// the index): the key values reported may contain any fragment.
+			if isUniqueViolation(err, "users.identity_issuer") || isUniqueViolation(err, declaredIdentityIndex) {
+				return errors.Wrap(port.ErrAlreadyExists, "the identity is already declared for another user")
+			}
+			if isUniqueViolation(err, "users.subject") || isUniqueViolation(err, "idx_users_tenant_identity") {
+				return errors.Wrap(port.ErrAlreadyExists, "the sign-in is already linked to another user")
+			}
 			if isUniqueViolation(err, "users", "email") {
 				return errors.Wrapf(port.ErrAlreadyExists, "email %q is already used by another user", gormUser.Email)
 			}

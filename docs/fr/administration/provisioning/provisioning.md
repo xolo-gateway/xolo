@@ -77,12 +77,12 @@ N'exposez pas ce port sur un réseau public : réservez-le au réseau d'administ
 | `PUT` | `/v1/tenants/{tenantID}` | `{"slug","name","status"}` |
 | `PUT` | `/v1/tenants/{tenantID}/domains/{hostname}` | `{"status"}` |
 | `PUT` | `/v1/tenants/{tenantID}/organizations/{orgID}` | `{"slug","name","status"}` |
-| `PUT` | `/v1/tenants/{tenantID}/members/{memberID}` | `{"email","tenant_role","status"}`, `"display_name"` facultatif |
+| `PUT` | `/v1/tenants/{tenantID}/members/{memberID}` | `{"email","tenant_role","status"}`, `"display_name"` et `"identity"` facultatifs |
 | `PUT` | `/v1/tenants/{tenantID}/organizations/{orgID}/members/{memberID}` | `{"role","status"}` |
 
 Chacune de ces ressources peut aussi être lue, listée et suivie via le flux
 d'événements : voir [Lectures, conditions et synchronisation](#lectures-conditions-et-synchronisation).
-`capabilities` liste `conditional_writes`, `events` et `reads`.
+`capabilities` liste `conditional_writes`, `events`, `identity` et `reads`.
 
 - **Les identifiants** sont des UUID canoniques en minuscules choisis par le
   client. Toute autre valeur est refusée avec `400 invalid_parameter`. Un membre
@@ -91,14 +91,15 @@ d'événements : voir [Lectures, conditions et synchronisation](#lectures-condit
   enregistrée et son `ETag`. Un `PUT` identique à l'état enregistré ne change
   rien, n'écrit pas d'audit et conserve son `ETag` : un client peut rejouer tout
   son état souhaité.
-- **Un `PUT` remplace la représentation.** Un `display_name` omis est vide. Les
-  champs hors contrat — descriptions, devises, identités, rôles de plateforme,
-  rôles personnalisés — ne sont jamais modifiés.
+- **Un `PUT` remplace la représentation.** Un `display_name` omis est vide. Une
+  `identity` omise est conservée, voir [Identité déclarée](#identite-declaree).
+  Les champs hors contrat — descriptions, devises, liens de connexion, rôles de
+  plateforme, rôles personnalisés — ne sont jamais modifiés.
 - **Valeurs :** `status` vaut `active` ou `suspended` ; `tenant_role` vaut
   `owner` ou `member` ; le `role` d'une organisation vaut `owner`, `admin` ou
   `member`. Les slugs sont mis en minuscules ; les noms font 1 à 200 caractères,
   sans caractère de contrôle.
-- **Les corps** sont un objet JSON de chaînes avec
+- **Les corps** sont un objet JSON de chaînes (hormis l'`identity` d'un membre) avec
   `Content-Type: application/json` (sinon `415 unsupported_media_type`), de
   1 Mio au plus. Un champ inconnu, une valeur non textuelle ou un Unicode
   invalide donne `400 invalid_json` ; un champ requis absent ou `null` donne
@@ -124,27 +125,87 @@ utilisé par un autre tenant donne `409`.
 
 ### Membres
 
-`PUT …/members/{memberID}` met à jour un utilisateur du tenant : email, nom
-affiché, rôle de tenant et statut. `suspended` désactive le compte. L'identité
-d'authentification et les rôles de plateforme ne sont jamais modifiés.
+`PUT …/members/{memberID}` crée le membre ou le met à jour : email, nom affiché,
+rôle de tenant, statut et identité déclarée. `suspended` désactive le compte.
+Les rôles de plateforme ne sont jamais modifiés.
 
-**Un membre se provisionne une fois qu'il s'est connecté.** Un `PUT` sur un
-utilisateur inconnu répond `404` : un compte créé sans identité bloquerait la
-première connexion de la personne sur son email. Le plan de contrôle retrouve le
-compte avec `GET /v1/xolo/tenants/{tenantID}/users?provider=&subject=`, ou le
-laisse se créer inactif à la connexion (`XOLO_HTTP_AUTHN_ACTIVE_BY_DEFAULT=false`)
-puis le récupère avec `GET /v1/xolo/tenants/{tenantID}/users?active=false`.
+**Un membre peut être provisionné avant sa première connexion.** Un `PUT` sur un
+identifiant inconnu crée le compte avec le rôle de plateforme `user`, lié à
+aucune connexion : sa première connexion le lie, par son identité déclarée ou un
+email vérifié (voir ci-dessous). Un email qu'un autre compte du tenant détient
+déjà, quelle que soit sa casse, est refusé avec `409 conflict`. Un jeton d'API
+continue de désigner son propriétaire, lié ou non.
 
 `tenant_role` déclare les propriétaires du tenant ; il n'accorde aucun privilège
 de plateforme. Un tenant garde un propriétaire actif dès qu'il en a un :
 rétrograder ou suspendre le dernier est refusé avec `409 last_owner`.
 
 **Les administrateurs de plateforme sont protégés.** Tout `PUT` qui modifierait
-un compte portant le rôle de plateforme `admin` — email, nom affiché, statut ou
-rôle de tenant — est refusé avec `409 platform_admin_protected` ; un `PUT`
-identique répond toujours `200`. La même protection s'applique à
-`PUT /v1/xolo/tenants/{tenantID}/users`. Le provisioning n'agit jamais sur les
-privilèges de plateforme.
+un compte portant le rôle de plateforme `admin` — email, nom affiché, statut,
+rôle de tenant ou identité — est refusé avec `409 platform_admin_protected` ; un
+`PUT` identique répond toujours `200`. La même protection s'applique à
+`PUT /v1/xolo/tenants/{tenantID}/users`. Une connexion ne rattache pas non plus
+un administrateur de plateforme à une nouvelle identité, ni par une déclaration,
+ni par un email. Le provisioning n'agit jamais sur les privilèges de plateforme.
+
+### Identité déclarée
+
+Le champ facultatif `identity` désigne la connexion d'un membre :
+
+```json
+{"email":"jane@corp.tld","tenant_role":"member","status":"active",
+ "identity":{"issuer":"https://id.corp.tld/realms/main","subject":"6f0c2a1e"}}
+```
+
+| `identity` | Effet |
+| --- | --- |
+| absente | L'identité déclarée et le lien de connexion sont conservés : un client qui ignore le champ ne détache jamais personne. |
+| `null` | L'identité déclarée est retirée et le lien de connexion détaché. Le membre ne se reconnecte que par une nouvelle déclaration ou un email vérifié. |
+| objet | L'identité est déclarée. Un membre déjà lié à une autre connexion est refusé avec `409 conflict` : envoyez d'abord `null`. |
+
+- `issuer` est une URL HTTPS exacte de 2048 octets au plus, avec un hôte, sans
+  userinfo, requête, fragment, espaces de bord ni caractère de contrôle.
+  `subject` est une chaîne UTF-8 exacte de 1 à 255 octets sans caractère de
+  contrôle. Rien n'est normalisé : casse, espaces et barre oblique finale
+  comptent. Toute autre valeur — `{}`, un champ manquant, vide ou en trop, une
+  valeur non textuelle — donne `400 invalid_representation`. Xolo n'appelle
+  aucun émetteur.
+- Une identité désigne au plus un membre **par tenant**, déclarée ou déjà liée :
+  déclarer une identité qu'un autre membre détient donne `409 conflict`. La même
+  identité peut posséder un membre distinct dans chaque tenant.
+- `GET`, listes et `ETag` incluent l'identité déclarée. Les événements ne portent
+  que des clés et des ETags, jamais l'identité.
+
+**À la connexion**, Xolo résout le compte dans cet ordre :
+
+1. le compte déjà lié à cette connexion ;
+2. le membre dont l'identité déclarée est l'émetteur et le sujet prouvés par le
+   fournisseur d'identité ;
+3. le seul compte du tenant portant cet email, comparé sans tenir compte de la
+   casse, quand le fournisseur d'identité l'affirme vérifié (`email_verified`,
+   ou `verified_email` pour Google) et que le compte n'est lié à aucune
+   connexion et ne déclare aucune identité ;
+4. sinon un nouveau compte, selon `XOLO_HTTP_AUTHN_AUTO_CREATE_USERS`, les
+   administrateurs par défaut et les invitations en attente, comme avant.
+
+Une connexion ne correspond à une identité déclarée que si son fournisseur prouve
+l'émetteur : fournisseurs OIDC nommés et Gitea avec document de découverte
+(l'`issuer` découvert), Google (`https://accounts.google.com`), et les
+authentificateurs de jetons de ces fournisseurs. GitHub OAuth et un Gitea sans
+découverte n'en prouvent aucun : leurs membres se connectent par un email
+vérifié.
+
+Rien n'est jamais fusionné ni réattribué. Plusieurs comptes dont les emails ne
+diffèrent que par la casse refusent le rattachement et restent tels quels ; une
+identité en conflit ne se rabat jamais sur l'email. Une connexion refusée répond
+`409` et enregistre un événement `auth.login.failed`. Une requête d'un compte
+déjà lié ne fait que le lire : ni transaction, ni verrou. Lier une connexion ne
+modifie aucune projection et ne publie aucun événement.
+
+Limites connues : les administrateurs par défaut (`XOLO_HTTP_AUTHN_DEFAULT_ADMINS`)
+sont reconnus à l'email que renvoie le fournisseur d'identité, vérifié ou non ;
+et chaque connexion recopie encore sur le compte l'email et le nom affiché
+renvoyés par le fournisseur d'identité.
 
 ### Adhésions
 
@@ -484,7 +545,7 @@ Toutes les erreurs partagent la même enveloppe :
 | `invalid_cursor` | 400 | Curseur altéré, vide, ou émis pour une autre collection, une autre limite ou le flux. |
 | `invalid_precondition` | 400 | `If-Match` mal formé, ou `If-None-Match`. |
 | `invalid_json` | 400 | Route commune : JSON mal formé, champ inconnu, valeur non textuelle, Unicode invalide. |
-| `invalid_representation` | 400 | Route commune : champ requis absent ou `null`. |
+| `invalid_representation` | 400 | Route commune : champ requis absent, `null`, ou `identity` de membre invalide. |
 | `invalid_hostname` | 400 | Nom d'hôte pas en minuscules, avec port, adresse IP ou label invalide. |
 | `invalid_request` | 400 | `/v1/xolo` : corps mal formé, champ inconnu, paramètre de requête invalide. |
 | `client_certificate_rejected` | 403 | Certificat ou URI client non autorisé. |
@@ -492,7 +553,7 @@ Toutes les erreurs partagent la même enveloppe :
 | `parent_not_found` | 404 | Le tenant, l'organisation ou le membre dont dépend la ressource n'existe pas dans ce périmètre. |
 | `method_not_allowed` | 405 | Ressource connue, mauvaise méthode. |
 | `unsupported_media_type` | 415 | Route commune sans `Content-Type: application/json`. |
-| `conflict` | 409 | Identifiant ou nom d'hôte détenu par un autre tenant, slug déjà utilisé, ou invariant métier. |
+| `conflict` | 409 | Identifiant ou nom d'hôte détenu par un autre tenant, slug déjà utilisé, identité ou email détenu par un autre membre, ou invariant métier. |
 | `last_owner` | 409 | La modification laisserait un tenant ou une organisation sans propriétaire actif. |
 | `platform_admin_protected` | 409 | La modification vise un administrateur de plateforme. |
 | `webhook_capacity` | 409 | Le tenant compte déjà le nombre maximal d'abonnements webhook. |
@@ -507,9 +568,13 @@ Les messages sont toujours construits explicitement. Traces d'exécution, erreur
 ## Invariants
 
 - Le provisioning n'accorde ni ne modifie **jamais** de privilège de plateforme.
-  Un utilisateur créé via `PUT /v1/xolo/tenants/{tenantID}/users` reçoit
-  exactement le rôle de plateforme `user`, les rôles de plateforme ne sont jamais
-  modifiés, et un administrateur de plateforme n'est jamais modifié du tout.
+  Un utilisateur créé via `PUT /v1/xolo/tenants/{tenantID}/users` ou un `PUT` de
+  membre reçoit exactement le rôle de plateforme `user`, les rôles de plateforme
+  ne sont jamais modifiés, et un administrateur de plateforme n'est jamais
+  modifié du tout.
+- Une identité désigne au plus un compte par tenant. Une connexion ne fusionne
+  jamais de comptes, ne relie jamais un compte déjà lié et ne rattache jamais un
+  administrateur de plateforme.
 - Les adresses de `XOLO_HTTP_AUTHN_DEFAULT_ADMINS` sont réservées : les écrire
   sur un utilisateur est refusé avec `422`. Le bridge d'authentification accorde
   le rôle d'administrateur à quiconque se connecte avec l'une d'elles ;
@@ -541,7 +606,7 @@ actuel.
 | `PATCH /v1/tenants/{tenantID}` `{name, description, active}` | `PATCH /v1/xolo/tenants/{tenantID}` (même corps), ou `PUT /v1/tenants/{tenantID}` `{slug, name, status}` |
 | `DELETE /v1/tenants/{tenantID}` | Supprimée : `PUT /v1/tenants/{tenantID}` avec `"status": "suspended"` |
 | `GET /v1/tenants/{tenantID}/organizations[/{orgID}]` | `GET /v1/xolo/tenants/{tenantID}/organizations[/{orgID}]` |
-| `POST /v1/tenants/{tenantID}/organizations` `{slug, name, description, currency, active, owner}` | `PUT /v1/tenants/{tenantID}/organizations/{orgID}` `{slug, name, status}` ; `description` et `currency` via `PATCH /v1/xolo/…/organizations/{orgID}` ; le propriétaire via `PUT …/organizations/{orgID}/members/{userID}` `{"role": "owner", "status": "active"}` une fois connecté |
+| `POST /v1/tenants/{tenantID}/organizations` `{slug, name, description, currency, active, owner}` | `PUT /v1/tenants/{tenantID}/organizations/{orgID}` `{slug, name, status}` ; `description` et `currency` via `PATCH /v1/xolo/…/organizations/{orgID}` ; le propriétaire via `PUT …/organizations/{orgID}/members/{userID}` `{"role": "owner", "status": "active"}`, une fois déclaré par `PUT …/members/{userID}` |
 | `PATCH /v1/tenants/{tenantID}/organizations/{orgID}` | `PATCH /v1/xolo/tenants/{tenantID}/organizations/{orgID}` (même corps) |
 | `DELETE /v1/tenants/{tenantID}/organizations/{orgID}` | Supprimée : `PUT …/organizations/{orgID}` avec `"status": "suspended"` |
 | `GET …/organizations/{orgID}/members[/{membershipID}]` | `GET /v1/xolo/…/organizations/{orgID}/members[/{membershipID}]` |
@@ -669,6 +734,5 @@ En production, utilisez une autorité de certification gérée (Vault, cert-mana
 
 - Les fournisseurs, modèles LLM, modèles virtuels, middlewares, applications et leurs jetons, quotas, alertes et paramètres d'événements : ils restent gérés par l'interface web.
 - Les portées par certificat : tout URI autorisé administre l'instance entière.
-- La création d'un membre avant sa première connexion : un membre se provisionne une fois connecté. Le mécanisme d'[invitation](../organisation/invitation/invitation.md) reste la voie par email, via l'interface web.
 - La suppression de tenants, domaines, organisations ou adhésions : suspendez-les.
 - Aucune spécification OpenAPI n'est générée à ce jour.

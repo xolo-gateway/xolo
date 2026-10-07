@@ -33,7 +33,7 @@ func (s *Store) WithProvisioningTransaction(ctx context.Context, fn func(port.Pr
 			db = db.Session(&gorm.Session{SkipDefaultTransaction: true})
 			recorder := newMutationRecorder(db)
 			tx := &provisioningTx{
-				Store:    &Store{getDatabase: func(context.Context) (*gorm.DB, error) { return db, nil }, transactionBound: true, recorder: recorder},
+				Store:    &Store{getDatabase: func(context.Context) (*gorm.DB, error) { return db, nil }, transactionBound: true, recorder: recorder, identityIssuers: s.identityIssuers},
 				db:       db,
 				recorder: recorder,
 			}
@@ -55,6 +55,9 @@ type provisioningTx struct {
 }
 
 func (tx *provisioningTx) FindOrCreateUser(ctx context.Context, tenantID model.TenantID, provider, subject string) (model.User, error) {
+	if provider == "" || subject == "" {
+		return nil, port.ErrInvalid
+	}
 	u, err := tx.GetUserByIdentity(ctx, tenantID, provider, subject)
 	if err == nil {
 		return u, nil
@@ -63,6 +66,9 @@ func (tx *provisioningTx) FindOrCreateUser(ctx context.Context, tenantID model.T
 		return nil, err
 	}
 	u = model.NewUser(tenantID, provider, subject, "", "", true)
+	if err := tx.assertIdentityAvailable(tx.db, fromUser(u)); err != nil {
+		return nil, err
+	}
 	if err := tx.recorder.track("user", string(u.ID())); err != nil {
 		return nil, err
 	}
@@ -135,11 +141,20 @@ func (tx *provisioningTx) GetUserByID(ctx context.Context, id model.UserID) (mod
 	return &wrappedUser{&user}, nil
 }
 func (tx *provisioningTx) GetUserByIdentity(ctx context.Context, tenant model.TenantID, provider, subject string) (model.User, error) {
+	if provider == "" || subject == "" {
+		return nil, port.ErrNotFound
+	}
 	var user User
 	if err := tx.parentReader(ctx).Preload("Roles").Preload("Preferences").Where("tenant_id = ? AND provider = ? AND subject = ?", string(tenant), provider, subject).First(&user).Error; err != nil {
 		return nil, invitationReadError(err)
 	}
 	return &wrappedUser{&user}, nil
+}
+func (tx *provisioningTx) GetUserByDeclaredIdentity(ctx context.Context, tenant model.TenantID, identity model.Identity) (model.User, error) {
+	return getUserByDeclaredIdentity(tx.parentReader(ctx), tenant, identity)
+}
+func (tx *provisioningTx) FindUsersByEmail(ctx context.Context, tenant model.TenantID, email string, limit int) ([]model.User, error) {
+	return findUsersByEmail(tx.parentReader(ctx), tenant, email, limit)
 }
 func (tx *provisioningTx) GetRoleByID(ctx context.Context, id model.RoleID) (model.Role, error) {
 	var role Role

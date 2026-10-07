@@ -70,6 +70,12 @@ func (h *Handler) handleProviderCallback(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	if err := h.proveIdentity(user, gothUser.RawData); err != nil {
+		slog.ErrorContext(r.Context(), "could not authenticate user", slog.Any("error", err), slog.String("provider", user.Provider))
+		http.Redirect(w, r, "/auth/oidc/logout", http.StatusTemporaryRedirect)
+		return
+	}
+
 	if err := h.storeSessionUser(w, r, user); err != nil {
 		slog.ErrorContext(r.Context(), "could not store session user", slog.Any("error", errors.WithStack(err)))
 		http.Redirect(w, r, "/auth/oidc/logout", http.StatusTemporaryRedirect)
@@ -156,4 +162,25 @@ func getUserDisplayName(user goth.User) string {
 	}
 
 	return displayName
+}
+
+// proveIdentity records what the provider proved about the sign-in: its
+// issuer, when the provider has a genuine one, and whether it verified the
+// email. The code flow reads the claims straight from the provider's token and
+// userinfo endpoints over TLS (OIDC Core 3.1.3.7); an iss claim naming another
+// issuer is refused.
+func (h *Handler) proveIdentity(user *authn.User, raw map[string]any) error {
+	if issuer, ok := h.provenIssuer(user.Provider); ok {
+		if iss, present := raw["iss"].(string); present && iss != issuer {
+			return errors.New("unexpected issuer")
+		}
+		user.Issuer = issuer
+	}
+
+	user.EmailVerified = authn.IsTrue(raw["email_verified"])
+	// Google's v2 userinfo names the claim verified_email.
+	if verified, present := raw["verified_email"]; present && user.Provider == "google" {
+		user.EmailVerified = authn.IsTrue(verified)
+	}
+	return nil
 }

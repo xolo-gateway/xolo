@@ -9,8 +9,10 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
+	"github.com/bornholm/go-x/slogx"
 	"github.com/markbates/goth"
 	"github.com/markbates/goth/gothic"
 	"github.com/markbates/goth/providers/gitea"
@@ -19,6 +21,7 @@ import (
 	"github.com/markbates/goth/providers/openidConnect"
 	"github.com/pkg/errors"
 	"github.com/xolo-gateway/xolo/internal/config"
+	"github.com/xolo-gateway/xolo/internal/core/model"
 	"github.com/xolo-gateway/xolo/internal/http/middleware/authn/oidc"
 )
 
@@ -52,6 +55,25 @@ func oidcCallbackURL(baseURL string, providerID string) string {
 	)
 }
 
+// getSharedOIDCAuthnHandlerFromConfig builds the OIDC handler once per
+// process: the HTTP server and the identity issuers of the store share its
+// discovery.
+var getSharedOIDCAuthnHandlerFromConfig = createFromConfigOnce(getOIDCAuthnHandlerFromConfig)
+
+// getIdentityIssuersFromConfig returns, resolved on first use, the issuer each
+// configured provider proves. GitHub OAuth and a static Gitea prove none.
+func getIdentityIssuersFromConfig(ctx context.Context, conf *config.Config) func() model.IdentityIssuers {
+	return sync.OnceValue(func() model.IdentityIssuers {
+		handler, err := getSharedOIDCAuthnHandlerFromConfig(ctx, conf)
+		if err != nil {
+			// The HTTP server fails on the same error at startup.
+			slog.ErrorContext(ctx, "could not resolve identity issuers", slogx.Error(err))
+			return nil
+		}
+		return handler.IdentityIssuers()
+	})
+}
+
 func getOIDCAuthnHandlerFromConfig(ctx context.Context, conf *config.Config) (*oidc.Handler, error) {
 	sessionStore, err := getSessionStoreFromConfig(ctx, conf)
 	if err != nil {
@@ -81,11 +103,12 @@ func getOIDCAuthnHandlerFromConfig(ctx context.Context, conf *config.Config) (*o
 		})
 
 		providersWithJWKS = append(providersWithJWKS, oidc.ProviderWithJWKS{
-			ID:      "google",
-			Label:   "Google",
-			Icon:    "log-in",
-			Issuer:  "https://accounts.google.com",
-			JWKSURL: "https://www.googleapis.com/oauth2/v3/certs",
+			ID:           "google",
+			Label:        "Google",
+			Icon:         "log-in",
+			Issuer:       "https://accounts.google.com",
+			JWKSURL:      "https://www.googleapis.com/oauth2/v3/certs",
+			ProvesIssuer: true,
 		})
 	}
 
@@ -104,6 +127,9 @@ func getOIDCAuthnHandlerFromConfig(ctx context.Context, conf *config.Config) (*o
 			Icon:  "github",
 		})
 
+		// Not a genuine issuer: GitHub OAuth proves none, so its sign-ins
+		// never match an identity declared by provisioning (ProvesIssuer
+		// stays false).
 		issuer := "https://github.com"
 		if conf.HTTP.BaseURL != "" && conf.HTTP.BaseURL != "/" {
 			issuer = conf.HTTP.BaseURL
@@ -361,6 +387,7 @@ func buildGiteaProvider(
 			DiscoveryURL:     discoveryURL,
 			Issuer:           issuer,
 			JWKSURL:          jwksURL,
+			ProvesIssuer:     true,
 			IntrospectionURL: introspectionEndpoint,
 			UserInfoURL:      userInfoEndpoint,
 			ClientID:         key,
@@ -447,6 +474,7 @@ func buildOIDCProvider(
 		DiscoveryURL:     discoveryURL,
 		Issuer:           discovery.Issuer,
 		JWKSURL:          jwksURL,
+		ProvesIssuer:     true,
 		IntrospectionURL: discovery.IntrospectionEndpoint,
 		UserInfoURL:      discovery.UserInfoEndpoint,
 		ClientID:         key,

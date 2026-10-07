@@ -46,7 +46,7 @@ func NewHandler(provisioning *service.ProvisioningService, version string, optio
 		provisioning: provisioning,
 		mux:          http.NewServeMux(),
 		version:      version,
-		capabilities: []string{"conditional_writes", "events", "reads"},
+		capabilities: []string{"conditional_writes", "events", "identity", "reads"},
 	}
 	for _, option := range options {
 		option(h)

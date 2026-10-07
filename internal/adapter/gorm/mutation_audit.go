@@ -47,7 +47,7 @@ func resourceKey(kind string) string {
 var mutationColumns = map[string]string{
 	"tenant":       "id, slug, name, description, active",
 	"organization": "id, tenant_id, slug, name, description, active, currency, share_quota_equally",
-	"user":         "id, tenant_id, provider, subject, email, display_name, active, tenant_role",
+	"user":         "id, tenant_id, provider, subject, identity_issuer, identity_subject, email, display_name, active, tenant_role",
 	"membership":   "id, org_id, user_id, status",
 	"role":         "id, org_id, name, description, builtin, builtin_kind",
 	"domain":       "hostname, tenant_id, status",

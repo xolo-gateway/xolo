@@ -1,3 +1,25 @@
+# Unreleased — declared member identities
+
+A member `PUT` of the common provisioning contract now creates an unknown member
+ahead of their first sign-in, and accepts an optional
+`"identity": {"issuer", "subject"}`. An absent `identity` keeps the declaration
+and the sign-in link, `null` removes both, an object declares it. At sign-in,
+Xolo resolves the account by its link, then by its declared identity, then by
+an email the identity provider asserts verified and that designates a single
+unlinked account; nothing is ever merged. A platform administrator is never
+modified by provisioning nor attached to a new identity. Requests of an already
+linked account only read it. The manifest lists the `identity` capability.
+
+Migration `202610100001` adds the declared identity columns and a unique index
+per tenant; it changes no existing data, and its rollback is refused once an
+identity is declared. Stop every old replica before migrating: an old server
+ignores declared identities at sign-in.
+
+Details:
+[English](docs/en/administration/provisioning/provisioning.md#declared-identity),
+[Français](docs/fr/administration/provisioning/provisioning.md#identite-declaree),
+[Español](docs/es/administration/provisioning/provisioning.md#identidad-declarada).
+
 # Unreleased — durable signed webhooks
 
 The provisioning API delivers the events of `/v1/events` to HTTPS receivers,

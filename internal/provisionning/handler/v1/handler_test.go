@@ -258,7 +258,7 @@ func TestManifest(t *testing.T) {
 	assertStatus(t, rec, http.StatusOK)
 
 	body := decodeBody(t, rec)
-	want := map[string]any{"name": "Xolo", "version": testVersion, "contract_version": v1.ContractVersion, "capabilities": []any{"conditional_writes", "events", "reads"}}
+	want := map[string]any{"name": "Xolo", "version": testVersion, "contract_version": v1.ContractVersion, "capabilities": []any{"conditional_writes", "events", "identity", "reads"}}
 	for key, value := range want {
 		if !reflect.DeepEqual(body[key], value) {
 			t.Errorf("%s: got %v, want %v", key, body[key], value)
@@ -721,15 +721,18 @@ func TestCommonParents(t *testing.T) {
 		}
 	})
 
-	t.Run("an unknown member is not created", func(t *testing.T) {
+	t.Run("an unknown member is created without a sign-in link", func(t *testing.T) {
 		memberID := uuid.NewString()
 
 		rec := call(t, env.handler, http.MethodPut, env.tenantBase+"/members/"+memberID, memberBody("new@acme.tld"))
-		assertStatus(t, rec, http.StatusNotFound)
-		assertErrorCode(t, rec, "not_found")
+		assertStatus(t, rec, http.StatusOK)
 
 		rec = call(t, env.handler, http.MethodGet, env.xoloBase+"/users/"+memberID, nil)
-		assertStatus(t, rec, http.StatusNotFound)
+		assertStatus(t, rec, http.StatusOK)
+		body := decodeBody(t, rec)
+		if body["email"] != "new@acme.tld" || body["provider"] != "" || body["subject"] != "" {
+			t.Errorf("created member: %v", body)
+		}
 	})
 
 	t.Run("a duplicate slug within the tenant is a conflict", func(t *testing.T) {

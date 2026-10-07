@@ -16,12 +16,17 @@ type User struct {
 
 	// TenantID scopes the identity: (tenant_id, provider, subject) is the unique
 	// key, so the same person signing in on two tenants owns two accounts.
-	TenantID string `gorm:"index;uniqueIndex:idx_users_tenant_identity,priority:1;uniqueIndex:idx_users_tenant_email_nonempty,priority:1;not null"`
+	TenantID string `gorm:"index;uniqueIndex:idx_users_tenant_identity,priority:1;uniqueIndex:idx_users_tenant_email_nonempty,priority:1;uniqueIndex:idx_declared_identity,priority:1;not null"`
 
 	// Users provisioned ahead of their first sign-in carry no identity, so the
 	// identity key only covers rows that have one.
 	Subject  string `gorm:"index;uniqueIndex:idx_users_tenant_identity,priority:2"`
 	Provider string `gorm:"index;uniqueIndex:idx_users_tenant_identity,priority:3,where:provider != '' AND subject != ''"`
+
+	// The identity provisioning declared for the user, unique per tenant.
+	// Both are empty when nothing is declared.
+	IdentityIssuer  string `gorm:"not null;default:'';uniqueIndex:idx_declared_identity,priority:2,where:identity_issuer != ''"`
+	IdentitySubject string `gorm:"not null;default:'';uniqueIndex:idx_declared_identity,priority:3"`
 
 	DisplayName string
 	Email       string `gorm:"uniqueIndex:idx_users_tenant_email_nonempty,priority:2,where:email != ''"`
@@ -72,6 +77,9 @@ func fromUser(u model.User) *User {
 		Email:       u.Email(),
 		Active:      u.Active(),
 		TenantRole:  string(u.TenantRole()),
+	}
+	if identity := u.DeclaredIdentity(); identity != nil {
+		user.IdentityIssuer, user.IdentitySubject = identity.Issuer, identity.Subject
 	}
 	if !u.TenantRole().Valid() {
 		user.TenantRole = string(model.TenantRoleMember)
@@ -189,6 +197,14 @@ func (w *wrappedUser) Subject() string {
 // Provider implements model.User.
 func (w *wrappedUser) Provider() string {
 	return w.u.Provider
+}
+
+// DeclaredIdentity implements model.User.
+func (w *wrappedUser) DeclaredIdentity() *model.Identity {
+	if w.u.IdentityIssuer == "" {
+		return nil
+	}
+	return &model.Identity{Issuer: w.u.IdentityIssuer, Subject: w.u.IdentitySubject}
 }
 
 // DisplayName implements model.User.

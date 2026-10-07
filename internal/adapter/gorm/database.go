@@ -567,6 +567,15 @@ func schemaMigrations(artifact *RecoveryArtifact) []*gormigrate.Migration {
 			Rollback: func(*gorm.DB) error { return nil },
 		},
 		{
+			// Out of chronological order on purpose: the provisioning sync
+			// backfill below snapshots users with their declared identity, so
+			// an upgrade that has not applied it yet needs the columns first.
+			// A database that already applied it runs this one alone.
+			ID:       identityMigrationID,
+			Migrate:  migrateIdentity,
+			Rollback: rollbackIdentity,
+		},
+		{
 			ID:      provisioningSyncMigrationID,
 			Migrate: migrateProvisioningSync,
 			Rollback: func(*gorm.DB) error {

@@ -2,6 +2,7 @@ package service_test
 
 import (
 	"context"
+	"slices"
 	"testing"
 
 	"github.com/google/uuid"
@@ -170,10 +171,17 @@ func member(email string) service.CommonMember {
 func TestPutTenantMember(t *testing.T) {
 	ctx := context.Background()
 
-	t.Run("never creates a user", func(t *testing.T) {
-		svc, _, tenantID := newCommonService(t)
-		_, err := svc.PutTenantMember(ctx, tenantID, model.NewUserID(), member("jane@acme.example"))
-		assertErrorIs(t, err, port.ErrNotFound)
+	t.Run("creates an unknown member without a sign-in link", func(t *testing.T) {
+		svc, store, tenantID := newCommonService(t)
+		userID := model.NewUserID()
+		_, err := svc.PutTenantMember(ctx, tenantID, userID, member("jane@acme.example"))
+		mustNoError(t, err)
+		user, err := store.GetUserByID(ctx, userID)
+		mustNoError(t, err)
+		if user.TenantID() != tenantID || user.Email() != "jane@acme.example" || user.Provider() != "" || user.Subject() != "" ||
+			user.DeclaredIdentity() != nil || !slices.Equal(user.Roles(), []string{model.PlatformRoleUser}) {
+			t.Errorf("created member: %+v", user)
+		}
 	})
 
 	t.Run("updates a member and repeats as a no-op", func(t *testing.T) {

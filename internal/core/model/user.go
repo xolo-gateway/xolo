@@ -31,8 +31,15 @@ type User interface {
 
 	Email() string
 
+	// Subject and Provider form the authentication link: the local provider ID
+	// and subject of the last sign-in bound to this account. Both are empty
+	// for an account no sign-in is linked to yet.
 	Subject() string
 	Provider() string
+
+	// DeclaredIdentity is the external identity provisioning declared for
+	// this account, or nil. A sign-in proving it is linked to the account.
+	DeclaredIdentity() *Identity
 
 	DisplayName() string
 
@@ -54,6 +61,7 @@ type BaseUser struct {
 	email       string
 	subject     string
 	provider    string
+	declared    *Identity
 	roles       []string
 	tenantRole  TenantRole
 	active      bool
@@ -114,6 +122,29 @@ func (u *BaseUser) Subject() string {
 	return u.subject
 }
 
+// DeclaredIdentity implements User.
+func (u *BaseUser) DeclaredIdentity() *Identity {
+	return copyIdentity(u.declared)
+}
+
+// SetDeclaredIdentity replaces the declared identity; nil removes it.
+func (u *BaseUser) SetDeclaredIdentity(identity *Identity) {
+	u.declared = copyIdentity(identity)
+}
+
+// SetAuthenticationLink binds the account to a sign-in; empty values unlink it.
+func (u *BaseUser) SetAuthenticationLink(provider, subject string) {
+	u.provider, u.subject = provider, subject
+}
+
+func copyIdentity(identity *Identity) *Identity {
+	if identity == nil {
+		return nil
+	}
+	c := *identity
+	return &c
+}
+
 var _ User = &BaseUser{}
 
 func CopyUser(user User) *BaseUser {
@@ -124,6 +155,7 @@ func CopyUser(user User) *BaseUser {
 		email:       user.Email(),
 		subject:     user.Subject(),
 		provider:    user.Provider(),
+		declared:    user.DeclaredIdentity(),
 		active:      user.Active(),
 		preferences: user.Preferences(),
 		roles:       append([]string{}, user.Roles()...),

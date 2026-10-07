@@ -81,7 +81,11 @@ func (h *Handler) handlePutTenantMember(w http.ResponseWriter, r *http.Request) 
 	if !ok {
 		return
 	}
-	fields, ok := decodeCommon(w, r, []string{"email", "tenant_role", "status"}, "display_name")
+	fields, objects, ok := decodeCommonObject(w, r, []string{"email", "tenant_role", "status"}, []string{"display_name"}, "identity")
+	if !ok {
+		return
+	}
+	identity, ok := decodeIdentityChange(w, objects)
 	if !ok {
 		return
 	}
@@ -91,9 +95,41 @@ func (h *Handler) handlePutTenantMember(w http.ResponseWriter, r *http.Request) 
 			DisplayName: fields["display_name"],
 			TenantRole:  model.TenantRole(fields["tenant_role"]),
 			Status:      model.Status(fields["status"]),
+			Identity:    identity,
 		})
 		return err
 	})
+}
+
+// decodeIdentityChange reads the optional identity of a member: absent keeps
+// it, null unlinks it, and an object of exactly two valid strings, issuer and
+// subject, declares it. Nothing is normalized.
+func decodeIdentityChange(w http.ResponseWriter, objects map[string]json.RawMessage) (service.IdentityChange, bool) {
+	raw, present := objects["identity"]
+	if !present {
+		return service.IdentityChange{Kind: service.IdentityKeep}, true
+	}
+	if bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
+		return service.IdentityChange{Kind: service.IdentityUnlink}, true
+	}
+	var fields map[string]json.RawMessage
+	if json.Unmarshal(raw, &fields) != nil || fields == nil || len(fields) != 2 {
+		writeError(w, http.StatusBadRequest, codeInvalidRepresentation, "invalid identity")
+		return service.IdentityChange{}, false
+	}
+	var identity model.Identity
+	for name, target := range map[string]*string{"issuer": &identity.Issuer, "subject": &identity.Subject} {
+		value, ok := fields[name]
+		if !ok || !validJSONString(value) || json.Unmarshal(value, target) != nil {
+			writeError(w, http.StatusBadRequest, codeInvalidRepresentation, "invalid identity")
+			return service.IdentityChange{}, false
+		}
+	}
+	if !identity.Valid() {
+		writeError(w, http.StatusBadRequest, codeInvalidRepresentation, "invalid identity")
+		return service.IdentityChange{}, false
+	}
+	return service.IdentityChange{Kind: service.IdentityDeclare, Identity: identity}, true
 }
 
 func (h *Handler) handlePutOrgMember(w http.ResponseWriter, r *http.Request) {
@@ -168,59 +204,75 @@ func writeInvalidID(w http.ResponseWriter) {
 // whole bounded body is read before decoding, so trailing data counts toward
 // the size limit; raw values keep the null, missing and type distinctions.
 func decodeCommon(w http.ResponseWriter, r *http.Request, required []string, optional ...string) (map[string]string, bool) {
+	fields, _, ok := decodeCommonObject(w, r, required, optional)
+	return fields, ok
+}
+
+// decodeCommonObject is decodeCommon with optional extension fields, whose
+// raw value may be null or any JSON value: the caller validates them.
+func decodeCommonObject(w http.ResponseWriter, r *http.Request, required, optional []string, extensions ...string) (map[string]string, map[string]json.RawMessage, bool) {
 	media, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
 	if err != nil || media != "application/json" {
 		writeError(w, http.StatusUnsupportedMediaType, codeUnsupportedMediaType, "application/json is required")
-		return nil, false
+		return nil, nil, false
 	}
 	raw, err := io.ReadAll(io.LimitReader(r.Body, maxRequestBodySize+1))
 	if err != nil || len(raw) > maxRequestBodySize || !utf8.Valid(raw) {
 		writeError(w, http.StatusBadRequest, codeInvalidJSON, "invalid JSON body")
-		return nil, false
+		return nil, nil, false
 	}
 	var object map[string]json.RawMessage
 	if err := json.Unmarshal(raw, &object); err != nil {
 		writeError(w, http.StatusBadRequest, codeInvalidJSON, "expected one JSON object")
-		return nil, false
+		return nil, nil, false
 	}
 	if object == nil {
 		writeError(w, http.StatusBadRequest, codeInvalidRepresentation, "null is not a representation")
-		return nil, false
+		return nil, nil, false
 	}
 	allowed := map[string]bool{}
 	for _, field := range append(append([]string{}, required...), optional...) {
 		allowed[field] = true
 	}
+	extension := map[string]bool{}
+	for _, field := range extensions {
+		extension[field] = true
+	}
 	fields := map[string]string{}
+	objects := map[string]json.RawMessage{}
 	for field, value := range object {
+		if extension[field] {
+			objects[field] = value
+			continue
+		}
 		if !allowed[field] {
 			writeError(w, http.StatusBadRequest, codeInvalidJSON, "unknown field "+field)
-			return nil, false
+			return nil, nil, false
 		}
 		if bytes.Equal(bytes.TrimSpace(value), []byte("null")) {
 			writeError(w, http.StatusBadRequest, codeInvalidRepresentation, "field "+field+" can not be null")
-			return nil, false
+			return nil, nil, false
 		}
 		// encoding/json silently replaces unpaired UTF-16 surrogates: reject
 		// them before that lossy conversion, while accepting a genuine U+FFFD.
 		if !validJSONString(value) {
 			writeError(w, http.StatusBadRequest, codeInvalidJSON, "field "+field+" is not valid Unicode")
-			return nil, false
+			return nil, nil, false
 		}
 		var text string
 		if json.Unmarshal(value, &text) != nil {
 			writeError(w, http.StatusBadRequest, codeInvalidJSON, "field "+field+" must be a string")
-			return nil, false
+			return nil, nil, false
 		}
 		fields[field] = text
 	}
 	for _, field := range required {
 		if _, ok := fields[field]; !ok {
 			writeError(w, http.StatusBadRequest, codeInvalidRepresentation, "field "+field+" is required")
-			return nil, false
+			return nil, nil, false
 		}
 	}
-	return fields, true
+	return fields, objects, true
 }
 
 // validJSONString reports whether every \u escape of a JSON string literal,

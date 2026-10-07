@@ -111,6 +111,8 @@ func (h *Handler) getUserFromToken(ctx context.Context, token string) (*authn.Us
 		return nil, errors.WithStack(port.ErrNotFound)
 	}
 
+	// The token designates its owner: an account whose sign-in link was
+	// removed by provisioning keeps its API tokens.
 	return &authn.User{
 		Email:       user.Email(),
 		Provider:    user.Provider(),
@@ -118,6 +120,7 @@ func (h *Handler) getUserFromToken(ctx context.Context, token string) (*authn.Us
 		DisplayName: user.DisplayName(),
 		OrgID:       string(authToken.OrgID()),
 		TokenID:     string(authToken.ID()),
+		AccountID:   string(user.ID()),
 		TenantID:    string(user.TenantID()),
 	}, nil
 }

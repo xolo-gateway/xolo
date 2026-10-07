@@ -20,6 +20,15 @@ type UserStore interface {
 	// never creates anything.
 	GetUserByIdentity(ctx context.Context, tenantID model.TenantID, provider, subject string) (model.User, error)
 
+	// GetUserByDeclaredIdentity finds the user of the tenant provisioning
+	// declared this exact identity for, or returns ErrNotFound.
+	GetUserByDeclaredIdentity(ctx context.Context, tenantID model.TenantID, identity model.Identity) (model.User, error)
+
+	// FindUsersByEmail returns at most limit users of the tenant whose email
+	// matches once both sides are normalized (model.NormalizeEmail). Stored
+	// emails are never rewritten: historical case variants may match several.
+	FindUsersByEmail(ctx context.Context, tenantID model.TenantID, email string, limit int) ([]model.User, error)
+
 	// QueryUsers returns a paginated list of users
 	QueryUsers(ctx context.Context, opts QueryUsersOptions) ([]model.User, error)
 

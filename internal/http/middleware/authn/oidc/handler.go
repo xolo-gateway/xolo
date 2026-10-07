@@ -8,6 +8,7 @@ import (
 	"github.com/bornholm/go-x/slogx"
 	"github.com/gorilla/sessions"
 	"github.com/pkg/errors"
+	"github.com/xolo-gateway/xolo/internal/core/model"
 	httpCtx "github.com/xolo-gateway/xolo/internal/http/context"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/common"
 	"github.com/xolo-gateway/xolo/internal/http/middleware/authn/oauth2token"
@@ -21,6 +22,10 @@ type ProviderWithJWKS struct {
 	DiscoveryURL string
 	Issuer       string
 	JWKSURL      string
+	// ProvesIssuer tells that every sign-in through this provider comes from
+	// Issuer, so it can match an identity declared by provisioning. It is
+	// false for a provider without a genuine issuer (GitHub OAuth).
+	ProvesIssuer bool
 	// IntrospectionURL, ClientID and ClientSecret, when set, enable RFC 7662
 	// access-token introspection for this provider (see ProvidersWithIntrospection).
 	IntrospectionURL string
@@ -80,6 +85,7 @@ func (h *Handler) ProvidersWithJWKS() []oidctoken.Provider {
 			DiscoveryURL: p.DiscoveryURL,
 			Issuer:       p.Issuer,
 			JWKSURL:      p.JWKSURL,
+			ProvesIssuer: p.ProvesIssuer,
 		})
 	}
 	return providers
@@ -98,6 +104,7 @@ func (h *Handler) ProvidersForTokenValidation() []oauth2token.Provider {
 		}
 		providers = append(providers, oauth2token.Provider{
 			ID:               p.ID,
+			Issuer:           provenIssuerOf(p),
 			IntrospectionURL: p.IntrospectionURL,
 			ClientID:         p.ClientID,
 			ClientSecret:     p.ClientSecret,
@@ -107,6 +114,29 @@ func (h *Handler) ProvidersForTokenValidation() []oauth2token.Provider {
 		})
 	}
 	return providers
+}
+
+func provenIssuerOf(p ProviderWithJWKS) string {
+	if p.ProvesIssuer {
+		return p.Issuer
+	}
+	return ""
+}
+
+// IdentityIssuers maps each provider proving an issuer to that issuer.
+func (h *Handler) IdentityIssuers() model.IdentityIssuers {
+	issuers := model.IdentityIssuers{}
+	for _, p := range h.providersWithJWKS {
+		if p.ProvesIssuer && p.Issuer != "" {
+			issuers[p.ID] = p.Issuer
+		}
+	}
+	return issuers
+}
+
+// provenIssuer returns the issuer the provider proves, if any.
+func (h *Handler) provenIssuer(providerID string) (string, bool) {
+	return h.IdentityIssuers().Issuer(providerID)
 }
 
 var _ http.Handler = &Handler{}

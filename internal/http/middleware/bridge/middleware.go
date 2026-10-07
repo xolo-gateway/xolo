@@ -2,18 +2,15 @@ package bridge
 
 import (
 	"context"
-	"errors"
-	"log/slog"
 	"net/http"
-	"slices"
 
-	"github.com/bornholm/go-x/slogx"
+	"github.com/pkg/errors"
 	"github.com/xolo-gateway/xolo/internal/core/model"
 	"github.com/xolo-gateway/xolo/internal/core/port"
+	"github.com/xolo-gateway/xolo/internal/core/service"
 	httpCtx "github.com/xolo-gateway/xolo/internal/http/context"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/common"
 	"github.com/xolo-gateway/xolo/internal/http/middleware/authn"
-	"github.com/xolo-gateway/xolo/internal/http/middleware/authz"
 )
 
 // Options configures how the bridge turns an authenticated identity into a
@@ -35,9 +32,24 @@ type Options struct {
 	// DefaultAdmins lists the e-mail addresses that are granted the platform
 	// admin role on sign-in.
 	DefaultAdmins []string
+
+	// Transactions opens the transaction that creates, links or updates an
+	// account. Defaults to the user store when it can open one.
+	Transactions port.ProvisioningTransaction
 }
 
 func Middleware(userStore port.UserStore, inviteStore port.InviteStore, emitter port.EventEmitter, opts Options) func(http.Handler) http.Handler {
+	transactions := opts.Transactions
+	if transactions == nil {
+		transactions, _ = userStore.(port.ProvisioningTransaction)
+	}
+	resolver := service.NewIdentityResolver(userStore, inviteStore, transactions)
+	policy := service.LoginPolicy{
+		AutoCreate:      opts.AutoCreateUsers,
+		ActiveByDefault: opts.ActiveByDefault,
+		DefaultAdmins:   opts.DefaultAdmins,
+	}
+
 	emitLoginFailed := func(ctx context.Context, authnUser *authn.User, reason string) {
 		if emitter == nil || authnUser == nil {
 			return
@@ -68,123 +80,64 @@ func Middleware(userStore port.UserStore, inviteStore port.InviteStore, emitter 
 				return
 			}
 
-			// Both sides normalized (case, surrounding whitespace), like invitee
-			// addresses: an admin who writes Jean.Dupont@corp.tld while the
-			// provider returns jean.dupont@corp.tld must not be locked out of a
-			// fresh instance.
-			isDefaultAdmin := model.NormalizeEmail(authnUser.Email) != "" && slices.ContainsFunc(opts.DefaultAdmins, func(email string) bool {
-				return model.NormalizeEmail(email) == model.NormalizeEmail(authnUser.Email)
-			})
-
-			// An application authenticates through a shadow user that is
-			// created lazily on its first request. Its lifecycle is governed by
-			// the application itself (the token authenticator already refuses a
-			// deactivated application), so the account-provisioning policy
-			// (AutoCreateUsers, ActiveByDefault) must not apply to it: a shadow
-			// user created inactive would answer 403 on every API call.
-			isApplication := authnUser.Provider == model.ApplicationProvider
-
-			user, err := userStore.GetUserByIdentity(ctx, tenant.ID(), authnUser.Provider, authnUser.Subject)
-			if err != nil {
-				if !errors.Is(err, port.ErrNotFound) {
-					common.HandleError(w, r, err)
+			var (
+				user model.User
+				err  error
+			)
+			switch {
+			case authnUser.AccountID != "":
+				// An API token designates its owner: nothing to resolve, nothing
+				// to provision.
+				user, err = userStore.GetUserByID(ctx, model.UserID(authnUser.AccountID))
+				if err == nil && user.TenantID() != tenant.ID() {
+					err = errors.WithStack(port.ErrNotFound)
+				}
+				if errors.Is(err, port.ErrNotFound) {
+					common.HandleError(w, r, common.NewHTTPError(http.StatusUnauthorized))
 					return
 				}
-
-				// The identity authenticated successfully but Xolo knows
-				// nothing about it. Default admins are the exception: they are
-				// the only way to bootstrap an instance that has no user yet.
-				//
-				// So is an identity holding a pending targeted invitation,
-				// pre-provisioned by definition: an administrator named that
-				// address on purpose. An open invitation names nobody.
-				// The invitee cannot reach /join/{token} otherwise — this
-				// middleware runs before every route, so refusing here makes every
-				// invitation unusable as soon as AutoCreateUsers is off. Checked
-				// last so the lookup only runs when it decides the outcome.
-				if !opts.AutoCreateUsers && !isDefaultAdmin && !isApplication && !hasPendingInvite(ctx, inviteStore, tenant.ID(), authnUser.Email) {
+			case authnUser.Provider == "" || authnUser.Subject == "":
+				// Without both, the identity would designate every account no
+				// sign-in is linked to.
+				common.HandleError(w, r, common.NewHTTPError(http.StatusUnauthorized))
+				return
+			default:
+				user, err = resolver.Resolve(ctx, tenant.ID(), service.AuthenticatedIdentity{
+					Provider:      authnUser.Provider,
+					Subject:       authnUser.Subject,
+					Issuer:        authnUser.Issuer,
+					Email:         authnUser.Email,
+					EmailVerified: authnUser.EmailVerified,
+					DisplayName:   authnUser.DisplayName,
+				}, policy)
+			}
+			if err != nil {
+				switch {
+				case errors.Is(err, service.ErrAccountCreationDisabled):
 					emitLoginFailed(ctx, authnUser, "aucun compte ne correspond à cette identité et la création automatique est désactivée")
 					common.HandleError(w, r, common.NewError(
 						"user account auto-creation is disabled",
 						"Aucun compte Xolo n'est associé à cette identité. Contactez un administrateur pour qu'il vous crée un accès.",
 						http.StatusForbidden,
 					))
-					return
-				}
-
-				// An invitation grants the account, not its activation:
-				// ActiveByDefault keeps deciding that, as it does for any other
-				// identity. Nothing is lost by waiting: the join and decline routes
-				// do not assert authz.Active(), and the invitation service lets the
-				// recipient of a targeted invitation act on it while inactive, so the
-				// invitee gets the membership and role right away; only the rest of
-				// the instance waits for an administrator.
-				user = model.NewUser(
-					tenant.ID(),
-					authnUser.Provider, authnUser.Subject, authnUser.Email, authnUser.DisplayName,
-					opts.ActiveByDefault || isDefaultAdmin || isApplication,
-					authz.RoleUser,
-				)
-
-				if err := userStore.SaveUser(ctx, user); err != nil {
-					if errors.Is(err, port.ErrAlreadyExists) {
-						emitLoginFailed(ctx, authnUser, "un compte existe déjà avec cette adresse email")
-						common.HandleError(w, r, common.NewError(
-							err.Error(),
-							"Un compte existe déjà avec cette adresse email. Contactez un administrateur pour faire fusionner vos comptes.",
-							http.StatusConflict,
-						))
-						return
-					}
-
+				case errors.Is(err, service.ErrIdentityConflict):
+					emitLoginFailed(ctx, authnUser, "cette identité ne peut être rattachée à aucun compte sans ambiguïté")
+					common.HandleError(w, r, common.NewError(
+						err.Error(),
+						"Cette identité ne peut pas être rattachée à votre compte Xolo. Contactez un administrateur.",
+						http.StatusConflict,
+					))
+				case errors.Is(err, port.ErrAlreadyExists):
+					emitLoginFailed(ctx, authnUser, "un compte existe déjà avec cette adresse email")
+					common.HandleError(w, r, common.NewError(
+						err.Error(),
+						"Un compte existe déjà avec cette adresse email. Contactez un administrateur pour faire fusionner vos comptes.",
+						http.StatusConflict,
+					))
+				default:
 					common.HandleError(w, r, err)
-					return
 				}
-			}
-
-			missingRole := len(user.Roles()) == 0
-			shouldBeAdmin := isDefaultAdmin && !slices.Contains(user.Roles(), authz.RoleAdmin)
-
-			// Never overwrite a stored value with an empty incoming one: some
-			// authenticators (e.g. OAuth2 introspection) resolve an identity
-			// without an email or display name.
-			changed := (authnUser.DisplayName != "" && user.DisplayName() != authnUser.DisplayName) ||
-				(authnUser.Email != "" && user.Email() != authnUser.Email)
-
-			if changed || shouldBeAdmin || missingRole {
-				updatable := model.CopyUser(user)
-				if authnUser.DisplayName != "" {
-					updatable.SetDisplayName(authnUser.DisplayName)
-				}
-				if authnUser.Email != "" {
-					updatable.SetEmail(authnUser.Email)
-				}
-
-				if missingRole {
-					updatable.SetRoles(authz.RoleUser)
-				}
-
-				if shouldBeAdmin {
-					newRoles := append(user.Roles(), authz.RoleAdmin)
-					updatable.SetRoles(newRoles...)
-					updatable.SetActive(true)
-				}
-
-				if err := userStore.SaveUser(ctx, updatable); err != nil {
-					if errors.Is(err, port.ErrAlreadyExists) {
-						common.HandleError(w, r, common.NewError(
-							err.Error(),
-							"Un compte existe déjà avec cette adresse email. Contactez un administrateur pour faire fusionner vos comptes.",
-							http.StatusConflict,
-						))
-						return
-					}
-
-					common.HandleError(w, r, err)
-					return
-				}
-
-				user = updatable
+				return
 			}
 
 			ctx = httpCtx.SetUser(ctx, user)
@@ -195,25 +148,4 @@ func Middleware(userStore port.UserStore, inviteStore port.InviteStore, emitter 
 
 		return fn
 	}
-}
-
-// hasPendingInvite reports whether a still-acceptable targeted invitation names
-// this e-mail inside this tenant. A lookup failure is never fatal: it only means the
-// identity falls back to the configured provisioning policy.
-func hasPendingInvite(ctx context.Context, inviteStore port.InviteStore, tenantID model.TenantID, email string) bool {
-	if model.NormalizeEmail(email) == "" {
-		return false
-	}
-
-	// The store only returns invitations issued by organizations of this
-	// tenant: one issued elsewhere grants nothing here.
-	invites, err := inviteStore.ListPendingInvitesForEmail(ctx, tenantID, email)
-	if err != nil {
-		slog.ErrorContext(ctx, "could not list pending invites for identity", slogx.Error(err))
-		return false
-	}
-
-	// The store already excludes revoked, expired and consumed invitations;
-	// IsInviteValid repeats the domain rule rather than relying on the query.
-	return slices.ContainsFunc(invites, model.IsInviteValid)
 }

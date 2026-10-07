@@ -23,7 +23,7 @@ import (
 )
 
 func NewHTTPServerFromConfig(ctx context.Context, conf *config.Config) (*http.Server, error) {
-	oidcAuthn, err := getOIDCAuthnHandlerFromConfig(ctx, conf)
+	oidcAuthn, err := getSharedOIDCAuthnHandlerFromConfig(ctx, conf)
 	if err != nil {
 		return nil, errors.Wrap(err, "could not configure authn oidc handler from config")
 	}

@@ -143,7 +143,7 @@ func projectionRepresentation(id projectionID, row snapshotRow) (string, error) 
 		active, _ := row["active"].(bool)
 		status = string(model.DeclaredStatus(active))
 	}
-	rep := map[string]string{"status": status}
+	rep := map[string]any{"status": status}
 	switch id.family {
 	case model.FamilyTenant, model.FamilyOrganization:
 		rep["slug"], rep["name"] = row.str("slug"), row.str("name")
@@ -151,6 +151,11 @@ func projectionRepresentation(id projectionID, row snapshotRow) (string, error) 
 		rep["email"], rep["tenant_role"] = row.str("email"), row.str("tenant_role")
 		if name := row.str("display_name"); name != "" {
 			rep["display_name"] = name
+		}
+		// The declared identity is part of the member; the sign-in link is
+		// not, so linking a sign-in never changes the projection.
+		if issuer := row.str("identity_issuer"); issuer != "" {
+			rep["identity"] = model.Identity{Issuer: issuer, Subject: row.str("identity_subject")}
 		}
 	case model.FamilyOrganizationMembership:
 		rep["role"] = row.str("common_role")

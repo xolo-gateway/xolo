@@ -6,6 +6,9 @@ type Provider struct {
 	// ID is the provider identifier, reused as the authn.User provider so the
 	// resulting Xolo user is keyed consistently with OIDC/oidctoken logins.
 	ID string
+	// Issuer, when set, is the issuer the provider proves: an identity it
+	// resolves by subject can match an identity declared by provisioning.
+	Issuer string
 	// IntrospectionURL is the RFC 7662 introspection endpoint.
 	IntrospectionURL string
 	// UserInfoURL, when set, is the OIDC UserInfo endpoint used to enrich the
