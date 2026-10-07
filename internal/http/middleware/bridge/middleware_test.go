@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -625,4 +626,34 @@ func TestVerifiedEmailAttachment(t *testing.T) {
 	if !slices.Contains(result.emitter.types(), model.EventTypeAuthLoginFailed) {
 		t.Errorf("a refused sign-in should emit %s, got %v", model.EventTypeAuthLoginFailed, result.emitter.types())
 	}
+	if reason := loginFailedReason(result); strings.Contains(reason, "email") {
+		t.Errorf("an identity conflict must not blame the email, got reason %q", reason)
+	}
+}
+
+// Only an email held by another account is reported as such; any other
+// uniqueness conflict is an identity conflict.
+func TestConflictReasons(t *testing.T) {
+	ctx := context.Background()
+	store := newStore(t)
+	if err := store.SaveUser(ctx, model.NewUser(testTenantID, "openid-connect", "sub-1", "taken@corp.tld", "", true, authz.RoleUser)); err != nil {
+		t.Fatalf("save user: %v", err)
+	}
+
+	result := call(t, store, bridge.Options{AutoCreateUsers: true}, newIdentity("sub-2", "taken@corp.tld", "Other"))
+	if result.served || result.status != http.StatusConflict {
+		t.Fatalf("got served=%v status %d, want 409", result.served, result.status)
+	}
+	if reason := loginFailedReason(result); !strings.Contains(reason, "email") {
+		t.Errorf("an email held by another account should be reported, got reason %q", reason)
+	}
+}
+
+func loginFailedReason(result callResult) string {
+	for _, event := range result.emitter.events {
+		if event.Type() == model.EventTypeAuthLoginFailed {
+			return event.Attributes()["reason"]
+		}
+	}
+	return ""
 }

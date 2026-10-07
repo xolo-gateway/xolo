@@ -353,7 +353,7 @@ func (s *ProvisioningService) assertMemberEmailAvailable(ctx context.Context, te
 	}
 	for _, u := range users {
 		if u.ID() != userID {
-			return errors.Wrapf(port.ErrAlreadyExists, "email %q is already used by another user", email)
+			return errors.Wrapf(port.ErrEmailTaken, "email %q is already used by another user", email)
 		}
 	}
 	return nil

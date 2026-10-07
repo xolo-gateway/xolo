@@ -120,18 +120,20 @@ func Middleware(userStore port.UserStore, inviteStore port.InviteStore, emitter 
 						"Aucun compte Xolo n'est associé à cette identité. Contactez un administrateur pour qu'il vous crée un accès.",
 						http.StatusForbidden,
 					))
-				case errors.Is(err, service.ErrIdentityConflict):
-					emitLoginFailed(ctx, authnUser, "cette identité ne peut être rattachée à aucun compte sans ambiguïté")
+				case errors.Is(err, port.ErrEmailTaken):
+					emitLoginFailed(ctx, authnUser, "un compte existe déjà avec cette adresse email")
 					common.HandleError(w, r, common.NewError(
-						err.Error(),
-						"Cette identité ne peut pas être rattachée à votre compte Xolo. Contactez un administrateur.",
+						"email already used",
+						"Un compte existe déjà avec cette adresse email. Contactez un administrateur pour faire fusionner vos comptes.",
 						http.StatusConflict,
 					))
 				case errors.Is(err, port.ErrAlreadyExists):
-					emitLoginFailed(ctx, authnUser, "un compte existe déjà avec cette adresse email")
+					// ErrIdentityConflict, or an identity or sign-in already
+					// bound to another account: nothing to do with the email.
+					emitLoginFailed(ctx, authnUser, "cette identité est déjà rattachée à un autre compte ou ne désigne aucun compte sans ambiguïté")
 					common.HandleError(w, r, common.NewError(
-						err.Error(),
-						"Un compte existe déjà avec cette adresse email. Contactez un administrateur pour faire fusionner vos comptes.",
+						"identity conflict",
+						"Cette identité ne peut pas être rattachée à votre compte Xolo. Contactez un administrateur.",
 						http.StatusConflict,
 					))
 				default:

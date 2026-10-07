@@ -295,7 +295,7 @@ func (s *Store) SaveUser(ctx context.Context, user model.User) error {
 				return errors.Wrap(port.ErrAlreadyExists, "the sign-in is already linked to another user")
 			}
 			if isUniqueViolation(err, "users", "email") {
-				return errors.Wrapf(port.ErrAlreadyExists, "email %q is already used by another user", gormUser.Email)
+				return errors.Wrapf(port.ErrEmailTaken, "email %q is already used by another user", gormUser.Email)
 			}
 
 			return errors.WithStack(err)

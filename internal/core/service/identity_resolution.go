@@ -207,6 +207,8 @@ func attach(user model.User, proof AuthenticatedIdentity, isDefaultAdmin bool) (
 	}
 	next := model.CopyUser(user)
 	next.SetAuthenticationLink(proof.Provider, proof.Subject)
+	// Forced because the new link is already a change to write, whatever the
+	// profile; force never produces a write of its own.
 	if synced := synchronizeProfile(next, proof, isDefaultAdmin, true); synced != nil {
 		next = synced
 	}

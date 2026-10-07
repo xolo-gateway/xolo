@@ -27,6 +27,11 @@ var (
 	// ErrInvalidHostname refuses a malformed hostname.
 	ErrInvalidHostname = fmt.Errorf("invalid hostname: %w", ErrNotAllowed)
 
+	// ErrEmailTaken refuses an email another account of the tenant holds.
+	// It sets the email apart from the other uniqueness conflicts, such as
+	// an identity bound to another account.
+	ErrEmailTaken = fmt.Errorf("email already used: %w", ErrAlreadyExists)
+
 	// ErrPlatformAdminProtected refuses any provisioning change to a platform
 	// administrator: provisioning never acts on platform-wide privileges.
 	ErrPlatformAdminProtected = fmt.Errorf("platform admin protected: %w", ErrNotAllowed)
