@@ -73,6 +73,16 @@ func main() {
 		servers = append(servers, namedServer{name: "provisionning-api", address: conf.ProvisionningAPI.Address, run: provisionningAPIServer.Run})
 	}
 
+	// Nil when webhooks are disabled. The worker opens no listener.
+	webhookWorker, err := setup.NewWebhookWorkerFromConfig(ctx, conf)
+	if err != nil {
+		slog.ErrorContext(ctx, "could not setup webhook worker", slog.Any("error", errors.WithStack(err)))
+		os.Exit(1)
+	}
+	if webhookWorker != nil {
+		servers = append(servers, namedServer{name: "webhooks", run: webhookWorker.Run})
+	}
+
 	if err := run(ctx, cancel, servers); err != nil {
 		os.Exit(1)
 	}

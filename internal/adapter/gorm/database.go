@@ -180,7 +180,10 @@ func MigrateDatabase(ctx context.Context, db *gorm.DB, artifact *RecoveryArtifac
 				if err := migratePluginSecretScope(tx); err != nil {
 					return err
 				}
-				return migrateProvisioningSync(tx)
+				if err := migrateProvisioningSync(tx); err != nil {
+					return err
+				}
+				return migrateWebhooks(tx)
 			})
 		})
 		err := m.Migrate()
@@ -568,6 +571,13 @@ func schemaMigrations(artifact *RecoveryArtifact) []*gormigrate.Migration {
 			Migrate: migrateProvisioningSync,
 			Rollback: func(*gorm.DB) error {
 				return errors.New("provisioning sync migration cannot be rolled back: consumers rely on the revisions and the event feed")
+			},
+		},
+		{
+			ID:      webhooksMigrationID,
+			Migrate: migrateWebhooks,
+			Rollback: func(*gorm.DB) error {
+				return errors.New("webhooks migration cannot be rolled back: pending deliveries would be lost")
 			},
 		},
 	}

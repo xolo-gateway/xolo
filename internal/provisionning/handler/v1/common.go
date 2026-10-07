@@ -24,15 +24,11 @@ type manifestDTO struct {
 	Capabilities    []string `json:"capabilities"`
 }
 
-// capabilities lists the optional parts of the contract this API serves, and
-// nothing it does not.
-var capabilities = []string{"conditional_writes", "events", "reads"}
-
 func (h *Handler) handleManifest(w http.ResponseWriter, r *http.Request) {
 	if !noQuery(w, r) {
 		return
 	}
-	writeJSON(w, http.StatusOK, manifestDTO{Name: "Xolo", Version: h.version, ContractVersion: ContractVersion, Capabilities: capabilities})
+	writeJSON(w, http.StatusOK, manifestDTO{Name: "Xolo", Version: h.version, ContractVersion: ContractVersion, Capabilities: h.capabilities})
 }
 
 func (h *Handler) handlePutTenant(w http.ResponseWriter, r *http.Request) {

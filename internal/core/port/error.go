@@ -46,3 +46,12 @@ var (
 	// current revision of the resource.
 	ErrPreconditionFailed = errors.New("precondition failed")
 )
+
+var (
+	// ErrWebhookLeaseLost signals a delivery result recorded after its lease
+	// expired, or after the subscription was reset or deleted.
+	ErrWebhookLeaseLost = errors.New("webhook lease lost")
+
+	// ErrWebhookCapacity refuses a subscription beyond the tenant's limit.
+	ErrWebhookCapacity = errors.New("webhook capacity reached")
+)

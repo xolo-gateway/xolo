@@ -65,6 +65,8 @@ Le multi-tenant se configure au niveau de l'instance, pas de cette API :
 | `XOLO_MULTITENANCY_HOST_PATTERN` | — | Mise à niveau uniquement : développé une seule fois en un domaine par tenant existant, voir [Domaines et routage](#domaines-et-routage). |
 | `XOLO_MULTITENANCY_DEFAULT_TENANT_SLUG` | `default` | Tenant servi lorsque le multi-tenant est désactivé. |
 
+Les webhooks ont leurs propres variables, voir [Webhooks](#webhooks).
+
 N'exposez pas ce port sur un réseau public : réservez-le au réseau d'administration ou au maillage de services interne.
 
 ## Contrat commun
@@ -301,6 +303,144 @@ jamais les curseurs des autres consommateurs.
   Les modifications de projections sont ainsi sérialisées le court instant de
   leur commit : un débit d'écriture moindre contre un flux sans trou.
 
+## Webhooks
+
+Les webhooks poussent les événements du
+[flux](#lectures-conditions-et-synchronisation) vers des récepteurs HTTPS, au
+fil des commits. Ce sont des notifications, pas une source de vérité : un
+consommateur conserve son propre point de reprise dans le flux, interroge
+`/v1/events` au démarrage, après une reconnexion et périodiquement, et ne fait
+jamais avancer ce point de reprise à cause d'un webhook. Un webhook perdu ne
+fait donc jamais perdre de modification.
+
+Les webhooks sont désactivés par défaut. Le worker de livraison tourne dans
+chaque processus où `XOLO_WEBHOOKS_ENABLED=true`, que l'écouteur de
+provisioning y soit activé ou non ; les abonnements se gèrent par l'écouteur.
+
+| Variable | Défaut | Description |
+|---|---|---|
+| `XOLO_WEBHOOKS_ENABLED` | `false` | Exécute la préparation, la livraison et le nettoyage des webhooks, et annonce `webhooks` dans le manifeste. |
+| `XOLO_WEBHOOKS_ALLOWED_ORIGINS` | _(requis si activé)_ | Origines HTTPS séparées par des virgules (`https://hôte[:port]`, sans chemin) qu'un abonnement peut viser. |
+| `XOLO_WEBHOOKS_ALLOW_PRIVATE_NETWORKS` | `false` | Autorise aussi les adresses de loopback et privées. |
+| `XOLO_WEBHOOKS_TLS_CA_FILE` | — | Autorités de confiance supplémentaires (PEM) ; celles du système restent reconnues. |
+| `XOLO_WEBHOOKS_WORKERS` | `2` | Livraisons simultanées par processus, de 1 à 16. |
+| `XOLO_WEBHOOKS_POLL_INTERVAL` | `1s` | Intervalle de préparation et d'interrogation, de 100 ms à 1 minute. |
+| `XOLO_WEBHOOKS_QUEUE_CAPACITY` | `10000` | Livraisons en attente ou en cours sur l'instance. |
+| `XOLO_WEBHOOKS_SUBSCRIPTION_CAPACITY` | `1000` | Livraisons en attente ou en cours pour un abonnement, au plus la capacité de la file. |
+
+### Abonnements
+
+| Méthode | Route | Réponse |
+|---|---|---|
+| `GET` | `/v1/xolo/tenants/{tenantID}/webhooks` | `{"items":[…]}` |
+| `GET` | `/v1/xolo/tenants/{tenantID}/webhooks/{subscriptionID}` | L'abonnement |
+| `PUT` | `/v1/xolo/tenants/{tenantID}/webhooks/{subscriptionID}` | Le crée ou le remplace : `200` et l'abonnement |
+| `DELETE` | `/v1/xolo/tenants/{tenantID}/webhooks/{subscriptionID}` | Le supprime avec ses livraisons : `204` |
+| `POST` | `/v1/xolo/tenants/{tenantID}/webhooks/{subscriptionID}/reset` | `{"acknowledgeLoss":true}` : abandonne ses livraisons et reprend à la fin du flux, `204` |
+| `GET` | `/v1/xolo/tenants/{tenantID}/webhooks/{subscriptionID}/deliveries` | Les 100 dernières livraisons, sans l'événement ni la réponse |
+
+```json
+{"destination":"https://hooks.example.com/xolo","events":["organization.updated.v1","organization.deleted.v1"],
+ "enabled":true,"secrets":["whsec_…"]}
+```
+
+- Un abonnement livre les événements de **son seul tenant**. Son identifiant
+  est un UUID choisi par le client et unique sur l'instance : il ne passe
+  jamais à un autre tenant (`409 conflict`), et l'abonnement d'un autre tenant
+  répond `404 not_found`. Un tenant compte au plus 10 abonnements
+  (`409 webhook_capacity`).
+- `events` vaut `["*"]` ou une liste d'au plus 20 types d'événements distincts
+  du flux. `destination` doit appartenir à une origine autorisée.
+- `secrets` contient un secret, ou deux secrets distincts pendant une
+  rotation : du base64, éventuellement préfixé par `whsec_`, de 32 à 64 octets
+  aléatoires générés par le client. Ils sont obligatoires à la création ; les
+  omettre lors d'un `PUT` ultérieur conserve ceux enregistrés. Ils ne sont
+  jamais renvoyés : l'abonnement n'expose que `secretCount`. Ils sont chiffrés
+  avec `XOLO_SECRET_KEY` et liés à leur tenant et à leur abonnement :
+  sauvegardez cette clé avec la base.
+- Un nouvel abonnement démarre à la fin du flux : reconstruisez d'abord l'état
+  du consommateur, puis appuyez-vous sur les notifications.
+- `enabled: false` met l'abonnement en pause sans perdre sa position. Les
+  changements de destination et de secrets s'appliquent aux livraisons déjà en
+  file.
+- Chaque écriture d'un abonnement est auditée avec l'appelant et le
+  `X-Request-ID`, jamais avec ses secrets.
+
+### Livraison
+
+Chaque tentative est un `POST` HTTPS de l'événement exact du flux, selon
+[Standard Webhooks](https://www.standardwebhooks.com) :
+
+| En-tête | Valeur |
+|---|---|
+| `Content-Type` | `application/cloudevents+json` |
+| `webhook-id` | L'`id` de l'événement, identique à chaque tentative |
+| `webhook-timestamp` | Secondes Unix de cette tentative |
+| `webhook-signature` | `v1,<HMAC-SHA256 en base64 de "<id>.<timestamp>.<corps>">` pour chaque secret, séparées par des espaces |
+
+Un récepteur vérifie l'une des signatures sur le corps brut avant de le
+décoder, refuse un horodatage éloigné de plus de cinq minutes, dédoublonne sur
+`(source, id)` et répond `2xx` une fois l'événement accepté de façon durable.
+
+- **Au moins une fois, sans ordre garanti.** Une nouvelle tentative, un arrêt
+  après la réponse du récepteur ou deux réplicas peuvent répéter un événement ;
+  utilisez `sequence` pour ordonner et le `GET` unitaire pour lire l'état
+  courant.
+- Un `2xx` acquitte la livraison ; son corps est lu jusqu'à 64 Kio puis
+  ignoré. Les redirections ne sont pas suivies. Tout le reste est retenté après
+  5, 10, 20… secondes, au plus une heure d'écart, pendant au plus 12 tentatives
+  ou 24 heures ; la livraison passe alors `failed`. Réconciliez par le flux.
+- Une livraison est réservée pour 30 secondes : un worker qui s'arrête en cours
+  de tentative, sur n'importe quel réplica, la laisse à un autre une fois la
+  réservation expirée. Un résultat tardif n'écrase jamais une tentative plus
+  récente.
+- Les livraisons sont des copies de leur événement : la rétention du flux ne
+  supprime jamais une livraison en file. Les livraisons terminées sont
+  conservées sept jours pour le diagnostic.
+- Les workers ne prennent jamais le verrou du flux : ils ne lisent que le flux
+  de leur tenant, et le chemin des requêtes ne les attend jamais.
+
+### Destinations
+
+Seules les origines autorisées sont joignables. Chaque adresse résolue pour le
+nom est vérifiée à la connexion, et c'est l'adresse vérifiée qui est composée :
+le nom ne peut pas être redirigé entre-temps. Les adresses link-local — points
+de métadonnées cloud compris —, multicast, non spécifiées, partagées et à usage
+spécial sont toujours refusées ; le loopback et les adresses privées seulement
+avec `XOLO_WEBHOOKS_ALLOW_PRIVATE_NETWORKS=true`. Les proxys de
+l'environnement sont ignorés et les certificats toujours vérifiés. Restreignez
+aussi le trafic sortant du processus par un pare-feu.
+
+### États et reprise
+
+| `state` | Signification |
+|---|---|
+| `ready` | À jour, ou en rattrapage. |
+| `backpressure` | La capacité de la file est atteinte : la préparation s'arrête à sa position et reprend quand des livraisons se terminent. Seules les livraisons en attente et en cours comptent, et un abonnement ne peut remplir que sa propre part. |
+| `history_lost` | La [rétention](#retention) a supprimé des événements que l'abonnement n'avait pas encore préparés, typiquement après une longue pause. Ils ne sont jamais sautés en silence : reconstruisez le consommateur, puis réinitialisez l'abonnement. |
+
+Un tenant suspendu ne reçoit rien : ses abonnements se mettent en pause et
+reprennent à la réactivation, suspension comprise. Une pause — abonnement
+désactivé ou tenant suspendu — plus longue que la rétention aboutit à
+`history_lost`, car les événements purgés ne peuvent plus être distingués. Supprimer un tenant
+supprime ses abonnements et ses livraisons. Seule la rétention de l'ensemble du
+flux peut faire passer un abonnement en `history_lost`.
+
+### Supervision
+
+| Métrique | Signification |
+|---|---|
+| `xolo_webhook_attempts_total` | Tentatives de ce processus |
+| `xolo_webhook_failures_total{reason}` | Échecs de ce processus, par diagnostic |
+| `xolo_webhook_queue{state}` | Livraisons de la base, par état |
+| `xolo_webhook_lag_seconds{stage}` | Âge du plus ancien événement pas encore préparé (`materialization`) ou livré (`delivery`) |
+| `xolo_webhook_history_lost`, `xolo_webhook_backpressure` | Abonnements dans cet état |
+
+Les jauges décrivent toute la base et sont relevées par chaque processus :
+prenez leur maximum entre réplicas, pas leur somme. Aucun label ne porte de
+tenant, de destination ni d'événement. Alertez sur un retard durable, sur les
+échecs et sur tout `history_lost`.
+
 ## Extensions Xolo
 
 Les opérations propres à Xolo sont sous `/v1/xolo`. Leurs corps sont en JSON
@@ -355,6 +495,7 @@ Toutes les erreurs partagent la même enveloppe :
 | `conflict` | 409 | Identifiant ou nom d'hôte détenu par un autre tenant, slug déjà utilisé, ou invariant métier. |
 | `last_owner` | 409 | La modification laisserait un tenant ou une organisation sans propriétaire actif. |
 | `platform_admin_protected` | 409 | La modification vise un administrateur de plateforme. |
+| `webhook_capacity` | 409 | Le tenant compte déjà le nombre maximal d'abonnements webhook. |
 | `cursor_expired` | 410 | Curseur de liste de plus de 24 heures, ou curseur d'événements antérieur aux événements conservés : reconstruisez. |
 | `precondition_failed` | 412 | `If-Match` ne désigne pas la révision actuelle. |
 | `unprocessable` | 422 | Valeur bien formée mais refusée par le domaine. |
@@ -530,5 +671,4 @@ En production, utilisez une autorité de certification gérée (Vault, cert-mana
 - Les portées par certificat : tout URI autorisé administre l'instance entière.
 - La création d'un membre avant sa première connexion : un membre se provisionne une fois connecté. Le mécanisme d'[invitation](../organisation/invitation/invitation.md) reste la voie par email, via l'interface web.
 - La suppression de tenants, domaines, organisations ou adhésions : suspendez-les.
-- Les webhooks : le flux d'événements s'interroge.
 - Aucune spécification OpenAPI n'est générée à ce jour.

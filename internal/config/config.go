@@ -21,6 +21,7 @@ type Config struct {
 	Events           EventsConfig       `envPrefix:"EVENTS_"`
 	ProvisionningAPI ProvisionningAPI   `envPrefix:"PROVISIONNING_API_"`
 	Multitenancy     Multitenancy       `envPrefix:"MULTITENANCY_"`
+	Webhooks         Webhooks           `envPrefix:"WEBHOOKS_"`
 	// SecretKey is a 32-byte hex string used for AES-GCM encryption of provider API keys.
 	SecretKey string `env:"SECRET_KEY"`
 }
@@ -133,6 +134,10 @@ func (c *Config) Validate() error {
 	}
 
 	if err := c.Multitenancy.Validate(); err != nil {
+		return errors.WithStack(err)
+	}
+
+	if err := c.Webhooks.Validate(); err != nil {
 		return errors.WithStack(err)
 	}
 

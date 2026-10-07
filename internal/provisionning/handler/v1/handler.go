@@ -31,15 +31,25 @@ const (
 // domain errors to HTTP statuses. It holds no store and no business rule.
 type Handler struct {
 	provisioning *service.ProvisioningService
+	webhooks     *service.WebhookService
 	mux          *http.ServeMux
 	version      string
+	// capabilities lists the optional parts of the contract this API serves,
+	// and nothing it does not.
+	capabilities []string
 }
 
-func NewHandler(provisioning *service.ProvisioningService, version string) *Handler {
+type HandlerOption func(*Handler)
+
+func NewHandler(provisioning *service.ProvisioningService, version string, options ...HandlerOption) *Handler {
 	h := &Handler{
 		provisioning: provisioning,
 		mux:          http.NewServeMux(),
 		version:      version,
+		capabilities: []string{"conditional_writes", "events", "reads"},
+	}
+	for _, option := range options {
+		option(h)
 	}
 
 	h.mux.HandleFunc("GET /v1/manifest", h.handleManifest)
@@ -99,6 +109,8 @@ func NewHandler(provisioning *service.ProvisioningService, version string) *Hand
 	h.mux.HandleFunc("GET "+ext+"/tenants/{tenantID}/users", h.handleListUsers)
 	h.mux.HandleFunc("PUT "+ext+"/tenants/{tenantID}/users", h.handlePutUser)
 	h.mux.HandleFunc("GET "+ext+"/tenants/{tenantID}/users/{userID}", h.handleGetUser)
+
+	h.mountWebhooks()
 
 	// Catch-all so an unknown route answers with the same error envelope as
 	// everything else.

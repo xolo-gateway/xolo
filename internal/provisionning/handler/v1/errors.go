@@ -38,6 +38,8 @@ const (
 	codeCursorExpired       = "cursor_expired"
 	codeInvalidPrecondition = "invalid_precondition"
 	codePreconditionFailed  = "precondition_failed"
+
+	codeWebhookCapacity = "webhook_capacity"
 )
 
 type errorEnvelope struct {
@@ -103,6 +105,8 @@ func statusFromError(err error) (int, string) {
 		return http.StatusBadRequest, codeInvalidPrecondition
 	case errors.Is(err, port.ErrPreconditionFailed):
 		return http.StatusPreconditionFailed, codePreconditionFailed
+	case errors.Is(err, port.ErrWebhookCapacity):
+		return http.StatusConflict, codeWebhookCapacity
 	case errors.Is(err, port.ErrParentNotFound):
 		return http.StatusNotFound, codeParentNotFound
 	case errors.Is(err, port.ErrLastOwner):

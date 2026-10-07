@@ -55,6 +55,8 @@ El multi-tenant se configura en la instancia, no en esta API:
 | `XOLO_MULTITENANCY_HOST_PATTERN` | — | Solo para la actualización: se expande una única vez en un dominio por tenant existente, véase [Dominios y enrutamiento](#dominios-y-enrutamiento) |
 | `XOLO_MULTITENANCY_DEFAULT_TENANT_SLUG` | `default` | Tenant servido cuando el multi-tenant está desactivado |
 
+Los webhooks tienen sus propias variables, véase [Webhooks](#webhooks).
+
 ## Contrato común
 
 | Método | Ruta | Cuerpo |
@@ -287,6 +289,141 @@ recursos nunca invalida los cursores de otros consumidores.
   toman. Los cambios de proyecciones se serializan así durante el breve tiempo
   de su commit: menos rendimiento de escritura a cambio de un flujo sin huecos.
 
+## Webhooks
+
+Los webhooks envían los eventos del [flujo](#flujo-de-eventos) a receptores
+HTTPS, a medida que se confirman. Son notificaciones, no una fuente de verdad:
+un consumidor conserva su propio punto de reanudación en el flujo, consulta
+`/v1/events` al arrancar, tras una reconexión y periódicamente, y nunca avanza
+ese punto por un webhook. Un webhook perdido nunca hace perder un cambio.
+
+Los webhooks están desactivados por defecto. El worker de entrega se ejecuta en
+cada proceso con `XOLO_WEBHOOKS_ENABLED=true`, esté o no activado allí el
+listener de aprovisionamiento; las suscripciones se gestionan a través del
+listener.
+
+| Variable | Valor por defecto | Uso |
+|---|---|---|
+| `XOLO_WEBHOOKS_ENABLED` | `false` | Ejecuta la preparación, la entrega y la limpieza de los webhooks, y anuncia `webhooks` en el manifiesto |
+| `XOLO_WEBHOOKS_ALLOWED_ORIGINS` | — | Orígenes HTTPS separados por comas (`https://host[:puerto]`, sin ruta) a los que puede apuntar una suscripción; obligatorio |
+| `XOLO_WEBHOOKS_ALLOW_PRIVATE_NETWORKS` | `false` | Permite también las direcciones de loopback y privadas |
+| `XOLO_WEBHOOKS_TLS_CA_FILE` | — | Autoridades de confianza adicionales (PEM); las del sistema siguen siendo de confianza |
+| `XOLO_WEBHOOKS_WORKERS` | `2` | Entregas simultáneas por proceso, de 1 a 16 |
+| `XOLO_WEBHOOKS_POLL_INTERVAL` | `1s` | Intervalo de preparación y de consulta, de 100 ms a 1 minuto |
+| `XOLO_WEBHOOKS_QUEUE_CAPACITY` | `10000` | Entregas en espera o en curso en la instancia |
+| `XOLO_WEBHOOKS_SUBSCRIPTION_CAPACITY` | `1000` | Entregas en espera o en curso de una suscripción, como máximo la capacidad de la cola |
+
+### Suscripciones
+
+| Método | Ruta | Respuesta |
+|---|---|---|
+| `GET` | `/v1/xolo/tenants/{tenantID}/webhooks` | `{"items":[…]}` |
+| `GET` | `/v1/xolo/tenants/{tenantID}/webhooks/{subscriptionID}` | La suscripción |
+| `PUT` | `/v1/xolo/tenants/{tenantID}/webhooks/{subscriptionID}` | La crea o la sustituye: `200` y la suscripción |
+| `DELETE` | `/v1/xolo/tenants/{tenantID}/webhooks/{subscriptionID}` | La elimina con sus entregas: `204` |
+| `POST` | `/v1/xolo/tenants/{tenantID}/webhooks/{subscriptionID}/reset` | `{"acknowledgeLoss":true}`: descarta sus entregas y continúa al final del flujo, `204` |
+| `GET` | `/v1/xolo/tenants/{tenantID}/webhooks/{subscriptionID}/deliveries` | Las 100 últimas entregas, sin el evento ni la respuesta |
+
+```json
+{"destination":"https://hooks.example.com/xolo","events":["organization.updated.v1","organization.deleted.v1"],
+ "enabled":true,"secrets":["whsec_…"]}
+```
+
+- Una suscripción entrega los eventos de **su tenant únicamente**. Su
+  identificador es un UUID elegido por el cliente y único en la instancia:
+  nunca pasa a otro tenant (`409 conflict`), y la suscripción de otro tenant
+  responde `404 not_found`. Un tenant tiene como máximo 10 suscripciones
+  (`409 webhook_capacity`).
+- `events` es `["*"]` o una lista de hasta 20 tipos de eventos distintos del
+  flujo. `destination` debe pertenecer a un origen permitido.
+- `secrets` contiene un secreto, o dos distintos durante una rotación: base64,
+  con el prefijo opcional `whsec_`, de 32 a 64 bytes aleatorios generados por
+  el cliente. Son obligatorios al crearla; omitirlos en un `PUT` posterior
+  conserva los guardados. Nunca se devuelven: la suscripción solo muestra
+  `secretCount`. Se cifran con `XOLO_SECRET_KEY` y quedan ligados a su tenant y
+  a su suscripción: guarde esa clave con la base de datos.
+- Una suscripción nueva empieza al final del flujo: reconstruya primero el
+  estado del consumidor y después apóyese en las notificaciones.
+- `enabled: false` pausa la suscripción sin perder su posición. Los cambios de
+  destino y de secretos se aplican a las entregas ya en cola.
+- Cada escritura de una suscripción se audita con el llamante y el
+  `X-Request-ID`, nunca con sus secretos.
+
+### Entrega
+
+Cada intento es un `POST` HTTPS del evento exacto del flujo, según
+[Standard Webhooks](https://www.standardwebhooks.com):
+
+| Cabecera | Valor |
+|---|---|
+| `Content-Type` | `application/cloudevents+json` |
+| `webhook-id` | El `id` del evento, el mismo en cada intento |
+| `webhook-timestamp` | Segundos Unix de este intento |
+| `webhook-signature` | `v1,<HMAC-SHA256 en base64 de "<id>.<timestamp>.<cuerpo>">` por cada secreto, separadas por espacios |
+
+Un receptor verifica una de las firmas sobre el cuerpo bruto antes de
+decodificarlo, rechaza una marca de tiempo alejada más de cinco minutos,
+deduplica por `(source, id)` y responde `2xx` una vez aceptado el evento de
+forma duradera.
+
+- **Al menos una vez, sin orden garantizado.** Un reintento, una caída tras la
+  respuesta del receptor o dos réplicas pueden repetir un evento; use
+  `sequence` para ordenar y el `GET` unitario para leer el estado actual.
+- Un `2xx` confirma la entrega; su cuerpo se lee hasta 64 KiB y se descarta.
+  Las redirecciones no se siguen. Todo lo demás se reintenta tras 5, 10, 20…
+  segundos, con una hora como máximo entre intentos, durante 12 intentos o 24
+  horas como máximo; la entrega pasa entonces a `failed`. Reconcilie mediante
+  el flujo.
+- Una entrega se reserva durante 30 segundos: un worker que se detiene a mitad
+  de un intento, en cualquier réplica, la deja a otro cuando expira la reserva.
+  Un resultado tardío nunca sobrescribe un intento más reciente.
+- Las entregas son copias de su evento: la retención del flujo nunca elimina
+  una entrega en cola. Las entregas terminadas se conservan siete días para el
+  diagnóstico.
+- Los workers nunca toman el bloqueo del flujo: solo leen el flujo de su
+  tenant, y la ruta de las solicitudes nunca los espera.
+
+### Destinos
+
+Solo los orígenes permitidos son accesibles. Cada dirección a la que resuelve
+el nombre se comprueba al conectar, y la dirección comprobada es la que se
+marca, de modo que el nombre no puede redirigirse entretanto. Las direcciones
+link-local —incluidos los puntos de metadatos de la nube—, multicast, no
+especificadas, compartidas y de uso especial se rechazan siempre; el loopback y
+las direcciones privadas solo con `XOLO_WEBHOOKS_ALLOW_PRIVATE_NETWORKS=true`.
+Los proxies del entorno se ignoran y los certificados se verifican siempre.
+Restrinja también el tráfico saliente del proceso con un cortafuegos.
+
+### Estados y recuperación
+
+| `state` | Significado |
+|---|---|
+| `ready` | Al día, o poniéndose al día |
+| `backpressure` | Se alcanzó la capacidad de la cola: la preparación se detiene en su posición y continúa cuando terminan entregas. Solo cuentan las entregas en espera y en curso, y una suscripción solo puede llenar su propia parte |
+| `history_lost` | La [retención](#retencion) eliminó eventos que la suscripción aún no había preparado, típicamente tras una pausa larga. Nunca se saltan en silencio: reconstruya el consumidor y después reinicie la suscripción |
+
+Un tenant suspendido no recibe nada: sus suscripciones se pausan y continúan al
+reactivarse, suspensión incluida. Una pausa —suscripción desactivada o tenant
+suspendido— más larga que la retención termina en `history_lost`, ya que los
+eventos purgados ya no pueden distinguirse. Eliminar un tenant elimina sus suscripciones
+y sus entregas. Solo la retención del flujo completo puede llevar una
+suscripción a `history_lost`.
+
+### Supervisión
+
+| Métrica | Significado |
+|---|---|
+| `xolo_webhook_attempts_total` | Intentos de este proceso |
+| `xolo_webhook_failures_total{reason}` | Fallos de este proceso, por diagnóstico |
+| `xolo_webhook_queue{state}` | Entregas de la base de datos, por estado |
+| `xolo_webhook_lag_seconds{stage}` | Antigüedad del evento más antiguo aún no preparado (`materialization`) o entregado (`delivery`) |
+| `xolo_webhook_history_lost`, `xolo_webhook_backpressure` | Suscripciones en ese estado |
+
+Los indicadores describen toda la base de datos y los muestrea cada proceso:
+tome su máximo entre réplicas, no su suma. Ninguna etiqueta lleva un tenant, un
+destino ni un evento. Alerte ante un retraso sostenido, ante los fallos y ante
+cualquier `history_lost`.
+
 ## Extensiones Xolo
 
 Las operaciones propias de Xolo están bajo `/v1/xolo`. Sus cuerpos son JSON en
@@ -337,6 +474,7 @@ Todos los errores comparten el formato `{"error":{"code":"…","message":"…"}}
 | `conflict` | 409 | Identificador o nombre de host de otro tenant, slug ya usado o invariante de negocio |
 | `last_owner` | 409 | El cambio dejaría un tenant o una organización sin propietario activo |
 | `platform_admin_protected` | 409 | El cambio afecta a un administrador de plataforma |
+| `webhook_capacity` | 409 | El tenant ya tiene el número máximo de suscripciones webhook |
 | `cursor_expired` | 410 | Cursor de lista de más de 24 horas, o cursor de eventos anterior a los eventos conservados: reconstruya |
 | `precondition_failed` | 412 | `If-Match` no designa la revisión actual |
 | `unprocessable` | 422 | Valor bien formado pero rechazado por el dominio |
@@ -500,5 +638,4 @@ En producción, utilice una autoridad de certificación gestionada (Vault, cert-
 - Los alcances por certificado: cualquier URI autorizado administra la instancia completa.
 - Crear un miembro antes de su primer inicio de sesión: un miembro se aprovisiona una vez que ha iniciado sesión. El mecanismo de [invitación](../organisation/invitation/invitation.md) sigue siendo la vía por correo, desde la interfaz web.
 - Eliminar tenants, dominios, organizaciones o pertenencias: suspéndalos.
-- Los webhooks: el flujo de eventos se consulta.
 - Todavía no se genera ninguna especificación OpenAPI.

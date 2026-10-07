@@ -128,6 +128,10 @@ updates the public projection and appends to the event feed in the same
 transaction (`internal/adapter/gorm/provisioning_projection.go`). A new write
 path on those tables must do the same, or projections, ETags and `/v1/events`
 diverge.
+Webhooks (`internal/adapter/gorm/webhook_store.go`) read that feed without
+its lock — it is prefix-closed — filtered by tenant in SQL, and coordinate
+replicas through conditional updates (subscription `revision`, delivery
+`lease`): never add an instance-wide lock to their path.
 See `internal/provisionning/README.md`.
 
 ### UI / templating

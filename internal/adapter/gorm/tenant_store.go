@@ -153,6 +153,13 @@ func (s *Store) DeleteTenant(ctx context.Context, id model.TenantID) error {
 			return errors.WithStack(err)
 		}
 
+		if err := db.Delete(&WebhookDelivery{}, "tenant_id = ?", string(id)).Error; err != nil {
+			return errors.WithStack(err)
+		}
+		if err := db.Delete(&WebhookSubscription{}, "tenant_id = ?", string(id)).Error; err != nil {
+			return errors.WithStack(err)
+		}
+
 		return errors.WithStack(db.Delete(&Tenant{}, "id = ?", string(id)).Error)
 	})
 }

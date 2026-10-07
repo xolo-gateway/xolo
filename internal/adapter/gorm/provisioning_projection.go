@@ -30,9 +30,9 @@ type ProvisioningProjection struct {
 // ProvisioningEvent is one entry of the feed. Sequence orders commits;
 // CreatedAt only serves retention and the informative CloudEvents time.
 type ProvisioningEvent struct {
-	Sequence    int64     `gorm:"primaryKey;autoIncrement:false"`
+	Sequence    int64     `gorm:"primaryKey;autoIncrement:false;index:idx_provisioning_events_tenant_sequence,priority:2"`
 	CreatedAt   time.Time `gorm:"autoCreateTime:false;not null"`
-	TenantID    string    `gorm:"index"`
+	TenantID    string    `gorm:"index;index:idx_provisioning_events_tenant_sequence,priority:1"`
 	OrgID       string
 	Family      string `gorm:"not null"`
 	ResourceKey string `gorm:"not null"`

@@ -30,6 +30,15 @@ func NewProvisionningAPIServerFromConfig(ctx context.Context, conf *config.Confi
 		return nil, errors.WithStack(err)
 	}
 
+	var options []v1.HandlerOption
+	worker, err := NewWebhookWorkerFromConfig(ctx, conf)
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+	if worker != nil {
+		options = append(options, v1.WithWebhooks(worker.WebhookService))
+	}
+
 	tlsConfig, err := provisionning.LoadTLSConfig(
 		conf.ProvisionningAPI.TLSCertFile,
 		conf.ProvisionningAPI.TLSKeyFile,
@@ -44,7 +53,7 @@ func NewProvisionningAPIServerFromConfig(ctx context.Context, conf *config.Confi
 		provisionning.WithClientPolicy(conf.ProvisionningAPI.AuthorizedURIs, conf.ProvisionningAPI.RateLimit, conf.ProvisionningAPI.RateBurst),
 		provisionning.WithAddress(conf.ProvisionningAPI.Address),
 		provisionning.WithTLSConfig(tlsConfig),
-		provisionning.WithHandler(v1.NewHandler(provisioning, build.ShortVersion)),
+		provisionning.WithHandler(v1.NewHandler(provisioning, build.ShortVersion, options...)),
 		provisionning.WithShutdownTimeout(conf.ProvisionningAPI.ShutdownTimeout),
 	), nil
 }

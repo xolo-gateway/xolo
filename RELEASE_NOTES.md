@@ -1,3 +1,24 @@
+# Unreleased — durable signed webhooks
+
+The provisioning API delivers the events of `/v1/events` to HTTPS receivers,
+per tenant: `/v1/xolo/tenants/{tenantID}/webhooks`. Deliveries are queued in the
+database, leased, retried with backoff for up to 24 hours and signed following
+Standard Webhooks, with two secrets during a rotation. Secrets are write-only
+and encrypted with `XOLO_SECRET_KEY`. Destinations are restricted to
+`XOLO_WEBHOOKS_ALLOWED_ORIGINS`, and every resolved address is checked before it
+is dialled. A suspended tenant is paused. Webhooks are disabled by default
+(`XOLO_WEBHOOKS_ENABLED`) and never take the lock of the event feed.
+
+Migration `202610090001` adds the subscription and delivery tables and an index
+on the feed; it changes no existing data and cannot be rolled back. Upgrade
+every replica before enabling webhooks: an old replica deleting a tenant would
+leave its subscriptions behind.
+
+Details:
+[English](docs/en/administration/provisioning/provisioning.md#webhooks),
+[Français](docs/fr/administration/provisioning/provisioning.md#webhooks),
+[Español](docs/es/administration/provisioning/provisioning.md#webhooks).
+
 # Unreleased — provisioning reads, conditional writes and event feed
 
 The provisioning API reads, lists and follows every resource of the common
