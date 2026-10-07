@@ -245,6 +245,11 @@ func pendingProjections(db *gorm.DB, before map[mutationKey][]byte, keys []mutat
 		if err != nil {
 			return nil, err
 		}
+		// Unlike the backfill, which skips such a row so that broken data
+		// never blocks a startup, a write to a resource crossing tenants
+		// fails closed: publishing it would expose a cross-tenant fact, and
+		// skipping it would leave its stored projection stale. Removing the
+		// resource still works, since a deletion has no projection to derive.
 		want, err := projectionOf(db, key, raw)
 		if err != nil {
 			return nil, err
@@ -295,6 +300,9 @@ func publishProjections(ctx context.Context, db *gorm.DB, before map[mutationKey
 	if err := lockProvisioningFeed(db); err != nil {
 		return err
 	}
+	// Again under the lock: at read committed (web UI, sign-in, invitations)
+	// another writer may have committed a change of the same projection in
+	// between. Serializable provisioning transactions only pay a re-read.
 	if changes, err = pendingProjections(db, before, keys); err != nil {
 		return err
 	}
@@ -356,10 +364,17 @@ func lockProvisioningFeed(db *gorm.DB) error {
 	return errors.WithStack(db.Exec("UPDATE provisioning_feeds SET head = head WHERE id = ?", provisioningFeedID).Error)
 }
 
-// nextProvisioningSequence allocates a feed position. A rolled back
-// transaction leaves a gap, never a reused position. A PostgreSQL sequence is
-// not transactional: a counter row would make concurrent serializable
-// publishers fail on each other.
+// nextProvisioningSequence allocates a feed position. Both backends guarantee
+// strictly increasing committed positions, which is all readers, ETags and
+// cursors rely on: an uncommitted position is never visible nor returned.
+// What happens to the position of a rolled back transaction differs:
+//   - PostgreSQL takes it from a sequence, which is not transactional: the
+//     position is lost and leaves a gap. A counter row would make concurrent
+//     serializable publishers fail on each other.
+//   - SQLite increments a counter row within the transaction: the rollback
+//     undoes the increment, and the next transaction may get the same position.
+//
+// Never assume an allocated position stays unused after a rollback.
 func nextProvisioningSequence(db *gorm.DB) (int64, error) {
 	var sequence int64
 	query := "UPDATE provisioning_feeds SET head = head + 1 WHERE id = 1 RETURNING head"

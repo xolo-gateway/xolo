@@ -427,7 +427,8 @@ func TestProvisioningSyncMigration(t *testing.T) {
 		require.NoError(t, store.CreateTenant(ctx, foreign))
 		stray := model.NewUser(foreign.ID(), "oidc", "stray", "stray@example.test", "", true, model.PlatformRoleUser)
 		require.NoError(t, store.SaveUser(ctx, stray))
-		require.NoError(t, db.Exec("INSERT INTO memberships (id, user_id, org_id, created_at, status) VALUES (?, ?, ?, ?, 'active')", uuid.NewString(), string(stray.ID()), string(org.ID()), time.Now()).Error)
+		strayMembership := model.MembershipID(uuid.NewString())
+		require.NoError(t, db.Exec("INSERT INTO memberships (id, user_id, org_id, created_at, status) VALUES (?, ?, ?, ?, 'active')", string(strayMembership), string(stray.ID()), string(org.ID()), time.Now()).Error)
 
 		// Reconstruct the schema of the previous release.
 		require.NoError(t, db.Migrator().DropTable(&xologorm.ProvisioningProjection{}, &xologorm.ProvisioningEvent{}, &xologorm.ProvisioningFeed{}))
@@ -477,5 +478,12 @@ func TestProvisioningSyncMigration(t *testing.T) {
 		events, _ := feedSince(t, disabled, start)
 		require.Equal(t, []string{"organization.updated.v1"}, eventTypes(events))
 		require.Greater(t, revisionOf(t, events[0].Data.ETag), revisionOf(t, items[model.FamilyOrganization].ETag))
+
+		// Unlike the backfill, a write to the cross-tenant membership fails
+		// closed and publishes nothing; removing it still works.
+		require.ErrorIs(t, disabled.SetMembershipStatus(ctx, strayMembership, model.StatusSuspended), port.ErrParentNotFound)
+		require.NoError(t, disabled.RemoveMember(ctx, strayMembership))
+		after, _ := feedSince(t, disabled, start)
+		require.Equal(t, events, after)
 	})
 }
