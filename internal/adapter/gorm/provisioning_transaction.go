@@ -11,8 +11,10 @@ import (
 	"gorm.io/gorm/clause"
 )
 
-// WithProvisioningTransaction replays validation, writes and audit together.
-// PostgreSQL SSI protects cross-row invariants without an instance-wide lock.
+// WithProvisioningTransaction replays validation, writes, audit and
+// publication together. PostgreSQL SSI protects cross-row invariants without
+// an instance-wide lock; only a transaction changing a projection takes the
+// feed lock, at its very end.
 func (s *Store) WithProvisioningTransaction(ctx context.Context, fn func(port.ProvisioningTx) error) error {
 	if s.transactionBound {
 		return errors.New("cannot start provisioning inside another transaction")
@@ -29,9 +31,11 @@ func (s *Store) WithProvisioningTransaction(ctx context.Context, fn func(port.Pr
 	return retryTransaction(ctx, func() error {
 		return db.WithContext(ctx).Transaction(func(db *gorm.DB) error {
 			db = db.Session(&gorm.Session{SkipDefaultTransaction: true})
+			recorder := newMutationRecorder(db)
 			tx := &provisioningTx{
-				Store: &Store{getDatabase: func(context.Context) (*gorm.DB, error) { return db, nil }, transactionBound: true},
-				db:    db, before: make(map[mutationKey][]byte),
+				Store:    &Store{getDatabase: func(context.Context) (*gorm.DB, error) { return db, nil }, transactionBound: true, recorder: recorder},
+				db:       db,
+				recorder: recorder,
 			}
 			if err := fn(tx); err != nil {
 				return err
@@ -41,10 +45,13 @@ func (s *Store) WithProvisioningTransaction(ctx context.Context, fn func(port.Pr
 	})
 }
 
+// provisioningTx binds a Store to the provisioning transaction. The bound
+// Store tracks every resource it writes into recorder, which audits and
+// publishes them before commit.
 type provisioningTx struct {
 	*Store
-	db     *gorm.DB
-	before map[mutationKey][]byte
+	db       *gorm.DB
+	recorder *mutationRecorder
 }
 
 func (tx *provisioningTx) FindOrCreateUser(ctx context.Context, tenantID model.TenantID, provider, subject string) (model.User, error) {
@@ -56,7 +63,7 @@ func (tx *provisioningTx) FindOrCreateUser(ctx context.Context, tenantID model.T
 		return nil, err
 	}
 	u = model.NewUser(tenantID, provider, subject, "", "", true)
-	if err := tx.track("user", string(u.ID())); err != nil {
+	if err := tx.recorder.track("user", string(u.ID())); err != nil {
 		return nil, err
 	}
 	// A concurrent insertion of this identity replays the serializable transaction.
@@ -94,120 +101,6 @@ func (tx *provisioningTx) EnsureBuiltinRoles(ctx context.Context, orgID model.Or
 
 var _ port.ProvisioningTransaction = (*Store)(nil)
 var _ port.ProvisioningTx = (*provisioningTx)(nil)
-
-func (tx *provisioningTx) CreateTenant(ctx context.Context, tenant model.Tenant) error {
-	if err := tx.track("tenant", string(tenant.ID())); err != nil {
-		return err
-	}
-	return tx.Store.CreateTenant(ctx, tenant)
-}
-
-func (tx *provisioningTx) SaveTenant(ctx context.Context, tenant model.Tenant) error {
-	if err := tx.track("tenant", string(tenant.ID())); err != nil {
-		return err
-	}
-	return tx.Store.SaveTenant(ctx, tenant)
-}
-
-func (tx *provisioningTx) DeleteTenant(ctx context.Context, id model.TenantID) error {
-	if err := tx.track("tenant", string(id)); err != nil {
-		return err
-	}
-	if err := tx.trackDependents("tenant", string(id)); err != nil {
-		return err
-	}
-	return tx.Store.DeleteTenant(ctx, id)
-}
-
-func (tx *provisioningTx) CreateOrg(ctx context.Context, org model.Organization) error {
-	if err := tx.track("organization", string(org.ID())); err != nil {
-		return err
-	}
-	return tx.Store.CreateOrg(ctx, org)
-}
-
-func (tx *provisioningTx) SaveOrg(ctx context.Context, org model.Organization) error {
-	if err := tx.track("organization", string(org.ID())); err != nil {
-		return err
-	}
-	return tx.Store.SaveOrg(ctx, org)
-}
-
-func (tx *provisioningTx) DeleteOrg(ctx context.Context, id model.OrgID) error {
-	if err := tx.track("organization", string(id)); err != nil {
-		return err
-	}
-	if err := tx.trackDependents("organization", string(id)); err != nil {
-		return err
-	}
-	return tx.Store.DeleteOrg(ctx, id)
-}
-
-func (tx *provisioningTx) SaveUser(ctx context.Context, user model.User) error {
-	if err := tx.track("user", string(user.ID())); err != nil {
-		return err
-	}
-	return tx.Store.SaveUser(ctx, user)
-}
-
-func (tx *provisioningTx) AddMember(ctx context.Context, membership model.Membership) error {
-	if err := tx.track("membership", string(membership.ID())); err != nil {
-		return err
-	}
-	return tx.Store.AddMember(ctx, membership)
-}
-
-func (tx *provisioningTx) RemoveMember(ctx context.Context, id model.MembershipID) error {
-	if err := tx.track("membership", string(id)); err != nil {
-		return err
-	}
-	return tx.Store.RemoveMember(ctx, id)
-}
-
-func (tx *provisioningTx) SetMembershipRoles(ctx context.Context, id model.MembershipID, roles []model.RoleID) error {
-	if err := tx.track("membership", string(id)); err != nil {
-		return err
-	}
-	return tx.Store.SetMembershipRoles(ctx, id, roles)
-}
-
-func (tx *provisioningTx) SetMembershipStatus(ctx context.Context, id model.MembershipID, status model.Status) error {
-	if err := tx.track("membership", string(id)); err != nil {
-		return err
-	}
-	return tx.Store.SetMembershipStatus(ctx, id, status)
-}
-
-func (tx *provisioningTx) SaveDomain(ctx context.Context, domain model.Domain) error {
-	if err := tx.track("domain", domain.Hostname); err != nil {
-		return err
-	}
-	return tx.Store.SaveDomain(ctx, domain)
-}
-
-func (tx *provisioningTx) CreateRole(ctx context.Context, role model.Role) error {
-	if err := tx.track("role", string(role.ID())); err != nil {
-		return err
-	}
-	return tx.Store.CreateRole(ctx, role)
-}
-
-func (tx *provisioningTx) SaveRole(ctx context.Context, role model.Role) error {
-	if err := tx.track("role", string(role.ID())); err != nil {
-		return err
-	}
-	return tx.Store.SaveRole(ctx, role)
-}
-
-func (tx *provisioningTx) DeleteRole(ctx context.Context, id model.RoleID) error {
-	if err := tx.track("role", string(id)); err != nil {
-		return err
-	}
-	if err := tx.trackDependents("role", string(id)); err != nil {
-		return err
-	}
-	return tx.Store.DeleteRole(ctx, id)
-}
 
 // Parent locks also protect against ordinary (read-committed) writers removing
 // a validated parent. They are shared row locks, never a lock on the whole tenant

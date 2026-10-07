@@ -53,18 +53,90 @@ var mutationColumns = map[string]string{
 	"domain":       "hostname, tenant_id, status",
 }
 
-func (tx *provisioningTx) track(kind, id string) error {
+// mutationRecorder keeps the state of every resource a transaction touches,
+// as it was before the first change. Provisioning audits the differences;
+// every writer publishes the projections they change.
+type mutationRecorder struct {
+	db     *gorm.DB
+	before map[mutationKey][]byte
+}
+
+func newMutationRecorder(db *gorm.DB) *mutationRecorder {
+	return &mutationRecorder{db: db, before: make(map[mutationKey][]byte)}
+}
+
+// mutationChange is a tracked resource whose snapshot changed.
+type mutationChange struct {
+	key           mutationKey
+	before, after []byte
+}
+
+func (r *mutationRecorder) track(kind, id string) error {
 	key := mutationKey{kind, id}
-	if _, exists := tx.before[key]; exists {
+	if _, exists := r.before[key]; exists {
 		return nil
 	}
-	before, err := mutationSnapshot(tx.db, key)
+	before, err := mutationSnapshot(r.db, key)
 	if err != nil {
 		return err
 	}
-	tx.before[key] = before
+	r.before[key] = before
 	return nil
 }
+
+// changes returns the tracked resources whose state changed, in key order.
+func (r *mutationRecorder) changes() ([]mutationChange, error) {
+	keys := make([]mutationKey, 0, len(r.before))
+	for key := range r.before {
+		keys = append(keys, key)
+	}
+	sort.Slice(keys, func(i, j int) bool {
+		if keys[i].kind != keys[j].kind {
+			return keys[i].kind < keys[j].kind
+		}
+		return keys[i].id < keys[j].id
+	})
+	changes := make([]mutationChange, 0, len(keys))
+	for _, key := range keys {
+		before := r.before[key]
+		after, err := mutationSnapshot(r.db, key)
+		if err != nil {
+			return nil, err
+		}
+		if bytes.Equal(before, after) {
+			continue
+		}
+		changes = append(changes, mutationChange{key: key, before: before, after: after})
+	}
+	return changes, nil
+}
+
+// publish publishes the projections of changes, then takes the current state
+// as the new reference, so a later flush in the same transaction only sees
+// what happened since.
+func (r *mutationRecorder) publish(ctx context.Context, changes []mutationChange) error {
+	keys := make([]mutationKey, 0, len(changes))
+	for _, change := range changes {
+		keys = append(keys, change.key)
+	}
+	if err := publishProjections(ctx, r.db, r.before, keys); err != nil {
+		return err
+	}
+	for _, change := range changes {
+		r.before[change.key] = change.after
+	}
+	return nil
+}
+
+// flush publishes every pending change.
+func (r *mutationRecorder) flush(ctx context.Context) error {
+	changes, err := r.changes()
+	if err != nil {
+		return err
+	}
+	return r.publish(ctx, changes)
+}
+
 func mutationSnapshot(db *gorm.DB, key mutationKey) ([]byte, error) {
 	table, ok := resourceTables[key.kind]
 	if !ok {
@@ -135,31 +207,19 @@ func mutationSnapshot(db *gorm.DB, key mutationKey) ([]byte, error) {
 	return json.Marshal(row)
 }
 
+// flushMutations audits every pending change, then publishes its projections.
 func (tx *provisioningTx) flushMutations(ctx context.Context) error {
-	keys := make([]mutationKey, 0, len(tx.before))
-	for key := range tx.before {
-		keys = append(keys, key)
+	changes, err := tx.recorder.changes()
+	if err != nil {
+		return err
 	}
-	sort.Slice(keys, func(i, j int) bool {
-		if keys[i].kind != keys[j].kind {
-			return keys[i].kind < keys[j].kind
-		}
-		return keys[i].id < keys[j].id
-	})
 	actor := model.ActorFromContext(ctx)
 	actorJSON, err := json.Marshal(actor)
 	if err != nil {
 		return err
 	}
-	for _, key := range keys {
-		before := tx.before[key]
-		after, err := mutationSnapshot(tx.db, key)
-		if err != nil {
-			return err
-		}
-		if bytes.Equal(before, after) {
-			continue
-		}
+	for _, change := range changes {
+		key, before, after := change.key, change.before, change.after
 		if err := tx.checkOwnerTransition(key, before, after); err != nil {
 			return err
 		}
@@ -185,21 +245,21 @@ func (tx *provisioningTx) flushMutations(ctx context.Context) error {
 			return err
 		}
 	}
-	return nil
+	return tx.recorder.publish(ctx, changes)
 }
 
-func (tx *provisioningTx) trackDependents(kind, id string) error {
+func (r *mutationRecorder) trackDependents(kind, id string) error {
 	trackIDs := func(resource, column string) error {
 		var ids []string
 		key := resourceKey(resource)
-		if err := tx.db.Table(resourceTables[resource]).Where(column+" = ?", id).Order(key).Pluck(key, &ids).Error; err != nil {
+		if err := r.db.Table(resourceTables[resource]).Where(column+" = ?", id).Order(key).Pluck(key, &ids).Error; err != nil {
 			return err
 		}
 		for _, child := range ids {
-			if err := tx.track(resource, child); err != nil {
+			if err := r.track(resource, child); err != nil {
 				return err
 			}
-			if err := tx.trackDependents(resource, child); err != nil {
+			if err := r.trackDependents(resource, child); err != nil {
 				return err
 			}
 		}
@@ -223,11 +283,11 @@ func (tx *provisioningTx) trackDependents(kind, id string) error {
 		return trackIDs("membership", "user_id")
 	case "role":
 		var ids []string
-		if err := tx.db.Table("membership_roles").Where("role_id = ?", id).Order("membership_id").Pluck("membership_id", &ids).Error; err != nil {
+		if err := r.db.Table("membership_roles").Where("role_id = ?", id).Order("membership_id").Pluck("membership_id", &ids).Error; err != nil {
 			return err
 		}
 		for _, member := range ids {
-			if err := tx.track("membership", member); err != nil {
+			if err := r.track("membership", member); err != nil {
 				return err
 			}
 		}

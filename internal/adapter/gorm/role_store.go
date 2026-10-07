@@ -13,7 +13,7 @@ import (
 
 // CreateRole implements port.RoleStore.
 func (s *Store) CreateRole(ctx context.Context, role model.Role) error {
-	return s.withRetry(ctx, true, func(ctx context.Context, db *gorm.DB) error {
+	return s.recorded(ctx, tracking("role", string(role.ID())), func(ctx context.Context, db *gorm.DB) error {
 		if err := db.Create(fromRole(role)).Error; err != nil {
 			// The (org_id, name) index is spelled "roles.org_id, roles.name" by
 			// SQLite and "role_org_name_index" by PostgreSQL, whose Detail line
@@ -68,7 +68,7 @@ func (s *Store) ListOrgRoles(ctx context.Context, orgID model.OrgID) ([]model.Ro
 // SaveRole implements port.RoleStore. It upserts the role and fully replaces
 // its permissions and model grants.
 func (s *Store) SaveRole(ctx context.Context, role model.Role) error {
-	return s.withRetry(ctx, true, func(ctx context.Context, db *gorm.DB) error {
+	return s.recorded(ctx, tracking("role", string(role.ID())), func(ctx context.Context, db *gorm.DB) error {
 		gormRole := fromRole(role)
 
 		if err := db.Clauses(clause.OnConflict{
@@ -106,7 +106,7 @@ func (s *Store) SaveRole(ctx context.Context, role model.Role) error {
 
 // DeleteRole implements port.RoleStore. It refuses to delete builtin roles.
 func (s *Store) DeleteRole(ctx context.Context, id model.RoleID) error {
-	return s.withRetry(ctx, true, func(ctx context.Context, db *gorm.DB) error {
+	return s.recorded(ctx, trackingTree("role", string(id)), func(ctx context.Context, db *gorm.DB) error {
 		var role Role
 		if err := db.First(&role, "id = ?", string(id)).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -130,7 +130,7 @@ func (s *Store) DeleteRole(ctx context.Context, id model.RoleID) error {
 // SetMembershipRoles implements port.RoleStore. It replaces the full set of
 // roles assigned to a membership.
 func (s *Store) SetMembershipRoles(ctx context.Context, membershipID model.MembershipID, roleIDs []model.RoleID) error {
-	return s.withRetry(ctx, true, func(ctx context.Context, db *gorm.DB) error {
+	return s.recorded(ctx, tracking("membership", string(membershipID)), func(ctx context.Context, db *gorm.DB) error {
 		if err := db.Where("membership_id = ?", string(membershipID)).Delete(&MembershipRole{}).Error; err != nil {
 			return errors.WithStack(err)
 		}

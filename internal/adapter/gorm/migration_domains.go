@@ -25,7 +25,9 @@ func (s *Store) InitializeDomainRouting(ctx context.Context, pattern string) err
 	if pattern == "" {
 		return nil
 	}
+	ctx = model.EnsureActor(ctx)
 	return s.withRetry(ctx, true, func(ctx context.Context, tx *gorm.DB) error {
+		recorder := newMutationRecorder(tx)
 		var done int64
 		if err := tx.Model(&DomainRouting{}).Where("id = ?", domainRoutingID).Count(&done).Error; err != nil {
 			return errors.WithStack(err)
@@ -42,6 +44,9 @@ func (s *Store) InitializeDomainRouting(ctx context.Context, pattern string) err
 			if err != nil {
 				return errors.Wrapf(err, "XOLO_MULTITENANCY_HOST_PATTERN %q gives tenant %q an invalid hostname", pattern, tenant.Slug)
 			}
+			if err := recorder.track("domain", host); err != nil {
+				return err
+			}
 			result := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&Domain{Hostname: host, TenantID: tenant.ID, Status: string(model.StatusActive)})
 			if result.Error != nil {
 				return errors.WithStack(result.Error)
@@ -53,6 +58,9 @@ func (s *Store) InitializeDomainRouting(ctx context.Context, pattern string) err
 		}
 		// Concurrent startups may both expand the pattern: the domains and
 		// this marker are inserted idempotently.
-		return errors.WithStack(tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&DomainRouting{ID: domainRoutingID, Pattern: pattern}).Error)
+		if err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&DomainRouting{ID: domainRoutingID, Pattern: pattern}).Error; err != nil {
+			return errors.WithStack(err)
+		}
+		return recorder.flush(ctx)
 	})
 }

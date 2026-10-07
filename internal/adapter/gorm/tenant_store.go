@@ -15,7 +15,7 @@ func (s *Store) CreateTenant(ctx context.Context, tenant model.Tenant) error {
 	if _, err := model.ParseTenantID(string(tenant.ID())); err != nil {
 		return port.ErrInvalid
 	}
-	return s.withRetry(ctx, true, func(ctx context.Context, db *gorm.DB) error {
+	return s.recorded(ctx, tracking("tenant", string(tenant.ID())), func(ctx context.Context, db *gorm.DB) error {
 		if err := db.Create(fromTenant(tenant)).Error; err != nil {
 			if isUniqueViolation(err, "tenants", "slug") {
 				return errors.Wrapf(port.ErrAlreadyExists, "slug %q is already used by another tenant", tenant.Slug())
@@ -99,7 +99,7 @@ func (s *Store) SaveTenant(ctx context.Context, tenant model.Tenant) error {
 	if _, err := model.ParseTenantID(string(tenant.ID())); err != nil {
 		return port.ErrInvalid
 	}
-	return s.withRetry(ctx, true, func(ctx context.Context, db *gorm.DB) error {
+	return s.recorded(ctx, tracking("tenant", string(tenant.ID())), func(ctx context.Context, db *gorm.DB) error {
 		if err := db.Clauses(clause.OnConflict{
 			Columns:   []clause.Column{{Name: "id"}},
 			UpdateAll: true,
@@ -118,7 +118,7 @@ func (s *Store) SaveTenant(ctx context.Context, tenant model.Tenant) error {
 // rows keyed on them: users are tenant-scoped, so nothing outside this tenant
 // can reference them.
 func (s *Store) DeleteTenant(ctx context.Context, id model.TenantID) error {
-	return s.withRetry(ctx, true, func(ctx context.Context, db *gorm.DB) error {
+	return s.recorded(ctx, trackingTree("tenant", string(id)), func(ctx context.Context, db *gorm.DB) error {
 		var exists Tenant
 		if err := db.Select("id").First(&exists, "id = ?", string(id)).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {

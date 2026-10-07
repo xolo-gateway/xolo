@@ -64,4 +64,8 @@ type ProvisioningTx interface {
 	ProvisioningUserStore
 	ProvisioningRoleStore
 	DomainStore
+	// ReadProjection publishes the changes made so far in the transaction,
+	// then reads the projection of one resource within it. A missing resource
+	// or parent is ErrNotFound.
+	ReadProjection(ctx context.Context, scope model.CommonScope, key string) (model.CommonItem, error)
 }

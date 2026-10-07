@@ -53,6 +53,7 @@ Le matériel TLS est chargé au démarrage : un certificat, une clé ou un bundl
 | `XOLO_PROVISIONNING_API_RATE_LIMIT` | `10` | Requêtes par seconde, par URI et par processus. |
 | `XOLO_PROVISIONNING_API_RATE_BURST` | `20` | Rafale autorisée par URI. |
 | `XOLO_PROVISIONNING_API_SHUTDOWN_TIMEOUT` | `10s` | Délai d'arrêt gracieux. |
+| `XOLO_PROVISIONNING_API_EVENT_RETENTION` | `720h` | Historique conservé dans le flux d'événements, `0` pour illimité ; s'applique même lorsque l'écouteur est désactivé. |
 
 Le débit et la rafale s'appliquent à chaque processus : avec N réplicas, un même URI dispose de N fois les valeurs configurées.
 
@@ -70,19 +71,24 @@ N'exposez pas ce port sur un réseau public : réservez-le au réseau d'administ
 
 | Méthode | Route | Corps |
 | --- | --- | --- |
-| `GET` | `/v1/manifest` | — renvoie `{"name","version","contract_version"}` |
+| `GET` | `/v1/manifest` | — renvoie `{"name","version","contract_version","capabilities"}` |
 | `PUT` | `/v1/tenants/{tenantID}` | `{"slug","name","status"}` |
 | `PUT` | `/v1/tenants/{tenantID}/domains/{hostname}` | `{"status"}` |
 | `PUT` | `/v1/tenants/{tenantID}/organizations/{orgID}` | `{"slug","name","status"}` |
 | `PUT` | `/v1/tenants/{tenantID}/members/{memberID}` | `{"email","tenant_role","status"}`, `"display_name"` facultatif |
 | `PUT` | `/v1/tenants/{tenantID}/organizations/{orgID}/members/{memberID}` | `{"role","status"}` |
 
+Chacune de ces ressources peut aussi être lue, listée et suivie via le flux
+d'événements : voir [Lectures, conditions et synchronisation](#lectures-conditions-et-synchronisation).
+`capabilities` liste `conditional_writes`, `events` et `reads`.
+
 - **Les identifiants** sont des UUID canoniques en minuscules choisis par le
   client. Toute autre valeur est refusée avec `400 invalid_parameter`. Un membre
   est un utilisateur : `memberID` est l'identifiant de l'utilisateur.
 - **Chaque `PUT` répond `200`**, création comprise, avec la représentation
-  enregistrée. Un `PUT` identique à l'état enregistré ne change rien et n'écrit
-  pas d'audit : un client peut rejouer tout son état souhaité.
+  enregistrée et son `ETag`. Un `PUT` identique à l'état enregistré ne change
+  rien, n'écrit pas d'audit et conserve son `ETag` : un client peut rejouer tout
+  son état souhaité.
 - **Un `PUT` remplace la représentation.** Un `display_name` omis est vide. Les
   champs hors contrat — descriptions, devises, identités, rôles de plateforme,
   rôles personnalisés — ne sont jamais modifiés.
@@ -94,8 +100,8 @@ N'exposez pas ce port sur un réseau public : réservez-le au réseau d'administ
   `Content-Type: application/json` (sinon `415 unsupported_media_type`), de
   1 Mio au plus. Un champ inconnu, une valeur non textuelle ou un Unicode
   invalide donne `400 invalid_json` ; un champ requis absent ou `null` donne
-  `400 invalid_representation`. Les routes communes n'acceptent aucun paramètre
-  de requête (`400 invalid_parameter`).
+  `400 invalid_representation`. Les `PUT` n'acceptent aucun paramètre de
+  requête (`400 invalid_parameter`).
 
 ### Tenants
 
@@ -171,6 +177,130 @@ ancien nom d'hôte. Ce développement ne se rejoue jamais : les tenants créés
 ensuite doivent déclarer leurs domaines via l'API, et la variable peut être
 retirée. Un nom d'hôte déjà déclaré est conservé et journalisé, jamais réattribué.
 
+## Lectures, conditions et synchronisation
+
+Chaque ressource du contrat commun a une **projection** : la représentation que
+renvoie son `PUT`, maintenue dans la même transaction que la ressource. Toute
+modification d'une projection, quelle qu'en soit l'origine — cette API,
+l'interface web, une connexion, une invitation acceptée, une suppression —
+reçoit la position suivante d'un **flux d'événements** unique et publie un
+événement.
+
+| Méthode | Route | Réponse |
+| --- | --- | --- |
+| `GET` | `/v1/tenants/{tenantID}`, `…/domains/{hostname}`, `…/organizations/{orgID}`, `…/members/{memberID}`, `…/organizations/{orgID}/members/{memberID}` | La représentation, avec son en-tête `ETag` |
+| `GET` | `/v1/tenants`, `…/domains`, `…/organizations`, `…/members`, `…/organizations/{orgID}/members` | `{"items":[{"key","representation","etag"}],"next_cursor"}` |
+| `GET` | `/v1/events/cursor` | `{"cursor"}` : la fin actuelle du flux |
+| `GET` | `/v1/events?cursor=` | `{"items":[…],"next_cursor","has_more"}` |
+
+### ETags et écritures conditionnelles
+
+- **L'ETag est une révision**, `W/"<n>"` : la position du flux de la dernière
+  modification de la représentation. Les révisions sont persistées et
+  strictement croissantes sur toute l'instance ; elles ne dépendent d'aucune
+  horloge : ni un saut d'horloge, ni un décalage entre réplicas, ni la
+  suppression puis la recréation d'une ressource ne font réapparaître un ETag.
+  Les ressources existantes ont reçu leur propre révision lors de la mise à
+  niveau. Les ETags sont des validateurs opaques : comparez-les, ne les
+  calculez pas.
+- Un `PUT` renvoie la projection écrite par sa propre transaction et son
+  `ETag`. Un `PUT` qui ne change rien conserve la révision.
+- **`If-Match`** sur un `PUT` est vérifié dans la transaction de mutation, avant
+  toute écriture : `*` ou une liste d'ETags séparés par des virgules, comparés
+  faiblement. Une condition périmée répond `412 precondition_failed`, même pour
+  un corps identique à l'état enregistré ; `*` sur une ressource absente donne
+  aussi `412`. Sans `If-Match`, l'écriture est inconditionnelle. De deux
+  écrivains détenant le même ETag, un seul réussit. Une condition mal formée,
+  ou tout `If-None-Match`, donne `400 invalid_precondition`.
+
+### Listes et curseurs
+
+- Une collection est le chemin de sa ressource unitaire sans le dernier
+  segment. Les listes n'acceptent que `limit` (1 à 1000, 100 par défaut) et
+  `cursor`, une fois chacun (sinon `400 invalid_parameter`) ; les lectures
+  unitaires, `/v1/manifest` et `/v1/events/cursor` n'acceptent aucun paramètre
+  de requête.
+- Les éléments sont triés selon l'ordre binaire de leur clé. Une page n'est pas
+  un instantané de la collection : les modifications validées pendant une
+  énumération sont rattrapées par le flux. Il n'y a pas de total.
+- `next_cursor` vaut `null` sur la dernière page. Les curseurs sont signés avec
+  un secret de l'instance et liés à la collection, à ses parents et à la
+  limite : un curseur altéré, ou utilisé pour une autre collection, une autre
+  limite ou le flux, répond `400 invalid_cursor`. Un curseur de liste expire
+  24 heures après la première page, sans renouvellement (`410 cursor_expired`).
+  Les curseurs sont opaques mais pas chiffrés.
+- Un parent inconnu répond `404 parent_not_found` sur une liste et
+  `404 not_found` sur une lecture unitaire.
+
+### Flux d'événements
+
+Les événements suivent un profil fermé de [CloudEvents 1.0](https://cloudevents.io),
+sans représentation ni donnée personnelle :
+
+```json
+{"specversion":"1.0","id":"…","source":"urn:uuid:…","type":"organization.updated.v1",
+ "time":"…","datacontenttype":"application/json","sequence":"42","requestid":"…",
+ "data":{"resource_type":"organization","key":{"tenant_id":"…","organization_id":"…"},"etag":"W/\"42\""}}
+```
+
+- `type` vaut `<resource_type>.created.v1`, `.updated.v1` ou `.deleted.v1`, où
+  `resource_type` est `tenant`, `tenant_domain`, `organization`, `member` ou
+  `organization_membership`. Une suppression ne porte pas d'`etag`.
+- **Un événement par ressource et par commit.** Un no-op ou une transaction
+  annulée ne publie rien. Dans un commit, les suppressions viennent d'abord,
+  des enfants vers les parents, puis les créations et modifications, des
+  parents vers les enfants.
+- `sequence` ordonne les événements **dans l'ordre des commits** : une position
+  n'est visible qu'une fois chaque position inférieure visible ou annulée ; un
+  consommateur qui reprend après la dernière position lue ne saute donc jamais
+  d'événement. Les positions ont des trous. `time` est purement informatif.
+  `requestid` est le `X-Request-ID` de la requête de provisioning, ou une
+  corrélation générée pour les autres modifications.
+- `has_more=false` signifie que la page a atteint la fin du flux ; son
+  `next_cursor` reprend à cet endroit. Les curseurs d'événements n'expirent
+  jamais d'eux-mêmes.
+- Les utilisateurs techniques des applications ne sont pas des membres : ils ne
+  sont ni projetés ni modifiables via `PUT …/members/{memberID}`.
+
+**Algorithme du consommateur.**
+
+1. Capturez un curseur avec `GET /v1/events/cursor`, **avant** l'inventaire.
+2. Énumérez `/v1/tenants`, puis les domaines, organisations, membres et
+   adhésions de chaque tenant.
+3. Interrogez `GET /v1/events?cursor=` ; pour chaque événement, relisez la
+   ressource et appliquez sa représentation actuelle (`404` signifie qu'elle a
+   disparu). Dédupliquez les événements par `(source, id)` ; ne laissez jamais
+   une lecture plus ancienne écraser le résultat d'une lecture plus récente.
+4. Persistez l'état appliqué, **puis** le `next_cursor`. Un arrêt brutal entre
+   les deux rejoue des événements, sans conséquence.
+5. Sur `410 cursor_expired`, reconstruisez une nouvelle génération depuis
+   l'étape 1 et basculez dessus seulement une fois complète.
+
+### Rétention
+
+`XOLO_PROVISIONNING_API_EVENT_RETENTION` (`720h` par défaut, `0` conserve tous
+les événements) supprime chaque heure les plus anciens événements créés avant
+la période de rétention. La suppression s'arrête au premier événement conservé :
+un recul d'horloge ne supprime jamais un événement qui suit un événement
+conservé. Un curseur antérieur aux événements supprimés répond
+`410 cursor_expired`. La rétention s'exécute même lorsque l'écouteur est
+désactivé, puisque les modifications sont publiées dans tous les cas. Seule
+cette rétention supprime des événements : supprimer des ressources n'invalide
+jamais les curseurs des autres consommateurs.
+
+### Stockage et performances
+
+- La source du flux et le secret qui signe les curseurs sont stockés en base :
+  sauvegardez-les avec elle. Restaurer une autre base invalide les curseurs
+  (`400 invalid_cursor`) et change la `source` : les consommateurs
+  reconstruisent.
+- Une transaction ne prend le **verrou du flux** que lorsqu'elle modifie une
+  projection, à sa toute fin, et le garde jusqu'au commit ; sous PostgreSQL,
+  c'est un verrou consultatif associé à une séquence. Les lectures, les no-op,
+  les connexions qui ne changent rien et le proxy LLM ne le prennent jamais.
+  Les modifications de projections sont ainsi sérialisées le court instant de
+  leur commit : un débit d'écriture moindre contre un flux sans trou.
+
 ## Extensions Xolo
 
 Les opérations propres à Xolo sont sous `/v1/xolo`. Leurs corps sont en JSON
@@ -210,7 +340,9 @@ Toutes les erreurs partagent la même enveloppe :
 
 | Code | HTTP | Cause |
 | --- | --- | --- |
-| `invalid_parameter` | 400 | Identifiant qui n'est pas un UUID canonique, ou paramètre de requête sur une route commune. |
+| `invalid_parameter` | 400 | Identifiant qui n'est pas un UUID canonique, ou paramètre de requête qu'une route commune ne définit pas. |
+| `invalid_cursor` | 400 | Curseur altéré, vide, ou émis pour une autre collection, une autre limite ou le flux. |
+| `invalid_precondition` | 400 | `If-Match` mal formé, ou `If-None-Match`. |
 | `invalid_json` | 400 | Route commune : JSON mal formé, champ inconnu, valeur non textuelle, Unicode invalide. |
 | `invalid_representation` | 400 | Route commune : champ requis absent ou `null`. |
 | `invalid_hostname` | 400 | Nom d'hôte pas en minuscules, avec port, adresse IP ou label invalide. |
@@ -223,6 +355,8 @@ Toutes les erreurs partagent la même enveloppe :
 | `conflict` | 409 | Identifiant ou nom d'hôte détenu par un autre tenant, slug déjà utilisé, ou invariant métier. |
 | `last_owner` | 409 | La modification laisserait un tenant ou une organisation sans propriétaire actif. |
 | `platform_admin_protected` | 409 | La modification vise un administrateur de plateforme. |
+| `cursor_expired` | 410 | Curseur de liste de plus de 24 heures, ou curseur d'événements antérieur aux événements conservés : reconstruisez. |
+| `precondition_failed` | 412 | `If-Match` ne désigne pas la révision actuelle. |
 | `unprocessable` | 422 | Valeur bien formée mais refusée par le domaine. |
 | `rate_limited` | 429 | Budget par URI dépassé ; attendre les secondes indiquées par `Retry-After`. |
 | `internal_error` | 500 | Erreur inattendue. |
@@ -287,6 +421,13 @@ peut pas être annulée. Avec `XOLO_STORAGE_AUTO_MIGRATE=false`, arrêtez tous l
 avant le démarrage. Le développement de `XOLO_MULTITENANCY_HOST_PATTERN` en
 domaines est fait par le serveur au démarrage, dans les deux modes.
 
+**La migration `202610080001` exige aussi l'arrêt de tous les serveurs.** Elle
+crée les projections et le flux d'événements, et donne à chaque ressource
+existante sa propre révision sans publier d'événement : les consommateurs
+commencent par un inventaire. Un ancien serveur encore actif écrirait sans
+publier, et les projections, les ETags et le flux divergeraient sans bruit. La
+migration ne peut pas être annulée.
+
 ## Transactions, audit et corrélation
 
 Chaque mutation de provisioning revérifie ses parents et effectue toutes ses
@@ -294,7 +435,8 @@ Chaque mutation de provisioning revérifie ses parents et effectue toutes ses
 d'un utilisateur préexistant, les associations de rôles et l'audit. PostgreSQL utilise
 `SERIALIZABLE` ; les conflits d'écriture SQLite et les conflits de sérialisation
 PostgreSQL rejouent l'opération entière avec une attente bornée et annulable.
-Aucun verrou de publication global n'est utilisé.
+Seule une transaction qui modifie une projection prend le verrou du flux, à sa
+toute fin (voir [Stockage et performances](#stockage-et-performances)).
 
 `mutation_audits` conserve un état avant/après par ressource effectivement modifiée :
 tenant, domaine, organisation, utilisateur, adhésion ou rôle, y compris les associations de
@@ -314,7 +456,8 @@ corrélation générée au début de l'opération.
 Les événements locaux de membres et de rôles gardent leurs types et messages,
 y compris les événements distincts d'ajout de membre et d'attribution de rôles.
 Ils sont émis après commit via le mécanisme asynchrone existant. Ils ne constituent
-pas une outbox durable ; seul l'audit est persisté atomiquement. Les lectures
+pas une outbox durable ; l'audit, les projections et le flux d'événements sont
+persistés atomiquement avec la modification. Les lectures
 transactionnelles vont directement en base. Après commit, les utilisateurs concernés,
 leurs clés secondaires et les jetons supprimés en cascade sont invalidés dans le cache.
 
@@ -387,5 +530,5 @@ En production, utilisez une autorité de certification gérée (Vault, cert-mana
 - Les portées par certificat : tout URI autorisé administre l'instance entière.
 - La création d'un membre avant sa première connexion : un membre se provisionne une fois connecté. Le mécanisme d'[invitation](../organisation/invitation/invitation.md) reste la voie par email, via l'interface web.
 - La suppression de tenants, domaines, organisations ou adhésions : suspendez-les.
-- Les écritures conditionnelles (`ETag`/`If-Match`), les lectures communes paginées, le flux d'événements et les webhooks.
+- Les webhooks : le flux d'événements s'interroge.
 - Aucune spécification OpenAPI n'est générée à ce jour.

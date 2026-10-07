@@ -43,11 +43,31 @@ func NewHandler(provisioning *service.ProvisioningService, version string) *Hand
 	}
 
 	h.mux.HandleFunc("GET /v1/manifest", h.handleManifest)
-	h.mux.HandleFunc("PUT /v1/tenants/{tenantID}", h.handlePutTenant)
-	h.mux.HandleFunc("PUT /v1/tenants/{tenantID}/domains/{hostname}", h.handlePutDomain)
-	h.mux.HandleFunc("PUT /v1/tenants/{tenantID}/organizations/{orgID}", h.handlePutOrganization)
-	h.mux.HandleFunc("PUT /v1/tenants/{tenantID}/members/{memberID}", h.handlePutTenantMember)
-	h.mux.HandleFunc("PUT /v1/tenants/{tenantID}/organizations/{orgID}/members/{memberID}", h.handlePutOrgMember)
+
+	const (
+		tenants     = "/v1/tenants"
+		tenant      = tenants + "/{tenantID}"
+		domains     = tenant + "/domains"
+		orgs        = tenant + "/organizations"
+		members     = tenant + "/members"
+		memberships = orgs + "/{orgID}/members"
+	)
+	for _, route := range []struct {
+		collection, unit, family string
+		put                      http.HandlerFunc
+	}{
+		{tenants, tenant, model.FamilyTenant, h.handlePutTenant},
+		{domains, domains + "/{hostname}", model.FamilyTenantDomain, h.handlePutDomain},
+		{orgs, orgs + "/{orgID}", model.FamilyOrganization, h.handlePutOrganization},
+		{members, members + "/{memberID}", model.FamilyMember, h.handlePutTenantMember},
+		{memberships, memberships + "/{memberID}", model.FamilyOrganizationMembership, h.handlePutOrgMember},
+	} {
+		h.mux.HandleFunc("GET "+route.collection, h.handleCommonList(route.family))
+		h.mux.HandleFunc("GET "+route.unit, h.handleCommonGet(route.family))
+		h.mux.HandleFunc("PUT "+route.unit, route.put)
+	}
+	h.mux.HandleFunc("GET /v1/events/cursor", h.handleEventCursor)
+	h.mux.HandleFunc("GET /v1/events", h.handleEvents)
 
 	const ext = "/v1/xolo"
 
@@ -87,10 +107,11 @@ func NewHandler(provisioning *service.ProvisioningService, version string) *Hand
 	return h
 }
 
-// ServeHTTP refuses query parameters on the common contract, which defines
-// none: a client relying on one must be told rather than silently ignored.
+// ServeHTTP refuses query parameters on the writes of the common contract,
+// which define none: a client relying on one must be told rather than
+// silently ignored. Each read checks its own parameters.
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	if r.URL.RawQuery != "" && !strings.HasPrefix(r.URL.Path, "/v1/xolo/") {
+	if r.URL.RawQuery != "" && r.Method != http.MethodGet && !strings.HasPrefix(r.URL.Path, "/v1/xolo/") {
 		writeError(w, http.StatusBadRequest, codeInvalidParameter, "the common contract defines no query parameter")
 		return
 	}

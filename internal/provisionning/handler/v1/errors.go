@@ -32,6 +32,12 @@ const (
 	codeInvalidHostname        = "invalid_hostname"
 	codeUnprocessable          = "unprocessable"
 	codeInternalError          = "internal_error"
+
+	// Reads, conditions and the event feed.
+	codeInvalidCursor       = "invalid_cursor"
+	codeCursorExpired       = "cursor_expired"
+	codeInvalidPrecondition = "invalid_precondition"
+	codePreconditionFailed  = "precondition_failed"
 )
 
 type errorEnvelope struct {
@@ -89,6 +95,14 @@ func writeServiceError(ctx context.Context, w http.ResponseWriter, err error, fa
 // statusFromError maps the domain sentinels to their HTTP status.
 func statusFromError(err error) (int, string) {
 	switch {
+	case errors.Is(err, port.ErrInvalidCursor):
+		return http.StatusBadRequest, codeInvalidCursor
+	case errors.Is(err, port.ErrCursorExpired):
+		return http.StatusGone, codeCursorExpired
+	case errors.Is(err, port.ErrInvalidPrecondition):
+		return http.StatusBadRequest, codeInvalidPrecondition
+	case errors.Is(err, port.ErrPreconditionFailed):
+		return http.StatusPreconditionFailed, codePreconditionFailed
 	case errors.Is(err, port.ErrParentNotFound):
 		return http.StatusNotFound, codeParentNotFound
 	case errors.Is(err, port.ErrLastOwner):

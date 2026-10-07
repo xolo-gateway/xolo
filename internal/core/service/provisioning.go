@@ -28,6 +28,10 @@ type ProvisioningService struct {
 	roleStore    port.ProvisioningRoleStore
 	// domainStore is only available within a provisioning transaction.
 	domainStore port.DomainStore
+	// tx is the bound transaction, only available within it.
+	tx port.ProvisioningTx
+	// reader serves the projections and the event feed.
+	reader port.ProvisioningReader
 
 	// multiTenant reports whether the instance may hold more than one tenant.
 	// When false, the API serves the single default tenant but refuses to
@@ -1272,6 +1276,7 @@ func (s *ProvisioningService) transaction(ctx context.Context, fn func(*Provisio
 		bound.userStore = tx
 		bound.roleStore = tx
 		bound.domainStore = tx
+		bound.tx = tx
 		return fn(&bound)
 	})
 }

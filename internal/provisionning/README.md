@@ -66,6 +66,7 @@ first-request failure.
 | `XOLO_PROVISIONNING_API_RATE_LIMIT` | `10` | Requests/second per authorized URI, per process |
 | `XOLO_PROVISIONNING_API_RATE_BURST` | `20` | Burst allowance per URI |
 | `XOLO_PROVISIONNING_API_SHUTDOWN_TIMEOUT` | `10s` | Graceful shutdown budget |
+| `XOLO_PROVISIONNING_API_EVENT_RETENTION` | `720h` | History kept in the event feed, `0` for unlimited; applies even when the listener is disabled |
 
 The rate and burst apply to each process: with N replicas, a given URI gets N times the configured values.
 
@@ -81,19 +82,24 @@ Multi-tenancy is configured on the instance, not on this API:
 
 | Method | Route | Body |
 |---|---|---|
-| `GET` | `/v1/manifest` | — returns `{"name","version","contract_version"}` |
+| `GET` | `/v1/manifest` | — returns `{"name","version","contract_version","capabilities"}` |
 | `PUT` | `/v1/tenants/{tenantID}` | `{"slug","name","status"}` |
 | `PUT` | `/v1/tenants/{tenantID}/domains/{hostname}` | `{"status"}` |
 | `PUT` | `/v1/tenants/{tenantID}/organizations/{orgID}` | `{"slug","name","status"}` |
 | `PUT` | `/v1/tenants/{tenantID}/members/{memberID}` | `{"email","tenant_role","status"}`, optional `"display_name"` |
 | `PUT` | `/v1/tenants/{tenantID}/organizations/{orgID}/members/{memberID}` | `{"role","status"}` |
 
+Each of these resources is also readable, listable and followed through the
+event feed: see [Reads, conditions and synchronization](#reads-conditions-and-synchronization).
+`capabilities` lists `conditional_writes`, `events` and `reads`.
+
 - **Identifiers** are canonical lowercase UUIDs chosen by the client. Anything
   else is refused with `400 invalid_parameter`. A member is a user: `memberID`
   is the user identifier.
 - **Every `PUT` answers `200`**, creation included, with the stored
-  representation. A `PUT` identical to the stored state changes nothing and
-  writes no audit, so a client can replay its whole desired state.
+  representation and its `ETag`. A `PUT` identical to the stored state changes
+  nothing, writes no audit and keeps its `ETag`, so a client can replay its
+  whole desired state.
 - **A `PUT` replaces the representation.** An omitted `display_name` is empty.
   Fields outside the contract — descriptions, currencies, identities, platform
   roles, custom roles — are never touched.
@@ -103,7 +109,7 @@ Multi-tenancy is configured on the instance, not on this API:
 - **Bodies** are one JSON object of strings with `Content-Type: application/json`
   (otherwise `415 unsupported_media_type`), at most 1 MiB. An unknown field, a
   non-string value or invalid Unicode is `400 invalid_json`; a missing required
-  field or a `null` is `400 invalid_representation`. The common routes accept no
+  field or a `null` is `400 invalid_representation`. The `PUT`s accept no
   query parameter (`400 invalid_parameter`).
 
 ### Tenants
@@ -178,6 +184,119 @@ hostname. The expansion never runs again: tenants created afterwards need their
 domains declared through the API, and the variable can be removed. A hostname
 already declared is kept and logged, never reassigned.
 
+## Reads, conditions and synchronization
+
+Every resource of the common contract has a **projection**: the representation
+its `PUT` answers, kept in the same transaction as the resource. Every change
+of a projection, whatever its origin — this API, the web UI, a sign-in, an
+accepted invitation, a deletion — receives the next position of a single
+**event feed** and publishes one event.
+
+| Method | Route | Answer |
+|---|---|---|
+| `GET` | `/v1/tenants/{tenantID}`, `…/domains/{hostname}`, `…/organizations/{orgID}`, `…/members/{memberID}`, `…/organizations/{orgID}/members/{memberID}` | The representation, with its `ETag` header |
+| `GET` | `/v1/tenants`, `…/domains`, `…/organizations`, `…/members`, `…/organizations/{orgID}/members` | `{"items":[{"key","representation","etag"}],"next_cursor"}` |
+| `GET` | `/v1/events/cursor` | `{"cursor"}`: the current end of the feed |
+| `GET` | `/v1/events?cursor=` | `{"items":[…],"next_cursor","has_more"}` |
+
+### ETags and conditional writes
+
+- **The ETag is a revision**, `W/"<n>"`: the feed position of the last change
+  of the representation. Revisions are persisted and strictly increase across
+  the whole instance; they never depend on a clock, so a clock step or a skew
+  between replicas never brings an ETag back, and neither does deleting then
+  recreating a resource. Existing resources received their own revision on
+  upgrade. ETags are opaque validators: compare them, do not compute them.
+- A `PUT` answers the projection written by its own transaction and its `ETag`.
+  A `PUT` that changes nothing keeps the revision.
+- **`If-Match`** on a `PUT` is checked within the mutation transaction, before
+  any write: `*` or a comma-separated list of ETags, compared weakly. A stale
+  condition answers `412 precondition_failed`, even for a body identical to the
+  stored state; `*` on a missing resource is a `412` as well. Without `If-Match`
+  the write is unconditional. Of two writers holding the same ETag, exactly
+  one succeeds. A malformed condition, or any `If-None-Match`, is
+  `400 invalid_precondition`.
+
+### Lists and cursors
+
+- A collection is the path of its unit resource without the last segment.
+  Lists accept only `limit` (1 to 1000, default 100) and `cursor`, once each
+  (`400 invalid_parameter` otherwise); unit reads, `/v1/manifest` and
+  `/v1/events/cursor` accept no query parameter.
+- Items are ordered by the bytewise order of their key. A page is not a
+  snapshot of the collection: changes committed during an enumeration are
+  caught by the feed. There is no total count.
+- `next_cursor` is `null` on the last page. Cursors are signed with a secret of
+  the instance and bound to the collection, its parents and the limit: an
+  altered cursor, or one used for another collection, limit or the feed,
+  answers `400 invalid_cursor`. A list cursor expires 24 hours after the first
+  page, without renewal (`410 cursor_expired`). Cursors are opaque but not
+  encrypted.
+- An unknown parent answers `404 parent_not_found` on a list and `404
+  not_found` on a unit read.
+
+### Event feed
+
+Events follow a closed [CloudEvents 1.0](https://cloudevents.io) profile, and
+carry no representation and no personal data:
+
+```json
+{"specversion":"1.0","id":"…","source":"urn:uuid:…","type":"organization.updated.v1",
+ "time":"…","datacontenttype":"application/json","sequence":"42","requestid":"…",
+ "data":{"resource_type":"organization","key":{"tenant_id":"…","organization_id":"…"},"etag":"W/\"42\""}}
+```
+
+- `type` is `<resource_type>.created.v1`, `.updated.v1` or `.deleted.v1`, with
+  `resource_type` one of `tenant`, `tenant_domain`, `organization`, `member` and
+  `organization_membership`. A deletion carries no `etag`.
+- **One event per resource and per commit.** A no-op or a rolled back
+  transaction publishes nothing. Within a commit, deletions come first, from
+  children to parents, then creations and updates from parents to children.
+- `sequence` orders events **in commit order**: a position is visible only once
+  every lower position is either visible or rolled back, so a consumer never
+  skips an event by resuming after the last position it read. Positions have
+  gaps. `time` is informative only. `requestid` is the `X-Request-ID` of the
+  provisioning request, or a generated correlation for other changes.
+- `has_more=false` means the page reached the end of the feed; its
+  `next_cursor` resumes there. Event cursors never expire by themselves.
+- Application shadow users are not members: they are neither projected nor
+  writable through `PUT …/members/{memberID}`.
+
+**Consumer algorithm.**
+
+1. Capture a cursor with `GET /v1/events/cursor`, **before** the inventory.
+2. Enumerate `/v1/tenants`, then the domains, organizations, members and
+   memberships of each tenant.
+3. Poll `GET /v1/events?cursor=`; for each event, read the resource again and
+   apply its current representation (`404` means it is gone). Deduplicate
+   events by `(source, id)`; never let a read issued earlier overwrite the
+   result of a later one.
+4. Persist the applied state, **then** the `next_cursor`. A crash in between
+   replays events, which is harmless.
+5. On `410 cursor_expired`, rebuild into a new generation from step 1, and
+   switch over only once it is complete.
+
+### Retention
+
+`XOLO_PROVISIONNING_API_EVENT_RETENTION` (default `720h`, `0` keeps every
+event) removes, every hour, the oldest events created before the retention
+period. The removal stops at the first event kept, so a clock step back never
+removes an event that follows a retained one. A cursor older than the removed
+events answers `410 cursor_expired`. Retention runs even when the listener is
+disabled, since changes are published in any case. Only this retention ever
+removes events: deleting resources never invalidates other consumers' cursors.
+
+### Storage and costs
+
+- The source of the feed and the secret signing cursors are stored in the
+  database: back them up with it. Restoring another database invalidates
+  cursors (`400 invalid_cursor`) and changes the `source`: consumers rebuild.
+- A transaction takes the **feed lock** only when it changes a projection, at
+  its very end, and holds it until commit; on PostgreSQL it is an advisory lock
+  next to a sequence. Reads, no-ops, sign-ins that change nothing and the LLM
+  proxy never take it. Projection changes are thereby serialized for the short
+  time of their commit: this trades write throughput for a gapless feed.
+
 ## Xolo extensions
 
 The operations specific to Xolo live under `/v1/xolo`. Their payloads are JSON
@@ -220,7 +339,9 @@ Every error uses the same envelope:
 
 | Code | HTTP | Cause |
 |---|---|---|
-| `invalid_parameter` | 400 | Identifier that is not a canonical UUID, or query parameter on a common route |
+| `invalid_parameter` | 400 | Identifier that is not a canonical UUID, or query parameter a common route does not define |
+| `invalid_cursor` | 400 | Cursor altered, empty, or issued for another collection, limit or feed |
+| `invalid_precondition` | 400 | Malformed `If-Match`, or `If-None-Match` |
 | `invalid_json` | 400 | Common route: malformed JSON, unknown field, non-string value, invalid Unicode |
 | `invalid_representation` | 400 | Common route: missing required field or `null` |
 | `invalid_hostname` | 400 | Hostname not in lower case, with a port, an IP literal or an invalid label |
@@ -233,6 +354,8 @@ Every error uses the same envelope:
 | `conflict` | 409 | Identifier or hostname owned by another tenant, slug already used, or a business invariant |
 | `last_owner` | 409 | The change would leave a tenant or an organization without an active owner |
 | `platform_admin_protected` | 409 | The change targets a platform administrator |
+| `cursor_expired` | 410 | List cursor older than 24 hours, or event cursor older than the retained events: rebuild |
+| `precondition_failed` | 412 | `If-Match` does not designate the current revision |
 | `unprocessable` | 422 | Well-formed value refused by the domain |
 | `rate_limited` | 429 | Per-URI budget exceeded; retry after the `Retry-After` seconds |
 | `internal_error` | 500 | Unexpected failure |
@@ -296,13 +419,21 @@ writers, back up the database, then run `bin/migrate apply -writers-stopped`
 before starting the server. The expansion of `XOLO_MULTITENANCY_HOST_PATTERN`
 into domains is done by the server at startup, in both modes.
 
+**Migration `202610080001` also requires every server to be stopped.** It
+creates the projections and the event feed, and gives every existing resource
+its own revision without publishing any event: consumers start with an
+inventory. An older server still running would write without publishing, and
+projections, ETags and the feed would silently diverge. The migration cannot be
+rolled back.
+
 ## Transactions, audit and correlation
 
 Every provisioning mutation validates parents and performs its writes in one
 transaction. A failure rolls back the whole operation, including changes to an
 existing user, role assignments and the audit itself. PostgreSQL uses `SERIALIZABLE`;
 SQLite writer conflicts and PostgreSQL serialization failures replay the whole
-operation with bounded, cancelable backoff. There is no instance-wide publication lock.
+operation with bounded, cancelable backoff. Only a transaction changing a projection
+takes the feed lock, at its very end (see [Storage and costs](#storage-and-costs)).
 
 `mutation_audits` records one before/after pair per resource actually changed
 (tenants, domains, organizations, users, memberships and roles), including role associations
@@ -321,7 +452,7 @@ The actor URI comes only from the authorized certificate. Internal calls use
 Existing local member and role events retain their types and messages, including
 separate member-added and role-assigned events. They are emitted only after commit
 through the existing asynchronous mechanism; they are not a durable outbox. The
-audit is persisted atomically. Transactional reads bypass the shared user cache;
+audit, the projections and the event feed are persisted atomically with the change. Transactional reads bypass the shared user cache;
 affected user entries, secondary keys and cascading token entries are invalidated
 after commit.
 
@@ -394,7 +525,7 @@ In production, use a managed certificate authority (Vault, cert-manager, interna
   declared with the member. The existing `InviteToken` mechanism remains the
   email path, through the Web UI.
 - Deleting tenants, domains, organizations or memberships: suspend them.
-- Conditional writes, paginated common reads, the event feed and webhooks.
+- Webhooks: the event feed is polled.
 - No generated OpenAPI specification.
 
 ## User documentation

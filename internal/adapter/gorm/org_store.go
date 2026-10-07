@@ -15,7 +15,7 @@ func (s *Store) CreateOrg(ctx context.Context, org model.Organization) error {
 	if _, err := model.ParseOrgID(string(org.ID())); err != nil {
 		return port.ErrInvalid
 	}
-	return s.withRetry(ctx, true, func(ctx context.Context, db *gorm.DB) error {
+	return s.recorded(ctx, tracking("organization", string(org.ID())), func(ctx context.Context, db *gorm.DB) error {
 		if err := db.Create(fromOrganization(org)).Error; err != nil {
 			if isUniqueViolation(err, "slug") {
 				return errors.Wrapf(port.ErrAlreadyExists, "slug %q is already used by another organization", org.Slug())
@@ -103,7 +103,7 @@ func (s *Store) SaveOrg(ctx context.Context, org model.Organization) error {
 	if _, err := model.ParseOrgID(string(org.ID())); err != nil {
 		return port.ErrInvalid
 	}
-	return s.withRetry(ctx, true, func(ctx context.Context, db *gorm.DB) error {
+	return s.recorded(ctx, tracking("organization", string(org.ID())), func(ctx context.Context, db *gorm.DB) error {
 		if err := db.Clauses(clause.OnConflict{
 			Columns:   []clause.Column{{Name: "id"}},
 			UpdateAll: true,
@@ -123,7 +123,7 @@ func (s *Store) SaveOrg(ctx context.Context, org model.Organization) error {
 // tables would otherwise be orphaned — in particular the applications and their
 // auth tokens, which stay resolvable by FindAuthToken as long as they exist.
 func (s *Store) DeleteOrg(ctx context.Context, id model.OrgID) error {
-	return s.withRetry(ctx, true, func(ctx context.Context, db *gorm.DB) error {
+	return s.recorded(ctx, trackingTree("organization", string(id)), func(ctx context.Context, db *gorm.DB) error {
 		var exists Organization
 		if err := db.Select("id").First(&exists, "id = ?", string(id)).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -209,7 +209,7 @@ func deleteOrgWithin(db *gorm.DB, id model.OrgID) error {
 
 // AddMember implements port.OrgStore.
 func (s *Store) AddMember(ctx context.Context, membership model.Membership) error {
-	return s.withRetry(ctx, true, func(ctx context.Context, db *gorm.DB) error {
+	return s.recorded(ctx, tracking("membership", string(membership.ID())), func(ctx context.Context, db *gorm.DB) error {
 		return errors.WithStack(db.Create(fromMembership(membership)).Error)
 	})
 }
@@ -218,7 +218,7 @@ func (s *Store) AddMember(ctx context.Context, membership model.Membership) erro
 // first: the join table references the membership and has no database-level
 // cascade, so removing a member holding any role would otherwise fail.
 func (s *Store) RemoveMember(ctx context.Context, id model.MembershipID) error {
-	return s.withRetry(ctx, true, func(ctx context.Context, db *gorm.DB) error {
+	return s.recorded(ctx, tracking("membership", string(id)), func(ctx context.Context, db *gorm.DB) error {
 		if err := db.Where("membership_id = ?", string(id)).Delete(&MembershipRole{}).Error; err != nil {
 			return errors.WithStack(err)
 		}
@@ -329,7 +329,7 @@ func (s *Store) SetMembershipStatus(ctx context.Context, id model.MembershipID, 
 	if !status.Valid() {
 		return errors.WithStack(port.ErrInvalid)
 	}
-	return s.withRetry(ctx, true, func(ctx context.Context, db *gorm.DB) error {
+	return s.recorded(ctx, tracking("membership", string(id)), func(ctx context.Context, db *gorm.DB) error {
 		result := db.Model(&Membership{}).Where("id = ?", string(id)).Update("status", string(status))
 		if result.Error != nil {
 			return errors.WithStack(result.Error)

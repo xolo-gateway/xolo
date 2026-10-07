@@ -1,3 +1,23 @@
+# Unreleased — provisioning reads, conditional writes and event feed
+
+The provisioning API reads, lists and follows every resource of the common
+contract. `PUT`s answer an `ETag` and honour `If-Match` within their
+transaction; ETags are persisted revisions, never timestamps. Lists use signed
+cursors, and `/v1/events` publishes one event per changed resource in commit
+order, including changes made through the web UI, sign-ins and invitations.
+
+**A stop-the-world upgrade is mandatory for migration `202610080001`. Stop ALL
+old replicas, servers and other writers before migrating.** An old binary keeps
+writing without publishing, so projections, ETags and the feed would silently
+diverge. The migration gives every existing resource its own revision without
+emitting events, and cannot be rolled back. Events are kept for
+`XOLO_PROVISIONNING_API_EVENT_RETENTION` (default `720h`).
+
+Details:
+[English](docs/en/administration/provisioning/provisioning.md#reads-conditions-and-synchronization),
+[Français](docs/fr/administration/provisioning/provisioning.md#lectures-conditions-et-synchronisation),
+[Español](docs/es/administration/provisioning/provisioning.md#lecturas-condiciones-y-sincronizacion).
+
 # Unreleased — UUID identity migration
 
 Tenant, organization and user IDs become UUIDs in migration `202610020001`.

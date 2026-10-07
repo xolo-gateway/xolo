@@ -23,6 +23,24 @@ func TestParse_ProvisionningAPIDisabledByDefault(t *testing.T) {
 	if conf.ProvisionningAPI.ShutdownTimeout != 10*time.Second {
 		t.Errorf("shutdown timeout: got %v, want %v", conf.ProvisionningAPI.ShutdownTimeout, 10*time.Second)
 	}
+	if conf.ProvisionningAPI.EventRetention != 720*time.Hour {
+		t.Errorf("event retention: got %v, want %v", conf.ProvisionningAPI.EventRetention, 720*time.Hour)
+	}
+}
+
+func TestProvisionningEventRetentionValidation(t *testing.T) {
+	// Retention applies even with the listener disabled: local changes are
+	// published in any case.
+	for _, retention := range []time.Duration{0, time.Hour} {
+		c := ProvisionningAPI{EventRetention: retention}
+		if err := c.Validate(); err != nil {
+			t.Errorf("retention %v refused: %v", retention, err)
+		}
+	}
+	c := ProvisionningAPI{EventRetention: -time.Hour}
+	if err := c.Validate(); err == nil {
+		t.Error("negative retention accepted")
+	}
 }
 
 func TestParse_ProvisionningAPIEnabled(t *testing.T) {

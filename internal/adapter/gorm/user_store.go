@@ -36,14 +36,17 @@ func fromAuthToken(t model.AuthToken) *AuthToken {
 // FindOrCreateUser implements port.UserStore.
 func (s *Store) FindOrCreateUser(ctx context.Context, tenantID model.TenantID, provider, subject string) (model.User, error) {
 	var user model.User
-	err := s.withRetry(ctx, true, func(ctx context.Context, db *gorm.DB) error {
+	// The identifier is chosen first so that a creation is recorded; finding
+	// an existing user changes nothing.
+	id := model.NewUserID()
+	err := s.recorded(ctx, tracking("user", string(id)), func(ctx context.Context, db *gorm.DB) error {
 		var u User
 
 		err := db.Where("tenant_id = ? AND provider = ? AND subject = ?", string(tenantID), provider, subject).
 			Preload("Roles").
 			Preload("Preferences").
 			Attrs(&User{
-				ID:       string(model.NewUserID()),
+				ID:       string(id),
 				TenantID: string(tenantID),
 				Provider: provider,
 				Subject:  subject,
@@ -112,7 +115,7 @@ func (s *Store) SaveUser(ctx context.Context, user model.User) error {
 	if _, err := model.ParseUserID(string(user.ID())); err != nil {
 		return port.ErrInvalid
 	}
-	err := s.withRetry(ctx, true, func(ctx context.Context, db *gorm.DB) error {
+	err := s.recorded(ctx, tracking("user", string(user.ID())), func(ctx context.Context, db *gorm.DB) error {
 		gormUser := fromUser(user)
 
 		// Use Clauses with OnConflict to handle upsert
@@ -253,7 +256,7 @@ func (s *Store) DeleteAuthToken(ctx context.Context, tokenID model.AuthTokenID) 
 
 // DeleteUser implements port.UserStore.
 func (s *Store) DeleteUser(ctx context.Context, userID model.UserID) error {
-	err := s.withRetry(ctx, true, func(ctx context.Context, db *gorm.DB) error {
+	err := s.recorded(ctx, trackingTree("user", string(userID)), func(ctx context.Context, db *gorm.DB) error {
 		deleted, err := deleteUsersWithin(db, []string{string(userID)})
 		if err != nil {
 			return err

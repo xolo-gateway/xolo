@@ -160,6 +160,8 @@ func MigrateDatabase(ctx context.Context, db *gorm.DB, artifact *RecoveryArtifac
 					&MutationAudit{},
 					// Domain routing
 					&Domain{}, &DomainRouting{},
+					// Provisioning projections and event feed
+					&ProvisioningProjection{}, &ProvisioningEvent{}, &ProvisioningFeed{},
 					// Event system
 					&Event{}, &Alert{}, &AlertIncident{}, &EventSettings{},
 				)
@@ -178,7 +180,7 @@ func MigrateDatabase(ctx context.Context, db *gorm.DB, artifact *RecoveryArtifac
 				if err := migratePluginSecretScope(tx); err != nil {
 					return err
 				}
-				return nil
+				return migrateProvisioningSync(tx)
 			})
 		})
 		err := m.Migrate()
@@ -560,6 +562,13 @@ func schemaMigrations(artifact *RecoveryArtifact) []*gormigrate.Migration {
 			// The original case is not kept anywhere, and the normalized form is
 			// what every reader expects.
 			Rollback: func(*gorm.DB) error { return nil },
+		},
+		{
+			ID:      provisioningSyncMigrationID,
+			Migrate: migrateProvisioningSync,
+			Rollback: func(*gorm.DB) error {
+				return errors.New("provisioning sync migration cannot be rolled back: consumers rely on the revisions and the event feed")
+			},
 		},
 	}
 }

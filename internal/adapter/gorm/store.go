@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
+	"github.com/xolo-gateway/xolo/internal/core/model"
 	"github.com/xolo-gateway/xolo/internal/core/port"
 	"gorm.io/gorm"
 )
@@ -17,6 +18,50 @@ type Store struct {
 	// transaction-bound store, withRetry runs fn exactly once
 	// on that transaction and never opens its own.
 	transactionBound bool
+	// recorder collects the identity resources written by a bound store; the
+	// owner of the transaction publishes their projections before commit.
+	recorder *mutationRecorder
+}
+
+// recorded runs a write to identity resources together with the publication
+// of the projections it changes. track designates the resources, before the
+// write. A bound store records into the enclosing transaction instead.
+func (s *Store) recorded(ctx context.Context, track func(*mutationRecorder) error, fn func(ctx context.Context, db *gorm.DB) error) error {
+	if s.transactionBound {
+		if s.recorder != nil {
+			if err := track(s.recorder); err != nil {
+				return err
+			}
+		}
+		return s.withRetry(ctx, true, fn)
+	}
+	// The correlation of the published events stays the same across retries.
+	ctx = model.EnsureActor(ctx)
+	return s.withRetry(ctx, true, func(ctx context.Context, db *gorm.DB) error {
+		recorder := newMutationRecorder(db)
+		if err := track(recorder); err != nil {
+			return err
+		}
+		if err := fn(ctx, db); err != nil {
+			return err
+		}
+		return recorder.flush(ctx)
+	})
+}
+
+// tracking designates one resource to record.
+func tracking(kind, id string) func(*mutationRecorder) error {
+	return func(r *mutationRecorder) error { return r.track(kind, id) }
+}
+
+// trackingTree designates one resource and everything removed with it.
+func trackingTree(kind, id string) func(*mutationRecorder) error {
+	return func(r *mutationRecorder) error {
+		if err := r.track(kind, id); err != nil {
+			return err
+		}
+		return r.trackDependents(kind, id)
+	}
 }
 
 // withRetry runs fn, replaying it with an exponential backoff while the

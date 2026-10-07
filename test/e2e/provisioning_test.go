@@ -346,3 +346,93 @@ func TestProvisioningDomainRouting(t *testing.T) {
 	put("/v1/tenants/"+tenant.ID+"/domains/default.e2e.test", map[string]any{"status": "suspended"})
 	require.Equal(t, http.StatusNotFound, get("default.e2e.test"))
 }
+
+// exchange sends one request with headers to the provisioning listener.
+func (p provisioningClient) exchange(t *testing.T, method, path string, headers map[string]string, body any) (int, http.Header, []byte) {
+	t.Helper()
+	var reader io.Reader
+	if body != nil {
+		reader = strings.NewReader(string(mustJSON(body)))
+	}
+	req, err := http.NewRequestWithContext(t.Context(), method, p.url+path, reader)
+	require.NoError(t, err)
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	for name, value := range headers {
+		req.Header.Set(name, value)
+	}
+	resp, err := p.client.Do(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	raw, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	return resp.StatusCode, resp.Header, raw
+}
+
+// TestProvisioningConditionalSync reads, conditionally writes and follows the
+// event feed of the real server, including a change made outside the API.
+func TestProvisioningConditionalSync(t *testing.T) {
+	db, err := openDB(env.dsn)
+	require.NoError(t, err)
+	sqlDB, err := db.DB()
+	require.NoError(t, err)
+	defer sqlDB.Close()
+	var tenant gormadapter.Tenant
+	require.NoError(t, db.First(&tenant, "slug = ?", model.DefaultTenantSlug).Error)
+	orgPath := "/v1/tenants/" + tenant.ID + "/organizations/" + uuid.NewString()
+
+	status, _, body := provisioningEndpoint.exchange(t, http.MethodGet, "/v1/events/cursor", nil, nil)
+	require.Equal(t, http.StatusOK, status, string(body))
+	var start struct {
+		Cursor string `json:"cursor"`
+	}
+	require.NoError(t, json.Unmarshal(body, &start))
+
+	requestID := newRequestID()
+	status, headers, body := provisioningEndpoint.exchange(t, http.MethodPut, orgPath, map[string]string{"X-Request-ID": requestID},
+		map[string]any{"slug": "e2e-sync", "name": "Synchronized", "status": "active"})
+	require.Equal(t, http.StatusOK, status, string(body))
+	created := headers.Get("ETag")
+	require.NotEmpty(t, created)
+
+	status, headers, body = provisioningEndpoint.exchange(t, http.MethodGet, orgPath, nil, nil)
+	require.Equal(t, http.StatusOK, status, string(body))
+	require.Equal(t, created, headers.Get("ETag"))
+	require.JSONEq(t, `{"slug":"e2e-sync","name":"Synchronized","status":"active"}`, string(body))
+
+	renamed := map[string]any{"slug": "e2e-sync", "name": "Renamed", "status": "active"}
+	status, headers, body = provisioningEndpoint.exchange(t, http.MethodPut, orgPath, map[string]string{"If-Match": created}, renamed)
+	require.Equal(t, http.StatusOK, status, string(body))
+	require.NotEqual(t, created, headers.Get("ETag"))
+	status, _, body = provisioningEndpoint.exchange(t, http.MethodPut, orgPath, map[string]string{"If-Match": created}, renamed)
+	require.Equal(t, http.StatusPreconditionFailed, status, string(body))
+	require.Contains(t, string(body), "precondition_failed")
+
+	// A change made outside the provisioning API is published as well.
+	store := gormadapter.NewStore(db)
+	var org gormadapter.Organization
+	require.NoError(t, db.First(&org, "id = ?", strings.TrimPrefix(orgPath, "/v1/tenants/"+tenant.ID+"/organizations/")).Error)
+	stored, err := store.GetOrgByID(t.Context(), model.OrgID(org.ID))
+	require.NoError(t, err)
+	require.NoError(t, store.SaveOrg(t.Context(), model.UpdateOrganization(stored, model.WithOrgName("Renamed locally"))))
+
+	status, _, body = provisioningEndpoint.exchange(t, http.MethodGet, "/v1/events?cursor="+url.QueryEscape(start.Cursor), nil, nil)
+	require.Equal(t, http.StatusOK, status, string(body))
+	var page model.CommonEventPage
+	require.NoError(t, json.Unmarshal(body, &page))
+	var events []model.CommonEvent
+	var types []string
+	for _, event := range page.Items {
+		if event.Data.Key.OrganizationID == org.ID {
+			events = append(events, event)
+			types = append(types, event.Type)
+		}
+	}
+	require.Equal(t, []string{"organization.created.v1", "organization.updated.v1", "organization.updated.v1"}, types)
+	require.Equal(t, requestID, events[0].RequestID)
+
+	status, headers, _ = provisioningEndpoint.exchange(t, http.MethodGet, orgPath, nil, nil)
+	require.Equal(t, http.StatusOK, status)
+	require.Equal(t, events[len(events)-1].Data.ETag, headers.Get("ETag"))
+}

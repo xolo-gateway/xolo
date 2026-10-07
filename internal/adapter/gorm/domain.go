@@ -78,7 +78,7 @@ func (s *Store) SaveDomain(ctx context.Context, domain model.Domain) error {
 	if !domain.Status.Valid() {
 		return errors.WithStack(port.ErrInvalid)
 	}
-	return s.withRetry(ctx, true, func(ctx context.Context, db *gorm.DB) error {
+	return s.recorded(ctx, tracking("domain", host), func(ctx context.Context, db *gorm.DB) error {
 		var existing Domain
 		err := db.First(&existing, "hostname = ?", host).Error
 		switch {

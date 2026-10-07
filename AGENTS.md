@@ -121,6 +121,13 @@ specific operations live under `/v1/xolo`. It never grants nor modifies
 platform-wide privileges, never modifies a platform administrator, and shares
 the same store instances as the public server. Creating a second tenant is
 refused while multi-tenancy is disabled.
+
+Every identity write of the gorm `Store` (tenants, domains, organizations,
+users, memberships), local or provisioned, goes through `Store.recorded`: it
+updates the public projection and appends to the event feed in the same
+transaction (`internal/adapter/gorm/provisioning_projection.go`). A new write
+path on those tables must do the same, or projections, ETags and `/v1/events`
+diverge.
 See `internal/provisionning/README.md`.
 
 ### UI / templating

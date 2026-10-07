@@ -15,6 +15,7 @@ import (
 // on SQLite snapshot conflicts and PostgreSQL deadlocks. The bound store never
 // migrates, retries a statement, or starts a nested/default write transaction.
 func (s *Store) WithInvitationTransaction(ctx context.Context, fn func(port.InvitationTx) error) error {
+	ctx = model.EnsureActor(ctx)
 	db, err := s.getDatabase(ctx)
 	if err != nil {
 		return err
@@ -22,11 +23,16 @@ func (s *Store) WithInvitationTransaction(ctx context.Context, fn func(port.Invi
 	return retryTransaction(ctx, func() error {
 		return db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 			tx = tx.Session(&gorm.Session{SkipDefaultTransaction: true})
+			recorder := newMutationRecorder(tx)
 			bound := &Store{
 				getDatabase:      func(context.Context) (*gorm.DB, error) { return tx, nil },
 				transactionBound: true,
+				recorder:         recorder,
 			}
-			return fn(&invitationTx{Store: bound, db: tx})
+			if err := fn(&invitationTx{Store: bound, db: tx}); err != nil {
+				return err
+			}
+			return recorder.flush(ctx)
 		})
 	})
 }
@@ -102,6 +108,9 @@ func (tx *invitationTx) ListOrgRoles(ctx context.Context, orgID model.OrgID) ([]
 }
 
 func (tx *invitationTx) InsertInvitationMember(ctx context.Context, membership model.Membership) (bool, error) {
+	if err := tx.recorder.track("membership", string(membership.ID())); err != nil {
+		return false, err
+	}
 	result := tx.db.WithContext(ctx).Omit(clause.Associations).Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "user_id"}, {Name: "org_id"}},
 		DoNothing: true,

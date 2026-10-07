@@ -76,6 +76,31 @@ func (s *ProvisioningService) commonParentTenant(ctx context.Context, tenantID m
 	return tenant, nil
 }
 
+// PutCommon runs one PUT of the common contract within a single transaction.
+// The condition is checked against the current revision of the resource
+// before any write, and before the detection of a no-op: a stale condition
+// fails even for an identical representation. The result is the projection
+// written by the same transaction.
+func (s *ProvisioningService) PutCommon(ctx context.Context, scope model.CommonScope, key string, condition model.MatchCondition, put func(ctx context.Context, tx *ProvisioningService) error) (model.CommonItem, error) {
+	var item model.CommonItem
+	ctx = model.EnsureActor(ctx)
+	err := s.transaction(ctx, func(tx *ProvisioningService) error {
+		current, err := tx.tx.ReadProjection(ctx, scope, key)
+		if err != nil && !errors.Is(err, port.ErrNotFound) {
+			return errors.WithStack(err)
+		}
+		if !condition.Matches(current.ETag) {
+			return errors.WithStack(port.ErrPreconditionFailed)
+		}
+		if err := put(ctx, tx); err != nil {
+			return err
+		}
+		item, err = tx.tx.ReadProjection(ctx, scope, key)
+		return errors.WithStack(err)
+	})
+	return item, err
+}
+
 // PutTenant creates the tenant or brings it to the given representation. A
 // write identical to the stored state changes nothing. A second tenant is
 // refused on a single-tenant instance, and the default tenant keeps its slug
@@ -223,6 +248,11 @@ func (s *ProvisioningService) PutTenantMember(ctx context.Context, tenantID mode
 	}
 	if old.TenantID() != tenantID {
 		return p, errors.Wrap(port.ErrAlreadyExists, "user id is used by another tenant")
+	}
+	// The shadow user of an application is not a member: its lifecycle
+	// follows the application.
+	if old.Provider() == model.ApplicationProvider {
+		return p, errors.Wrap(port.ErrNotFound, "user not found")
 	}
 	if old.Email() == p.Email && old.DisplayName() == p.DisplayName &&
 		old.TenantRole() == p.TenantRole && model.DeclaredStatus(old.Active()) == p.Status {

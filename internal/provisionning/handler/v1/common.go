@@ -2,6 +2,7 @@ package v1
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"io"
 	"mime"
@@ -17,39 +18,25 @@ import (
 const ContractVersion = "0.1.0-draft.1"
 
 type manifestDTO struct {
-	Name            string `json:"name"`
-	Version         string `json:"version"`
-	ContractVersion string `json:"contract_version"`
+	Name            string   `json:"name"`
+	Version         string   `json:"version"`
+	ContractVersion string   `json:"contract_version"`
+	Capabilities    []string `json:"capabilities"`
 }
 
-type commonResourceDTO struct {
-	Slug   string       `json:"slug"`
-	Name   string       `json:"name"`
-	Status model.Status `json:"status"`
-}
-
-type commonMemberDTO struct {
-	Email       string           `json:"email"`
-	DisplayName string           `json:"display_name,omitempty"`
-	TenantRole  model.TenantRole `json:"tenant_role"`
-	Status      model.Status     `json:"status"`
-}
-
-type commonMembershipDTO struct {
-	Role   model.MembershipRole `json:"role"`
-	Status model.Status         `json:"status"`
-}
-
-type commonDomainDTO struct {
-	Status model.Status `json:"status"`
-}
+// capabilities lists the optional parts of the contract this API serves, and
+// nothing it does not.
+var capabilities = []string{"conditional_writes", "events", "reads"}
 
 func (h *Handler) handleManifest(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, manifestDTO{Name: "Xolo", Version: h.version, ContractVersion: ContractVersion})
+	if !noQuery(w, r) {
+		return
+	}
+	writeJSON(w, http.StatusOK, manifestDTO{Name: "Xolo", Version: h.version, ContractVersion: ContractVersion, Capabilities: capabilities})
 }
 
 func (h *Handler) handlePutTenant(w http.ResponseWriter, r *http.Request) {
-	tenantID, ok := pathTenantID(w, r)
+	scope, key, ok := commonTarget(w, r, model.FamilyTenant)
 	if !ok {
 		return
 	}
@@ -57,16 +44,14 @@ func (h *Handler) handlePutTenant(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	out, err := h.provisioning.PutTenant(r.Context(), tenantID, commonResource(fields))
-	if err != nil {
-		writeServiceError(r.Context(), w, err, "could not write tenant")
-		return
-	}
-	writeJSON(w, http.StatusOK, commonResourceDTO(out))
+	h.writeCommon(w, r, scope, key, "could not write tenant", func(ctx context.Context, tx *service.ProvisioningService) error {
+		_, err := tx.PutTenant(ctx, model.TenantID(key), commonResource(fields))
+		return err
+	})
 }
 
 func (h *Handler) handlePutDomain(w http.ResponseWriter, r *http.Request) {
-	tenantID, ok := pathTenantID(w, r)
+	scope, key, ok := commonTarget(w, r, model.FamilyTenantDomain)
 	if !ok {
 		return
 	}
@@ -74,91 +59,94 @@ func (h *Handler) handlePutDomain(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	out, err := h.provisioning.PutDomain(r.Context(), tenantID, r.PathValue("hostname"), model.Status(fields["status"]))
-	if err != nil {
-		writeServiceError(r.Context(), w, err, "could not write domain")
-		return
-	}
-	writeJSON(w, http.StatusOK, commonDomainDTO{Status: out})
+	h.writeCommon(w, r, scope, key, "could not write domain", func(ctx context.Context, tx *service.ProvisioningService) error {
+		_, err := tx.PutDomain(ctx, model.TenantID(scope.TenantID), key, model.Status(fields["status"]))
+		return err
+	})
 }
 
 func (h *Handler) handlePutOrganization(w http.ResponseWriter, r *http.Request) {
-	tenantID, ok := pathTenantID(w, r)
+	scope, key, ok := commonTarget(w, r, model.FamilyOrganization)
 	if !ok {
-		return
-	}
-	orgID, err := model.ParseOrgID(r.PathValue("orgID"))
-	if err != nil {
-		writeInvalidID(w)
 		return
 	}
 	fields, ok := decodeCommon(w, r, []string{"slug", "name", "status"})
 	if !ok {
 		return
 	}
-	out, err := h.provisioning.PutOrganization(r.Context(), tenantID, orgID, commonResource(fields))
-	if err != nil {
-		writeServiceError(r.Context(), w, err, "could not write organization")
-		return
-	}
-	writeJSON(w, http.StatusOK, commonResourceDTO(out))
+	h.writeCommon(w, r, scope, key, "could not write organization", func(ctx context.Context, tx *service.ProvisioningService) error {
+		_, err := tx.PutOrganization(ctx, model.TenantID(scope.TenantID), model.OrgID(key), commonResource(fields))
+		return err
+	})
 }
 
 func (h *Handler) handlePutTenantMember(w http.ResponseWriter, r *http.Request) {
-	tenantID, ok := pathTenantID(w, r)
+	scope, key, ok := commonTarget(w, r, model.FamilyMember)
 	if !ok {
-		return
-	}
-	userID, err := model.ParseUserID(r.PathValue("memberID"))
-	if err != nil {
-		writeInvalidID(w)
 		return
 	}
 	fields, ok := decodeCommon(w, r, []string{"email", "tenant_role", "status"}, "display_name")
 	if !ok {
 		return
 	}
-	out, err := h.provisioning.PutTenantMember(r.Context(), tenantID, userID, service.CommonMember{
-		Email:       fields["email"],
-		DisplayName: fields["display_name"],
-		TenantRole:  model.TenantRole(fields["tenant_role"]),
-		Status:      model.Status(fields["status"]),
+	h.writeCommon(w, r, scope, key, "could not write member", func(ctx context.Context, tx *service.ProvisioningService) error {
+		_, err := tx.PutTenantMember(ctx, model.TenantID(scope.TenantID), model.UserID(key), service.CommonMember{
+			Email:       fields["email"],
+			DisplayName: fields["display_name"],
+			TenantRole:  model.TenantRole(fields["tenant_role"]),
+			Status:      model.Status(fields["status"]),
+		})
+		return err
 	})
-	if err != nil {
-		writeServiceError(r.Context(), w, err, "could not write member")
-		return
-	}
-	writeJSON(w, http.StatusOK, commonMemberDTO(out))
 }
 
 func (h *Handler) handlePutOrgMember(w http.ResponseWriter, r *http.Request) {
-	tenantID, ok := pathTenantID(w, r)
+	scope, key, ok := commonTarget(w, r, model.FamilyOrganizationMembership)
 	if !ok {
-		return
-	}
-	orgID, err := model.ParseOrgID(r.PathValue("orgID"))
-	if err != nil {
-		writeInvalidID(w)
-		return
-	}
-	userID, err := model.ParseUserID(r.PathValue("memberID"))
-	if err != nil {
-		writeInvalidID(w)
 		return
 	}
 	fields, ok := decodeCommon(w, r, []string{"role", "status"})
 	if !ok {
 		return
 	}
-	out, err := h.provisioning.PutOrgMember(r.Context(), tenantID, orgID, userID, service.CommonMembership{
-		Role:   model.MembershipRole(fields["role"]),
-		Status: model.Status(fields["status"]),
+	h.writeCommon(w, r, scope, key, "could not write membership", func(ctx context.Context, tx *service.ProvisioningService) error {
+		_, err := tx.PutOrgMember(ctx, model.TenantID(scope.TenantID), model.OrgID(scope.OrganizationID), model.UserID(key), service.CommonMembership{
+			Role:   model.MembershipRole(fields["role"]),
+			Status: model.Status(fields["status"]),
+		})
+		return err
 	})
-	if err != nil {
-		writeServiceError(r.Context(), w, err, "could not write membership")
+}
+
+// writeCommon applies a PUT under its If-Match condition and answers with the
+// projection written by the same transaction, and its ETag.
+func (h *Handler) writeCommon(w http.ResponseWriter, r *http.Request, scope model.CommonScope, key, fallback string, put func(context.Context, *service.ProvisioningService) error) {
+	condition, ok := commonCondition(w, r)
+	if !ok {
 		return
 	}
-	writeJSON(w, http.StatusOK, commonMembershipDTO(out))
+	item, err := h.provisioning.PutCommon(r.Context(), scope, key, condition, put)
+	if err != nil {
+		writeServiceError(r.Context(), w, err, fallback)
+		return
+	}
+	w.Header().Set("ETag", item.ETag)
+	writeJSON(w, http.StatusOK, item.Representation)
+}
+
+// commonCondition reads If-Match. If-None-Match is refused rather than
+// ignored: a client relying on it must not believe it was honoured.
+func commonCondition(w http.ResponseWriter, r *http.Request) (model.MatchCondition, bool) {
+	if len(r.Header.Values("If-None-Match")) > 0 {
+		writeError(w, http.StatusBadRequest, codeInvalidPrecondition, "If-None-Match is not supported")
+		return model.MatchCondition{}, false
+	}
+	condition, err := model.ParseMatchCondition(r.Header.Values("If-Match"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, codeInvalidPrecondition, "malformed If-Match")
+		return model.MatchCondition{}, false
+	}
+	return condition, true
 }
 
 func commonResource(fields map[string]string) service.CommonResource {

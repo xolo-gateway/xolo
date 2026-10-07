@@ -53,6 +53,7 @@ var getProvisioningServiceFromConfig = createFromConfigOnce(func(ctx context.Con
 	// those addresses to an arbitrary user.
 	return service.NewProvisioningService(tenantStore, orgStore, userStore, roleStore,
 		service.WithProvisioningTransaction(transactions),
+		service.WithProvisioningReader(backend),
 		service.WithReservedEmails(conf.HTTP.Authn.DefaultAdmins...),
 		service.WithMultiTenant(conf.Multitenancy.Enabled),
 	), nil

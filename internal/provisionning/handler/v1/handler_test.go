@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -51,7 +52,7 @@ func newEnv(t *testing.T, options ...service.ProvisioningServiceOptionFunc) *tes
 		t.Fatalf("get default tenant: %v", err)
 	}
 
-	options = append([]service.ProvisioningServiceOptionFunc{service.WithProvisioningTransaction(store)}, options...)
+	options = append([]service.ProvisioningServiceOptionFunc{service.WithProvisioningTransaction(store), service.WithProvisioningReader(store)}, options...)
 	handler := v1.NewHandler(service.NewProvisioningService(store, store, store, store, options...), testVersion)
 
 	tenantID := string(tenant.ID())
@@ -257,9 +258,9 @@ func TestManifest(t *testing.T) {
 	assertStatus(t, rec, http.StatusOK)
 
 	body := decodeBody(t, rec)
-	want := map[string]any{"name": "Xolo", "version": testVersion, "contract_version": v1.ContractVersion}
+	want := map[string]any{"name": "Xolo", "version": testVersion, "contract_version": v1.ContractVersion, "capabilities": []any{"conditional_writes", "events", "reads"}}
 	for key, value := range want {
-		if body[key] != value {
+		if !reflect.DeepEqual(body[key], value) {
 			t.Errorf("%s: got %v, want %v", key, body[key], value)
 		}
 	}
@@ -1526,17 +1527,12 @@ func TestRemovedRoutes(t *testing.T) {
 		{http.MethodPatch, env.tenantBase + "/users/" + userID, map[string]any{"displayName": "Renamed"}},
 		{http.MethodPatch, env.xoloBase + "/users/" + userID, map[string]any{"displayName": "Renamed"}},
 
-		// Former un-prefixed extension paths.
+		// Former un-prefixed extension paths. Their GETs on tenants,
+		// organizations and members are now the common reads.
 		{http.MethodGet, "/v1/healthz", nil},
 		{http.MethodGet, "/v1/permissions", nil},
-		{http.MethodGet, "/v1/tenants", nil},
-		{http.MethodGet, env.tenantBase, nil},
 		{http.MethodPatch, env.tenantBase, map[string]any{"name": "Renamed"}},
-		{http.MethodGet, env.tenantBase + "/organizations", nil},
-		{http.MethodGet, env.tenantBase + orgPath, nil},
 		{http.MethodPatch, env.tenantBase + orgPath, map[string]any{"name": "Renamed"}},
-		{http.MethodGet, env.tenantBase + orgPath + "/members", nil},
-		{http.MethodGet, env.tenantBase + orgPath + "/members/" + membershipID, nil},
 		{http.MethodPut, env.tenantBase + orgPath + "/members/" + membershipID + "/roles", map[string]any{"builtinRoles": []string{"member"}}},
 		{http.MethodGet, env.tenantBase + orgPath + "/roles", nil},
 		{http.MethodPost, env.tenantBase + orgPath + "/roles", map[string]any{"name": "auditor"}},

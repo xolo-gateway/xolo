@@ -234,6 +234,10 @@ func NewHTTPServerFromConfig(ctx context.Context, conf *config.Config) (*http.Se
 		return nil, errors.Wrap(err, "could not start event purger from config")
 	}
 
+	if _, err := startProvisioningEventRetentionFromConfig(ctx, conf); err != nil {
+		return nil, errors.Wrap(err, "could not start provisioning event retention from config")
+	}
+
 	invitationService, err := getInvitationServiceFromConfig(ctx, conf)
 	if err != nil {
 		return nil, errors.Wrap(err, "could not create invitation service")

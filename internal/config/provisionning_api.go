@@ -25,12 +25,19 @@ type ProvisionningAPI struct {
 	TLSKeyFile      string        `env:"TLS_KEY_FILE,expand"`
 	TLSClientCAFile string        `env:"TLS_CLIENT_CA_FILE,expand"`
 	ShutdownTimeout time.Duration `env:"SHUTDOWN_TIMEOUT" envDefault:"10s"`
+	// EventRetention bounds the history of the event feed, zero keeping it
+	// forever. It applies whether or not the listener is enabled: local
+	// changes are published in any case.
+	EventRetention time.Duration `env:"EVENT_RETENTION" envDefault:"720h"`
 }
 
 // Validate refuses a configuration that would enable the Provisionning API
 // without the material needed to enforce mutual TLS. There is no anonymous
 // fallback: an incomplete configuration is a startup failure, not a degraded mode.
 func (c *ProvisionningAPI) Validate() error {
+	if c.EventRetention < 0 {
+		return errors.New("XOLO_PROVISIONNING_API_EVENT_RETENTION must not be negative")
+	}
 	if !c.Enabled {
 		return nil
 	}
