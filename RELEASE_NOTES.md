@@ -14,7 +14,9 @@ are swept every 10 minutes. Durable logout does not cover `oidctoken`,
 
 `XOLO_HTTP_SESSION_COOKIE_MAX_AGE` now defaults to `24h` as documented. A typo
 left it unset, so cookies used to last as long as the browser stayed open. This
-also applies to `/auth/token/login` sessions.
+also applies to `/auth/token/login` sessions. A zero or negative value is now
+refused at startup: a cookie that never expires would outlive its session.
+A sign-in must start at Xolo: one initiated by the identity provider fails.
 
 Migration `202610110001` adds the session registry. Its rollback drops it.
 Cookies issued before the upgrade carry no session, so every OIDC user signs in

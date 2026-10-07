@@ -23,7 +23,9 @@ type LogoutClaims struct {
 	AuthorizedParty string                     `json:"azp"`
 	Events          map[string]json.RawMessage `json:"events"`
 	Nonce           json.RawMessage            `json:"nonce"`
-	SessionID       string                     `json:"sid"`
+	// SessionID is decoded but ignored on purpose: Xolo revokes by subject,
+	// every session of the identity, whatever the sid names.
+	SessionID string `json:"sid"`
 }
 
 // VerifyLogoutToken verifies a logout token signed by the provider issuer for

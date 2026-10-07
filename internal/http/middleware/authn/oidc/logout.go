@@ -7,6 +7,7 @@ import (
 
 	"github.com/bornholm/go-x/slogx"
 	"github.com/pkg/errors"
+	"github.com/xolo-gateway/xolo/internal/core/port"
 	"github.com/xolo-gateway/xolo/internal/http/middleware/authn/oidctoken"
 	"github.com/xolo-gateway/xolo/internal/metrics"
 )
@@ -45,6 +46,11 @@ func (h *Handler) handleBackchannelLogout(w http.ResponseWriter, r *http.Request
 	}
 
 	revoked, err := h.sessions.RevokeIdentitySessions(r.Context(), provider.Issuer, claims.Subject, claims.ID, claims.IssuedAt.Time, claims.ExpiresAt.Time)
+	if errors.Is(err, port.ErrInvalid) {
+		// Retrying would never succeed: only a storage failure answers 503.
+		h.refuseLogout(w, r, err)
+		return
+	}
 	if err != nil {
 		metrics.OIDCBackchannelLogouts.WithLabelValues(metrics.OIDCLogoutUnavailable).Inc()
 		slog.ErrorContext(r.Context(), "could not revoke oidc sessions", slog.String("provider", provider.ID), slogx.Error(err))

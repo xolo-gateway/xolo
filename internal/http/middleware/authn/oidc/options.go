@@ -15,7 +15,7 @@ type Provider = component.Provider
 // be presented as an unknown route.
 var ErrProviderNotFound = errors.New("oidc provider not found")
 
-// DefaultSessionTTL bounds a session when no lifetime is configured.
+// DefaultSessionTTL bounds a session when WithSessionTTL is not given.
 const DefaultSessionTTL = 24 * time.Hour
 
 // ProviderResolver returns the name the goth provider serving providerID is
@@ -86,12 +86,10 @@ func WithSessionRegistry(registry port.SessionRegistry) OptionFunc {
 	}
 }
 
-// WithSessionTTL sets the lifetime of a registered session. A zero or
-// negative value keeps DefaultSessionTTL.
+// WithSessionTTL sets the lifetime of a registered session. It must be
+// positive: the registry refuses a session that is already expired.
 func WithSessionTTL(ttl time.Duration) OptionFunc {
 	return func(opts *Options) {
-		if ttl > 0 {
-			opts.SessionTTL = ttl
-		}
+		opts.SessionTTL = ttl
 	}
 }

@@ -4,6 +4,7 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/xolo-gateway/xolo/internal/config"
 )
@@ -11,6 +12,10 @@ import (
 // secretKeyForTest is a syntactically valid XOLO_SECRET_KEY: the root Validate
 // checks it first, so every case below has to get past it.
 const secretKeyForTest = "0000000000000000000000000000000000000000000000000000000000000000"
+
+// sessionForTest is the default session configuration, which the root
+// Validate checks too.
+var sessionForTest = config.Session{Cookie: config.Cookie{MaxAge: 24 * time.Hour}}
 
 func TestValidateMultitenantBaseURL(t *testing.T) {
 	for name, testCase := range map[string]struct {
@@ -82,7 +87,7 @@ func TestValidateMultitenantBaseURL(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			conf := config.Config{
 				SecretKey:    secretKeyForTest,
-				HTTP:         config.HTTP{BaseURL: testCase.baseURL},
+				HTTP:         config.HTTP{BaseURL: testCase.baseURL, Session: sessionForTest},
 				Multitenancy: testCase.multitenancy,
 			}
 
@@ -197,7 +202,7 @@ func TestNormalizeBaseURL(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			conf := config.Config{
 				SecretKey:    secretKeyForTest,
-				HTTP:         config.HTTP{BaseURL: testCase.input},
+				HTTP:         config.HTTP{BaseURL: testCase.input, Session: sessionForTest},
 				Multitenancy: config.Multitenancy{DefaultTenantSlug: "default"},
 			}
 
@@ -265,7 +270,7 @@ func TestNormalizeBaseURLFixesMultitenantValidationBypass(t *testing.T) {
 
 	conf := config.Config{
 		SecretKey: secretKeyForTest,
-		HTTP:      config.HTTP{BaseURL: raw},
+		HTTP:      config.HTTP{BaseURL: raw, Session: sessionForTest},
 		Multitenancy: config.Multitenancy{
 			Enabled:           true,
 			HostPattern:       "{tenant}.xolo.example.com",

@@ -223,10 +223,13 @@ func postLogout(h *Handler, provider, contentType, query, body string) *httptest
 	return rec
 }
 
-type failingRegistry struct{ port.SessionRegistry }
+type failingRegistry struct {
+	port.SessionRegistry
+	err error
+}
 
-func (failingRegistry) RevokeIdentitySessions(context.Context, string, string, string, time.Time, time.Time) (bool, error) {
-	return false, errors.New("database down")
+func (r failingRegistry) RevokeIdentitySessions(context.Context, string, string, string, time.Time, time.Time) (bool, error) {
+	return false, r.err
 }
 
 func TestBackchannelLogout(t *testing.T) {
@@ -278,7 +281,18 @@ func TestBackchannelLogout(t *testing.T) {
 	require.Equal(t, http.StatusOK, rec.Code)
 	require.True(t, authenticated(t, h, again))
 
-	failing := NewHandler(cookies, WithSessionRegistry(failingRegistry{registry}), WithProvidersWithJWKS(providers))
-	rec = postLogout(failing, testProvider, formType, "", form(sign(logoutToken("logout-2"))))
-	require.Equal(t, http.StatusServiceUnavailable, rec.Code)
+	// Only a storage failure asks the provider to retry.
+	for err, status := range map[error]int{
+		errors.New("database down"): http.StatusServiceUnavailable,
+		port.ErrInvalid:             http.StatusBadRequest,
+	} {
+		failing := NewHandler(cookies, WithSessionRegistry(failingRegistry{registry, err}), WithProvidersWithJWKS(providers))
+		rec = postLogout(failing, testProvider, formType, "", form(sign(logoutToken("logout-2"))))
+		require.Equal(t, status, rec.Code, err.Error())
+	}
+
+	// Without a registry there is nothing to revoke: the route does not exist.
+	unregistered := NewHandler(cookies, WithProvidersWithJWKS(providers))
+	rec = postLogout(unregistered, testProvider, formType, "", form(sign(logoutToken("logout-3"))))
+	require.Equal(t, http.StatusNotFound, rec.Code)
 }

@@ -8,7 +8,9 @@ Aplica migraciones al arrancar (por defecto: `true`). Con `false`, comprueba el 
 
 ## Sesiones OIDC y cierre de sesión back-channel
 
-Un inicio de sesión interactivo mediante un proveedor OAuth2/OIDC abre una sesión registrada en la base de datos; la cookie solo lleva su identificador. Una cookie copiada no sobrevive al cierre de sesión, y una sesión sigue siendo válida tras un reinicio y entre réplicas siempre que todas compartan `XOLO_HTTP_SESSION_KEYS`. Una sesión caduca tras `XOLO_HTTP_SESSION_COOKIE_MAX_AGE` (por defecto: `24h`). Cada réplica elimina las entradas caducadas cada 10 minutos.
+Un inicio de sesión interactivo mediante un proveedor OAuth2/OIDC abre una sesión registrada en la base de datos; la cookie solo lleva su identificador. Una cookie copiada no sobrevive al cierre de sesión, y una sesión sigue siendo válida tras un reinicio y entre réplicas siempre que todas compartan `XOLO_HTTP_SESSION_KEYS`. Una sesión caduca tras `XOLO_HTTP_SESSION_COOKIE_MAX_AGE` (por defecto: `24h`), que debe ser positivo o el servidor no arranca. Cada réplica elimina las entradas caducadas cada 10 minutos.
+
+Un inicio de sesión debe comenzar en Xolo (`/auth/oidc/providers/{proveedor}`) y volver al mismo navegador en un plazo de 15 minutos. Un inicio de sesión iniciado por el proveedor de identidad, o un retorno sin la cookie fijada al principio, falla con `sign-in start missing` en el registro: el usuario debe volver a iniciar sesión desde Xolo.
 
 Un proveedor OIDC puede revocar sesiones mediante [OpenID Connect Back-Channel Logout](https://openid.net/specs/openid-connect-backchannel-1_0.html) en `https://{host}/auth/oidc/providers/{proveedor}/backchannel-logout`:
 

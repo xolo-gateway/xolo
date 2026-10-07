@@ -7,7 +7,6 @@ import (
 	"github.com/pkg/errors"
 	"github.com/xolo-gateway/xolo/internal/config"
 	"github.com/xolo-gateway/xolo/internal/core/service"
-	"github.com/xolo-gateway/xolo/internal/http/middleware/authn/oidc"
 )
 
 const oidcSessionSweepInterval = 10 * time.Minute
@@ -19,10 +18,7 @@ var startOIDCSessionSweepFromConfig = createFromConfigOnce(func(ctx context.Cont
 	if err != nil {
 		return struct{}{}, errors.WithStack(err)
 	}
-	ttl := conf.HTTP.Session.Cookie.MaxAge
-	if ttl <= 0 {
-		ttl = oidc.DefaultSessionTTL
-	}
-	go service.RunSessionSweep(ctx, store, ttl, oidcSessionSweepInterval)
+	// Validated positive: see config.Session.Validate.
+	go service.RunSessionSweep(ctx, store, conf.HTTP.Session.Cookie.MaxAge, oidcSessionSweepInterval)
 	return struct{}{}, nil
 })

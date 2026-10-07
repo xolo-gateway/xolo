@@ -8,7 +8,7 @@ Xolo se configure entièrement par variables d'environnement, préfixées `XOLO_
 | --- | --- | --- |
 | `XOLO_SECRET_KEY` | _(requis)_ | Clé hexadécimale de 32 octets utilisée pour chiffrer les clés API des fournisseurs (AES-GCM). Générez-la avec `openssl rand -hex 32`. Le serveur refuse de démarrer si elle est absente. |
 | `XOLO_HTTP_SESSION_KEYS` | _(vide)_ | Liste de clés séparées par des virgules, utilisées pour signer/chiffrer les cookies de session. Vide, chaque processus tire une clé aléatoire : les sessions ne survivent alors ni à un redémarrage ni au passage d'un réplica à l'autre. |
-| `XOLO_HTTP_SESSION_COOKIE_MAX_AGE` | `24h` | Durée de vie d'un cookie de session, et de la [session OIDC](#sessions-oidc-et-deconnexion-back-channel) qu'il désigne. |
+| `XOLO_HTTP_SESSION_COOKIE_MAX_AGE` | `24h` | Durée de vie d'un cookie de session, et de la [session OIDC](#sessions-oidc-et-deconnexion-back-channel) qu'il désigne. Doit être strictement positive : le serveur refuse de démarrer sinon. |
 
 ## HTTP
 
@@ -73,6 +73,8 @@ Comme pour les fournisseurs OIDC nommés, `jwks_uri` est optionnel : en son abse
 ### Sessions OIDC et déconnexion back-channel
 
 Une connexion interactive par un fournisseur OAuth2/OIDC ouvre une session enregistrée en base ; le cookie ne porte que son identifiant. Chaque requête vérifie la session par une simple lecture : un cookie copié ne survit pas à la déconnexion, et une session reste valide après un redémarrage et d'un réplica à l'autre, pourvu que tous partagent `XOLO_HTTP_SESSION_KEYS`. Une session expire au bout de `XOLO_HTTP_SESSION_COOKIE_MAX_AGE`. Les sessions expirées et les entrées devenues inutiles sont supprimées toutes les 10 minutes par chaque réplica.
+
+Une connexion doit commencer chez Xolo (`/auth/oidc/providers/{fournisseur}`) et revenir sur le même navigateur dans les 15 minutes. Une connexion initiée par le fournisseur d'identité, ou un retour sans le cookie posé au départ, échoue avec `sign-in start missing` dans le journal ; l'utilisateur doit relancer la connexion depuis Xolo.
 
 Un fournisseur OIDC peut en outre révoquer les sessions par [OpenID Connect Back-Channel Logout](https://openid.net/specs/openid-connect-backchannel-1_0.html). Déclarez auprès de lui l'URL :
 

@@ -129,6 +129,10 @@ func (c *Config) Validate() error {
 		return errors.WithStack(err)
 	}
 
+	if err := c.HTTP.Session.Validate(); err != nil {
+		return errors.WithStack(err)
+	}
+
 	if err := c.ProvisionningAPI.Validate(); err != nil {
 		return errors.WithStack(err)
 	}

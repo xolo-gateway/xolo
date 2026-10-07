@@ -8,7 +8,9 @@ Apply migrations at startup (default: `true`). With `false`, schema compatibilit
 
 ## OIDC sessions and back-channel logout
 
-An interactive sign-in through an OAuth2/OIDC provider opens a session stored in the database; the cookie only carries its identifier. A copied cookie does not survive the logout, and a session stays valid across restarts and replicas as long as they all share `XOLO_HTTP_SESSION_KEYS`. A session expires after `XOLO_HTTP_SESSION_COOKIE_MAX_AGE` (default: `24h`). Every replica removes the expired entries every 10 minutes.
+An interactive sign-in through an OAuth2/OIDC provider opens a session stored in the database; the cookie only carries its identifier. A copied cookie does not survive the logout, and a session stays valid across restarts and replicas as long as they all share `XOLO_HTTP_SESSION_KEYS`. A session expires after `XOLO_HTTP_SESSION_COOKIE_MAX_AGE` (default: `24h`), which must be positive or the server refuses to start. Every replica removes the expired entries every 10 minutes.
+
+A sign-in must start at Xolo (`/auth/oidc/providers/{provider}`) and come back to the same browser within 15 minutes. A sign-in initiated by the identity provider, or a callback without the cookie set at the start, fails with `sign-in start missing` in the log: the user signs in again from Xolo.
 
 An OIDC provider can revoke sessions through [OpenID Connect Back-Channel Logout](https://openid.net/specs/openid-connect-backchannel-1_0.html) at `https://{host}/auth/oidc/providers/{provider}/backchannel-logout`:
 
