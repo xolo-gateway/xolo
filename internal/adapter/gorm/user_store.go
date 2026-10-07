@@ -177,33 +177,47 @@ func (s *Store) FindUsersByEmail(ctx context.Context, tenantID model.TenantID, e
 
 // findUsersByEmail compares normalized emails without rewriting the stored
 // ones. SQL narrows the candidates, Go decides: printable ASCII values are
-// matched by LOWER(TRIM()), every other value is normalized in Go.
+// matched by LOWER(TRIM()), every other value is normalized in Go. The
+// candidates are read as bare (id, email) pairs, which the other values may
+// make numerous; only the accounts that match are loaded, and locked on a
+// transaction that locks its reads.
 func findUsersByEmail(db *gorm.DB, tenantID model.TenantID, email string, limit int) ([]model.User, error) {
 	email = model.NormalizeEmail(email)
 	if email == "" || limit <= 0 {
 		return nil, nil
 	}
 	other := outsidePrintableASCII(db, "email")
-	query := db.Preload("Roles").Preload("Preferences").
+	query := db.Session(&gorm.Session{NewDB: true}).Model(&User{}).
 		Where("tenant_id = ? AND email <> ''", string(tenantID))
 	if isPrintableASCII(email) {
 		query = query.Where("(LOWER(TRIM(email)) = ? OR "+other+")", email)
 	} else {
 		query = query.Where(other)
 	}
-	var rows []User
-	if err := query.Order("id").Find(&rows).Error; err != nil {
+	var candidates []struct{ ID, Email string }
+	if err := query.Select("id", "email").Order("id").Find(&candidates).Error; err != nil {
 		return nil, errors.WithStack(err)
 	}
-	var users []model.User
+	var ids []string
+	for _, candidate := range candidates {
+		if model.NormalizeEmail(candidate.Email) == email {
+			ids = append(ids, candidate.ID)
+			if len(ids) == limit {
+				break
+			}
+		}
+	}
+	if len(ids) == 0 {
+		return nil, nil
+	}
+
+	var rows []User
+	if err := db.Preload("Roles").Preload("Preferences").Where("id IN ?", ids).Order("id").Find(&rows).Error; err != nil {
+		return nil, errors.WithStack(err)
+	}
+	users := make([]model.User, 0, len(rows))
 	for i := range rows {
-		if model.NormalizeEmail(rows[i].Email) != email {
-			continue
-		}
 		users = append(users, &wrappedUser{&rows[i]})
-		if len(users) == limit {
-			break
-		}
 	}
 	return users, nil
 }

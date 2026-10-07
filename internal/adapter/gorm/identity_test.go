@@ -273,6 +273,10 @@ func TestFindUsersByEmail(t *testing.T) {
 		require.Equal(t, []string{" kim@example.test"}, emails("Kim@example.test ", 5))
 		require.Empty(t, emails("nobody@example.test", 5))
 		require.Empty(t, emails("   ", 5))
+		loaded, err := store.FindUsersByEmail(ctx, testTenantID, "élodie@example.test", 5)
+		require.NoError(t, err)
+		require.Len(t, loaded, 1)
+		require.Equal(t, []string{model.PlatformRoleUser}, loaded[0].Roles(), "the matching account is loaded whole")
 
 		// Provisioning never creates a new ambiguity.
 		svc := newIdentityService(store)
