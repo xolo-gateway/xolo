@@ -68,7 +68,7 @@ func normalizeCommonResource(p CommonResource) (CommonResource, error) {
 func (s *ProvisioningService) commonParentTenant(ctx context.Context, tenantID model.TenantID) (model.Tenant, error) {
 	tenant, err := s.tenantStore.GetTenantByID(ctx, tenantID)
 	if errors.Is(err, port.ErrNotFound) {
-		return nil, errors.WithStack(port.ErrParentNotFound)
+		return nil, errors.Wrap(port.ErrParentNotFound, "tenant not found")
 	}
 	if err != nil {
 		return nil, errors.WithStack(err)
@@ -265,14 +265,14 @@ func (s *ProvisioningService) PutOrgMember(ctx context.Context, tenantID model.T
 	}
 	org, err := s.orgStore.GetOrgByID(ctx, orgID)
 	if errors.Is(err, port.ErrNotFound) || (err == nil && org.TenantID() != tenantID) {
-		return p, errors.WithStack(port.ErrParentNotFound)
+		return p, errors.Wrap(port.ErrParentNotFound, "organization not found")
 	}
 	if err != nil {
 		return p, errors.WithStack(err)
 	}
 	user, err := s.userStore.GetUserByID(ctx, userID)
 	if errors.Is(err, port.ErrNotFound) || (err == nil && user.TenantID() != tenantID) {
-		return p, errors.WithStack(port.ErrParentNotFound)
+		return p, errors.Wrap(port.ErrParentNotFound, "user not found")
 	}
 	if err != nil {
 		return p, errors.WithStack(err)

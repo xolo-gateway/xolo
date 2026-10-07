@@ -671,17 +671,18 @@ func TestCommonParents(t *testing.T) {
 	unknown := uuid.NewString()
 
 	parentNotFound := map[string]struct {
-		target string
-		body   map[string]any
+		target  string
+		body    map[string]any
+		message string
 	}{
-		"organization of an unknown tenant":   {"/v1/tenants/" + unknown + "/organizations/" + uuid.NewString(), resource("acme")},
-		"member of an unknown tenant":         {"/v1/tenants/" + unknown + "/members/" + uuid.NewString(), memberBody("x@acme.tld")},
-		"membership of an unknown tenant":     {"/v1/tenants/" + unknown + "/organizations/" + orgID + "/members/" + userID, membershipBody("member")},
-		"membership of an unknown org":        {env.tenantBase + "/organizations/" + unknown + "/members/" + userID, membershipBody("member")},
-		"membership of an unknown member":     {env.tenantBase + "/organizations/" + orgID + "/members/" + unknown, membershipBody("member")},
-		"membership of a foreign org":         {env.tenantBase + "/organizations/" + otherOrgID + "/members/" + userID, membershipBody("member")},
-		"membership of a foreign member":      {env.tenantBase + "/organizations/" + orgID + "/members/" + otherUserID, membershipBody("member")},
-		"org of a tenant reached by other id": {"/v1/tenants/" + otherID + "/organizations/" + orgID + "/members/" + otherUserID, membershipBody("member")},
+		"organization of an unknown tenant":   {"/v1/tenants/" + unknown + "/organizations/" + uuid.NewString(), resource("acme"), "tenant not found"},
+		"member of an unknown tenant":         {"/v1/tenants/" + unknown + "/members/" + uuid.NewString(), memberBody("x@acme.tld"), "tenant not found"},
+		"membership of an unknown tenant":     {"/v1/tenants/" + unknown + "/organizations/" + orgID + "/members/" + userID, membershipBody("member"), "tenant not found"},
+		"membership of an unknown org":        {env.tenantBase + "/organizations/" + unknown + "/members/" + userID, membershipBody("member"), "organization not found"},
+		"membership of an unknown member":     {env.tenantBase + "/organizations/" + orgID + "/members/" + unknown, membershipBody("member"), "user not found"},
+		"membership of a foreign org":         {env.tenantBase + "/organizations/" + otherOrgID + "/members/" + userID, membershipBody("member"), "organization not found"},
+		"membership of a foreign member":      {env.tenantBase + "/organizations/" + orgID + "/members/" + otherUserID, membershipBody("member"), "user not found"},
+		"org of a tenant reached by other id": {"/v1/tenants/" + otherID + "/organizations/" + orgID + "/members/" + otherUserID, membershipBody("member"), "organization not found"},
 	}
 
 	for name, request := range parentNotFound {
@@ -689,6 +690,10 @@ func TestCommonParents(t *testing.T) {
 			rec := call(t, env.handler, http.MethodPut, request.target, request.body)
 			assertStatus(t, rec, http.StatusNotFound)
 			assertErrorCode(t, rec, "parent_not_found")
+
+			if message := decodeBody(t, rec)["error"].(map[string]any)["message"].(string); message != request.message {
+				t.Errorf("message: got %q, want %q", message, request.message)
+			}
 		})
 	}
 
