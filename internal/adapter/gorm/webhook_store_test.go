@@ -490,3 +490,46 @@ func TestWebhookMigration(t *testing.T) {
 		putHook(t, store, testTenantID)
 	})
 }
+
+// TestWebhookPreparationIsolatesFailures pins that one unreadable row never
+// holds back preparation: an unreadable event is skipped, and an unreadable
+// subscription is left behind while the others are prepared.
+func TestWebhookPreparationIsolatesFailures(t *testing.T) {
+	eachBackendDB(t, func(t *testing.T, db *gormpkg.DB) {
+		store := newSeededStore(t, db)
+		ctx := t.Context()
+		other := newWebhookTenant(t, store, "other")
+
+		// The broken subscription comes first in the preparation order.
+		broken := putHook(t, store, other)
+		touchTenant(t, store, other)
+		require.NoError(t, db.Model(&xologorm.WebhookSubscription{}).Where("id = ?", string(broken.ID)).Update("events", "{").Error)
+
+		hook := putHook(t, store, testTenantID)
+		touchTenant(t, store, testTenantID)
+		corrupted := lastEvent(t, db)
+		require.NoError(t, db.Model(&xologorm.ProvisioningEvent{}).Where("sequence = ?", corrupted.Sequence).Update("payload", "not json").Error)
+		touchTenant(t, store, testTenantID)
+		valid := lastEvent(t, db)
+
+		stats, err := store.WebhookStats(ctx)
+		require.NoError(t, err)
+		require.Positive(t, stats.MaterializationLag, "events wait for preparation")
+
+		require.NoError(t, store.PrepareWebhooks(ctx, roomyWebhooks, 100))
+		deliveries := hookDeliveries(t, db, hook)
+		require.Len(t, deliveries, 1)
+		require.Equal(t, valid.Sequence, deliveries[0].Sequence, "the unreadable event is skipped")
+		require.Equal(t, valid.Sequence, hookRow(t, db, hook).Position)
+		require.Empty(t, hookDeliveries(t, db, broken))
+		require.Equal(t, broken.Position, hookRow(t, db, broken).Position, "an unreadable subscription stays where it is")
+
+		// Once repaired, the subscription catches up.
+		require.NoError(t, db.Model(&xologorm.WebhookSubscription{}).Where("id = ?", string(broken.ID)).Update("events", `["*"]`).Error)
+		require.NoError(t, store.PrepareWebhooks(ctx, roomyWebhooks, 100))
+		require.Len(t, hookDeliveries(t, db, broken), 1)
+		stats, err = store.WebhookStats(ctx)
+		require.NoError(t, err)
+		require.Zero(t, stats.MaterializationLag, "every subscription is prepared")
+	})
+}

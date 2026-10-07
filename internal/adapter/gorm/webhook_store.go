@@ -2,7 +2,9 @@ package gorm
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
+	"log/slog"
 	"time"
 
 	"github.com/google/uuid"
@@ -55,8 +57,9 @@ type WebhookDelivery struct {
 // webhookSweepBatch bounds the rows changed by one sweep transaction.
 const webhookSweepBatch = 1000
 
-// webhookDiagnostics are the only diagnostics stored: a sender never leaks
-// free text into the delivery history.
+// webhookDiagnostics allowlists the diagnostics a sender may report: anything
+// else is stored as delivery_failed, so a sender never leaks free text into the
+// delivery history. The store adds retry_exhausted itself.
 var webhookDiagnostics = map[string]bool{
 	"accepted": true, "http_status": true, "redirect": true, "transport_error": true,
 	"credentials_unavailable": true, "destination_rejected": true,
@@ -65,6 +68,10 @@ var webhookDiagnostics = map[string]bool{
 // errWebhookStale aborts a preparation that lost the race against another
 // write of the subscription. The next round starts again from the new state.
 var errWebhookStale = errors.New("webhook subscription changed concurrently")
+
+// errWebhookUnreadable aborts the preparation of a subscription whose stored
+// settings cannot be read. It never stops the preparation of the others.
+var errWebhookUnreadable = errors.New("webhook subscription unreadable")
 
 func webhookView(row WebhookSubscription) (model.WebhookSubscription, error) {
 	out := model.WebhookSubscription{ID: model.WebhookID(row.ID), TenantID: model.TenantID(row.TenantID), Destination: row.Destination, Enabled: row.Enabled, State: row.State, Position: row.Position, SecretCount: row.SecretCount, UpdatedAt: row.UpdatedAt}
@@ -356,13 +363,19 @@ func (s *Store) PrepareWebhooks(ctx context.Context, capacity model.WebhookCapac
 		Order("s.position, s.id").Find(&subscriptions).Error; err != nil {
 		return errors.WithStack(err)
 	}
+	// A subscription that cannot be prepared is logged and left behind: it
+	// never holds back the others. Database and context errors stop the round.
 	for _, subscription := range subscriptions {
 		err := retryTransaction(ctx, func() error {
 			return db.Transaction(func(tx *gorm.DB) error {
 				return prepareWebhook(tx, subscription, horizon, capacity, budget)
 			})
 		})
-		if err != nil && !errors.Is(err, errWebhookStale) {
+		switch {
+		case err == nil, errors.Is(err, errWebhookStale):
+		case errors.Is(err, errWebhookUnreadable):
+			slog.ErrorContext(ctx, "webhook subscription left unprepared", slog.String("subscription_id", subscription.ID), slog.Any("error", err))
+		default:
 			return err
 		}
 	}
@@ -372,7 +385,7 @@ func (s *Store) PrepareWebhooks(ctx context.Context, capacity model.WebhookCapac
 func prepareWebhook(db *gorm.DB, subscription WebhookSubscription, horizon int64, capacity model.WebhookCapacity, budget int) error {
 	var types []string
 	if err := json.Unmarshal([]byte(subscription.Events), &types); err != nil {
-		return errors.WithStack(err)
+		return errors.Wrapf(errWebhookUnreadable, "events: %v", err)
 	}
 	selected := map[string]bool{}
 	for _, typ := range types {
@@ -404,8 +417,12 @@ func prepareWebhook(db *gorm.DB, subscription WebhookSubscription, horizon int64
 	position, full := subscription.Position, false
 	for _, row := range rows {
 		var event model.CommonEvent
-		if err := json.Unmarshal([]byte(row.Payload), &event); err != nil {
-			return errors.WithStack(err)
+		if err := json.Unmarshal([]byte(row.Payload), &event); err != nil || event.ID == "" {
+			// An unreadable event cannot be delivered: it is skipped so the
+			// rest of the subscription's deliveries still commit.
+			slog.ErrorContext(db.Statement.Context, "webhook event skipped: unreadable payload", slog.String("subscription_id", subscription.ID), slog.Int64("sequence", row.Sequence), slog.Any("error", err))
+			position = row.Sequence
+			continue
 		}
 		if selected["*"] || selected[event.Type] {
 			if queued >= int64(capacity.Queue) || own >= int64(capacity.Subscription) {
@@ -543,6 +560,12 @@ func (s *Store) FinishWebhook(ctx context.Context, job *model.WebhookJob, result
 
 // SweepWebhooks implements port.WebhookStore, by bounded batches each in its
 // own statement.
+//
+// A paused delivery — disabled subscription or suspended tenant — is never
+// claimed, whether pending or with an expired lease, and is only closed here
+// once out of attempts or older than WebhookMaxAge. That bound is intended: a
+// pause keeps the deliveries queued, and the capacity they hold stays within
+// the share of their subscription.
 func (s *Store) SweepWebhooks(ctx context.Context, finishedBefore time.Time) error {
 	db, err := s.getDatabase(ctx)
 	if err != nil {
@@ -628,20 +651,23 @@ func (s *Store) WebhookStats(ctx context.Context) (model.WebhookStats, error) {
 	if len(oldest) == 1 {
 		out.DeliveryLag = max(0, now.Sub(oldest[0].EventAt))
 	}
-	var subscriptions []WebhookSubscription
-	if err := db.Table("webhook_subscriptions AS s").Select("s.tenant_id, s.position").
-		Joins("JOIN tenants AS t ON t.id = s.tenant_id").
-		Where("s.enabled = ? AND s.state <> ? AND t.active <> 0", true, model.WebhookHistoryLost).Find(&subscriptions).Error; err != nil {
+	// The oldest event not yet prepared is the lowest first pending sequence
+	// across the active subscriptions: one index seek per subscription, in a
+	// single statement, then one lookup by primary key.
+	var first sql.NullInt64
+	if err := db.Raw(`SELECT MIN(pending.sequence) FROM (
+		SELECT (SELECT MIN(e.sequence) FROM provisioning_events e WHERE e.tenant_id = s.tenant_id AND e.sequence > s.position) AS sequence
+		FROM webhook_subscriptions s JOIN tenants t ON t.id = s.tenant_id
+		WHERE s.enabled = ? AND s.state <> ? AND t.active <> 0) AS pending`, true, model.WebhookHistoryLost).Row().Scan(&first); err != nil {
 		return out, errors.WithStack(err)
 	}
-	for _, subscription := range subscriptions {
+	if first.Valid {
 		var next []ProvisioningEvent
-		if err := db.Select("created_at").Where("tenant_id = ? AND sequence > ?", subscription.TenantID, subscription.Position).
-			Order("sequence ASC").Limit(1).Find(&next).Error; err != nil {
+		if err := db.Select("created_at").Where("sequence = ?", first.Int64).Limit(1).Find(&next).Error; err != nil {
 			return out, errors.WithStack(err)
 		}
 		if len(next) == 1 {
-			out.MaterializationLag = max(out.MaterializationLag, now.Sub(next[0].CreatedAt))
+			out.MaterializationLag = max(0, now.Sub(next[0].CreatedAt))
 		}
 	}
 	return out, nil
