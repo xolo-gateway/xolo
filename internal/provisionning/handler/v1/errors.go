@@ -132,7 +132,9 @@ func statusFromError(err error) (int, string) {
 // sentinel. It returns an empty string when the error carries nothing but the
 // bare sentinel, so the caller falls back to its own wording.
 func sentinelMessage(err error) string {
-	for _, sentinel := range []error{port.ErrParentNotFound, port.ErrNotFound, port.ErrAlreadyExists, port.ErrNotAllowed, port.ErrInvalid} {
+	// A sentinel wrapping another one comes first, or its own text stays in
+	// the message.
+	for _, sentinel := range []error{port.ErrParentNotFound, port.ErrNotFound, port.ErrEmailTaken, port.ErrAlreadyExists, port.ErrNotAllowed, port.ErrInvalid} {
 		if !errors.Is(err, sentinel) {
 			continue
 		}

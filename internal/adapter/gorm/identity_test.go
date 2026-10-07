@@ -66,6 +66,23 @@ func memberProjection(t *testing.T, store *xologorm.Store, tenantID model.Tenant
 	return item
 }
 
+// signInActors returns the users named as actor by the audits of an account:
+// provisioning writes name no user, sign-ins name one.
+func signInActors(t *testing.T, db *gormpkg.DB, id model.UserID) []model.UserID {
+	t.Helper()
+	var audits []xologorm.MutationAudit
+	require.NoError(t, db.Where("resource = ? AND resource_id = ?", "user", string(id)).Find(&audits).Error)
+	var actors []model.UserID
+	for _, audit := range audits {
+		var actor model.Actor
+		require.NoError(t, json.Unmarshal([]byte(audit.Actor), &actor))
+		if actor.UserID != "" {
+			actors = append(actors, actor.UserID)
+		}
+	}
+	return actors
+}
+
 func auditCount(t *testing.T, db *gormpkg.DB) int64 {
 	t.Helper()
 	var n int64
@@ -112,6 +129,7 @@ func TestDeclaredIdentity(t *testing.T) {
 		require.Equal(t, "Alice ", stored.Subject())
 		require.Equal(t, declared.ETag, memberProjection(t, store, testTenantID, alice).ETag)
 		require.Equal(t, audits+1, auditCount(t, db))
+		require.Equal(t, []model.UserID{alice}, signInActors(t, db, alice), "the linked account is the actor")
 
 		user, err = resolver.Resolve(ctx, testTenantID, signIn("Alice ", "", false), closedPolicy)
 		require.NoError(t, err)
@@ -424,6 +442,7 @@ func TestIdentityTakeoverOfPlatformAdmin(t *testing.T) {
 		admin, err := resolver.Resolve(ctx, testTenantID, service.AuthenticatedIdentity{Provider: "oidc", Issuer: testIssuer, Subject: "admin", Email: "admin@corp.example", EmailVerified: true, DisplayName: "Admin"}, policy)
 		require.NoError(t, err)
 		require.Contains(t, admin.Roles(), model.PlatformRoleAdmin)
+		require.Equal(t, []model.UserID{admin.ID()}, signInActors(t, db, admin.ID()), "a created account is its own actor")
 
 		unchanged := func(identity service.IdentityChange) error {
 			_, err := svc.PutTenantMember(ctx, testTenantID, admin.ID(), service.CommonMember{Email: "admin@corp.example", DisplayName: "Admin", TenantRole: model.TenantRoleMember, Status: model.StatusActive, Identity: identity})

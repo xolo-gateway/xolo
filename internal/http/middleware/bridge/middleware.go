@@ -93,12 +93,14 @@ func Middleware(userStore port.UserStore, inviteStore port.InviteStore, emitter 
 					err = errors.WithStack(port.ErrNotFound)
 				}
 				if errors.Is(err, port.ErrNotFound) {
+					emitLoginFailed(ctx, authnUser, "le propriétaire du jeton est introuvable ou appartient à un autre tenant")
 					common.HandleError(w, r, common.NewHTTPError(http.StatusUnauthorized))
 					return
 				}
 			case authnUser.Provider == "" || authnUser.Subject == "":
 				// Without both, the identity would designate every account no
 				// sign-in is linked to.
+				emitLoginFailed(ctx, authnUser, "identité sans fournisseur ou sans sujet")
 				common.HandleError(w, r, common.NewHTTPError(http.StatusUnauthorized))
 				return
 			default:

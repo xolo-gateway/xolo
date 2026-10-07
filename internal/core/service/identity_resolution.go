@@ -22,6 +22,12 @@ var (
 	ErrAccountCreationDisabled = errors.Wrap(port.ErrNotAllowed, "account creation disabled")
 )
 
+// errActorChanged reopens the transaction of a sign-in whose replay settled
+// on another account than the read: the audit must name the right actor.
+var errActorChanged = errors.New("sign-in resolved to another account")
+
+const maxActorAttempts = 3
+
 // AuthenticatedIdentity is what an authenticator proved about a sign-in.
 type AuthenticatedIdentity struct {
 	// Provider and Subject form the sign-in link: the local provider ID and
@@ -87,7 +93,9 @@ func (r *IdentityResolver) Resolve(ctx context.Context, tenantID model.TenantID,
 		}
 		return invited
 	}
-	user, next, err := r.decide(ctx, r.users, tenantID, proof, policy, isInvited)
+	// Chosen once, so the replay creates the very account the read decided on.
+	newID := model.NewUserID()
+	user, next, err := r.decide(ctx, r.users, tenantID, proof, policy, isInvited, newID)
 	if err != nil || next == nil {
 		return user, err
 	}
@@ -95,17 +103,31 @@ func (r *IdentityResolver) Resolve(ctx context.Context, tenantID model.TenantID,
 		return nil, errors.New("identity resolution can not write without a provisioning transaction")
 	}
 
-	ctx = model.EnsureActor(model.WithActor(ctx, model.Actor{UserID: next.ID(), RequestID: model.ActorFromContext(ctx).RequestID}))
-	err = r.transactions.WithProvisioningTransaction(ctx, func(tx port.ProvisioningTx) error {
-		// Replayed on the transaction: a concurrent sign-in or provisioning
-		// write may have changed the outcome since the read.
-		user, next, err = r.decide(ctx, tx, tenantID, proof, policy, func() bool { return invited })
-		if err != nil || next == nil {
-			return err
+	// The audit names the account written as its actor, and reads the actor
+	// when the transaction opens: when the replay settles on another account,
+	// the transaction is reopened in its name.
+	requestID := model.ActorFromContext(model.EnsureActor(ctx)).RequestID
+	actorID := next.ID()
+	for attempt := 0; ; attempt++ {
+		actorCtx := model.WithActor(ctx, model.Actor{UserID: actorID, RequestID: requestID})
+		err = r.transactions.WithProvisioningTransaction(actorCtx, func(tx port.ProvisioningTx) error {
+			// Replayed on the transaction: a concurrent sign-in or
+			// provisioning write may have changed the outcome since the read.
+			user, next, err = r.decide(actorCtx, tx, tenantID, proof, policy, func() bool { return invited }, newID)
+			if err != nil || next == nil {
+				return err
+			}
+			if next.ID() != actorID {
+				actorID = next.ID()
+				return errActorChanged
+			}
+			user = next
+			return tx.SaveUser(actorCtx, next)
+		})
+		if !errors.Is(err, errActorChanged) || attempt == maxActorAttempts-1 {
+			break
 		}
-		user = next
-		return tx.SaveUser(ctx, next)
-	})
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -115,7 +137,7 @@ func (r *IdentityResolver) Resolve(ctx context.Context, tenantID model.TenantID,
 // decide resolves the identity in order: its sign-in link, the identity
 // provisioning declared, a verified email, then the creation policy. next is
 // the account to write, nil when nothing changes.
-func (r *IdentityResolver) decide(ctx context.Context, reader identityReader, tenantID model.TenantID, proof AuthenticatedIdentity, policy LoginPolicy, isInvited func() bool) (model.User, *model.BaseUser, error) {
+func (r *IdentityResolver) decide(ctx context.Context, reader identityReader, tenantID model.TenantID, proof AuthenticatedIdentity, policy LoginPolicy, isInvited func() bool, newID model.UserID) (model.User, *model.BaseUser, error) {
 	isDefaultAdmin := isDefaultAdminEmail(policy.DefaultAdmins, proof.Email)
 	// An application authenticates through a shadow user created lazily on
 	// its first request, whose lifecycle follows the application: the account
@@ -188,6 +210,7 @@ func (r *IdentityResolver) decide(ctx context.Context, reader identityReader, te
 		policy.ActiveByDefault || isDefaultAdmin || isApplication,
 		model.PlatformRoleUser,
 	)
+	created.SetID(newID)
 	if next := synchronizeProfile(created, proof, isDefaultAdmin, true); next != nil {
 		created = next
 	}

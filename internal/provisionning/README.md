@@ -169,7 +169,7 @@ The optional `identity` field designates the sign-in of a member:
 |---|---|
 | absent | The declared identity and the sign-in link are kept: a client unaware of the field never detaches anybody. |
 | `null` | The declared identity is removed and the sign-in link detached. The member signs in again only through a new declaration or a verified email. |
-| object | The identity is declared. A member already linked to another sign-in is refused with `409 conflict`: send `null` first. |
+| object | The identity is declared. A member already linked to another sign-in is refused with `409 conflict`: to move an account to another provider or identity, send `null`, then the new identity. |
 
 - `issuer` is an exact HTTPS URL of at most 2048 bytes, with a host and without
   userinfo, query, fragment, surrounding whitespace or control characters.
@@ -637,7 +637,9 @@ and cascading deletion. Repeated changes to a resource coalesce within the
 transaction; a no-op produces no audit. States exclude secrets and technical
 timestamps. Audits retain the tenant/organization scope after resource deletion.
 UUID audit identifiers do not imply commit order. This audit covers provisioning
-mutations only; reads and ordinary web UI operations do not write it.
+mutations, and the sign-ins that create, link or update an account, with that
+account as actor; reads and ordinary web UI operations do not write it. A user
+state includes its declared identity: unlike events, the audit table holds it.
 
 Send `X-Request-ID` as a single value of exactly 32 lowercase hexadecimal characters.
 Invalid, repeated or missing values are replaced. The retained value is returned in

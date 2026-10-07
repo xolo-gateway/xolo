@@ -84,6 +84,16 @@ func TestMemberIdentityHTTP(t *testing.T) {
 		assertErrorCode(t, rec, "conflict")
 	})
 
+	t.Run("an email held by another member is a conflict", func(t *testing.T) {
+		rec := call(t, env.handler, http.MethodPut, env.tenantBase+"/members/"+uuid.NewString(), memberBody("JANE@acme.tld"))
+		assertStatus(t, rec, http.StatusConflict)
+		assertErrorCode(t, rec, "conflict")
+		errorBody, _ := decodeBody(t, rec)["error"].(map[string]any)
+		if got, want := errorBody["message"], `email "JANE@acme.tld" is already used by another user`; got != want {
+			t.Errorf("message: got %q, want %q", got, want)
+		}
+	})
+
 	t.Run("an absent identity keeps it", func(t *testing.T) {
 		rec := call(t, env.handler, http.MethodPut, unit, memberBody("jane@acme.tld"))
 		assertStatus(t, rec, http.StatusOK)

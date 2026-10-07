@@ -161,7 +161,7 @@ Le champ facultatif `identity` désigne la connexion d'un membre :
 | --- | --- |
 | absente | L'identité déclarée et le lien de connexion sont conservés : un client qui ignore le champ ne détache jamais personne. |
 | `null` | L'identité déclarée est retirée et le lien de connexion détaché. Le membre ne se reconnecte que par une nouvelle déclaration ou un email vérifié. |
-| objet | L'identité est déclarée. Un membre déjà lié à une autre connexion est refusé avec `409 conflict` : envoyez d'abord `null`. |
+| objet | L'identité est déclarée. Un membre déjà lié à une autre connexion est refusé avec `409 conflict` : pour faire passer un compte à un autre fournisseur ou une autre identité, envoyez `null`, puis la nouvelle identité. |
 
 - `issuer` est une URL HTTPS exacte de 2048 octets au plus, avec un hôte, sans
   userinfo, requête, fragment, espaces de bord ni caractère de contrôle.
@@ -650,7 +650,10 @@ rôles et les suppressions en cascade. Les changements successifs sont regroupé
 une opération sans changement ne produit pas d'audit. Les états excluent les secrets
 et les horodatages techniques. L'historique et son périmètre tenant/organisation
 survivent à la suppression des ressources. Les UUID d'audit ne donnent pas l'ordre
-des commits. Seules les mutations de provisioning alimentent ce nouvel audit.
+des commits. Seules les mutations de provisioning alimentent cet audit, ainsi que
+les connexions qui créent, lient ou mettent à jour un compte, avec ce compte pour
+acteur. L'état d'un utilisateur inclut son identité déclarée : contrairement aux
+événements, la table d'audit la contient.
 
 `X-Request-ID` doit contenir une seule valeur de 32 caractères hexadécimaux minuscules.
 Toute valeur absente, répétée ou invalide est remplacée. La valeur retenue est renvoyée

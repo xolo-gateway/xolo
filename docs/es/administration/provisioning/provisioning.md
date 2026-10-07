@@ -151,7 +151,7 @@ El campo opcional `identity` designa el inicio de sesión de un miembro:
 |---|---|
 | ausente | La identidad declarada y el vínculo de inicio de sesión se conservan: un cliente que ignora el campo nunca desvincula a nadie. |
 | `null` | La identidad declarada se retira y el vínculo de inicio de sesión se suelta. El miembro solo vuelve a iniciar sesión mediante una nueva declaración o un email verificado. |
-| objeto | La identidad se declara. Un miembro ya vinculado a otro inicio de sesión se rechaza con `409 conflict`: envíe primero `null`. |
+| objeto | La identidad se declara. Un miembro ya vinculado a otro inicio de sesión se rechaza con `409 conflict`: para pasar una cuenta a otro proveedor u otra identidad, envíe `null` y luego la nueva identidad. |
 
 - `issuer` es una URL HTTPS exacta de 2048 bytes como máximo, con host y sin
   userinfo, consulta, fragmento, espacios en los extremos ni caracteres de
@@ -627,8 +627,12 @@ modificado: tenant, dominio, organización, usuario, pertenencia o rol, incluida
 de roles y eliminaciones en cascada. Los cambios sucesivos se agrupan; una operación
 sin cambios no genera auditoría. Los estados excluyen secretos y marcas de tiempo
 técnicas. El historial y su ámbito sobreviven a la eliminación del recurso. Los
-UUID de auditoría no indican el orden de commit. Esta auditoría cubre únicamente
-mutaciones de provisioning, no lecturas ni operaciones habituales de la interfaz web.
+UUID de auditoría no indican el orden de commit. Esta auditoría cubre las
+mutaciones de provisioning y los inicios de sesión que crean, vinculan o
+actualizan una cuenta, con esa cuenta como actor; no las lecturas ni las
+operaciones habituales de la interfaz web. El estado de un usuario incluye su
+identidad declarada: a diferencia de los eventos, la tabla de auditoría la
+contiene.
 
 `X-Request-ID` debe contener un único valor de 32 caracteres hexadecimales en
 minúsculas. Si falta, se repite o es inválido, se genera otro. El valor seleccionado

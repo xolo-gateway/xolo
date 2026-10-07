@@ -575,6 +575,9 @@ func TestAccountIdentity(t *testing.T) {
 		if result.served || result.status != http.StatusUnauthorized {
 			t.Fatalf("got served=%v status %d, want 401", result.served, result.status)
 		}
+		if loginFailedReason(result) == "" {
+			t.Errorf("a refused token should emit %s", model.EventTypeAuthLoginFailed)
+		}
 	})
 }
 
@@ -595,6 +598,9 @@ func TestIncompleteIdentityIsRefused(t *testing.T) {
 		result := call(t, store, bridge.Options{AutoCreateUsers: true}, identity)
 		if result.served || result.status != http.StatusUnauthorized {
 			t.Fatalf("%+v: got served=%v status %d, want 401", identity, result.served, result.status)
+		}
+		if loginFailedReason(result) == "" {
+			t.Errorf("%+v: a refused identity should emit %s", identity, model.EventTypeAuthLoginFailed)
 		}
 	}
 }
