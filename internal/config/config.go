@@ -23,6 +23,7 @@ type Config struct {
 	ProvisionningAPI ProvisionningAPI   `envPrefix:"PROVISIONNING_API_"`
 	Multitenancy     Multitenancy       `envPrefix:"MULTITENANCY_"`
 	Webhooks         Webhooks           `envPrefix:"WEBHOOKS_"`
+	Lifecycle        Lifecycle          `envPrefix:"LIFECYCLE_"`
 	// Ownership assigns a write authority to each family of identity
 	// resources, as family=owner pairs. Omitted families are shared.
 	Ownership model.OwnershipPolicy `env:"OWNERSHIP" envSeparator:"," envKeyValSeparator:"="`
@@ -150,6 +151,10 @@ func (c *Config) Validate() error {
 	}
 
 	if err := c.Ownership.Validate(); err != nil {
+		return errors.WithStack(err)
+	}
+
+	if err := c.Lifecycle.Validate(); err != nil {
 		return errors.WithStack(err)
 	}
 

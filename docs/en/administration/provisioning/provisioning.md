@@ -707,6 +707,45 @@ images (`/usr/local/bin/xolo-adoption`). `export` and `verify` only read, and
 no action migrates the schema: run the binary of the version that migrated the
 database.
 
+## Resource lifecycle
+
+The groundwork for deleting tenants, organizations and members is in place;
+no route exposes it yet. Deleting such a resource first records its deletion,
+which **freezes** the resource and everything it holds until its purge.
+
+| Variable | Default | Description |
+|---|---|---|
+| `XOLO_LIFECYCLE_ENABLED` | `false` | Allows recording deletions, and installs the database guards of the frozen scopes |
+| `XOLO_LIFECYCLE_RETENTION` | `720h` | How long a deleted resource stays frozen before it may be purged, 1 s to 3650 days |
+
+- **Freezing** a resource deactivates it, which publishes it as `suspended`
+  with an `updated` event, and records its deletion in the same transaction.
+  It checks the `If-Match` condition and the write authority of every family
+  the scope holds. It refuses the last active owner of a tenant or of a live
+  organization (`409 last_owner`) and the `default` tenant. A frozen tenant
+  loses its OIDC sessions at once; a frozen member can no longer sign in.
+- **A frozen scope is read-only.** Every write to a row it holds is refused,
+  whoever makes it: API (`409 resource_deleted`), web UI (`403`), workers, and
+  raw SQL. That covers the tenant, its domains, organizations and users; an
+  organization with its roles, applications, tokens, providers, models,
+  quotas, alerts, usage, events, secrets and invitations; a member with its
+  memberships, preferences, personal secrets, alerts, quota and usage. A freeze
+  can not be undone. Webhooks of a frozen tenant are no longer prepared nor
+  delivered, and its subscriptions can not change; detaching keeps them.
+  Alert evaluation and event eviction skip the frozen scopes.
+- **Guards** are database triggers, installed at startup only when the
+  lifecycle is enabled. With the lifecycle disabled, they are removed, unless a
+  deletion is recorded: an instance that never froze anything pays nothing,
+  and the freezes already recorded stay protected.
+- **No instance-wide lock.** A freeze locks the row it freezes; a write locks
+  the rows of its tenant, organization and member like a foreign key check
+  does. A write waits only for a freeze of its own scope, then fails; a write
+  committed before the freeze stays.
+
+A suspended organization now grants nothing: its memberships, the
+permissions of its applications and their tokens are refused, and the proxy
+serves none of its models, platform administrators included.
+
 ## Errors
 
 Every error uses the same envelope:
@@ -726,6 +765,7 @@ Every error uses the same envelope:
 | `invalid_request` | 400 | `/v1/xolo`: malformed body, unknown field, invalid query parameter |
 | `client_certificate_rejected` | 403 | Client certificate or URI is not authorized |
 | `ownership_denied` | 403 | The ownership policy reserves the family to the local instance |
+| `resource_deleted` | 409 | The resource, or a resource holding it, is frozen by its deletion |
 | `not_found` | 404 | Unknown resource or route, or a resource belonging to another tenant or organization |
 | `parent_not_found` | 404 | The tenant, organization or member a resource hangs from does not exist in that scope |
 | `method_not_allowed` | 405 | Known resource, wrong method |

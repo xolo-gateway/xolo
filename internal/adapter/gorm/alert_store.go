@@ -78,7 +78,9 @@ func (s *Store) ListAlerts(ctx context.Context, orgID model.OrgID) ([]model.Aler
 func (s *Store) ListEnabledAlerts(ctx context.Context) ([]model.Alert, error) {
 	var alerts []*Alert
 	err := s.withRetry(ctx, false, func(ctx context.Context, db *gorm.DB) error {
-		return errors.WithStack(db.Where("enabled = ?", true).Find(&alerts).Error)
+		// The alerts of a frozen scope are not evaluated: their state can
+		// not be written anymore.
+		return errors.WithStack(db.Where("enabled = ?", true).Where(notFrozen("alerts", "alerts")).Find(&alerts).Error)
 	})
 	if err != nil {
 		return nil, err

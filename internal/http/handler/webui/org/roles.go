@@ -129,7 +129,7 @@ func (h *Handler) createRole(w http.ResponseWriter, r *http.Request) {
 	role.SetModelGrants(parseModelGrants(r))
 
 	if err := h.roleStore.CreateRole(ctx, role); err != nil {
-		if webcommon.RejectOwnership(w, r, err) {
+		if webcommon.RejectLocked(w, r, err) {
 			return
 		}
 		slog.ErrorContext(ctx, "could not create role", slogx.Error(err))
@@ -194,7 +194,7 @@ func (h *Handler) updateRole(w http.ResponseWriter, r *http.Request) {
 
 	updated := model.UpdateRole(role, opts...)
 	if err := h.roleStore.SaveRole(ctx, updated); err != nil {
-		if webcommon.RejectOwnership(w, r, err) {
+		if webcommon.RejectLocked(w, r, err) {
 			return
 		}
 		slog.ErrorContext(ctx, "could not save role", slogx.Error(err))
@@ -262,7 +262,7 @@ func (h *Handler) toggleRolePermission(w http.ResponseWriter, r *http.Request) {
 
 	updated := model.UpdateRole(role, model.WithRolePermissions(togglePermission(role.Permissions(), code, granted)))
 	if err := h.roleStore.SaveRole(ctx, updated); err != nil {
-		if webcommon.RejectOwnership(w, r, err) {
+		if webcommon.RejectLocked(w, r, err) {
 			return
 		}
 		slog.ErrorContext(ctx, "could not save role", slogx.Error(err))
@@ -335,7 +335,7 @@ func (h *Handler) deleteRole(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.roleStore.DeleteRole(ctx, role.ID()); err != nil {
-		if webcommon.RejectOwnership(w, r, err) {
+		if webcommon.RejectLocked(w, r, err) {
 			return
 		}
 		if errors.Is(err, port.ErrNotAllowed) {

@@ -131,7 +131,7 @@ func retryTransaction(ctx context.Context, operation func() error) error {
 		}
 		err := operation()
 		if err == nil || !isRetryableError(err) || attempt >= 10 {
-			return err
+			return lifecycleError(err)
 		}
 		timer := time.NewTimer(min(10*time.Millisecond<<attempt, 500*time.Millisecond))
 		select {

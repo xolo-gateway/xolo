@@ -233,8 +233,10 @@ func (s *Store) ResolveEffectivePermissions(ctx context.Context, userID model.Us
 	var roles []*Role
 	err := s.withRetry(ctx, false, func(ctx context.Context, db *gorm.DB) error {
 		var m Membership
-		// A suspended membership grants nothing.
-		if err := db.Where("user_id = ? AND org_id = ? AND status = ?", string(userID), string(orgID), string(model.StatusActive)).First(&m).Error; err != nil {
+		// A suspended membership, or a suspended or deleted organization,
+		// grants nothing.
+		if err := db.Where("user_id = ? AND org_id = ? AND status = ?", string(userID), string(orgID), string(model.StatusActive)).
+			Where("EXISTS (SELECT 1 FROM organizations o WHERE o.id = memberships.org_id AND o.active <> 0)").First(&m).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				return nil // not an active member: no permissions
 			}
@@ -260,9 +262,10 @@ func (s *Store) ResolveApplicationPermissions(ctx context.Context, appID model.A
 	var roles []*Role
 	err := s.withRetry(ctx, false, func(ctx context.Context, db *gorm.DB) error {
 		var app Application
-		if err := db.Where("id = ? AND org_id = ?", string(appID), string(orgID)).First(&app).Error; err != nil {
+		if err := db.Where("id = ? AND org_id = ?", string(appID), string(orgID)).
+			Where("EXISTS (SELECT 1 FROM organizations o WHERE o.id = applications.org_id AND o.active <> 0)").First(&app).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
-				return nil // unknown application, or not scoped to this org: no permissions
+				return nil // unknown application, not scoped to this org, or org suspended: no permissions
 			}
 			return errors.WithStack(err)
 		}

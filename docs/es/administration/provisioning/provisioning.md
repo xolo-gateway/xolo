@@ -737,6 +737,48 @@ imágenes de contenedor (`/usr/local/bin/xolo-adoption`). `export` y `verify`
 solo leen, y ninguna acción migra el esquema: utilice el binario de la versión
 que migró la base de datos.
 
+## Ciclo de vida de los recursos
+
+La base para eliminar tenants, organizaciones y miembros está lista; ninguna
+ruta la expone todavía. Eliminar un recurso así empieza por registrar su
+eliminación, que **congela** el recurso y todo lo que contiene hasta su purga.
+
+| Variable | Por defecto | Descripción |
+|---|---|---|
+| `XOLO_LIFECYCLE_ENABLED` | `false` | Permite registrar eliminaciones e instala las protecciones en base de datos de los ámbitos congelados |
+| `XOLO_LIFECYCLE_RETENTION` | `720h` | Tiempo durante el que un recurso eliminado permanece congelado antes de poder purgarse, de 1 s a 3650 días |
+
+- **Congelar** un recurso lo desactiva, lo que lo publica como `suspended`
+  con un evento `updated`, y registra su eliminación en la misma transacción.
+  Comprueba la condición `If-Match` y la autoridad de escritura de cada
+  familia que contiene el ámbito. Rechaza el último propietario activo de un
+  tenant o de una organización viva (`409 last_owner`) y el tenant `default`.
+  Un tenant congelado pierde enseguida sus sesiones OIDC; un miembro congelado
+  ya no puede iniciar sesión.
+- **Un ámbito congelado es de solo lectura.** Toda escritura de una fila que
+  contiene se rechaza, sea quien sea su autor: API (`409 resource_deleted`),
+  interfaz web (`403`), workers y SQL directo. Abarca el tenant, sus dominios,
+  organizaciones y usuarios; una organización con sus roles, aplicaciones,
+  tokens, proveedores, modelos, cuotas, alertas, consumo, eventos, secretos e
+  invitaciones; un miembro con sus pertenencias, preferencias, secretos
+  personales, alertas, cuota y consumo. Un congelamiento es definitivo. Los
+  webhooks de un tenant congelado ya no se preparan ni se entregan, y sus
+  suscripciones ya no pueden cambiar; la desvinculación las conserva. La
+  evaluación de alertas y la expulsión de eventos ignoran los ámbitos
+  congelados.
+- **Las protecciones** son triggers, instalados al arrancar solo si el ciclo
+  de vida está activado. Desactivado, se retiran, salvo que haya una
+  eliminación registrada: una instancia que nunca congeló nada no paga nada, y
+  los congelamientos existentes siguen protegidos.
+- **Ningún bloqueo global.** Un congelamiento bloquea la fila que congela; una
+  escritura bloquea las filas de su tenant, organización y miembro, como lo
+  hace una clave foránea. Una escritura solo espera un congelamiento de su
+  propio ámbito y luego falla; una escritura confirmada antes se conserva.
+
+Una organización suspendida ya no concede nada: sus pertenencias, los permisos
+de sus aplicaciones y sus tokens se rechazan, y el proxy no sirve ninguno de
+sus modelos, administradores de plataforma incluidos.
+
 ## Errores
 
 Todos los errores comparten el formato `{"error":{"code":"…","message":"…"}}`.
@@ -752,6 +794,7 @@ Todos los errores comparten el formato `{"error":{"code":"…","message":"…"}}
 | `invalid_request` | 400 | `/v1/xolo`: cuerpo mal formado, campo desconocido, parámetro de consulta inválido |
 | `client_certificate_rejected` | 403 | Certificado o URI de cliente no autorizado |
 | `ownership_denied` | 403 | La política de autoridad reserva la familia a la instancia local |
+| `resource_deleted` | 409 | El recurso, o un recurso que lo contiene, está congelado por su eliminación |
 | `not_found` | 404 | Recurso o ruta desconocidos, o recurso de otro tenant u otra organización |
 | `parent_not_found` | 404 | El tenant, la organización o el miembro del que depende el recurso no existe en ese ámbito |
 | `method_not_allowed` | 405 | Recurso conocido, método incorrecto |

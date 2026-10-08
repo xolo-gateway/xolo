@@ -142,7 +142,7 @@ func (h *Handler) createOrg(w http.ResponseWriter, r *http.Request) {
 
 	org := model.NewOrganization(httpCtx.TenantID(ctx), slug, name, description)
 	if err := h.orgStore.CreateOrg(ctx, org); err != nil {
-		if webcommon.RejectOwnership(w, r, err) {
+		if webcommon.RejectLocked(w, r, err) {
 			return
 		}
 		slog.ErrorContext(ctx, "could not create org", slogx.Error(err))
@@ -219,7 +219,7 @@ func (h *Handler) updateOrg(w http.ResponseWriter, r *http.Request) {
 	)
 
 	if err := h.orgStore.SaveOrg(ctx, updated); err != nil {
-		if webcommon.RejectOwnership(w, r, err) {
+		if webcommon.RejectLocked(w, r, err) {
 			return
 		}
 		slog.ErrorContext(ctx, "could not save org", slogx.Error(err))

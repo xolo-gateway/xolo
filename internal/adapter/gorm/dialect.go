@@ -6,6 +6,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/ncruces/go-sqlite3"
 	"github.com/pkg/errors"
+	"github.com/xolo-gateway/xolo/internal/core/port"
 	"gorm.io/gorm"
 )
 
@@ -71,6 +72,10 @@ func isRetryableError(err error) bool {
 // message, which spells the index out differently per backend (SQLite reports
 // "users.email", PostgreSQL the index name "idx_users_email_nonempty").
 func isUniqueViolation(err error, fragments ...string) bool {
+	// A lifecycle guard aborts with a constraint error too on SQLite.
+	if isFrozenError(err) {
+		return false
+	}
 	var msg string
 
 	var sqliteErr *sqlite3.Error
@@ -98,4 +103,30 @@ func isUniqueViolation(err error, fragments ...string) bool {
 	}
 
 	return true
+}
+
+// The lifecycle guards refuse a write to a frozen scope with this message on
+// SQLite, and with this SQLSTATE on PostgreSQL.
+const (
+	frozenGuardMessage = "xolo_resource_deleted"
+	frozenGuardCode    = "XO001"
+)
+
+// isFrozenError reports whether err is the refusal of a lifecycle guard.
+func isFrozenError(err error) bool {
+	var sqliteErr *sqlite3.Error
+	if errors.As(err, &sqliteErr) {
+		return sqliteErr.Code() == sqlite3.CONSTRAINT && strings.Contains(sqliteErr.Error(), frozenGuardMessage)
+	}
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == frozenGuardCode
+}
+
+// lifecycleError turns the refusal of a lifecycle guard into
+// port.ErrResourceDeleted, and leaves any other error as is.
+func lifecycleError(err error) error {
+	if err != nil && isFrozenError(err) {
+		return errors.WithStack(port.ErrResourceDeleted)
+	}
+	return err
 }

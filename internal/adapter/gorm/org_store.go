@@ -312,6 +312,8 @@ func (s *Store) GetUserMemberships(ctx context.Context, userID model.UserID) ([]
 	err := s.withRetry(ctx, false, func(ctx context.Context, db *gorm.DB) error {
 		return errors.WithStack(db.Preload("Org").Preload("Roles").Preload("Roles.Permissions").
 			Where("user_id = ? AND status = ?", string(userID), string(model.StatusActive)).
+			// A suspended or deleted organization grants nothing.
+			Where("EXISTS (SELECT 1 FROM organizations o WHERE o.id = memberships.org_id AND o.active <> 0)").
 			Find(&members).Error)
 	})
 	if err != nil {
@@ -347,6 +349,7 @@ func (s *Store) IsMember(ctx context.Context, userID model.UserID, orgID model.O
 	err := s.withRetry(ctx, false, func(ctx context.Context, db *gorm.DB) error {
 		return errors.WithStack(db.Model(&Membership{}).
 			Where("user_id = ? AND org_id = ? AND status = ?", string(userID), string(orgID), string(model.StatusActive)).
+			Where("EXISTS (SELECT 1 FROM organizations o WHERE o.id = memberships.org_id AND o.active <> 0)").
 			Count(&count).Error)
 	})
 	if err != nil {

@@ -185,7 +185,10 @@ func MigrateDatabase(ctx context.Context, db *gorm.DB, artifact *RecoveryArtifac
 				if err := migrateProvisioningSync(tx); err != nil {
 					return err
 				}
-				return migrateWebhooks(tx)
+				if err := migrateWebhooks(tx); err != nil {
+					return err
+				}
+				return migrateLifecycle(tx)
 			})
 		})
 		err := m.Migrate()
@@ -601,6 +604,13 @@ func schemaMigrations(artifact *RecoveryArtifact) []*gormigrate.Migration {
 			Migrate: migrateBusinessProjections,
 			Rollback: func(*gorm.DB) error {
 				return errors.New("business projections migration cannot be rolled back: consumers rely on their revisions")
+			},
+		},
+		{
+			ID:      lifecycleMigrationID,
+			Migrate: migrateLifecycle,
+			Rollback: func(*gorm.DB) error {
+				return errors.New("lifecycle migration cannot be rolled back: recorded deletions would stop being protected")
 			},
 		},
 	}

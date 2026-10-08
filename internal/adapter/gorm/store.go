@@ -27,6 +27,8 @@ type Store struct {
 	identityIssuers func() model.IdentityIssuers
 	// ownership is the write authority of each family; nil checks nothing.
 	ownership model.OwnershipPolicy
+	// lifecycleRetention allows recording deletions; zero refuses them.
+	lifecycleRetention time.Duration
 }
 
 func (s *Store) issuers() model.IdentityIssuers {
@@ -88,7 +90,7 @@ func (s *Store) withRetry(ctx context.Context, withTx bool, fn func(ctx context.
 		// db is already bound: withTx is ignored and a
 		// failure goes back to the transaction adapter, which replays the
 		// whole callback.
-		return fn(ctx, db.WithContext(ctx))
+		return lifecycleError(fn(ctx, db.WithContext(ctx)))
 	}
 
 	backoff := 500 * time.Millisecond
@@ -111,7 +113,7 @@ func (s *Store) withRetry(ctx context.Context, withTx bool, fn func(ctx context.
 
 		if err != nil {
 			if retries >= maxRetries {
-				return errors.WithStack(err)
+				return errors.WithStack(lifecycleError(err))
 			}
 
 			if isRetryableError(err) {
@@ -123,7 +125,7 @@ func (s *Store) withRetry(ctx context.Context, withTx bool, fn func(ctx context.
 				continue
 			}
 
-			return errors.WithStack(err)
+			return errors.WithStack(lifecycleError(err))
 		}
 
 		return nil
@@ -135,6 +137,8 @@ type storeOptions struct {
 	autoMigrate     bool
 	identityIssuers func() model.IdentityIssuers
 	ownership       model.OwnershipPolicy
+	// lifecycleRetention is zero while the lifecycle is disabled.
+	lifecycleRetention time.Duration
 }
 
 // WithAutoMigrate controls implicit schema changes; explicit Migrate still works.
@@ -167,6 +171,7 @@ func NewStore(db *gorm.DB, options ...StoreOption) *Store {
 		getDatabase:        func(ctx context.Context) (*gorm.DB, error) { return initialize(ctx, opts.autoMigrate) },
 		identityIssuers:    opts.identityIssuers,
 		ownership:          opts.ownership,
+		lifecycleRetention: opts.lifecycleRetention,
 	}
 }
 

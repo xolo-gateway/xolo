@@ -19,6 +19,7 @@ var getGormStoreFromConfig = createFromConfigOnce(func(ctx context.Context, conf
 		gormAdapter.WithAutoMigrate(conf.Storage.AutoMigrate),
 		gormAdapter.WithIdentityIssuers(getIdentityIssuersFromConfig(ctx, conf)),
 		gormAdapter.WithOwnership(conf.Ownership),
+		gormAdapter.WithLifecycle(conf.Lifecycle.Enabled, conf.Lifecycle.Retention),
 	)
 	// Every replica must run the same policy: logged so that a divergence
 	// shows up when comparing their startups.
@@ -30,6 +31,12 @@ var getGormStoreFromConfig = createFromConfigOnce(func(ctx context.Context, conf
 	}
 	if err != nil {
 		return nil, errors.WithStack(err)
+	}
+
+	// The guards of the frozen scopes are installed only when the lifecycle
+	// is enabled, and kept while deletions are recorded.
+	if err := store.PrepareLifecycle(ctx, conf.Lifecycle.Enabled); err != nil {
+		return nil, errors.Wrap(err, "prepare resource lifecycle")
 	}
 
 	// Routing data rather than schema: it also runs when the schema is

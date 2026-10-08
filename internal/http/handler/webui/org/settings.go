@@ -106,7 +106,7 @@ func (h *Handler) saveSettings(w http.ResponseWriter, r *http.Request) {
 		model.WithOrgShareQuotaEqually(shareQuotaEqually),
 	)
 	if err := h.orgStore.SaveOrg(ctx, updated); err != nil {
-		if webcommon.RejectOwnership(w, r, err) {
+		if webcommon.RejectLocked(w, r, err) {
 			return
 		}
 		slog.ErrorContext(ctx, "could not save org settings", slogx.Error(err))

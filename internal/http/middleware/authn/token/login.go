@@ -81,6 +81,11 @@ func (h *Handler) getUserFromToken(ctx context.Context, token string) (*authn.Us
 		if err != nil {
 			return nil, errors.WithStack(err)
 		}
+		// The token of an application of a suspended or deleted organization
+		// is refused like an unknown one.
+		if !org.Active() {
+			return nil, errors.WithStack(port.ErrNotFound)
+		}
 
 		// Provider/Subject are what permission resolution keys off to map the
 		// request back to the application and its org roles — see

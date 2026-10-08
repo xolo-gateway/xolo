@@ -104,6 +104,11 @@ func (r *OrgModelRouter) ResolveModel(ctx context.Context, req *genaiProxy.Proxy
 		}
 		return nil, "", errors.WithStack(err)
 	}
+	// A suspended or deleted organization serves nothing, platform admins
+	// included.
+	if !org.Active() {
+		return nil, "", errors.Errorf("model '%s' not available in your organization", req.Model)
+	}
 
 	// The token must be scoped to the same organization as the requested model.
 	if org.ID() != tokenOrgID {
@@ -263,6 +268,9 @@ func (r *OrgModelRouter) ListModels(ctx context.Context) ([]genaiProxy.ModelInfo
 	org, err := r.orgStore.GetOrgByID(ctx, model.OrgID(orgID))
 	if err != nil {
 		return nil, errors.WithStack(err)
+	}
+	if !org.Active() {
+		return nil, nil
 	}
 
 	models, err := r.providerStore.ListEnabledLLMModels(ctx, model.OrgID(orgID))

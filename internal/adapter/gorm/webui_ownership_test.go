@@ -107,3 +107,31 @@ func TestWebUIOwnership(t *testing.T) {
 		require.ErrorIs(t, err, port.ErrNotFound)
 	})
 }
+
+// TestWebUIFrozen refuses the local writes to a frozen scope with 403 and
+// its own explanation.
+func TestWebUIFrozen(t *testing.T) {
+	eachBackendDB(t, func(t *testing.T, db *gormpkg.DB) {
+		ctx := t.Context()
+		base := newSeededStore(t, db)
+		fixture := newOwnershipFixture(t, base)
+		tenant, err := base.GetTenantByID(ctx, testTenantID)
+		require.NoError(t, err)
+		operator := model.NewUser(testTenantID, "oidc", "operator", "operator@example.test", "Operator", true, model.PlatformRoleUser, model.PlatformRoleAdmin)
+		require.NoError(t, base.SaveUser(ctx, operator))
+		store := lifecycleStore(t, db)
+		_, err = store.FreezeResource(ctx, orgScope(testTenantID), string(fixture.org), model.MatchCondition{})
+		require.NoError(t, err)
+
+		handler := admin.NewHandler(store, store, store, store, nil, nil, nil)
+		r := httptest.NewRequest(http.MethodPost, "/orgs/"+string(fixture.org)+"/edit", strings.NewReader("name=Changed&active=on"))
+		r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		rctx := httpCtx.SetTenant(r.Context(), tenant)
+		rctx = httpCtx.SetUser(rctx, operator)
+		rctx = httpCtx.SetBaseURL(rctx, "https://gateway.test")
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, r.WithContext(rctx))
+		require.Equal(t, http.StatusForbidden, w.Code)
+		require.Contains(t, w.Body.String(), "en cours de suppression")
+	})
+}

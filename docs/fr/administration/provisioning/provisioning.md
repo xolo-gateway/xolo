@@ -748,6 +748,50 @@ images de conteneur (`/usr/local/bin/xolo-adoption`). `export` et `verify` ne
 font que lire, et aucune action ne migre le schéma : utilisez le binaire de la
 version qui a migré la base.
 
+## Cycle de vie des ressources
+
+Le socle de la suppression des tenants, organisations et membres est en
+place ; aucune route ne l'expose encore. Supprimer une telle ressource
+commence par enregistrer sa suppression, qui **gèle** la ressource et tout ce
+qu'elle contient jusqu'à sa purge.
+
+| Variable | Défaut | Description |
+|---|---|---|
+| `XOLO_LIFECYCLE_ENABLED` | `false` | Autorise l'enregistrement des suppressions et installe les protections en base des périmètres gelés. |
+| `XOLO_LIFECYCLE_RETENTION` | `720h` | Durée pendant laquelle une ressource supprimée reste gelée avant de pouvoir être purgée, de 1 s à 3650 jours. |
+
+- **Geler** une ressource la désactive, ce qui la publie `suspended` avec un
+  événement `updated`, et enregistre sa suppression dans la même transaction.
+  Le gel vérifie la condition `If-Match` et l'autorité d'écriture de chaque
+  famille que contient le périmètre. Il refuse le dernier propriétaire actif
+  d'un tenant ou d'une organisation encore vivante (`409 last_owner`) et le
+  tenant `default`. Un tenant gelé perd aussitôt ses sessions OIDC ; un membre
+  gelé ne peut plus se connecter.
+- **Un périmètre gelé est en lecture seule.** Toute écriture d'une ligne
+  qu'il contient est refusée, quel que soit son auteur : API
+  (`409 resource_deleted`), interface web (`403`), workers et SQL brut. Cela
+  couvre le tenant, ses domaines, organisations et utilisateurs ; une
+  organisation avec ses rôles, applications, jetons, providers, modèles,
+  quotas, alertes, consommation, événements, secrets et invitations ; un
+  membre avec ses adhésions, préférences, secrets personnels, alertes, quota et
+  consommation. Un gel est définitif. Les webhooks d'un tenant gelé ne sont
+  plus préparés ni livrés, et ses abonnements ne peuvent plus changer ; le
+  détachement les conserve. L'évaluation des alertes et l'éviction des
+  événements ignorent les périmètres gelés.
+- **Les protections** sont des triggers, installés au démarrage seulement si
+  le cycle de vie est activé. Désactivé, ils sont retirés, sauf si une
+  suppression est enregistrée : une instance qui n'a jamais rien gelé ne paie
+  rien, et les gels existants restent protégés.
+- **Aucun verrou global.** Un gel verrouille la ligne qu'il gèle ; une
+  écriture verrouille les lignes de son tenant, de son organisation et de son
+  membre, comme le fait une clé étrangère. Une écriture n'attend qu'un gel de
+  son propre périmètre, puis échoue ; une écriture validée avant le gel est
+  conservée.
+
+Une organisation suspendue n'accorde désormais plus rien : ses adhésions, les
+permissions de ses applications et leurs jetons sont refusés, et le proxy ne
+sert aucun de ses modèles, administrateurs de plateforme compris.
+
 ## Erreurs
 
 Toutes les erreurs partagent la même enveloppe :
@@ -767,6 +811,7 @@ Toutes les erreurs partagent la même enveloppe :
 | `invalid_request` | 400 | `/v1/xolo` : corps mal formé, champ inconnu, paramètre de requête invalide. |
 | `client_certificate_rejected` | 403 | Certificat ou URI client non autorisé. |
 | `ownership_denied` | 403 | La politique d'autorité réserve la famille à l'instance locale. |
+| `resource_deleted` | 409 | La ressource, ou une ressource qui la contient, est gelée par sa suppression. |
 | `not_found` | 404 | Ressource ou route inconnue, ou ressource d'un autre tenant ou d'une autre organisation. |
 | `parent_not_found` | 404 | Le tenant, l'organisation ou le membre dont dépend la ressource n'existe pas dans ce périmètre. |
 | `method_not_allowed` | 405 | Ressource connue, mauvaise méthode. |

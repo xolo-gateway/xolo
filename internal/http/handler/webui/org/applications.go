@@ -221,7 +221,7 @@ func (h *Handler) createApplication(w http.ResponseWriter, r *http.Request) {
 
 	app := model.NewApplication(org.ID(), name, description, true)
 	if err := h.applicationStore.CreateApplication(ctx, app); err != nil {
-		if webcommon.RejectOwnership(w, r, err) {
+		if webcommon.RejectLocked(w, r, err) {
 			return
 		}
 		slog.ErrorContext(ctx, "could not create application", slogx.Error(err))
@@ -230,7 +230,7 @@ func (h *Handler) createApplication(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.roleStore.SetApplicationRoles(ctx, app.ID(), selected); err != nil {
-		if webcommon.RejectOwnership(w, r, err) {
+		if webcommon.RejectLocked(w, r, err) {
 			return
 		}
 		slog.ErrorContext(ctx, "could not set application roles", slogx.Error(err))
@@ -429,7 +429,7 @@ func (h *Handler) updateApplication(w http.ResponseWriter, r *http.Request) {
 	)
 
 	if err := h.applicationStore.UpdateApplication(ctx, updated); err != nil {
-		if webcommon.RejectOwnership(w, r, err) {
+		if webcommon.RejectLocked(w, r, err) {
 			return
 		}
 		slog.ErrorContext(ctx, "could not update application", slogx.Error(err))
@@ -438,7 +438,7 @@ func (h *Handler) updateApplication(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.roleStore.SetApplicationRoles(ctx, app.ID(), selected); err != nil {
-		if webcommon.RejectOwnership(w, r, err) {
+		if webcommon.RejectLocked(w, r, err) {
 			return
 		}
 		slog.ErrorContext(ctx, "could not set application roles", slogx.Error(err))
@@ -460,7 +460,7 @@ func (h *Handler) deleteApplication(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.applicationStore.DeleteApplication(ctx, model.ApplicationID(appID)); err != nil {
-		if webcommon.RejectOwnership(w, r, err) {
+		if webcommon.RejectLocked(w, r, err) {
 			return
 		}
 		slog.ErrorContext(ctx, "could not delete application", slogx.Error(err))

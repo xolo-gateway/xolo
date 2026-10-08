@@ -127,7 +127,9 @@ func (s *Store) DetachControlPlane(ctx context.Context) (DetachReport, error) {
 		if deliveries.Error != nil {
 			return errors.WithStack(deliveries.Error)
 		}
-		subscriptions := db.Where("1 = 1").Delete(&WebhookSubscription{})
+		// The subscriptions of a frozen tenant stay: they deliver nothing,
+		// and the purge of the tenant removes them.
+		subscriptions := db.Where(notFrozen("webhook_subscriptions", "webhook_subscriptions")).Delete(&WebhookSubscription{})
 		if subscriptions.Error != nil {
 			return errors.WithStack(subscriptions.Error)
 		}

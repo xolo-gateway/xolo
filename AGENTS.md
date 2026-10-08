@@ -137,6 +137,12 @@ Write authority (`XOLO_OWNERSHIP`, `shared` by default) is checked in
 feed lock (`internal/adapter/gorm/ownership.go`). A writer whose effect has no
 projection (invitations, webhook subscriptions) must call `checkOwnership`
 itself. Only the mTLS middleware sets `model.WithWriteAuthority`.
+Resource lifecycle (`XOLO_LIFECYCLE_*`, `internal/adapter/gorm/lifecycle*.go`):
+recording a deletion freezes the scope of a tenant, organization or member,
+enforced by database triggers installed only when enabled. A new table holding
+a tenant, organization or user link must be added to `lifecycleTables`, and a
+background writer must skip the frozen scopes (`notFrozen`). The guards lock
+parent rows FOR KEY SHARE, never an instance-wide lock.
 Webhooks (`internal/adapter/gorm/webhook_store.go`) read that feed without
 its lock — it is prefix-closed — filtered by tenant in SQL, and coordinate
 replicas through conditional updates (subscription `revision`, delivery

@@ -101,7 +101,7 @@ func (h *Handler) deleteMember(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.orgStore.RemoveMember(ctx, model.MembershipID(membershipID)); err != nil {
-		if webcommon.RejectOwnership(w, r, err) {
+		if webcommon.RejectLocked(w, r, err) {
 			return
 		}
 		slog.ErrorContext(ctx, "could not remove member", slogx.Error(err))
@@ -256,7 +256,7 @@ func (h *Handler) postEditMember(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.roleStore.SetMembershipRoles(ctx, model.MembershipID(membershipID), selected); err != nil {
-		if webcommon.RejectOwnership(w, r, err) {
+		if webcommon.RejectLocked(w, r, err) {
 			return
 		}
 		slog.ErrorContext(ctx, "could not update membership roles", slogx.Error(err))

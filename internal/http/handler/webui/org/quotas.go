@@ -114,7 +114,7 @@ func (h *Handler) saveOrgQuota(w http.ResponseWriter, r *http.Request) {
 
 	quota := model.NewQuota(model.QuotaScopeOrg, string(org.ID()), currency, daily, monthly, yearly)
 	if err := quotaStore.SetQuota(ctx, quota); err != nil {
-		if webcommon.RejectOwnership(w, r, err) {
+		if webcommon.RejectLocked(w, r, err) {
 			return
 		}
 		slog.ErrorContext(ctx, "could not save org quota", slogx.Error(err))
@@ -226,7 +226,7 @@ func (h *Handler) saveMemberQuota(w http.ResponseWriter, r *http.Request) {
 
 	quota := model.NewQuota(model.QuotaScopeUser, string(membership.UserID()), currency, daily, monthly, yearly)
 	if err := quotaStore.SetQuota(ctx, quota); err != nil {
-		if webcommon.RejectOwnership(w, r, err) {
+		if webcommon.RejectLocked(w, r, err) {
 			return
 		}
 		slog.ErrorContext(ctx, "could not save member quota", slogx.Error(err))
@@ -351,7 +351,7 @@ func (h *Handler) saveApplicationQuota(w http.ResponseWriter, r *http.Request) {
 
 	quota := model.NewQuota(model.QuotaScopeApplication, appID, currency, daily, monthly, yearly)
 	if err := h.quotaStore.SetQuota(ctx, quota); err != nil {
-		if webcommon.RejectOwnership(w, r, err) {
+		if webcommon.RejectLocked(w, r, err) {
 			return
 		}
 		slog.ErrorContext(ctx, "could not save application quota", slogx.Error(err))

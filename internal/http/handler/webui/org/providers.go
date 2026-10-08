@@ -156,7 +156,7 @@ func (h *Handler) createProvider(w http.ResponseWriter, r *http.Request) {
 	// which shows it under !IsNew only), so no plan field is ever posted here:
 	// a subscription provider is created without a plan and gets one on edit.
 	if err := h.providerStore.CreateProvider(ctx, p); err != nil {
-		if webcommon.RejectOwnership(w, r, err) {
+		if webcommon.RejectLocked(w, r, err) {
 			return
 		}
 		slog.ErrorContext(ctx, "could not create provider", slogx.Error(err))
@@ -329,7 +329,7 @@ func (h *Handler) updateProvider(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.providerStore.SaveProvider(ctx, updated); err != nil {
-		if webcommon.RejectOwnership(w, r, err) {
+		if webcommon.RejectLocked(w, r, err) {
 			return
 		}
 		slog.ErrorContext(ctx, "could not save provider", slogx.Error(err))
@@ -351,7 +351,7 @@ func (h *Handler) deleteProvider(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.providerStore.DeleteProvider(ctx, model.ProviderID(providerID)); err != nil {
-		if webcommon.RejectOwnership(w, r, err) {
+		if webcommon.RejectLocked(w, r, err) {
 			return
 		}
 		if errors.Is(err, port.ErrNotFound) {

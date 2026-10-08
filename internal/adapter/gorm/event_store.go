@@ -147,17 +147,28 @@ func (s *Store) EvictOverflow(ctx context.Context, orgID model.OrgID, keepN int)
 
 // ListEventOrgIDs implements port.EventStore.
 func (s *Store) ListEventOrgIDs(ctx context.Context) ([]model.OrgID, error) {
-	var ids []string
+	var ids, frozen []string
 	err := s.withRetry(ctx, false, func(ctx context.Context, db *gorm.DB) error {
-		return errors.WithStack(db.Model(&Event{}).
-			Distinct().Pluck("org_id", &ids).Error)
+		if err := db.Model(&Event{}).Distinct().Pluck("org_id", &ids).Error; err != nil {
+			return errors.WithStack(err)
+		}
+		// The events of a frozen scope can not be evicted anymore.
+		return errors.WithStack(db.Table("organizations o").
+			Where("EXISTS (SELECT 1 FROM resource_deletions d WHERE (d.family = 'organization' AND d.resource_id = o.id) OR (d.family = 'tenant' AND d.resource_id = o.tenant_id))").
+			Pluck("o.id", &frozen).Error)
 	})
 	if err != nil {
 		return nil, err
 	}
+	skip := make(map[string]bool, len(frozen))
+	for _, id := range frozen {
+		skip[id] = true
+	}
 	result := make([]model.OrgID, 0, len(ids))
 	for _, id := range ids {
-		result = append(result, model.OrgID(id))
+		if !skip[id] {
+			result = append(result, model.OrgID(id))
+		}
 	}
 	return result, nil
 }

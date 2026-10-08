@@ -42,6 +42,7 @@ const (
 	codeWebhookCapacity = "webhook_capacity"
 
 	codeOwnershipDenied = "ownership_denied"
+	codeResourceDeleted = "resource_deleted"
 )
 
 type errorEnvelope struct {
@@ -101,6 +102,8 @@ func statusFromError(err error) (int, string) {
 	switch {
 	case errors.Is(err, port.ErrOwnershipDenied):
 		return http.StatusForbidden, codeOwnershipDenied
+	case errors.Is(err, port.ErrResourceDeleted):
+		return http.StatusConflict, codeResourceDeleted
 	case errors.Is(err, port.ErrInvalidCursor):
 		return http.StatusBadRequest, codeInvalidCursor
 	case errors.Is(err, port.ErrCursorExpired):
