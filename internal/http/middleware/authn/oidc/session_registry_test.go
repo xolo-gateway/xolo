@@ -234,9 +234,14 @@ func (r failingRegistry) RevokeIdentitySessions(context.Context, string, string,
 
 func TestBackchannelLogout(t *testing.T) {
 	jwksURL, sign := newLogoutSigner(t)
+	keysDown := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "unavailable", http.StatusInternalServerError)
+	}))
+	t.Cleanup(keysDown.Close)
 	cookies := sessions.NewCookieStore([]byte("a-32-byte-key-for-session-tests!"))
 	providers := []ProviderWithJWKS{
 		{ID: testProvider, Issuer: testIssuer, ProvesIssuer: true, ClientID: testClientID, JWKSURL: jwksURL},
+		{ID: "keysdown", Issuer: testIssuer, ProvesIssuer: true, ClientID: testClientID, JWKSURL: keysDown.URL},
 		{ID: "noclient", Issuer: testIssuer, ProvesIssuer: true, JWKSURL: jwksURL},
 		{ID: "github", Issuer: "https://github.com", ClientID: testClientID, JWKSURL: jwksURL},
 	}
@@ -259,6 +264,8 @@ func TestBackchannelLogout(t *testing.T) {
 		"query string":            {testProvider, formType, "logout_token=x", form(sign(logoutToken("a"))), http.StatusBadRequest},
 		"extra parameter":         {testProvider, formType, "", form(sign(logoutToken("a"))) + "&state=x", http.StatusBadRequest},
 		"invalid token":           {testProvider, formType, "", form("not-a-token"), http.StatusBadRequest},
+		// The token could not be checked: the provider must retry, not drop it.
+		"keys unavailable": {"keysdown", formType, "", form(sign(logoutToken("a"))), http.StatusServiceUnavailable},
 	} {
 		t.Run(name, func(t *testing.T) {
 			rec := postLogout(h, c.provider, c.contentType, c.query, c.body)
@@ -281,7 +288,7 @@ func TestBackchannelLogout(t *testing.T) {
 	require.Equal(t, http.StatusOK, rec.Code)
 	require.True(t, authenticated(t, h, again))
 
-	// Only a storage failure asks the provider to retry.
+	// Only an unavailable dependency asks the provider to retry.
 	for err, status := range map[error]int{
 		errors.New("database down"): http.StatusServiceUnavailable,
 		port.ErrInvalid:             http.StatusBadRequest,

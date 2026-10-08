@@ -217,8 +217,11 @@ func (s *Store) SweepSessions(ctx context.Context, now time.Time, sessionTTL tim
 			return db.Where("replay_key IN (?)", expired).Delete(&OIDCLogoutReplay{})
 		},
 		func() *gorm.DB {
-			// The outer predicate is evaluated again on a row an open or a
-			// revocation touched meanwhile, which keeps it.
+			// The outer predicate repeats the idle condition. On PostgreSQL,
+			// under READ COMMITTED, a row an open or a revocation updates
+			// meanwhile is checked again against it once its lock is
+			// released, and kept. SQLite serializes writers: no open or
+			// revocation runs between the subquery and the delete.
 			idle := db.Model(&OIDCIdentity{}).Select("identity_key").Where("touched_at < ?", idleBefore).Limit(oidcSessionSweepBatch)
 			return db.Where("touched_at < ? AND identity_key IN (?)", idleBefore, idle).Delete(&OIDCIdentity{})
 		},

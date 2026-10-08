@@ -3,6 +3,7 @@ package oidctoken
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -16,6 +17,10 @@ const backchannelLogoutEvent = "http://schemas.openid.net/event/backchannel-logo
 
 // jwksFetchTimeout bounds the retrieval of the keys of a provider.
 const jwksFetchTimeout = 10 * time.Second
+
+// ErrKeysUnavailable reports that the key set of the provider could not be
+// retrieved: unlike an invalid token, the provider may retry the request.
+var ErrKeysUnavailable = errors.New("provider keys unavailable")
 
 // LogoutClaims are the claims of a verified logout token.
 type LogoutClaims struct {
@@ -32,7 +37,8 @@ type LogoutClaims struct {
 // the client audience. Xolo revokes by subject: a token without sub, carrying
 // only a sid, is refused. The token must be recent (see
 // model.LogoutTokenMaxAge), which bounds how long its jti must be remembered
-// to refuse a replay.
+// to refuse a replay. It returns ErrKeysUnavailable when the key set cannot be
+// retrieved, and an invalid token error otherwise.
 func VerifyLogoutToken(ctx context.Context, raw, issuer, audience, jwksURL string) (*LogoutClaims, error) {
 	if issuer == "" || audience == "" || jwksURL == "" {
 		return nil, errInvalidToken
@@ -41,7 +47,7 @@ func VerifyLogoutToken(ctx context.Context, raw, issuer, audience, jwksURL strin
 	defer cancel()
 	jwks, err := fetchJWKS(ctx, jwksURL)
 	if err != nil {
-		return nil, errors.WithStack(err)
+		return nil, fmt.Errorf("%w: %w", ErrKeysUnavailable, err)
 	}
 
 	var claims LogoutClaims

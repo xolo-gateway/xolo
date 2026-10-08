@@ -40,6 +40,12 @@ func (h *Handler) handleBackchannelLogout(w http.ResponseWriter, r *http.Request
 	}
 
 	claims, err := oidctoken.VerifyLogoutToken(r.Context(), r.PostForm.Get("logout_token"), provider.Issuer, provider.ClientID, provider.JWKSURL)
+	if errors.Is(err, oidctoken.ErrKeysUnavailable) {
+		// The token could not be checked, not refused: a 4xx would make the
+		// provider drop the logout, and the sessions would outlive it.
+		h.deferLogout(w, r, provider, "could not retrieve oidc provider keys", err)
+		return
+	}
 	if err != nil {
 		h.refuseLogout(w, r, err)
 		return
@@ -47,14 +53,13 @@ func (h *Handler) handleBackchannelLogout(w http.ResponseWriter, r *http.Request
 
 	revoked, err := h.sessions.RevokeIdentitySessions(r.Context(), provider.Issuer, claims.Subject, claims.ID, claims.IssuedAt.Time, claims.ExpiresAt.Time)
 	if errors.Is(err, port.ErrInvalid) {
-		// Retrying would never succeed: only a storage failure answers 503.
+		// Retrying would never succeed: only an unavailable dependency answers
+		// 503.
 		h.refuseLogout(w, r, err)
 		return
 	}
 	if err != nil {
-		metrics.OIDCBackchannelLogouts.WithLabelValues(metrics.OIDCLogoutUnavailable).Inc()
-		slog.ErrorContext(r.Context(), "could not revoke oidc sessions", slog.String("provider", provider.ID), slogx.Error(err))
-		http.Error(w, http.StatusText(http.StatusServiceUnavailable), http.StatusServiceUnavailable)
+		h.deferLogout(w, r, provider, "could not revoke oidc sessions", err)
 		return
 	}
 	if !revoked {
@@ -70,6 +75,13 @@ func (h *Handler) refuseLogout(w http.ResponseWriter, r *http.Request, err error
 	metrics.OIDCBackchannelLogouts.WithLabelValues(metrics.OIDCLogoutInvalid).Inc()
 	slog.WarnContext(r.Context(), "refusing oidc logout request", slogx.Error(err))
 	http.Error(w, "invalid_request", http.StatusBadRequest)
+}
+
+// deferLogout answers 503 so that the provider retries the logout later.
+func (h *Handler) deferLogout(w http.ResponseWriter, r *http.Request, provider ProviderWithJWKS, msg string, err error) {
+	metrics.OIDCBackchannelLogouts.WithLabelValues(metrics.OIDCLogoutUnavailable).Inc()
+	slog.ErrorContext(r.Context(), msg, slog.String("provider", provider.ID), slogx.Error(err))
+	http.Error(w, http.StatusText(http.StatusServiceUnavailable), http.StatusServiceUnavailable)
 }
 
 // backchannelProvider returns the provider able to verify a logout token: it

@@ -2,6 +2,8 @@ package oidctoken
 
 import (
 	"context"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -70,6 +72,7 @@ func TestVerifyLogoutToken(t *testing.T) {
 			mutate(c)
 			_, err := VerifyLogoutToken(ctx, sign(c), testIssuer, testClientID, jwksURL)
 			require.Error(t, err)
+			require.NotErrorIs(t, err, ErrKeysUnavailable)
 		})
 	}
 
@@ -82,5 +85,14 @@ func TestVerifyLogoutToken(t *testing.T) {
 	t.Run("no audience configured", func(t *testing.T) {
 		_, err := VerifyLogoutToken(ctx, sign(logoutClaims()), testIssuer, "", jwksURL)
 		require.Error(t, err)
+		require.NotErrorIs(t, err, ErrKeysUnavailable)
+	})
+	t.Run("keys unavailable", func(t *testing.T) {
+		down := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			http.Error(w, "unavailable", http.StatusInternalServerError)
+		}))
+		t.Cleanup(down.Close)
+		_, err := VerifyLogoutToken(ctx, sign(logoutClaims()), testIssuer, testClientID, down.URL)
+		require.ErrorIs(t, err, ErrKeysUnavailable)
 	})
 }

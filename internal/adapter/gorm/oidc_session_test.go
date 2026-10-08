@@ -6,7 +6,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	xologorm "github.com/xolo-gateway/xolo/internal/adapter/gorm"
 	"github.com/xolo-gateway/xolo/internal/core/model"
@@ -108,39 +107,50 @@ func TestOIDCSessionRevocation(t *testing.T) {
 }
 
 // Sign-ins started before a logout and racing it never leave a session behind:
-// each one either commits first and is revoked, or sees the revocation.
+// each one either commits first and is revoked, or sees the revocation. Some
+// commit before the revocation starts and one more opens after it ends, so
+// that both outcomes are asserted whatever the interleaving of the others.
 func TestOIDCSessionRevocationRacesSignIns(t *testing.T) {
 	eachBackend(t, func(t *testing.T, store *xologorm.Store) {
 		ctx := context.Background()
 		started := time.Now().Add(-time.Second)
-		const signIns = 16
+		const committed, racing = 4, 16
 
-		var wg sync.WaitGroup
-		ids := make(chan string, signIns)
-		for range signIns {
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
-				id, err := store.OpenSession(ctx, newOIDCSession(testTenantID, sessionSubject, started))
-				if err == nil {
-					ids <- id
-					return
-				}
-				assert.ErrorIs(t, err, port.ErrNotAllowed)
-			}()
+		type outcome struct {
+			id  string
+			err error
 		}
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			issued := time.Now()
-			_, err := store.RevokeIdentitySessions(ctx, sessionIssuer, sessionSubject, "race", issued, issued.Add(time.Minute))
-			assert.NoError(t, err)
-		}()
-		wg.Wait()
-		close(ids)
+		signIn := func() outcome {
+			id, err := store.OpenSession(ctx, newOIDCSession(testTenantID, sessionSubject, started))
+			return outcome{id, err}
+		}
 
-		for id := range ids {
-			require.ErrorIs(t, store.CheckSession(ctx, id, testTenantID, sessionIssuer, sessionSubject), port.ErrNotFound)
+		outcomes := make([]outcome, committed, committed+racing)
+		for i := range committed {
+			outcomes[i] = signIn()
+			require.NoError(t, outcomes[i].err)
+		}
+
+		raced := make([]outcome, racing)
+		var revokeErr error
+		var wg sync.WaitGroup
+		for i := range racing {
+			wg.Go(func() { raced[i] = signIn() })
+		}
+		wg.Go(func() {
+			issued := time.Now()
+			_, revokeErr = store.RevokeIdentitySessions(ctx, sessionIssuer, sessionSubject, "race", issued, issued.Add(time.Minute))
+		})
+		wg.Wait()
+		require.NoError(t, revokeErr)
+
+		require.ErrorIs(t, signIn().err, port.ErrNotAllowed)
+		for _, o := range append(outcomes, raced...) {
+			if o.err != nil {
+				require.ErrorIs(t, o.err, port.ErrNotAllowed)
+				continue
+			}
+			require.ErrorIs(t, store.CheckSession(ctx, o.id, testTenantID, sessionIssuer, sessionSubject), port.ErrNotFound)
 		}
 	})
 }

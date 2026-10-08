@@ -73,7 +73,9 @@ func NewHandler(sessionStore sessions.Store, funcs ...OptionFunc) *Handler {
 	}
 
 	// Called by the identity provider, without cookie: it designates the
-	// configured provider ID, never the goth provider of a host.
+	// configured provider ID, never the goth provider of a host. Mounted apart
+	// from the rest of the handler, outside the per-IP rate limiter: see
+	// internal/setup/http_server.go.
 	h.mux.HandleFunc("POST /providers/{provider}/backchannel-logout", h.handleBackchannelLogout)
 
 	h.mux.HandleFunc("GET /login", h.getLoginPage)
