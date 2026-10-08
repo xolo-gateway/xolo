@@ -84,6 +84,7 @@ Chacune de ces ressources peut aussi être lue, listée et suivie via le flux
 d'événements : voir [Lectures, conditions et synchronisation](#lectures-conditions-et-synchronisation).
 `capabilities` liste `adoption`, `business_resources`, `conditional_writes`,
 `events`, `identity`, `ownership` et `reads`, plus `webhooks` lorsqu'ils sont activés.
+Traitez-la comme un ensemble : son ordre n'est pas significatif.
 
 - **Les identifiants** sont des UUID canoniques en minuscules choisis par le
   client. Toute autre valeur est refusée avec `400 invalid_parameter`. Un membre

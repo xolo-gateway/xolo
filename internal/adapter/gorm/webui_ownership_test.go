@@ -8,6 +8,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"github.com/xolo-gateway/xolo/internal/core/model"
+	"github.com/xolo-gateway/xolo/internal/core/port"
 	"github.com/xolo-gateway/xolo/internal/core/service"
 	httpCtx "github.com/xolo-gateway/xolo/internal/http/context"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui"
@@ -34,11 +35,25 @@ func TestWebUIOwnership(t *testing.T) {
 		require.NoError(t, err)
 		require.NotEmpty(t, roles)
 
-		store := ownedStore(t, db, model.OwnershipPolicy{
+		// One resource of each business family, written while still shared.
+		customRole := model.NewRole(fixture.org, "Analyst", "")
+		require.NoError(t, base.CreateRole(ctx, customRole))
+		provider := model.NewProvider(fixture.org, "OpenAI", "openai", "https://llm.example.test/v1", "ciphertext", "EUR")
+		require.NoError(t, base.CreateProvider(ctx, provider))
+		app := model.NewApplication(fixture.org, "Batch", "", true)
+		require.NoError(t, base.CreateApplication(ctx, app))
+		alert := model.NewAlert(fixture.org, fixture.user, "Errors", model.WithAlertQuery(`{type="llm.request.failed"}`))
+		require.NoError(t, base.CreateAlert(ctx, alert))
+
+		policy := model.OwnershipPolicy{
 			model.FamilyMember:                 model.OwnerControlPlane,
 			model.FamilyOrganization:           model.OwnerControlPlane,
 			model.FamilyOrganizationMembership: model.OwnerControlPlane,
-		})
+		}
+		for _, family := range model.BusinessFamilies {
+			policy[family] = model.OwnerControlPlane
+		}
+		store := ownedStore(t, db, policy)
 		adminHandler := admin.NewHandler(store, store, store, store, nil, nil, nil)
 		orgHandler := memberships.Middleware(store, store)(webui.NewHandler(
 			nil, store, store, store, store, store, store, store, store, store, service.NewInvitationService(store), store, store, nil, nil, store, scopeTestSecretKey,
@@ -52,6 +67,11 @@ func TestWebUIOwnership(t *testing.T) {
 				{adminHandler, http.MethodDelete, "/users/" + string(fixture.user), ""},
 				{adminHandler, http.MethodPost, "/orgs/" + string(fixture.org) + "/edit", "name=Changed&active=on"},
 				{orgHandler, http.MethodPost, "/orgs/" + org.Slug() + "/admin/invites", "role=" + string(roles[0].ID())},
+				{orgHandler, http.MethodDelete, "/orgs/" + org.Slug() + "/admin/roles/" + string(customRole.ID()), ""},
+				{orgHandler, http.MethodDelete, "/orgs/" + org.Slug() + "/admin/providers/" + string(provider.ID()), ""},
+				{orgHandler, http.MethodPost, "/orgs/" + org.Slug() + "/admin/applications/" + string(app.ID()) + "/delete", ""},
+				{orgHandler, http.MethodPost, "/orgs/" + org.Slug() + "/admin/quota", "daily_budget=100"},
+				{orgHandler, http.MethodPost, "/orgs/" + org.Slug() + "/events/alerts/" + string(alert.ID()) + "/delete", ""},
 			} {
 				r := httptest.NewRequest(op.method, op.path, strings.NewReader(op.body))
 				r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -75,5 +95,15 @@ func TestWebUIOwnership(t *testing.T) {
 		invites, err := base.ListInvites(ctx, fixture.org)
 		require.NoError(t, err)
 		require.Empty(t, invites)
+		_, err = base.GetRoleByID(ctx, customRole.ID())
+		require.NoError(t, err)
+		_, err = base.GetProviderByID(ctx, provider.ID())
+		require.NoError(t, err)
+		_, err = base.GetApplication(ctx, app.ID())
+		require.NoError(t, err)
+		_, err = base.GetAlertByID(ctx, alert.ID())
+		require.NoError(t, err)
+		_, err = base.GetQuota(ctx, model.QuotaScopeOrg, string(fixture.org))
+		require.ErrorIs(t, err, port.ErrNotFound)
 	})
 }

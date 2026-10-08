@@ -95,6 +95,7 @@ Each of these resources is also readable, listable and followed through the
 event feed: see [Reads, conditions and synchronization](#reads-conditions-and-synchronization).
 `capabilities` lists `adoption`, `business_resources`, `conditional_writes`,
 `events`, `identity`, `ownership` and `reads`, plus `webhooks` when enabled.
+Treat it as a set: its order is not significant.
 
 - **Identifiers** are canonical lowercase UUIDs chosen by the client. Anything
   else is refused with `400 invalid_parameter`. A member is a user: `memberID`
