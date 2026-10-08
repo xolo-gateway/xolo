@@ -35,8 +35,10 @@ func getBridgeMiddlewareFromConfig(ctx context.Context, conf *config.Config) (fu
 		ActiveByDefault: conf.HTTP.Authn.ActiveByDefault,
 		AutoCreateUsers: conf.HTTP.Authn.AutoCreateUsers,
 		DefaultAdmins:   conf.HTTP.Authn.DefaultAdmins,
-		Managed:         conf.Ownership.Effective()[model.FamilyMember] == model.OwnerControlPlane,
-		Transactions:    transactions,
+		// Computed once: the ownership policy is fixed at startup, with the
+		// same value on every replica.
+		Managed:      conf.Ownership.Effective()[model.FamilyMember] == model.OwnerControlPlane,
+		Transactions: transactions,
 	})
 
 	return bridgeMiddleware, nil

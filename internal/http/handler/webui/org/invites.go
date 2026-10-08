@@ -141,6 +141,9 @@ func (h *Handler) createInvite(w http.ResponseWriter, r *http.Request) {
 		ExpiresAt: r.FormValue("expires_at"), MaxUses: r.FormValue("max_uses"),
 	})
 	if err != nil {
+		if webcommon.RejectOwnership(w, r, err) {
+			return
+		}
 		webcommon.WriteInvitationError(w, r, err)
 		return
 	}

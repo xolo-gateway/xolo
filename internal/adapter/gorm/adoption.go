@@ -127,6 +127,8 @@ func (s *Store) DetachControlPlane(ctx context.Context) (DetachReport, error) {
 		if admins == 0 {
 			return errors.WithStack(ErrNoUsableAdmin)
 		}
+		// No checkOwnership(FamilySubscription): detaching is precisely
+		// taking the subscriptions away from the control plane that owns them.
 		deliveries := db.Where("1 = 1").Delete(&WebhookDelivery{})
 		if deliveries.Error != nil {
 			return errors.WithStack(deliveries.Error)
@@ -144,6 +146,7 @@ func (s *Store) DetachControlPlane(ctx context.Context) (DetachReport, error) {
 		if err != nil {
 			return errors.WithStack(err)
 		}
+		// No TenantID nor OrgID: the operation spans the whole instance.
 		audit := MutationAudit{ID: uuid.NewString(), Actor: string(actorJSON), RequestID: actor.RequestID, Resource: "control_plane", ResourceID: "instance", Before: "null", After: string(after)}
 		return errors.WithStack(db.Create(&audit).Error)
 	})
