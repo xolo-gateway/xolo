@@ -36,6 +36,7 @@ RUN apk add \
   && update-ca-certificates
 
 COPY --from=build /src/dist/xolo-server_linux_amd64_v1/xolo-server /usr/local/bin/xolo-server
+COPY --from=build /src/dist/xolo-adoption_linux_amd64_v1/xolo-adoption /usr/local/bin/xolo-adoption
 COPY --from=build /src/dist/xolo-plugin-time-restriction_linux_amd64_v1/xolo-plugin-time-restriction /plugins/time-restriction
 COPY --from=build /src/dist/xolo-plugin-dummy-model_linux_amd64_v1/xolo-plugin-dummy-model /plugins/dummy-model
 COPY --from=build /src/dist/xolo-plugin-fuzzy-evaluator_linux_amd64_v1/xolo-plugin-fuzzy-evaluator /plugins/fuzzy-evaluator

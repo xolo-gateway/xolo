@@ -258,7 +258,7 @@ func TestManifest(t *testing.T) {
 	assertStatus(t, rec, http.StatusOK)
 
 	body := decodeBody(t, rec)
-	want := map[string]any{"name": "Xolo", "version": testVersion, "contract_version": v1.ContractVersion, "capabilities": []any{"conditional_writes", "events", "identity", "reads"}}
+	want := map[string]any{"name": "Xolo", "version": testVersion, "contract_version": v1.ContractVersion, "capabilities": []any{"adoption", "conditional_writes", "events", "identity", "ownership", "reads"}}
 	for key, value := range want {
 		if !reflect.DeepEqual(body[key], value) {
 			t.Errorf("%s: got %v, want %v", key, body[key], value)

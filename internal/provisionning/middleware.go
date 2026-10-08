@@ -74,6 +74,9 @@ func requireClientCert(next http.Handler, uris []string, requestsPerSecond float
 		actor := model.ActorFromContext(r.Context())
 		actor.URI = uri
 		ctx := model.WithActor(r.Context(), actor)
+		// Only an authenticated client certificate makes a control-plane
+		// write: the authority never comes from a payload.
+		ctx = model.WithWriteAuthority(ctx, model.OwnerControlPlane)
 		sloghttp.AddCustomAttributes(r, slog.String("clientURI", uri))
 		sloghttp.AddCustomAttributes(r, slog.String("requestID", actor.RequestID))
 		identity := newClientIdentity(r.TLS.PeerCertificates[0])

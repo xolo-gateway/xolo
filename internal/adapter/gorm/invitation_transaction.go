@@ -23,12 +23,13 @@ func (s *Store) WithInvitationTransaction(ctx context.Context, fn func(port.Invi
 	return retryTransaction(ctx, func() error {
 		return db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 			tx = tx.Session(&gorm.Session{SkipDefaultTransaction: true})
-			recorder := newMutationRecorder(tx)
+			recorder := newMutationRecorder(tx, s.ownership)
 			bound := &Store{
 				getDatabase:      func(context.Context) (*gorm.DB, error) { return tx, nil },
 				transactionBound: true,
 				recorder:         recorder,
 				identityIssuers:  s.identityIssuers,
+				ownership:        s.ownership,
 			}
 			if err := fn(&invitationTx{Store: bound, db: tx}); err != nil {
 				return err

@@ -159,6 +159,7 @@ Le schéma est créé et migré automatiquement au démarrage. Il n'existe pas d
 | `XOLO_PROVISIONNING_API_TLS_KEY_FILE` | _(requis si activé)_ | Clé privée du serveur (PEM). |
 | `XOLO_PROVISIONNING_API_TLS_CLIENT_CA_FILE` | _(requis si activé)_ | Autorité vérifiant les certificats clients. |
 | `XOLO_PROVISIONNING_API_SHUTDOWN_TIMEOUT` | `10s` | Délai d'arrêt gracieux. |
+| `XOLO_OWNERSHIP` | — | Autorité d'écriture de chaque famille (`famille=shared\|local\|control_plane`, séparées par des virgules) ; les familles omises valent `shared`. Voir [Autorité d'écriture](../provisioning/provisioning.md#autorite-decriture-adoption-et-detachement). |
 
 ## Multi-tenant
 

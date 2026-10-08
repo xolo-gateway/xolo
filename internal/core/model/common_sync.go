@@ -8,6 +8,9 @@ import (
 	"time"
 )
 
+// CommonContractVersion is the version of the common contract Xolo targets.
+const CommonContractVersion = "0.1.0-draft.1"
+
 // Families of the common contract, as published in projections and events.
 const (
 	FamilyTenant                 = "tenant"

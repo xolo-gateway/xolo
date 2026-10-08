@@ -52,6 +52,10 @@ type LoginPolicy struct {
 	ActiveByDefault bool
 	// DefaultAdmins lists the emails granted the platform admin role.
 	DefaultAdmins []string
+	// Managed hands the members to the control plane: a sign-in only links
+	// an existing account, without copying the provider's profile onto it,
+	// and creates none but the default admins and application shadow users.
+	Managed bool
 }
 
 // identityReader is the read side shared by the cached store and the
@@ -110,6 +114,9 @@ func (r *IdentityResolver) Resolve(ctx context.Context, tenantID model.TenantID,
 	actorID := next.ID()
 	for attempt := 0; ; attempt++ {
 		actorCtx := model.WithActor(ctx, model.Actor{UserID: actorID, RequestID: requestID})
+		// The sign-in may write its own account even when members belong
+		// to the control plane; the decision above limits what it writes.
+		actorCtx = model.WithSignInAccount(actorCtx, actorID)
 		err = r.transactions.WithProvisioningTransaction(actorCtx, func(tx port.ProvisioningTx) error {
 			// Replayed on the transaction: a concurrent sign-in or
 			// provisioning write may have changed the outcome since the read.
@@ -151,7 +158,7 @@ func (r *IdentityResolver) decide(ctx context.Context, reader identityReader, te
 		if declared := user.DeclaredIdentity(); declared != nil && (proof.Issuer != declared.Issuer || proof.Subject != declared.Subject) {
 			return nil, nil, errors.WithStack(ErrIdentityConflict)
 		}
-		next := synchronizeProfile(user, proof, isDefaultAdmin, false)
+		next := synchronizeProfile(user, proof, policy.Managed, isDefaultAdmin, false)
 		return user, next, nil
 	}
 	if !errors.Is(err, port.ErrNotFound) {
@@ -161,7 +168,7 @@ func (r *IdentityResolver) decide(ctx context.Context, reader identityReader, te
 	if proof.Issuer != "" && !isApplication {
 		declared, err := reader.GetUserByDeclaredIdentity(ctx, tenantID, model.Identity{Issuer: proof.Issuer, Subject: proof.Subject})
 		if err == nil {
-			next, err := attach(declared, proof, isDefaultAdmin)
+			next, err := attach(declared, proof, policy.Managed, isDefaultAdmin)
 			return declared, next, err
 		}
 		if !errors.Is(err, port.ErrNotFound) {
@@ -183,7 +190,7 @@ func (r *IdentityResolver) decide(ctx context.Context, reader identityReader, te
 			if users[0].DeclaredIdentity() != nil && !sameSignIn {
 				return nil, nil, errors.WithStack(ErrIdentityConflict)
 			}
-			next, err := attach(users[0], proof, isDefaultAdmin)
+			next, err := attach(users[0], proof, policy.Managed, isDefaultAdmin)
 			return users[0], next, err
 		default:
 			// Historical case variants: refusing is the only choice that
@@ -198,6 +205,11 @@ func (r *IdentityResolver) decide(ctx context.Context, reader identityReader, te
 	// pending targeted invitation, pre-provisioned by definition: an
 	// administrator named that address on purpose. Checked last so the lookup
 	// only runs when it decides the outcome.
+	// A managed instance only knows the members the control plane declared:
+	// neither the creation policy nor an invitation creates one.
+	if policy.Managed && !isDefaultAdmin && !isApplication {
+		return nil, nil, errors.WithStack(ErrAccountCreationDisabled)
+	}
 	if !policy.AutoCreate && !isDefaultAdmin && !isApplication && !isInvited() {
 		return nil, nil, errors.WithStack(ErrAccountCreationDisabled)
 	}
@@ -211,7 +223,7 @@ func (r *IdentityResolver) decide(ctx context.Context, reader identityReader, te
 		model.PlatformRoleUser,
 	)
 	created.SetID(newID)
-	if next := synchronizeProfile(created, proof, isDefaultAdmin, true); next != nil {
+	if next := synchronizeProfile(created, proof, false, isDefaultAdmin, true); next != nil {
 		created = next
 	}
 	return created, created, nil
@@ -220,10 +232,10 @@ func (r *IdentityResolver) decide(ctx context.Context, reader identityReader, te
 // attach links the sign-in to an account no sign-in is linked to yet. A linked
 // account (an application's shadow user included) is never relinked, and a
 // platform administrator is never attached to a new identity.
-func attach(user model.User, proof AuthenticatedIdentity, isDefaultAdmin bool) (*model.BaseUser, error) {
+func attach(user model.User, proof AuthenticatedIdentity, managed, isDefaultAdmin bool) (*model.BaseUser, error) {
 	// Linked to this very sign-in by a concurrent one since the link lookup.
 	if user.Provider() == proof.Provider && user.Subject() == proof.Subject {
-		return synchronizeProfile(user, proof, isDefaultAdmin, false), nil
+		return synchronizeProfile(user, proof, managed, isDefaultAdmin, false), nil
 	}
 	if user.Provider() != "" || user.Subject() != "" || isPlatformAdmin(user) {
 		return nil, errors.WithStack(ErrIdentityConflict)
@@ -232,7 +244,7 @@ func attach(user model.User, proof AuthenticatedIdentity, isDefaultAdmin bool) (
 	next.SetAuthenticationLink(proof.Provider, proof.Subject)
 	// Forced because the new link is already a change to write, whatever the
 	// profile; force never produces a write of its own.
-	if synced := synchronizeProfile(next, proof, isDefaultAdmin, true); synced != nil {
+	if synced := synchronizeProfile(next, proof, managed, isDefaultAdmin, true); synced != nil {
 		next = synced
 	}
 	return next, nil
@@ -242,7 +254,11 @@ func attach(user model.User, proof AuthenticatedIdentity, isDefaultAdmin bool) (
 // account and returns it, or nil when nothing changes and force is false. An
 // empty asserted value never overwrites a stored one: some authenticators
 // (OAuth2 introspection) resolve an identity without email or display name.
-func synchronizeProfile(user model.User, proof AuthenticatedIdentity, isDefaultAdmin, force bool) *model.BaseUser {
+// A managed account keeps the profile the control plane declared.
+func synchronizeProfile(user model.User, proof AuthenticatedIdentity, managed, isDefaultAdmin, force bool) *model.BaseUser {
+	if managed {
+		proof.Email, proof.DisplayName = "", ""
+	}
 	missingRole := len(user.Roles()) == 0
 	shouldBeAdmin := isDefaultAdmin && !slices.Contains(user.Roles(), model.PlatformRoleAdmin)
 	changed := (proof.DisplayName != "" && user.DisplayName() != proof.DisplayName) ||

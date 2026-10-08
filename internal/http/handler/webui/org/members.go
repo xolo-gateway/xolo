@@ -13,6 +13,7 @@ import (
 	"github.com/xolo-gateway/xolo/internal/core/service"
 	httpCtx "github.com/xolo-gateway/xolo/internal/http/context"
 	common "github.com/xolo-gateway/xolo/internal/http/handler/webui/common/component"
+	webcommon "github.com/xolo-gateway/xolo/internal/http/handler/webui/common"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/org/component"
 	"github.com/pkg/errors"
 )
@@ -100,6 +101,9 @@ func (h *Handler) deleteMember(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.orgStore.RemoveMember(ctx, model.MembershipID(membershipID)); err != nil {
+		if webcommon.RejectOwnership(w, r, err) {
+			return
+		}
 		slog.ErrorContext(ctx, "could not remove member", slogx.Error(err))
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
@@ -252,6 +256,9 @@ func (h *Handler) postEditMember(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.roleStore.SetMembershipRoles(ctx, model.MembershipID(membershipID), selected); err != nil {
+		if webcommon.RejectOwnership(w, r, err) {
+			return
+		}
 		slog.ErrorContext(ctx, "could not update membership roles", slogx.Error(err))
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return

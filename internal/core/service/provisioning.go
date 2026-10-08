@@ -32,6 +32,10 @@ type ProvisioningService struct {
 	tx port.ProvisioningTx
 	// reader serves the projections and the event feed.
 	reader port.ProvisioningReader
+	// inventory serves the adoption export.
+	inventory port.InventoryReader
+	// ownership is the effective write authority of each family.
+	ownership model.OwnershipPolicy
 
 	// multiTenant reports whether the instance may hold more than one tenant.
 	// When false, the API serves the single default tenant but refuses to

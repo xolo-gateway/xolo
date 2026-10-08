@@ -11,6 +11,7 @@ import (
 	"github.com/xolo-gateway/xolo/internal/core/port"
 	httpCtx "github.com/xolo-gateway/xolo/internal/http/context"
 	common "github.com/xolo-gateway/xolo/internal/http/handler/webui/common/component"
+	webcommon "github.com/xolo-gateway/xolo/internal/http/handler/webui/common"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/org/component"
 )
 
@@ -105,6 +106,9 @@ func (h *Handler) saveSettings(w http.ResponseWriter, r *http.Request) {
 		model.WithOrgShareQuotaEqually(shareQuotaEqually),
 	)
 	if err := h.orgStore.SaveOrg(ctx, updated); err != nil {
+		if webcommon.RejectOwnership(w, r, err) {
+			return
+		}
 		slog.ErrorContext(ctx, "could not save org settings", slogx.Error(err))
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return

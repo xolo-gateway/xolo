@@ -27,7 +27,9 @@ func (s *Store) InitializeDomainRouting(ctx context.Context, pattern string) err
 	}
 	ctx = model.EnsureActor(ctx)
 	return s.withRetry(ctx, true, func(ctx context.Context, tx *gorm.DB) error {
-		recorder := newMutationRecorder(tx)
+		// A one-time upgrade step run at startup, before any writer: it is
+		// not subject to the write authority of the domains.
+		recorder := newMutationRecorder(tx, nil)
 		var done int64
 		if err := tx.Model(&DomainRouting{}).Where("id = ?", domainRoutingID).Count(&done).Error; err != nil {
 			return errors.WithStack(err)

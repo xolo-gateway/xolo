@@ -25,6 +25,8 @@ type Store struct {
 	// link and a declared identity designating the same person are recognized.
 	// Resolved lazily: discovering them may need the network.
 	identityIssuers func() model.IdentityIssuers
+	// ownership is the write authority of each family; nil checks nothing.
+	ownership model.OwnershipPolicy
 }
 
 func (s *Store) issuers() model.IdentityIssuers {
@@ -49,7 +51,7 @@ func (s *Store) recorded(ctx context.Context, track func(*mutationRecorder) erro
 	// The correlation of the published events stays the same across retries.
 	ctx = model.EnsureActor(ctx)
 	return s.withRetry(ctx, true, func(ctx context.Context, db *gorm.DB) error {
-		recorder := newMutationRecorder(db)
+		recorder := newMutationRecorder(db, s.ownership)
 		if err := track(recorder); err != nil {
 			return err
 		}
@@ -132,6 +134,7 @@ type StoreOption func(*storeOptions)
 type storeOptions struct {
 	autoMigrate     bool
 	identityIssuers func() model.IdentityIssuers
+	ownership       model.OwnershipPolicy
 }
 
 // WithAutoMigrate controls implicit schema changes; explicit Migrate still works.
@@ -146,6 +149,13 @@ func WithIdentityIssuers(issuers func() model.IdentityIssuers) StoreOption {
 	return func(opts *storeOptions) { opts.identityIssuers = issuers }
 }
 
+// WithOwnership sets the write authority of each family. Without it, the
+// store checks no authority: migrations and offline operator tools hold
+// database authority.
+func WithOwnership(policy model.OwnershipPolicy) StoreOption {
+	return func(opts *storeOptions) { opts.ownership = policy.Effective() }
+}
+
 func NewStore(db *gorm.DB, options ...StoreOption) *Store {
 	opts := storeOptions{autoMigrate: true}
 	for _, option := range options {
@@ -156,6 +166,7 @@ func NewStore(db *gorm.DB, options ...StoreOption) *Store {
 		initializeDatabase: initialize,
 		getDatabase:        func(ctx context.Context) (*gorm.DB, error) { return initialize(ctx, opts.autoMigrate) },
 		identityIssuers:    opts.identityIssuers,
+		ownership:          opts.ownership,
 	}
 }
 

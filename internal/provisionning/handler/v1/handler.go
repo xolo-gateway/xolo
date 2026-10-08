@@ -46,7 +46,7 @@ func NewHandler(provisioning *service.ProvisioningService, version string, optio
 		provisioning: provisioning,
 		mux:          http.NewServeMux(),
 		version:      version,
-		capabilities: []string{"conditional_writes", "events", "identity", "reads"},
+		capabilities: []string{"adoption", "conditional_writes", "events", "identity", "ownership", "reads"},
 	}
 	for _, option := range options {
 		option(h)
@@ -83,6 +83,8 @@ func NewHandler(provisioning *service.ProvisioningService, version string, optio
 
 	h.mux.HandleFunc("GET "+ext+"/healthz", h.handleHealthz)
 	h.mux.HandleFunc("GET "+ext+"/permissions", h.handlePermissions)
+	h.mux.HandleFunc("GET "+ext+"/ownership", h.handleOwnership)
+	h.mux.HandleFunc("GET "+ext+"/adoption/export", h.handleAdoptionExport)
 
 	h.mux.HandleFunc("GET "+ext+"/tenants", h.handleListTenants)
 	h.mux.HandleFunc("GET "+ext+"/tenants/{tenantID}", h.handleGetTenant)

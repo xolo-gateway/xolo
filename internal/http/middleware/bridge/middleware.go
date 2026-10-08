@@ -33,6 +33,10 @@ type Options struct {
 	// admin role on sign-in.
 	DefaultAdmins []string
 
+	// Managed signs members in as the control plane declared them: see
+	// service.LoginPolicy.Managed. Set when the control plane owns members.
+	Managed bool
+
 	// Transactions opens the transaction that creates, links or updates an
 	// account. Defaults to the user store when it can open one.
 	Transactions port.ProvisioningTransaction
@@ -48,6 +52,7 @@ func Middleware(userStore port.UserStore, inviteStore port.InviteStore, emitter 
 		AutoCreate:      opts.AutoCreateUsers,
 		ActiveByDefault: opts.ActiveByDefault,
 		DefaultAdmins:   opts.DefaultAdmins,
+		Managed:         opts.Managed,
 	}
 
 	emitLoginFailed := func(ctx context.Context, authnUser *authn.User, reason string) {

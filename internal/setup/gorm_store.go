@@ -2,6 +2,7 @@ package setup
 
 import (
 	"context"
+	"log/slog"
 
 	"github.com/pkg/errors"
 	gormAdapter "github.com/xolo-gateway/xolo/internal/adapter/gorm"
@@ -17,7 +18,11 @@ var getGormStoreFromConfig = createFromConfigOnce(func(ctx context.Context, conf
 	store := gormAdapter.NewStore(db,
 		gormAdapter.WithAutoMigrate(conf.Storage.AutoMigrate),
 		gormAdapter.WithIdentityIssuers(getIdentityIssuersFromConfig(ctx, conf)),
+		gormAdapter.WithOwnership(conf.Ownership),
 	)
+	// Every replica must run the same policy: logged so that a divergence
+	// shows up when comparing their startups.
+	slog.InfoContext(ctx, "write authority policy", slog.String("ownership", store.OwnershipPolicy().String()))
 	if conf.Storage.AutoMigrate {
 		err = store.Migrate(ctx)
 	} else {

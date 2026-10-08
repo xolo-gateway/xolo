@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"github.com/xolo-gateway/xolo/internal/core/model"
 	"github.com/xolo-gateway/xolo/internal/provisionning"
 )
 
@@ -95,6 +96,9 @@ func TestServerMutualTLS(t *testing.T) {
 			t.Error("client identity should be available in the request context")
 			w.WriteHeader(http.StatusInternalServerError)
 			return
+		}
+		if authority := model.WriteAuthority(r.Context()); authority != model.OwnerControlPlane {
+			t.Errorf("write authority: got %q, want control_plane", authority)
 		}
 		_, _ = io.WriteString(w, identity.CommonName)
 	})

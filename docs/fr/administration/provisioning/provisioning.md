@@ -205,7 +205,8 @@ modifie aucune projection et ne publie aucun événement.
 Limites connues : les administrateurs par défaut (`XOLO_HTTP_AUTHN_DEFAULT_ADMINS`)
 sont reconnus à l'email que renvoie le fournisseur d'identité, vérifié ou non ;
 et chaque connexion recopie encore sur le compte l'email et le nom affiché
-renvoyés par le fournisseur d'identité.
+renvoyés par le fournisseur d'identité, sauf lorsque le système de pilotage
+gère les membres (voir *Membres gérés*).
 
 ### Adhésions
 
@@ -530,6 +531,150 @@ sont refusés.
 | `GET` | `/v1/xolo/tenants/{tenantID}/users` | `?provider=&subject=` pour une recherche exacte, sinon `?search=&active=&page=&limit=`. |
 | `PUT` | `/v1/xolo/tenants/{tenantID}/users` | Upsert idempotent sur `(provider, subject)` : `201` à la création, `200` sinon. |
 | `GET` | `/v1/xolo/tenants/{tenantID}/users/{userID}` | |
+| `GET` | `/v1/xolo/ownership` | Autorité d'écriture effective de chaque famille |
+| `GET` | `/v1/xolo/adoption/export` | Export d'adoption, flux NDJSON : voir *Autorité d'écriture, adoption et détachement* |
+
+## Autorité d'écriture, adoption et détachement
+
+Chaque famille du contrat commun, ainsi que les abonnements webhook, a une
+**autorité d'écriture** : l'instance locale (interface web, connexion,
+invitations), le système de pilotage (cet écouteur), ou les deux.
+
+| Variable | Défaut | Description |
+|---|---|---|
+| `XOLO_OWNERSHIP` | — | Paires `famille=autorité` séparées par des virgules. Familles : `tenant`, `tenant_domain`, `organization`, `member`, `organization_membership`, `subscription`. Autorités : `shared`, `local`, `control_plane`. Les familles omises valent `shared` ; une famille ou une autorité inconnue empêche le démarrage. |
+
+```dotenv
+XOLO_OWNERSHIP=tenant=control_plane,tenant_domain=control_plane,organization=control_plane,member=control_plane,organization_membership=control_plane,subscription=control_plane
+```
+
+- `shared`, la valeur par défaut, conserve le comportement précédent : les deux
+  écrivent.
+- `local` refuse les écritures de cet écouteur avec `403 ownership_denied`.
+- `control_plane` refuse les écritures locales : l'interface web répond `403`,
+  pour les pages complètes comme pour les fragments htmx. Les invitations
+  produisent des adhésions : en créer, en révoquer ou en accepter relève de
+  `organization_membership`.
+
+La politique porte sur la **représentation publique** des ressources, celle que
+renvoie `GET`. Elle est vérifiée dans la transaction de l'écriture, sur chaque
+projection que l'écriture modifie, cascades comprises : supprimer un tenant
+dont les membres relèvent d'une autre autorité est refusé en bloc, sans rien
+supprimer ni publier. Les champs hors contrat restent locaux quelle que soit la
+politique : rôles de plateforme, devise et partage de quota d'une organisation,
+rôles personnalisés et ressources métier (fournisseurs, modèles, quotas,
+alertes…). Les comptes d'application et les jetons d'API restent utilisables,
+et les lectures gardent leurs permissions. `GET /v1/xolo/ownership` renvoie la
+politique effective, et le manifeste annonce `ownership`.
+
+Une autorité d'écriture n'accorde jamais de privilège : les administrateurs de
+plateforme restent protégés (`409 platform_admin_protected`) lorsque le
+système de pilotage gère les membres.
+
+La politique est lue au démarrage ; elle n'est pas stockée en base. Arrêtez
+**tous** les serveurs et workers avant de la changer, et redémarrez chaque
+réplique avec la même valeur : une réplique qui tourne encore avec une ancienne
+politique continue d'accepter les écritures que celle-ci autorise. Chaque
+processus journalise sa politique effective au démarrage
+(`write authority policy`). Les commandes opérateur hors ligne
+(`xolo-migrate`, `xolo-adoption`) ont l'autorité de la base et ne vérifient
+aucune politique.
+
+### Membres gérés
+
+Avec `member=control_plane`, une connexion ne résout que les membres déclarés
+par le système de pilotage :
+
+- elle rattache l'identité prouvée à un membre existant — son identité
+  déclarée, puis un email vérifié — sans modifier sa projection ;
+- elle ne recopie jamais l'email ni le nom affiché du fournisseur d'identité :
+  le profil déclaré est conservé ;
+- elle ne crée aucun compte, quoi que disent `XOLO_HTTP_AUTHN_AUTO_CREATE_USERS`
+  ou une invitation en attente, sauf pour les administrateurs par défaut, qui
+  amorcent l'instance, et les comptes d'application. Toute autre identité est
+  refusée avec `403`.
+
+### Export d'adoption
+
+`GET /v1/xolo/adoption/export`, comme `xolo-adoption export`, diffuse en flux
+l'inventaire de l'instance : chaque projection des cinq familles de tous les
+tenants, ressources suspendues comprises, lues sur un même instantané cohérent
+sans prendre de verrou. Le format, `xolo-adoption/1`, est du NDJSON
+(`application/x-ndjson`) :
+
+```text
+{"version":"xolo-adoption/1","contract":"0.1.0-draft.1","source":"urn:uuid:…","c0":"…","families":["tenant","tenant_domain","organization","member","organization_membership"]}
+{"family":"tenant","key":{"tenant_id":"…"},"representation":{…},"etag":"W/\"42\""}
+…
+{"count":128,"complete":true,"sha256":"…"}
+```
+
+- Les enregistrements suivent l'ordre de `families`, parents avant enfants ;
+  `key`, `representation` et `etag` sont ceux que renvoie `GET`.
+- `c0` est un curseur de `/v1/events` pris sur le même instantané : les
+  événements qui le suivent sont exactement les changements absents de
+  l'export.
+- `sha256` est le SHA-256 hexadécimal en minuscules des octets exacts de toutes
+  les lignes précédant la dernière, sauts de ligne compris. Il détecte la
+  corruption et la troncature, pas un remplacement délibéré : le transport et
+  les permissions du fichier en établissent la provenance.
+- Un export interrompu n'a pas de dernière ligne, et la vérification le rejette.
+- L'export contient des emails de contact et des identités déclarées :
+  protégez-le comme la base. Il ne contient aucun lien de connexion non déclaré,
+  session, jeton, secret, entrée d'audit ni ressource métier.
+
+`xolo-adoption verify -in <fichier>` (`-in -` lit l'entrée standard) vérifie la
+somme de contrôle, le nombre d'enregistrements, la version et le contrat de
+l'en-tête, la syntaxe des clés, les statuts, les doublons et que chaque parent
+précède ses enfants, en ne gardant que les clés en mémoire. Il affiche la
+source, `c0` et le nombre d'enregistrements de chaque famille.
+
+### Adopter une instance
+
+1. Testez une vraie connexion d'administrateur de plateforme, puis sauvegardez
+   la base. Laissez toutes les familles à `shared`.
+2. Exportez (`xolo-adoption export -out /secure/inventory.ndjson` avec
+   `XOLO_STORAGE_DATABASE_DSN`, ou la route ci-dessus), vérifiez le fichier,
+   puis préparez-le dans le système de pilotage en gardant les UUID qualifiés
+   par la `source` du flux. Résolvez les collisions de slug, de domaine et
+   d'email dans le système de pilotage sans changer aucun identifiant.
+3. Rejouez `/v1/events` depuis `c0` jusqu'à être à jour. Un
+   `410 cursor_expired` impose de recommencer depuis un nouvel export.
+4. Arrêtez tous les serveurs et workers, rattrapez le flux une dernière fois,
+   définissez `XOLO_OWNERSHIP` et redémarrez chaque réplique. Vérifiez
+   `GET /v1/xolo/ownership`, le refus d'une écriture locale et une connexion
+   d'administrateur. Aucune ressource n'est réécrite.
+
+### Détacher une instance
+
+Le détachement rend l'instance à son administration locale.
+
+1. Testez une connexion d'administrateur de plateforme qui reste utilisable
+   sans le système de pilotage, puis sauvegardez la base.
+2. Arrêtez tous les serveurs, workers et autres écrivains de la base.
+3. Exécutez :
+
+   ```sh
+   XOLO_STORAGE_DATABASE_DSN=… xolo-adoption detach -writers-stopped -operator-access-verified
+   ```
+
+4. Retirez les valeurs `control_plane` de `XOLO_OWNERSHIP` et redémarrez
+   chaque réplique, puis vérifiez une connexion et une écriture locale.
+
+La commande refuse de s'exécuter si aucun administrateur de plateforme actif
+d'un tenant actif n'a de lien de connexion. En une transaction, elle supprime
+chaque abonnement webhook, ses secrets chiffrés et ses livraisons en attente,
+enregistre une entrée d'audit nommant l'opérateur
+(`urn:xolo:operator:<uid>`) et affiche le nombre d'abonnements et de
+livraisons supprimés. Ressources, UUID, identités déclarées, liens de
+connexion, audit, flux d'événements et sa source restent intacts. Un webhook
+déjà envoyé ne peut pas être rappelé. Les deux options attestent les
+vérifications ci-dessus : la commande ne peut pas arrêter les autres processus.
+
+`xolo-adoption` est livré à côté de `xolo-server` dans les releases et les
+images de conteneur (`/usr/local/bin/xolo-adoption`). `export` et `verify` ne
+font que lire, et aucune action ne migre le schéma : utilisez le binaire de la
+version qui a migré la base.
 
 ## Erreurs
 
@@ -549,6 +694,7 @@ Toutes les erreurs partagent la même enveloppe :
 | `invalid_hostname` | 400 | Nom d'hôte pas en minuscules, avec port, adresse IP ou label invalide. |
 | `invalid_request` | 400 | `/v1/xolo` : corps mal formé, champ inconnu, paramètre de requête invalide. |
 | `client_certificate_rejected` | 403 | Certificat ou URI client non autorisé. |
+| `ownership_denied` | 403 | La politique d'autorité réserve la famille à l'instance locale. |
 | `not_found` | 404 | Ressource ou route inconnue, ou ressource d'un autre tenant ou d'une autre organisation. |
 | `parent_not_found` | 404 | Le tenant, l'organisation ou le membre dont dépend la ressource n'existe pas dans ce périmètre. |
 | `method_not_allowed` | 405 | Ressource connue, mauvaise méthode. |
@@ -567,6 +713,9 @@ Les messages sont toujours construits explicitement. Traces d'exécution, erreur
 
 ## Invariants
 
+- Une autorité d'écriture n'accorde jamais de privilège : la politique
+  d'autorité décide seulement qui peut écrire une famille, et tous les autres
+  invariants s'appliquent toujours.
 - Le provisioning n'accorde ni ne modifie **jamais** de privilège de plateforme.
   Un utilisateur créé via `PUT /v1/xolo/tenants/{tenantID}/users` ou un `PUT` de
   membre reçoit exactement le rôle de plateforme `user`, les rôles de plateforme

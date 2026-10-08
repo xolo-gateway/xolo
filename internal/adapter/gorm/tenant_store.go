@@ -153,6 +153,18 @@ func (s *Store) DeleteTenant(ctx context.Context, id model.TenantID) error {
 			return errors.WithStack(err)
 		}
 
+		// Subscriptions have no projection: their authority is checked here,
+		// the other families of the cascade when they are published.
+		var subscriptions int64
+		if err := db.Model(&WebhookSubscription{}).Where("tenant_id = ?", string(id)).Count(&subscriptions).Error; err != nil {
+			return errors.WithStack(err)
+		}
+		if subscriptions > 0 {
+			if err := s.checkOwnership(ctx, model.FamilySubscription); err != nil {
+				return err
+			}
+		}
+
 		if err := db.Delete(&WebhookDelivery{}, "tenant_id = ?", string(id)).Error; err != nil {
 			return errors.WithStack(err)
 		}

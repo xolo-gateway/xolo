@@ -8,6 +8,7 @@ import (
 
 	"github.com/caarlos0/env/v11"
 	"github.com/pkg/errors"
+	"github.com/xolo-gateway/xolo/internal/core/model"
 )
 
 type Config struct {
@@ -22,6 +23,9 @@ type Config struct {
 	ProvisionningAPI ProvisionningAPI   `envPrefix:"PROVISIONNING_API_"`
 	Multitenancy     Multitenancy       `envPrefix:"MULTITENANCY_"`
 	Webhooks         Webhooks           `envPrefix:"WEBHOOKS_"`
+	// Ownership assigns a write authority to each family of identity
+	// resources, as family=owner pairs. Omitted families are shared.
+	Ownership model.OwnershipPolicy `env:"OWNERSHIP" envSeparator:"," envKeyValSeparator:"="`
 	// SecretKey is a 32-byte hex string used for AES-GCM encryption of provider API keys.
 	SecretKey string `env:"SECRET_KEY"`
 }
@@ -142,6 +146,10 @@ func (c *Config) Validate() error {
 	}
 
 	if err := c.Webhooks.Validate(); err != nil {
+		return errors.WithStack(err)
+	}
+
+	if err := c.Ownership.Validate(); err != nil {
 		return errors.WithStack(err)
 	}
 

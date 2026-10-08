@@ -59,10 +59,12 @@ var mutationColumns = map[string]string{
 type mutationRecorder struct {
 	db     *gorm.DB
 	before map[mutationKey][]byte
+	// ownership is checked on every projection the transaction changes.
+	ownership model.OwnershipPolicy
 }
 
-func newMutationRecorder(db *gorm.DB) *mutationRecorder {
-	return &mutationRecorder{db: db, before: make(map[mutationKey][]byte)}
+func newMutationRecorder(db *gorm.DB, ownership model.OwnershipPolicy) *mutationRecorder {
+	return &mutationRecorder{db: db, before: make(map[mutationKey][]byte), ownership: ownership}
 }
 
 // mutationChange is a tracked resource whose snapshot changed.
@@ -119,7 +121,7 @@ func (r *mutationRecorder) publish(ctx context.Context, changes []mutationChange
 	for _, change := range changes {
 		keys = append(keys, change.key)
 	}
-	if err := publishProjections(ctx, r.db, r.before, keys); err != nil {
+	if err := publishProjections(ctx, r.db, r.ownership, r.before, keys); err != nil {
 		return err
 	}
 	for _, change := range changes {

@@ -31,9 +31,9 @@ func (s *Store) WithProvisioningTransaction(ctx context.Context, fn func(port.Pr
 	return retryTransaction(ctx, func() error {
 		return db.WithContext(ctx).Transaction(func(db *gorm.DB) error {
 			db = db.Session(&gorm.Session{SkipDefaultTransaction: true})
-			recorder := newMutationRecorder(db)
+			recorder := newMutationRecorder(db, s.ownership)
 			tx := &provisioningTx{
-				Store:    &Store{getDatabase: func(context.Context) (*gorm.DB, error) { return db, nil }, transactionBound: true, recorder: recorder, identityIssuers: s.identityIssuers},
+				Store:    &Store{getDatabase: func(context.Context) (*gorm.DB, error) { return db, nil }, transactionBound: true, recorder: recorder, identityIssuers: s.identityIssuers, ownership: s.ownership},
 				db:       db,
 				recorder: recorder,
 			}

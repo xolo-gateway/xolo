@@ -99,6 +99,9 @@ func (h *Handler) postEditUser(w http.ResponseWriter, r *http.Request) {
 
 	err = h.userStore.SaveUser(ctx, updatedUser)
 	if err != nil {
+		if common.RejectOwnership(w, r, err) {
+			return
+		}
 		common.HandleError(w, r, errors.WithStack(err))
 		return
 	}
@@ -119,6 +122,9 @@ func (h *Handler) deleteUser(w http.ResponseWriter, r *http.Request) {
 
 	err := h.userStore.DeleteUser(ctx, userID)
 	if err != nil {
+		if common.RejectOwnership(w, r, err) {
+			return
+		}
 		common.HandleError(w, r, errors.WithStack(err))
 		return
 	}

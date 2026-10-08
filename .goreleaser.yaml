@@ -27,6 +27,17 @@ builds:
     ldflags:
       - -w -s
 
+  - id: xolo-adoption
+    goos: [linux]
+    goarch: [amd64, arm64]
+    mod_timestamp: "{{ .CommitTimestamp }}"
+    dir: ./cmd/adoption
+    binary: xolo-adoption
+    flags:
+      - -trimpath
+    ldflags:
+      - -w -s
+
   - id: xolo-plugin-time-restriction
     goos: [linux]
     goarch: [amd64, arm64]
@@ -201,6 +212,7 @@ dockers:
     ids:
       - xolo-server
       - xolo-migrate
+      - xolo-adoption
       - xolo-plugin-time-restriction
       - xolo-plugin-dummy-model
       - xolo-plugin-fuzzy-evaluator

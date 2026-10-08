@@ -12,6 +12,10 @@ import (
 
 // CreateInvite implements port.InviteStore.
 func (s *Store) CreateInvite(ctx context.Context, invite model.InviteToken) error {
+	// An invitation produces memberships: it belongs to their authority.
+	if err := s.checkOwnership(ctx, model.FamilyOrganizationMembership); err != nil {
+		return err
+	}
 	return s.withRetry(ctx, true, func(ctx context.Context, db *gorm.DB) error {
 		return errors.WithStack(db.Create(fromInviteToken(invite)).Error)
 	})
@@ -56,6 +60,10 @@ func (s *Store) ListInvites(ctx context.Context, orgID model.OrgID) ([]model.Inv
 
 // RevokeInvite implements port.InviteStore.
 func (s *Store) RevokeInvite(ctx context.Context, id model.InviteTokenID) error {
+	// An invitation produces memberships: it belongs to their authority.
+	if err := s.checkOwnership(ctx, model.FamilyOrganizationMembership); err != nil {
+		return err
+	}
 	return s.withRetry(ctx, true, func(ctx context.Context, db *gorm.DB) error {
 		now := time.Now()
 		result := db.Model(&InviteToken{}).Where("id = ?", string(id)).Update("revoked_at", now)
@@ -71,6 +79,10 @@ func (s *Store) RevokeInvite(ctx context.Context, id model.InviteTokenID) error 
 
 // DeleteInvite implements port.InviteStore.
 func (s *Store) DeleteInvite(ctx context.Context, id model.InviteTokenID) error {
+	// An invitation produces memberships: it belongs to their authority.
+	if err := s.checkOwnership(ctx, model.FamilyOrganizationMembership); err != nil {
+		return err
+	}
 	return s.withRetry(ctx, true, func(ctx context.Context, db *gorm.DB) error {
 		result := db.Delete(&InviteToken{}, "id = ?", string(id))
 		if result.Error != nil {

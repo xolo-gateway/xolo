@@ -9,6 +9,7 @@ RUN apk add \
 
 COPY xolo-server /usr/local/bin/xolo-server
 COPY xolo-migrate /usr/local/bin/xolo-migrate
+COPY xolo-adoption /usr/local/bin/xolo-adoption
 
 RUN mkdir -p /plugins
 COPY xolo-plugin-time-restriction /plugins/time-restriction

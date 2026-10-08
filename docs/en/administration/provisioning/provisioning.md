@@ -192,7 +192,8 @@ and publishes no event.
 Known limits: the default administrators (`XOLO_HTTP_AUTHN_DEFAULT_ADMINS`) are
 recognized by the email the identity provider returns, verified or not; and each
 sign-in still copies the email and display name the identity provider returns
-onto the account.
+onto the account, unless the control plane owns the members (see *Managed
+members*).
 
 ### Memberships
 
@@ -498,9 +499,147 @@ rejected.
 | `GET` | `/v1/xolo/tenants/{tenantID}/users` | `?provider=&subject=` for an exact lookup, otherwise `?search=&active=&page=&limit=` |
 | `PUT` | `/v1/xolo/tenants/{tenantID}/users` | Idempotent upsert on `(provider, subject)`: `201` when created, `200` otherwise |
 | `GET` | `/v1/xolo/tenants/{tenantID}/users/{userID}` | |
+| `GET` | `/v1/xolo/ownership` | Effective write authority of each family |
+| `GET` | `/v1/xolo/adoption/export` | Adoption export, NDJSON stream, see [Write authority, adoption and detachment](#write-authority-adoption-and-detachment) |
 
 Users hang from the tenant because `(provider, subject)` is only unique within
 one: the same person signing in on two tenants owns two distinct accounts.
+
+## Write authority, adoption and detachment
+
+Each family of the common contract, and the webhook subscriptions, has a
+**write authority**: the local instance (web UI, sign-in, invitations), the
+control plane (this listener), or both.
+
+| Variable | Default | Description |
+|---|---|---|
+| `XOLO_OWNERSHIP` | — | Comma-separated `family=owner` pairs. Families: `tenant`, `tenant_domain`, `organization`, `member`, `organization_membership`, `subscription`. Owners: `shared`, `local`, `control_plane`. Omitted families are `shared`; an unknown family or owner prevents startup |
+
+```dotenv
+XOLO_OWNERSHIP=tenant=control_plane,tenant_domain=control_plane,organization=control_plane,member=control_plane,organization_membership=control_plane,subscription=control_plane
+```
+
+- `shared`, the default, keeps the previous behavior: both write.
+- `local` refuses the writes of this listener with `403 ownership_denied`.
+- `control_plane` refuses the local writes: the web UI answers `403`, for full
+  pages and htmx fragments alike. Invitations produce memberships: creating,
+  revoking or accepting one belongs to `organization_membership`.
+
+The policy governs the **public representation** of the resources, the one
+`GET` returns. It is checked in the transaction of the write, on every
+projection the write changes, cascades included: deleting a tenant whose
+members belong to another authority is refused as a whole, and nothing is
+removed nor published. The fields outside the contract stay local whatever the
+policy: platform roles, the currency and quota sharing of an organization,
+custom roles, and the business resources (providers, models, quotas, alerts…).
+Application accounts and API tokens remain usable, and reads keep their
+permissions. `GET /v1/xolo/ownership` returns the effective policy, and the
+manifest announces `ownership`.
+
+A write authority never grants a privilege: platform administrators stay
+protected (`409 platform_admin_protected`) when the control plane owns the
+members.
+
+The policy is read at startup; it is not stored in the database. Stop
+**every** server and worker before changing it, and restart every replica with
+the same value: a replica still running an older policy keeps accepting the
+writes that policy allows. Each process logs its effective policy at startup
+(`write authority policy`). The offline operator commands (`xolo-migrate`,
+`xolo-adoption`) hold database authority and check no policy.
+
+### Managed members
+
+With `member=control_plane`, a sign-in only resolves the members the control
+plane declared:
+
+- it links the proven identity to an existing member — its declared identity,
+  then a verified email — without changing its projection;
+- it never copies the email nor the display name of the identity provider: the
+  declared profile stays;
+- it creates no account, whatever `XOLO_HTTP_AUTHN_AUTO_CREATE_USERS` or a
+  pending invitation says, except for the default administrators, which
+  bootstrap the instance, and the application accounts. Any other identity is
+  refused with `403`.
+
+### Adoption export
+
+`GET /v1/xolo/adoption/export`, like `xolo-adoption export`, streams the
+inventory of the instance: every projection of the five families of every
+tenant, suspended resources included, read on one consistent snapshot without
+taking any lock. The format, `xolo-adoption/1`, is NDJSON
+(`application/x-ndjson`):
+
+```text
+{"version":"xolo-adoption/1","contract":"0.1.0-draft.1","source":"urn:uuid:…","c0":"…","families":["tenant","tenant_domain","organization","member","organization_membership"]}
+{"family":"tenant","key":{"tenant_id":"…"},"representation":{…},"etag":"W/\"42\""}
+…
+{"count":128,"complete":true,"sha256":"…"}
+```
+
+- Records follow the order of `families`, parents before children; `key`,
+  `representation` and `etag` are those `GET` returns.
+- `c0` is a cursor of `/v1/events` taken on the same snapshot: the events after
+  it are exactly the changes the export misses.
+- `sha256` is the lowercase hexadecimal SHA-256 of the exact bytes of every
+  line before the last one, newlines included. It detects corruption and
+  truncation, not a deliberate replacement: the transport and the file
+  permissions establish provenance.
+- An interrupted export lacks its last line, and verification rejects it.
+- The export holds contact emails and declared identities: protect it like the
+  database. It holds no undeclared sign-in link, session, token, secret, audit
+  entry nor business resource.
+
+`xolo-adoption verify -in <file>` (`-in -` reads the standard input) checks the
+checksum, the count, the version and contract of the header, the syntax of the
+keys, the statuses, duplicates and that every parent precedes its children,
+keeping only keys in memory. It prints the source, `c0` and the count of each
+family.
+
+### Adopting an instance
+
+1. Test a real platform administrator sign-in, then back up the database.
+   Keep every family `shared`.
+2. Export (`xolo-adoption export -out /secure/inventory.ndjson` with
+   `XOLO_STORAGE_DATABASE_DSN`, or the route above), verify the file, then
+   stage it on the control plane, keeping the UUIDs qualified by the feed
+   `source`. Resolve slug, domain and email collisions on the control plane
+   without changing any identifier.
+3. Replay `/v1/events` from `c0` until caught up. A `410 cursor_expired` means
+   starting again from a new export.
+4. Stop every server and worker, catch up on the feed one last time, set
+   `XOLO_OWNERSHIP` and restart every replica. Check `GET /v1/xolo/ownership`,
+   the refusal of a local write and an administrator sign-in. No resource is
+   rewritten.
+
+### Detaching an instance
+
+Detaching hands the instance back to its local administration.
+
+1. Test a platform administrator sign-in that stays usable without the control
+   plane, then back up the database.
+2. Stop every server, worker and other database writer.
+3. Run:
+
+   ```sh
+   XOLO_STORAGE_DATABASE_DSN=… xolo-adoption detach -writers-stopped -operator-access-verified
+   ```
+
+4. Remove the `control_plane` values from `XOLO_OWNERSHIP` and restart every
+   replica, then check a sign-in and a local write.
+
+The command refuses unless an active platform administrator of an active tenant
+has a sign-in link. In one transaction, it deletes every webhook subscription,
+its encrypted secrets and its pending deliveries, records an audit entry naming
+the operator (`urn:xolo:operator:<uid>`) and prints how many subscriptions and
+deliveries it removed. Resources, UUIDs, declared identities, sign-in links,
+audit, the event feed and its source stay intact. A webhook already sent cannot
+be recalled. The two flags attest the checks above: the command cannot stop
+other processes.
+
+`xolo-adoption` ships next to `xolo-server` in the releases and the container
+images (`/usr/local/bin/xolo-adoption`). `export` and `verify` only read, and
+no action migrates the schema: run the binary of the version that migrated the
+database.
 
 ## Errors
 
@@ -520,6 +659,7 @@ Every error uses the same envelope:
 | `invalid_hostname` | 400 | Hostname not in lower case, with a port, an IP literal or an invalid label |
 | `invalid_request` | 400 | `/v1/xolo`: malformed body, unknown field, invalid query parameter |
 | `client_certificate_rejected` | 403 | Client certificate or URI is not authorized |
+| `ownership_denied` | 403 | The ownership policy reserves the family to the local instance |
 | `not_found` | 404 | Unknown resource or route, or a resource belonging to another tenant or organization |
 | `parent_not_found` | 404 | The tenant, organization or member a resource hangs from does not exist in that scope |
 | `method_not_allowed` | 405 | Known resource, wrong method |
@@ -540,6 +680,8 @@ server-side.
 
 ## Invariants
 
+- A write authority never grants a privilege: the ownership policy only
+  decides who may write a family, and every other invariant still applies.
 - Provisioning **never** grants or modifies platform-wide privileges. A user
   created through `PUT /v1/xolo/tenants/{tenantID}/users` or a member `PUT`
   receives exactly the `user` platform role, platform roles are never modified,

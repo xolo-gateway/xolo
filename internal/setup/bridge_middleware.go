@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/xolo-gateway/xolo/internal/config"
+	"github.com/xolo-gateway/xolo/internal/core/model"
 	"github.com/xolo-gateway/xolo/internal/http/middleware/bridge"
 	"github.com/pkg/errors"
 )
@@ -34,6 +35,7 @@ func getBridgeMiddlewareFromConfig(ctx context.Context, conf *config.Config) (fu
 		ActiveByDefault: conf.HTTP.Authn.ActiveByDefault,
 		AutoCreateUsers: conf.HTTP.Authn.AutoCreateUsers,
 		DefaultAdmins:   conf.HTTP.Authn.DefaultAdmins,
+		Managed:         conf.Ownership.Effective()[model.FamilyMember] == model.OwnerControlPlane,
 		Transactions:    transactions,
 	})
 

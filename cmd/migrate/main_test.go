@@ -10,12 +10,13 @@ import (
 	"github.com/stretchr/testify/require"
 	adapter "github.com/xolo-gateway/xolo/internal/adapter/gorm"
 	"github.com/xolo-gateway/xolo/internal/core/model"
+	"github.com/xolo-gateway/xolo/internal/setup"
 )
 
 func TestOfflineMigrationWorkflow(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "legacy.sqlite")
 	t.Setenv("XOLO_STORAGE_DATABASE_DSN", path)
-	db, err := openDatabase(path, false)
+	db, err := setup.OpenOfflineDatabase(path, false)
 	require.NoError(t, err)
 	pool, err := db.DB()
 	require.NoError(t, err)
@@ -136,7 +137,7 @@ func TestApplyFreshDatabase(t *testing.T) {
 	var out bytes.Buffer
 	require.NoError(t, run(t.Context(), []string{"apply", "-writers-stopped"}, &out))
 	require.Contains(t, out.String(), `"applied": true`)
-	db, err := openDatabase(path, true)
+	db, err := setup.OpenOfflineDatabase(path, true)
 	require.NoError(t, err)
 	pool, err := db.DB()
 	require.NoError(t, err)

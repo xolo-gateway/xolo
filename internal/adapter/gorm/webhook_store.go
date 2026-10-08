@@ -185,6 +185,9 @@ func (s *Store) webhookTransaction(ctx context.Context, fn func(db *gorm.DB) err
 // PutWebhook implements port.WebhookStore.
 func (s *Store) PutWebhook(ctx context.Context, tenant model.TenantID, id model.WebhookID, settings model.WebhookSettings) (model.WebhookSubscription, error) {
 	ctx = model.EnsureActor(ctx)
+	if err := s.checkOwnership(ctx, model.FamilySubscription); err != nil {
+		return model.WebhookSubscription{}, err
+	}
 	events, err := json.Marshal(settings.Events)
 	if err != nil {
 		return model.WebhookSubscription{}, errors.WithStack(err)
@@ -295,6 +298,9 @@ func (s *Store) ListWebhooks(ctx context.Context, tenant model.TenantID) ([]mode
 // DeleteWebhook implements port.WebhookStore.
 func (s *Store) DeleteWebhook(ctx context.Context, tenant model.TenantID, id model.WebhookID) error {
 	ctx = model.EnsureActor(ctx)
+	if err := s.checkOwnership(ctx, model.FamilySubscription); err != nil {
+		return err
+	}
 	return s.webhookTransaction(ctx, func(db *gorm.DB) error {
 		row, err := webhookRow(db, tenant, id)
 		if err != nil {
@@ -313,6 +319,9 @@ func (s *Store) DeleteWebhook(ctx context.Context, tenant model.TenantID, id mod
 // ResetWebhook implements port.WebhookStore.
 func (s *Store) ResetWebhook(ctx context.Context, tenant model.TenantID, id model.WebhookID) error {
 	ctx = model.EnsureActor(ctx)
+	if err := s.checkOwnership(ctx, model.FamilySubscription); err != nil {
+		return err
+	}
 	return s.webhookTransaction(ctx, func(db *gorm.DB) error {
 		row, err := webhookRow(db, tenant, id)
 		if err != nil {

@@ -40,6 +40,8 @@ const (
 	codePreconditionFailed  = "precondition_failed"
 
 	codeWebhookCapacity = "webhook_capacity"
+
+	codeOwnershipDenied = "ownership_denied"
 )
 
 type errorEnvelope struct {
@@ -97,6 +99,8 @@ func writeServiceError(ctx context.Context, w http.ResponseWriter, err error, fa
 // statusFromError maps the domain sentinels to their HTTP status.
 func statusFromError(err error) (int, string) {
 	switch {
+	case errors.Is(err, port.ErrOwnershipDenied):
+		return http.StatusForbidden, codeOwnershipDenied
 	case errors.Is(err, port.ErrInvalidCursor):
 		return http.StatusBadRequest, codeInvalidCursor
 	case errors.Is(err, port.ErrCursorExpired):

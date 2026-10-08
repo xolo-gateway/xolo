@@ -49,6 +49,8 @@ var getProvisioningServiceFromConfig = createFromConfigOnce(func(ctx context.Con
 	return service.NewProvisioningService(tenantStore, orgStore, userStore, roleStore,
 		service.WithProvisioningTransaction(transactions),
 		service.WithProvisioningReader(backend),
+		service.WithInventoryReader(backend),
+		service.WithOwnershipPolicy(conf.Ownership),
 		service.WithReservedEmails(conf.HTTP.Authn.DefaultAdmins...),
 		service.WithMultiTenant(conf.Multitenancy.Enabled),
 	), nil

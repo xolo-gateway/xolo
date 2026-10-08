@@ -297,9 +297,14 @@ func pendingProjections(db *gorm.DB, before map[mutationKey][]byte, keys []mutat
 
 // publishProjections publishes the projections of the tracked resources. A
 // transaction that changes no projection never takes the feed lock.
-func publishProjections(ctx context.Context, db *gorm.DB, before map[mutationKey][]byte, keys []mutationKey) error {
+func publishProjections(ctx context.Context, db *gorm.DB, ownership model.OwnershipPolicy, before map[mutationKey][]byte, keys []mutationKey) error {
 	changes, err := pendingProjections(db, before, keys)
 	if err != nil || len(changes) == 0 {
+		return err
+	}
+	// Refused before the lock: a write the policy forbids never waits on
+	// the publications of other writers.
+	if err := authorizeProjections(ctx, ownership, changes); err != nil {
 		return err
 	}
 	if err := lockProvisioningFeed(db); err != nil {
@@ -309,6 +314,9 @@ func publishProjections(ctx context.Context, db *gorm.DB, before map[mutationKey
 	// another writer may have committed a change of the same projection in
 	// between. Serializable provisioning transactions only pay a re-read.
 	if changes, err = pendingProjections(db, before, keys); err != nil {
+		return err
+	}
+	if err := authorizeProjections(ctx, ownership, changes); err != nil {
 		return err
 	}
 	var feed ProvisioningFeed

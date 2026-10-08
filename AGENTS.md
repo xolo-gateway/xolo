@@ -128,6 +128,11 @@ updates the public projection and appends to the event feed in the same
 transaction (`internal/adapter/gorm/provisioning_projection.go`). A new write
 path on those tables must do the same, or projections, ETags and `/v1/events`
 diverge.
+Write authority (`XOLO_OWNERSHIP`, `shared` by default) is checked in
+`publishProjections`, on every projection a transaction changes, before the
+feed lock (`internal/adapter/gorm/ownership.go`). A writer whose effect has no
+projection (invitations, webhook subscriptions) must call `checkOwnership`
+itself. Only the mTLS middleware sets `model.WithWriteAuthority`.
 Webhooks (`internal/adapter/gorm/webhook_store.go`) read that feed without
 its lock — it is prefix-closed — filtered by tenant in SQL, and coordinate
 replicas through conditional updates (subscription `revision`, delivery

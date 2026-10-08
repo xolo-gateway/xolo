@@ -15,7 +15,7 @@ import (
 
 // ContractVersion identifies the common provisioning contract this API
 // implements.
-const ContractVersion = "0.1.0-draft.1"
+const ContractVersion = model.CommonContractVersion
 
 type manifestDTO struct {
 	Name            string   `json:"name"`

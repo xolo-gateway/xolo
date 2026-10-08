@@ -29,7 +29,7 @@ watch: .env tools/modd/bin/modd
 run-with-env: .env
 	( set -o allexport && source .env && set +o allexport && $(value CMD))
 
-build: build-server build-migrate build-frontend all-plugins
+build: build-server build-migrate build-adoption build-frontend all-plugins
 
 all-plugins: cleanup-plugins $(foreach plugin,$(shell find ./plugins/ -mindepth 1 -maxdepth 1 -type d -not -name internal -printf '%f\n'), plugin-$(plugin))
 

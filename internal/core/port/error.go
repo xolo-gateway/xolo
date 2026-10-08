@@ -36,6 +36,10 @@ var (
 	// administrator: provisioning never acts on platform-wide privileges.
 	ErrPlatformAdminProtected = fmt.Errorf("platform admin protected: %w", ErrNotAllowed)
 
+	// ErrOwnershipDenied refuses a write to a family the ownership policy
+	// reserves to another write authority.
+	ErrOwnershipDenied = fmt.Errorf("family owned by another write authority: %w", ErrNotAllowed)
+
 	// ErrInvalidCursor refuses a cursor that was altered, issued for another
 	// collection, limit or feed, or that points past the feed.
 	ErrInvalidCursor = errors.New("invalid cursor")
