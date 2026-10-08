@@ -43,6 +43,12 @@ templ FlashError(reason, subject string) {
 
 // errorMessage words the `?error=` code. Handlers also pass free-form messages
 // through the same field, so anything unrecognised is shown as-is.
+//
+// `subject` lets a screen specialise the noun ("La clé API") when a generic
+// wording reads as awkward. The label_required branch uses it: the dialog
+// inline message already says "Le nom de la clé est obligatoire.", and the
+// dialog-level alert needs to match so the user does not read the two as
+// two different problems.
 func errorMessage(reason, subject string) string {
 	switch reason {
 	case "exists":
@@ -52,12 +58,39 @@ func errorMessage(reason, subject string) string {
 		return subject + " portant ce nom existe déjà."
 	case "name_required":
 		return "Le nom est obligatoire."
+	case "label_required":
+		// The dialog inline message uses the same wording ("Le nom de la clé
+		// est obligatoire."), so the dialog-level alert has to match — the
+		// two would otherwise read as two different problems. The subject
+		// plumbing exists for future screens that want a specialised noun;
+		// today it is unused and we collapse back to the generic wording.
+		if subject == "" {
+			return "Le nom de la clé est obligatoire."
+		}
+		return "Le nom de la " + subject + " est obligatoire."
+	case "org_required":
+		// Selecting an organisation is the only constraint the API-key dialog
+		// cannot satisfy from a fresh account, which is why it earns its own
+		// message instead of falling back to the generic "name_required".
+		return "Veuillez sélectionner une organisation."
+	case "org_not_member":
+		// Surfaced by createToken's IsMember check: the caller posted an
+		// org_id that does not belong to any of their memberships. Reading
+		// "Veuillez sélectionner une organisation" here would be misleading —
+		// the field is filled, the user just does not own the value.
+		return "Vous n'appartenez pas à cette organisation."
+	case "org_lookup_failed":
+		return "La vérification de l'organisation a échoué. Réessayez."
+	case "invalid_expires_at":
+		return "La date d'expiration est invalide."
 	case "create_failed":
 		return "La création a échoué."
 	case "update_failed":
 		return "L'enregistrement a échoué."
 	case "delete_failed":
 		return "La suppression a échoué."
+	case "invalid_form":
+		return "Le formulaire envoyé est invalide."
 	default:
 		return reason
 	}
