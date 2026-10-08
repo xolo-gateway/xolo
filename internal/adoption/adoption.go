@@ -32,13 +32,7 @@ const Version = "xolo-adoption/1"
 
 // Families lists the exported families, parents before children: records
 // follow this order.
-var Families = []string{
-	model.FamilyTenant,
-	model.FamilyTenantDomain,
-	model.FamilyOrganization,
-	model.FamilyMember,
-	model.FamilyOrganizationMembership,
-}
+var Families = append(append([]string{}, model.CommonFamilies...), model.BusinessFamilies...)
 
 // Header is the first line of an export.
 type Header struct {

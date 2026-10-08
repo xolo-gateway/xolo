@@ -7,14 +7,14 @@ import (
 )
 
 func TestValidWebhookEvent(t *testing.T) {
-	for _, typ := range []string{"*", "tenant.created.v1", "tenant_domain.deleted.v1", "organization.updated.v1", "member.deleted.v1", "organization_membership.created.v1"} {
+	for _, typ := range []string{"*", "tenant.created.v1", "tenant_domain.deleted.v1", "organization.updated.v1", "member.deleted.v1", "organization_membership.created.v1", "custom_role.created.v1", "quota.updated.v1", "provider.deleted.v1"} {
 		require.True(t, ValidWebhookEvent(typ), typ)
 	}
-	for _, typ := range []string{"", "tenant", "tenant.created", "tenant.created.v2", "tenant.renamed.v1", "role.created.v1", "tenant.created.v1.v1", "*.created.v1"} {
+	for _, typ := range []string{"", "tenant", "tenant.created", "tenant.created.v2", "tenant.renamed.v1", "role.created.v1", "model.created.v1", "tenant.created.v1.v1", "*.created.v1"} {
 		require.False(t, ValidWebhookEvent(typ), typ)
 	}
 	// Every type the feed publishes can be subscribed to.
-	for _, family := range []string{FamilyTenant, FamilyTenantDomain, FamilyOrganization, FamilyMember, FamilyOrganizationMembership} {
+	for _, family := range append(append([]string{}, CommonFamilies...), BusinessFamilies...) {
 		for _, change := range []string{CommonEventCreated, CommonEventUpdated, CommonEventDeleted} {
 			require.True(t, ValidWebhookEvent(CommonEventType(family, change)))
 		}

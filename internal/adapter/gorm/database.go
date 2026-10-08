@@ -596,5 +596,12 @@ func schemaMigrations(artifact *RecoveryArtifact) []*gormigrate.Migration {
 			Migrate:  migrateOIDCSessions,
 			Rollback: rollbackOIDCSessions,
 		},
+		{
+			ID:      businessProjectionsMigrationID,
+			Migrate: migrateBusinessProjections,
+			Rollback: func(*gorm.DB) error {
+				return errors.New("business projections migration cannot be rolled back: consumers rely on their revisions")
+			},
+		},
 	}
 }

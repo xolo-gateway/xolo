@@ -8,19 +8,22 @@ import (
 )
 
 type ProvisioningTransaction struct {
-	backend port.ProvisioningTransaction
-	users   *UserStore
+	backend   port.ProvisioningTransaction
+	users     *UserStore
+	providers *ProviderStore
 }
 
-func NewProvisioningTransaction(backend port.ProvisioningTransaction, users *UserStore) *ProvisioningTransaction {
-	return &ProvisioningTransaction{backend: backend, users: users}
+// NewProvisioningTransaction invalidates the entries of users and providers
+// a committed provisioning transaction changed. Either cache may be nil.
+func NewProvisioningTransaction(backend port.ProvisioningTransaction, users *UserStore, providers *ProviderStore) *ProvisioningTransaction {
+	return &ProvisioningTransaction{backend: backend, users: users, providers: providers}
 }
 
 func (s *ProvisioningTransaction) WithProvisioningTransaction(ctx context.Context, fn func(port.ProvisioningTx) error) error {
 	var committed *provisioningInvalidations
 	err := s.backend.WithProvisioningTransaction(ctx, func(tx port.ProvisioningTx) error {
 		committed = nil
-		pending := &provisioningInvalidations{users: map[model.UserID]bool{}, tenants: map[model.TenantID]bool{}, orgs: map[model.OrgID]bool{}}
+		pending := &provisioningInvalidations{users: map[model.UserID]bool{}, tenants: map[model.TenantID]bool{}, orgs: map[model.OrgID]bool{}, apps: map[model.ApplicationID]bool{}, providers: map[model.ProviderID]bool{}}
 		bound := &provisioningTx{ProvisioningTx: tx, provisioningInvalidations: pending}
 		if err := fn(bound); err != nil {
 			return err
@@ -31,7 +34,12 @@ func (s *ProvisioningTransaction) WithProvisioningTransaction(ctx context.Contex
 	if err != nil {
 		return err
 	}
-	if len(committed.users) == 0 && len(committed.tenants) == 0 && len(committed.orgs) == 0 {
+	if s.providers != nil {
+		for id := range committed.providers {
+			s.providers.providerCache.Remove(string(id))
+		}
+	}
+	if s.users == nil || (len(committed.users) == 0 && len(committed.tenants) == 0 && len(committed.orgs) == 0 && len(committed.apps) == 0) {
 		return nil
 	}
 	s.users.userCache.RemoveMatching(func(u *CacheableUser) bool { return committed.users[u.ID()] || committed.tenants[u.TenantID()] })
@@ -39,7 +47,7 @@ func (s *ProvisioningTransaction) WithProvisioningTransaction(ctx context.Contex
 		if committed.orgs[t.OrgID()] {
 			return true
 		}
-		if app := t.Application(); app != nil && committed.orgs[app.OrgID()] {
+		if app := t.Application(); app != nil && (committed.orgs[app.OrgID()] || committed.apps[app.ID()]) {
 			return true
 		}
 		u := t.Owner()
@@ -60,9 +68,28 @@ type provisioningTx struct {
 }
 
 type provisioningInvalidations struct {
-	users   map[model.UserID]bool
-	tenants map[model.TenantID]bool
-	orgs    map[model.OrgID]bool
+	users     map[model.UserID]bool
+	tenants   map[model.TenantID]bool
+	orgs      map[model.OrgID]bool
+	apps      map[model.ApplicationID]bool
+	providers map[model.ProviderID]bool
+}
+
+// UpdateApplication invalidates the cached tokens of the application: they
+// carry its active flag.
+func (tx *provisioningTx) UpdateApplication(ctx context.Context, app model.Application) error {
+	tx.apps[app.ID()] = true
+	return tx.ProvisioningTx.UpdateApplication(ctx, app)
+}
+
+func (tx *provisioningTx) CreateProvider(ctx context.Context, p model.Provider) error {
+	tx.providers[p.ID()] = true
+	return tx.ProvisioningTx.CreateProvider(ctx, p)
+}
+
+func (tx *provisioningTx) SaveProvider(ctx context.Context, p model.Provider) error {
+	tx.providers[p.ID()] = true
+	return tx.ProvisioningTx.SaveProvider(ctx, p)
 }
 
 func (tx *provisioningTx) SaveUser(ctx context.Context, user model.User) error {

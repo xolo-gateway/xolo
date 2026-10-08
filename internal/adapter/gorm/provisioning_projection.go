@@ -66,6 +66,13 @@ var projectionFamilies = map[string]int{
 	model.FamilyOrganization:           2,
 	model.FamilyMember:                 3,
 	model.FamilyOrganizationMembership: 4,
+	// Business resources come after the common families, providers first:
+	// role grants designate their models.
+	model.FamilyProvider:    5,
+	model.FamilyCustomRole:  6,
+	model.FamilyApplication: 7,
+	model.FamilyQuota:       8,
+	model.FamilyAlert:       9,
 }
 
 type projectionID struct{ family, tenantID, orgID, key string }
@@ -94,6 +101,10 @@ func (id projectionID) reference() model.CommonKey {
 		ref.MemberID = id.key
 	case model.FamilyOrganizationMembership:
 		ref.OrganizationID, ref.MemberID = id.orgID, id.key
+	default:
+		if model.IsBusinessFamily(id.family) {
+			ref.OrganizationID, ref.ResourceID = id.orgID, id.key
+		}
 	}
 	return ref
 }
@@ -111,8 +122,8 @@ func decodeSnapshot(raw []byte) (snapshotRow, error) {
 }
 
 // projectionIdentity designates the projection a resource snapshot belongs
-// to, without reading anything. Application shadow users and roles are not
-// part of the common contract.
+// to, without reading anything. Application shadow users and builtin roles
+// are not part of the contract.
 func projectionIdentity(key mutationKey, row snapshotRow) (projectionID, bool) {
 	if row == nil {
 		return projectionID{}, false
@@ -132,12 +143,25 @@ func projectionIdentity(key mutationKey, row snapshotRow) (projectionID, bool) {
 	case "membership":
 		return projectionID{model.FamilyOrganizationMembership, row.str("tenant_id"), row.str("org_id"), row.str("user_id")}, true
 	}
+	if family, ok := businessFamilyOf(key, row); ok {
+		// A quota hangs from its tenant: a user quota applies in every
+		// organization of the user.
+		orgID := row.str("org_id")
+		if family == model.FamilyQuota {
+			orgID = ""
+		}
+		return projectionID{family, row.str("tenant_id"), orgID, key.id}, true
+	}
 	return projectionID{}, false
 }
 
 // projectionRepresentation builds the representation published for a resource
 // snapshot. Maps marshal with sorted keys, so equal states give equal bytes.
 func projectionRepresentation(id projectionID, row snapshotRow) (string, error) {
+	if model.IsBusinessFamily(id.family) {
+		encoded, err := json.Marshal(businessRepresentation(id.family, row))
+		return string(encoded), err
+	}
 	status := row.str("status")
 	if id.family == model.FamilyTenant || id.family == model.FamilyOrganization || id.family == model.FamilyMember {
 		active, _ := row["active"].(bool)
@@ -177,6 +201,11 @@ func projectionOf(db *gorm.DB, key mutationKey, raw []byte) (*ProvisioningProjec
 		return nil, nil
 	}
 	if id.tenantID == "" {
+		// A business resource whose parent does not exist designates no
+		// tenant: nothing can expose it, so it has no projection.
+		if model.IsBusinessFamily(id.family) {
+			return nil, nil
+		}
 		return nil, errors.WithStack(port.ErrParentNotFound)
 	}
 	if id.family == model.FamilyOrganizationMembership {

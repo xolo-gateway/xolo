@@ -59,12 +59,33 @@ type ProvisioningRoleStore interface {
 	EnsureBuiltinRoles(ctx context.Context, orgID model.OrgID) error
 }
 
+// ProvisioningBusinessStore exposes the business resources to provisioning;
+// all calls share the transaction.
+type ProvisioningBusinessStore interface {
+	SetApplicationRoles(ctx context.Context, appID model.ApplicationID, roleIDs []model.RoleID) error
+	CreateApplication(ctx context.Context, app model.Application) error
+	UpdateApplication(ctx context.Context, app model.Application) error
+	GetApplication(ctx context.Context, appID model.ApplicationID) (model.Application, error)
+	SetQuota(ctx context.Context, quota model.Quota) error
+	GetQuotaByID(ctx context.Context, id model.QuotaID) (model.Quota, error)
+	GetQuota(ctx context.Context, scope model.QuotaScope, scopeID string) (model.Quota, error)
+	CreateAlert(ctx context.Context, alert model.Alert) error
+	UpdateAlert(ctx context.Context, alert model.Alert) error
+	GetAlertByID(ctx context.Context, id model.AlertID) (model.Alert, error)
+	CreateProvider(ctx context.Context, p model.Provider) error
+	SaveProvider(ctx context.Context, p model.Provider) error
+	GetProviderByID(ctx context.Context, id model.ProviderID) (model.Provider, error)
+	GetLLMModelByID(ctx context.Context, id model.LLMModelID) (model.LLMModel, error)
+	GetVirtualModelByID(ctx context.Context, id model.VirtualModelID) (model.VirtualModel, error)
+}
+
 // ProvisioningTx must not escape the callback or perform external effects.
 type ProvisioningTx interface {
 	ProvisioningTenantStore
 	ProvisioningOrgStore
 	ProvisioningUserStore
 	ProvisioningRoleStore
+	ProvisioningBusinessStore
 	DomainStore
 	// ReadProjection publishes the changes made so far in the transaction,
 	// then reads the projection of one resource within it. A missing resource

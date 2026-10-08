@@ -313,11 +313,12 @@ func TestPutOrgMember(t *testing.T) {
 	mustNoError(t, put(memberID, model.MembershipRoleAdmin, model.StatusActive))
 
 	// A custom role survives a change of common role.
-	role, err := svc.CreateRole(ctx, tenantID, orgID, service.RoleParams{Name: strPtr("Auditor")})
+	roleKey := uuid.NewString()
+	_, err = svc.PutCustomRole(ctx, tenantID, orgID, roleKey, model.MatchCondition{}, model.CustomRoleSettings{Name: "Auditor", Permissions: []string{}, ModelGrants: []model.ModelGrantSettings{}})
 	mustNoError(t, err)
 	membership, err := store.GetUserOrgMembership(ctx, memberID, orgID)
 	mustNoError(t, err)
-	_, err = svc.SetMemberRoles(ctx, tenantID, orgID, membership.ID(), []model.RoleID{role.ID()}, []string{model.BuiltinKindAdmin})
+	_, err = svc.SetMemberRoles(ctx, tenantID, orgID, membership.ID(), []model.RoleID{model.RoleID(roleKey)}, []string{model.BuiltinKindAdmin})
 	mustNoError(t, err)
 	mustNoError(t, put(memberID, model.MembershipRoleMember, model.StatusSuspended))
 	membership, err = store.GetUserOrgMembership(ctx, memberID, orgID)

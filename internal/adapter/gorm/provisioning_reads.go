@@ -98,8 +98,12 @@ func validateCommonScope(scope model.CommonScope, key string) error {
 		if scope.TenantID == "" || scope.OrganizationID != "" {
 			return errors.WithStack(port.ErrInvalid)
 		}
-	case model.FamilyOrganizationMembership:
+	case model.FamilyOrganizationMembership, model.FamilyCustomRole, model.FamilyApplication, model.FamilyAlert, model.FamilyProvider:
 		if scope.TenantID == "" || scope.OrganizationID == "" {
+			return errors.WithStack(port.ErrInvalid)
+		}
+	case model.FamilyQuota:
+		if scope.TenantID == "" || scope.OrganizationID != "" {
 			return errors.WithStack(port.ErrInvalid)
 		}
 	default:
@@ -121,6 +125,8 @@ func validateCommonScope(scope model.CommonScope, key string) error {
 		_, err = model.ParseOrgID(key)
 	case model.FamilyMember, model.FamilyOrganizationMembership:
 		_, err = model.ParseUserID(key)
+	default:
+		_, _, err = model.ParseBusinessKey(key)
 	}
 	if err != nil {
 		return errors.WithStack(port.ErrInvalid)

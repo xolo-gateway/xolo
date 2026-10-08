@@ -12,7 +12,7 @@ import (
 
 // CreateProvider implements port.ProviderStore.
 func (s *Store) CreateProvider(ctx context.Context, p model.Provider) error {
-	return s.withRetry(ctx, true, func(ctx context.Context, db *gorm.DB) error {
+	return s.recorded(ctx, tracking("provider", string(p.ID())), func(ctx context.Context, db *gorm.DB) error {
 		return errors.WithStack(db.Create(fromProvider(p)).Error)
 	})
 }
@@ -53,7 +53,7 @@ func (s *Store) ListProviders(ctx context.Context, orgID model.OrgID) ([]model.P
 
 // SaveProvider implements port.ProviderStore.
 func (s *Store) SaveProvider(ctx context.Context, p model.Provider) error {
-	return s.withRetry(ctx, true, func(ctx context.Context, db *gorm.DB) error {
+	return s.recorded(ctx, tracking("provider", string(p.ID())), func(ctx context.Context, db *gorm.DB) error {
 		return errors.WithStack(db.Clauses(clause.OnConflict{
 			Columns:   []clause.Column{{Name: "id"}},
 			UpdateAll: true,
@@ -63,7 +63,7 @@ func (s *Store) SaveProvider(ctx context.Context, p model.Provider) error {
 
 // DeleteProvider implements port.ProviderStore.
 func (s *Store) DeleteProvider(ctx context.Context, id model.ProviderID) error {
-	return s.withRetry(ctx, true, func(ctx context.Context, db *gorm.DB) error {
+	return s.recorded(ctx, tracking("provider", string(id)), func(ctx context.Context, db *gorm.DB) error {
 		result := db.Delete(&Provider{}, "id = ?", string(id))
 		if result.Error != nil {
 			return errors.WithStack(result.Error)

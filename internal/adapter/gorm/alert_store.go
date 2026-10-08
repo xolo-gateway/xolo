@@ -12,14 +12,14 @@ import (
 
 // CreateAlert implements port.AlertStore.
 func (s *Store) CreateAlert(ctx context.Context, alert model.Alert) error {
-	return s.withRetry(ctx, true, func(ctx context.Context, db *gorm.DB) error {
+	return s.recorded(ctx, tracking("alert", string(alert.ID())), func(ctx context.Context, db *gorm.DB) error {
 		return errors.WithStack(db.Create(fromAlert(alert)).Error)
 	})
 }
 
 // UpdateAlert implements port.AlertStore.
 func (s *Store) UpdateAlert(ctx context.Context, alert model.Alert) error {
-	return s.withRetry(ctx, true, func(ctx context.Context, db *gorm.DB) error {
+	return s.recorded(ctx, tracking("alert", string(alert.ID())), func(ctx context.Context, db *gorm.DB) error {
 		result := db.Model(&Alert{}).Where("id = ?", string(alert.ID())).Save(fromAlert(alert))
 		return errors.WithStack(result.Error)
 	})
@@ -27,7 +27,7 @@ func (s *Store) UpdateAlert(ctx context.Context, alert model.Alert) error {
 
 // DeleteAlert implements port.AlertStore.
 func (s *Store) DeleteAlert(ctx context.Context, id model.AlertID) error {
-	return s.withRetry(ctx, true, func(ctx context.Context, db *gorm.DB) error {
+	return s.recorded(ctx, tracking("alert", string(id)), func(ctx context.Context, db *gorm.DB) error {
 		result := db.Delete(&Alert{}, "id = ?", string(id))
 		if result.Error != nil {
 			return errors.WithStack(result.Error)

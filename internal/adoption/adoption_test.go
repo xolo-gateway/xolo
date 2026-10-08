@@ -3,6 +3,8 @@ package adoption
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"strings"
@@ -127,5 +129,48 @@ func TestVerifyRejects(t *testing.T) {
 			_, err := Verify(strings.NewReader(raw))
 			require.ErrorIs(t, err, ErrInvalidExport)
 		})
+	}
+}
+
+// exportWith writes an export declaring families, as an older version did.
+func exportWith(t *testing.T, families []string, records []Record) []byte {
+	t.Helper()
+	var out bytes.Buffer
+	digest := sha256.New()
+	require.NoError(t, writeLine(&out, digest, Header{Version: Version, Contract: model.CommonContractVersion, Source: "urn:uuid:feed", Cursor: "c0", Families: families}))
+	for _, record := range records {
+		require.NoError(t, writeLine(&out, digest, record))
+	}
+	require.NoError(t, writeLine(&out, nil, Trailer{Count: len(records), Complete: true, SHA256: hex.EncodeToString(digest.Sum(nil))}))
+	return out.Bytes()
+}
+
+func TestVerifyBusinessFamilies(t *testing.T) {
+	inventory := validInventory()
+	provider := Record{Family: model.FamilyProvider, Key: model.CommonKey{TenantID: tenantID, OrganizationID: orgID, ResourceID: "44444444-4444-4444-8444-444444444444"}, Representation: json.RawMessage(`{"name":"OpenAI","active":true}`), ETag: `W/"6"`}
+	quota := Record{Family: model.FamilyQuota, Key: model.CommonKey{TenantID: tenantID, ResourceID: string(model.NewQuotaID())}, Representation: json.RawMessage(`{"scope":"org"}`), ETag: `W/"7"`}
+	inventory.items = append(inventory.items, provider, quota)
+	summary, err := Verify(bytes.NewReader(export(t, inventory)))
+	require.NoError(t, err)
+	require.Equal(t, 1, summary.Families[model.FamilyQuota])
+
+	// An export made before the business families stays valid.
+	legacy := validInventory().items
+	_, err = Verify(bytes.NewReader(exportWith(t, model.CommonFamilies, legacy)))
+	require.NoError(t, err)
+	_, err = Verify(bytes.NewReader(exportWith(t, model.CommonFamilies, append(legacy, provider))))
+	require.ErrorIs(t, err, ErrInvalidExport, "a family the header does not declare")
+	_, err = Verify(bytes.NewReader(exportWith(t, model.CommonFamilies[1:], legacy[1:])))
+	require.ErrorIs(t, err, ErrInvalidExport, "the common families are required")
+
+	for name, record := range map[string]Record{
+		"foreign organization":        {Family: model.FamilyProvider, Key: model.CommonKey{TenantID: tenantID, OrganizationID: "55555555-5555-4555-8555-555555555555", ResourceID: "44444444-4444-4444-8444-444444444444"}, Representation: json.RawMessage(`{}`), ETag: `W/"8"`},
+		"quota under an organization": {Family: model.FamilyQuota, Key: model.CommonKey{TenantID: tenantID, OrganizationID: orgID, ResourceID: string(model.NewQuotaID())}, Representation: json.RawMessage(`{}`), ETag: `W/"8"`},
+		"missing resource key":        {Family: model.FamilyAlert, Key: model.CommonKey{TenantID: tenantID, OrganizationID: orgID}, Representation: json.RawMessage(`{}`), ETag: `W/"8"`},
+	} {
+		inventory := validInventory()
+		inventory.items = append(inventory.items, record)
+		_, err := Verify(bytes.NewReader(export(t, inventory)))
+		require.ErrorIs(t, err, ErrInvalidExport, name)
 	}
 }

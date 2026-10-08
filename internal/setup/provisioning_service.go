@@ -53,6 +53,7 @@ var getProvisioningServiceFromConfig = createFromConfigOnce(func(ctx context.Con
 		service.WithOwnershipPolicy(conf.Ownership),
 		service.WithReservedEmails(conf.HTTP.Authn.DefaultAdmins...),
 		service.WithMultiTenant(conf.Multitenancy.Enabled),
+		service.WithSecretKey(conf.SecretKey),
 	), nil
 })
 
@@ -72,9 +73,15 @@ var getProvisioningTransactionFromConfig = createFromConfigOnce(func(ctx context
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
+	providerStore, err := getProviderStoreFromConfig(ctx, conf)
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
 	var transactions port.ProvisioningTransaction = backend
-	if cached, ok := userStore.(*cache.UserStore); ok {
-		transactions = cache.NewProvisioningTransaction(transactions, cached)
+	cachedUsers, _ := userStore.(*cache.UserStore)
+	cachedProviders, _ := providerStore.(*cache.ProviderStore)
+	if cachedUsers != nil || cachedProviders != nil {
+		transactions = cache.NewProvisioningTransaction(transactions, cachedUsers, cachedProviders)
 	}
 	return events.NewProvisioningTransaction(transactions, emitter), nil
 })

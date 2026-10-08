@@ -141,6 +141,9 @@ func (a *BaseAlert) LastEvaluatedAt() *time.Time   { return a.lastEvaluatedAt }
 func (a *BaseAlert) CreatedAt() time.Time         { return a.createdAt }
 func (a *BaseAlert) UpdatedAt() time.Time         { return a.updatedAt }
 
+// SetID gives the alert an identifier chosen by the provisioning client.
+func (a *BaseAlert) SetID(id AlertID) { a.id = id }
+
 func (a *BaseAlert) SetState(s AlertState)          { a.state = s }
 func (a *BaseAlert) SetPendingSince(t *time.Time)   { a.pendingSince = t }
 func (a *BaseAlert) SetLastEvaluatedAt(t *time.Time) { a.lastEvaluatedAt = t }

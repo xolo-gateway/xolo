@@ -83,6 +83,9 @@ func (q *BaseQuota) YearlyBudget() *int64  { return q.yearlyBudget }
 func (q *BaseQuota) CreatedAt() time.Time  { return q.createdAt }
 func (q *BaseQuota) UpdatedAt() time.Time  { return q.updatedAt }
 
+// SetID gives the quota an identifier chosen by the provisioning client.
+func (q *BaseQuota) SetID(id QuotaID) { q.id = id }
+
 var _ Quota = &BaseQuota{}
 
 func NewQuota(scope QuotaScope, scopeID string, currency string, daily, monthly, yearly *int64) *BaseQuota {

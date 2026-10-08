@@ -33,6 +33,11 @@ var OwnershipFamilies = []string{
 	FamilyMember,
 	FamilyOrganizationMembership,
 	FamilySubscription,
+	FamilyCustomRole,
+	FamilyApplication,
+	FamilyQuota,
+	FamilyAlert,
+	FamilyProvider,
 }
 
 // OwnershipPolicy assigns a write authority to each family. It is fixed at

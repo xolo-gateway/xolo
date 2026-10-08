@@ -65,7 +65,7 @@ func TestProvisioningAtomicFailures(t *testing.T) {
 							require.NoError(t, err)
 						}
 						recorder := &invitationRecorder{}
-						svc := provisioningService(store, events.NewProvisioningTransaction(cache.NewProvisioningTransaction(store, cached), recorder))
+						svc := provisioningService(store, events.NewProvisioningTransaction(cache.NewProvisioningTransaction(store, cached, nil), recorder))
 						failure := errors.New("injected mutation failure")
 						require.NoError(t, db.Callback().Create().After("gorm:create").Register("test:provisioning_failure", func(tx *gormpkg.DB) {
 							if tx.Statement.Table == stage {
@@ -338,7 +338,7 @@ func TestProvisioningCacheAfterCommit(t *testing.T) {
 		store := xologorm.NewStore(db)
 		tenant := provisionedTenant(t, store)
 		cached := cache.NewUserStore(store, 100, time.Hour)
-		svc := provisioningService(store, cache.NewProvisioningTransaction(store, cached))
+		svc := provisioningService(store, cache.NewProvisioningTransaction(store, cached, nil))
 		org := provisionedOrg(t, svc, tenant, "cached")
 		u, err := cached.GetUserByIdentity(t.Context(), tenant.ID(), "oidc", "cached")
 		require.NoError(t, err)
@@ -391,8 +391,8 @@ func TestProvisioningRequiresAdapterAndParents(t *testing.T) {
 		org := provisionedOrg(t, svc, tenant, "owner")
 		otherTenant := provisionedTenant(t, store)
 		otherOrg := provisionedOrg(t, svc, otherTenant, "other")
-		_, err = svc.CreateRole(t.Context(), otherTenant.ID(), org.Org.ID(), service.RoleParams{Name: ptr("foreign")})
-		require.ErrorIs(t, err, port.ErrNotFound)
+		_, err = svc.PutCustomRole(t.Context(), otherTenant.ID(), org.Org.ID(), uuid.NewString(), model.MatchCondition{}, model.CustomRoleSettings{Name: "foreign", Permissions: []string{}, ModelGrants: []model.ModelGrantSettings{}})
+		require.ErrorIs(t, err, port.ErrParentNotFound)
 		_, err = svc.AddMember(t.Context(), otherTenant.ID(), org.Org.ID(), service.AddMemberParams{UserID: otherOrg.Owner.ID()})
 		require.ErrorIs(t, err, port.ErrNotFound)
 		_, err = svc.AddMember(t.Context(), tenant.ID(), org.Org.ID(), service.AddMemberParams{UserID: otherOrg.Owner.ID()})

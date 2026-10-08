@@ -63,7 +63,7 @@ func Verify(r io.Reader) (Summary, error) {
 			if err := decodeStrict(body, &header); err != nil {
 				return summary, invalid(line, "header: %v", err)
 			}
-			if header.Version != Version || header.Contract != model.CommonContractVersion || header.Source == "" || header.Cursor == "" || !slices.Equal(header.Families, Families) {
+			if header.Version != Version || header.Contract != model.CommonContractVersion || header.Source == "" || header.Cursor == "" || !state.allow(header.Families) {
 				return summary, invalid(line, "incompatible header")
 			}
 			summary.Source, summary.Cursor = header.Source, header.Cursor
@@ -141,6 +141,7 @@ func decodeStrict(raw []byte, v any) error {
 // inventoryState checks records as they stream: their order, their keys and
 // their parents, which always come first.
 type inventoryState struct {
+	families      map[string]bool
 	family        int
 	seen          map[string]bool
 	tenants       map[string]bool
@@ -152,9 +153,31 @@ func newInventoryState() *inventoryState {
 	return &inventoryState{seen: map[string]bool{}, tenants: map[string]bool{}, organizations: map[string]string{}, members: map[string]string{}}
 }
 
+// allow accepts the families an export declares: an ordered selection of
+// Families holding at least the common contract. An export made before the
+// business families is still valid.
+func (s *inventoryState) allow(families []string) bool {
+	last := -1
+	s.families = map[string]bool{}
+	for _, family := range families {
+		index := slices.Index(Families, family)
+		if index <= last {
+			return false
+		}
+		last = index
+		s.families[family] = true
+	}
+	for _, family := range model.CommonFamilies {
+		if !s.families[family] {
+			return false
+		}
+	}
+	return true
+}
+
 func (s *inventoryState) add(r Record) error {
 	family := slices.Index(Families, r.Family)
-	if family < 0 {
+	if family < 0 || !s.families[r.Family] {
 		return fmt.Errorf("unknown family %q", r.Family)
 	}
 	if family < s.family {
@@ -165,9 +188,11 @@ func (s *inventoryState) add(r Record) error {
 		return errors.New("missing etag")
 	}
 	var rep struct {
-		Status model.Status `json:"status"`
+		Status *model.Status `json:"status"`
 	}
-	if !bytes.HasPrefix(bytes.TrimSpace(r.Representation), []byte("{")) || json.Unmarshal(r.Representation, &rep) != nil || !rep.Status.Valid() {
+	business := model.IsBusinessFamily(r.Family)
+	if !bytes.HasPrefix(bytes.TrimSpace(r.Representation), []byte("{")) || json.Unmarshal(r.Representation, &rep) != nil ||
+		(!business && (rep.Status == nil || !rep.Status.Valid())) {
 		return errors.New("invalid representation")
 	}
 	key, err := json.Marshal(r.Key)
@@ -186,6 +211,12 @@ func (s *inventoryState) add(r Record) error {
 	}
 	if r.Family != model.FamilyTenant && !s.tenants[k.TenantID] {
 		return errors.New("missing tenant parent")
+	}
+	if business {
+		return s.addBusiness(r)
+	}
+	if k.ResourceID != "" {
+		return errors.New("unexpected resource key")
 	}
 	switch r.Family {
 	case model.FamilyTenant:
@@ -215,6 +246,25 @@ func (s *inventoryState) add(r Record) error {
 		if s.organizations[k.OrganizationID] != k.TenantID || s.members[k.MemberID] != k.TenantID {
 			return errors.New("missing membership parent")
 		}
+	}
+	return nil
+}
+
+// addBusiness checks the key of a business record: its own key, and the
+// organization it hangs from, except a quota, which hangs from its tenant.
+func (s *inventoryState) addBusiness(r Record) error {
+	k := r.Key
+	if _, _, err := model.ParseBusinessKey(k.ResourceID); err != nil || k.MemberID != "" || k.Hostname != "" {
+		return errors.New("invalid resource key")
+	}
+	if r.Family == model.FamilyQuota {
+		if k.OrganizationID != "" {
+			return errors.New("invalid quota key")
+		}
+		return nil
+	}
+	if s.organizations[k.OrganizationID] != k.TenantID {
+		return errors.New("missing organization parent")
 	}
 	return nil
 }

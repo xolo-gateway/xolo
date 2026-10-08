@@ -3,6 +3,7 @@ package model
 import (
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -20,12 +21,35 @@ const (
 	FamilyOrganizationMembership = "organization_membership"
 )
 
+// Families of the business resources Xolo provisions besides the common
+// contract, under /v1/xolo, with the same reads, conditions and events.
+const (
+	FamilyCustomRole  = "custom_role"
+	FamilyApplication = "application"
+	FamilyQuota       = "quota"
+	FamilyAlert       = "alert"
+	FamilyProvider    = "provider"
+)
+
+// CommonFamilies lists the families of the common contract, parents first.
+var CommonFamilies = []string{FamilyTenant, FamilyTenantDomain, FamilyOrganization, FamilyMember, FamilyOrganizationMembership}
+
+// BusinessFamilies lists the business families, parents first: role grants
+// designate the models of providers, applications hold roles, quotas cap
+// applications.
+var BusinessFamilies = []string{FamilyProvider, FamilyCustomRole, FamilyApplication, FamilyQuota, FamilyAlert}
+
+// IsBusinessFamily tells whether family is a business family.
+func IsBusinessFamily(family string) bool { return slices.Contains(BusinessFamilies, family) }
+
 // CommonKey identifies a resource independently of its mutable representation.
 type CommonKey struct {
 	TenantID       string `json:"tenant_id"`
 	OrganizationID string `json:"organization_id,omitempty"`
 	MemberID       string `json:"member_id,omitempty"`
 	Hostname       string `json:"hostname,omitempty"`
+	// ResourceID identifies a business resource within its parents.
+	ResourceID string `json:"resource_id,omitempty"`
 }
 
 // CommonScope designates one collection: a family and the parents it hangs from.

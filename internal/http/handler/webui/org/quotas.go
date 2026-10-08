@@ -14,6 +14,7 @@ import (
 	"github.com/xolo-gateway/xolo/internal/core/model"
 	"github.com/xolo-gateway/xolo/internal/core/port"
 	httpCtx "github.com/xolo-gateway/xolo/internal/http/context"
+	webcommon "github.com/xolo-gateway/xolo/internal/http/handler/webui/common"
 	common "github.com/xolo-gateway/xolo/internal/http/handler/webui/common/component"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/org/component"
 )
@@ -113,6 +114,9 @@ func (h *Handler) saveOrgQuota(w http.ResponseWriter, r *http.Request) {
 
 	quota := model.NewQuota(model.QuotaScopeOrg, string(org.ID()), currency, daily, monthly, yearly)
 	if err := quotaStore.SetQuota(ctx, quota); err != nil {
+		if webcommon.RejectOwnership(w, r, err) {
+			return
+		}
 		slog.ErrorContext(ctx, "could not save org quota", slogx.Error(err))
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
@@ -222,6 +226,9 @@ func (h *Handler) saveMemberQuota(w http.ResponseWriter, r *http.Request) {
 
 	quota := model.NewQuota(model.QuotaScopeUser, string(membership.UserID()), currency, daily, monthly, yearly)
 	if err := quotaStore.SetQuota(ctx, quota); err != nil {
+		if webcommon.RejectOwnership(w, r, err) {
+			return
+		}
 		slog.ErrorContext(ctx, "could not save member quota", slogx.Error(err))
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
@@ -344,6 +351,9 @@ func (h *Handler) saveApplicationQuota(w http.ResponseWriter, r *http.Request) {
 
 	quota := model.NewQuota(model.QuotaScopeApplication, appID, currency, daily, monthly, yearly)
 	if err := h.quotaStore.SetQuota(ctx, quota); err != nil {
+		if webcommon.RejectOwnership(w, r, err) {
+			return
+		}
 		slog.ErrorContext(ctx, "could not save application quota", slogx.Error(err))
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return

@@ -11,13 +11,43 @@ import (
 )
 
 // SetQuota implements port.QuotaStore.
+// The upsert keeps the identifier of the quota already set on the scope: that
+// row is the one recorded, or the new one when the scope has none.
 func (s *Store) SetQuota(ctx context.Context, quota model.Quota) error {
-	return s.withRetry(ctx, true, func(ctx context.Context, db *gorm.DB) error {
+	track := func(r *mutationRecorder) error {
+		var ids []string
+		if err := r.db.Table("quota").Where("scope = ? AND scope_id = ?", string(quota.Scope()), quota.ScopeID()).Pluck("id", &ids).Error; err != nil {
+			return err
+		}
+		if len(ids) == 0 {
+			return r.track("quota", string(quota.ID()))
+		}
+		return r.trackQuota(quota.Scope(), quota.ScopeID())
+	}
+	return s.recorded(ctx, track, func(ctx context.Context, db *gorm.DB) error {
 		return errors.WithStack(db.Clauses(clause.OnConflict{
 			Columns:   []clause.Column{{Name: "scope"}, {Name: "scope_id"}},
 			UpdateAll: true,
 		}).Create(fromQuota(quota)).Error)
 	})
+}
+
+// GetQuotaByID implements port.ProvisioningBusinessStore.
+func (s *Store) GetQuotaByID(ctx context.Context, id model.QuotaID) (model.Quota, error) {
+	var q Quota
+	err := s.withRetry(ctx, false, func(ctx context.Context, db *gorm.DB) error {
+		if err := db.First(&q, "id = ?", string(id)).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return errors.WithStack(port.ErrNotFound)
+			}
+			return errors.WithStack(err)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &wrappedQuota{&q}, nil
 }
 
 // GetQuota implements port.QuotaStore.

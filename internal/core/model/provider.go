@@ -66,6 +66,12 @@ func (p *BaseProvider) RateLimitConfig() *RateLimitConfig   { return p.rateLimit
 func (p *BaseProvider) BillingMode() BillingMode            { return p.billingMode }
 func (p *BaseProvider) SubscriptionPlan() *SubscriptionPlan { return p.subscriptionPlan }
 
+// SetID gives the provider an identifier chosen by the provisioning client.
+func (p *BaseProvider) SetID(id ProviderID) { p.id = id }
+
+// SetActive enables or disables the provider.
+func (p *BaseProvider) SetActive(active bool) { p.active = active }
+
 func (p *BaseProvider) SetRetryConfig(c *RetryConfig)                   { p.retryConfig = c }
 func (p *BaseProvider) SetRateLimitConfig(c *RateLimitConfig)             { p.rateLimitConfig = c }
 func (p *BaseProvider) SetCloudTier(t int)                                { p.cloudTier = t }

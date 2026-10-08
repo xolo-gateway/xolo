@@ -16,13 +16,7 @@ import (
 var inventoryBatchSize = 500
 
 // inventoryFamilies orders the exported families, parents before children.
-var inventoryFamilies = []string{
-	model.FamilyTenant,
-	model.FamilyTenantDomain,
-	model.FamilyOrganization,
-	model.FamilyMember,
-	model.FamilyOrganizationMembership,
-}
+var inventoryFamilies = append(append([]string{}, model.CommonFamilies...), model.BusinessFamilies...)
 
 // ReadInventory implements port.InventoryReader. The cursor and every page
 // come from one read-only snapshot, which takes no lock: the writes

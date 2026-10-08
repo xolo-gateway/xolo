@@ -82,7 +82,8 @@ N'exposez pas ce port sur un réseau public : réservez-le au réseau d'administ
 
 Chacune de ces ressources peut aussi être lue, listée et suivie via le flux
 d'événements : voir [Lectures, conditions et synchronisation](#lectures-conditions-et-synchronisation).
-`capabilities` liste `conditional_writes`, `events`, `identity` et `reads`.
+`capabilities` liste `adoption`, `business_resources`, `conditional_writes`,
+`events`, `identity`, `ownership` et `reads`, plus `webhooks` lorsqu'ils sont activés.
 
 - **Les identifiants** sont des UUID canoniques en minuscules choisis par le
   client. Toute autre valeur est refusée avec `400 invalid_parameter`. Un membre
@@ -308,8 +309,10 @@ sans représentation ni donnée personnelle :
 ```
 
 - `type` vaut `<resource_type>.created.v1`, `.updated.v1` ou `.deleted.v1`, où
-  `resource_type` est `tenant`, `tenant_domain`, `organization`, `member` ou
-  `organization_membership`. Une suppression ne porte pas d'`etag`.
+  `resource_type` est `tenant`, `tenant_domain`, `organization`, `member`,
+  `organization_membership` ou l'une des familles métier `provider`,
+  `custom_role`, `application`, `quota` et `alert`. Une suppression ne porte
+  pas d'`etag`.
 - **Un événement par ressource et par commit.** Un no-op ou une transaction
   annulée ne publie rien. Dans un commit, les suppressions viennent d'abord,
   des enfants vers les parents, puis les créations et modifications, des
@@ -523,16 +526,84 @@ sont refusés.
 | `GET` | `/v1/xolo/tenants/{tenantID}/organizations/{orgID}/members` | Paginé. |
 | `GET` | `/v1/xolo/tenants/{tenantID}/organizations/{orgID}/members/{membershipID}` | |
 | `PUT` | `/v1/xolo/tenants/{tenantID}/organizations/{orgID}/members/{membershipID}/roles` | Remplacement complet des rôles. |
-| `GET` | `/v1/xolo/tenants/{tenantID}/organizations/{orgID}/roles` | Rôles intégrés et personnalisés. |
-| `POST` | `/v1/xolo/tenants/{tenantID}/organizations/{orgID}/roles` | Rôle personnalisé. |
-| `GET` | `/v1/xolo/tenants/{tenantID}/organizations/{orgID}/roles/{roleID}` | |
-| `PUT` | `/v1/xolo/tenants/{tenantID}/organizations/{orgID}/roles/{roleID}` | Rôles personnalisés uniquement. |
-| `DELETE` | `/v1/xolo/tenants/{tenantID}/organizations/{orgID}/roles/{roleID}` | Rôles personnalisés uniquement. |
+| `GET`, `POST`, `PUT`, `DELETE` | `/v1/xolo/tenants/{tenantID}/organizations/{orgID}/roles[/{key}]` | Rôles personnalisés : voir *Ressources métier*. |
+| `GET` | `/v1/xolo/tenants/{tenantID}/organizations/{orgID}/roles/builtin` | Rôles intégrés. |
 | `GET` | `/v1/xolo/tenants/{tenantID}/users` | `?provider=&subject=` pour une recherche exacte, sinon `?search=&active=&page=&limit=`. |
 | `PUT` | `/v1/xolo/tenants/{tenantID}/users` | Upsert idempotent sur `(provider, subject)` : `201` à la création, `200` sinon. |
 | `GET` | `/v1/xolo/tenants/{tenantID}/users/{userID}` | |
 | `GET` | `/v1/xolo/ownership` | Autorité d'écriture effective de chaque famille |
 | `GET` | `/v1/xolo/adoption/export` | Export d'adoption, flux NDJSON : voir *Autorité d'écriture, adoption et détachement* |
+
+## Ressources métier
+
+Cinq familles propres à Xolo suivent le même contrat que les familles
+communes : lecture unitaire avec `ETag`, listes paginées, `PUT` conditionnels
+et événements. Le manifeste annonce `business_resources`.
+
+| Méthode | Route |
+|---|---|
+| `GET`, `GET`, `PUT` | `/v1/xolo/tenants/{tenantID}/organizations/{orgID}/roles[/{key}]` |
+| `GET`, `GET`, `PUT` | `/v1/xolo/tenants/{tenantID}/organizations/{orgID}/applications[/{key}]` |
+| `GET`, `GET`, `PUT` | `/v1/xolo/tenants/{tenantID}/organizations/{orgID}/alerts[/{key}]` |
+| `GET`, `GET`, `PUT` | `/v1/xolo/tenants/{tenantID}/organizations/{orgID}/providers[/{key}]` |
+| `GET`, `GET`, `PUT` | `/v1/xolo/tenants/{tenantID}/quotas[/{key}]` |
+| `POST` | `/v1/xolo/tenants/{tenantID}/organizations/{orgID}/roles` — crée un rôle personnalisé sous une clé choisie par le serveur ; répond `201` avec `{key, representation, etag}` |
+| `DELETE` | `/v1/xolo/tenants/{tenantID}/organizations/{orgID}/roles/{key}` — supprime un rôle personnalisé (`204`) |
+| `GET` | `/v1/xolo/tenants/{tenantID}/organizations/{orgID}/roles/builtin` — les rôles intégrés, `{"items":[{"id","builtin_kind","name"}]}`, pour `PUT …/members/{membershipID}/roles` |
+
+Les représentations sont en snake_case et complètes : chaque champ est requis,
+`null` seulement là où c'est indiqué.
+
+| Famille | Représentation |
+|---|---|
+| `custom_role` | `{"name","description","permissions":[…],"model_grants":[{"model_id","kind"}]}` |
+| `application` | `{"name","description","active","role_ids":[…]}` |
+| `quota` | `{"scope","scope_id","currency","daily_budget","monthly_budget","yearly_budget"}`, budgets en microcents ou `null` |
+| `alert` | `{"name","description","scope","owner_id","query","aggregation","window_seconds","comparator","threshold","for_seconds","enabled"}` |
+| `provider` | `{"name","type","base_url","active","currency","cloud_tier","billing_mode","subscription_plan","retry_config","rate_limit_config"}`, les trois derniers `null` ou objets, plus `"api_key"` en écriture seule |
+
+- **Clés.** Une nouvelle ressource est créée sous un UUID canonique choisi par
+  le client. Une ressource créée depuis l'interface web garde son identifiant
+  local, accepté en lecture et en mise à jour, jamais en création. Les
+  événements et les éléments de liste portent la clé dans `key.resource_id`,
+  avec `key.organization_id` sauf pour les quotas.
+- **Parents.** Chaque référence est vérifiée dans la transaction de
+  l'écriture. Un grant désigne un modèle de l'organisation (et, pour un modèle
+  LLM, un provider de l'organisation) ; `role_ids` désigne des rôles de
+  l'organisation ; un quota plafonne une organisation du tenant, un membre du
+  tenant ou une application d'une de ses organisations ; le propriétaire d'une
+  alerte est un membre actif de l'organisation, obligatoire pour une alerte
+  `personal`. Un parent absent ou étranger répond `404 parent_not_found` ; une
+  ressource d'une autre organisation ou d'un autre tenant répond
+  `404 not_found`, comme une ressource absente.
+- **Champs immuables.** Le `scope` et le `scope_id` d'un quota, le `scope` et
+  l'`owner_id` d'une alerte ne changent jamais (`409 conflict`). Une portée
+  porte un seul quota : une autre clé sur la même portée répond `409 conflict`.
+- **Normalisation.** Permissions, grants et identifiants de rôles sont triés
+  et dédoublonnés : un rejeu dans un autre ordre est un no-op.
+- **L'état d'exécution reste hors du contrat.** Un `PUT` de quota conserve la
+  consommation déjà enregistrée. L'état d'évaluation d'une alerte n'est ni
+  renvoyé ni publié ; une modification de l'alerte la fait repartir de `ok`,
+  comme une modification dans l'interface web. Les rôles intégrés ne font pas
+  partie de la collection : en écrire un répond `409 conflict`.
+- **Les clés d'API des providers sont en écriture seule.** `api_key` est
+  obligatoire à la création et conservée lorsqu'elle est omise. Elle est
+  chiffrée avec `XOLO_SECRET_KEY` et n'apparaît jamais dans une réponse, une
+  projection, un événement, ni en clair dans l'audit : une rotation ne change
+  aucun `ETag` et ne publie aucun événement, mais l'audit enregistre le
+  changement d'une empreinte du chiffré.
+- **Pas de suppression via le contrat**, hormis les rôles personnalisés : les
+  suppressions arriveront avec le cycle de vie des ressources. Les jetons
+  d'application restent gérés localement.
+- Les écritures de l'interface web publient aussi leurs événements. La
+  migration `202610120001` projette les ressources métier existantes sans
+  publier d'événement ; comme les précédentes, elle exige l'arrêt de tous les
+  serveurs.
+
+Limite connue : le cache de chaque processus garde valides les jetons d'une
+application désactivée jusqu'à l'expiration de ses entrées
+(`XOLO_STORAGE_DATABASE_CACHE_USERS_TTL`) : une écriture via cet écouteur ne
+vide que le cache de son propre processus.
 
 ## Autorité d'écriture, adoption et détachement
 
@@ -542,7 +613,7 @@ invitations), le système de pilotage (cet écouteur), ou les deux.
 
 | Variable | Défaut | Description |
 |---|---|---|
-| `XOLO_OWNERSHIP` | — | Paires `famille=autorité` séparées par des virgules. Familles : `tenant`, `tenant_domain`, `organization`, `member`, `organization_membership`, `subscription`. Autorités : `shared`, `local`, `control_plane`. Les familles omises valent `shared` ; une famille ou une autorité inconnue empêche le démarrage. |
+| `XOLO_OWNERSHIP` | — | Paires `famille=autorité` séparées par des virgules. Familles : `tenant`, `tenant_domain`, `organization`, `member`, `organization_membership`, `subscription`, et les familles métier `provider`, `custom_role`, `application`, `quota`, `alert`. Autorités : `shared`, `local`, `control_plane`. Les familles omises valent `shared` ; une famille ou une autorité inconnue empêche le démarrage. |
 
 ```dotenv
 XOLO_OWNERSHIP=tenant=control_plane,tenant_domain=control_plane,organization=control_plane,member=control_plane,organization_membership=control_plane,subscription=control_plane
@@ -562,8 +633,7 @@ projection que l'écriture modifie, cascades comprises : supprimer un tenant
 dont les membres relèvent d'une autre autorité est refusé en bloc, sans rien
 supprimer ni publier. Les champs hors contrat restent locaux quelle que soit la
 politique : rôles de plateforme, devise et partage de quota d'une organisation,
-rôles personnalisés et ressources métier (fournisseurs, modèles, quotas,
-alertes…). Les comptes d'application et les jetons d'API restent utilisables,
+modèles, modèles virtuels, middlewares et jetons d'application. Les comptes d'application et les jetons d'API restent utilisables,
 et les lectures gardent leurs permissions. `GET /v1/xolo/ownership` renvoie la
 politique effective, et le manifeste annonce `ownership`.
 
@@ -597,13 +667,13 @@ par le système de pilotage :
 ### Export d'adoption
 
 `GET /v1/xolo/adoption/export`, comme `xolo-adoption export`, diffuse en flux
-l'inventaire de l'instance : chaque projection des cinq familles de tous les
-tenants, ressources suspendues comprises, lues sur un même instantané cohérent
+l'inventaire de l'instance : chaque projection des familles communes et métier
+de tous les tenants, ressources suspendues comprises, lues sur un même instantané cohérent
 sans prendre de verrou. Le format, `xolo-adoption/1`, est du NDJSON
 (`application/x-ndjson`) :
 
 ```text
-{"version":"xolo-adoption/1","contract":"0.1.0-draft.1","source":"urn:uuid:…","c0":"…","families":["tenant","tenant_domain","organization","member","organization_membership"]}
+{"version":"xolo-adoption/1","contract":"0.1.0-draft.1","source":"urn:uuid:…","c0":"…","families":["tenant","tenant_domain","organization","member","organization_membership","provider","custom_role","application","quota","alert"]}
 {"family":"tenant","key":{"tenant_id":"…"},"representation":{…},"etag":"W/\"42\""}
 …
 {"count":128,"complete":true,"sha256":"…"}
@@ -621,7 +691,8 @@ sans prendre de verrou. Le format, `xolo-adoption/1`, est du NDJSON
 - Un export interrompu n'a pas de dernière ligne, et la vérification le rejette.
 - L'export contient des emails de contact et des identités déclarées :
   protégez-le comme la base. Il ne contient aucun lien de connexion non déclaré,
-  session, jeton, secret, entrée d'audit ni ressource métier.
+  session, jeton, secret ni entrée d'audit. `verify` accepte aussi un export ne
+  listant que les cinq familles communes, produit avant les familles métier.
 
 `xolo-adoption verify -in <fichier>` (`-in -` lit l'entrée standard) vérifie la
 somme de contrôle, le nombre d'enregistrements, la version et le contrat de
@@ -762,7 +833,11 @@ actuel.
 | `POST …/organizations/{orgID}/members` `{userId \| user, roleIds, builtinRoles}` | `PUT /v1/tenants/{tenantID}/organizations/{orgID}/members/{userID}` `{role, status}` ; rôles personnalisés via `PUT /v1/xolo/…/members/{membershipID}/roles` |
 | `PUT …/members/{membershipID}/roles` | `PUT /v1/xolo/…/members/{membershipID}/roles` (même corps) |
 | `DELETE …/members/{membershipID}` | Supprimée : `PUT …/organizations/{orgID}/members/{userID}` avec `"status": "suspended"` |
-| `…/organizations/{orgID}/roles[/{roleID}]` (toutes méthodes) | `/v1/xolo/…/organizations/{orgID}/roles[/{roleID}]` (mêmes corps) |
+| `…/organizations/{orgID}/roles[/{roleID}]` (toutes méthodes) | `/v1/xolo/…/organizations/{orgID}/roles[/{key}]`, avec les changements ci-dessous |
+| `GET /v1/xolo/…/roles` (intégrés et personnalisés, `roleDTO` en camelCase) | `GET /v1/xolo/…/roles` liste les rôles personnalisés en page de projections ; les rôles intégrés via `GET /v1/xolo/…/roles/builtin` |
+| `GET /v1/xolo/…/roles/{roleID}` (`roleDTO` en camelCase) | Même route : la représentation snake_case et son `ETag` |
+| `POST /v1/xolo/…/roles` `{name, description?, permissions?, modelGrants?}` | Même route, la représentation snake_case complète `{name, description, permissions, model_grants}` ; `201` avec `{key, representation, etag}` |
+| `PUT /v1/xolo/…/roles/{roleID}` partiel `{name?, description?, permissions?, modelGrants?}` | Même route, la représentation complète, `If-Match` optionnel ; crée le rôle sous un UUID de votre choix |
 | `GET`, `PUT /v1/tenants/{tenantID}/users` | `GET`, `PUT /v1/xolo/tenants/{tenantID}/users` (mêmes corps) |
 | `GET /v1/tenants/{tenantID}/users/{userID}` | `GET /v1/xolo/tenants/{tenantID}/users/{userID}` |
 | `PATCH /v1/tenants/{tenantID}/users/{userID}` `{email, displayName, active}` | `PUT /v1/tenants/{tenantID}/members/{userID}` `{email, display_name, tenant_role, status}` |
@@ -884,7 +959,7 @@ En production, utilisez une autorité de certification gérée (Vault, cert-mana
 
 ## Hors périmètre actuel
 
-- Les fournisseurs, modèles LLM, modèles virtuels, middlewares, applications et leurs jetons, quotas, alertes et paramètres d'événements : ils restent gérés par l'interface web.
+- Les modèles LLM, modèles virtuels, middlewares, jetons d'application et paramètres d'événements : ils restent gérés par l'interface web.
 - Les portées par certificat : tout URI autorisé administre l'instance entière.
-- La suppression de tenants, domaines, organisations ou adhésions : suspendez-les.
+- La suppression de tenants, domaines, organisations, adhésions ou ressources métier autres que les rôles personnalisés : suspendez-les ou désactivez-les.
 - Aucune spécification OpenAPI n'est générée à ce jour.

@@ -13,6 +13,7 @@ import (
 	"github.com/xolo-gateway/xolo/internal/core/port"
 	"github.com/xolo-gateway/xolo/internal/core/rbac"
 	httpCtx "github.com/xolo-gateway/xolo/internal/http/context"
+	webcommon "github.com/xolo-gateway/xolo/internal/http/handler/webui/common"
 	common "github.com/xolo-gateway/xolo/internal/http/handler/webui/common/component"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/org/component"
 	"github.com/pkg/errors"
@@ -128,6 +129,9 @@ func (h *Handler) createRole(w http.ResponseWriter, r *http.Request) {
 	role.SetModelGrants(parseModelGrants(r))
 
 	if err := h.roleStore.CreateRole(ctx, role); err != nil {
+		if webcommon.RejectOwnership(w, r, err) {
+			return
+		}
 		slog.ErrorContext(ctx, "could not create role", slogx.Error(err))
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
@@ -190,6 +194,9 @@ func (h *Handler) updateRole(w http.ResponseWriter, r *http.Request) {
 
 	updated := model.UpdateRole(role, opts...)
 	if err := h.roleStore.SaveRole(ctx, updated); err != nil {
+		if webcommon.RejectOwnership(w, r, err) {
+			return
+		}
 		slog.ErrorContext(ctx, "could not save role", slogx.Error(err))
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
@@ -255,6 +262,9 @@ func (h *Handler) toggleRolePermission(w http.ResponseWriter, r *http.Request) {
 
 	updated := model.UpdateRole(role, model.WithRolePermissions(togglePermission(role.Permissions(), code, granted)))
 	if err := h.roleStore.SaveRole(ctx, updated); err != nil {
+		if webcommon.RejectOwnership(w, r, err) {
+			return
+		}
 		slog.ErrorContext(ctx, "could not save role", slogx.Error(err))
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
@@ -325,6 +335,9 @@ func (h *Handler) deleteRole(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.roleStore.DeleteRole(ctx, role.ID()); err != nil {
+		if webcommon.RejectOwnership(w, r, err) {
+			return
+		}
 		if errors.Is(err, port.ErrNotAllowed) {
 			http.Error(w, "Ce rôle ne peut pas être supprimé", http.StatusBadRequest)
 			return

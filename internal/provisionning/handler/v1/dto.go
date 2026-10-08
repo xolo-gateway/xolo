@@ -117,49 +117,6 @@ func newUserRefDTO(user model.User) userRefDTO {
 	}
 }
 
-type modelGrantDTO struct {
-	ModelID string `json:"modelId"`
-	Kind    string `json:"kind"`
-}
-
-type roleDTO struct {
-	ID             string          `json:"id"`
-	OrganizationID string          `json:"organizationId"`
-	Name           string          `json:"name"`
-	Description    string          `json:"description"`
-	Builtin        bool            `json:"builtin"`
-	BuiltinKind    string          `json:"builtinKind,omitempty"`
-	Permissions    []string        `json:"permissions"`
-	ModelGrants    []modelGrantDTO `json:"modelGrants"`
-	CreatedAt      time.Time       `json:"createdAt"`
-	UpdatedAt      time.Time       `json:"updatedAt"`
-}
-
-func newRoleDTO(role model.Role) roleDTO {
-	permissions := role.Permissions()
-	if permissions == nil {
-		permissions = []string{}
-	}
-
-	grants := make([]modelGrantDTO, 0, len(role.ModelGrants()))
-	for _, grant := range role.ModelGrants() {
-		grants = append(grants, modelGrantDTO{ModelID: grant.ModelID, Kind: grant.Kind})
-	}
-
-	return roleDTO{
-		ID:             string(role.ID()),
-		OrganizationID: string(role.OrgID()),
-		Name:           role.Name(),
-		Description:    role.Description(),
-		Builtin:        role.Builtin(),
-		BuiltinKind:    role.BuiltinKind(),
-		Permissions:    permissions,
-		ModelGrants:    grants,
-		CreatedAt:      role.CreatedAt(),
-		UpdatedAt:      role.UpdatedAt(),
-	}
-}
-
 // roleRefDTO identifies a role without its permissions. Memberships are listed
 // with role references because the store does not preload role permissions in
 // that context: returning an empty permission list there would be misleading.
@@ -288,26 +245,6 @@ type updateOrganizationRequest struct {
 type setMemberRolesRequest struct {
 	RoleIDs      []string `json:"roleIds"`
 	BuiltinRoles []string `json:"builtinRoles"`
-}
-
-type roleRequest struct {
-	Name        *string         `json:"name"`
-	Description *string         `json:"description"`
-	Permissions []string        `json:"permissions"`
-	ModelGrants []modelGrantDTO `json:"modelGrants"`
-}
-
-func toModelGrants(grants []modelGrantDTO) []model.ModelGrant {
-	if grants == nil {
-		return nil
-	}
-
-	converted := make([]model.ModelGrant, 0, len(grants))
-	for _, grant := range grants {
-		converted = append(converted, model.ModelGrant{ModelID: grant.ModelID, Kind: grant.Kind})
-	}
-
-	return converted
 }
 
 func toRoleIDs(ids []string) []model.RoleID {

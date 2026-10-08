@@ -32,6 +32,8 @@ type ProvisioningService struct {
 	tx port.ProvisioningTx
 	// reader serves the projections and the event feed.
 	reader port.ProvisioningReader
+	// secretKey encrypts the provider credentials.
+	secretKey string
 	// inventory serves the adoption export.
 	inventory port.InventoryReader
 	// ownership is the effective write authority of each family.
@@ -954,124 +956,6 @@ func (s *ProvisioningService) GetRole(ctx context.Context, tenantID model.Tenant
 	}
 
 	return role, nil
-}
-
-type RoleParams struct {
-	Name        *string
-	Description *string
-	Permissions []string
-	ModelGrants []model.ModelGrant
-}
-
-func (s *ProvisioningService) CreateRole(ctx context.Context, tenantID model.TenantID, orgID model.OrgID, params RoleParams) (model.Role, error) {
-	if !s.bound {
-		ctx = model.EnsureActor(ctx)
-		var result model.Role
-		err := s.transaction(ctx, func(tx *ProvisioningService) error {
-			var err error
-			result, err = tx.CreateRole(ctx, tenantID, orgID, params)
-			return err
-		})
-		if err != nil {
-			return nil, err
-		}
-		return result, nil
-	}
-
-	if _, err := s.GetOrganization(ctx, tenantID, orgID); err != nil {
-		return nil, errors.WithStack(err)
-	}
-
-	if params.Name == nil || strings.TrimSpace(*params.Name) == "" {
-		return nil, errors.Wrap(port.ErrInvalid, "name is required")
-	}
-
-	if err := validatePermissions(params.Permissions); err != nil {
-		return nil, errors.WithStack(err)
-	}
-	if err := validateModelGrants(params.ModelGrants); err != nil {
-		return nil, errors.WithStack(err)
-	}
-
-	description := ""
-	if params.Description != nil {
-		description = strings.TrimSpace(*params.Description)
-	}
-
-	role := model.NewRole(orgID, strings.TrimSpace(*params.Name), description)
-	role.SetPermissions(params.Permissions)
-	role.SetModelGrants(params.ModelGrants)
-
-	if err := s.roleStore.CreateRole(ctx, role); err != nil {
-		return nil, errors.WithStack(err)
-	}
-
-	return role, nil
-}
-
-// UpdateRole updates a custom role. Builtin roles are immutable: their
-// permissions are part of the domain definition and the rest of the codebase
-// relies on them.
-func (s *ProvisioningService) UpdateRole(ctx context.Context, tenantID model.TenantID, orgID model.OrgID, roleID model.RoleID, params RoleParams) (model.Role, error) {
-	if !s.bound {
-		ctx = model.EnsureActor(ctx)
-		var result model.Role
-		err := s.transaction(ctx, func(tx *ProvisioningService) error {
-			var err error
-			result, err = tx.UpdateRole(ctx, tenantID, orgID, roleID, params)
-			return err
-		})
-		if err != nil {
-			return nil, err
-		}
-		return result, nil
-	}
-
-	if _, err := s.GetOrganization(ctx, tenantID, orgID); err != nil {
-		return nil, err
-	}
-
-	role, err := s.GetRole(ctx, tenantID, orgID, roleID)
-	if err != nil {
-		return nil, errors.WithStack(err)
-	}
-
-	if role.Builtin() {
-		return nil, errors.Wrapf(port.ErrNotAllowed, "builtin role %q can not be modified", role.Name())
-	}
-
-	opts := make([]model.RoleOption, 0, 4)
-
-	if params.Name != nil {
-		name := strings.TrimSpace(*params.Name)
-		if name == "" {
-			return nil, errors.Wrap(port.ErrInvalid, "name can not be empty")
-		}
-		opts = append(opts, model.WithRoleName(name))
-	}
-	if params.Description != nil {
-		opts = append(opts, model.WithRoleDescription(strings.TrimSpace(*params.Description)))
-	}
-	if params.Permissions != nil {
-		if err := validatePermissions(params.Permissions); err != nil {
-			return nil, errors.WithStack(err)
-		}
-		opts = append(opts, model.WithRolePermissions(params.Permissions))
-	}
-	if params.ModelGrants != nil {
-		if err := validateModelGrants(params.ModelGrants); err != nil {
-			return nil, errors.WithStack(err)
-		}
-		opts = append(opts, model.WithRoleModelGrants(params.ModelGrants))
-	}
-
-	updated := model.UpdateRole(role, opts...)
-
-	if err := s.roleStore.SaveRole(ctx, updated); err != nil {
-		return nil, errors.WithStack(err)
-	}
-
-	return updated, nil
 }
 
 func (s *ProvisioningService) DeleteRole(ctx context.Context, tenantID model.TenantID, orgID model.OrgID, roleID model.RoleID) error {

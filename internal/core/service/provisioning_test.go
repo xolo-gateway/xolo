@@ -5,6 +5,7 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/google/uuid"
 	_ "github.com/ncruces/go-sqlite3/embed"
 	"github.com/ncruces/go-sqlite3/gormlite"
 	"github.com/pkg/errors"
@@ -544,31 +545,38 @@ func TestMembers(t *testing.T) {
 func TestRoles(t *testing.T) {
 	ctx := context.Background()
 
+	putRole := func(svc *service.ProvisioningService, tenantID model.TenantID, orgID model.OrgID, key string, v model.CustomRoleSettings) (model.CommonItem, error) {
+		return svc.PutCustomRole(ctx, tenantID, orgID, key, model.MatchCondition{}, v)
+	}
+	role := func(name string, permissions ...string) model.CustomRoleSettings {
+		return model.CustomRoleSettings{Name: name, Description: "", Permissions: append([]string{}, permissions...), ModelGrants: []model.ModelGrantSettings{}}
+	}
+
 	t.Run("creates and updates a custom role", func(t *testing.T) {
 		svc, _, testTenantID := newTestService(t)
 
 		org := createOrganization(t, svc, testTenantID, "acme", nil)
+		key := uuid.NewString()
 
-		role, err := svc.CreateRole(ctx, testTenantID, org.Org.ID(), service.RoleParams{
-			Name:        strPtr("auditor"),
-			Description: strPtr("Read-only access"),
-			Permissions: []string{string(rbac.PermUsageRead)},
-		})
+		created, err := putRole(svc, testTenantID, org.Org.ID(), key, role("auditor", string(rbac.PermUsageRead)))
 		if err != nil {
 			t.Fatalf("create role: %v", err)
 		}
+		again, err := putRole(svc, testTenantID, org.Org.ID(), key, role("auditor", string(rbac.PermUsageRead)))
+		if err != nil || again.ETag != created.ETag {
+			t.Fatalf("repeated put: %v, etag %s then %s", err, created.ETag, again.ETag)
+		}
 
-		updated, err := svc.UpdateRole(ctx, testTenantID, org.Org.ID(), role.ID(), service.RoleParams{
-			Permissions: []string{string(rbac.PermUsageRead), string(rbac.PermMembersRead)},
-		})
+		updated, err := putRole(svc, testTenantID, org.Org.ID(), key, role("auditor", string(rbac.PermMembersRead), string(rbac.PermUsageRead), string(rbac.PermUsageRead)))
 		if err != nil {
 			t.Fatalf("update role: %v", err)
 		}
-		if len(updated.Permissions()) != 2 {
-			t.Errorf("permissions: got %v", updated.Permissions())
+		stored, err := svc.GetRole(ctx, testTenantID, org.Org.ID(), model.RoleID(key))
+		if err != nil || len(stored.Permissions()) != 2 || updated.ETag == created.ETag {
+			t.Errorf("permissions: got %v (%v), etag %s", stored, err, updated.ETag)
 		}
 
-		if err := svc.DeleteRole(ctx, testTenantID, org.Org.ID(), role.ID()); err != nil {
+		if err := svc.DeleteRole(ctx, testTenantID, org.Org.ID(), model.RoleID(key)); err != nil {
 			t.Fatalf("delete role: %v", err)
 		}
 	})
@@ -578,18 +586,14 @@ func TestRoles(t *testing.T) {
 
 		org := createOrganization(t, svc, testTenantID, "acme", nil)
 
-		_, err := svc.CreateRole(ctx, testTenantID, org.Org.ID(), service.RoleParams{
-			Name:        strPtr("bogus"),
-			Permissions: []string{"not:a:permission"},
-		})
+		_, err := putRole(svc, testTenantID, org.Org.ID(), uuid.NewString(), role("bogus", "not:a:permission"))
 		if !errors.Is(err, port.ErrInvalid) {
 			t.Errorf("permission: got %v, want %v", err, port.ErrInvalid)
 		}
 
-		_, err = svc.CreateRole(ctx, testTenantID, org.Org.ID(), service.RoleParams{
-			Name:        strPtr("bogus"),
-			ModelGrants: []model.ModelGrant{{ModelID: "m1", Kind: "wat"}},
-		})
+		v := role("bogus")
+		v.ModelGrants = []model.ModelGrantSettings{{ModelID: "m1", Kind: "wat"}}
+		_, err = putRole(svc, testTenantID, org.Org.ID(), uuid.NewString(), v)
 		if !errors.Is(err, port.ErrInvalid) {
 			t.Errorf("grant kind: got %v, want %v", err, port.ErrInvalid)
 		}
@@ -600,11 +604,11 @@ func TestRoles(t *testing.T) {
 
 		org := createOrganization(t, svc, testTenantID, "acme", nil)
 
-		if _, err := svc.CreateRole(ctx, testTenantID, org.Org.ID(), service.RoleParams{Name: strPtr("auditor")}); err != nil {
+		if _, err := putRole(svc, testTenantID, org.Org.ID(), uuid.NewString(), role("auditor")); err != nil {
 			t.Fatalf("create role: %v", err)
 		}
 
-		_, err := svc.CreateRole(ctx, testTenantID, org.Org.ID(), service.RoleParams{Name: strPtr("auditor")})
+		_, err := putRole(svc, testTenantID, org.Org.ID(), uuid.NewString(), role("auditor"))
 		if !errors.Is(err, port.ErrAlreadyExists) {
 			t.Errorf("error: got %v, want %v", err, port.ErrAlreadyExists)
 		}
@@ -630,7 +634,7 @@ func TestRoles(t *testing.T) {
 			t.Fatal("no builtin owner role found")
 		}
 
-		if _, err := svc.UpdateRole(ctx, testTenantID, org.Org.ID(), builtin.ID(), service.RoleParams{Name: strPtr("hacked")}); !errors.Is(err, port.ErrNotAllowed) {
+		if _, err := putRole(svc, testTenantID, org.Org.ID(), string(builtin.ID()), role("hacked")); !errors.Is(err, port.ErrNotAllowed) {
 			t.Errorf("update: got %v, want %v", err, port.ErrNotAllowed)
 		}
 		if err := svc.DeleteRole(ctx, testTenantID, org.Org.ID(), builtin.ID()); !errors.Is(err, port.ErrNotAllowed) {

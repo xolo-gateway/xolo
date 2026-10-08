@@ -19,6 +19,7 @@ import (
 	"github.com/xolo-gateway/xolo/internal/core/port"
 	"github.com/xolo-gateway/xolo/internal/crypto"
 	httpCtx "github.com/xolo-gateway/xolo/internal/http/context"
+	webcommon "github.com/xolo-gateway/xolo/internal/http/handler/webui/common"
 	common "github.com/xolo-gateway/xolo/internal/http/handler/webui/common/component"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/org/component"
 
@@ -155,6 +156,9 @@ func (h *Handler) createProvider(w http.ResponseWriter, r *http.Request) {
 	// which shows it under !IsNew only), so no plan field is ever posted here:
 	// a subscription provider is created without a plan and gets one on edit.
 	if err := h.providerStore.CreateProvider(ctx, p); err != nil {
+		if webcommon.RejectOwnership(w, r, err) {
+			return
+		}
 		slog.ErrorContext(ctx, "could not create provider", slogx.Error(err))
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
@@ -325,6 +329,9 @@ func (h *Handler) updateProvider(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.providerStore.SaveProvider(ctx, updated); err != nil {
+		if webcommon.RejectOwnership(w, r, err) {
+			return
+		}
 		slog.ErrorContext(ctx, "could not save provider", slogx.Error(err))
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
@@ -344,6 +351,9 @@ func (h *Handler) deleteProvider(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.providerStore.DeleteProvider(ctx, model.ProviderID(providerID)); err != nil {
+		if webcommon.RejectOwnership(w, r, err) {
+			return
+		}
 		if errors.Is(err, port.ErrNotFound) {
 			http.Error(w, "Provider not found", http.StatusNotFound)
 			return

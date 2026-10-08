@@ -66,6 +66,9 @@ func (r *BaseRole) ModelGrants() []ModelGrant { return r.modelGrants }
 func (r *BaseRole) CreatedAt() time.Time      { return r.createdAt }
 func (r *BaseRole) UpdatedAt() time.Time      { return r.updatedAt }
 
+// SetID gives the role an identifier chosen by the provisioning client.
+func (r *BaseRole) SetID(id RoleID) { r.id = id }
+
 func (r *BaseRole) SetPermissions(permissions []string)  { r.permissions = permissions }
 func (r *BaseRole) SetModelGrants(grants []ModelGrant)    { r.modelGrants = grants }
 

@@ -1,6 +1,7 @@
 package model
 
 import (
+	"slices"
 	"strings"
 	"time"
 )
@@ -117,9 +118,7 @@ func ValidWebhookEvent(typ string) bool {
 	if !ok {
 		return false
 	}
-	switch family {
-	case FamilyTenant, FamilyTenantDomain, FamilyOrganization, FamilyMember, FamilyOrganizationMembership:
-	default:
+	if !slices.Contains(CommonFamilies, family) && !IsBusinessFamily(family) {
 		return false
 	}
 	switch change {

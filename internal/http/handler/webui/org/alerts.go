@@ -13,6 +13,7 @@ import (
 	"github.com/xolo-gateway/xolo/internal/core/model"
 	"github.com/xolo-gateway/xolo/internal/core/rbac"
 	httpCtx "github.com/xolo-gateway/xolo/internal/http/context"
+	webcommon "github.com/xolo-gateway/xolo/internal/http/handler/webui/common"
 	common "github.com/xolo-gateway/xolo/internal/http/handler/webui/common/component"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/org/component"
 )
@@ -174,6 +175,9 @@ func (h *Handler) createAlert(w http.ResponseWriter, r *http.Request) {
 	)
 
 	if err := h.alertStore.CreateAlert(ctx, alert); err != nil {
+		if webcommon.RejectOwnership(w, r, err) {
+			return
+		}
 		slog.ErrorContext(ctx, "could not create alert", slogx.Error(err))
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
@@ -230,6 +234,9 @@ func (h *Handler) updateAlert(w http.ResponseWriter, r *http.Request) {
 	updated.SetPendingSince(nil)
 
 	if err := h.alertStore.UpdateAlert(ctx, updated); err != nil {
+		if webcommon.RejectOwnership(w, r, err) {
+			return
+		}
 		slog.ErrorContext(ctx, "could not update alert", slogx.Error(err))
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
@@ -263,6 +270,9 @@ func (h *Handler) deleteAlert(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.alertStore.DeleteAlert(ctx, alertID); err != nil {
+		if webcommon.RejectOwnership(w, r, err) {
+			return
+		}
 		slog.ErrorContext(ctx, "could not delete alert", slogx.Error(err))
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return

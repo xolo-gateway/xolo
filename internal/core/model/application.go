@@ -91,6 +91,9 @@ func NewApplication(orgID OrgID, name, description string, active bool) *BaseApp
 	}
 }
 
+// SetID gives the application an identifier chosen by the provisioning client.
+func (a *BaseApplication) SetID(id ApplicationID) { a.id = id }
+
 func (a *BaseApplication) SetName(name string)        { a.name = name }
 func (a *BaseApplication) SetDescription(desc string) { a.description = desc }
 func (a *BaseApplication) SetActive(active bool)      { a.active = active }

@@ -11,3 +11,6 @@ func SetInventoryBatchSize(n int) func() {
 	inventoryBatchSize = n
 	return func() { inventoryBatchSize = previous }
 }
+
+// MigrateBusinessProjections exposes the business backfill to the tests.
+var MigrateBusinessProjections = migrateBusinessProjections

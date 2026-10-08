@@ -31,7 +31,11 @@ type MutationAudit struct {
 
 type mutationKey struct{ kind, id string }
 
-var resourceTables = map[string]string{"tenant": "tenants", "organization": "organizations", "user": "users", "membership": "memberships", "role": "roles", "domain": "domains"}
+var resourceTables = map[string]string{
+	"tenant": "tenants", "organization": "organizations", "user": "users", "membership": "memberships", "role": "roles", "domain": "domains",
+	// The quota table keeps the singular name GORM gave it.
+	"application": "applications", "quota": "quota", "alert": "alerts", "provider": "providers",
+}
 
 // resourceKeys names the key column of the resources not keyed by id.
 var resourceKeys = map[string]string{"domain": "hostname"}
@@ -51,6 +55,13 @@ var mutationColumns = map[string]string{
 	"membership":   "id, org_id, user_id, status",
 	"role":         "id, org_id, name, description, builtin, builtin_kind",
 	"domain":       "hostname, tenant_id, status",
+	"application":  "id, org_id, name, description, active",
+	"quota":        "id, scope, scope_id, currency, daily_budget, monthly_budget, yearly_budget",
+	// The evaluation state (state, pending_since, last_evaluated_at) is left
+	// out: the evaluator rewrites it on every tick, outside the recorder.
+	"alert": "id, org_id, owner_id, scope, name, description, query, aggregation, window_seconds, comparator, threshold, for_seconds, enabled",
+	// api_key is replaced by its fingerprint before leaving the snapshot.
+	"provider": "id, org_id, name, type, base_url, api_key, active, currency, cloud_tier, billing_mode, subscription_plan, retry_config, rate_limit_config",
 }
 
 // mutationRecorder keeps the state of every resource a transaction touches,
@@ -159,12 +170,15 @@ func mutationSnapshot(db *gorm.DB, key mutationKey) ([]byte, error) {
 			row[k] = string(b)
 		}
 	}
-	for _, column := range []string{"active", "builtin", "share_quota_equally"} {
+	for _, column := range []string{"active", "builtin", "share_quota_equally", "enabled"} {
 		if value, ok := row[column]; ok {
 			row[column] = fmt.Sprint(value) == "true" || fmt.Sprint(value) == "1"
 		}
 	}
-	if key.kind == "membership" || key.kind == "role" {
+	if err := businessSnapshot(db, key, row); err != nil {
+		return nil, err
+	}
+	if key.kind == "membership" || key.kind == "role" || key.kind == "application" || key.kind == "alert" || key.kind == "provider" {
 		var tenantID string
 		if err := db.Table("organizations").Where("id = ?", row["org_id"]).Pluck("tenant_id", &tenantID).Error; err != nil {
 			return nil, err
@@ -280,10 +294,35 @@ func (r *mutationRecorder) trackDependents(kind, id string) error {
 		if err := trackIDs("membership", "org_id"); err != nil {
 			return err
 		}
-		return trackIDs("role", "org_id")
+		if err := trackIDs("role", "org_id"); err != nil {
+			return err
+		}
+		for _, resource := range []string{"application", "alert", "provider"} {
+			if err := trackIDs(resource, "org_id"); err != nil {
+				return err
+			}
+		}
+		return r.trackQuota(model.QuotaScopeOrg, id)
 	case "user":
-		return trackIDs("membership", "user_id")
+		if err := trackIDs("membership", "user_id"); err != nil {
+			return err
+		}
+		if err := trackIDs("alert", "owner_id"); err != nil {
+			return err
+		}
+		return r.trackQuota(model.QuotaScopeUser, id)
+	case "application":
+		return r.trackQuota(model.QuotaScopeApplication, id)
 	case "role":
+		var apps []string
+		if err := r.db.Table("application_roles").Where("role_id = ?", id).Order("application_id").Pluck("application_id", &apps).Error; err != nil {
+			return err
+		}
+		for _, app := range apps {
+			if err := r.track("application", app); err != nil {
+				return err
+			}
+		}
 		var ids []string
 		if err := r.db.Table("membership_roles").Where("role_id = ?", id).Order("membership_id").Pluck("membership_id", &ids).Error; err != nil {
 			return err

@@ -258,7 +258,7 @@ func TestManifest(t *testing.T) {
 	assertStatus(t, rec, http.StatusOK)
 
 	body := decodeBody(t, rec)
-	want := map[string]any{"name": "Xolo", "version": testVersion, "contract_version": v1.ContractVersion, "capabilities": []any{"adoption", "conditional_writes", "events", "identity", "ownership", "reads"}}
+	want := map[string]any{"name": "Xolo", "version": testVersion, "contract_version": v1.ContractVersion, "capabilities": []any{"adoption", "conditional_writes", "events", "identity", "ownership", "reads", "business_resources"}}
 	for key, value := range want {
 		if !reflect.DeepEqual(body[key], value) {
 			t.Errorf("%s: got %v, want %v", key, body[key], value)
@@ -344,11 +344,11 @@ func TestCommonPutsAreIdempotent(t *testing.T) {
 		}
 
 		// The organization was created with its builtin roles.
-		rec = call(t, env.handler, http.MethodGet, "/v1/xolo/tenants/"+tenantID+"/organizations/"+orgID+"/roles", nil)
+		rec = call(t, env.handler, http.MethodGet, "/v1/xolo/tenants/"+tenantID+"/organizations/"+orgID+"/roles/builtin", nil)
 		assertStatus(t, rec, http.StatusOK)
 		kinds := map[string]bool{}
 		for _, raw := range decodeBody(t, rec)["items"].([]any) {
-			if kind, _ := raw.(map[string]any)["builtinKind"].(string); kind != "" {
+			if kind, _ := raw.(map[string]any)["builtin_kind"].(string); kind != "" {
 				kinds[kind] = true
 			}
 		}
@@ -1059,9 +1059,9 @@ func TestMemberEndpoints(t *testing.T) {
 		orgID, _ := createOrganization(t, env.handler, env.tenantID, "acme", true)
 		userID, membershipID := addOrgMember(t, env.handler, env.tenantID, orgID, "member@acme.tld", "member")
 
-		rec := call(t, env.handler, http.MethodPost, orgBase+"/"+orgID+"/roles", map[string]any{"name": "auditor"})
+		rec := call(t, env.handler, http.MethodPost, orgBase+"/"+orgID+"/roles", roleBody("auditor"))
 		assertStatus(t, rec, http.StatusCreated)
-		customID := decodeBody(t, rec)["id"].(string)
+		customID := createdKey(t, rec)
 
 		rec = call(t, env.handler, http.MethodPut, orgBase+"/"+orgID+"/members/"+membershipID+"/roles",
 			map[string]any{"builtinRoles": []string{"member"}, "roleIds": []string{customID}})
@@ -1095,7 +1095,7 @@ func TestMemberEndpoints(t *testing.T) {
 		acmeID, _ := createOrganization(t, env.handler, env.tenantID, "acme", true)
 		otherID, _ := createOrganization(t, env.handler, env.tenantID, "other", false)
 
-		rec := call(t, env.handler, http.MethodGet, orgBase+"/"+otherID+"/roles", nil)
+		rec := call(t, env.handler, http.MethodGet, orgBase+"/"+otherID+"/roles/builtin", nil)
 		assertStatus(t, rec, http.StatusOK)
 		otherRoleID := decodeBody(t, rec)["items"].([]any)[0].(map[string]any)["id"].(string)
 
@@ -1138,6 +1138,22 @@ func TestMemberEndpoints(t *testing.T) {
 	})
 }
 
+// roleBody is a complete custom role representation.
+func roleBody(name string, permissions ...string) map[string]any {
+	return map[string]any{"name": name, "description": "", "permissions": append([]string{}, permissions...), "model_grants": []any{}}
+}
+
+// createdKey reads the key of a resource created by POST.
+func createdKey(t *testing.T, rec *httptest.ResponseRecorder) string {
+	t.Helper()
+	key, _ := decodeBody(t, rec)["key"].(map[string]any)
+	id, _ := key["resource_id"].(string)
+	if id == "" {
+		t.Fatalf("no resource_id in %s", rec.Body.String())
+	}
+	return id
+}
+
 func TestRoleEndpoints(t *testing.T) {
 	t.Run("creates, updates and deletes a custom role", func(t *testing.T) {
 		env := newEnv(t)
@@ -1145,24 +1161,24 @@ func TestRoleEndpoints(t *testing.T) {
 
 		orgID, _ := createOrganization(t, env.handler, env.tenantID, "acme", false)
 
-		rec := call(t, env.handler, http.MethodPost, orgBase+"/"+orgID+"/roles", map[string]any{
-			"name":        "auditor",
-			"permissions": []string{"usage:read"},
-		})
+		rec := call(t, env.handler, http.MethodPost, orgBase+"/"+orgID+"/roles", roleBody("auditor", "usage:read"))
 		assertStatus(t, rec, http.StatusCreated)
-
-		roleID := decodeBody(t, rec)["id"].(string)
+		roleID := createdKey(t, rec)
+		etag := rec.Header().Get("ETag")
 
 		rec = call(t, env.handler, http.MethodGet, orgBase+"/"+orgID+"/roles/"+roleID, nil)
 		assertStatus(t, rec, http.StatusOK)
+		if rec.Header().Get("ETag") != etag {
+			t.Errorf("etag: got %s, want %s", rec.Header().Get("ETag"), etag)
+		}
 
-		rec = call(t, env.handler, http.MethodPut, orgBase+"/"+orgID+"/roles/"+roleID, map[string]any{
-			"permissions": []string{"usage:read", "members:read"},
-		})
+		rec = callWithHeaders(t, env.handler, http.MethodPut, orgBase+"/"+orgID+"/roles/"+roleID, ifMatchHeader(etag), roleBody("auditor", "usage:read", "members:read"))
 		assertStatus(t, rec, http.StatusOK)
 		if permissions := decodeBody(t, rec)["permissions"].([]any); len(permissions) != 2 {
 			t.Errorf("permissions: got %v", permissions)
 		}
+		rec = callWithHeaders(t, env.handler, http.MethodPut, orgBase+"/"+orgID+"/roles/"+roleID, ifMatchHeader(etag), roleBody("auditor"))
+		assertStatus(t, rec, http.StatusPreconditionFailed)
 
 		rec = call(t, env.handler, http.MethodDelete, orgBase+"/"+orgID+"/roles/"+roleID, nil)
 		assertStatus(t, rec, http.StatusNoContent)
@@ -1171,18 +1187,39 @@ func TestRoleEndpoints(t *testing.T) {
 		assertStatus(t, rec, http.StatusNotFound)
 	})
 
-	t.Run("refuses an unknown permission", func(t *testing.T) {
+	t.Run("creates a role under a key chosen by the client", func(t *testing.T) {
+		env := newEnv(t)
+		orgBase := env.xoloBase + "/organizations"
+		orgID, _ := createOrganization(t, env.handler, env.tenantID, "acme", false)
+		key := uuid.NewString()
+
+		rec := call(t, env.handler, http.MethodPut, orgBase+"/"+orgID+"/roles/"+key, roleBody("auditor"))
+		assertStatus(t, rec, http.StatusOK)
+		rec = call(t, env.handler, http.MethodGet, orgBase+"/"+orgID+"/roles", nil)
+		assertStatus(t, rec, http.StatusOK)
+		items := decodeBody(t, rec)["items"].([]any)
+		if len(items) != 1 {
+			t.Fatalf("custom roles: got %v", items)
+		}
+	})
+
+	t.Run("refuses an unknown permission or an incomplete representation", func(t *testing.T) {
 		env := newEnv(t)
 		orgBase := env.xoloBase + "/organizations"
 
 		orgID, _ := createOrganization(t, env.handler, env.tenantID, "acme", false)
 
-		rec := call(t, env.handler, http.MethodPost, orgBase+"/"+orgID+"/roles", map[string]any{
-			"name":        "bogus",
-			"permissions": []string{"not:a:permission"},
-		})
+		rec := call(t, env.handler, http.MethodPost, orgBase+"/"+orgID+"/roles", roleBody("bogus", "not:a:permission"))
 		assertStatus(t, rec, http.StatusUnprocessableEntity)
 		assertErrorCode(t, rec, "unprocessable")
+
+		rec = call(t, env.handler, http.MethodPost, orgBase+"/"+orgID+"/roles", map[string]any{"name": "partial"})
+		assertStatus(t, rec, http.StatusBadRequest)
+		assertErrorCode(t, rec, "invalid_representation")
+
+		rec = call(t, env.handler, http.MethodPut, orgBase+"/"+orgID+"/roles/not-a-key", roleBody("bogus"))
+		assertStatus(t, rec, http.StatusBadRequest)
+		assertErrorCode(t, rec, "invalid_parameter")
 	})
 
 	t.Run("refuses a duplicate role name", func(t *testing.T) {
@@ -1191,10 +1228,10 @@ func TestRoleEndpoints(t *testing.T) {
 
 		orgID, _ := createOrganization(t, env.handler, env.tenantID, "acme", false)
 
-		rec := call(t, env.handler, http.MethodPost, orgBase+"/"+orgID+"/roles", map[string]any{"name": "auditor"})
+		rec := call(t, env.handler, http.MethodPost, orgBase+"/"+orgID+"/roles", roleBody("auditor"))
 		assertStatus(t, rec, http.StatusCreated)
 
-		rec = call(t, env.handler, http.MethodPost, orgBase+"/"+orgID+"/roles", map[string]any{"name": "auditor"})
+		rec = call(t, env.handler, http.MethodPost, orgBase+"/"+orgID+"/roles", roleBody("auditor"))
 		assertStatus(t, rec, http.StatusConflict)
 		assertErrorCode(t, rec, "conflict")
 	})
@@ -1205,13 +1242,13 @@ func TestRoleEndpoints(t *testing.T) {
 
 		orgID, _ := createOrganization(t, env.handler, env.tenantID, "acme", false)
 
-		rec := call(t, env.handler, http.MethodGet, orgBase+"/"+orgID+"/roles", nil)
+		rec := call(t, env.handler, http.MethodGet, orgBase+"/"+orgID+"/roles/builtin", nil)
 		assertStatus(t, rec, http.StatusOK)
 
 		var builtinID string
 		for _, raw := range decodeBody(t, rec)["items"].([]any) {
 			role := raw.(map[string]any)
-			if role["builtinKind"] == "owner" {
+			if role["builtin_kind"] == "owner" {
 				builtinID = role["id"].(string)
 			}
 		}
@@ -1219,9 +1256,12 @@ func TestRoleEndpoints(t *testing.T) {
 			t.Fatal("no builtin owner role found")
 		}
 
-		rec = call(t, env.handler, http.MethodPut, orgBase+"/"+orgID+"/roles/"+builtinID, map[string]any{"name": "hacked"})
+		rec = call(t, env.handler, http.MethodPut, orgBase+"/"+orgID+"/roles/"+builtinID, roleBody("hacked"))
 		assertStatus(t, rec, http.StatusConflict)
 		assertErrorCode(t, rec, "conflict")
+
+		rec = call(t, env.handler, http.MethodGet, orgBase+"/"+orgID+"/roles/"+builtinID, nil)
+		assertStatus(t, rec, http.StatusNotFound)
 
 		rec = call(t, env.handler, http.MethodDelete, orgBase+"/"+orgID+"/roles/"+builtinID, nil)
 		assertStatus(t, rec, http.StatusConflict)
@@ -1583,8 +1623,8 @@ func TestRemovedRoutes(t *testing.T) {
 
 	rec = call(t, env.handler, http.MethodGet, env.xoloBase+orgPath+"/roles", nil)
 	assertStatus(t, rec, http.StatusOK)
-	if total := decodeBody(t, rec)["total"]; total != float64(3) {
-		t.Errorf("roles: got %v, want the 3 builtin roles", total)
+	if items := decodeBody(t, rec)["items"].([]any); len(items) != 0 {
+		t.Errorf("custom roles: got %v, want none", items)
 	}
 
 	rec = call(t, env.handler, http.MethodGet, env.xoloBase+"/users", nil)

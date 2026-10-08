@@ -485,7 +485,7 @@ func TestIdentityUnlinkInvalidatesCache(t *testing.T) {
 		ctx := t.Context()
 		store := newIdentityStore(t, db)
 		cached := cache.NewUserStore(store, 100, time.Hour)
-		transactions := cache.NewProvisioningTransaction(store, cached)
+		transactions := cache.NewProvisioningTransaction(store, cached, nil)
 		svc := service.NewProvisioningService(store, store, cached, store, service.WithProvisioningTransaction(transactions), service.WithProvisioningReader(store))
 		resolver := service.NewIdentityResolver(cached, store, transactions)
 

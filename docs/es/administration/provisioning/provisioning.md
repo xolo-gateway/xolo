@@ -70,7 +70,8 @@ Los webhooks tienen sus propias variables, véase [Webhooks](#webhooks).
 
 Cada uno de estos recursos también puede leerse, listarse y seguirse mediante
 el flujo de eventos: consulte [Lecturas, condiciones y sincronización](#lecturas-condiciones-y-sincronizacion).
-`capabilities` enumera `conditional_writes`, `events`, `identity` y `reads`.
+`capabilities` enumera `adoption`, `business_resources`, `conditional_writes`,
+`events`, `identity`, `ownership` y `reads`, más `webhooks` cuando están activados.
 
 - **Los identificadores** son UUID canónicos en minúsculas elegidos por el
   cliente. Cualquier otro valor se rechaza con `400 invalid_parameter`. Un
@@ -298,8 +299,10 @@ sin representación ni datos personales:
 ```
 
 - `type` es `<resource_type>.created.v1`, `.updated.v1` o `.deleted.v1`, donde
-  `resource_type` es `tenant`, `tenant_domain`, `organization`, `member` u
-  `organization_membership`. Una eliminación no lleva `etag`.
+  `resource_type` es `tenant`, `tenant_domain`, `organization`, `member`,
+  `organization_membership` o una de las familias de negocio `provider`,
+  `custom_role`, `application`, `quota` y `alert`. Una eliminación no lleva
+  `etag`.
 - **Un evento por recurso y por commit.** Una operación sin cambios o una
   transacción revertida no publica nada. Dentro de un commit, las eliminaciones
   van primero, de los hijos a los padres, y luego las creaciones y
@@ -509,16 +512,82 @@ se rechazan.
 | `GET` | `/v1/xolo/tenants/{tenantID}/organizations/{orgID}/members` | Paginado |
 | `GET` | `/v1/xolo/tenants/{tenantID}/organizations/{orgID}/members/{membershipID}` | |
 | `PUT` | `/v1/xolo/tenants/{tenantID}/organizations/{orgID}/members/{membershipID}/roles` | Reemplazo completo de los roles |
-| `GET` | `/v1/xolo/tenants/{tenantID}/organizations/{orgID}/roles` | Roles integrados y personalizados |
-| `POST` | `/v1/xolo/tenants/{tenantID}/organizations/{orgID}/roles` | Rol personalizado |
-| `GET` | `/v1/xolo/tenants/{tenantID}/organizations/{orgID}/roles/{roleID}` | |
-| `PUT` | `/v1/xolo/tenants/{tenantID}/organizations/{orgID}/roles/{roleID}` | Solo roles personalizados |
-| `DELETE` | `/v1/xolo/tenants/{tenantID}/organizations/{orgID}/roles/{roleID}` | Solo roles personalizados |
+| `GET`, `POST`, `PUT`, `DELETE` | `/v1/xolo/tenants/{tenantID}/organizations/{orgID}/roles[/{key}]` | Roles personalizados: véase *Recursos de negocio* |
+| `GET` | `/v1/xolo/tenants/{tenantID}/organizations/{orgID}/roles/builtin` | Roles integrados |
 | `GET` | `/v1/xolo/tenants/{tenantID}/users` | `?provider=&subject=` para una búsqueda exacta; si no, `?search=&active=&page=&limit=` |
 | `PUT` | `/v1/xolo/tenants/{tenantID}/users` | Upsert idempotente sobre `(provider, subject)`: `201` al crear, `200` si no |
 | `GET` | `/v1/xolo/tenants/{tenantID}/users/{userID}` | |
 | `GET` | `/v1/xolo/ownership` | Autoridad de escritura efectiva de cada familia |
 | `GET` | `/v1/xolo/adoption/export` | Exportación de adopción, flujo NDJSON: véase *Autoridad de escritura, adopción y desvinculación* |
+
+## Recursos de negocio
+
+Cinco familias propias de Xolo siguen el mismo contrato que las familias
+comunes: lectura unitaria con `ETag`, listas paginadas, `PUT` condicionales y
+eventos. El manifiesto anuncia `business_resources`.
+
+| Método | Ruta |
+|---|---|
+| `GET`, `GET`, `PUT` | `/v1/xolo/tenants/{tenantID}/organizations/{orgID}/roles[/{key}]` |
+| `GET`, `GET`, `PUT` | `/v1/xolo/tenants/{tenantID}/organizations/{orgID}/applications[/{key}]` |
+| `GET`, `GET`, `PUT` | `/v1/xolo/tenants/{tenantID}/organizations/{orgID}/alerts[/{key}]` |
+| `GET`, `GET`, `PUT` | `/v1/xolo/tenants/{tenantID}/organizations/{orgID}/providers[/{key}]` |
+| `GET`, `GET`, `PUT` | `/v1/xolo/tenants/{tenantID}/quotas[/{key}]` |
+| `POST` | `/v1/xolo/tenants/{tenantID}/organizations/{orgID}/roles` — crea un rol personalizado con una clave elegida por el servidor; responde `201` con `{key, representation, etag}` |
+| `DELETE` | `/v1/xolo/tenants/{tenantID}/organizations/{orgID}/roles/{key}` — elimina un rol personalizado (`204`) |
+| `GET` | `/v1/xolo/tenants/{tenantID}/organizations/{orgID}/roles/builtin` — los roles integrados, `{"items":[{"id","builtin_kind","name"}]}`, para `PUT …/members/{membershipID}/roles` |
+
+Las representaciones están en snake_case y son completas: cada campo es
+obligatorio, `null` solo donde se indica.
+
+| Familia | Representación |
+|---|---|
+| `custom_role` | `{"name","description","permissions":[…],"model_grants":[{"model_id","kind"}]}` |
+| `application` | `{"name","description","active","role_ids":[…]}` |
+| `quota` | `{"scope","scope_id","currency","daily_budget","monthly_budget","yearly_budget"}`, presupuestos en microcéntimos o `null` |
+| `alert` | `{"name","description","scope","owner_id","query","aggregation","window_seconds","comparator","threshold","for_seconds","enabled"}` |
+| `provider` | `{"name","type","base_url","active","currency","cloud_tier","billing_mode","subscription_plan","retry_config","rate_limit_config"}`, los tres últimos `null` u objetos, más `"api_key"` de solo escritura |
+
+- **Claves.** Un recurso nuevo se crea con un UUID canónico elegido por el
+  cliente. Un recurso creado desde la interfaz web conserva su identificador
+  local, aceptado en lectura y actualización, nunca en creación. Los eventos y
+  los elementos de lista llevan la clave en `key.resource_id`, con
+  `key.organization_id` salvo para las cuotas.
+- **Padres.** Cada referencia se comprueba en la transacción de la escritura.
+  Un grant designa un modelo de la organización (y, para un modelo LLM, un
+  proveedor de la organización); `role_ids` designa roles de la organización;
+  una cuota limita una organización del tenant, un miembro del tenant o una
+  aplicación de una de sus organizaciones; el propietario de una alerta es un
+  miembro activo de la organización, obligatorio para una alerta `personal`.
+  Un padre ausente o ajeno responde `404 parent_not_found`; un recurso de otra
+  organización o de otro tenant responde `404 not_found`, como uno ausente.
+- **Campos inmutables.** El `scope` y el `scope_id` de una cuota, el `scope` y
+  el `owner_id` de una alerta nunca cambian (`409 conflict`). Un ámbito tiene
+  una sola cuota: otra clave sobre el mismo ámbito responde `409 conflict`.
+- **Normalización.** Permisos, grants e identificadores de roles se ordenan y
+  deduplican: una repetición en otro orden no cambia nada.
+- **El estado de ejecución queda fuera del contrato.** Un `PUT` de cuota
+  conserva el consumo ya registrado. El estado de evaluación de una alerta no
+  se devuelve ni se publica; un cambio de la alerta la reinicia desde `ok`,
+  como una edición en la interfaz web. Los roles integrados no forman parte de
+  la colección: escribir uno responde `409 conflict`.
+- **Las claves de API de los proveedores son de solo escritura.** `api_key` es
+  obligatoria al crear y se conserva cuando se omite. Se cifra con
+  `XOLO_SECRET_KEY` y nunca aparece en una respuesta, una proyección, un evento
+  ni en claro en la auditoría: una rotación no cambia ningún `ETag` ni publica
+  ningún evento, pero la auditoría registra el cambio de una huella del
+  cifrado.
+- **Sin eliminación mediante el contrato**, salvo los roles personalizados: las
+  eliminaciones llegarán con el ciclo de vida de los recursos. Los tokens de
+  aplicación siguen gestionándose localmente.
+- Las escrituras de la interfaz web también publican sus eventos. La migración
+  `202610120001` proyecta los recursos de negocio existentes sin publicar
+  eventos; como las anteriores, exige detener todos los servidores.
+
+Límite conocido: la caché de cada proceso mantiene válidos los tokens de una
+aplicación desactivada hasta que caducan sus entradas
+(`XOLO_STORAGE_DATABASE_CACHE_USERS_TTL`): una escritura mediante este
+listener solo vacía la caché de su propio proceso.
 
 ## Autoridad de escritura, adopción y desvinculación
 
@@ -528,7 +597,7 @@ invitaciones), el plano de control (este listener) o ambos.
 
 | Variable | Por defecto | Descripción |
 |---|---|---|
-| `XOLO_OWNERSHIP` | — | Pares `familia=autoridad` separados por comas. Familias: `tenant`, `tenant_domain`, `organization`, `member`, `organization_membership`, `subscription`. Autoridades: `shared`, `local`, `control_plane`. Las familias omitidas valen `shared`; una familia o autoridad desconocida impide el arranque |
+| `XOLO_OWNERSHIP` | — | Pares `familia=autoridad` separados por comas. Familias: `tenant`, `tenant_domain`, `organization`, `member`, `organization_membership`, `subscription`, y las familias de negocio `provider`, `custom_role`, `application`, `quota`, `alert`. Autoridades: `shared`, `local`, `control_plane`. Las familias omitidas valen `shared`; una familia o autoridad desconocida impide el arranque |
 
 ```dotenv
 XOLO_OWNERSHIP=tenant=control_plane,tenant_domain=control_plane,organization=control_plane,member=control_plane,organization_membership=control_plane,subscription=control_plane
@@ -548,8 +617,8 @@ proyección que la escritura modifica, cascadas incluidas: eliminar un tenant
 cuyos miembros dependen de otra autoridad se rechaza en bloque, sin eliminar
 ni publicar nada. Los campos fuera del contrato siguen siendo locales sea cual
 sea la política: roles de plataforma, moneda y reparto de cuota de una
-organización, roles personalizados y recursos de negocio (proveedores,
-modelos, cuotas, alertas…). Las cuentas de aplicación y los tokens de API
+organización, modelos, modelos virtuales, middlewares y tokens de
+aplicación. Las cuentas de aplicación y los tokens de API
 siguen siendo utilizables, y las lecturas conservan sus permisos.
 `GET /v1/xolo/ownership` devuelve la política efectiva, y el manifiesto anuncia
 `ownership`.
@@ -583,13 +652,13 @@ el plano de control declaró:
 ### Exportación de adopción
 
 `GET /v1/xolo/adoption/export`, al igual que `xolo-adoption export`, transmite
-en flujo el inventario de la instancia: cada proyección de las cinco familias
-de todos los tenants, recursos suspendidos incluidos, leídas sobre una misma
+en flujo el inventario de la instancia: cada proyección de las familias comunes y de
+negocio de todos los tenants, recursos suspendidos incluidos, leídas sobre una misma
 instantánea coherente sin tomar ningún bloqueo. El formato, `xolo-adoption/1`,
 es NDJSON (`application/x-ndjson`):
 
 ```text
-{"version":"xolo-adoption/1","contract":"0.1.0-draft.1","source":"urn:uuid:…","c0":"…","families":["tenant","tenant_domain","organization","member","organization_membership"]}
+{"version":"xolo-adoption/1","contract":"0.1.0-draft.1","source":"urn:uuid:…","c0":"…","families":["tenant","tenant_domain","organization","member","organization_membership","provider","custom_role","application","quota","alert"]}
 {"family":"tenant","key":{"tenant_id":"…"},"representation":{…},"etag":"W/\"42\""}
 …
 {"count":128,"complete":true,"sha256":"…"}
@@ -607,8 +676,9 @@ es NDJSON (`application/x-ndjson`):
   rechaza.
 - La exportación contiene emails de contacto e identidades declaradas:
   protéjala como la base de datos. No contiene ningún vínculo de inicio de
-  sesión no declarado, sesión, token, secreto, entrada de auditoría ni recurso
-  de negocio.
+  sesión no declarado, sesión, token, secreto ni entrada de auditoría.
+  `verify` también acepta una exportación que solo enumera las cinco familias
+  comunes, producida antes de las familias de negocio.
 
 `xolo-adoption verify -in <archivo>` (`-in -` lee la entrada estándar)
 comprueba la suma de verificación, el número de registros, la versión y el
@@ -745,7 +815,11 @@ identificadores no cambian: un recurso existente se direcciona con su UUID actua
 | `POST …/organizations/{orgID}/members` `{userId \| user, roleIds, builtinRoles}` | `PUT /v1/tenants/{tenantID}/organizations/{orgID}/members/{userID}` `{role, status}`; roles personalizados mediante `PUT /v1/xolo/…/members/{membershipID}/roles` |
 | `PUT …/members/{membershipID}/roles` | `PUT /v1/xolo/…/members/{membershipID}/roles` (mismo cuerpo) |
 | `DELETE …/members/{membershipID}` | Eliminada: `PUT …/organizations/{orgID}/members/{userID}` con `"status": "suspended"` |
-| `…/organizations/{orgID}/roles[/{roleID}]` (todos los métodos) | `/v1/xolo/…/organizations/{orgID}/roles[/{roleID}]` (mismos cuerpos) |
+| `…/organizations/{orgID}/roles[/{roleID}]` (todos los métodos) | `/v1/xolo/…/organizations/{orgID}/roles[/{key}]`, con los cambios siguientes |
+| `GET /v1/xolo/…/roles` (integrados y personalizados, `roleDTO` en camelCase) | `GET /v1/xolo/…/roles` enumera los roles personalizados como página de proyecciones; los roles integrados mediante `GET /v1/xolo/…/roles/builtin` |
+| `GET /v1/xolo/…/roles/{roleID}` (`roleDTO` en camelCase) | Misma ruta: la representación snake_case y su `ETag` |
+| `POST /v1/xolo/…/roles` `{name, description?, permissions?, modelGrants?}` | Misma ruta, la representación snake_case completa `{name, description, permissions, model_grants}`; `201` con `{key, representation, etag}` |
+| `PUT /v1/xolo/…/roles/{roleID}` parcial `{name?, description?, permissions?, modelGrants?}` | Misma ruta, la representación completa, `If-Match` opcional; crea el rol con un UUID de su elección |
 | `GET`, `PUT /v1/tenants/{tenantID}/users` | `GET`, `PUT /v1/xolo/tenants/{tenantID}/users` (mismos cuerpos) |
 | `GET /v1/tenants/{tenantID}/users/{userID}` | `GET /v1/xolo/tenants/{tenantID}/users/{userID}` |
 | `PATCH /v1/tenants/{tenantID}/users/{userID}` `{email, displayName, active}` | `PUT /v1/tenants/{tenantID}/members/{userID}` `{email, display_name, tenant_role, status}` |
@@ -859,7 +933,7 @@ En producción, utilice una autoridad de certificación gestionada (Vault, cert-
 
 ## Fuera del alcance actual
 
-- Los proveedores, modelos LLM, modelos virtuales, middlewares, aplicaciones y sus tokens, cuotas, alertas y parámetros de eventos: siguen gestionándose desde la interfaz web.
+- Los modelos LLM, modelos virtuales, middlewares, tokens de aplicación y parámetros de eventos: siguen gestionándose desde la interfaz web.
 - Los alcances por certificado: cualquier URI autorizado administra la instancia completa.
-- Eliminar tenants, dominios, organizaciones o pertenencias: suspéndalos.
+- Eliminar tenants, dominios, organizaciones, pertenencias o recursos de negocio distintos de los roles personalizados: suspéndalos o desactívelos.
 - Todavía no se genera ninguna especificación OpenAPI.

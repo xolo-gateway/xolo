@@ -168,7 +168,7 @@ func (s *Store) ListMembershipRoles(ctx context.Context, membershipID model.Memb
 // SetApplicationRoles implements port.RoleStore. It replaces the full set of
 // roles assigned to an application.
 func (s *Store) SetApplicationRoles(ctx context.Context, appID model.ApplicationID, roleIDs []model.RoleID) error {
-	return s.withRetry(ctx, true, func(ctx context.Context, db *gorm.DB) error {
+	return s.recorded(ctx, tracking("application", string(appID)), func(ctx context.Context, db *gorm.DB) error {
 		if err := db.Where("application_id = ?", string(appID)).Delete(&ApplicationRole{}).Error; err != nil {
 			return errors.WithStack(err)
 		}

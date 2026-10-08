@@ -17,6 +17,7 @@ import (
 	"github.com/xolo-gateway/xolo/internal/core/model"
 	"github.com/xolo-gateway/xolo/internal/core/port"
 	httpCtx "github.com/xolo-gateway/xolo/internal/http/context"
+	webcommon "github.com/xolo-gateway/xolo/internal/http/handler/webui/common"
 	common "github.com/xolo-gateway/xolo/internal/http/handler/webui/common/component"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/org/component"
 )
@@ -220,12 +221,18 @@ func (h *Handler) createApplication(w http.ResponseWriter, r *http.Request) {
 
 	app := model.NewApplication(org.ID(), name, description, true)
 	if err := h.applicationStore.CreateApplication(ctx, app); err != nil {
+		if webcommon.RejectOwnership(w, r, err) {
+			return
+		}
 		slog.ErrorContext(ctx, "could not create application", slogx.Error(err))
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
 
 	if err := h.roleStore.SetApplicationRoles(ctx, app.ID(), selected); err != nil {
+		if webcommon.RejectOwnership(w, r, err) {
+			return
+		}
 		slog.ErrorContext(ctx, "could not set application roles", slogx.Error(err))
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
@@ -422,12 +429,18 @@ func (h *Handler) updateApplication(w http.ResponseWriter, r *http.Request) {
 	)
 
 	if err := h.applicationStore.UpdateApplication(ctx, updated); err != nil {
+		if webcommon.RejectOwnership(w, r, err) {
+			return
+		}
 		slog.ErrorContext(ctx, "could not update application", slogx.Error(err))
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
 
 	if err := h.roleStore.SetApplicationRoles(ctx, app.ID(), selected); err != nil {
+		if webcommon.RejectOwnership(w, r, err) {
+			return
+		}
 		slog.ErrorContext(ctx, "could not set application roles", slogx.Error(err))
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
@@ -447,6 +460,9 @@ func (h *Handler) deleteApplication(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.applicationStore.DeleteApplication(ctx, model.ApplicationID(appID)); err != nil {
+		if webcommon.RejectOwnership(w, r, err) {
+			return
+		}
 		slog.ErrorContext(ctx, "could not delete application", slogx.Error(err))
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return

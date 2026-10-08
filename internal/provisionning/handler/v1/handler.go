@@ -100,11 +100,7 @@ func NewHandler(provisioning *service.ProvisioningService, version string, optio
 	h.mux.HandleFunc("GET "+orgPath+"/{orgID}/members/{membershipID}", h.handleGetMember)
 	h.mux.HandleFunc("PUT "+orgPath+"/{orgID}/members/{membershipID}/roles", h.handleSetMemberRoles)
 
-	h.mux.HandleFunc("GET "+orgPath+"/{orgID}/roles", h.handleListRoles)
-	h.mux.HandleFunc("POST "+orgPath+"/{orgID}/roles", h.handleCreateRole)
-	h.mux.HandleFunc("GET "+orgPath+"/{orgID}/roles/{roleID}", h.handleGetRole)
-	h.mux.HandleFunc("PUT "+orgPath+"/{orgID}/roles/{roleID}", h.handleUpdateRole)
-	h.mux.HandleFunc("DELETE "+orgPath+"/{orgID}/roles/{roleID}", h.handleDeleteRole)
+	h.mountBusiness()
 
 	// Users hang from the tenant: (provider, subject) is only unique within
 	// one, so an instance-wide upsert would have no key to act on.
