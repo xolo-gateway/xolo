@@ -23,7 +23,7 @@ func (p *Plugin) Describe(_ context.Context, _ *proto.DescribeRequest) (*proto.P
 	}, nil
 }
 
-func (p *Plugin) PreRequest(_ context.Context, in *proto.PreRequestInput) (*proto.PreRequestOutput, error) {
+func (p *Plugin) PreRequest(ctx context.Context, in *proto.PreRequestInput) (*proto.PreRequestOutput, error) {
 
 	cfg := parseConfig(in.GetCtx().GetConfigJson())
 	if cfg.SystemPrompt == "" {
@@ -67,7 +67,15 @@ func (p *Plugin) PreRequest(_ context.Context, in *proto.PreRequestInput) (*prot
 	}
 
 	b, _ := json.Marshal(modified)
-	slog.Info("system-prompt: modified messages",
+	slog.InfoContext(ctx, "system-prompt: pre-request handled",
+		slog.String("org_id", in.GetCtx().GetOrgId()),
+		slog.Int("original_messages_count", len(messages)),
+		slog.Int("modified_messages_count", len(modified)),
+		slog.Int("original_messages_bytes", len(in.GetMessagesJson())),
+		slog.Int("modified_messages_bytes", len(b)),
+		slog.Bool("append", cfg.Append),
+	)
+	slog.DebugContext(ctx, "system-prompt: pre-request messages",
 		slog.String("original_messages", in.GetMessagesJson()),
 		slog.String("modified_messages", string(b)))
 

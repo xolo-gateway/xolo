@@ -37,9 +37,14 @@ func loadPageData(r *http.Request) uiPageData {
 	if host != nil && orgID != "" {
 		var err error
 		raw, err = host.GetConfig(ctx, orgID, pluginName)
-		slog.Info("system-prompt GetConfig", slog.String("orgID", orgID), slog.String("pluginName", pluginName), slog.String("raw", raw), slog.Any("err", err))
 		if err != nil {
 			slog.WarnContext(ctx, "system-prompt/ui: failed to load config", slog.Any("error", err))
+		} else {
+			slog.InfoContext(ctx, "system-prompt: config loaded",
+				slog.String("org_id", orgID),
+				slog.String("plugin_name", pluginName),
+				slog.Int("raw_length", len(raw)),
+			)
 		}
 	}
 
@@ -60,12 +65,13 @@ func handleSaveConfig(w http.ResponseWriter, r *http.Request) {
 	pluginName := pluginsdk.PluginNameFromContext(ctx)
 
 	if host == nil || orgID == "" {
-		slog.Error("system-prompt: SaveConfig failed", slog.Any("error", http.StatusBadRequest))
+		slog.WarnContext(ctx, "system-prompt: SaveConfig called without host or org context")
 		http.Error(w, "missing host or org context", http.StatusBadRequest)
 		return
 	}
 	if err := r.ParseForm(); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		slog.WarnContext(ctx, "system-prompt/ui: failed to parse form body", slog.Any("error", err))
+		http.Error(w, "invalid form body", http.StatusBadRequest)
 		return
 	}
 
@@ -73,13 +79,17 @@ func handleSaveConfig(w http.ResponseWriter, r *http.Request) {
 		SystemPrompt: r.FormValue("system_prompt"),
 		Append:       r.FormValue("append") == "true",
 	}
-	slog.Error("system-prompt: SystemPrompt", slog.Any("error", cfg.SystemPrompt))
 
 	b, _ := json.Marshal(cfg)
 	if err := host.SaveConfig(ctx, orgID, pluginName, string(b)); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	slog.InfoContext(ctx, "system-prompt: config saved",
+		slog.String("org_id", orgID),
+		slog.Int("prompt_length", len(cfg.SystemPrompt)),
+		slog.Bool("append", cfg.Append),
+	)
 	http.Redirect(w, r, "/?saved=1", http.StatusFound)
 }
 
