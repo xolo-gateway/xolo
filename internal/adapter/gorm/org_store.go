@@ -312,7 +312,10 @@ func (s *Store) GetUserMemberships(ctx context.Context, userID model.UserID) ([]
 	err := s.withRetry(ctx, false, func(ctx context.Context, db *gorm.DB) error {
 		return errors.WithStack(db.Preload("Org").Preload("Roles").Preload("Roles.Permissions").
 			Where("user_id = ? AND status = ?", string(userID), string(model.StatusActive)).
-			// A suspended or deleted organization grants nothing.
+			// A suspended or deleted organization grants nothing. The user
+			// is not checked: an inactive current user is refused upstream
+			// (authz.Active, token login), and the admin pages still list
+			// the memberships of an inactive account.
 			Where("EXISTS (SELECT 1 FROM organizations o WHERE o.id = memberships.org_id AND o.active <> 0)").
 			Find(&members).Error)
 	})
@@ -349,6 +352,7 @@ func (s *Store) IsMember(ctx context.Context, userID model.UserID, orgID model.O
 	err := s.withRetry(ctx, false, func(ctx context.Context, db *gorm.DB) error {
 		return errors.WithStack(db.Model(&Membership{}).
 			Where("user_id = ? AND org_id = ? AND status = ?", string(userID), string(orgID), string(model.StatusActive)).
+			// As in GetUserMemberships, an inactive user is refused upstream.
 			Where("EXISTS (SELECT 1 FROM organizations o WHERE o.id = memberships.org_id AND o.active <> 0)").
 			Count(&count).Error)
 	})

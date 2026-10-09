@@ -102,6 +102,7 @@ func TestFreezeResource(t *testing.T) {
 
 		item, err := store.ReadProjection(ctx, orgScope(testTenantID), string(fixture.org))
 		require.NoError(t, err)
+		require.NotEqual(t, current.ETag, item.ETag, "the suspension moved the ETag")
 		var rep map[string]any
 		require.NoError(t, json.Unmarshal(item.Representation, &rep))
 		require.Equal(t, "suspended", rep["status"])
@@ -111,6 +112,9 @@ func TestFreezeResource(t *testing.T) {
 		again, err := store.FreezeResource(ctx, orgScope(testTenantID), string(fixture.org), model.MatchCondition{})
 		require.NoError(t, err)
 		require.Equal(t, deletion, again, "a repeated freeze returns the recorded deletion")
+		retried, err := store.FreezeResource(ctx, orgScope(testTenantID), string(fixture.org), ifMatch(t, current.ETag))
+		require.NoError(t, err)
+		require.Equal(t, deletion, retried, "a retry carrying the original If-Match")
 		read, err := store.ReadDeletion(ctx, orgScope(testTenantID), string(fixture.org))
 		require.NoError(t, err)
 		require.Equal(t, deletion, read)
@@ -154,20 +158,35 @@ func TestFreezeKeepsOwnersAndAuthority(t *testing.T) {
 		store := lifecycleStore(t, db)
 
 		// The only owner of the organization.
-		membership, err := base.GetUserOrgMembership(ctx, fixture.user, fixture.org)
-		require.NoError(t, err)
-		roles, err := base.ListOrgRoles(ctx, fixture.org)
-		require.NoError(t, err)
-		for _, role := range roles {
-			if role.BuiltinKind() == model.BuiltinKindOwner {
-				require.NoError(t, base.SetMembershipRoles(ctx, membership.ID(), []model.RoleID{role.ID()}))
+		soleOwner := func(f ownershipFixture) {
+			membership, err := base.GetUserOrgMembership(ctx, f.user, f.org)
+			require.NoError(t, err)
+			roles, err := base.ListOrgRoles(ctx, f.org)
+			require.NoError(t, err)
+			for _, role := range roles {
+				if role.BuiltinKind() == model.BuiltinKindOwner {
+					require.NoError(t, base.SetMembershipRoles(ctx, membership.ID(), []model.RoleID{role.ID()}))
+				}
 			}
 		}
-		_, err = store.FreezeResource(ctx, memberScope(testTenantID), string(fixture.user), model.MatchCondition{})
+		soleOwner(fixture)
+		_, err := store.FreezeResource(ctx, memberScope(testTenantID), string(fixture.user), model.MatchCondition{})
 		require.ErrorIs(t, err, port.ErrLastOwner)
 		user, err := base.GetUserByID(ctx, fixture.user)
 		require.NoError(t, err)
 		require.True(t, user.Active(), "nothing changed")
+
+		// A sole owner already deactivated: its organization has no active
+		// owner left to protect.
+		inactive := newOwnershipFixture(t, base)
+		soleOwner(inactive)
+		user, err = base.GetUserByID(ctx, inactive.user)
+		require.NoError(t, err)
+		next := model.CopyUser(user)
+		next.SetActive(false)
+		require.NoError(t, base.SaveUser(ctx, next))
+		_, err = store.FreezeResource(ctx, memberScope(testTenantID), string(inactive.user), model.MatchCondition{})
+		require.NoError(t, err)
 
 		provider := model.NewProvider(fixture.org, "OpenAI", "openai", "", "ciphertext", "EUR")
 		require.NoError(t, base.CreateProvider(ctx, provider))

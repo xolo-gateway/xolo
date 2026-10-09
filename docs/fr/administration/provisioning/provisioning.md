@@ -812,6 +812,7 @@ Toutes les erreurs partagent la même enveloppe :
 | `client_certificate_rejected` | 403 | Certificat ou URI client non autorisé. |
 | `ownership_denied` | 403 | La politique d'autorité réserve la famille à l'instance locale. |
 | `resource_deleted` | 409 | La ressource, ou une ressource qui la contient, est gelée par sa suppression. |
+| `lifecycle_disabled` | 409 | Suppression d'un tenant, d'une organisation ou d'un membre alors que `XOLO_LIFECYCLE_ENABLED` est désactivé. |
 | `not_found` | 404 | Ressource ou route inconnue, ou ressource d'un autre tenant ou d'une autre organisation. |
 | `parent_not_found` | 404 | Le tenant, l'organisation ou le membre dont dépend la ressource n'existe pas dans ce périmètre. |
 | `method_not_allowed` | 405 | Ressource connue, mauvaise méthode. |

@@ -795,6 +795,7 @@ Todos los errores comparten el formato `{"error":{"code":"…","message":"…"}}
 | `client_certificate_rejected` | 403 | Certificado o URI de cliente no autorizado |
 | `ownership_denied` | 403 | La política de autoridad reserva la familia a la instancia local |
 | `resource_deleted` | 409 | El recurso, o un recurso que lo contiene, está congelado por su eliminación |
+| `lifecycle_disabled` | 409 | Eliminación de un tenant, una organización o un miembro con `XOLO_LIFECYCLE_ENABLED` desactivado |
 | `not_found` | 404 | Recurso o ruta desconocidos, o recurso de otro tenant u otra organización |
 | `parent_not_found` | 404 | El tenant, la organización o el miembro del que depende el recurso no existe en ese ámbito |
 | `method_not_allowed` | 405 | Recurso conocido, método incorrecto |

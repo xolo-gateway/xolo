@@ -104,9 +104,16 @@ func (s *Store) FreezeResource(ctx context.Context, scope model.CommonScope, key
 			}
 		}
 
+		// A repeated freeze returns the recorded deletion before the
+		// condition: the first one published the suspension, which moved the
+		// ETag a retried request still carries.
 		var existing []ResourceDeletion
 		if err := db.Where("family = ? AND resource_id = ?", scope.Family, key).Limit(1).Find(&existing).Error; err != nil {
 			return errors.WithStack(err)
+		}
+		if len(existing) == 1 {
+			out = existing[0].view()
+			return nil
 		}
 		item, err := tx.ReadProjection(ctx, scope, key)
 		if err != nil && !errors.Is(err, port.ErrNotFound) {
@@ -114,10 +121,6 @@ func (s *Store) FreezeResource(ctx context.Context, scope model.CommonScope, key
 		}
 		if !condition.Matches(item.ETag) {
 			return errors.WithStack(port.ErrPreconditionFailed)
-		}
-		if len(existing) == 1 {
-			out = existing[0].view()
-			return nil
 		}
 		if err := frozenParents(db, scope, tenantID); err != nil {
 			return err
@@ -206,13 +209,16 @@ func frozenParents(db *gorm.DB, scope model.CommonScope, tenantID string) error 
 }
 
 // lastOrganizationOwner refuses to freeze the last active owner of an
-// organization still alive. The tenant owner is checked by the deactivation.
+// organization still alive. An inactive user is no active owner: the
+// organizations it owns already have none. The tenant owner is checked by
+// the deactivation.
 func lastOrganizationOwner(db *gorm.DB, userID string) error {
 	var orgs []string
 	if err := db.Table("memberships").
 		Joins("JOIN membership_roles mr ON mr.membership_id = memberships.id").
 		Joins("JOIN roles ON roles.id = mr.role_id").
-		Where("memberships.user_id = ? AND memberships.status = ? AND roles.builtin_kind = ?", userID, string(model.StatusActive), model.BuiltinKindOwner).
+		Joins("JOIN users ON users.id = memberships.user_id").
+		Where("memberships.user_id = ? AND memberships.status = ? AND roles.builtin_kind = ? AND users.active = ?", userID, string(model.StatusActive), model.BuiltinKindOwner, true).
 		Where("NOT EXISTS (SELECT 1 FROM resource_deletions d WHERE d.family = ? AND d.resource_id = memberships.org_id)", model.FamilyOrganization).
 		Pluck("memberships.org_id", &orgs).Error; err != nil {
 		return errors.WithStack(err)
@@ -239,37 +245,22 @@ func lastOrganizationOwner(db *gorm.DB, userID string) error {
 // otherwise.
 func (tx *provisioningTx) authorizeFreeze(ctx context.Context, family, key, tenantID string) error {
 	deletion := ResourceDeletion{Family: family, ResourceID: key, TenantID: tenantID}
-	for table, families := range lifecycleFamilyTables {
+	for _, t := range lifecycleTables {
+		if t.family == "" {
+			continue
+		}
 		var n int64
-		if err := scopeRows(tx.db, table, deletion).Limit(1).Count(&n).Error; err != nil {
+		if err := scopeRows(tx.db, t.table, deletion).Limit(1).Count(&n).Error; err != nil {
 			return errors.WithStack(err)
 		}
 		if n == 0 {
 			continue
 		}
-		for _, f := range families {
-			if err := tx.checkOwnership(ctx, f); err != nil {
-				return err
-			}
+		if err := tx.checkOwnership(ctx, t.family); err != nil {
+			return err
 		}
 	}
 	return nil
-}
-
-// lifecycleFamilyTables names the families stored in the tables of the
-// inventory, for the authority of a freeze.
-var lifecycleFamilyTables = map[string][]string{
-	"tenants":               {model.FamilyTenant},
-	"domains":               {model.FamilyTenantDomain},
-	"organizations":         {model.FamilyOrganization},
-	"users":                 {model.FamilyMember},
-	"memberships":           {model.FamilyOrganizationMembership},
-	"roles":                 {model.FamilyCustomRole},
-	"applications":          {model.FamilyApplication},
-	"quota":                 {model.FamilyQuota},
-	"alerts":                {model.FamilyAlert},
-	"providers":             {model.FamilyProvider},
-	"webhook_subscriptions": {model.FamilySubscription},
 }
 
 // scopeRows selects the rows of an inventory table in the scope of a

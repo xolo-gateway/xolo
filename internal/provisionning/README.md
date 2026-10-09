@@ -786,6 +786,7 @@ Every error uses the same envelope:
 | `client_certificate_rejected` | 403 | Client certificate or URI is not authorized |
 | `ownership_denied` | 403 | The ownership policy reserves the family to the local instance |
 | `resource_deleted` | 409 | The resource, or a resource holding it, is frozen by its deletion |
+| `lifecycle_disabled` | 409 | Deleting a tenant, an organization or a member while `XOLO_LIFECYCLE_ENABLED` is off |
 | `not_found` | 404 | Unknown resource or route, or a resource belonging to another tenant or organization |
 | `parent_not_found` | 404 | The tenant, organization or member a resource hangs from does not exist in that scope |
 | `method_not_allowed` | 405 | Known resource, wrong method |
