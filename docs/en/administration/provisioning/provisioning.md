@@ -723,7 +723,8 @@ which **freezes** the resource and everything it holds until its purge.
   It checks the `If-Match` condition and the write authority of every family
   the scope holds. It refuses the last active owner of a tenant or of a live
   organization (`409 last_owner`) and the `default` tenant. A frozen tenant
-  loses its OIDC sessions at once; a frozen member can no longer sign in.
+  loses its OIDC sessions at once; a frozen member keeps them, but its
+  deactivated account is refused on every request.
 - **A frozen scope is read-only.** Every write to a row it holds is refused,
   whoever makes it: API (`409 resource_deleted`), web UI (`403`), workers, and
   raw SQL. That covers the tenant, its domains, organizations and users; an

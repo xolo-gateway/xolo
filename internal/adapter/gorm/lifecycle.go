@@ -136,6 +136,9 @@ func (s *Store) FreezeResource(ctx context.Context, scope model.CommonScope, key
 		if err := tx.deactivate(ctx, scope.Family, key); err != nil {
 			return err
 		}
+		// A member keeps its OIDC sessions: they are keyed by the issuer of
+		// the sign-in, which its row does not hold. Deactivated, the member is
+		// refused on every request all the same (authz.Active, token login).
 		if scope.Family == model.FamilyTenant {
 			if err := db.Where("tenant_id = ?", key).Delete(&OIDCSession{}).Error; err != nil {
 				return errors.WithStack(err)
@@ -272,26 +275,21 @@ var lifecycleFamilyTables = map[string][]string{
 // scopeRows selects the rows of an inventory table in the scope of a
 // deletion, which need not be recorded yet.
 func scopeRows(db *gorm.DB, table string, d ResourceDeletion) *gorm.DB {
-	for _, t := range lifecycleTables {
-		if t.table != table {
-			continue
-		}
-		var predicate string
-		switch d.Family {
-		case model.FamilyTenant:
-			predicate = t.tenantExpression("r") + " = ?"
-		case model.FamilyOrganization:
-			predicate = t.expression(t.org, "r") + " = ?"
-		default:
-			predicate = t.expression(t.member, "r") + " = ?"
-		}
-		q := db.Table(table+" r").Where(predicate, d.ResourceID)
-		if table == "roles" {
-			q = q.Where("r.builtin = ?", false)
-		}
-		return q
+	t := lifecycleTableOf(table)
+	var predicate string
+	switch d.Family {
+	case model.FamilyTenant:
+		predicate = t.tenantExpression("r") + " = ?"
+	case model.FamilyOrganization:
+		predicate = t.expression(t.org, "r") + " = ?"
+	default:
+		predicate = t.expression(t.member, "r") + " = ?"
 	}
-	return db.Table(table).Where("1 = 0")
+	q := db.Table(table+" r").Where(predicate, d.ResourceID)
+	if table == "roles" {
+		q = q.Where("r.builtin = ?", false)
+	}
+	return q
 }
 
 func auditFreeze(ctx context.Context, db *gorm.DB, d ResourceDeletion) error {

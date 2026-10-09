@@ -90,7 +90,11 @@ func (s *Store) PrepareLifecycle(ctx context.Context, enabled bool) error {
 }
 
 // installLifecycleGuards installs, or replaces, one guard per guarded table
-// of the inventory.
+// of the inventory. On PostgreSQL, the trigger function carries the
+// expressions of the inventory and is replaced on every call; the trigger
+// itself never changes, and is only created when missing: CREATE OR REPLACE
+// TRIGGER needs PostgreSQL 14, and dropping it would lock the table ACCESS
+// EXCLUSIVE at every startup.
 func installLifecycleGuards(db *gorm.DB) error {
 	if isPostgres(db) {
 		if err := db.Exec(pgFrozenGuard).Error; err != nil {
@@ -113,11 +117,15 @@ BEGIN
 	IF TG_OP = 'DELETE' THEN RETURN OLD; END IF;
 	RETURN NEW;
 END $$`
-			for _, statement := range []string{
-				body,
-				"CREATE OR REPLACE TRIGGER xolo_lifecycle_guard BEFORE INSERT OR UPDATE OR DELETE ON " + t.table + " FOR EACH ROW EXECUTE FUNCTION " + function + "()",
-			} {
-				if err := db.Exec(statement).Error; err != nil {
+			if err := db.Exec(body).Error; err != nil {
+				return err
+			}
+			var exists bool
+			if err := db.Raw("SELECT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'xolo_lifecycle_guard' AND tgrelid = to_regclass(?))", t.table).Scan(&exists).Error; err != nil {
+				return err
+			}
+			if !exists {
+				if err := db.Exec("CREATE TRIGGER xolo_lifecycle_guard BEFORE INSERT OR UPDATE OR DELETE ON " + t.table + " FOR EACH ROW EXECUTE FUNCTION " + function + "()").Error; err != nil {
 					return err
 				}
 			}
@@ -131,10 +139,17 @@ END $$`
 			if op != "DELETE" {
 				predicates = append(predicates, t.frozenPredicate("NEW"))
 			}
-			statement := fmt.Sprintf("CREATE TRIGGER IF NOT EXISTS %s BEFORE %s ON %s WHEN %s BEGIN SELECT RAISE(ABORT, '%s'); END",
-				sqliteGuardName(t.table, op), op, t.table, strings.Join(predicates, " OR "), frozenGuardMessage)
-			if err := db.Exec(statement).Error; err != nil {
-				return err
+			// SQLite triggers carry their predicate: replaced, they follow
+			// the inventory.
+			name := sqliteGuardName(t.table, op)
+			for _, statement := range []string{
+				"DROP TRIGGER IF EXISTS " + name,
+				fmt.Sprintf("CREATE TRIGGER %s BEFORE %s ON %s WHEN %s BEGIN SELECT RAISE(ABORT, '%s'); END",
+					name, op, t.table, strings.Join(predicates, " OR "), frozenGuardMessage),
+			} {
+				if err := db.Exec(statement).Error; err != nil {
+					return err
+				}
 			}
 		}
 	}

@@ -58,7 +58,10 @@ func TestLifecycleGuardsActivation(t *testing.T) {
 		require.Zero(t, guardCount(t, db), "never enabled: no trigger")
 
 		store := lifecycleStore(t, db)
-		require.NotZero(t, guardCount(t, db))
+		guards := guardCount(t, db)
+		require.NotZero(t, guards)
+		require.NoError(t, store.PrepareLifecycle(ctx, true))
+		require.Equal(t, guards, guardCount(t, db), "installed again in place")
 		require.NoError(t, store.PrepareLifecycle(ctx, false))
 		require.Zero(t, guardCount(t, db), "disabled without deletion: removed")
 
@@ -222,6 +225,11 @@ func TestFreezeProtectsScope(t *testing.T) {
 			}
 			require.NoError(t, write(other.org, other.user), name+" elsewhere")
 		}
+		// A user quota belongs to the member, not to its organizations: the
+		// freeze of one of them leaves it writable, the member's does not.
+		require.NoError(t, store.SetQuota(ctx, model.NewQuota(model.QuotaScopeUser, string(fixture.user), "EUR", nil, nil, nil)))
+		require.ErrorIs(t, store.SetQuota(ctx, model.NewQuota(model.QuotaScopeUser, string(member.user), "EUR", nil, nil, nil)), port.ErrResourceDeleted)
+
 		org, err := store.GetOrgByID(ctx, fixture.org)
 		require.NoError(t, err)
 		require.ErrorIs(t, store.SaveOrg(ctx, model.UpdateOrganization(org, model.WithOrgActive(true))), port.ErrResourceDeleted, "a freeze can not be undone")
@@ -235,6 +243,46 @@ func TestFreezeProtectsScope(t *testing.T) {
 		next := model.CopyUser(user)
 		next.SetDisplayName("Changed")
 		require.ErrorIs(t, store.SaveUser(ctx, next), port.ErrResourceDeleted)
+	})
+}
+
+// TestFreezeKeepsEvictingOrganization: the events of a frozen member stay,
+// and the eviction trims those of the other members of its organization.
+func TestFreezeKeepsEvictingOrganization(t *testing.T) {
+	eachBackendDB(t, func(t *testing.T, db *gormpkg.DB) {
+		ctx := t.Context()
+		base := newSeededStore(t, db)
+		fixture := newOwnershipFixture(t, base)
+		store := lifecycleStore(t, db)
+		peer := model.NewUser(testTenantID, "oidc", uuid.NewString(), uuid.NewString()[:8]+"@example.test", "Peer", true, model.PlatformRoleUser)
+		require.NoError(t, base.SaveUser(ctx, peer))
+		require.NoError(t, base.AddMember(ctx, model.NewMembership(peer.ID(), fixture.org)))
+
+		// The frozen member's events are the oldest: none is in the keep-set.
+		record := func(user model.UserID, n int) {
+			for range n {
+				require.NoError(t, store.RecordEvent(ctx, model.NewEvent(model.EventSourcePlatform, model.EventTypeProxyRequest, model.WithEventOrg(fixture.org), model.WithEventUser(user))))
+			}
+		}
+		record(fixture.user, 3)
+		record(peer.ID(), 6)
+		_, err := store.FreezeResource(ctx, memberScope(testTenantID), string(fixture.user), model.MatchCondition{})
+		require.NoError(t, err)
+
+		orgs, err := store.ListEventOrgIDs(ctx)
+		require.NoError(t, err)
+		require.Contains(t, orgs, fixture.org)
+		deleted, err := store.EvictOverflow(ctx, fixture.org, 2)
+		require.NoError(t, err)
+		require.EqualValues(t, 4, deleted, "9 events, 2 kept, 3 of the frozen member")
+
+		count := func(user model.UserID) int64 {
+			var n int64
+			require.NoError(t, db.Table("events").Where("org_id = ? AND user_id = ?", string(fixture.org), string(user)).Count(&n).Error)
+			return n
+		}
+		require.EqualValues(t, 3, count(fixture.user))
+		require.EqualValues(t, 2, count(peer.ID()))
 	})
 }
 
@@ -308,7 +356,9 @@ func TestInactiveOrganizationGrantsNothing(t *testing.T) {
 
 // TestFreezeRaces: a write of the scope racing a freeze either commits
 // before it, or fails with ErrResourceDeleted; once the freeze is committed,
-// every write fails.
+// every write fails. The refusal of a write in flight is opportunistic: every
+// writer may finish before the freeze commits. The write after the freeze is
+// the deterministic case.
 func TestFreezeRaces(t *testing.T) {
 	eachBackendDB(t, func(t *testing.T, db *gormpkg.DB) {
 		ctx := t.Context()

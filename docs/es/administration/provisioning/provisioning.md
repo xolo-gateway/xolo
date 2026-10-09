@@ -754,7 +754,7 @@ eliminación, que **congela** el recurso y todo lo que contiene hasta su purga.
   familia que contiene el ámbito. Rechaza el último propietario activo de un
   tenant o de una organización viva (`409 last_owner`) y el tenant `default`.
   Un tenant congelado pierde enseguida sus sesiones OIDC; un miembro congelado
-  ya no puede iniciar sesión.
+  las conserva, pero su cuenta desactivada se rechaza en cada petición.
 - **Un ámbito congelado es de solo lectura.** Toda escritura de una fila que
   contiene se rechaza, sea quien sea su autor: API (`409 resource_deleted`),
   interfaz web (`403`), workers y SQL directo. Abarca el tenant, sus dominios,

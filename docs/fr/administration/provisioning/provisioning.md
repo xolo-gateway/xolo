@@ -766,7 +766,7 @@ qu'elle contient jusqu'à sa purge.
   famille que contient le périmètre. Il refuse le dernier propriétaire actif
   d'un tenant ou d'une organisation encore vivante (`409 last_owner`) et le
   tenant `default`. Un tenant gelé perd aussitôt ses sessions OIDC ; un membre
-  gelé ne peut plus se connecter.
+  gelé les conserve, mais son compte désactivé est refusé à chaque requête.
 - **Un périmètre gelé est en lecture seule.** Toute écriture d'une ligne
   qu'il contient est refusée, quel que soit son auteur : API
   (`409 resource_deleted`), interface web (`403`), workers et SQL brut. Cela

@@ -122,7 +122,11 @@ func (s *Store) EvictOverflow(ctx context.Context, orgID model.OrgID, keepN int)
 	var affected int64
 	err := s.withRetry(ctx, true, func(ctx context.Context, db *gorm.DB) error {
 		// The keep-set is materialized in a derived table: PostgreSQL forbids
-		// LIMIT directly inside an IN (...) subquery.
+		// LIMIT directly inside an IN (...) subquery. The events of a frozen
+		// member stay: one of them would make the guards abort the whole
+		// statement, and the rest of the organization is trimmed all the
+		// same. Frozen organizations and tenants are left out by
+		// ListEventOrgIDs.
 		result := db.Exec(`
 			DELETE FROM events
 			WHERE org_id = ? AND pinned = ? AND id NOT IN (
@@ -132,7 +136,9 @@ func (s *Store) EvictOverflow(ctx context.Context, orgID model.OrgID, keepN int)
 					ORDER BY created_at DESC
 					LIMIT ?
 				) AS kept
-			)`, string(orgID), false, string(orgID), false, keepN)
+			)
+			AND NOT EXISTS (SELECT 1 FROM resource_deletions d WHERE d.family = ? AND d.resource_id = events.user_id)`,
+			string(orgID), false, string(orgID), false, keepN, model.FamilyMember)
 		if result.Error != nil {
 			return errors.WithStack(result.Error)
 		}

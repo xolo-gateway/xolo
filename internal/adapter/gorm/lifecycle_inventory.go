@@ -90,14 +90,21 @@ func (t lifecycleTable) frozenPredicate(alias string) string {
 	return "EXISTS (SELECT 1 FROM resource_deletions d WHERE " + strings.Join(tests, " OR ") + ")"
 }
 
+// lifecycleTableOf returns the inventory entry of table. The names are
+// schema constants: an unknown one is a programming error, which would
+// otherwise turn a scope filter into a no-op.
+func lifecycleTableOf(table string) lifecycleTable {
+	for _, t := range lifecycleTables {
+		if t.table == table {
+			return t
+		}
+	}
+	panic("gorm: table " + table + " is missing from the lifecycle inventory")
+}
+
 // notFrozen matches the rows of table, aliased alias, outside every frozen
 // scope: background workers leave the frozen scopes alone instead of failing
 // on their guards.
 func notFrozen(table, alias string) string {
-	for _, t := range lifecycleTables {
-		if t.table == table {
-			return "NOT " + t.frozenPredicate(alias)
-		}
-	}
-	return "1 = 1"
+	return "NOT " + lifecycleTableOf(table).frozenPredicate(alias)
 }
