@@ -110,8 +110,9 @@ type cardResolver struct {
 	h      *Handler
 	ctx    context.Context
 	orgIDs []model.OrgID
-	// defaultOrg resolves the local names of a personal virtual model, as the
-	// organization of the token does at call time. Empty when ambiguous.
+	// defaultOrg is the organization of the token, against which the local
+	// names of a personal virtual model resolve at call time. Empty when the
+	// scope holds several: each is then tried.
 	defaultOrg model.OrgID
 	userID     model.UserID
 
@@ -171,9 +172,28 @@ func (r *cardResolver) orgModelCard(vm model.VirtualModel) modelTraits {
 	return r.cardOf(vm.Graph(), vm.CatalogOverrides(), vm.OrgID(), map[string]struct{}{"vm:" + string(vm.ID()): {}})
 }
 
-// personalModelCard is orgModelCard for a personal virtual model.
+// personalModelCard is orgModelCard for a personal virtual model. Its local
+// model names resolve against the organization of the token at call time. When
+// the caller's scope holds several, each is tried and the card combines those
+// where the pipeline resolves; none resolving leaves it underived.
 func (r *cardResolver) personalModelCard(pvm model.PersonalVirtualModel) modelTraits {
-	return r.cardOf(pvm.Graph(), pvm.CatalogOverrides(), r.defaultOrg, map[string]struct{}{"pvm:" + string(pvm.ID()): {}})
+	key := "pvm:" + string(pvm.ID())
+	owners := r.orgIDs
+	if r.defaultOrg != "" {
+		owners = []model.OrgID{r.defaultOrg}
+	}
+
+	var derived []modelTraits
+	for _, owner := range owners {
+		if t, ok := r.deriveGraph(pvm.Graph(), owner, map[string]struct{}{key: {}}); ok {
+			derived = append(derived, t)
+		}
+	}
+	var t modelTraits
+	if len(derived) > 0 {
+		t = combineTraits(derived)
+	}
+	return applyCatalogOverrides(t, pvm.CatalogOverrides())
 }
 
 func (r *cardResolver) cardOf(g *model.PipelineGraph, ov *model.CatalogOverrides, owner model.OrgID, visited map[string]struct{}) modelTraits {
@@ -269,7 +289,7 @@ func (r *cardResolver) resolveName(name string, owner model.OrgID, visited map[s
 		if _, seen := visited[key]; seen {
 			return modelTraits{}, false
 		}
-		return r.cardOfNested(pvm.Graph(), pvm.CatalogOverrides(), r.defaultOrg, visited, key)
+		return r.cardOfNested(pvm.Graph(), pvm.CatalogOverrides(), owner, visited, key)
 	}
 
 	// Organization virtual model, looked up by its local name in the owning
@@ -325,9 +345,12 @@ func (r *cardResolver) cardOfNested(g *model.PipelineGraph, ov *model.CatalogOve
 	next[key] = struct{}{}
 	t, ok := r.deriveGraph(g, owner, next)
 	if !ok {
-		// Overrides alone do not tell what the nested model calls, so the
-		// parent cannot be derived from it.
-		return modelTraits{}, false
+		// Nothing derived: the nested model advertises its overrides alone,
+		// as it does when listed on its own.
+		if ov.IsZero() {
+			return modelTraits{}, false
+		}
+		return applyCatalogOverrides(modelTraits{}, ov), true
 	}
 	return applyCatalogOverrides(t, ov), true
 }
@@ -368,14 +391,9 @@ func incomingEdges(g *model.PipelineGraph, nodeID, port string) []model.Pipeline
 // staticModelNames follows model_name edges back to the nodes that emit a
 // constant name: a model_ref, a string value, or a select between such
 // sources. Any other source decides at runtime, so the trace fails.
-func staticModelNames(g *model.PipelineGraph, edges []model.PipelineEdge, seen map[string]struct{}) ([]string, bool) {
+func staticModelNames(g *model.PipelineGraph, edges []model.PipelineEdge, onPath map[string]struct{}) ([]string, bool) {
 	var out []string
 	for _, e := range edges {
-		if _, dup := seen[e.ID+"|"+e.Source]; dup {
-			return nil, false
-		}
-		seen[e.ID+"|"+e.Source] = struct{}{}
-
 		var src *model.PipelineNode
 		for i := range g.Nodes {
 			if g.Nodes[i].ID == e.Source {
@@ -401,11 +419,18 @@ func staticModelNames(g *model.PipelineGraph, edges []model.PipelineEdge, seen m
 			}
 			out = append(out, d.Value)
 		case model.NodeTypeSelect:
+			// Only a select met again on the path being followed is a loop;
+			// two branches may share the same source.
+			if _, loop := onPath[src.ID]; loop {
+				return nil, false
+			}
 			branches := append(incomingEdges(g, src.ID, "when_true"), incomingEdges(g, src.ID, "when_false")...)
 			if len(branches) == 0 {
 				return nil, false
 			}
-			found, ok := staticModelNames(g, branches, seen)
+			onPath[src.ID] = struct{}{}
+			found, ok := staticModelNames(g, branches, onPath)
+			delete(onPath, src.ID)
 			if !ok {
 				return nil, false
 			}

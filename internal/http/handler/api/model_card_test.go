@@ -81,27 +81,86 @@ func vmWithGraph(org model.Organization, name string, g *model.PipelineGraph) *m
 	return vm
 }
 
-func callModels(t *testing.T, org model.Organization, models []model.LLMModel, vms []model.VirtualModel, query string) map[string]cardEntry {
+// cardPVMStore serves the personal virtual models of a card test.
+type cardPVMStore struct {
+	port.PersonalVirtualModelStore
+	pvms []model.PersonalVirtualModel
+}
+
+func (s *cardPVMStore) ListPersonalVirtualModels(_ context.Context, userID model.UserID) ([]model.PersonalVirtualModel, error) {
+	var out []model.PersonalVirtualModel
+	for _, pvm := range s.pvms {
+		if pvm.UserID() == userID {
+			out = append(out, pvm)
+		}
+	}
+	return out, nil
+}
+
+func (s *cardPVMStore) GetPersonalVirtualModelByName(_ context.Context, userID model.UserID, name string) (model.PersonalVirtualModel, error) {
+	for _, pvm := range s.pvms {
+		if pvm.UserID() == userID && pvm.Name() == name {
+			return pvm, nil
+		}
+	}
+	return nil, port.ErrNotFound
+}
+
+// cardUser is the caller of every card scenario, so personal models can be
+// declared as theirs.
+var cardUser = model.NewUser(testTenantID, "oidc", "u", "u@example.com", "U", true, "user")
+
+// cardScenario describes one GET /api/v1/models call.
+type cardScenario struct {
+	orgs []model.Organization
+	// models are the enabled models of each organization, by organization ID.
+	models map[model.OrgID][]model.LLMModel
+	vms    []model.VirtualModel
+	pvms   []model.PersonalVirtualModel
+	// tokenOrg scopes the call to one organization, like an API token. Empty
+	// means a session, scoped by the memberships of every org.
+	tokenOrg model.OrgID
+	query    string
+}
+
+func (sc cardScenario) call(t *testing.T) map[string]cardEntry {
 	t.Helper()
 
-	user := model.NewUser(testTenantID, "oidc", "u", "u@example.com", "U", true, "user")
+	user := cardUser
+	orgsByID := map[string]model.Organization{}
+	enabled := map[string][]model.LLMModel{}
+	var memberships []model.Membership
+	for _, org := range sc.orgs {
+		orgsByID[string(org.ID())] = org
+		enabled[string(org.ID())] = sc.models[org.ID()]
+		memberships = append(memberships, model.NewMembership(user.ID(), org.ID()))
+	}
+	for _, pvm := range sc.pvms {
+		if pvm.UserID() != user.ID() {
+			t.Fatalf("personal model %q is not owned by the calling user", pvm.Name())
+		}
+	}
+
 	h := api.NewHandler(
-		&fakeProviderStoreForModels{enabledModels: map[string][]model.LLMModel{string(org.ID()): models}},
+		&fakeProviderStoreForModels{enabledModels: enabled},
 		&fakeOrgStoreForModels{
-			orgsByID:    map[string]model.Organization{string(org.ID()): org},
-			memberships: map[string][]model.Membership{},
+			orgsByID:    orgsByID,
+			memberships: map[string][]model.Membership{string(user.ID()): memberships},
 		},
-		&cardVMStore{vms: vms},
-		nil, nil, nil, nil, nil,
+		&cardVMStore{vms: sc.vms},
+		&cardPVMStore{pvms: sc.pvms},
+		nil, nil, nil, nil,
 	)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/models"+query, nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/models"+sc.query, nil)
 	ctx := authn.SetContextUser(req.Context(), &authn.User{
-		Provider: "oidc", Subject: "u", OrgID: string(org.ID()), TokenID: "tok", TenantID: string(testTenantID),
+		Provider: "oidc", Subject: "u", OrgID: string(sc.tokenOrg), TokenID: "tok", TenantID: string(testTenantID),
 	})
 	ctx = httpCtx.SetUser(ctx, user)
 	ctx = httpCtx.SetPermissionResolver(ctx, func(context.Context, model.OrgID) (rbac.PermissionSet, error) {
-		return rbac.NewPermissionSet([]string{string(rbac.PermModelUseOrg), string(rbac.PermModelUseVirtual)}, nil), nil
+		return rbac.NewPermissionSet([]string{
+			string(rbac.PermModelUseOrg), string(rbac.PermModelUseVirtual), string(rbac.PermPersonalVMCreate),
+		}, nil), nil
 	})
 
 	rec := httptest.NewRecorder()
@@ -121,6 +180,18 @@ func callModels(t *testing.T, org model.Organization, models []model.LLMModel, v
 		out[e.ID] = e
 	}
 	return out
+}
+
+// callModels calls the catalogue of a single organization as a token of it.
+func callModels(t *testing.T, org model.Organization, models []model.LLMModel, vms []model.VirtualModel, query string) map[string]cardEntry {
+	t.Helper()
+	return cardScenario{
+		orgs:     []model.Organization{org},
+		models:   map[model.OrgID][]model.LLMModel{org.ID(): models},
+		vms:      vms,
+		tokenOrg: org.ID(),
+		query:    query,
+	}.call(t)
 }
 
 func modelNodeGraph(t *testing.T, proxyName string) *model.PipelineGraph {
@@ -311,5 +382,135 @@ func TestVirtualModelCard_OverrideAppliesWhenNothingIsDerivable(t *testing.T) {
 
 	if got.ContextLength == nil || *got.ContextLength != 64_000 {
 		t.Fatalf("context_length = %v, want 64000", got.ContextLength)
+	}
+}
+
+func personalVMWithGraph(name string, g *model.PipelineGraph) *model.BasePersonalVirtualModel {
+	pvm := model.NewPersonalVirtualModel(callerID(), name, "")
+	pvm.SetGraph(g)
+	return pvm
+}
+
+func callerID() model.UserID { return cardUser.ID() }
+
+func TestVirtualModelCard_StaticNameSharedByBothSelectBranches(t *testing.T) {
+	org := model.NewOrganization(testTenantID, "acme", "ACME", "")
+	a := realModel(org, "a", 100_000, model.ModelCapabilities{Tools: true}, 0, 0)
+	// Edges without an ID, as an imported graph may carry them, and one
+	// model_ref wired to both branches.
+	g := &model.PipelineGraph{
+		Nodes: []model.PipelineNode{
+			{ID: "ra", Type: model.NodeTypeModelRef, Data: nodeData(t, model.ModelRefNodeData{ProxyName: "a"})},
+			{ID: "sel", Type: model.NodeTypeSelect},
+			{ID: "m", Type: model.NodeTypeModel},
+		},
+		Edges: []model.PipelineEdge{
+			{Source: "ra", SourcePort: "model_name", Target: "sel", TargetPort: "when_true"},
+			{Source: "ra", SourcePort: "model_name", Target: "sel", TargetPort: "when_false"},
+			{Source: "sel", SourcePort: "value", Target: "m", TargetPort: "model_name"},
+		},
+	}
+
+	got := callModels(t, org, []model.LLMModel{a}, []model.VirtualModel{vmWithGraph(org, "same", g)}, "")["acme/same"]
+
+	if got.ContextLength == nil || *got.ContextLength != 100_000 {
+		t.Fatalf("context_length = %v, want 100000", got.ContextLength)
+	}
+}
+
+func TestVirtualModelCard_NestedUnderivableKeepsItsOverrides(t *testing.T) {
+	org := model.NewOrganization(testTenantID, "acme", "ACME", "")
+	inner := vmWithGraph(org, "inner", &model.PipelineGraph{Nodes: []model.PipelineNode{
+		{ID: "m", Type: model.NodeTypeModel, Data: nodeData(t, model.ModelNodeData{Passthrough: true})},
+	}})
+	inner.SetCatalogOverrides(&model.CatalogOverrides{ContextWindow: 24_000})
+	outer := vmWithGraph(org, "outer", modelNodeGraph(t, "inner"))
+
+	got := callModels(t, org, nil, []model.VirtualModel{inner, outer}, "")["acme/outer"]
+
+	if got.ContextLength == nil || *got.ContextLength != 24_000 {
+		t.Fatalf("context_length = %v, want the nested override 24000", got.ContextLength)
+	}
+}
+
+func TestPersonalVirtualModelCard_Derived(t *testing.T) {
+	org := model.NewOrganization(testTenantID, "acme", "ACME", "")
+	vision := realModel(org, "vision", 128_000, model.ModelCapabilities{Tools: true, Vision: true}, 3000, 15000)
+	pvm := personalVMWithGraph("mine", modelNodeGraph(t, "vision"))
+
+	got := cardScenario{
+		orgs:     []model.Organization{org},
+		models:   map[model.OrgID][]model.LLMModel{org.ID(): {vision}},
+		pvms:     []model.PersonalVirtualModel{pvm},
+		tokenOrg: org.ID(),
+	}.call(t)["~/mine"]
+
+	if got.ContextLength == nil || *got.ContextLength != 128_000 {
+		t.Fatalf("context_length = %v, want 128000", got.ContextLength)
+	}
+	if !slices.Contains(got.SupportedParameters, "tools") || !slices.Contains(got.Architecture.InputModalities, "image") {
+		t.Errorf("capabilities not derived: %+v", got)
+	}
+	if got.Pricing.Prompt != 0.003 {
+		t.Errorf("pricing = %+v, want the real model's", got.Pricing)
+	}
+}
+
+func TestPersonalVirtualModelCard_OverrideWins(t *testing.T) {
+	org := model.NewOrganization(testTenantID, "acme", "ACME", "")
+	real := realModel(org, "real", 128_000, model.ModelCapabilities{Tools: true}, 0, 0)
+	pvm := personalVMWithGraph("mine", modelNodeGraph(t, "real"))
+	pvm.SetCatalogOverrides(&model.CatalogOverrides{ContextWindow: 16_000})
+
+	got := cardScenario{
+		orgs:     []model.Organization{org},
+		models:   map[model.OrgID][]model.LLMModel{org.ID(): {real}},
+		pvms:     []model.PersonalVirtualModel{pvm},
+		tokenOrg: org.ID(),
+	}.call(t)["~/mine"]
+
+	if got.ContextLength == nil || *got.ContextLength != 16_000 {
+		t.Fatalf("context_length = %v, want the override 16000", got.ContextLength)
+	}
+	if !slices.Contains(got.SupportedParameters, "tools") {
+		t.Errorf("capabilities should still be derived, got %v", got.SupportedParameters)
+	}
+}
+
+// A session spans every organization of the user, so the organization local
+// names resolve against is not known: each is tried.
+func TestPersonalVirtualModelCard_SessionWithSeveralOrgs(t *testing.T) {
+	orgA := model.NewOrganization(testTenantID, "acme", "ACME", "")
+	orgB := model.NewOrganization(testTenantID, "umbrella", "Umbrella", "")
+	onlyInA := realModel(orgA, "shared", 64_000, model.ModelCapabilities{Tools: true}, 0, 0)
+	pvm := personalVMWithGraph("mine", modelNodeGraph(t, "shared"))
+
+	got := cardScenario{
+		orgs:   []model.Organization{orgA, orgB},
+		models: map[model.OrgID][]model.LLMModel{orgA.ID(): {onlyInA}},
+		pvms:   []model.PersonalVirtualModel{pvm},
+	}.call(t)["~/mine"]
+
+	if got.ContextLength == nil || *got.ContextLength != 64_000 {
+		t.Fatalf("context_length = %v, want 64000 from the org that has the model", got.ContextLength)
+	}
+}
+
+func TestVirtualModelCard_ReferencesAPersonalModel(t *testing.T) {
+	org := model.NewOrganization(testTenantID, "acme", "ACME", "")
+	real := realModel(org, "real", 32_000, model.ModelCapabilities{Reasoning: true}, 0, 0)
+	pvm := personalVMWithGraph("mine", modelNodeGraph(t, "real"))
+	vm := vmWithGraph(org, "wraps", modelNodeGraph(t, "~/mine"))
+
+	got := cardScenario{
+		orgs:     []model.Organization{org},
+		models:   map[model.OrgID][]model.LLMModel{org.ID(): {real}},
+		vms:      []model.VirtualModel{vm},
+		pvms:     []model.PersonalVirtualModel{pvm},
+		tokenOrg: org.ID(),
+	}.call(t)["acme/wraps"]
+
+	if got.ContextLength == nil || *got.ContextLength != 32_000 {
+		t.Fatalf("context_length = %v, want 32000", got.ContextLength)
 	}
 }

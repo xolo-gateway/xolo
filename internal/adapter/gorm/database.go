@@ -620,5 +620,15 @@ func schemaMigrations(artifact *RecoveryArtifact) []*gormigrate.Migration {
 				return errors.New("lifecycle purge migration cannot be rolled back: purged deletions would lose their tombstones")
 			},
 		},
+		{
+			ID:      catalogOverridesMigrationID,
+			Migrate: migrateCatalogOverrides,
+			Rollback: func(tx *gorm.DB) error {
+				if err := tx.Migrator().DropColumn(&VirtualModel{}, "overrides_json"); err != nil {
+					return errors.WithStack(err)
+				}
+				return errors.WithStack(tx.Migrator().DropColumn(&PersonalVirtualModel{}, "overrides_json"))
+			},
+		},
 	}
 }
