@@ -208,6 +208,7 @@ func (s *stubVM) OrgID() model.OrgID          { return "" }
 func (s *stubVM) Name() string                { return "" }
 func (s *stubVM) Description() string         { return "" }
 func (s *stubVM) Graph() *model.PipelineGraph { return nil }
+func (s *stubVM) CatalogOverrides() *model.CatalogOverrides { return nil }
 func (s *stubVM) CreatedAt() time.Time        { return time.Time{} }
 func (s *stubVM) UpdatedAt() time.Time        { return time.Time{} }
 

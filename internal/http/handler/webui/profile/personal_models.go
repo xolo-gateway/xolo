@@ -137,6 +137,7 @@ func (h *Handler) createPersonalModel(w http.ResponseWriter, r *http.Request) {
 	}
 
 	vm := model.NewPersonalVirtualModel(user.ID(), name, description)
+	vm.SetCatalogOverrides(common.ParseCatalogOverrides(r))
 	if err := h.personalVMStore.CreatePersonalVirtualModel(ctx, vm); err != nil {
 		if errors.Is(err, port.ErrAlreadyExists) {
 			// Mirror of updatePersonalModel: a concurrent create slipped past
@@ -266,6 +267,7 @@ func (h *Handler) updatePersonalModel(w http.ResponseWriter, r *http.Request) {
 	type mutable interface {
 		SetName(string)
 		SetDescription(string)
+		SetCatalogOverrides(*model.CatalogOverrides)
 		SetUpdatedAt(time.Time)
 	}
 
@@ -276,6 +278,7 @@ func (h *Handler) updatePersonalModel(w http.ResponseWriter, r *http.Request) {
 	}
 	m.SetName(name)
 	m.SetDescription(description)
+	m.SetCatalogOverrides(common.ParseCatalogOverrides(r))
 	m.SetUpdatedAt(time.Now())
 
 	if err := h.personalVMStore.SavePersonalVirtualModel(ctx, vm); err != nil {

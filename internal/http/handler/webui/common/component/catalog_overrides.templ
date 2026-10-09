@@ -1,0 +1,80 @@
+package component
+
+import (
+	"github.com/xolo-gateway/xolo/internal/core/model"
+	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/form"
+	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/input"
+	switchcomp "github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/switch"
+)
+
+// CatalogOverridesFields renders what a virtual model declares in the model
+// catalogue. Xolo derives these values from the models the pipeline calls; the
+// fields are for pipelines that choose their model at run time, or for a card
+// that should say something else. ParseCatalogOverrides reads them back.
+templ CatalogOverridesFields(o *model.CatalogOverrides) {
+	{{ caps := overrideCaps(o) }}
+	<div class="space-y-4">
+		<div class="space-y-1">
+			@form.Label(form.LabelProps{}) {
+				Annonce dans le catalogue 
+			}
+			@form.Description() {
+				Fenêtre, sortie et capacités se déduisent des modèles que le pipeline appelle. Renseignez-les ici quand le pipeline choisit son modèle à l'exécution, ou pour afficher autre chose. Une valeur saisie l'emporte sur la valeur déduite.
+			}
+		</div>
+		<div class="grid grid-cols-2 gap-3">
+			<div class="space-y-2">
+				@form.Label(form.LabelProps{For: "catalog_context_window"}) {
+					Fenêtre de contexte 
+				}
+				@input.Input(input.Props{ID: "catalog_context_window", Name: "catalog_context_window", Type: "number", Value: overrideContextWindow(o), Placeholder: "déduite"})
+			</div>
+			<div class="space-y-2">
+				@form.Label(form.LabelProps{For: "catalog_max_output_tokens"}) {
+					Sortie maximale 
+				}
+				@input.Input(input.Props{ID: "catalog_max_output_tokens", Name: "catalog_max_output_tokens", Type: "number", Value: overrideMaxOutput(o), Placeholder: "déduite"})
+			</div>
+		</div>
+		<div class="space-y-2">
+			@form.ItemFlex() {
+				@switchcomp.Switch(switchcomp.Props{ID: "catalog_caps_declared", Name: "catalog_caps_declared", Checked: overrideCapsDeclared(o)})
+				@form.Label(form.LabelProps{For: "catalog_caps_declared"}) {
+					Déclarer les capacités 
+				}
+			}
+			<div class="grid grid-cols-2 gap-2 pl-2">
+				@form.ItemFlex() {
+					@switchcomp.Switch(switchcomp.Props{ID: "catalog_cap_tools", Name: "catalog_cap_tools", Checked: caps.Tools})
+					@form.Label(form.LabelProps{For: "catalog_cap_tools"}) {
+						Outils 
+					}
+				}
+				@form.ItemFlex() {
+					@switchcomp.Switch(switchcomp.Props{ID: "catalog_cap_vision", Name: "catalog_cap_vision", Checked: caps.Vision})
+					@form.Label(form.LabelProps{For: "catalog_cap_vision"}) {
+						Vision 
+					}
+				}
+				@form.ItemFlex() {
+					@switchcomp.Switch(switchcomp.Props{ID: "catalog_cap_reasoning", Name: "catalog_cap_reasoning", Checked: caps.Reasoning})
+					@form.Label(form.LabelProps{For: "catalog_cap_reasoning"}) {
+						Raisonnement 
+					}
+				}
+				@form.ItemFlex() {
+					@switchcomp.Switch(switchcomp.Props{ID: "catalog_cap_audio", Name: "catalog_cap_audio", Checked: caps.Audio})
+					@form.Label(form.LabelProps{For: "catalog_cap_audio"}) {
+						Audio 
+					}
+				}
+				@form.ItemFlex() {
+					@switchcomp.Switch(switchcomp.Props{ID: "catalog_cap_embeddings", Name: "catalog_cap_embeddings", Checked: caps.Embeddings})
+					@form.Label(form.LabelProps{For: "catalog_cap_embeddings"}) {
+						Embeddings 
+					}
+				}
+			</div>
+		</div>
+	</div>
+}

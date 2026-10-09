@@ -156,6 +156,7 @@ func (h *Handler) createVirtualModel(w http.ResponseWriter, r *http.Request) {
 	}
 
 	vm := model.NewVirtualModel(org.ID(), name, description)
+	vm.SetCatalogOverrides(common.ParseCatalogOverrides(r))
 
 	if err := h.virtualModelStore.CreateVirtualModel(ctx, vm); err != nil {
 		if errors.Is(err, port.ErrAlreadyExists) {
@@ -260,6 +261,7 @@ func (h *Handler) updateVirtualModel(w http.ResponseWriter, r *http.Request) {
 	type mutable interface {
 		SetName(string)
 		SetDescription(string)
+		SetCatalogOverrides(*model.CatalogOverrides)
 		SetUpdatedAt(time.Time)
 	}
 
@@ -270,6 +272,7 @@ func (h *Handler) updateVirtualModel(w http.ResponseWriter, r *http.Request) {
 	}
 	v.SetName(name)
 	v.SetDescription(description)
+	v.SetCatalogOverrides(common.ParseCatalogOverrides(r))
 	v.SetUpdatedAt(time.Now())
 
 	if err := h.virtualModelStore.SaveVirtualModel(ctx, vm); err != nil {
