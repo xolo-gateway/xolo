@@ -514,3 +514,42 @@ func TestVirtualModelCard_ReferencesAPersonalModel(t *testing.T) {
 		t.Fatalf("context_length = %v, want 32000", got.ContextLength)
 	}
 }
+
+func TestVirtualModelCard_CycleKeepsTheOverridesOfItsMembers(t *testing.T) {
+	org := model.NewOrganization(testTenantID, "acme", "ACME", "")
+	ping := vmWithGraph(org, "ping", modelNodeGraph(t, "pong"))
+	pong := vmWithGraph(org, "pong", modelNodeGraph(t, "ping"))
+	pong.SetCatalogOverrides(&model.CatalogOverrides{ContextWindow: 12_000})
+
+	got := callModels(t, org, nil, []model.VirtualModel{ping, pong}, "")
+
+	if e := got["acme/ping"]; e.ContextLength == nil || *e.ContextLength != 12_000 {
+		t.Fatalf("ping context_length = %v, want pong's override 12000", e.ContextLength)
+	}
+}
+
+// The candidates of the organizations tried differ: capabilities intersect, the
+// window is the smallest, and the price, which could be either, is left out.
+func TestPersonalVirtualModelCard_SessionWithDivergingOrgs(t *testing.T) {
+	orgA := model.NewOrganization(testTenantID, "acme", "ACME", "")
+	orgB := model.NewOrganization(testTenantID, "umbrella", "Umbrella", "")
+	inA := realModel(orgA, "shared", 64_000, model.ModelCapabilities{Tools: true, Vision: true}, 1000, 2000)
+	inB := realModel(orgB, "shared", 32_000, model.ModelCapabilities{Tools: true}, 5000, 6000)
+	pvm := personalVMWithGraph("mine", modelNodeGraph(t, "shared"))
+
+	got := cardScenario{
+		orgs:   []model.Organization{orgA, orgB},
+		models: map[model.OrgID][]model.LLMModel{orgA.ID(): {inA}, orgB.ID(): {inB}},
+		pvms:   []model.PersonalVirtualModel{pvm},
+	}.call(t)["~/mine"]
+
+	if got.ContextLength == nil || *got.ContextLength != 32_000 {
+		t.Fatalf("context_length = %v, want the smaller window 32000", got.ContextLength)
+	}
+	if !slices.Contains(got.SupportedParameters, "tools") || slices.Contains(got.Architecture.InputModalities, "image") {
+		t.Errorf("capabilities should be the intersection, got %+v", got)
+	}
+	if got.Pricing.Prompt != 0 || got.Pricing.Completion != 0 {
+		t.Errorf("pricing = %+v, want none when the orgs disagree", got.Pricing)
+	}
+}

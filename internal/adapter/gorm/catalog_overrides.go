@@ -2,6 +2,7 @@ package gorm
 
 import (
 	"encoding/json"
+	"log/slog"
 
 	"github.com/xolo-gateway/xolo/internal/core/model"
 )
@@ -14,19 +15,26 @@ func encodeCatalogOverrides(o *model.CatalogOverrides) string {
 	}
 	data, err := json.Marshal(o)
 	if err != nil {
+		// Unreachable while the overrides hold plain numbers and booleans.
+		slog.Error("could not encode catalog overrides, they are not saved", slog.Any("error", err))
 		return ""
 	}
 	return string(data)
 }
 
 // decodeCatalogOverrides is the inverse of encodeCatalogOverrides. A value that
-// does not parse reads as no overrides rather than failing the whole row.
+// does not parse reads as no overrides rather than failing the whole row, and
+// is logged so the fallback to derivation can be traced.
 func decodeCatalogOverrides(s string) *model.CatalogOverrides {
 	if s == "" {
 		return nil
 	}
 	var o model.CatalogOverrides
-	if err := json.Unmarshal([]byte(s), &o); err != nil || o.IsZero() {
+	if err := json.Unmarshal([]byte(s), &o); err != nil {
+		slog.Warn("ignoring unreadable catalog overrides", slog.Any("error", err))
+		return nil
+	}
+	if o.IsZero() {
 		return nil
 	}
 	return &o

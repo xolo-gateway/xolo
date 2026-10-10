@@ -79,7 +79,7 @@ func CatalogOverridesFields(o *model.CatalogOverrides) templ.Component {
 				}()
 			}
 			ctx = templ.InitializeContext(ctx)
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "Fenêtre, sortie et capacités se déduisent des modèles que le pipeline appelle. Renseignez-les ici quand le pipeline choisit son modèle à l'exécution, ou pour afficher autre chose. Une valeur saisie l'emporte sur la valeur déduite.")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "Fenêtre, sortie et capacités se déduisent des modèles que le pipeline appelle. Renseignez-les ici quand le pipeline choisit son modèle à l'exécution, ou pour afficher autre chose. Une valeur saisie l'emporte sur la valeur déduite. Déclarer les capacités remplace entièrement celles qui sont déduites : cochez toutes celles que le modèle doit annoncer.")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}

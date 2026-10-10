@@ -193,6 +193,14 @@ func (r *cardResolver) personalModelCard(pvm model.PersonalVirtualModel) modelTr
 	if len(derived) > 0 {
 		t = combineTraits(derived)
 	}
+	// The proxy bills one organization, so a price that differs between the
+	// ones tried would show a figure that may not be the one charged.
+	for _, d := range derived[min(1, len(derived)):] {
+		if d.promptCost != derived[0].promptCost || d.completionCost != derived[0].completionCost {
+			t.promptCost, t.completionCost = 0, 0
+			break
+		}
+	}
 	return applyCatalogOverrides(t, pvm.CatalogOverrides())
 }
 
