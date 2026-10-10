@@ -608,6 +608,23 @@ func TestPersonalVirtualModelWhoseTeamWasLeft(t *testing.T) {
 	require.Equal(t, string(rd.ID()), string(TeamIDFromMeta(req.Metadata)))
 }
 
+// A personal virtual model charging a team of another organization is refused,
+// rather than charged to a team of this one.
+func TestPersonalVirtualModelOfAnotherOrganizationsTeam(t *testing.T) {
+	w := newTeamsWorld(t)
+	rd := w.addTeam("rd", "gpt")
+	other := model.NewOrganization(testTenantID, "globex", "Globex", "")
+	foreign := model.NewTeam(other.ID(), "legal", "legal", "")
+	w.teams["globex-legal"] = foreign
+	personalModel(w, "mine", foreign.ID())
+	codes := []string{string(rbac.PermPersonalVMCreate), string(rbac.PermModelUseOrg)}
+
+	result, err := w.hook().PreRequest(w.ctx(codes, []model.Team{rd}, nil), w.request("~/mine"))
+	require.NoError(t, err)
+	require.Equal(t, "model_team_required", errorCode(t, result))
+	require.Equal(t, http.StatusBadRequest, result.Response.StatusCode)
+}
+
 // A personal virtual model without team is refused when several paths exist.
 func TestPersonalVirtualModelWithoutTeam(t *testing.T) {
 	w := newTeamsWorld(t)

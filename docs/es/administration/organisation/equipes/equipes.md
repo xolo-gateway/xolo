@@ -15,7 +15,7 @@ Cada solicitud se atribuye a un solo equipo, o solo a la organización. El nombr
 - `/v1/models` lista un nombre por cada equipo que da acceso al modelo, en la forma calificada. Los miembros que tienen `model:use:org` también ven la forma corta `acme/gpt-4o`, que se carga solo a la organización.
 - La forma corta `acme/gpt-4o` sigue aceptándose cuando solo existe un camino: el token está vinculado a un equipo, uno solo de los equipos del miembro da acceso al modelo, o el miembro tiene `model:use:org` (entonces solo se carga a la organización). Si no, la pasarela responde `400` con el código `model_ambiguous` y la lista de los nombres calificados que se pueden usar.
 - Una clave de API o una aplicación vinculada a un equipo siempre carga a ese equipo, y no puede nombrar otro equipo.
-- Un modelo virtual personal (`~/…`) carga al equipo elegido en su configuración. Si su autor deja ese equipo, o si el equipo se elimina, sus solicitudes se rechazan (`400 model_team_required`) hasta que el autor elija otro equipo.
+- Un modelo virtual personal (`~/…`) carga al equipo elegido en su configuración. Si su autor deja ese equipo, si el equipo se elimina o si pertenece a otra organización que la de la solicitud, sus solicitudes se rechazan (`400 model_team_required`) hasta que el autor elija otro equipo.
 
 El identificador de un equipo ya no cambia después de su creación, porque los clientes guardan los nombres de modelos en su configuración. Su nombre visible sigue siendo editable.
 

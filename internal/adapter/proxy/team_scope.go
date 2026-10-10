@@ -169,7 +169,9 @@ func (h *TeamScopeHook) PreRequest(ctx context.Context, req *genaiProxy.ProxyReq
 		}
 		kind, modelID, found := lookupLocalModel(ctx, h.providerStore, h.virtualModelStore, org.ID(), name.Local)
 		if !found {
-			// Unknown model: let the router answer.
+			// Unknown model: let the router answer. The team segment is
+			// stripped all the same so that the router reads the name it
+			// knows; the request fails there, nothing is charged.
 			h.setScope(req, name, refOf(named))
 			return nil, nil
 		}
@@ -222,8 +224,9 @@ func (h *TeamScopeHook) setScope(req *genaiProxy.ProxyRequest, name model.ModelN
 // A team picked by the owner that the owner can no longer charge, because it
 // left the team or the team was deleted, refuses the request until the owner
 // picks another one: the team it designated to pay is never swapped for
-// another payer behind its back. A team of another organization is not this
-// organization's to charge, and leaves the single path rule.
+// another payer behind its back. A team of another organization is refused
+// too: this organization can not charge it, and charging another one instead
+// would be that swap.
 func (h *TeamScopeHook) personalTeam(ctx context.Context, orgID model.OrgID, perms rbac.PermissionSet, bound model.TeamID, name model.ModelName) (rbac.TeamRef, error) {
 	if bound != "" {
 		if team, ok := teamRefOf(perms, string(bound)); ok {
@@ -240,10 +243,13 @@ func (h *TeamScopeHook) personalTeam(ctx context.Context, orgID model.OrgID, per
 				}
 				team, err := h.teamStore.GetTeamByID(ctx, pvm.TeamID())
 				switch {
-				case errors.Is(err, port.ErrNotFound) || (err == nil && team.OrgID() == orgID):
+				case err == nil && team.OrgID() != orgID:
+					return rbac.TeamRef{}, &teamScopeAnswer{result: teamRequired(
+						"personal virtual model '" + name.String() + "' charges a team of another organization: pick a team of this organization in its settings")}
+				case err == nil || errors.Is(err, port.ErrNotFound):
 					return rbac.TeamRef{}, &teamScopeAnswer{result: teamRequired(
 						"the team personal virtual model '" + name.String() + "' charges is no longer yours: pick another team in its settings")}
-				case err != nil:
+				default:
 					return rbac.TeamRef{}, errors.WithStack(err)
 				}
 			}

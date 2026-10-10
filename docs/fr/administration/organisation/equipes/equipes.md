@@ -15,7 +15,7 @@ Chaque requête est attribuée à une seule équipe, ou à l'organisation seule.
 - `/v1/models` liste un nom par équipe donnant accès au modèle, sous la forme qualifiée. Les membres qui ont `model:use:org` voient aussi la forme courte `acme/gpt-4o`, débitée sur l'organisation seule.
 - La forme courte `acme/gpt-4o` reste acceptée quand un seul chemin existe : le jeton est rattaché à une équipe, une seule des équipes du membre donne accès au modèle, ou le membre a `model:use:org` (seule l'organisation est alors débitée). Sinon, la passerelle répond `400` avec le code `model_ambiguous` et la liste des noms qualifiés utilisables.
 - Une clé d'API ou une application rattachée à une équipe débite toujours cette équipe, et ne peut pas nommer une autre équipe.
-- Un modèle virtuel personnel (`~/…`) débite l'équipe choisie dans ses réglages. Si son auteur quitte cette équipe, ou si elle est supprimée, ses requêtes sont refusées (`400 model_team_required`) jusqu'à ce qu'il en choisisse une autre.
+- Un modèle virtuel personnel (`~/…`) débite l'équipe choisie dans ses réglages. Si son auteur quitte cette équipe, si elle est supprimée ou si elle appartient à une autre organisation que celle de la requête, ses requêtes sont refusées (`400 model_team_required`) jusqu'à ce qu'il en choisisse une autre.
 
 L'identifiant d'une équipe ne change plus après sa création : les clients enregistrent les noms de modèles dans leur configuration. Son nom affiché reste modifiable.
 

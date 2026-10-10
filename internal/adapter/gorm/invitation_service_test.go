@@ -13,6 +13,7 @@ import (
 	xologorm "github.com/xolo-gateway/xolo/internal/adapter/gorm"
 	"github.com/xolo-gateway/xolo/internal/core/model"
 	"github.com/xolo-gateway/xolo/internal/core/port"
+	"github.com/xolo-gateway/xolo/internal/core/rbac"
 	"github.com/xolo-gateway/xolo/internal/core/service"
 	httpCtx "github.com/xolo-gateway/xolo/internal/http/context"
 	gormpkg "gorm.io/gorm"
@@ -200,7 +201,9 @@ func TestInvitationCreate(t *testing.T) {
 			{"unknown role", service.CreateInvitationInput{Role: "invalid"}},
 		} {
 			t.Run(tc.name, func(t *testing.T) {
-				inv, err := f.service.Create(f.ctx, f.tenant.ID(), f.org.ID(), f.user.ID(), tc.input)
+				input := tc.input
+				input.Perms = inviteWritePerms
+				inv, err := f.service.Create(f.ctx, f.tenant.ID(), f.org.ID(), f.user.ID(), input)
 				require.ErrorIs(t, err, port.ErrInvalid)
 				require.Nil(t, inv)
 			})
@@ -208,7 +211,7 @@ func TestInvitationCreate(t *testing.T) {
 		require.Empty(t, f.recorder.snapshot())
 		for _, role := range []string{"", model.RoleMember, model.RoleOrgAdmin, model.RoleOrgOwner, string(f.role.ID())} {
 			t.Run("role-"+role, func(t *testing.T) {
-				inv, err := f.service.Create(f.ctx, f.tenant.ID(), f.org.ID(), f.user.ID(), service.CreateInvitationInput{Role: role})
+				inv, err := f.service.Create(f.ctx, f.tenant.ID(), f.org.ID(), f.user.ID(), service.CreateInvitationInput{Role: role, Perms: inviteWritePerms})
 				require.NoError(t, err)
 				resolved, err := store.GetRoleByID(f.ctx, model.RoleID(inv.Role()))
 				require.NoError(t, err)
@@ -217,13 +220,39 @@ func TestInvitationCreate(t *testing.T) {
 				require.Nil(t, inv.ExpiresAt())
 			})
 		}
-		inv, err := f.service.Create(f.ctx, f.tenant.ID(), f.org.ID(), f.user.ID(), service.CreateInvitationInput{Email: f.user.Email(), ExpiresAt: "2099-01-02", MaxUses: "12"})
+		inv, err := f.service.Create(f.ctx, f.tenant.ID(), f.org.ID(), f.user.ID(), service.CreateInvitationInput{Email: f.user.Email(), ExpiresAt: "2099-01-02", MaxUses: "12", Perms: inviteWritePerms})
 		require.NoError(t, err)
 		require.Equal(t, 1, *inv.MaxUses())
 		require.Equal(t, time.Date(2099, 1, 2, 0, 0, 0, 0, time.UTC), *inv.ExpiresAt())
 		require.Len(t, f.recorder.snapshot(), 6)
-		_, err = f.service.Create(f.ctx, f.foreignTenant.ID(), f.org.ID(), f.foreignUser.ID(), service.CreateInvitationInput{})
+		_, err = f.service.Create(f.ctx, f.foreignTenant.ID(), f.org.ID(), f.foreignUser.ID(), service.CreateInvitationInput{Perms: inviteWritePerms})
 		require.ErrorIs(t, err, port.ErrNotFound)
+	})
+}
+
+var inviteWritePerms = rbac.NewPermissionSet([]string{string(rbac.PermInvitesWrite)}, nil)
+
+// The service checks invites:write itself, whatever its caller checked.
+func TestInvitationCreateRequiresInvitesWrite(t *testing.T) {
+	eachBackend(t, func(t *testing.T, store *xologorm.Store) {
+		f := newInvitationFixture(t, store)
+		lead := rbac.NewPermissionSet(nil, []rbac.TeamAccess{{TeamID: "team-legal", Slug: "legal", Codes: []string{string(rbac.PermInvitesWrite)}}})
+		for _, tc := range []struct {
+			name  string
+			input service.CreateInvitationInput
+		}{
+			{"no permission", service.CreateInvitationInput{}},
+			{"team permission without team", service.CreateInvitationInput{Perms: lead}},
+			{"team permission on another team", service.CreateInvitationInput{Perms: lead, TeamID: "team-rd"}},
+			{"team permission with a role", service.CreateInvitationInput{Perms: lead, TeamID: "team-legal", Role: model.RoleOrgAdmin}},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				inv, err := f.service.Create(f.ctx, f.tenant.ID(), f.org.ID(), f.user.ID(), tc.input)
+				require.ErrorIs(t, err, port.ErrNotAllowed)
+				require.Nil(t, inv)
+			})
+		}
+		require.Empty(t, f.recorder.snapshot())
 	})
 }
 

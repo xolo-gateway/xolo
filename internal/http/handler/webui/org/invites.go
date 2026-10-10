@@ -197,7 +197,7 @@ func (h *Handler) createInvite(w http.ResponseWriter, r *http.Request) {
 	invite, err := h.invitationService.Create(ctx, httpCtx.TenantID(ctx), org.ID(), user.ID(), service.CreateInvitationInput{
 		Role: role, Email: r.FormValue("invitee_email"),
 		ExpiresAt: r.FormValue("expires_at"), MaxUses: r.FormValue("max_uses"),
-		TeamID: teamID,
+		TeamID: teamID, Perms: scope.perms,
 	})
 	if err != nil {
 		if webcommon.RejectLocked(w, r, err) {
@@ -267,6 +267,7 @@ func (h *Handler) revokeInvite(w http.ResponseWriter, r *http.Request) {
 // organization: all of them with the permissions on the organization, those
 // of the teams it holds them on otherwise.
 type inviteScopeOf struct {
+	perms                 rbac.PermissionSet
 	readAll, writeAll     bool
 	teams                 []model.Team
 	readTeams, writeTeams map[model.TeamID]model.Team
@@ -283,6 +284,7 @@ func (h *Handler) inviteScope(w http.ResponseWriter, r *http.Request, org model.
 		return inviteScopeOf{}, false
 	}
 	scope := inviteScopeOf{
+		perms:      perms,
 		readAll:    perms.Has(rbac.PermInvitesRead),
 		writeAll:   perms.Has(rbac.PermInvitesWrite),
 		readTeams:  map[model.TeamID]model.Team{},
