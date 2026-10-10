@@ -46,8 +46,8 @@ type modelPricing struct {
 }
 
 type perRequestLimits struct {
-	PromptTokens     int `json:"prompt_tokens"`
-	CompletionTokens int `json:"completion_tokens"`
+	PromptTokens     int `json:"prompt_tokens,omitempty"`
+	CompletionTokens int `json:"completion_tokens,omitempty"`
 }
 
 type pluginManagerIface interface {
@@ -196,6 +196,18 @@ func (h *Handler) handleModels(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Local model names in a personal virtual model resolve against the
+	// organization of the token, which is only known when there is one.
+	var defaultOrg model.OrgID
+	if len(orgIDs) == 1 {
+		defaultOrg = orgIDs[0]
+	}
+	var userID model.UserID
+	if u := httpCtx.User(ctx); u != nil {
+		userID = u.ID()
+	}
+	cards := h.newCardResolver(ctx, orgIDs, defaultOrg, userID)
+
 	data := make([]openRouterModel, 0)
 	canUsePersonalVM := false
 	for _, orgID := range orgIDs {
@@ -234,7 +246,7 @@ func (h *Handler) handleModels(w http.ResponseWriter, r *http.Request) {
 				if !perms.IsOwner() && !perms.Has(rbac.PermModelUseVirtual) && !perms.HasModelAccess(string(vm.ID()), rbac.ModelKindVirtual) {
 					continue
 				}
-				model := h.virtualModelToOpenRouterModel(org.Slug(), vm)
+				model := h.virtualModelToOpenRouterModel(org.Slug(), vm, cards.orgModelCard(vm))
 				if filterModel(model, filterParams, filterModalities) {
 					data = append(data, model)
 				}
@@ -251,7 +263,7 @@ func (h *Handler) handleModels(w http.ResponseWriter, r *http.Request) {
 				slog.WarnContext(ctx, "could not list personal virtual models", slogx.Error(err))
 			} else {
 				for _, pvm := range pvms {
-					m := h.personalVMToOpenRouterModel(pvm)
+					m := h.personalVMToOpenRouterModel(pvm, cards.personalModelCard(pvm))
 					if filterModel(m, filterParams, filterModalities) {
 						data = append(data, m)
 					}
@@ -276,30 +288,40 @@ func baseSupportedParams() []string {
 	}
 }
 
-func (h *Handler) personalVMToOpenRouterModel(pvm model.PersonalVirtualModel) openRouterModel {
-	return openRouterModel{
-		ID:          "~/" + pvm.Name(),
-		Object:      "model",
-		Created:     int(pvm.CreatedAt().Unix()),
-		OwnedBy:     "xolo",
-		Name:        pvm.Name(),
-		Description: pvm.Description(),
-		Architecture: modelArchitecture{
-			InputModalities:  []string{"text"},
-			OutputModalities: []string{"text"},
-			Modality:         "text",
-		},
-		DefaultParameters: nil,
-		Pricing:           modelPricing{Prompt: 0, Completion: 0},
-		SupportedParams:   baseSupportedParams(),
-	}
+func (h *Handler) personalVMToOpenRouterModel(pvm model.PersonalVirtualModel, traits modelTraits) openRouterModel {
+	card := modelCard(traits)
+	card.ID = "~/" + pvm.Name()
+	card.Created = int(pvm.CreatedAt().Unix())
+	card.Name = pvm.Name()
+	card.Description = pvm.Description()
+	return card
 }
 
 func (h *Handler) llmModelToOpenRouterModel(orgSlug string, m model.LLMModel) openRouterModel {
-	caps := m.Capabilities()
+	card := modelCard(traitsOfLLMModel(m))
+	card.ID = orgSlug + "/" + m.ProxyName()
+	card.Created = int(m.CreatedAt().Unix())
+	card.Name = m.ProxyName()
+	card.Description = m.Description()
+	return card
+}
+
+func (h *Handler) virtualModelToOpenRouterModel(orgSlug string, vm model.VirtualModel, traits modelTraits) openRouterModel {
+	card := modelCard(traits)
+	card.ID = orgSlug + "/" + vm.Name()
+	card.Created = int(vm.CreatedAt().Unix())
+	card.Name = vm.Name()
+	card.Description = vm.Description()
+	return card
+}
+
+// modelCard renders traits as an OpenRouter-style card, shared by real and
+// virtual models so both describe capabilities the same way. A virtual model
+// whose traits are unknown renders as text only, free, without a window.
+func modelCard(t modelTraits) openRouterModel {
+	caps := t.caps
 	inputModalities := []string{"text"}
 	outputModalities := []string{"text"}
-	modality := "text"
 
 	if caps.Vision {
 		inputModalities = append(inputModalities, "image")
@@ -320,60 +342,35 @@ func (h *Handler) llmModelToOpenRouterModel(orgSlug string, m model.LLMModel) op
 	}
 
 	var contextLength *int
-	if cw := m.ContextWindow(); cw > 0 {
-		cl := int(cw)
+	if t.contextLength > 0 {
+		cl := int(t.contextLength)
 		contextLength = &cl
 	}
 
-	pricing := modelPricing{
-		Prompt:     float64(m.PromptCostPer1KTokens()) / 1_000_000,
-		Completion: float64(m.CompletionCostPer1KTokens()) / 1_000_000,
-	}
-
 	var perLimits *perRequestLimits
-	if tlc := m.TokenLimitConfig(); tlc != nil && tlc.MaxTokens > 0 {
+	if t.promptLimit > 0 || t.completionLimit > 0 {
 		perLimits = &perRequestLimits{
-			PromptTokens:     tlc.MaxTokens,
-			CompletionTokens: tlc.MaxTokens,
+			PromptTokens:     int(t.promptLimit),
+			CompletionTokens: int(t.completionLimit),
 		}
 	}
 
 	return openRouterModel{
-		ID:            orgSlug + "/" + m.ProxyName(),
 		Object:        "model",
-		Created:       int(m.CreatedAt().Unix()),
 		OwnedBy:       "xolo",
-		Name:          m.ProxyName(),
-		Description:   m.Description(),
 		ContextLength: contextLength,
 		Architecture: modelArchitecture{
 			InputModalities:  inputModalities,
 			OutputModalities: outputModalities,
-			Modality:         modality,
-		},
-		DefaultParameters: nil,
-		Pricing:           pricing,
-		PerRequestLimits:  perLimits,
-		SupportedParams:   supportedParams,
-	}
-}
-
-func (h *Handler) virtualModelToOpenRouterModel(orgSlug string, vm model.VirtualModel) openRouterModel {
-	return openRouterModel{
-		ID:          orgSlug + "/" + vm.Name(),
-		Object:      "model",
-		Created:     int(vm.CreatedAt().Unix()),
-		OwnedBy:     "xolo",
-		Name:        vm.Name(),
-		Description: vm.Description(),
-		Architecture: modelArchitecture{
-			InputModalities:  []string{"text"},
-			OutputModalities: []string{"text"},
 			Modality:         "text",
 		},
 		DefaultParameters: nil,
-		Pricing:           modelPricing{Prompt: 0, Completion: 0},
-		SupportedParams:   baseSupportedParams(),
+		Pricing: modelPricing{
+			Prompt:     float64(t.promptCost) / 1_000_000,
+			Completion: float64(t.completionCost) / 1_000_000,
+		},
+		PerRequestLimits: perLimits,
+		SupportedParams:  supportedParams,
 	}
 }
 

@@ -20,6 +20,9 @@ type PersonalVirtualModel interface {
 	Description() string
 	// Graph returns the pipeline graph. Nil means no pipeline configured.
 	Graph() *PipelineGraph
+	// CatalogOverrides returns what the user declared for the model
+	// catalogue, or nil when the card is left to derivation.
+	CatalogOverrides() *CatalogOverrides
 	CreatedAt() time.Time
 	UpdatedAt() time.Time
 }
@@ -30,22 +33,25 @@ type BasePersonalVirtualModel struct {
 	name        string
 	description string
 	graph       *PipelineGraph
+	overrides   *CatalogOverrides
 	createdAt   time.Time
 	updatedAt   time.Time
 }
 
-func (m *BasePersonalVirtualModel) ID() PersonalVirtualModelID { return m.id }
-func (m *BasePersonalVirtualModel) UserID() UserID             { return m.userID }
-func (m *BasePersonalVirtualModel) Name() string               { return m.name }
-func (m *BasePersonalVirtualModel) Description() string        { return m.description }
-func (m *BasePersonalVirtualModel) Graph() *PipelineGraph      { return m.graph }
-func (m *BasePersonalVirtualModel) CreatedAt() time.Time       { return m.createdAt }
-func (m *BasePersonalVirtualModel) UpdatedAt() time.Time       { return m.updatedAt }
+func (m *BasePersonalVirtualModel) ID() PersonalVirtualModelID          { return m.id }
+func (m *BasePersonalVirtualModel) UserID() UserID                      { return m.userID }
+func (m *BasePersonalVirtualModel) Name() string                        { return m.name }
+func (m *BasePersonalVirtualModel) Description() string                 { return m.description }
+func (m *BasePersonalVirtualModel) Graph() *PipelineGraph               { return m.graph }
+func (m *BasePersonalVirtualModel) CatalogOverrides() *CatalogOverrides { return m.overrides }
+func (m *BasePersonalVirtualModel) CreatedAt() time.Time                { return m.createdAt }
+func (m *BasePersonalVirtualModel) UpdatedAt() time.Time                { return m.updatedAt }
 
-func (m *BasePersonalVirtualModel) SetName(v string)          { m.name = v }
-func (m *BasePersonalVirtualModel) SetDescription(v string)   { m.description = v }
-func (m *BasePersonalVirtualModel) SetGraph(v *PipelineGraph) { m.graph = v }
-func (m *BasePersonalVirtualModel) SetUpdatedAt(v time.Time)  { m.updatedAt = v }
+func (m *BasePersonalVirtualModel) SetName(v string)                        { m.name = v }
+func (m *BasePersonalVirtualModel) SetDescription(v string)                 { m.description = v }
+func (m *BasePersonalVirtualModel) SetGraph(v *PipelineGraph)               { m.graph = v }
+func (m *BasePersonalVirtualModel) SetCatalogOverrides(v *CatalogOverrides) { m.overrides = v }
+func (m *BasePersonalVirtualModel) SetUpdatedAt(v time.Time)                { m.updatedAt = v }
 
 var _ PersonalVirtualModel = &BasePersonalVirtualModel{}
 

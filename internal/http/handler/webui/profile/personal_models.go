@@ -136,7 +136,14 @@ func (h *Handler) createPersonalModel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	overrides, err := common.ParseCatalogOverrides(r)
+	if err != nil {
+		http.Redirect(w, r, "/profile/personal-models?error=invalid_overrides", http.StatusSeeOther)
+		return
+	}
+
 	vm := model.NewPersonalVirtualModel(user.ID(), name, description)
+	vm.SetCatalogOverrides(overrides)
 	if err := h.personalVMStore.CreatePersonalVirtualModel(ctx, vm); err != nil {
 		if errors.Is(err, port.ErrAlreadyExists) {
 			// Mirror of updatePersonalModel: a concurrent create slipped past
@@ -263,9 +270,16 @@ func (h *Handler) updatePersonalModel(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	overrides, err := common.ParseCatalogOverrides(r)
+	if err != nil {
+		http.Redirect(w, r, "/profile/personal-models/"+vmID+"/edit?error=invalid_overrides", http.StatusSeeOther)
+		return
+	}
+
 	type mutable interface {
 		SetName(string)
 		SetDescription(string)
+		SetCatalogOverrides(*model.CatalogOverrides)
 		SetUpdatedAt(time.Time)
 	}
 
@@ -276,6 +290,7 @@ func (h *Handler) updatePersonalModel(w http.ResponseWriter, r *http.Request) {
 	}
 	m.SetName(name)
 	m.SetDescription(description)
+	m.SetCatalogOverrides(overrides)
 	m.SetUpdatedAt(time.Now())
 
 	if err := h.personalVMStore.SavePersonalVirtualModel(ctx, vm); err != nil {

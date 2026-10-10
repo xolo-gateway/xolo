@@ -213,6 +213,11 @@ templ PersonalModelFormPage(vmodel PersonalModelFormVModel) {
 					}
 					@textarea.Textarea(textarea.Props{Name: "description", Rows: 3, Value: vmodel.Description})
 				</div>
+				if vmodel.VirtualModel != nil {
+					@common.CatalogOverridesFields(vmodel.VirtualModel.CatalogOverrides())
+				} else {
+					@common.CatalogOverridesFields(nil)
+				}
 				<div class="flex gap-2">
 					@button.Button(button.Props{Type: button.TypeSubmit}) {
 						Enregistrer

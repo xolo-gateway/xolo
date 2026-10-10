@@ -13,8 +13,10 @@ type PersonalVirtualModel struct {
 	Name        string `gorm:"uniqueIndex:idx_pvm_user_name;not null"`
 	Description string
 	GraphJSON   string `gorm:"type:text;default:'{}'"`
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
+	// OverridesJSON stores the model.CatalogOverrides as JSON. Empty means none.
+	OverridesJSON string `gorm:"type:text"`
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
 }
 
 type wrappedPersonalVirtualModel struct {
@@ -33,6 +35,14 @@ func (w *wrappedPersonalVirtualModel) UpdatedAt() time.Time { return w.m.Updated
 func (w *wrappedPersonalVirtualModel) SetName(v string)         { w.m.Name = v }
 func (w *wrappedPersonalVirtualModel) SetDescription(v string)  { w.m.Description = v }
 func (w *wrappedPersonalVirtualModel) SetUpdatedAt(v time.Time) { w.m.UpdatedAt = v }
+
+func (w *wrappedPersonalVirtualModel) CatalogOverrides() *model.CatalogOverrides {
+	return decodeCatalogOverrides(w.m.OverridesJSON)
+}
+
+func (w *wrappedPersonalVirtualModel) SetCatalogOverrides(v *model.CatalogOverrides) {
+	w.m.OverridesJSON = encodeCatalogOverrides(v)
+}
 
 func (w *wrappedPersonalVirtualModel) SetGraph(v *model.PipelineGraph) {
 	if v == nil {
@@ -68,12 +78,13 @@ func fromPersonalVirtualModel(vm model.PersonalVirtualModel) *PersonalVirtualMod
 		}
 	}
 	return &PersonalVirtualModel{
-		ID:          string(vm.ID()),
-		UserID:      string(vm.UserID()),
-		Name:        vm.Name(),
-		Description: vm.Description(),
-		GraphJSON:   graphJSON,
-		CreatedAt:   vm.CreatedAt(),
-		UpdatedAt:   vm.UpdatedAt(),
+		ID:            string(vm.ID()),
+		UserID:        string(vm.UserID()),
+		Name:          vm.Name(),
+		Description:   vm.Description(),
+		GraphJSON:     graphJSON,
+		OverridesJSON: encodeCatalogOverrides(vm.CatalogOverrides()),
+		CreatedAt:     vm.CreatedAt(),
+		UpdatedAt:     vm.UpdatedAt(),
 	}
 }

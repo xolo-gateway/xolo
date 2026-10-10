@@ -272,6 +272,11 @@ templ VirtualModelFormPage(vmodel VirtualModelFormVModel) {
 								}
 								@textarea.Textarea(textarea.Props{Name: "description", Rows: 3, Value: vmodel.Description})
 							</div>
+							if vmodel.VirtualModel != nil {
+								@common.CatalogOverridesFields(vmodel.VirtualModel.CatalogOverrides())
+							} else {
+								@common.CatalogOverridesFields(nil)
+							}
 						</div>
 					}
 					<div class="pt-0 flex items-center p-6">

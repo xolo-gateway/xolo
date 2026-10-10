@@ -22,6 +22,9 @@ type VirtualModel interface {
 	// A nil graph means the virtual model has no pipeline configured and
 	// cannot be resolved by the pipeline engine.
 	Graph() *PipelineGraph
+	// CatalogOverrides returns what the operator declared for the model
+	// catalogue, or nil when the card is left to derivation.
+	CatalogOverrides() *CatalogOverrides
 	CreatedAt() time.Time
 	UpdatedAt() time.Time
 }
@@ -32,23 +35,26 @@ type BaseVirtualModel struct {
 	name        string
 	description string
 	graph       *PipelineGraph
+	overrides   *CatalogOverrides
 	createdAt   time.Time
 	updatedAt   time.Time
 }
 
-func (m *BaseVirtualModel) ID() VirtualModelID    { return m.id }
-func (m *BaseVirtualModel) EntityID() string      { return string(m.id) }
-func (m *BaseVirtualModel) OrgID() OrgID          { return m.orgID }
-func (m *BaseVirtualModel) Name() string          { return m.name }
-func (m *BaseVirtualModel) Description() string   { return m.description }
-func (m *BaseVirtualModel) Graph() *PipelineGraph { return m.graph }
-func (m *BaseVirtualModel) CreatedAt() time.Time  { return m.createdAt }
-func (m *BaseVirtualModel) UpdatedAt() time.Time  { return m.updatedAt }
+func (m *BaseVirtualModel) ID() VirtualModelID                  { return m.id }
+func (m *BaseVirtualModel) EntityID() string                    { return string(m.id) }
+func (m *BaseVirtualModel) OrgID() OrgID                        { return m.orgID }
+func (m *BaseVirtualModel) Name() string                        { return m.name }
+func (m *BaseVirtualModel) Description() string                 { return m.description }
+func (m *BaseVirtualModel) Graph() *PipelineGraph               { return m.graph }
+func (m *BaseVirtualModel) CatalogOverrides() *CatalogOverrides { return m.overrides }
+func (m *BaseVirtualModel) CreatedAt() time.Time                { return m.createdAt }
+func (m *BaseVirtualModel) UpdatedAt() time.Time                { return m.updatedAt }
 
-func (m *BaseVirtualModel) SetName(v string)          { m.name = v }
-func (m *BaseVirtualModel) SetDescription(v string)   { m.description = v }
-func (m *BaseVirtualModel) SetGraph(v *PipelineGraph) { m.graph = v }
-func (m *BaseVirtualModel) SetUpdatedAt(v time.Time)  { m.updatedAt = v }
+func (m *BaseVirtualModel) SetName(v string)                        { m.name = v }
+func (m *BaseVirtualModel) SetDescription(v string)                 { m.description = v }
+func (m *BaseVirtualModel) SetGraph(v *PipelineGraph)               { m.graph = v }
+func (m *BaseVirtualModel) SetCatalogOverrides(v *CatalogOverrides) { m.overrides = v }
+func (m *BaseVirtualModel) SetUpdatedAt(v time.Time)                { m.updatedAt = v }
 
 var (
 	_ VirtualModel   = &BaseVirtualModel{}
