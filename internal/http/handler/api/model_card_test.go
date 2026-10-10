@@ -553,3 +553,22 @@ func TestPersonalVirtualModelCard_SessionWithDivergingOrgs(t *testing.T) {
 		t.Errorf("pricing = %+v, want none when the orgs disagree", got.Pricing)
 	}
 }
+
+func TestVirtualModelCard_ValueNodeWithoutPortType(t *testing.T) {
+	org := model.NewOrganization(testTenantID, "acme", "ACME", "")
+	a := realModel(org, "a", 70_000, model.ModelCapabilities{}, 0, 0)
+	g := &model.PipelineGraph{
+		Nodes: []model.PipelineNode{
+			// The runtime reads an absent portType as a string.
+			{ID: "v", Type: model.NodeTypeValue, Data: json.RawMessage(`{"value":"a"}`)},
+			{ID: "m", Type: model.NodeTypeModel},
+		},
+		Edges: []model.PipelineEdge{{ID: "e", Source: "v", SourcePort: "value", Target: "m", TargetPort: "model_name"}},
+	}
+
+	got := callModels(t, org, []model.LLMModel{a}, []model.VirtualModel{vmWithGraph(org, "v", g)}, "")["acme/v"]
+
+	if got.ContextLength == nil || *got.ContextLength != 70_000 {
+		t.Fatalf("context_length = %v, want 70000", got.ContextLength)
+	}
+}

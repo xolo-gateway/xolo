@@ -115,7 +115,7 @@ func CatalogOverridesFields(o *model.CatalogOverrides) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = input.Input(input.Props{ID: "catalog_context_window", Name: "catalog_context_window", Type: "number", Value: overrideContextWindow(o), Placeholder: "déduite"}).Render(ctx, templ_7745c5c3_Buffer)
+		templ_7745c5c3_Err = input.Input(input.Props{ID: "catalog_context_window", Name: "catalog_context_window", Type: "number", Value: overrideContextWindow(o), Placeholder: "déduite", Attributes: templ.Attributes{"min": "0", "step": "1"}}).Render(ctx, templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -145,7 +145,7 @@ func CatalogOverridesFields(o *model.CatalogOverrides) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = input.Input(input.Props{ID: "catalog_max_output_tokens", Name: "catalog_max_output_tokens", Type: "number", Value: overrideMaxOutput(o), Placeholder: "déduite"}).Render(ctx, templ_7745c5c3_Buffer)
+		templ_7745c5c3_Err = input.Input(input.Props{ID: "catalog_max_output_tokens", Name: "catalog_max_output_tokens", Type: "number", Value: overrideMaxOutput(o), Placeholder: "déduite", Attributes: templ.Attributes{"min": "0", "step": "1"}}).Render(ctx, templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

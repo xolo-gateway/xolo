@@ -27,13 +27,13 @@ templ CatalogOverridesFields(o *model.CatalogOverrides) {
 				@form.Label(form.LabelProps{For: "catalog_context_window"}) {
 					Fenêtre de contexte 
 				}
-				@input.Input(input.Props{ID: "catalog_context_window", Name: "catalog_context_window", Type: "number", Value: overrideContextWindow(o), Placeholder: "déduite"})
+				@input.Input(input.Props{ID: "catalog_context_window", Name: "catalog_context_window", Type: "number", Value: overrideContextWindow(o), Placeholder: "déduite", Attributes: templ.Attributes{"min": "0", "step": "1"}})
 			</div>
 			<div class="space-y-2">
 				@form.Label(form.LabelProps{For: "catalog_max_output_tokens"}) {
 					Sortie maximale 
 				}
-				@input.Input(input.Props{ID: "catalog_max_output_tokens", Name: "catalog_max_output_tokens", Type: "number", Value: overrideMaxOutput(o), Placeholder: "déduite"})
+				@input.Input(input.Props{ID: "catalog_max_output_tokens", Name: "catalog_max_output_tokens", Type: "number", Value: overrideMaxOutput(o), Placeholder: "déduite", Attributes: templ.Attributes{"min": "0", "step": "1"}})
 			</div>
 		</div>
 		<div class="space-y-2">

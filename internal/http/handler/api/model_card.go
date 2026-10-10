@@ -421,8 +421,10 @@ func staticModelNames(g *model.PipelineGraph, edges []model.PipelineEdge, onPath
 			}
 			out = append(out, d.ProxyName)
 		case model.NodeTypeValue:
+			// Like the value node at runtime, any type but number and boolean
+			// emits a string, an absent one included.
 			var d model.ValueNodeData
-			if json.Unmarshal(src.Data, &d) != nil || d.PortType != "string" || d.Value == "" {
+			if json.Unmarshal(src.Data, &d) != nil || d.PortType == "number" || d.PortType == "boolean" || d.Value == "" {
 				return nil, false
 			}
 			out = append(out, d.Value)
