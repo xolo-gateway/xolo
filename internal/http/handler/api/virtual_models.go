@@ -132,6 +132,9 @@ func (h *Handler) handleCreateVirtualModel(w http.ResponseWriter, r *http.Reques
 		http.Error(w, "name is required", http.StatusBadRequest)
 		return
 	}
+	if h.rejectModelName(w, r, org.ID(), req.Name) || h.rejectGraph(w, r, req.Graph) {
+		return
+	}
 
 	vm := model.NewVirtualModel(org.ID(), req.Name, req.Description)
 	if req.Graph != nil {
@@ -465,6 +468,9 @@ func (h *Handler) handleImportVirtualModel(w http.ResponseWriter, r *http.Reques
 	}
 	if bundle.Name == "" {
 		http.Error(w, "bundle must contain a non-empty name", http.StatusBadRequest)
+		return
+	}
+	if h.rejectModelName(w, r, org.ID(), bundle.Name) || h.rejectGraph(w, r, bundle.Graph) {
 		return
 	}
 

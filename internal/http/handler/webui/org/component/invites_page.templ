@@ -2,7 +2,6 @@ package component
 
 import (
 	"fmt"
-	"github.com/xolo-gateway/xolo/internal/core/rbac"
 	common "github.com/xolo-gateway/xolo/internal/http/handler/webui/common/component"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/alert"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/button"
@@ -18,7 +17,7 @@ templ InvitesPage(vmodel InvitesPageVModel) {
 				Title:    "Invitations",
 				Subtitle: "Liens d'invitation en attente.",
 			}) {
-				if common.HasPermission(ctx, vmodel.Org.ID(), rbac.PermInvitesWrite) {
+				if vmodel.CanCreate {
 					@button.Button(button.Props{Size: button.SizeSm, Href: common.BaseURLString(ctx, common.WithPath("/orgs/", vmodel.Org.Slug(), "/admin/invites/new"))}) {
 						@icon.Plus(icon.Props{Class: "h-4 w-4 mr-2"})
 						Nouvelle invitation
@@ -78,6 +77,11 @@ templ InvitesPage(vmodel InvitesPageVModel) {
 									}
 									@table.Cell() {
 										@common.Badge(common.ToneInfo, roleLabelFromMap(vmodel.RoleNames, inv.Role()))
+										if name, ok := vmodel.TeamNames[inv.TeamID()]; ok {
+											<span class="ml-1">
+												@common.Badge(common.ToneNeutral, "équipe "+name)
+											</span>
+										}
 									}
 									@table.Cell(table.CellProps{Class: "text-muted-foreground"}) {
 										if inv.ExpiresAt() != nil {
@@ -99,7 +103,7 @@ templ InvitesPage(vmodel InvitesPageVModel) {
 												@common.Badge(common.ToneNegative, "Révoqué")
 											}
 											@common.CopyValueButton(vmodel.BaseURL+"/join/"+string(inv.ID()), "Copier le lien")
-											if common.HasPermission(ctx, vmodel.Org.ID(), rbac.PermInvitesWrite) {
+											if vmodel.CanManageAll || vmodel.WritableTeams[inv.TeamID()] {
 												if inv.RevokedAt() == nil {
 													@common.ConfirmDelete(common.ConfirmDeleteProps{
 														URL:          common.BaseURLString(ctx, common.WithPath("/orgs/", vmodel.Org.Slug(), "/admin/invites/", string(inv.ID()))),

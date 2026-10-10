@@ -29,15 +29,18 @@ type UsageRecord struct {
 	// It does not serve the caller's own totals — user_id sits after the
 	// created_at range, so an equality on it cannot be used as a prefix; that
 	// query stays on idx_usage_user_org_created.
-	CreatedAt         time.Time `gorm:"index:idx_usage_org_created,priority:2;index:idx_usage_user_org_created,priority:3;index:idx_usage_org_payg_cost,priority:3;index:idx_usage_org_prov_plan,priority:4;index:idx_usage_org_prov_user,priority:5"`
-	UserID            string    `gorm:"index;index:idx_usage_user_org_created,priority:1;index:idx_usage_org_payg_cost,priority:4;index:idx_usage_org_prov_plan,priority:5;index:idx_usage_org_prov_user,priority:4"`
-	ApplicationID     string    `gorm:"index"`
-	OrgID             string    `gorm:"index;not null;index:idx_usage_org_created,priority:1;index:idx_usage_user_org_created,priority:2;index:idx_usage_org_payg_cost,priority:1;index:idx_usage_org_prov_plan,priority:1;index:idx_usage_org_prov_user,priority:1"`
-	ProviderID        string    `gorm:"index;not null;index:idx_usage_org_prov_plan,priority:2;index:idx_usage_org_prov_user,priority:2"`
-	ModelID           string    `gorm:"index;not null"`
-	ProxyModelName    string    `gorm:"not null"`
-	ResolvedModelName string    `gorm:""`      // actual model used when virtual model was resolved
-	AuthTokenID       string    `gorm:"index"` // empty = web session
+	CreatedAt     time.Time `gorm:"index:idx_usage_org_created,priority:2;index:idx_usage_user_org_created,priority:3;index:idx_usage_org_payg_cost,priority:3;index:idx_usage_org_prov_plan,priority:4;index:idx_usage_org_prov_user,priority:5"`
+	UserID        string    `gorm:"index;index:idx_usage_user_org_created,priority:1;index:idx_usage_org_payg_cost,priority:4;index:idx_usage_org_prov_plan,priority:5;index:idx_usage_org_prov_user,priority:4"`
+	ApplicationID string    `gorm:"index"`
+	// TeamID is the team the request was attributed to, empty when charged to
+	// the organization alone.
+	TeamID            string `gorm:"index"`
+	OrgID             string `gorm:"index;not null;index:idx_usage_org_created,priority:1;index:idx_usage_user_org_created,priority:2;index:idx_usage_org_payg_cost,priority:1;index:idx_usage_org_prov_plan,priority:1;index:idx_usage_org_prov_user,priority:1"`
+	ProviderID        string `gorm:"index;not null;index:idx_usage_org_prov_plan,priority:2;index:idx_usage_org_prov_user,priority:2"`
+	ModelID           string `gorm:"index;not null"`
+	ProxyModelName    string `gorm:"not null"`
+	ResolvedModelName string `gorm:""`      // actual model used when virtual model was resolved
+	AuthTokenID       string `gorm:"index"` // empty = web session
 	PromptTokens      int
 	CachedTokens      int
 	CompletionTokens  int
@@ -65,6 +68,7 @@ func (w *wrappedUsageRecord) ApplicationID() model.ApplicationID {
 	return model.ApplicationID(w.r.ApplicationID)
 }
 func (w *wrappedUsageRecord) OrgID() model.OrgID           { return model.OrgID(w.r.OrgID) }
+func (w *wrappedUsageRecord) TeamID() model.TeamID         { return model.TeamID(w.r.TeamID) }
 func (w *wrappedUsageRecord) ProviderID() model.ProviderID { return model.ProviderID(w.r.ProviderID) }
 func (w *wrappedUsageRecord) ModelID() model.LLMModelID    { return model.LLMModelID(w.r.ModelID) }
 func (w *wrappedUsageRecord) ProxyModelName() string       { return w.r.ProxyModelName }
@@ -98,6 +102,7 @@ func fromUsageRecord(r model.UsageRecord) *UsageRecord {
 		UserID:            string(r.UserID()),
 		ApplicationID:     string(r.ApplicationID()),
 		OrgID:             string(r.OrgID()),
+		TeamID:            string(r.TeamID()),
 		ProviderID:        string(r.ProviderID()),
 		ModelID:           string(r.ModelID()),
 		ProxyModelName:    r.ProxyModelName(),

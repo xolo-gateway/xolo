@@ -23,11 +23,13 @@ type businessRoute struct {
 }
 
 var businessRoutes = []businessRoute{
-	{family: model.FamilyCustomRole, required: []string{"name", "description", "permissions", "model_grants"}},
-	{family: model.FamilyApplication, required: []string{"name", "description", "active", "role_ids"}},
+	{family: model.FamilyCustomRole, required: []string{"name", "description", "permissions"}},
+	{family: model.FamilyTeam, required: []string{"slug", "name", "description", "share_quota_equally", "model_grants", "middleware_ids", "members"}},
+	{family: model.FamilyApplication, required: []string{"name", "description", "active", "role_ids"}, optional: []string{"team_id"}},
 	{family: model.FamilyQuota,
 		required: []string{"scope", "scope_id", "currency", "daily_budget", "monthly_budget", "yearly_budget"},
-		nullable: []string{"daily_budget", "monthly_budget", "yearly_budget"}},
+		nullable: []string{"daily_budget", "monthly_budget", "yearly_budget"},
+		optional: []string{"cascade"}},
 	{family: model.FamilyAlert, required: []string{"name", "description", "scope", "owner_id", "query", "aggregation", "window_seconds", "comparator", "threshold", "for_seconds", "enabled"}},
 	{family: model.FamilyProvider,
 		required: []string{"name", "type", "base_url", "active", "currency", "cloud_tier", "billing_mode", "subscription_plan", "retry_config", "rate_limit_config"},
@@ -38,6 +40,7 @@ var businessRoutes = []businessRoute{
 // businessCollections names the collection of each business family.
 var businessCollections = map[string]string{
 	model.FamilyCustomRole:  "roles",
+	model.FamilyTeam:        "teams",
 	model.FamilyApplication: "applications",
 	model.FamilyQuota:       "quotas",
 	model.FamilyAlert:       "alerts",
@@ -185,6 +188,12 @@ func (h *Handler) putBusiness(ctx context.Context, scope model.CommonScope, key 
 			return model.CommonItem{}, err
 		}
 		return h.provisioning.PutCustomRole(ctx, tenantID, orgID, key, condition, v)
+	case model.FamilyTeam:
+		var v model.TeamSettings
+		if err := decode(&v); err != nil {
+			return model.CommonItem{}, err
+		}
+		return h.provisioning.PutTeam(ctx, tenantID, orgID, key, condition, v)
 	case model.FamilyApplication:
 		var v model.ApplicationSettings
 		if err := decode(&v); err != nil {

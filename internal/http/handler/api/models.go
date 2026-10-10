@@ -64,7 +64,9 @@ type Handler struct {
 	secretStore         port.SecretStore
 	exchangeRateService *service.ExchangeRateService
 	pluginManager       pluginManagerIface
-	mux                 *http.ServeMux
+	// teamStore keeps team slugs and model names apart, see WithTeams.
+	teamStore port.TeamStore
+	mux       *http.ServeMux
 }
 
 // Permission checks resolve through the request context (see authz.go), so the
@@ -173,9 +175,17 @@ func (h *Handler) handleModels(w http.ResponseWriter, r *http.Request) {
 	//      token in" for callers like GET /api/v1/models.
 	//   2. The full set of org memberships (e.g. a user authenticated via
 	//      an OIDC session, whose authn.User.OrgID is empty by design).
-	var orgID model.OrgID
+	var (
+		orgID model.OrgID
+		// bound is the team the token is bound to: it only sees the names
+		// qualified with that team.
+		bound model.TeamID
+	)
 	if authnUser := authn.OptionalContextUser(ctx); authnUser != nil {
 		orgID = model.OrgID(authnUser.OrgID)
+		if orgID != "" {
+			bound = model.TeamID(authnUser.TeamID)
+		}
 	}
 	if orgID != "" {
 		orgIDs = []model.OrgID{orgID}
@@ -218,12 +228,12 @@ func (h *Handler) handleModels(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		for _, m := range models {
-			if !perms.IsOwner() && !perms.Has(rbac.PermModelUseOrg) && !perms.HasModelAccess(string(m.ID()), rbac.ModelKindLLM) {
-				continue
-			}
-			model := h.llmModelToOpenRouterModel(org.Slug(), m)
-			if filterModel(model, filterParams, filterModalities) {
-				data = append(data, model)
+			for _, name := range service.ListedModelNames(perms, bound, org.Slug(), m.ProxyName(), string(m.ID()), rbac.ModelKindLLM) {
+				model := h.llmModelToOpenRouterModel(org.Slug(), m)
+				model.ID = name
+				if filterModel(model, filterParams, filterModalities) {
+					data = append(data, model)
+				}
 			}
 		}
 		virtualModels, err := h.virtualModelStore.ListVirtualModels(ctx, orgID)
@@ -231,12 +241,12 @@ func (h *Handler) handleModels(w http.ResponseWriter, r *http.Request) {
 			slog.WarnContext(ctx, "could not list virtual models", slogx.Error(err), slog.String("orgID", string(orgID)))
 		} else {
 			for _, vm := range virtualModels {
-				if !perms.IsOwner() && !perms.Has(rbac.PermModelUseVirtual) && !perms.HasModelAccess(string(vm.ID()), rbac.ModelKindVirtual) {
-					continue
-				}
-				model := h.virtualModelToOpenRouterModel(org.Slug(), vm)
-				if filterModel(model, filterParams, filterModalities) {
-					data = append(data, model)
+				for _, name := range service.ListedModelNames(perms, bound, org.Slug(), vm.Name(), string(vm.ID()), rbac.ModelKindVirtual) {
+					model := h.virtualModelToOpenRouterModel(org.Slug(), vm)
+					model.ID = name
+					if filterModel(model, filterParams, filterModalities) {
+						data = append(data, model)
+					}
 				}
 			}
 		}

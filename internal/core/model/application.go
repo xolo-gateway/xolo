@@ -25,6 +25,9 @@ type Application interface {
 	Name() string
 	Description() string
 	Active() bool
+	// TeamID is the team the application is bound to, empty when none. Its
+	// requests are attributed to that team, which also grants its models.
+	TeamID() TeamID
 	CreatedAt() time.Time
 	UpdatedAt() time.Time
 }
@@ -35,6 +38,7 @@ type BaseApplication struct {
 	name        string
 	description string
 	active      bool
+	teamID      TeamID
 	createdAt   time.Time
 	updatedAt   time.Time
 }
@@ -44,6 +48,7 @@ func (a *BaseApplication) OrgID() OrgID         { return a.orgID }
 func (a *BaseApplication) Name() string         { return a.name }
 func (a *BaseApplication) Description() string  { return a.description }
 func (a *BaseApplication) Active() bool         { return a.active }
+func (a *BaseApplication) TeamID() TeamID       { return a.teamID }
 func (a *BaseApplication) CreatedAt() time.Time { return a.createdAt }
 func (a *BaseApplication) UpdatedAt() time.Time { return a.updatedAt }
 
@@ -63,6 +68,10 @@ func WithApplicationActive(active bool) ApplicationOption {
 	return func(a *BaseApplication) { a.active = active }
 }
 
+func WithApplicationTeamID(teamID TeamID) ApplicationOption {
+	return func(a *BaseApplication) { a.teamID = teamID }
+}
+
 func UpdateApplication(app Application, opts ...ApplicationOption) *BaseApplication {
 	b := &BaseApplication{
 		id:          app.ID(),
@@ -70,6 +79,7 @@ func UpdateApplication(app Application, opts ...ApplicationOption) *BaseApplicat
 		name:        app.Name(),
 		description: app.Description(),
 		active:      app.Active(),
+		teamID:      app.TeamID(),
 		createdAt:   app.CreatedAt(),
 		updatedAt:   time.Now(),
 	}
@@ -97,3 +107,4 @@ func (a *BaseApplication) SetID(id ApplicationID) { a.id = id }
 func (a *BaseApplication) SetName(name string)        { a.name = name }
 func (a *BaseApplication) SetDescription(desc string) { a.description = desc }
 func (a *BaseApplication) SetActive(active bool)      { a.active = active }
+func (a *BaseApplication) SetTeamID(teamID TeamID)    { a.teamID = teamID }

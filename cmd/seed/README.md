@@ -65,8 +65,9 @@ Tous en `provider=local`, `subject` = prénom (pour un IdP de test).
 | `erin@globex.test` | propriétaire Globex | |
 | `frank@globex.test` | membre Globex | **compte désactivé** |
 
-Le rôle custom `role-acme-analyst` ne porte que `usage:read` + `model:use:org`
-et n'accorde l'accès qu'à `gpt-4o-mini` et `mistral-small`.
+Le rôle custom `role-acme-analyst` ne porte que `usage:read`. L'équipe
+`analystes` d'Acme, dont dave est membre, donne accès à `gpt-4o-mini` et
+`mistral-small` : dave peut les appeler sous `acme/analystes/gpt-4o-mini`.
 
 ### Applications (comptes de service)
 

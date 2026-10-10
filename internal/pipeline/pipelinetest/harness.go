@@ -60,6 +60,8 @@ func New(opts ...Option) *Harness {
 	registry.Register(model.NodeTypePlugin, pipeline.NewPluginExecutor(cfg.plugins))
 	registry.Register(model.NodeTypeBlock, pipeline.NewBlockExecutor(nil))
 	registry.Register(model.NodeTypeModel, pipeline.NewModelExecutor(cfg.resolver, cfg.vmStore, engine))
+	registry.Register(model.NodeTypeModelFallback, pipeline.NewModelFallbackExecutor(cfg.resolver))
+	registry.Register(model.NodeTypeModelRef, pipeline.NewModelRefExecutor())
 
 	return &Harness{engine: engine}
 }

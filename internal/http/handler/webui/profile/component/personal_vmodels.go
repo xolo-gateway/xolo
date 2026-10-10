@@ -24,10 +24,28 @@ type PersonalModelFormVModel struct {
 	Name         string
 	Description  string
 	Error        string
+	// Teams are the user's teams; TeamID the one the model charges.
+	Teams  []TeamOption
+	TeamID model.TeamID
 }
 
 type PersonalModelEditorVModel struct {
 	common.AppLayoutVModel
 	VM      model.PersonalVirtualModel
 	APIBase string
+}
+
+// TeamOption is a team the user belongs to, offered when binding a token or a
+// personal virtual model to a team.
+type TeamOption struct {
+	OrgID    model.OrgID
+	OrgName  string
+	TeamID   model.TeamID
+	TeamName string
+	Slug     string
+}
+
+// Label names the option with its organization.
+func (o TeamOption) Label() string {
+	return o.OrgName + " · " + o.TeamName
 }

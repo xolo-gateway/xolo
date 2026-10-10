@@ -843,6 +843,14 @@ func (h *Handler) createModel(w http.ResponseWriter, r *http.Request) {
 			"Un modèle avec le nom proxy « "+proxyName+" » existe déjà dans cette organisation.")
 		return
 	}
+	if msg, err := h.teamNameConflict(ctx, org.ID(), proxyName); err != nil {
+		slog.ErrorContext(ctx, "could not check team slugs", slogx.Error(err))
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	} else if msg != "" {
+		h.renderModelFormError(w, r, ctx, user, orgSlug, org, p, nil, true, msg)
+		return
+	}
 
 	m := model.NewLLMModel(
 		p.ID(), org.ID(),
@@ -945,6 +953,16 @@ func (h *Handler) updateModel(w http.ResponseWriter, r *http.Request) {
 		h.renderModelFormError(w, r, ctx, user, orgSlug, org, p, existing, false,
 			"Un modèle avec le nom proxy « "+proxyName+" » existe déjà dans cette organisation.")
 		return
+	}
+	if proxyName != existing.ProxyName() {
+		if msg, err := h.teamNameConflict(ctx, org.ID(), proxyName); err != nil {
+			slog.ErrorContext(ctx, "could not check team slugs", slogx.Error(err))
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		} else if msg != "" {
+			h.renderModelFormError(w, r, ctx, user, orgSlug, org, p, existing, false, msg)
+			return
+		}
 	}
 
 	// --- Token limit config ---

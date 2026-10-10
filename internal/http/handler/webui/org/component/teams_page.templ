@@ -1,0 +1,179 @@
+package component
+
+import (
+	"context"
+	"fmt"
+
+	"github.com/xolo-gateway/xolo/internal/core/model"
+	common "github.com/xolo-gateway/xolo/internal/http/handler/webui/common/component"
+	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/button"
+	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/form"
+	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/icon"
+	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/input"
+	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/label"
+	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/table"
+	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/textarea"
+)
+
+func teamsURL(ctx context.Context, org model.Organization, parts ...string) string {
+	return common.BaseURLString(ctx, common.WithPath(append([]string{"/orgs/", org.Slug(), "/admin/teams"}, parts...)...))
+}
+
+// ── Teams Page ────────────────────────────────────────────────────────────────
+templ TeamsPage(vmodel TeamsPageVModel) {
+	@common.AppLayout(vmodel.AppLayoutVModel, common.WithTitle("Équipes — "+vmodel.Org.Name())) {
+		@common.PageHeader(common.PageHeaderProps{
+			Title:    "Équipes",
+			Subtitle: "Une équipe regroupe des membres, les modèles et middlewares qu'ils utilisent et le budget qu'ils consomment. Un membre choisit l'équipe débitée par le nom du modèle : " + vmodel.Org.Slug() + "/<équipe>/<modèle>.",
+		}) {
+			if vmodel.CanEdit {
+				@button.Button(button.Props{
+					Size:  button.SizeSm,
+					Class: "gap-1.5",
+					Href:  teamsURL(ctx, vmodel.Org, "/new"),
+				}) {
+					@icon.Plus(icon.Props{Class: "size-3.5"})
+					Nouvelle équipe
+				}
+			}
+		}
+		if vmodel.Success != "" {
+			<div class="mb-3.5">
+				@common.InfoBanner(common.TonePositive, teamSuccessMessage(vmodel.Success))
+			</div>
+		}
+		if len(vmodel.Teams) == 0 {
+			@common.EmptyState(common.EmptyStateProps{
+				Icon:        icon.UsersRound,
+				Title:       "Aucune équipe",
+				Description: "Sans équipe, les membres utilisent les modèles grâce aux permissions de leurs rôles sur toute l'organisation.",
+			}) {
+				if vmodel.CanEdit {
+					@button.Button(button.Props{Size: button.SizeSm, Href: teamsURL(ctx, vmodel.Org, "/new")}) {
+						Nouvelle équipe
+					}
+				}
+			}
+		} else {
+			@common.Section() {
+				@table.Table() {
+					@table.Header() {
+						@table.Head() {
+							Équipe
+						}
+						@table.Head() {
+							Membres
+						}
+						@table.Head() {
+							Modèles
+						}
+						@table.Head(table.HeadProps{Class: "text-right"}) {
+							Actions
+						}
+					}
+					@table.Body() {
+						for _, row := range vmodel.Teams {
+							@table.Row() {
+								@table.Cell() {
+									<div class="min-w-0">
+										<div class="truncate text-sm font-semibold">{ row.Team.Name() }</div>
+										@common.Mono(vmodel.Org.Slug() + "/" + row.Team.Slug() + "/…")
+									</div>
+								}
+								@table.Cell() {
+									{ fmt.Sprintf("%d", row.Members) }
+								}
+								@table.Cell() {
+									{ fmt.Sprintf("%d", len(row.Team.ModelGrants())) }
+								}
+								@table.Cell(table.CellProps{Class: "text-right"}) {
+									@button.Button(button.Props{
+										Href:       teamsURL(ctx, vmodel.Org, "/", string(row.Team.ID())),
+										Variant:    button.VariantGhost,
+										Size:       button.SizeIcon,
+										Class:      "size-7",
+										Attributes: templ.Attributes{"title": "Ouvrir"},
+									}) {
+										@icon.Pencil(icon.Props{Class: "size-3.5"})
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+}
+
+// ── New Team ──────────────────────────────────────────────────────────────────
+templ TeamForm(vmodel TeamFormVModel) {
+	@common.AppLayout(vmodel.AppLayoutVModel, common.WithTitle("Nouvelle équipe")) {
+		<div class="max-w-3xl">
+			@common.PageHeader(common.PageHeaderProps{
+				Title:    "Nouvelle équipe",
+				Subtitle: "L'identifiant de l'équipe entre dans le nom des modèles qu'utilisent ses membres. Il ne pourra plus changer.",
+			}) {
+				@button.Button(button.Props{Variant: button.VariantOutline, Size: button.SizeSm, Class: "gap-1.5", Href: teamsURL(ctx, vmodel.Org)}) {
+					@icon.ArrowLeft(icon.Props{Class: "size-3.5"})
+					Retour
+				}
+			}
+			if vmodel.Error != "" {
+				<div class="mb-3.5">
+					@common.InfoBanner(common.ToneNegative, vmodel.Error)
+				</div>
+			}
+			<form method="POST" action={ templ.SafeURL(teamsURL(ctx, vmodel.Org)) } class="space-y-3.5">
+				@common.Section() {
+					@common.SectionHeader() {
+						@common.SectionTitle() {
+							Informations
+						}
+					}
+					@common.SectionBody(common.SectionBodyProps{Class: "space-y-3.5"}) {
+						<div class="grid gap-3.5 sm:grid-cols-2">
+							@form.Item() {
+								@label.Label(label.Props{For: "name"}) {
+									Nom
+								}
+								@input.Input(input.Props{ID: "name", Name: "name", Value: vmodel.Name, Placeholder: "ex. Juridique", Attributes: templ.Attributes{"required": "required"}})
+							}
+							@form.Item() {
+								@label.Label(label.Props{For: "slug"}) {
+									Identifiant
+								}
+								@input.Input(input.Props{ID: "slug", Name: "slug", Value: vmodel.Slug, Placeholder: "ex. juridique", Attributes: templ.Attributes{"required": "required", "pattern": "[a-z0-9]([a-z0-9-]*[a-z0-9])?", "maxlength": "63"}})
+								@form.Description() {
+									{ "Minuscules, chiffres et tirets. Les membres appelleront " + vmodel.Org.Slug() + "/<identifiant>/<modèle>." }
+								}
+							}
+						</div>
+						@form.Item() {
+							@label.Label(label.Props{For: "description"}) {
+								Description
+							}
+							@textarea.Textarea(textarea.Props{ID: "description", Name: "description", Value: vmodel.Description, Rows: 2})
+						}
+					}
+					@common.SectionHeader(common.SectionHeaderProps{Class: "border-b-0 border-t"}) {
+						@button.Button(button.Props{Type: button.TypeSubmit, Size: button.SizeSm, Class: "gap-1.5"}) {
+							@icon.Save(icon.Props{Class: "size-3.5"})
+							Créer l'équipe
+						}
+					}
+				}
+			</form>
+		</div>
+	}
+}
+
+func teamSuccessMessage(code string) string {
+	switch code {
+	case "deleted":
+		return "Équipe supprimée."
+	case "created":
+		return "Équipe créée."
+	}
+	return "Modifications enregistrées."
+}

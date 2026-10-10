@@ -103,15 +103,16 @@ type fakeQuota struct {
 	scopeID                string
 }
 
-func (q *fakeQuota) ID() model.QuotaID       { return "" }
-func (q *fakeQuota) Scope() model.QuotaScope { return q.scope }
-func (q *fakeQuota) ScopeID() string         { return q.scopeID }
-func (q *fakeQuota) Currency() string        { return q.currency }
-func (q *fakeQuota) DailyBudget() *int64     { return q.daily }
-func (q *fakeQuota) MonthlyBudget() *int64   { return q.monthly }
-func (q *fakeQuota) YearlyBudget() *int64    { return q.yearly }
-func (q *fakeQuota) CreatedAt() time.Time    { return time.Time{} }
-func (q *fakeQuota) UpdatedAt() time.Time    { return time.Time{} }
+func (q *fakeQuota) ID() model.QuotaID           { return "" }
+func (q *fakeQuota) Scope() model.QuotaScope     { return q.scope }
+func (q *fakeQuota) ScopeID() string             { return q.scopeID }
+func (q *fakeQuota) Currency() string            { return q.currency }
+func (q *fakeQuota) DailyBudget() *int64         { return q.daily }
+func (q *fakeQuota) MonthlyBudget() *int64       { return q.monthly }
+func (q *fakeQuota) YearlyBudget() *int64        { return q.yearly }
+func (q *fakeQuota) Cascade() model.QuotaCascade { return model.QuotaCascadeFree }
+func (q *fakeQuota) CreatedAt() time.Time        { return time.Time{} }
+func (q *fakeQuota) UpdatedAt() time.Time        { return time.Time{} }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
 

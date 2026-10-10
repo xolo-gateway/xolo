@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
-	"strings"
 	"sync"
 	"time"
 
@@ -15,6 +14,7 @@ import (
 	"github.com/xolo-gateway/xolo/internal/core/model"
 	"github.com/xolo-gateway/xolo/internal/core/port"
 	"github.com/xolo-gateway/xolo/internal/core/rbac"
+	"github.com/xolo-gateway/xolo/internal/core/service"
 	httpCtx "github.com/xolo-gateway/xolo/internal/http/context"
 	"github.com/xolo-gateway/xolo/internal/pipeline"
 	proto "github.com/xolo-gateway/xolo/pkg/pluginsdk/proto"
@@ -34,7 +34,22 @@ type PipelineHookAdapter struct {
 	orgStore          port.OrgStore
 	providerStore     port.ProviderStore
 	middlewareStore   port.MiddlewareStore
+	teamStore         TeamReader
 	quotaInfo         *QuotaInfoResolver
+}
+
+// TeamReader reads the teams of an organization, to know which middlewares
+// belong to a team.
+type TeamReader interface {
+	ListOrgTeams(ctx context.Context, orgID model.OrgID) ([]model.Team, error)
+}
+
+// WithTeams enables team middlewares: a middleware attached to teams runs on
+// their requests only, after the organization middlewares. Without it, every
+// middleware runs as an organization one.
+func (a *PipelineHookAdapter) WithTeams(teams TeamReader) *PipelineHookAdapter {
+	a.teamStore = teams
+	return a
 }
 
 // WithEventEmitter lets trace and block nodes record events; without it they only log.
@@ -168,7 +183,10 @@ func (a *PipelineHookAdapter) PreRequest(ctx context.Context, req *genaiProxy.Pr
 		}, nil
 	}
 
-	ec := a.buildEC(ctx, req, org, vm)
+	ec, err := a.buildEC(ctx, req, org, vm)
+	if err != nil {
+		return nil, err
+	}
 	forwardExec, err := a.engine.RunForward(ctx, vm.Graph(), ec)
 	return a.finishForwardExecution(ctx, req, ec, forwardExec, err), nil
 }
@@ -179,6 +197,22 @@ func (a *PipelineHookAdapter) PreRequest(ctx context.Context, req *genaiProxy.Pr
 // API response. Shared by the virtual-model and middleware paths.
 func (a *PipelineHookAdapter) finishForwardExecution(ctx context.Context, req *genaiProxy.ProxyRequest, ec pipeline.ExecutionContext, forwardExec *pipeline.ForwardExecution, runErr error) *genaiProxy.HookResult {
 	if runErr != nil {
+		var accessErr *pipeline.ModelAccessError
+		if errors.As(runErr, &accessErr) {
+			slog.InfoContext(ctx, "pipeline: a node reached a model the request cannot use",
+				slog.String("model", req.Model),
+				slog.String("reached", accessErr.Name))
+			return &genaiProxy.HookResult{
+				Response: &genaiProxy.ProxyResponse{
+					StatusCode: http.StatusForbidden,
+					Body: map[string]any{"error": map[string]any{
+						"type":    "permission_error",
+						"message": "Pipeline for \"" + req.Model + "\" reached " + accessErr.Error() + ".",
+						"code":    "model_forbidden",
+					}},
+				},
+			}
+		}
 		var rejErr *pipeline.RejectionError
 		if errors.As(runErr, &rejErr) {
 			slog.InfoContext(ctx, "pipeline: request rejected by node",
@@ -270,13 +304,15 @@ func (a *PipelineHookAdapter) applyMiddlewares(ctx context.Context, req *genaiPr
 		return false, nil
 	}
 
-	orgSlug, localName, ok := splitQualifiedName(req.Model)
-	if !ok || orgSlug == "~" {
+	// The team scope already stripped the team segment.
+	name, ok := model.ParseModelName(req.Model, nil)
+	if !ok || !name.Qualified() || name.Personal() {
 		// Unqualified or personal models are out of scope for org middlewares.
 		return false, nil
 	}
+	localName := name.Local
 
-	org, err := a.orgStore.GetOrgBySlug(ctx, httpCtx.TenantID(ctx), orgSlug)
+	org, err := a.orgStore.GetOrgBySlug(ctx, httpCtx.TenantID(ctx), name.Org)
 	if err != nil {
 		return false, nil //nolint:nilerr
 	}
@@ -299,7 +335,20 @@ func (a *PipelineHookAdapter) applyMiddlewares(ctx context.Context, req *genaiPr
 		return false, nil
 	}
 
-	applicable := applicableMiddlewares(mws, ref)
+	applicable, err := a.orderedMiddlewares(ctx, org.ID(), TeamIDFromMeta(req.Metadata), applicableMiddlewares(mws, ref))
+	if err != nil {
+		slog.ErrorContext(ctx, "pipeline: could not order middlewares", slog.Any("error", err))
+		return true, &genaiProxy.HookResult{
+			Response: &genaiProxy.ProxyResponse{
+				StatusCode: http.StatusInternalServerError,
+				Body: map[string]any{"error": map[string]any{
+					"type":    "server_error",
+					"message": "Could not resolve the middlewares of the request.",
+					"code":    "pipeline_error",
+				}},
+			},
+		}
+	}
 	if len(applicable) == 0 {
 		return false, nil
 	}
@@ -313,9 +362,47 @@ func (a *PipelineHookAdapter) applyMiddlewares(ctx context.Context, req *genaiPr
 	ec := a.buildMiddlewareEC(ctx, req, org)
 	ec.TargetModelName = req.Model
 	ec.PendingMiddlewares = applicable[1:]
+	// A middleware delegates its static references, like an organization
+	// virtual model.
+	ec = a.withProtoLists(ctx, ec.Delegating(applicable[0].Graph()), org.ID())
 
 	forwardExec, err := a.engine.RunForward(ctx, applicable[0].Graph(), ec)
 	return true, a.finishForwardExecution(ctx, req, ec, forwardExec, err)
+}
+
+// orderedMiddlewares orders the applicable middlewares by level, then by
+// priority: the organization middlewares first, which hold compliance rules
+// that must not depend on the team a member picks, then those of the team the
+// request is attributed to. A middleware attached to teams is a team
+// middleware, and never runs for another team or for the organization alone.
+func (a *PipelineHookAdapter) orderedMiddlewares(ctx context.Context, orgID model.OrgID, teamID model.TeamID, applicable []model.Middleware) ([]model.Middleware, error) {
+	if a.teamStore == nil || len(applicable) == 0 {
+		return applicable, nil
+	}
+	teams, err := a.teamStore.ListOrgTeams(ctx, orgID)
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+	attached := map[model.MiddlewareID]bool{}
+	ofTeam := map[model.MiddlewareID]bool{}
+	for _, t := range teams {
+		for _, id := range t.MiddlewareIDs() {
+			attached[id] = true
+			if teamID != "" && t.ID() == teamID {
+				ofTeam[id] = true
+			}
+		}
+	}
+	var orgLevel, teamLevel []model.Middleware
+	for _, mw := range applicable {
+		switch {
+		case !attached[mw.ID()]:
+			orgLevel = append(orgLevel, mw)
+		case ofTeam[mw.ID()]:
+			teamLevel = append(teamLevel, mw)
+		}
+	}
+	return append(orgLevel, teamLevel...), nil
 }
 
 // applicableMiddlewares filters the (priority-ordered) middlewares down to those
@@ -364,7 +451,7 @@ func (a *PipelineHookAdapter) assertTargetAccess(ctx context.Context, req *genai
 		}
 	}
 
-	if perms.IsOwner() || perms.Has(rbac.PermModelUseOrg) || perms.HasModelAccess(ref.ID, rbac.ModelKindLLM) {
+	if perms.CanUseModel(string(TeamIDFromMeta(req.Metadata)), ref.ID, rbac.ModelKindLLM) {
 		return nil
 	}
 	return virtualModelForbidden(req.Model)
@@ -380,17 +467,21 @@ func (a *PipelineHookAdapter) buildMiddlewareEC(ctx context.Context, req *genaiP
 	}
 
 	orgID := org.ID()
+	teamID, teamSlug := TeamIDFromMeta(req.Metadata), TeamSlugFromMeta(req.Metadata)
 	return pipeline.ExecutionContext{
 		OrgID:           string(orgID),
+		OrgSlug:         org.Slug(),
 		SecretScopeID:   string(orgID),
 		UserID:          userID,
 		DisplayName:     displayName,
 		TokenID:         AuthTokenIDFromMeta(req.Metadata),
+		TeamID:          string(teamID),
+		TeamSlug:        teamSlug,
+		RequestedModel:  RequestedModelFromMeta(req.Metadata),
+		Access:          newRequestModelAccess(org, string(teamID), teamSlug, a.orgStore, a.providerStore, a.virtualModelStore),
 		MessagesJSON:    extractMessagesJSON(req.Body),
 		BodyJSON:        string(req.Body),
-		ProtoModels:     buildProtoModels(ctx, a.providerStore, orgID),
-		ProtoVMs:        buildProtoVMs(ctx, a.virtualModelStore, orgID),
-		QuotaInfo:       a.quotaInfoFunc(model.UserID(userID), orgID),
+		QuotaInfo:       a.quotaInfoFunc(model.UserID(userID), orgID, teamID),
 		VisitedVMs:      map[model.VirtualModelID]struct{}{},
 		PersonalVMStore: a.personalVMStore,
 		ToolInspectors:  pipeline.NewToolInspectorSet(),
@@ -445,14 +536,11 @@ func (a *PipelineHookAdapter) ListModels(ctx context.Context) ([]genaiProxy.Mode
 			if err != nil {
 				return nil, errors.WithStack(err)
 			}
+			bound := BoundTeamIDFromContext(ctx)
 			for _, vm := range vms {
-				if !perms.IsOwner() && !perms.Has(rbac.PermModelUseVirtual) && !perms.HasModelAccess(string(vm.ID()), rbac.ModelKindVirtual) {
-					continue
+				for _, name := range service.ListedModelNames(perms, bound, org.Slug(), vm.Name(), string(vm.ID()), rbac.ModelKindVirtual) {
+					infos = append(infos, genaiProxy.ModelInfo{ID: name, OwnedBy: "xolo"})
 				}
-				infos = append(infos, genaiProxy.ModelInfo{
-					ID:      org.Slug() + "/" + vm.Name(),
-					OwnedBy: "xolo",
-				})
 			}
 		}
 	}
@@ -520,14 +608,13 @@ func (a *PipelineHookAdapter) assertVirtualModelAccess(ctx context.Context, req 
 		}
 	}
 
-	if perms.IsOwner() {
-		return nil
-	}
 	if isPersonal {
+		// The models a personal virtual model reaches are checked one by
+		// one as the pipeline runs: it delegates nothing.
 		if perms.Has(rbac.PermPersonalVMCreate) {
 			return nil
 		}
-	} else if perms.Has(rbac.PermModelUseVirtual) || perms.HasModelAccess(string(vm.ID()), rbac.ModelKindVirtual) {
+	} else if perms.CanUseModel(string(TeamIDFromMeta(req.Metadata)), string(vm.ID()), rbac.ModelKindVirtual) {
 		return nil
 	}
 
@@ -551,13 +638,15 @@ func virtualModelForbidden(modelName string) *genaiProxy.HookResult {
 // lookupVirtualModel resolves the org and virtual model from a qualified model name.
 // For personal virtual models ("~/name"), org is nil and the VM is user-scoped.
 func (a *PipelineHookAdapter) lookupVirtualModel(ctx context.Context, modelName string) (model.Organization, model.VirtualModel, error) {
-	orgSlug, localName, ok := splitQualifiedName(modelName)
-	if !ok {
+	// The team scope already stripped the team segment.
+	name, ok := model.ParseModelName(modelName, nil)
+	if !ok || !name.Qualified() {
 		return nil, nil, nil
 	}
+	orgSlug, localName := name.Org, name.Local
 
 	// Personal virtual model: "~/model-name"
-	if orgSlug == "~" {
+	if name.Personal() {
 		if a.personalVMStore == nil {
 			return nil, nil, nil
 		}
@@ -605,7 +694,7 @@ var _ model.VirtualModel = &personalVMAdapter{}
 // buildEC constructs the ExecutionContext for a pipeline run.
 // org may be nil for personal virtual models; in that case the org context
 // is derived from the token's OrgID.
-func (a *PipelineHookAdapter) buildEC(ctx context.Context, req *genaiProxy.ProxyRequest, org model.Organization, vm model.VirtualModel) pipeline.ExecutionContext {
+func (a *PipelineHookAdapter) buildEC(ctx context.Context, req *genaiProxy.ProxyRequest, org model.Organization, vm model.VirtualModel) (pipeline.ExecutionContext, error) {
 	userID := ""
 	displayName := ""
 	if u := httpCtx.User(ctx); u != nil {
@@ -614,37 +703,73 @@ func (a *PipelineHookAdapter) buildEC(ctx context.Context, req *genaiProxy.Proxy
 	}
 
 	// For personal VMs, org is nil — fall back to the token's org for model resolution.
-	orgID := model.OrgID(OrgIDFromContext(ctx))
-	var protoModels []*proto.ModelInfo
-	var protoVMs []*proto.VirtualModelInfo
+	var orgID model.OrgID
 	if org != nil {
 		orgID = org.ID()
-		protoModels = buildProtoModels(ctx, a.providerStore, orgID)
-		protoVMs = buildProtoVMs(ctx, a.virtualModelStore, orgID)
-	} else if orgID != "" {
-		protoModels = buildProtoModels(ctx, a.providerStore, orgID)
-		protoVMs = buildProtoVMs(ctx, a.virtualModelStore, orgID)
+	} else {
+		orgID = OrgIDFromMeta(req.Metadata)
+		if orgID == "" {
+			orgID = model.OrgID(OrgIDFromContext(ctx))
+		}
+		if orgID != "" && a.orgStore != nil {
+			o, err := a.orgStore.GetOrgByID(ctx, orgID)
+			if err != nil {
+				return pipeline.ExecutionContext{}, errors.WithStack(err)
+			}
+			org = o
+		}
 	}
 
 	scopeID := string(vm.OrgID())
-	if personal, ok := vm.(*personalVMAdapter); ok {
+	personal, isPersonal := vm.(*personalVMAdapter)
+	if isPersonal {
 		scopeID = "~:" + string(personal.pvm.UserID())
 	}
-	return pipeline.ExecutionContext{
+	teamID, teamSlug := TeamIDFromMeta(req.Metadata), TeamSlugFromMeta(req.Metadata)
+	ec := pipeline.ExecutionContext{
 		SecretScopeID:   scopeID,
 		OrgID:           string(orgID),
 		UserID:          userID,
 		DisplayName:     displayName,
 		TokenID:         AuthTokenIDFromMeta(req.Metadata),
+		TeamID:          string(teamID),
+		TeamSlug:        teamSlug,
 		MessagesJSON:    extractMessagesJSON(req.Body),
 		BodyJSON:        string(req.Body),
-		ProtoModels:     protoModels,
-		ProtoVMs:        protoVMs,
-		QuotaInfo:       a.quotaInfoFunc(model.UserID(userID), orgID),
 		VisitedVMs:      map[model.VirtualModelID]struct{}{vm.ID(): {}},
 		PersonalVMStore: a.personalVMStore,
 		ToolInspectors:  pipeline.NewToolInspectorSet(),
 	}
+	if org == nil {
+		return ec, nil
+	}
+	ec.OrgSlug = org.Slug()
+	ec.QuotaInfo = a.quotaInfoFunc(model.UserID(userID), org.ID(), teamID)
+	ec.Access = newRequestModelAccess(org, string(teamID), teamSlug, a.orgStore, a.providerStore, a.virtualModelStore)
+	if !isPersonal {
+		// An organization virtual model delegates its static references: a
+		// team granted the model can use what its author configured.
+		ec = ec.Delegating(vm.Graph())
+	}
+	return a.withProtoLists(ctx, ec, org.ID()), nil
+}
+
+// withProtoLists sets the models and virtual models handed to plugins: those
+// the request may reach, its own access plus the static references of a
+// delegating graph. Access is read from the listed models themselves, with no
+// lookup per model.
+func (a *PipelineHookAdapter) withProtoLists(ctx context.Context, ec pipeline.ExecutionContext, orgID model.OrgID) pipeline.ExecutionContext {
+	perms, err := httpCtx.ResolvePermissions(ctx, orgID)
+	if err != nil {
+		slog.WarnContext(ctx, "pipeline: could not resolve permissions for the model lists", slog.Any("error", err))
+		return ec
+	}
+	reachable := func(local, id, kind string) bool {
+		return ec.Access == nil || ec.Delegates(local) || perms.CanUseModel(ec.TeamID, id, kind)
+	}
+	ec.ProtoModels = buildProtoModels(ctx, a.providerStore, orgID, reachable)
+	ec.ProtoVMs = buildProtoVMs(ctx, a.virtualModelStore, orgID, reachable)
+	return ec
 }
 
 // applyModifiedMessages overrides req.ChatOptions with the messages produced
@@ -747,17 +872,9 @@ func extractMessagesJSON(body []byte) string {
 	return string(envelope.Messages)
 }
 
-// splitQualifiedName splits "org-slug/model-name" → (orgSlug, modelName, true).
-func splitQualifiedName(name string) (string, string, bool) {
-	idx := strings.IndexByte(name, '/')
-	if idx <= 0 || idx == len(name)-1 {
-		return "", "", false
-	}
-	return name[:idx], name[idx+1:], true
-}
-
-// buildProtoModels builds the list of available LLM models for the execution context.
-func buildProtoModels(ctx context.Context, ps port.ProviderStore, orgID model.OrgID) []*proto.ModelInfo {
+// buildProtoModels builds the list of available LLM models for the execution
+// context, those reachable reports true for.
+func buildProtoModels(ctx context.Context, ps port.ProviderStore, orgID model.OrgID, reachable func(local, id, kind string) bool) []*proto.ModelInfo {
 	if ps == nil {
 		return nil
 	}
@@ -768,6 +885,9 @@ func buildProtoModels(ctx context.Context, ps port.ProviderStore, orgID model.Or
 	}
 	out := make([]*proto.ModelInfo, 0, len(models))
 	for _, m := range models {
+		if reachable != nil && !reachable(m.ProxyName(), string(m.ID()), rbac.ModelKindLLM) {
+			continue
+		}
 		caps := m.Capabilities()
 		out = append(out, &proto.ModelInfo{
 			ProxyName:            m.ProxyName(),
@@ -784,8 +904,9 @@ func buildProtoModels(ctx context.Context, ps port.ProviderStore, orgID model.Or
 	return out
 }
 
-// buildProtoVMs builds the list of virtual models for the execution context.
-func buildProtoVMs(ctx context.Context, vs port.VirtualModelStore, orgID model.OrgID) []*proto.VirtualModelInfo {
+// buildProtoVMs builds the list of virtual models for the execution context,
+// those reachable reports true for.
+func buildProtoVMs(ctx context.Context, vs port.VirtualModelStore, orgID model.OrgID, reachable func(local, id, kind string) bool) []*proto.VirtualModelInfo {
 	if vs == nil {
 		return nil
 	}
@@ -795,6 +916,9 @@ func buildProtoVMs(ctx context.Context, vs port.VirtualModelStore, orgID model.O
 	}
 	out := make([]*proto.VirtualModelInfo, 0, len(vms))
 	for _, vm := range vms {
+		if reachable != nil && !reachable(vm.Name(), string(vm.ID()), rbac.ModelKindVirtual) {
+			continue
+		}
 		out = append(out, &proto.VirtualModelInfo{
 			Id:          string(vm.ID()),
 			Name:        vm.Name(),
@@ -814,7 +938,7 @@ var (
 // nil when quota resolution is not configured. The memo guarantees that the
 // underlying store queries run at most once per pipeline execution, however
 // many plugin nodes ask for the quota.
-func (a *PipelineHookAdapter) quotaInfoFunc(userID model.UserID, orgID model.OrgID) func(context.Context) *proto.QuotaInfo {
+func (a *PipelineHookAdapter) quotaInfoFunc(userID model.UserID, orgID model.OrgID, teamID model.TeamID) func(context.Context) *proto.QuotaInfo {
 	if a.quotaInfo == nil || userID == "" || orgID == "" {
 		return nil
 	}
@@ -823,7 +947,7 @@ func (a *PipelineHookAdapter) quotaInfoFunc(userID model.UserID, orgID model.Org
 		info *proto.QuotaInfo
 	)
 	return func(ctx context.Context) *proto.QuotaInfo {
-		once.Do(func() { info = a.quotaInfo.Resolve(ctx, userID, orgID) })
+		once.Do(func() { info = a.quotaInfo.Resolve(ctx, userID, orgID, teamID) })
 		return info
 	}
 }

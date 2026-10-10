@@ -17,6 +17,7 @@ Xolo est une passerelle LLM souveraine pour l'entreprise. Elle vous permet de co
 ## Prochaines étapes
 
 1. **[Invitations](./administration/organisation/invitation/invitation.md)**. Invitez vos premiers utilisateurs.
-2. **[Rôles](./administration/organisation/roles/roles.md)**. Définissez les permissions pour votre équipe.
-3. **[Fournisseurs](./administration/organisation/fournisseurs/fournisseurs.md)**. Connectez vos services LLM préférés.
-4. **[Budget](./administration/organisation/budget/budget.md)**. Définissez vos limites de dépenses.
+2. **[Rôles](./administration/organisation/roles/roles.md)**. Définissez les permissions de vos membres.
+3. **[Équipes](./administration/organisation/equipes/equipes.md)**. Regroupez vos membres et choisissez les modèles qu'ils utilisent.
+4. **[Fournisseurs](./administration/organisation/fournisseurs/fournisseurs.md)**. Connectez vos services LLM préférés.
+5. **[Budget](./administration/organisation/budget/budget.md)**. Définissez vos limites de dépenses.

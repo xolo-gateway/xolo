@@ -158,14 +158,14 @@ func (tx *provisioningTx) FindUsersByEmail(ctx context.Context, tenant model.Ten
 }
 func (tx *provisioningTx) GetRoleByID(ctx context.Context, id model.RoleID) (model.Role, error) {
 	var role Role
-	if err := tx.parentReader(ctx).Preload("Permissions").Preload("ModelGrants").First(&role, "id = ?", string(id)).Error; err != nil {
+	if err := tx.parentReader(ctx).Preload("Permissions").First(&role, "id = ?", string(id)).Error; err != nil {
 		return nil, invitationReadError(err)
 	}
 	return &wrappedRole{&role}, nil
 }
 func (tx *provisioningTx) ListOrgRoles(ctx context.Context, id model.OrgID) ([]model.Role, error) {
 	var roles []Role
-	if err := tx.parentReader(ctx).Preload("Permissions").Preload("ModelGrants").Where("org_id = ?", string(id)).Order("id").Find(&roles).Error; err != nil {
+	if err := tx.parentReader(ctx).Preload("Permissions").Where("org_id = ?", string(id)).Order("id").Find(&roles).Error; err != nil {
 		return nil, err
 	}
 	result := make([]model.Role, 0, len(roles))

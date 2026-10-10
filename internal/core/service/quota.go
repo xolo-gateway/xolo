@@ -15,13 +15,102 @@ type OrgProvider interface {
 	ListOrgMembers(ctx context.Context, orgID model.OrgID, opts port.ListOrgMembersOptions) ([]model.Membership, int64, error)
 }
 
+// TeamProvider is a narrow interface used by QuotaService to resolve team
+// budgets. It is satisfied by port.TeamStore.
+type TeamProvider interface {
+	GetTeamByID(ctx context.Context, id model.TeamID) (model.Team, error)
+	ListTeamMembers(ctx context.Context, id model.TeamID) ([]model.TeamMember, error)
+}
+
 type QuotaService struct {
 	quotaStore port.QuotaStore
 	orgStore   OrgProvider
+	teamStore  TeamProvider
 }
 
-func NewQuotaService(quotaStore port.QuotaStore, orgStore OrgProvider) *QuotaService {
-	return &QuotaService{quotaStore: quotaStore, orgStore: orgStore}
+type QuotaServiceOption func(*QuotaService)
+
+// WithQuotaTeams lets the service resolve team budgets. Without it, a request
+// attributed to a team fails rather than skipping the team budgets.
+func WithQuotaTeams(teams TeamProvider) QuotaServiceOption {
+	return func(s *QuotaService) { s.teamStore = teams }
+}
+
+func NewQuotaService(quotaStore port.QuotaStore, orgStore OrgProvider, opts ...QuotaServiceOption) *QuotaService {
+	s := &QuotaService{quotaStore: quotaStore, orgStore: orgStore}
+	for _, opt := range opts {
+		opt(s)
+	}
+	return s
+}
+
+// ResolveTeamQuotas returns the budgets of the team levels of a request
+// attributed to teamID: the team budget itself, nil when none is set, and the
+// member budget of userID inside the team. The member budget is the member's
+// own one when set; otherwise, when the team shares its budget equally, the
+// member's share of it; otherwise nil. An empty userID (an application bound
+// to the team) has no member budget.
+//
+// Each level is checked against its own counter: these budgets are not merged
+// with the user and organization ones, which keep their own checks.
+func (s *QuotaService) ResolveTeamQuotas(ctx context.Context, teamID model.TeamID, userID model.UserID) (model.Quota, *model.EffectiveQuota, error) {
+	if s.teamStore == nil {
+		return nil, nil, errors.New("quota service: team budgets requested without a team store")
+	}
+	teamQuota, err := s.optionalQuota(ctx, model.QuotaScopeTeam, string(teamID))
+	if err != nil {
+		return nil, nil, err
+	}
+	if userID == "" {
+		return teamQuota, nil, nil
+	}
+	memberQuota, err := s.optionalQuota(ctx, model.QuotaScopeTeamMember, model.TeamMemberScopeID(teamID, userID))
+	if err != nil {
+		return nil, nil, err
+	}
+	if memberQuota != nil {
+		return teamQuota, &model.EffectiveQuota{
+			Currency:      memberQuota.Currency(),
+			DailyBudget:   memberQuota.DailyBudget(),
+			MonthlyBudget: memberQuota.MonthlyBudget(),
+			YearlyBudget:  memberQuota.YearlyBudget(),
+		}, nil
+	}
+	if teamQuota == nil {
+		return nil, nil, nil
+	}
+	team, err := s.teamStore.GetTeamByID(ctx, teamID)
+	if err != nil {
+		return nil, nil, errors.WithStack(err)
+	}
+	if !team.ShareQuotaEqually() {
+		return teamQuota, nil, nil
+	}
+	members, err := s.teamStore.ListTeamMembers(ctx, teamID)
+	if err != nil {
+		return nil, nil, errors.WithStack(err)
+	}
+	n := int64(len(members))
+	if n == 0 {
+		return teamQuota, nil, nil
+	}
+	return teamQuota, &model.EffectiveQuota{
+		Currency:      teamQuota.Currency(),
+		DailyBudget:   divPtr(teamQuota.DailyBudget(), n),
+		MonthlyBudget: divPtr(teamQuota.MonthlyBudget(), n),
+		YearlyBudget:  divPtr(teamQuota.YearlyBudget(), n),
+	}, nil
+}
+
+func (s *QuotaService) optionalQuota(ctx context.Context, scope model.QuotaScope, scopeID string) (model.Quota, error) {
+	q, err := s.quotaStore.GetQuota(ctx, scope, scopeID)
+	if errors.Is(err, port.ErrNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+	return q, nil
 }
 
 func (s *QuotaService) ResolveEffectiveQuota(

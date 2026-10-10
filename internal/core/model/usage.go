@@ -76,6 +76,9 @@ type UsageRecord interface {
 	UserID() UserID
 	ApplicationID() ApplicationID
 	OrgID() OrgID
+	// TeamID is the team the request was attributed to, empty for a request
+	// charged to the organization alone.
+	TeamID() TeamID
 	ProviderID() ProviderID
 	ModelID() LLMModelID
 	ProxyModelName() string
@@ -108,6 +111,7 @@ type BaseUsageRecord struct {
 	userID            UserID
 	applicationID     ApplicationID
 	orgID             OrgID
+	teamID            TeamID
 	providerID        ProviderID
 	modelID           LLMModelID
 	proxyModelName    string
@@ -130,6 +134,7 @@ func (r *BaseUsageRecord) ID() UsageRecordID            { return r.id }
 func (r *BaseUsageRecord) UserID() UserID               { return r.userID }
 func (r *BaseUsageRecord) ApplicationID() ApplicationID { return r.applicationID }
 func (r *BaseUsageRecord) OrgID() OrgID                 { return r.orgID }
+func (r *BaseUsageRecord) TeamID() TeamID               { return r.teamID }
 func (r *BaseUsageRecord) ProviderID() ProviderID       { return r.providerID }
 func (r *BaseUsageRecord) ModelID() LLMModelID          { return r.modelID }
 func (r *BaseUsageRecord) ProxyModelName() string       { return r.proxyModelName }
@@ -152,6 +157,7 @@ func (r *BaseUsageRecord) SetResolvedModelName(v string) { r.resolvedModelName =
 func (r *BaseUsageRecord) SetPlanCovered(v bool)         { r.planCovered = v }
 func (r *BaseUsageRecord) SetProviderCost(v int64)       { r.providerCost = v }
 func (r *BaseUsageRecord) SetStatus(v UsageStatus)       { r.status = v }
+func (r *BaseUsageRecord) SetTeamID(v TeamID)            { r.teamID = v }
 
 var _ UsageRecord = &BaseUsageRecord{}
 
@@ -185,4 +191,45 @@ func NewUsageRecord(
 		createdAt:         time.Now(),
 		status:            UsageStatusOK,
 	}
+}
+
+// QuotaCounter designates one running budget counter.
+type QuotaCounter struct {
+	Scope   QuotaScope
+	ScopeID string
+}
+
+// QuotaCounters lists the budget counters a usage record feeds, in its
+// organization: the organization always; the application when the call was
+// made by one, else the user; and, when the call was attributed to a team, the
+// team and, for a user, the user's counter inside the team. A record that
+// feeds no monetary budget feeds no counter.
+//
+// The store, the cache and the backfill must agree on this list, or the totals
+// they each produce drift apart.
+//
+// An application token authenticates through a shadow user, so a record can
+// carry both: the shadow user has no budget of its own, and counting
+// application spending on its counter would bypass the application budget
+// (issue #64). For the same reason an application feeds no member counter of
+// its team.
+func QuotaCounters(r UsageRecord) []QuotaCounter {
+	if !FeedsMonetaryBudget(r) {
+		return nil
+	}
+	counters := []QuotaCounter{{QuotaScopeOrg, string(r.OrgID())}}
+	appID, userID, teamID := r.ApplicationID(), r.UserID(), r.TeamID()
+	switch {
+	case appID != "":
+		counters = append(counters, QuotaCounter{QuotaScopeApplication, string(appID)})
+	case userID != "":
+		counters = append(counters, QuotaCounter{QuotaScopeUser, string(userID)})
+	}
+	if teamID != "" {
+		counters = append(counters, QuotaCounter{QuotaScopeTeam, string(teamID)})
+		if appID == "" && userID != "" {
+			counters = append(counters, QuotaCounter{QuotaScopeTeamMember, TeamMemberScopeID(teamID, userID)})
+		}
+	}
+	return counters
 }

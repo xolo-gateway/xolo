@@ -57,7 +57,7 @@ func TestMigrateLegacyMembershipRoles(t *testing.T) {
 		if err := db.SetupJoinTable(&Membership{}, "Roles", &MembershipRole{}); err != nil {
 			return err
 		}
-		if err := db.AutoMigrate(&Role{}, &RolePermission{}, &RoleModel{}, &MembershipRole{}); err != nil {
+		if err := db.AutoMigrate(&Role{}, &RolePermission{}, &legacyRoleModel{}, &MembershipRole{}); err != nil {
 			return err
 		}
 		if err := migrateLegacyMembershipRoles(db); err != nil {
@@ -109,7 +109,7 @@ func TestBackfillApplicationBuiltinRoles(t *testing.T) {
 		t.Fatalf("open db: %v", err)
 	}
 
-	if err := db.AutoMigrate(&Organization{}, &Application{}, &Role{}, &RolePermission{}, &RoleModel{}, &ApplicationRole{}); err != nil {
+	if err := db.AutoMigrate(&Organization{}, &Application{}, &Role{}, &RolePermission{}, &ApplicationRole{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 

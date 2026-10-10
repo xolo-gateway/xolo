@@ -175,6 +175,11 @@ func NewHTTPServerFromConfig(ctx context.Context, conf *config.Config) (*http.Se
 		proxyAdapter.WithUpstreamTimeout(conf.Proxy.UpstreamTimeout),
 	)
 
+	teamStore, err := getTeamStoreFromConfig(ctx, conf)
+	if err != nil {
+		return nil, errors.Wrap(err, "could not create team store from config")
+	}
+
 	pipelineHookAdapter := proxyAdapter.NewPipelineHookAdapter(
 		pluginManager,
 		virtualModelStore,
@@ -183,7 +188,7 @@ func NewHTTPServerFromConfig(ctx context.Context, conf *config.Config) (*http.Se
 		orgStore,
 		middlewareStore,
 		orgModelRouter,
-	).WithQuotaInfo(proxyAdapter.NewQuotaInfoResolver(quotaService, usageStore))
+	).WithQuotaInfo(proxyAdapter.NewQuotaInfoResolver(quotaService, usageStore)).WithTeams(teamStore)
 	// Plugins may ask the host for a completion (e.g. llm-classifier); it goes
 	// through the same model resolution as a proxied request.
 	pluginManager.HostService().SetModelCompleter(pipelineHookAdapter)
@@ -251,14 +256,15 @@ func NewHTTPServerFromConfig(ctx context.Context, conf *config.Config) (*http.Se
 		return nil, errors.Wrap(err, "could not create invitation service")
 	}
 
-	webuiHandler := webui.NewHandler(taskRunner, userStore, orgStore, roleStore, providerStore, virtualModelStore, middlewareStore, personalVMStore, usageStore, inviteStore, invitationService, applicationStore, quotaStore, quotaService, exchangeRateService, secretStore, conf.SecretKey, pluginManager, subscriptionState, fairShareService, eventStore, alertStore, alertIncidentStore, eventSettingsStore, conf.Events.MaxPerOrg, conf.Events.DefaultPerOrg)
+	webuiHandler := webui.NewHandler(taskRunner, userStore, orgStore, roleStore, providerStore, virtualModelStore, middlewareStore, personalVMStore, usageStore, inviteStore, invitationService, applicationStore, quotaStore, quotaService, exchangeRateService, secretStore, conf.SecretKey, pluginManager, subscriptionState, fairShareService, eventStore, alertStore, alertIncidentStore, eventSettingsStore, conf.Events.MaxPerOrg, conf.Events.DefaultPerOrg).WithTeams(teamStore)
 
-	apiHandler := api.NewHandler(providerStore, orgStore, virtualModelStore, personalVMStore, middlewareStore, secretStore, exchangeRateService, pluginManager)
+	apiHandler := api.NewHandler(providerStore, orgStore, virtualModelStore, personalVMStore, middlewareStore, secretStore, exchangeRateService, pluginManager).WithTeams(teamStore)
 
 	proxyServer := proxy.NewServer(
 		proxy.WithAuthExtractor(proxyAdapter.XoloAuthExtractor()),
 		proxy.WithHook(proxyAdapter.NewXoloMetricsHook()),
 		proxy.WithHook(&proxyAdapter.SessionIDHook{}),
+		proxy.WithHook(proxyAdapter.NewTeamScopeHook(orgStore, teamStore, providerStore, virtualModelStore, personalVMStore)),
 		proxy.WithHook(pipelineHookAdapter),
 		proxy.WithHook(orgModelRouter),
 		proxy.WithHook(proxyAdapter.NewXoloQuotaEnforcer(quotaService, usageStore, providerStore)),

@@ -12,6 +12,9 @@ type User struct {
 	DisplayName string
 	OrgID       string
 	TokenID     string
+	// TeamID is the team the API token or the application is bound to, empty
+	// when none. Every request it makes is attributed to that team.
+	TeamID string
 
 	// Issuer is the issuer the identity provider proved for this sign-in, or
 	// empty when the provider proves none (GitHub OAuth, a static Gitea).

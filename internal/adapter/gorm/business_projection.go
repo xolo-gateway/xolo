@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"slices"
 	"strings"
 
@@ -44,6 +45,39 @@ func businessSnapshot(db *gorm.DB, key mutationKey, row map[string]any) error {
 			}
 			row[column] = decoded
 		}
+	case "team":
+		grants := []map[string]any{}
+		var grantRows []TeamModelGrant
+		if err := db.Table("team_model_grants").Where("team_id = ?", key.id).Order("model_id, model_kind").Find(&grantRows).Error; err != nil {
+			return err
+		}
+		for _, g := range grantRows {
+			grants = append(grants, map[string]any{"model_id": g.ModelID, "kind": g.ModelKind})
+		}
+		row["model_grants"] = grants
+		middlewares := []string{}
+		if err := db.Table("team_middlewares").Where("team_id = ?", key.id).Order("middleware_id").Pluck("middleware_id", &middlewares).Error; err != nil {
+			return err
+		}
+		row["middleware_ids"] = middlewares
+		var memberRows []struct {
+			MembershipID string
+			UserID       string
+		}
+		if err := db.Table("team_members").Select("team_members.membership_id, memberships.user_id").
+			Joins("JOIN memberships ON memberships.id = team_members.membership_id").
+			Where("team_members.team_id = ?", key.id).Order("memberships.user_id").Scan(&memberRows).Error; err != nil {
+			return err
+		}
+		members := []map[string]any{}
+		for _, m := range memberRows {
+			roles := []string{}
+			if err := db.Table("team_member_roles").Where("team_id = ? AND membership_id = ?", key.id, m.MembershipID).Order("role_id").Pluck("role_id", &roles).Error; err != nil {
+				return err
+			}
+			members = append(members, map[string]any{"user_id": m.UserID, "role_ids": roles})
+		}
+		row["members"] = members
 	case "alert":
 		// Rows created before personal alerts carry no scope.
 		if scope, _ := row["scope"].(string); scope == "" {
@@ -63,6 +97,16 @@ func businessSnapshot(db *gorm.DB, key mutationKey, row map[string]any) error {
 		case model.QuotaScopeUser:
 			if err := db.Table("users").Where("id = ?", scopeID).Pluck("tenant_id", &tenantID).Error; err != nil {
 				return err
+			}
+		case model.QuotaScopeTeam:
+			if err := db.Table("teams").Where("id = ?", scopeID).Pluck("org_id", &orgID).Error; err != nil {
+				return err
+			}
+		case model.QuotaScopeTeamMember:
+			if teamID, _, ok := model.ParseTeamMemberScopeID(scopeID); ok {
+				if err := db.Table("teams").Where("id = ?", string(teamID)).Pluck("org_id", &orgID).Error; err != nil {
+					return err
+				}
 			}
 		}
 		if orgID != "" {
@@ -93,6 +137,8 @@ func businessFamilyOf(key mutationKey, row snapshotRow) (string, bool) {
 		return model.FamilyAlert, true
 	case "provider":
 		return model.FamilyProvider, true
+	case "team":
+		return model.FamilyTeam, true
 	}
 	return "", false
 }
@@ -101,8 +147,9 @@ func businessFamilyOf(key mutationKey, row snapshotRow) (string, bool) {
 // named by the model settings: a PUT body and its projection are comparable.
 var businessRepresentationFields = map[string][]string{
 	model.FamilyCustomRole:  {"name", "description", "permissions"},
-	model.FamilyApplication: {"name", "description", "active", "role_ids"},
-	model.FamilyQuota:       {"scope", "scope_id", "currency", "daily_budget", "monthly_budget", "yearly_budget"},
+	model.FamilyApplication: {"name", "description", "active", "role_ids", "team_id"},
+	model.FamilyQuota:       {"scope", "scope_id", "currency", "daily_budget", "monthly_budget", "yearly_budget", "cascade"},
+	model.FamilyTeam:        {"slug", "name", "description", "share_quota_equally", "model_grants", "middleware_ids", "members"},
 	model.FamilyAlert:       {"name", "description", "scope", "owner_id", "query", "aggregation", "window_seconds", "comparator", "threshold", "for_seconds", "enabled"},
 	model.FamilyProvider:    {"name", "type", "base_url", "active", "currency", "cloud_tier", "billing_mode", "subscription_plan", "retry_config", "rate_limit_config"},
 }
@@ -125,25 +172,59 @@ func businessRepresentation(family string, row snapshotRow) map[string]any {
 			rep[field] = sorted
 		}
 	}
-	if family == model.FamilyCustomRole {
-		grants := []model.ModelGrantSettings{}
-		if rows, ok := row["grants"].([]any); ok {
-			for _, value := range rows {
-				grant, _ := value.(map[string]any)
-				modelID, _ := grant["model_id"].(string)
-				kind, _ := grant["model_kind"].(string)
-				grants = append(grants, model.ModelGrantSettings{ModelID: modelID, Kind: kind})
+	if family == model.FamilyTeam {
+		rep["middleware_ids"] = sortedStrings(rep["middleware_ids"])
+		grants, _ := rep["model_grants"].([]any)
+		slices.SortFunc(grants, func(a, b any) int {
+			ga, _ := a.(map[string]any)
+			gb, _ := b.(map[string]any)
+			return strings.Compare(fmt.Sprint(ga["model_id"], "\x00", ga["kind"]), fmt.Sprint(gb["model_id"], "\x00", gb["kind"]))
+		})
+		if grants == nil {
+			grants = []any{}
+		}
+		rep["model_grants"] = grants
+		members, _ := rep["members"].([]any)
+		for _, member := range members {
+			if m, ok := member.(map[string]any); ok {
+				m["role_ids"] = sortedStrings(m["role_ids"])
 			}
 		}
-		slices.SortFunc(grants, func(a, b model.ModelGrantSettings) int {
-			if c := strings.Compare(a.ModelID, b.ModelID); c != 0 {
-				return c
-			}
-			return strings.Compare(a.Kind, b.Kind)
+		slices.SortFunc(members, func(a, b any) int {
+			ma, _ := a.(map[string]any)
+			mb, _ := b.(map[string]any)
+			return strings.Compare(fmt.Sprint(ma["user_id"]), fmt.Sprint(mb["user_id"]))
 		})
-		rep["model_grants"] = grants
+		if members == nil {
+			members = []any{}
+		}
+		rep["members"] = members
+	}
+	if family == model.FamilyApplication {
+		// Applications created before teams carry no team.
+		if team, _ := rep["team_id"].(string); team == "" {
+			rep["team_id"] = ""
+		}
+	}
+	if family == model.FamilyQuota {
+		// Quotas set before cascades existed are free.
+		if cascade, _ := rep["cascade"].(string); cascade == "" {
+			rep["cascade"] = string(model.QuotaCascadeFree)
+		}
 	}
 	return rep
+}
+
+// sortedStrings sorts a decoded JSON array of strings, empty when absent.
+func sortedStrings(value any) []string {
+	values, _ := value.([]any)
+	sorted := make([]string, 0, len(values))
+	for _, v := range values {
+		text, _ := v.(string)
+		sorted = append(sorted, text)
+	}
+	slices.Sort(sorted)
+	return sorted
 }
 
 // trackQuota designates the quota of a scope, if any.

@@ -109,6 +109,10 @@ func (h *Handler) serveUpdateEntity(w http.ResponseWriter, r *http.Request, res 
 		return
 	}
 
+	if h.rejectGraph(w, r, req.Graph) {
+		return
+	}
+
 	oldGraph := e.Graph()
 
 	if req.Description != "" {

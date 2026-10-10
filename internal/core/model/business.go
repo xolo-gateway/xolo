@@ -12,10 +12,9 @@ import (
 // ProviderSettings.APIKey is a write-only replacement, never read back.
 
 type CustomRoleSettings struct {
-	Name        string               `json:"name"`
-	Description string               `json:"description"`
-	Permissions []string             `json:"permissions"`
-	ModelGrants []ModelGrantSettings `json:"model_grants"`
+	Name        string   `json:"name"`
+	Description string   `json:"description"`
+	Permissions []string `json:"permissions"`
 }
 
 type ModelGrantSettings struct {
@@ -28,6 +27,28 @@ type ApplicationSettings struct {
 	Description string   `json:"description"`
 	Active      bool     `json:"active"`
 	RoleIDs     []string `json:"role_ids"`
+	// TeamID binds the application to a team of its organization, empty for
+	// none.
+	TeamID string `json:"team_id"`
+}
+
+// TeamSettings is the representation of a team, members included.
+type TeamSettings struct {
+	// Slug is the team segment of qualified model names. It never changes.
+	Slug              string               `json:"slug"`
+	Name              string               `json:"name"`
+	Description       string               `json:"description"`
+	ShareQuotaEqually bool                 `json:"share_quota_equally"`
+	ModelGrants       []ModelGrantSettings `json:"model_grants"`
+	MiddlewareIDs     []string             `json:"middleware_ids"`
+	Members           []TeamMemberSettings `json:"members"`
+}
+
+// TeamMemberSettings is one member of a team, with the roles it holds on the
+// team scope.
+type TeamMemberSettings struct {
+	UserID  string   `json:"user_id"`
+	RoleIDs []string `json:"role_ids"`
 }
 
 type QuotaSettings struct {
@@ -37,6 +58,9 @@ type QuotaSettings struct {
 	DailyBudget   *int64     `json:"daily_budget"`
 	MonthlyBudget *int64     `json:"monthly_budget"`
 	YearlyBudget  *int64     `json:"yearly_budget"`
+	// Cascade constrains the children budgets of an org or team quota; free
+	// when empty.
+	Cascade QuotaCascade `json:"cascade"`
 }
 
 type AlertSettings struct {

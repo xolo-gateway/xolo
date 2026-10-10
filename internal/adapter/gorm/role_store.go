@@ -31,7 +31,7 @@ func (s *Store) CreateRole(ctx context.Context, role model.Role) error {
 func (s *Store) GetRoleByID(ctx context.Context, id model.RoleID) (model.Role, error) {
 	var role Role
 	err := s.withRetry(ctx, false, func(ctx context.Context, db *gorm.DB) error {
-		if err := db.Preload("Permissions").Preload("ModelGrants").
+		if err := db.Preload("Permissions").
 			First(&role, "id = ?", string(id)).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				return errors.WithStack(port.ErrNotFound)
@@ -50,7 +50,7 @@ func (s *Store) GetRoleByID(ctx context.Context, id model.RoleID) (model.Role, e
 func (s *Store) ListOrgRoles(ctx context.Context, orgID model.OrgID) ([]model.Role, error) {
 	var roles []*Role
 	err := s.withRetry(ctx, false, func(ctx context.Context, db *gorm.DB) error {
-		return errors.WithStack(db.Preload("Permissions").Preload("ModelGrants").
+		return errors.WithStack(db.Preload("Permissions").
 			Where("org_id = ?", string(orgID)).
 			Order("builtin DESC, name ASC").
 			Find(&roles).Error)
@@ -66,7 +66,7 @@ func (s *Store) ListOrgRoles(ctx context.Context, orgID model.OrgID) ([]model.Ro
 }
 
 // SaveRole implements port.RoleStore. It upserts the role and fully replaces
-// its permissions and model grants.
+// its permissions.
 func (s *Store) SaveRole(ctx context.Context, role model.Role) error {
 	return s.recorded(ctx, tracking("role", string(role.ID())), func(ctx context.Context, db *gorm.DB) error {
 		gormRole := fromRole(role)
@@ -74,7 +74,7 @@ func (s *Store) SaveRole(ctx context.Context, role model.Role) error {
 		if err := db.Clauses(clause.OnConflict{
 			Columns:   []clause.Column{{Name: "id"}},
 			UpdateAll: true,
-		}).Omit("Permissions", "ModelGrants", "Org").Create(gormRole).Error; err != nil {
+		}).Omit("Permissions", "Org").Create(gormRole).Error; err != nil {
 			return errors.WithStack(err)
 		}
 
@@ -85,17 +85,6 @@ func (s *Store) SaveRole(ctx context.Context, role model.Role) error {
 		for _, p := range gormRole.Permissions {
 			p.RoleID = gormRole.ID
 			if err := db.Create(p).Error; err != nil {
-				return errors.WithStack(err)
-			}
-		}
-
-		// Fully replace model grants.
-		if err := db.Where("role_id = ?", gormRole.ID).Delete(&RoleModel{}).Error; err != nil {
-			return errors.WithStack(err)
-		}
-		for _, g := range gormRole.ModelGrants {
-			g.RoleID = gormRole.ID
-			if err := db.Create(g).Error; err != nil {
 				return errors.WithStack(err)
 			}
 		}
@@ -121,6 +110,9 @@ func (s *Store) DeleteRole(ctx context.Context, id model.RoleID) error {
 			return errors.WithStack(err)
 		}
 		if err := db.Where("role_id = ?", string(id)).Delete(&ApplicationRole{}).Error; err != nil {
+			return errors.WithStack(err)
+		}
+		if err := db.Where("role_id = ?", string(id)).Delete(&TeamMemberRole{}).Error; err != nil {
 			return errors.WithStack(err)
 		}
 		return errors.WithStack(db.Delete(&Role{}, "id = ?", string(id)).Error)
@@ -150,7 +142,7 @@ func (s *Store) SetMembershipRoles(ctx context.Context, membershipID model.Membe
 func (s *Store) ListMembershipRoles(ctx context.Context, membershipID model.MembershipID) ([]model.Role, error) {
 	var roles []*Role
 	err := s.withRetry(ctx, false, func(ctx context.Context, db *gorm.DB) error {
-		return errors.WithStack(db.Preload("Permissions").Preload("ModelGrants").
+		return errors.WithStack(db.Preload("Permissions").
 			Joins("JOIN membership_roles mr ON mr.role_id = roles.id").
 			Where("mr.membership_id = ?", string(membershipID)).
 			Find(&roles).Error)
@@ -188,7 +180,7 @@ func (s *Store) SetApplicationRoles(ctx context.Context, appID model.Application
 func (s *Store) ListApplicationRoles(ctx context.Context, appID model.ApplicationID) ([]model.Role, error) {
 	var roles []*Role
 	err := s.withRetry(ctx, false, func(ctx context.Context, db *gorm.DB) error {
-		return errors.WithStack(db.Preload("Permissions").Preload("ModelGrants").
+		return errors.WithStack(db.Preload("Permissions").
 			Joins("JOIN application_roles ar ON ar.role_id = roles.id").
 			Where("ar.application_id = ?", string(appID)).
 			Find(&roles).Error)
@@ -228,10 +220,15 @@ func (s *Store) EnsureBuiltinRoles(ctx context.Context, orgID model.OrgID) error
 }
 
 // ResolveEffectivePermissions implements port.RoleStore. It returns the union
-// of the permissions of all roles assigned to the user within the organization.
+// of the permissions of all roles assigned to the user within the
+// organization, and the access the user holds through its teams.
 func (s *Store) ResolveEffectivePermissions(ctx context.Context, userID model.UserID, orgID model.OrgID) (rbac.PermissionSet, error) {
-	var roles []*Role
+	var (
+		roles []*Role
+		teams []rbac.TeamAccess
+	)
 	err := s.withRetry(ctx, false, func(ctx context.Context, db *gorm.DB) error {
+		roles, teams = nil, nil
 		var m Membership
 		// A suspended membership, or a suspended or deleted organization,
 		// grants nothing.
@@ -242,25 +239,77 @@ func (s *Store) ResolveEffectivePermissions(ctx context.Context, userID model.Us
 			}
 			return errors.WithStack(err)
 		}
-		return errors.WithStack(db.Preload("Permissions").Preload("ModelGrants").
+		if err := db.Preload("Permissions").
 			Joins("JOIN membership_roles mr ON mr.role_id = roles.id").
 			Where("mr.membership_id = ?", m.ID).
-			Find(&roles).Error)
+			Find(&roles).Error; err != nil {
+			return errors.WithStack(err)
+		}
+		var err error
+		teams, err = resolveTeamAccess(db, db.Model(&TeamMember{}).Select("team_id").Where("membership_id = ?", m.ID), m.ID)
+		return err
 	})
 	if err != nil {
 		return rbac.PermissionSet{}, err
 	}
 
-	return permissionSetFromRoles(roles), nil
+	return permissionSetFromRoles(roles, teams), nil
+}
+
+// resolveTeamAccess loads the access held through the selected teams: their
+// slugs and grants, and the permissions of the roles membershipID holds on
+// each of them. An empty membershipID holds no team role.
+func resolveTeamAccess(db *gorm.DB, teamIDs *gorm.DB, membershipID string) ([]rbac.TeamAccess, error) {
+	var teams []*Team
+	if err := db.Preload("ModelGrants").Where("id IN (?)", teamIDs).Order("slug").Find(&teams).Error; err != nil {
+		return nil, errors.WithStack(err)
+	}
+	if len(teams) == 0 {
+		return nil, nil
+	}
+	var codes []struct {
+		TeamID string
+		Code   string
+	}
+	if membershipID != "" {
+		if err := db.Table("team_member_roles tmr").Select("tmr.team_id, rp.code").
+			Joins("JOIN role_permissions rp ON rp.role_id = tmr.role_id").
+			Joins("JOIN roles ON roles.id = tmr.role_id").
+			Joins("JOIN teams ON teams.id = tmr.team_id").
+			// Only roles of the team's own organization are honoured.
+			Where("tmr.membership_id = ? AND roles.org_id = teams.org_id", membershipID).
+			Scan(&codes).Error; err != nil {
+			return nil, errors.WithStack(err)
+		}
+	}
+	access := make([]rbac.TeamAccess, 0, len(teams))
+	for _, t := range teams {
+		ta := rbac.TeamAccess{TeamID: t.ID, Slug: t.Slug}
+		for _, g := range t.ModelGrants {
+			ta.Grants = append(ta.Grants, rbac.ModelGrant{ModelID: g.ModelID, Kind: g.ModelKind})
+		}
+		for _, c := range codes {
+			if c.TeamID == t.ID {
+				ta.Codes = append(ta.Codes, c.Code)
+			}
+		}
+		access = append(access, ta)
+	}
+	return access, nil
 }
 
 // ResolveApplicationPermissions implements port.RoleStore. It returns the union
-// of the permissions of all roles assigned to the application. The application
-// must belong to orgID: a token scoped to another organization resolves to an
-// empty set, never to the application's own permissions.
+// of the permissions of all roles assigned to the application, and the access
+// of the team it is bound to. The application must belong to orgID: a token
+// scoped to another organization resolves to an empty set, never to the
+// application's own permissions.
 func (s *Store) ResolveApplicationPermissions(ctx context.Context, appID model.ApplicationID, orgID model.OrgID) (rbac.PermissionSet, error) {
-	var roles []*Role
+	var (
+		roles []*Role
+		teams []rbac.TeamAccess
+	)
 	err := s.withRetry(ctx, false, func(ctx context.Context, db *gorm.DB) error {
+		roles, teams = nil, nil
 		var app Application
 		if err := db.Where("id = ? AND org_id = ?", string(appID), string(orgID)).
 			Where("EXISTS (SELECT 1 FROM organizations o WHERE o.id = applications.org_id AND o.active <> 0)").First(&app).Error; err != nil {
@@ -274,35 +323,40 @@ func (s *Store) ResolveApplicationPermissions(ctx context.Context, appID model.A
 		}
 		// Only roles owned by the same organization are honoured, so a role that
 		// was moved or mis-assigned can never widen the application's scope.
-		return errors.WithStack(db.Preload("Permissions").Preload("ModelGrants").
+		if err := db.Preload("Permissions").
 			Joins("JOIN application_roles ar ON ar.role_id = roles.id").
 			Where("ar.application_id = ? AND roles.org_id = ?", string(appID), string(orgID)).
-			Find(&roles).Error)
+			Find(&roles).Error; err != nil {
+			return errors.WithStack(err)
+		}
+		if app.TeamID == "" {
+			return nil
+		}
+		var err error
+		teams, err = resolveTeamAccess(db, db.Model(&Team{}).Select("id").Where("id = ? AND org_id = ?", app.TeamID, string(orgID)), "")
+		return err
 	})
 	if err != nil {
 		return rbac.PermissionSet{}, err
 	}
 
-	return permissionSetFromRoles(roles), nil
+	return permissionSetFromRoles(roles, teams), nil
 }
 
-// permissionSetFromRoles unions the permissions and model grants of the given
-// roles. A builtin owner role short-circuits to the all-access set.
-func permissionSetFromRoles(roles []*Role) rbac.PermissionSet {
+// permissionSetFromRoles unions the permissions of the given roles, with the
+// given team access. A builtin owner role short-circuits to the all-access
+// set, which keeps the teams for attribution.
+func permissionSetFromRoles(roles []*Role, teams []rbac.TeamAccess) rbac.PermissionSet {
 	var codes []string
-	var grants []rbac.ModelGrant
 	for _, r := range roles {
 		if r.BuiltinKind == model.BuiltinKindOwner {
-			return rbac.OwnerPermissionSet()
+			return rbac.OwnerPermissionSet().WithTeams(teams)
 		}
 		for _, p := range r.Permissions {
 			codes = append(codes, p.Code)
 		}
-		for _, g := range r.ModelGrants {
-			grants = append(grants, rbac.ModelGrant{ModelID: g.ModelID, Kind: g.ModelKind})
-		}
 	}
-	return rbac.NewPermissionSet(codes, grants)
+	return rbac.NewPermissionSet(codes, teams)
 }
 
 type builtinRoleSpec struct {

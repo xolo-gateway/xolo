@@ -26,6 +26,21 @@ type ModelUsage struct {
 	Org       model.Organization
 	Aggregate *port.UsageAggregate
 	Provider  model.Provider // nil for virtual models
+	// Names are the names the user can call the model by: "<org>/<model>"
+	// for the organization-wide access, "<org>/<team>/<model>" per team.
+	Names []string
+}
+
+// ModelNames returns the names a model card shows, the qualified name when
+// none were resolved.
+func ModelNames(mu ModelUsage) []string {
+	if len(mu.Names) > 0 {
+		return mu.Names
+	}
+	if mu.Org != nil {
+		return []string{mu.Org.Slug() + "/" + mu.Model.ProxyName()}
+	}
+	return []string{mu.Model.ProxyName()}
 }
 
 type DisplayUsageRecord struct {

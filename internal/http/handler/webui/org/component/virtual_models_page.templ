@@ -158,6 +158,15 @@ templ virtualModelDetail(vmodel VirtualModelsPageVModel) {
 					}
 				</span>
 			}
+			<div class="flex flex-wrap items-center gap-1.5 border-b px-4 py-2.5 text-xs text-muted-foreground">
+				<span>Équipes :</span>
+				if len(vmodel.SelectedTeams) == 0 {
+					<span>aucune, seuls les membres ayant accès à tous les modèles virtuels l'utilisent.</span>
+				}
+				for _, team := range vmodel.SelectedTeams {
+					@common.Badge(common.ToneInfo, team.Name())
+				}
+			</div>
 			@PipelinePreview(vm.Graph(), pipelineHref)
 			<div class="flex flex-wrap gap-6 border-t px-4 py-3">
 				@common.InlineStat("Nœuds", common.ToneNeutral) {

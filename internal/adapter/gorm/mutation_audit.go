@@ -35,6 +35,7 @@ var resourceTables = map[string]string{
 	"tenant": "tenants", "organization": "organizations", "user": "users", "membership": "memberships", "role": "roles", "domain": "domains",
 	// The quota table keeps the singular name GORM gave it.
 	"application": "applications", "quota": "quota", "alert": "alerts", "provider": "providers",
+	"team": "teams",
 }
 
 // resourceKeys names the key column of the resources not keyed by id.
@@ -55,8 +56,9 @@ var mutationColumns = map[string]string{
 	"membership":   "id, org_id, user_id, status",
 	"role":         "id, org_id, name, description, builtin, builtin_kind",
 	"domain":       "hostname, tenant_id, status",
-	"application":  "id, org_id, name, description, active",
-	"quota":        "id, scope, scope_id, currency, daily_budget, monthly_budget, yearly_budget",
+	"application":  "id, org_id, name, description, active, team_id",
+	"quota":        "id, scope, scope_id, currency, daily_budget, monthly_budget, yearly_budget, cascade",
+	"team":         "id, org_id, slug, name, description, share_quota_equally",
 	// The evaluation state (state, pending_since, last_evaluated_at) is left
 	// out: the evaluator rewrites it on every tick, outside the recorder.
 	"alert": "id, org_id, owner_id, scope, name, description, query, aggregation, window_seconds, comparator, threshold, for_seconds, enabled",
@@ -178,7 +180,7 @@ func mutationSnapshot(db *gorm.DB, key mutationKey) ([]byte, error) {
 	if err := businessSnapshot(db, key, row); err != nil {
 		return nil, err
 	}
-	if key.kind == "membership" || key.kind == "role" || key.kind == "application" || key.kind == "alert" || key.kind == "provider" {
+	if key.kind == "membership" || key.kind == "role" || key.kind == "application" || key.kind == "alert" || key.kind == "provider" || key.kind == "team" {
 		var tenantID string
 		if err := db.Table("organizations").Where("id = ?", row["org_id"]).Pluck("tenant_id", &tenantID).Error; err != nil {
 			return nil, err
@@ -211,14 +213,6 @@ func mutationSnapshot(db *gorm.DB, key mutationKey) ([]byte, error) {
 			return nil, err
 		}
 		row["permissions"] = permissions
-		grants := []struct {
-			ModelID   string `json:"model_id"`
-			ModelKind string `json:"model_kind"`
-		}{}
-		if err := db.Table("role_models").Select("model_id, model_kind").Where("role_id = ?", key.id).Order("model_id, model_kind").Find(&grants).Error; err != nil {
-			return nil, err
-		}
-		row["grants"] = grants
 	}
 	return json.Marshal(row)
 }
@@ -297,12 +291,40 @@ func (r *mutationRecorder) trackDependents(kind, id string) error {
 		if err := trackIDs("role", "org_id"); err != nil {
 			return err
 		}
-		for _, resource := range []string{"application", "alert", "provider"} {
+		for _, resource := range []string{"application", "alert", "provider", "team"} {
 			if err := trackIDs(resource, "org_id"); err != nil {
 				return err
 			}
 		}
 		return r.trackQuota(model.QuotaScopeOrg, id)
+	case "membership":
+		// Removing a membership removes it from its teams, and its budgets
+		// inside them.
+		var teams []string
+		if err := r.db.Table("team_members").Where("membership_id = ?", id).Order("team_id").Pluck("team_id", &teams).Error; err != nil {
+			return err
+		}
+		for _, team := range teams {
+			if err := r.track("team", team); err != nil {
+				return err
+			}
+			if err := r.trackTeamMemberQuotas(team, id); err != nil {
+				return err
+			}
+		}
+	case "team":
+		if err := r.trackQuota(model.QuotaScopeTeam, id); err != nil {
+			return err
+		}
+		var ids []string
+		if err := r.db.Table("quota").Where("scope = ? AND scope_id LIKE ?", string(model.QuotaScopeTeamMember), id+":%").Order("id").Pluck("id", &ids).Error; err != nil {
+			return err
+		}
+		for _, quota := range ids {
+			if err := r.track("quota", quota); err != nil {
+				return err
+			}
+		}
 	case "user":
 		if err := trackIDs("membership", "user_id"); err != nil {
 			return err
@@ -332,8 +354,30 @@ func (r *mutationRecorder) trackDependents(kind, id string) error {
 				return err
 			}
 		}
+		var teams []string
+		if err := r.db.Table("team_member_roles").Where("role_id = ?", id).Distinct("team_id").Order("team_id").Pluck("team_id", &teams).Error; err != nil {
+			return err
+		}
+		for _, team := range teams {
+			if err := r.track("team", team); err != nil {
+				return err
+			}
+		}
 	}
 	return nil
+}
+
+// trackTeamMemberQuotas designates the budget of a membership inside a team,
+// if any.
+func (r *mutationRecorder) trackTeamMemberQuotas(teamID, membershipID string) error {
+	var userID string
+	if err := r.db.Table("memberships").Where("id = ?", membershipID).Pluck("user_id", &userID).Error; err != nil {
+		return err
+	}
+	if userID == "" {
+		return nil
+	}
+	return r.trackQuota(model.QuotaScopeTeamMember, model.TeamMemberScopeID(model.TeamID(teamID), model.UserID(userID)))
 }
 
 // checkOwnerTransition refuses a change that removes the last active owner of

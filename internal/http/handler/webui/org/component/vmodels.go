@@ -75,6 +75,8 @@ type QuotaPageVModel struct {
 	DailyCost   int64 // current period spend in org currency (microcents)
 	MonthlyCost int64
 	YearlyCost  int64
+	// Error explains why the submitted budget was refused.
+	Error string
 	// LoadError is set when the quota store or a spend lookup returned an
 	// error other than ErrNotFound. The page still renders what it has, but
 	// a banner warns the operator so the displayed numbers do not silently
@@ -90,12 +92,24 @@ type InvitesPageVModel struct {
 	Success   string
 	NewURL    string
 	RoleNames map[string]string // role ID → display name
+	// TeamNames names the teams invitations make their invitee join.
+	TeamNames map[model.TeamID]string
+	// CanCreate allows creating invitations, for the organization or one of
+	// WritableTeams; CanManageAll allows managing every invitation.
+	CanCreate     bool
+	CanManageAll  bool
+	WritableTeams map[model.TeamID]bool
 }
 
 type InviteFormVModel struct {
 	common.AppLayoutVModel
 	Org      model.Organization
 	OrgRoles []model.Role
+	// Teams the invitee can be made to join. TeamOnly is set for a viewer
+	// inviting on its teams only: a team is then required and the role is the
+	// builtin member one.
+	Teams    []model.Team
+	TeamOnly bool
 }
 
 type OrgSettingsPageVModel struct {
@@ -180,12 +194,22 @@ type SubscriptionProviderUsage struct {
 
 type OrgUsagePageVModel struct {
 	common.AppLayoutVModel
-	Org             model.Organization
-	Aggregate       *port.UsageAggregate
-	Records         []OrgDisplayUsageRecord
-	Users           map[model.UserID]model.User
-	Members         []model.Membership // pour le filtre utilisateur
-	OwnerFilter     []string           // IDs sélectionnés (users + applications)
+	Org         model.Organization
+	Aggregate   *port.UsageAggregate
+	Records     []OrgDisplayUsageRecord
+	Users       map[model.UserID]model.User
+	Members     []model.Membership // pour le filtre utilisateur
+	OwnerFilter []string           // IDs sélectionnés (users + applications)
+	// Teams are the teams the usage can be filtered on; TeamFilter the
+	// selected one. TeamOnly hides the organization figures from a viewer
+	// that reads the usage of its teams only.
+	Teams      []model.Team
+	TeamFilter model.TeamID
+	TeamOnly   bool
+	// BudgetTitle and BudgetHref name the budget shown by the budget card and
+	// the page managing it: the organization's, or the filtered team's.
+	BudgetTitle     string
+	BudgetHref      string
 	Applications    []model.Application
 	ApplicationsMap map[model.ApplicationID]model.Application
 	Since           time.Time
@@ -227,9 +251,11 @@ type VirtualModelsPageVModel struct {
 	// screen is a master/detail, so it is never nil when VirtualModels is not
 	// empty — the handler falls back to the first one.
 	Selected model.VirtualModel
-	BaseURL  string
-	Success  string
-	Error    string
+	// SelectedTeams are the teams granted the selected model.
+	SelectedTeams []model.Team
+	BaseURL       string
+	Success       string
+	Error         string
 }
 
 type VirtualModelFormVModel struct {
@@ -255,8 +281,9 @@ type RolesPageVModel struct {
 	Success string
 }
 
-// RoleModelOption is a selectable model (LLM or virtual) for role model grants.
-type RoleModelOption struct {
+// ModelGrantOption is a selectable model (LLM or virtual) for team model
+// grants.
+type ModelGrantOption struct {
 	ID    string
 	Kind  string // rbac.ModelKindLLM | rbac.ModelKindVirtual
 	Label string
@@ -264,13 +291,11 @@ type RoleModelOption struct {
 
 type RoleFormVModel struct {
 	common.AppLayoutVModel
-	Org          model.Organization
-	Role         model.Role
-	IsNew        bool
-	Error        string
-	Selected     map[string]bool // permission code -> checked
-	ModelOptions []RoleModelOption
-	SelectedMode map[string]bool // "kind\x00id" -> checked
+	Org      model.Organization
+	Role     model.Role
+	IsNew    bool
+	Error    string
+	Selected map[string]bool // permission code -> checked
 }
 
 // roleLabelFromMap uses only roles resolved in the invitation's organization,

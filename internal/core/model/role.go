@@ -20,14 +20,16 @@ const (
 	BuiltinKindMember = "member"
 )
 
-// ModelGrant authorizes a role to use a specific model resource.
+// ModelGrant authorizes the members of a team to use a specific model
+// resource.
 type ModelGrant struct {
 	ModelID string
 	Kind    string // ModelKindLLM | ModelKindVirtual (see rbac package)
 }
 
-// Role is an organization-scoped set of permissions and model grants that can
-// be assigned to memberships.
+// Role is an organization-scoped set of permissions that can be assigned to
+// memberships, on the organization or on one of its teams. A role says what a
+// member can do; the models a member can use come from its teams.
 type Role interface {
 	WithID[RoleID]
 
@@ -37,7 +39,6 @@ type Role interface {
 	Builtin() bool
 	BuiltinKind() string
 	Permissions() []string
-	ModelGrants() []ModelGrant
 	CreatedAt() time.Time
 	UpdatedAt() time.Time
 }
@@ -50,7 +51,6 @@ type BaseRole struct {
 	builtin     bool
 	builtinKind string
 	permissions []string
-	modelGrants []ModelGrant
 	createdAt   time.Time
 	updatedAt   time.Time
 }
@@ -62,15 +62,13 @@ func (r *BaseRole) Description() string       { return r.description }
 func (r *BaseRole) Builtin() bool            { return r.builtin }
 func (r *BaseRole) BuiltinKind() string       { return r.builtinKind }
 func (r *BaseRole) Permissions() []string     { return r.permissions }
-func (r *BaseRole) ModelGrants() []ModelGrant { return r.modelGrants }
 func (r *BaseRole) CreatedAt() time.Time      { return r.createdAt }
 func (r *BaseRole) UpdatedAt() time.Time      { return r.updatedAt }
 
 // SetID gives the role an identifier chosen by the provisioning client.
 func (r *BaseRole) SetID(id RoleID) { r.id = id }
 
-func (r *BaseRole) SetPermissions(permissions []string)  { r.permissions = permissions }
-func (r *BaseRole) SetModelGrants(grants []ModelGrant)    { r.modelGrants = grants }
+func (r *BaseRole) SetPermissions(permissions []string) { r.permissions = permissions }
 
 var _ Role = &BaseRole{}
 
@@ -108,10 +106,6 @@ func WithRolePermissions(permissions []string) RoleOption {
 	return func(r *BaseRole) { r.permissions = permissions }
 }
 
-func WithRoleModelGrants(grants []ModelGrant) RoleOption {
-	return func(r *BaseRole) { r.modelGrants = grants }
-}
-
 func UpdateRole(role Role, opts ...RoleOption) *BaseRole {
 	b := &BaseRole{
 		id:          role.ID(),
@@ -121,7 +115,6 @@ func UpdateRole(role Role, opts ...RoleOption) *BaseRole {
 		builtin:     role.Builtin(),
 		builtinKind: role.BuiltinKind(),
 		permissions: role.Permissions(),
-		modelGrants: role.ModelGrants(),
 		createdAt:   role.CreatedAt(),
 		updatedAt:   time.Now(),
 	}

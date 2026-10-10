@@ -12,6 +12,7 @@ type PersonalVirtualModel struct {
 	UserID      string `gorm:"uniqueIndex:idx_pvm_user_name;not null"`
 	Name        string `gorm:"uniqueIndex:idx_pvm_user_name;not null"`
 	Description string
+	TeamID      string `gorm:"index"`
 	GraphJSON   string `gorm:"type:text;default:'{}'"`
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
@@ -27,11 +28,13 @@ func (w *wrappedPersonalVirtualModel) ID() model.PersonalVirtualModelID {
 func (w *wrappedPersonalVirtualModel) UserID() model.UserID { return model.UserID(w.m.UserID) }
 func (w *wrappedPersonalVirtualModel) Name() string         { return w.m.Name }
 func (w *wrappedPersonalVirtualModel) Description() string  { return w.m.Description }
+func (w *wrappedPersonalVirtualModel) TeamID() model.TeamID { return model.TeamID(w.m.TeamID) }
 func (w *wrappedPersonalVirtualModel) CreatedAt() time.Time { return w.m.CreatedAt }
 func (w *wrappedPersonalVirtualModel) UpdatedAt() time.Time { return w.m.UpdatedAt }
 
 func (w *wrappedPersonalVirtualModel) SetName(v string)         { w.m.Name = v }
 func (w *wrappedPersonalVirtualModel) SetDescription(v string)  { w.m.Description = v }
+func (w *wrappedPersonalVirtualModel) SetTeamID(v model.TeamID) { w.m.TeamID = string(v) }
 func (w *wrappedPersonalVirtualModel) SetUpdatedAt(v time.Time) { w.m.UpdatedAt = v }
 
 func (w *wrappedPersonalVirtualModel) SetGraph(v *model.PipelineGraph) {
@@ -72,6 +75,7 @@ func fromPersonalVirtualModel(vm model.PersonalVirtualModel) *PersonalVirtualMod
 		UserID:      string(vm.UserID()),
 		Name:        vm.Name(),
 		Description: vm.Description(),
+		TeamID:      string(vm.TeamID()),
 		GraphJSON:   graphJSON,
 		CreatedAt:   vm.CreatedAt(),
 		UpdatedAt:   vm.UpdatedAt(),

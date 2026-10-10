@@ -263,11 +263,7 @@ templ modelCard(mu ModelUsage) {
 			<div class="flex-1 min-w-0">
 				<div class="flex items-center gap-2">
 					<span class="font-semibold font-mono text-sm truncate">
-						if mu.Org != nil {
-							{ mu.Org.Slug() + "/" + mu.Model.ProxyName() }
-						} else {
-							{ mu.Model.ProxyName() }
-						}
+						{ ModelNames(mu)[0] }
 					</span>
 					if mu.Model.IsVirtual() {
 						@common.Badge(common.ToneInfo, "virtuel")
@@ -281,6 +277,17 @@ templ modelCard(mu ModelUsage) {
 						@common.Badge(common.ToneNeutral, "pay-as-you-go")
 					}
 				</div>
+				if names := ModelNames(mu); len(names) > 1 {
+					<p class="text-xs text-muted-foreground mt-0.5">
+						Aussi :
+						for i, name := range names[1:] {
+							if i > 0 {
+								{ ", " }
+							}
+							<span class="font-mono">{ name }</span>
+						}
+					</p>
+				}
 				if mu.Model.Description() != "" {
 					<p class="text-xs text-muted-foreground mt-0.5 whitespace-normal break-words [overflow-wrap:anywhere] line-clamp-3">
 						{ mu.Model.Description() }
@@ -379,21 +386,16 @@ func openCodeConfigExample(baseURL string, modelUsages []ModelUsage) string {
 		if mu.Model.Capabilities().Embeddings {
 			continue
 		}
-		var name string
-		if mu.Org != nil {
-			name = mu.Org.Slug() + "/" + mu.Model.ProxyName()
-		} else {
-			name = mu.Model.ProxyName()
+		for _, name := range ModelNames(mu) {
+			entry := model.OpenCodeEntry(
+				mu.Model.Capabilities(),
+				mu.Model.ContextWindow(),
+				mu.Model.OutputWindow(),
+			)
+			entry.Name = name
+
+			models[name] = entry
 		}
-
-		entry := model.OpenCodeEntry(
-			mu.Model.Capabilities(),
-			mu.Model.ContextWindow(),
-			mu.Model.OutputWindow(),
-		)
-		entry.Name = name
-
-		models[name] = entry
 	}
 
 	cfg := configRoot{

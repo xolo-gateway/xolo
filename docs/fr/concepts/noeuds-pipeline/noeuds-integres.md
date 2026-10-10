@@ -18,6 +18,8 @@ Si le nom désigne un modèle virtuel, son pipeline s'exécute à l'intérieur d
 
 La case **Passthrough** remplace le modèle fixe par celui que l'appelant a demandé. Elle sert aux middlewares, qui s'appliquent à des modèles qu'ils ne connaissent pas à l'avance.
 
+Le champ **Modèle appelé** ne peut pas nommer une équipe (`acme/juridique/gpt-4o`) : un modèle virtuel est partagé entre les équipes qui y ont accès, et c'est la requête qui choisit l'équipe débitée. Les modèles nommés dans la configuration d'un modèle virtuel ou d'un middleware de l'organisation sont accessibles à travers lui à toute équipe qui y a accès. Un nom reçu sur le port `model_name` est vérifié pendant la requête : il est accepté si l'équipe de la requête a accès au modèle, ou s'il fait partie des modèles nommés dans la configuration du pipeline. Dans un modèle virtuel personnel, chaque modèle appelé doit être accessible à l'équipe qu'il débite.
+
 ## model_ref
 
 Émet sur `model_name` le nom d'un modèle choisi dans une liste. C'est un nœud `value` qui connaît les noms de modèles.
@@ -88,11 +90,11 @@ C'est le nœud d'un déploiement progressif. Branchez `selected` sur un `select`
 
 ## context
 
-Expose ce que la passerelle sait de la requête, sans plugin. Sorties : `user_id`, `org_id`, `token_id`, `display_name`, `requested_model` (string), `hour` (number, heure décimale, 14,5 pour 14 h 30), `weekday` (string, `monday` à `sunday`), `is_weekend` (boolean).
+Expose ce que la passerelle sait de la requête, sans plugin. Sorties : `user_id`, `org_id`, `token_id`, `display_name`, `team_id`, `team_slug`, `requested_model` (string), `hour` (number, heure décimale, 14,5 pour 14 h 30), `weekday` (string, `monday` à `sunday`), `is_weekend` (boolean).
 
 Configuration : le fuseau horaire IANA, `Europe/Paris` par exemple. UTC par défaut.
 
-`requested_model` n'est renseigné que dans un middleware, où il désigne le modèle demandé par l'appelant.
+`requested_model` n'est renseigné que dans un middleware, où il désigne le modèle demandé par l'appelant, tel qu'il l'a écrit, équipe comprise. `team_id` et `team_slug` désignent l'équipe débitée par la requête, vides quand seule l'organisation l'est : un pipeline peut brancher selon l'équipe.
 
 ![Ports du nœud context](./screenshots/inspector-ctx.png)
 

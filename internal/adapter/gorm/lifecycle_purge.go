@@ -235,6 +235,13 @@ func projectionScope(d ResourceDeletion) (string, []any) {
 // tenant also retires the identifiers of its organizations and members: the
 // guards keep refusing them once purged.
 func retireProjections(db *gorm.DB, d ResourceDeletion) error {
+	if d.Family == model.FamilyMember {
+		// The teams outlive the member: its team memberships are removed and
+		// the teams republished before the projections of the scope go.
+		if err := detachTeamMemberships(db.Statement.Context, db, d.ResourceID); err != nil {
+			return err
+		}
+	}
 	scope, args := projectionScope(d)
 	var published []ProvisioningProjection
 	q := db.Where(scope, args...)
@@ -349,6 +356,39 @@ func finishPurge(ctx context.Context, db *gorm.DB, d ResourceDeletion) error {
 		}
 	}
 	return auditDeletion(ctx, db, d, map[string]any{"action": "purged"})
+}
+
+// detachTeamMemberships removes a purged member from the teams it belonged
+// to, with its budgets inside them. The teams belong to their organization and
+// outlive it. The changes are published.
+func detachTeamMemberships(ctx context.Context, db *gorm.DB, userID string) error {
+	membershipIDs := db.Model(&Membership{}).Select("id").Where("user_id = ?", userID)
+	var teams []struct {
+		TeamID       string
+		MembershipID string
+	}
+	if err := db.Table("team_members").Select("team_id, membership_id").Where("membership_id IN (?)", membershipIDs).
+		Order("team_id").Scan(&teams).Error; err != nil {
+		return errors.WithStack(err)
+	}
+	if len(teams) == 0 {
+		return nil
+	}
+	// The worker holds no write authority: the purge was authorized when the
+	// deletion was recorded and confirmed.
+	recorder := newMutationRecorder(db, nil)
+	for _, t := range teams {
+		if err := recorder.track("team", t.TeamID); err != nil {
+			return err
+		}
+		if err := recorder.trackTeamMemberQuotas(t.TeamID, t.MembershipID); err != nil {
+			return err
+		}
+	}
+	if err := deleteTeamMembershipsWithin(db, db.Model(&Membership{}).Select("id").Where("user_id = ?", userID)); err != nil {
+		return err
+	}
+	return recorder.flush(ctx)
 }
 
 // detachAlertOwner removes a purged member from the shared alerts it owned:

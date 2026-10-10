@@ -52,6 +52,8 @@ func errorMessage(reason, subject string) string {
 		return subject + " portant ce nom existe déjà."
 	case "name_required":
 		return "Le nom est obligatoire."
+	case "team_conflict":
+		return "Ce nom commence par l'identifiant d'une équipe suivi de « / » : il serait lu comme un modèle de cette équipe. Choisissez un autre nom."
 	case "create_failed":
 		return "La création a échoué."
 	case "update_failed":

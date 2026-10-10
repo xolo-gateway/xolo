@@ -32,6 +32,10 @@ var (
 	// an identity bound to another account.
 	ErrEmailTaken = fmt.Errorf("email already used: %w", ErrAlreadyExists)
 
+	// ErrTeamNameConflict signals a team slug and a model name of the same
+	// organization that would make "<org>/<team>/<model>" names ambiguous.
+	ErrTeamNameConflict = fmt.Errorf("conflicts with a team slug or a model name: %w", ErrAlreadyExists)
+
 	// ErrPlatformAdminProtected refuses any provisioning change to a platform
 	// administrator: provisioning never acts on platform-wide privileges.
 	ErrPlatformAdminProtected = fmt.Errorf("platform admin protected: %w", ErrNotAllowed)

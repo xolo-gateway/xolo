@@ -14,3 +14,9 @@ func SetInventoryBatchSize(n int) func() {
 
 // MigrateBusinessProjections exposes the business backfill to the tests.
 var MigrateBusinessProjections = migrateBusinessProjections
+
+// MigrateTeams exposes the teams migration to the tests.
+var MigrateTeams = migrateTeams
+
+// LegacyRoleModel is the model grant a role carried before teams.
+type LegacyRoleModel = legacyRoleModel

@@ -53,17 +53,9 @@ func (s *ProvisioningService) PutCustomRole(ctx context.Context, tenantID model.
 		if err != nil || target.unchanged {
 			return err
 		}
-		grants := make([]model.ModelGrant, 0, len(v.ModelGrants))
-		for _, grant := range v.ModelGrants {
-			if err := tx.checkModelGrant(ctx, orgID, grant); err != nil {
-				return err
-			}
-			grants = append(grants, model.ModelGrant{ModelID: grant.ModelID, Kind: grant.Kind})
-		}
 		role := model.NewRole(orgID, v.Name, v.Description)
 		role.SetID(model.RoleID(key))
 		role.SetPermissions(v.Permissions)
-		role.SetModelGrants(grants)
 		if target.exists {
 			return errors.WithStack(tx.roleStore.SaveRole(ctx, role))
 		}
@@ -76,6 +68,11 @@ func (s *ProvisioningService) PutCustomRole(ctx context.Context, tenantID model.
 func (s *ProvisioningService) PutApplication(ctx context.Context, tenantID model.TenantID, orgID model.OrgID, key string, condition model.MatchCondition, v model.ApplicationSettings) (model.CommonItem, error) {
 	if !validBusinessText(v.Name, v.Description) || v.RoleIDs == nil {
 		return model.CommonItem{}, errors.WithStack(port.ErrInvalid)
+	}
+	if v.TeamID != "" {
+		if _, _, err := model.ParseBusinessKey(v.TeamID); err != nil {
+			return model.CommonItem{}, errors.Wrap(port.ErrInvalid, "invalid team id")
+		}
 	}
 	v.RoleIDs = sortedUnique(v.RoleIDs)
 	scope := model.CommonScope{Family: model.FamilyApplication, TenantID: string(tenantID), OrganizationID: string(orgID)}
@@ -101,8 +98,18 @@ func (s *ProvisioningService) PutApplication(ctx context.Context, tenantID model
 			}
 			roles = append(roles, role.ID())
 		}
+		if v.TeamID != "" {
+			team, err := tx.tx.GetTeamByID(ctx, model.TeamID(v.TeamID))
+			if errors.Is(err, port.ErrNotFound) || (err == nil && team.OrgID() != orgID) {
+				return errors.Wrapf(port.ErrParentNotFound, "team %q not found", v.TeamID)
+			}
+			if err != nil {
+				return errors.WithStack(err)
+			}
+		}
 		app := model.NewApplication(orgID, v.Name, v.Description, v.Active)
 		app.SetID(model.ApplicationID(key))
+		app.SetTeamID(model.TeamID(v.TeamID))
 		if target.exists {
 			err = tx.tx.UpdateApplication(ctx, app)
 		} else {
@@ -115,14 +122,185 @@ func (s *ProvisioningService) PutApplication(ctx context.Context, tenantID model
 	})
 }
 
+// PutTeam creates the team or brings it to the given representation, its
+// members, their team roles, its model grants and middlewares included, in one
+// transaction. The slug of a team never changes: clients store model names
+// qualified with it.
+func (s *ProvisioningService) PutTeam(ctx context.Context, tenantID model.TenantID, orgID model.OrgID, key string, condition model.MatchCondition, v model.TeamSettings) (model.CommonItem, error) {
+	if err := normalizeTeam(&v); err != nil {
+		return model.CommonItem{}, err
+	}
+	scope := model.CommonScope{Family: model.FamilyTeam, TenantID: string(tenantID), OrganizationID: string(orgID)}
+	return s.PutCommon(ctx, scope, key, condition, func(ctx context.Context, tx *ProvisioningService) error {
+		target, err := tx.businessTarget(ctx, scope, key, v, func() (string, error) {
+			team, err := tx.tx.GetTeamByID(ctx, model.TeamID(key))
+			if err != nil {
+				return "", err
+			}
+			return string(team.OrgID()), nil
+		})
+		if err != nil || target.unchanged {
+			return err
+		}
+		var team *model.BaseTeam
+		if target.exists {
+			current, err := tx.tx.GetTeamByID(ctx, model.TeamID(key))
+			if err != nil {
+				return errors.WithStack(err)
+			}
+			if current.Slug() != v.Slug {
+				return errors.Wrap(port.ErrNotAllowed, "the slug of a team can not change")
+			}
+			team = model.CopyTeam(current)
+			team.SetName(v.Name)
+			team.SetDescription(v.Description)
+		} else {
+			if err := CheckTeamSlug(ctx, tx.tx, orgID, v.Slug); err != nil {
+				return err
+			}
+			team = model.NewTeam(orgID, v.Slug, v.Name, v.Description)
+			team.SetID(model.TeamID(key))
+		}
+		team.SetShareQuotaEqually(v.ShareQuotaEqually)
+
+		grants := make([]model.ModelGrant, 0, len(v.ModelGrants))
+		for _, grant := range v.ModelGrants {
+			if err := tx.checkModelGrant(ctx, orgID, grant); err != nil {
+				return err
+			}
+			grants = append(grants, model.ModelGrant{ModelID: grant.ModelID, Kind: grant.Kind})
+		}
+		team.SetModelGrants(grants)
+
+		middlewares := make([]model.MiddlewareID, 0, len(v.MiddlewareIDs))
+		for _, id := range v.MiddlewareIDs {
+			mw, err := tx.tx.GetMiddlewareByID(ctx, model.MiddlewareID(id))
+			if errors.Is(err, port.ErrNotFound) || (err == nil && mw.OrgID() != orgID) {
+				return errors.Wrapf(port.ErrParentNotFound, "middleware %q not found", id)
+			}
+			if err != nil {
+				return errors.WithStack(err)
+			}
+			middlewares = append(middlewares, mw.ID())
+		}
+		team.SetMiddlewareIDs(middlewares)
+
+		// Members are resolved before any write: a missing one fails the
+		// whole representation.
+		type member struct {
+			membership model.MembershipID
+			roles      []model.RoleID
+		}
+		wanted := make([]member, 0, len(v.Members))
+		for _, m := range v.Members {
+			membership, err := tx.orgStore.GetUserOrgMembership(ctx, model.UserID(m.UserID), orgID)
+			if errors.Is(err, port.ErrNotFound) {
+				return errors.Wrapf(port.ErrParentNotFound, "user %q is no member of the organization", m.UserID)
+			}
+			if err != nil {
+				return errors.WithStack(err)
+			}
+			roles := make([]model.RoleID, 0, len(m.RoleIDs))
+			for _, id := range m.RoleIDs {
+				role, err := tx.roleStore.GetRoleByID(ctx, model.RoleID(id))
+				if errors.Is(err, port.ErrNotFound) || (err == nil && role.OrgID() != orgID) {
+					return errors.Wrapf(port.ErrParentNotFound, "role %q not found", id)
+				}
+				if err != nil {
+					return errors.WithStack(err)
+				}
+				roles = append(roles, role.ID())
+			}
+			wanted = append(wanted, member{membership.ID(), roles})
+		}
+
+		if target.exists {
+			err = tx.tx.SaveTeam(ctx, team)
+		} else {
+			err = tx.tx.CreateTeam(ctx, team)
+		}
+		if err != nil {
+			return errors.WithStack(err)
+		}
+
+		current, err := tx.tx.ListTeamMembers(ctx, team.ID())
+		if err != nil {
+			return errors.WithStack(err)
+		}
+		for _, c := range current {
+			if !slices.ContainsFunc(wanted, func(w member) bool { return w.membership == c.MembershipID() }) {
+				if err := tx.tx.RemoveTeamMember(ctx, team.ID(), c.MembershipID()); err != nil {
+					return errors.WithStack(err)
+				}
+			}
+		}
+		for _, w := range wanted {
+			if err := tx.tx.SetTeamMember(ctx, team.ID(), w.membership, w.roles); err != nil {
+				return errors.WithStack(err)
+			}
+		}
+		return nil
+	})
+}
+
+// normalizeTeam validates a team representation and sorts its lists, so that
+// it compares with its projection.
+func normalizeTeam(v *model.TeamSettings) error {
+	if !validBusinessText(v.Name, v.Description) || !model.IsValidSlug(v.Slug) ||
+		v.ModelGrants == nil || v.MiddlewareIDs == nil || v.Members == nil {
+		return errors.WithStack(port.ErrInvalid)
+	}
+	grants := make([]model.ModelGrant, 0, len(v.ModelGrants))
+	for _, g := range v.ModelGrants {
+		grants = append(grants, model.ModelGrant{ModelID: g.ModelID, Kind: g.Kind})
+	}
+	if err := validateModelGrants(grants); err != nil {
+		return err
+	}
+	v.ModelGrants = make([]model.ModelGrantSettings, 0, len(grants))
+	for _, g := range model.NormalizeModelGrants(grants) {
+		v.ModelGrants = append(v.ModelGrants, model.ModelGrantSettings{ModelID: g.ModelID, Kind: g.Kind})
+	}
+	v.MiddlewareIDs = sortedUnique(v.MiddlewareIDs)
+	members := make([]model.TeamMemberSettings, 0, len(v.Members))
+	for _, m := range v.Members {
+		if _, err := model.ParseUserID(m.UserID); err != nil {
+			return errors.Wrap(port.ErrInvalid, "invalid member user id")
+		}
+		if m.RoleIDs == nil {
+			return errors.WithStack(port.ErrInvalid)
+		}
+		members = append(members, model.TeamMemberSettings{UserID: m.UserID, RoleIDs: sortedUnique(m.RoleIDs)})
+	}
+	slices.SortFunc(members, func(a, b model.TeamMemberSettings) int { return strings.Compare(a.UserID, b.UserID) })
+	for i := 1; i < len(members); i++ {
+		if members[i].UserID == members[i-1].UserID {
+			return errors.Wrapf(port.ErrInvalid, "user %q is listed twice", members[i].UserID)
+		}
+	}
+	v.Members = members
+	return nil
+}
+
 // PutQuota creates the quota of a scope or changes its budgets. A quota hangs
 // from its tenant; its scope never changes, and the spend already recorded is
 // kept.
 func (s *ProvisioningService) PutQuota(ctx context.Context, tenantID model.TenantID, key string, condition model.MatchCondition, v model.QuotaSettings) (model.CommonItem, error) {
-	if !slices.Contains(model.SupportedCurrencies, v.Currency) || v.ScopeID == "" ||
-		(v.Scope != model.QuotaScopeOrg && v.Scope != model.QuotaScopeUser && v.Scope != model.QuotaScopeApplication) {
+	if !slices.Contains(model.SupportedCurrencies, v.Currency) || v.ScopeID == "" || !v.Cascade.Valid() {
 		return model.CommonItem{}, errors.WithStack(port.ErrInvalid)
 	}
+	switch v.Scope {
+	case model.QuotaScopeOrg, model.QuotaScopeTeam:
+	case model.QuotaScopeUser, model.QuotaScopeApplication, model.QuotaScopeTeamMember:
+		// A cascade constrains children budgets: only an organization and a
+		// team have children.
+		if v.Cascade.Normalize() != model.QuotaCascadeFree {
+			return model.CommonItem{}, errors.Wrap(port.ErrInvalid, "only an organization or team budget has a cascade")
+		}
+	default:
+		return model.CommonItem{}, errors.WithStack(port.ErrInvalid)
+	}
+	v.Cascade = v.Cascade.Normalize()
 	for _, budget := range []*int64{v.DailyBudget, v.MonthlyBudget, v.YearlyBudget} {
 		if budget != nil && *budget < 0 {
 			return model.CommonItem{}, errors.WithStack(port.ErrInvalid)
@@ -162,6 +340,10 @@ func (s *ProvisioningService) PutQuota(ctx context.Context, tenantID model.Tenan
 		}
 		quota := model.NewQuota(v.Scope, v.ScopeID, v.Currency, v.DailyBudget, v.MonthlyBudget, v.YearlyBudget)
 		quota.SetID(model.QuotaID(key))
+		quota.SetCascade(v.Cascade)
+		if err := CheckQuotaCascade(ctx, tx.tx, quota); err != nil {
+			return err
+		}
 		return errors.WithStack(tx.tx.SetQuota(ctx, quota))
 	})
 }
@@ -318,6 +500,8 @@ func (s *ProvisioningService) DeleteBusiness(ctx context.Context, scope model.Co
 			err = tx.tx.DeleteAlert(ctx, model.AlertID(key))
 		case model.FamilyProvider:
 			err = tx.tx.DeleteProvider(ctx, model.ProviderID(key))
+		case model.FamilyTeam:
+			err = tx.tx.DeleteTeam(ctx, model.TeamID(key))
 		}
 		return errors.WithStack(err)
 	})
@@ -448,6 +632,31 @@ func (tx *ProvisioningService) checkQuotaScope(ctx context.Context, tenantID mod
 			return errors.WithStack(err)
 		}
 		orgID = app.OrgID()
+	case model.QuotaScopeTeam, model.QuotaScopeTeamMember:
+		teamID, userID := model.TeamID(scopeID), model.UserID("")
+		if scope == model.QuotaScopeTeamMember {
+			var ok bool
+			if teamID, userID, ok = model.ParseTeamMemberScopeID(scopeID); !ok {
+				return errors.Wrapf(port.ErrInvalid, "invalid team member scope %q", scopeID)
+			}
+		}
+		team, err := tx.tx.GetTeamByID(ctx, teamID)
+		if errors.Is(err, port.ErrNotFound) {
+			return notFound
+		}
+		if err != nil {
+			return errors.WithStack(err)
+		}
+		orgID = team.OrgID()
+		if userID != "" {
+			members, err := tx.tx.ListTeamMembers(ctx, teamID)
+			if err != nil {
+				return errors.WithStack(err)
+			}
+			if !slices.ContainsFunc(members, func(m model.TeamMember) bool { return m.UserID() == userID }) {
+				return notFound
+			}
+		}
 	}
 	org, err := tx.orgStore.GetOrgByID(ctx, orgID)
 	if errors.Is(err, port.ErrNotFound) || (err == nil && org.TenantID() != tenantID) {
@@ -468,28 +677,13 @@ func sortedUnique(values []string) []string {
 }
 
 func normalizeCustomRole(v *model.CustomRoleSettings) error {
-	if !validBusinessText(v.Name, v.Description) || v.Permissions == nil || v.ModelGrants == nil {
+	if !validBusinessText(v.Name, v.Description) || v.Permissions == nil {
 		return errors.WithStack(port.ErrInvalid)
 	}
 	if err := validatePermissions(v.Permissions); err != nil {
 		return err
 	}
 	v.Permissions = sortedUnique(v.Permissions)
-	grants := make([]model.ModelGrant, 0, len(v.ModelGrants))
-	for _, g := range v.ModelGrants {
-		grants = append(grants, model.ModelGrant{ModelID: g.ModelID, Kind: g.Kind})
-	}
-	if err := validateModelGrants(grants); err != nil {
-		return err
-	}
-	v.ModelGrants = slices.Clone(v.ModelGrants)
-	slices.SortFunc(v.ModelGrants, func(a, b model.ModelGrantSettings) int {
-		if c := strings.Compare(a.ModelID, b.ModelID); c != 0 {
-			return c
-		}
-		return strings.Compare(a.Kind, b.Kind)
-	})
-	v.ModelGrants = slices.Compact(v.ModelGrants)
 	return nil
 }
 

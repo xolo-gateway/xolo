@@ -18,6 +18,7 @@ func fromApplication(a model.Application) *Application {
 		Name:        a.Name(),
 		Description: a.Description(),
 		Active:      a.Active(),
+		TeamID:      string(a.TeamID()),
 	}
 }
 
@@ -40,6 +41,7 @@ func fromAuthTokenForApplication(t model.AuthToken) *AuthToken {
 		Label:         t.Label(),
 		Value:         crypto.HashToken(t.Value()),
 		OrgID:         string(t.OrgID()),
+		TeamID:        string(t.TeamID()),
 		ExpiresAt:     t.ExpiresAt(),
 	}
 }
@@ -116,6 +118,7 @@ func (s *Store) UpdateApplication(ctx context.Context, app model.Application) er
 			"name":        gormApp.Name,
 			"description": gormApp.Description,
 			"active":      gormApp.Active,
+			"team_id":     gormApp.TeamID,
 		})
 		if result.Error != nil {
 			return errors.WithStack(result.Error)

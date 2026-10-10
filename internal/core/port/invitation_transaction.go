@@ -32,4 +32,6 @@ type InvitationTx interface {
 	// membership, without changing that membership or its roles.
 	InsertInvitationMember(context.Context, model.Membership) (bool, error)
 	SetMembershipRoles(context.Context, model.MembershipID, []model.RoleID) error
+	GetTeamByID(context.Context, model.TeamID) (model.Team, error)
+	SetTeamMember(ctx context.Context, id model.TeamID, membershipID model.MembershipID, roleIDs []model.RoleID) error
 }

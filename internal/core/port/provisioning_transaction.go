@@ -77,6 +77,17 @@ type ProvisioningBusinessStore interface {
 	GetProviderByID(ctx context.Context, id model.ProviderID) (model.Provider, error)
 	GetLLMModelByID(ctx context.Context, id model.LLMModelID) (model.LLMModel, error)
 	GetVirtualModelByID(ctx context.Context, id model.VirtualModelID) (model.VirtualModel, error)
+	GetMiddlewareByID(ctx context.Context, id model.MiddlewareID) (model.Middleware, error)
+	CreateTeam(ctx context.Context, team model.Team) error
+	SaveTeam(ctx context.Context, team model.Team) error
+	GetTeamByID(ctx context.Context, id model.TeamID) (model.Team, error)
+	GetTeamBySlug(ctx context.Context, orgID model.OrgID, slug string) (model.Team, error)
+	ListOrgTeams(ctx context.Context, orgID model.OrgID) ([]model.Team, error)
+	ListTeamMembers(ctx context.Context, id model.TeamID) ([]model.TeamMember, error)
+	SetTeamMember(ctx context.Context, id model.TeamID, membershipID model.MembershipID, roleIDs []model.RoleID) error
+	RemoveTeamMember(ctx context.Context, id model.TeamID, membershipID model.MembershipID) error
+	ModelNamePrefixTaken(ctx context.Context, orgID model.OrgID, slug string) (bool, error)
+	DeleteTeam(ctx context.Context, id model.TeamID) error
 	DeleteApplication(ctx context.Context, appID model.ApplicationID) error
 	DeleteQuota(ctx context.Context, id model.QuotaID) error
 	DeleteAlert(ctx context.Context, id model.AlertID) error

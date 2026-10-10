@@ -103,7 +103,13 @@ export function fetchNodeTypes(): Promise<NodeTypeDescriptor[]> {
 // pipelineModelsBase returns the base path listing what a model_name port can
 // name in the current context.
 function pipelineModelsBase(): string {
-  if (isPersonalContext()) return `/api/personal-models/pipeline-models`
+  if (isPersonalContext()) {
+    // The models a personal pipeline can reach depend on the team it charges.
+    const id = vmId()
+    return id
+      ? `/api/personal-models/pipeline-models?vm=${encodeURIComponent(id)}`
+      : `/api/personal-models/pipeline-models`
+  }
   return `/api/orgs/${orgSlug()}/pipeline-models`
 }
 

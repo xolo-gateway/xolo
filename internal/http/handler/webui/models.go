@@ -13,6 +13,7 @@ import (
 	"github.com/xolo-gateway/xolo/internal/core/model"
 	"github.com/xolo-gateway/xolo/internal/core/port"
 	"github.com/xolo-gateway/xolo/internal/core/rbac"
+	"github.com/xolo-gateway/xolo/internal/core/service"
 	httpCtx "github.com/xolo-gateway/xolo/internal/http/context"
 	common "github.com/xolo-gateway/xolo/internal/http/handler/webui/common/component"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/profile/component"
@@ -211,10 +212,9 @@ func (h *Handler) loadModelUsages(ctx context.Context, userID model.UserID, memb
 			slog.ErrorContext(ctx, "could not resolve permissions", slogx.Error(err), slog.String("orgID", string(m.OrgID())))
 			continue
 		}
-		canUseOrg := isGlobalAdmin || perms.IsOwner() || perms.Has(rbac.PermModelUseOrg)
-		canUseVirtual := isGlobalAdmin || perms.IsOwner() || perms.Has(rbac.PermModelUseVirtual)
-		hasLLMGrants := perms.HasAnyGrant(rbac.ModelKindLLM)
-		hasVirtualGrants := perms.HasAnyGrant(rbac.ModelKindVirtual)
+		if isGlobalAdmin {
+			perms = perms.AsOwner()
+		}
 
 		var org model.Organization
 		if m.Org() != nil {
@@ -222,14 +222,15 @@ func (h *Handler) loadModelUsages(ctx context.Context, userID model.UserID, memb
 		}
 
 		// Load regular LLM models (blanket permission or per-model grants)
-		if canUseOrg || hasLLMGrants {
+		if perms.HasAnyModelAccess(rbac.ModelKindLLM) {
 			models, err := h.providerStore.ListEnabledLLMModels(ctx, m.OrgID())
 			if err != nil {
 				slog.ErrorContext(ctx, "could not list models", slogx.Error(err), slog.String("orgID", string(m.OrgID())))
 			} else {
 				providerCache := make(map[model.ProviderID]model.Provider)
 				for _, llmModel := range models {
-					if !canUseOrg && !perms.HasModelAccess(string(llmModel.ID()), rbac.ModelKindLLM) {
+					names := service.ListedModelNames(perms, "", orgSlugOf(org), llmModel.ProxyName(), string(llmModel.ID()), rbac.ModelKindLLM)
+					if len(names) == 0 {
 						continue
 					}
 					modelID := llmModel.ID()
@@ -256,19 +257,21 @@ func (h *Handler) loadModelUsages(ctx context.Context, userID model.UserID, memb
 						Org:       org,
 						Aggregate: modelAgg,
 						Provider:  providerCache[providerID],
+						Names:     names,
 					})
 				}
 			}
 		}
 
 		// Load virtual models (blanket permission or per-model grants)
-		if h.virtualModelStore != nil && (canUseVirtual || hasVirtualGrants) {
+		if h.virtualModelStore != nil && perms.HasAnyModelAccess(rbac.ModelKindVirtual) {
 			vms, err := h.virtualModelStore.ListVirtualModels(ctx, m.OrgID())
 			if err != nil {
 				slog.ErrorContext(ctx, "could not list virtual models", slogx.Error(err), slog.String("orgID", string(m.OrgID())))
 			} else {
 				for _, vm := range vms {
-					if !canUseVirtual && !perms.HasModelAccess(string(vm.ID()), rbac.ModelKindVirtual) {
+					names := service.ListedModelNames(perms, "", orgSlugOf(org), vm.Name(), string(vm.ID()), rbac.ModelKindVirtual)
+					if len(names) == 0 {
 						continue
 					}
 					qualifiedName := org.Slug() + "/" + vm.Name()
@@ -286,10 +289,18 @@ func (h *Handler) loadModelUsages(ctx context.Context, userID model.UserID, memb
 						Model:     wrappedModel,
 						Org:       org,
 						Aggregate: modelAgg,
+						Names:     names,
 					})
 				}
 			}
 		}
 	}
 	return modelUsages
+}
+
+func orgSlugOf(org model.Organization) string {
+	if org == nil {
+		return ""
+	}
+	return org.Slug()
 }

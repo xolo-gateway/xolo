@@ -8,6 +8,7 @@ import (
 
 	"github.com/a-h/templ"
 	"github.com/bornholm/go-x/slogx"
+	"github.com/pkg/errors"
 	"github.com/xolo-gateway/xolo/internal/core/eventql"
 	"github.com/xolo-gateway/xolo/internal/core/model"
 	"github.com/xolo-gateway/xolo/internal/core/port"
@@ -96,8 +97,16 @@ func (h *Handler) getEventsExplorerPage(w http.ResponseWriter, r *http.Request) 
 	if scope == "" {
 		scope = component.EventScopeMine
 	}
-	// A user without the read:all permission is always restricted to their own events.
-	if !canReadAll && scope != component.EventScopeMine {
+	// events:read:all held on teams only shows the events of their members.
+	teamUsers, err := h.teamEventUsers(ctx, org, canReadAll)
+	if err != nil {
+		slog.ErrorContext(ctx, "could not resolve team members for events", slogx.Error(err))
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+	// A user without the read:all permission is restricted to their own
+	// events, and to those of their team members with it on a team.
+	if !canReadAll && scope != component.EventScopeMine && (scope != component.EventScopeTeams || teamUsers == nil) {
 		scope = component.EventScopeMine
 	}
 
@@ -119,6 +128,8 @@ func (h *Handler) getEventsExplorerPage(w http.ResponseWriter, r *http.Request) 
 		filter.AllUsers = true
 	case component.EventScopeGlobal:
 		filter.IncludeGlobal = true // no UserID → only global (empty-user) events
+	case component.EventScopeTeams:
+		filter.UserIDs = teamUsers
 	default:
 		uid := user.ID()
 		filter.UserID = &uid
@@ -158,6 +169,7 @@ func (h *Handler) getEventsExplorerPage(w http.ResponseWriter, r *http.Request) 
 		Query:           queryStr,
 		Scope:           scope,
 		CanReadAll:      canReadAll,
+		CanReadTeams:    teamUsers != nil,
 		Events:          events,
 		Error:           errStr,
 		Page:            page,
@@ -255,4 +267,35 @@ func (h *Handler) getIncidentsPage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	templ.Handler(component.IncidentsPage(vmodel)).ServeHTTP(w, r)
+}
+
+// teamEventUsers returns the members of the teams the current user holds
+// events:read:all on, the user included, when it does not hold it on the
+// organization; nil when there are none.
+func (h *Handler) teamEventUsers(ctx context.Context, org model.Organization, canReadAll bool) ([]model.UserID, error) {
+	if canReadAll || h.teamStore == nil {
+		return nil, nil
+	}
+	perms, err := httpCtx.ResolvePermissions(ctx, org.ID())
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+	seen := map[model.UserID]bool{}
+	var users []model.UserID
+	for _, ref := range perms.Teams() {
+		if !perms.HasInTeam(ref.ID, rbac.PermEventsReadAll) {
+			continue
+		}
+		members, err := h.teamStore.ListTeamMembers(ctx, model.TeamID(ref.ID))
+		if err != nil {
+			return nil, errors.WithStack(err)
+		}
+		for _, m := range members {
+			if !seen[m.UserID()] {
+				seen[m.UserID()] = true
+				users = append(users, m.UserID())
+			}
+		}
+	}
+	return users, nil
 }

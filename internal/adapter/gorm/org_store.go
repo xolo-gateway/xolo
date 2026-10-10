@@ -151,6 +151,9 @@ func deleteOrgWithin(db *gorm.DB, id model.OrgID) error {
 	if err := db.Where("membership_id IN (?)", membershipIDs).Delete(&MembershipRole{}).Error; err != nil {
 		return errors.WithStack(err)
 	}
+	if err := deleteTeamsWithin(db, db.Model(&Team{}).Select("id").Where("org_id = ?", string(id))); err != nil {
+		return err
+	}
 
 	if err := db.Where("role_id IN (?)", roleIDs).Delete(&MembershipRole{}).Error; err != nil {
 		return errors.WithStack(err)
@@ -159,9 +162,6 @@ func deleteOrgWithin(db *gorm.DB, id model.OrgID) error {
 		return errors.WithStack(err)
 	}
 	if err := db.Where("role_id IN (?)", roleIDs).Delete(&RolePermission{}).Error; err != nil {
-		return errors.WithStack(err)
-	}
-	if err := db.Where("role_id IN (?)", roleIDs).Delete(&RoleModel{}).Error; err != nil {
 		return errors.WithStack(err)
 	}
 
@@ -216,11 +216,15 @@ func (s *Store) AddMember(ctx context.Context, membership model.Membership) erro
 
 // RemoveMember implements port.OrgStore. The membership_roles rows are deleted
 // first: the join table references the membership and has no database-level
-// cascade, so removing a member holding any role would otherwise fail.
+// cascade, so removing a member holding any role would otherwise fail. The
+// member leaves its teams too, with its budgets inside them.
 func (s *Store) RemoveMember(ctx context.Context, id model.MembershipID) error {
-	return s.recorded(ctx, tracking("membership", string(id)), func(ctx context.Context, db *gorm.DB) error {
+	return s.recorded(ctx, trackingTree("membership", string(id)), func(ctx context.Context, db *gorm.DB) error {
 		if err := db.Where("membership_id = ?", string(id)).Delete(&MembershipRole{}).Error; err != nil {
 			return errors.WithStack(err)
+		}
+		if err := deleteTeamMembershipsWithin(db, db.Model(&Membership{}).Select("id").Where("id = ?", string(id))); err != nil {
+			return err
 		}
 
 		result := db.Delete(&Membership{}, "id = ?", string(id))

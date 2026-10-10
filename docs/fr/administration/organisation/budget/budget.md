@@ -30,14 +30,20 @@ Les budgets s'appliquent uniquement aux fournisseurs en mode **Pay-as-you-go**. 
 
 Les montants sont exprimés dans la devise de l'organisation (configurable dans les Paramètres).
 
+La **Répartition entre les équipes** contraint les enveloppes des équipes à leur enregistrement : libre, plafonnée (chaque équipe au plus égale à l'organisation) ou partagée (la somme des équipes au plus égale à l'organisation). Un budget qui ne respecte pas la règle est refusé avec un message qui indique la période en cause.
+
 ## Hiérarchie des budgets
 
-Les budgets fonctionnent à deux niveaux :
+Les budgets fonctionnent à quatre niveaux :
 
 | Niveau       | URL                                     | Description                     |
 | ------------ | ---------------------------------------- | -------------------------------- |
 | Organisation | `/orgs/{slug}/admin/quota`              | Budget global de l'organisation |
 | Membre       | `/orgs/{slug}/admin/members/{id}/quota` | Budget individuel d'un membre   |
+| Équipe       | `/orgs/{slug}/admin/teams/{id}`         | Enveloppe d'une équipe          |
+| Membre dans une équipe | `/orgs/{slug}/admin/teams/{id}/members/{membershipID}` | Budget d'un membre dans une équipe |
+
+Voir le tutoriel [Équipes](../equipes/equipes.md) pour les budgets d'équipe.
 
 Xolo peut aussi répartir automatiquement le budget de l'organisation entre ses membres (option **Partager le budget équitablement**, dans les [Paramètres](../parametres/parametre.md)).
 

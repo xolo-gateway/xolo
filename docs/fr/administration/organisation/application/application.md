@@ -33,8 +33,11 @@ Une application est une configuration M2M (machine-to-machine) qui permet à des
 | --------------- | ------------------------------------------------- |
 | **Nom**         | Nom de l'application (ex: "OpenWebUI Production") |
 | **Description** | Description optionnelle                           |
+| **Équipe**      | Équipe à laquelle l'application est rattachée (optionnel) |
 
 3. Cliquez sur **Enregistrer**.
+
+Une application rattachée à une [équipe](../equipes/equipes.md) utilise les modèles de l'équipe, et toutes ses requêtes sont débitées sur le budget de l'équipe. Elle ne peut pas nommer une autre équipe. Ses rôles continuent de régler les sections d'administration qu'elle atteint et, avec `model:use:org`, l'accès à tous les modèles de l'organisation.
 
 ## Gérer les tokens API
 
@@ -136,6 +139,7 @@ Concrètement :
 - **Jeton d'application** : `GET /api/v1/models` renvoie les modèles activés de l'organisation de l'application.
 - **Jeton d'utilisateur multi-organisations** : `GET /api/v1/models` ne renvoie que les modèles activés de l'organisation du jeton (les autres appartenances de l'utilisateur sont ignorées, comme pour le proxy). Les modèles virtuels personnels (`~/...`) suivent une règle distincte : ils sont inclus dès lors que l'utilisateur dispose de la permission `personal-vm:create` (ou du rôle owner) dans **au moins une** des organisations retenues par le scope ci-dessus. La liste n'est cependant pas filtrée par organisation : le modèle de données (`internal/core/model/personal_virtual_model.go`) rattache chaque modèle virtuel personnel à son `user_id` sans colonne `OrgID`, donc tous les `~/...` appartenant à cet utilisateur sont renvoyés.
 - **Session OIDC (utilisateur humain)** : `GET /api/v1/models` renvoie l'union des modèles activés de toutes les organisations dont l'utilisateur est membre.
+- **Équipes** : un modèle accessible par une équipe est listé sous la forme `<organisation>/<équipe>/<modèle>`, une fois par équipe ; un modèle accessible par `model:use:org` l'est sous la forme `<organisation>/<modèle>`. Un jeton rattaché à une équipe ne voit que les noms de son équipe.
 - **Session issue de `POST /auth/token/login`** : la session est créée à partir d'un jeton Xolo (utilisateur ou application) et `authn.User.OrgID` est rempli avec l'organisation du jeton (`internal/http/middleware/authn/token/login.go`). `GET /api/v1/models` ne renvoie alors que les modèles activés de cette organisation, comme pour le cas « Jeton » correspondant (les autres appartenances de l'utilisateur sont ignorées ; pour une application, c'est précisément l'organisation de l'application). Ce cas se distingue du précédent uniquement par le canal d'authentification (cookie de session au lieu de header `Authorization`).
 
 > **Note** : Avant la correction du bug [#48](https://github.com/xolo-gateway/xolo/issues/48),

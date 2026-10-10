@@ -137,7 +137,9 @@ func MigrateDatabase(ctx context.Context, db *gorm.DB, artifact *RecoveryArtifac
 					// Org store
 					&Organization{}, &Membership{}, &Application{},
 					// RBAC store
-					&Role{}, &RolePermission{}, &RoleModel{}, &MembershipRole{}, &ApplicationRole{},
+					&Role{}, &RolePermission{}, &MembershipRole{}, &ApplicationRole{},
+					// Team store
+					&Team{}, &TeamModelGrant{}, &TeamMiddleware{}, &TeamMember{}, &TeamMemberRole{},
 					// Provider store
 					&Provider{}, &LLMModel{},
 					// Virtual model store
@@ -257,7 +259,7 @@ func schemaMigrations(artifact *RecoveryArtifact) []*gormigrate.Migration {
 					if err := tx.SetupJoinTable(&Membership{}, "Roles", &MembershipRole{}); err != nil {
 						return errors.WithStack(err)
 					}
-					if err := tx.AutoMigrate(&Role{}, &RolePermission{}, &RoleModel{}, &MembershipRole{}); err != nil {
+					if err := tx.AutoMigrate(&Role{}, &RolePermission{}, &legacyRoleModel{}, &MembershipRole{}); err != nil {
 						return errors.WithStack(err)
 					}
 					if err := migrateLegacyMembershipRoles(tx); err != nil {
@@ -618,6 +620,13 @@ func schemaMigrations(artifact *RecoveryArtifact) []*gormigrate.Migration {
 			Migrate: migrateLifecyclePurge,
 			Rollback: func(*gorm.DB) error {
 				return errors.New("lifecycle purge migration cannot be rolled back: purged deletions would lose their tombstones")
+			},
+		},
+		{
+			ID:      teamsMigrationID,
+			Migrate: migrateTeams,
+			Rollback: func(*gorm.DB) error {
+				return errors.New("teams migration cannot be rolled back: role model grants were moved to teams and dropped")
 			},
 		},
 	}

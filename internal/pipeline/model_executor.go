@@ -3,7 +3,6 @@ package pipeline
 import (
 	"context"
 	"encoding/json"
-	"strings"
 
 	"github.com/bornholm/genai/llm"
 	"github.com/pkg/errors"
@@ -51,7 +50,9 @@ func (e *ModelExecutor) Forward(ctx context.Context, node model.PipelineNode, in
 			if next.Graph() == nil {
 				return nil, errors.Errorf("middleware %q has no pipeline configured", next.Name())
 			}
-			childEC := ec
+			// A middleware delegates its static references, like an
+			// organization virtual model.
+			childEC := ec.delegating(next.Graph())
 			childEC.SecretScopeID = string(next.OrgID())
 			childEC.PendingMiddlewares = ec.PendingMiddlewares[1:]
 			sub, err := e.engine.RunForward(ctx, next.Graph(), childEC)
@@ -92,12 +93,24 @@ func (e *ModelExecutor) ResolveClient(ctx context.Context, proxyName string, ec 
 
 // resolveByName resolves a proxy model name to an llm.Client, recursing into
 // personal or org virtual models when the name matches one (with cycle detection).
+//
+// Every name is checked against the access of the request first, unless it is
+// a static reference of a graph delegating its references.
 func (e *ModelExecutor) resolveByName(ctx context.Context, proxyName string, ec ExecutionContext) (*ForwardResult, error) {
 	orgID := model.OrgID(ec.OrgID)
 
+	if err := ec.checkModelAccess(ctx, proxyName); err != nil {
+		return nil, err
+	}
+
+	name, ok := ec.parseModelName(proxyName)
+	if !ok {
+		return nil, errors.Errorf("model executor: invalid model name %q", proxyName)
+	}
+
 	// Personal virtual model (~/name) → recurse using the user's personal store.
-	if strings.HasPrefix(proxyName, "~/") && ec.PersonalVMStore != nil && ec.UserID != "" {
-		localName := proxyName[2:]
+	if name.Personal() && ec.PersonalVMStore != nil && ec.UserID != "" {
+		localName := name.Local
 		pvm, pvmErr := ec.PersonalVMStore.GetPersonalVirtualModelByName(ctx, model.UserID(ec.UserID), localName)
 		if pvmErr == nil && pvm != nil {
 			// Use a namespaced key to avoid collision with org VM IDs.
@@ -108,7 +121,9 @@ func (e *ModelExecutor) resolveByName(ctx context.Context, proxyName string, ec 
 			if pvm.Graph() == nil {
 				return nil, errors.Errorf("personal virtual model %q has no pipeline configured", proxyName)
 			}
-			childEC := ec
+			// A personal virtual model delegates nothing: every model it
+			// reaches is checked against the request's access.
+			childEC := ec.checking()
 			childEC.VisitedVMs = copyVisitedVMs(ec.VisitedVMs)
 			childEC.VisitedVMs[pvmKey] = struct{}{}
 			childEC.SecretScopeID = "~:" + string(pvm.UserID())
@@ -123,9 +138,10 @@ func (e *ModelExecutor) resolveByName(ctx context.Context, proxyName string, ec 
 		}
 	}
 
-	// Org virtual model → recurse.
-	if e.virtualModelStore != nil {
-		vm, vmErr := e.virtualModelStore.GetVirtualModelByName(ctx, orgID, localModelName(proxyName))
+	// Org virtual model → recurse. Only the request's organization holds the
+	// virtual models a node can name.
+	if e.virtualModelStore != nil && !name.Personal() && (name.Org == "" || name.Org == ec.OrgSlug || ec.OrgSlug == "") {
+		vm, vmErr := e.virtualModelStore.GetVirtualModelByName(ctx, orgID, name.Local)
 		if vmErr == nil && vm != nil {
 			vmID := vm.ID()
 			if _, alreadyVisited := ec.VisitedVMs[vmID]; alreadyVisited {
@@ -135,7 +151,8 @@ func (e *ModelExecutor) resolveByName(ctx context.Context, proxyName string, ec 
 				return nil, errors.Errorf("virtual model %q has no pipeline configured", proxyName)
 			}
 			// Clone visited set to avoid mutations affecting sibling branches.
-			childEC := ec
+			// An organization virtual model delegates its static references.
+			childEC := ec.delegating(vm.Graph())
 			childEC.VisitedVMs = copyVisitedVMs(ec.VisitedVMs)
 			childEC.VisitedVMs[vmID] = struct{}{}
 			childEC.SecretScopeID = string(vm.OrgID())
@@ -150,8 +167,8 @@ func (e *ModelExecutor) resolveByName(ctx context.Context, proxyName string, ec 
 		}
 	}
 
-	// Real model: delegate to the ModelResolver.
-	client, realModel, modelID, err := e.resolver.ResolveRealModel(ctx, orgID, proxyName)
+	// Real model: delegate to the ModelResolver, without the team segment.
+	client, realModel, modelID, err := e.resolver.ResolveRealModel(ctx, orgID, name.OrgLevel().String())
 	if err != nil {
 		return nil, errors.Wrapf(err, "model executor: could not resolve %q", proxyName)
 	}
@@ -221,16 +238,6 @@ func resolveModelName(node model.PipelineNode, inputs map[string]interface{}) (s
 		}
 	}
 	return "", errors.New("no model_name input connected and no static proxyName configured")
-}
-
-// localModelName strips the "org-slug/" prefix if present.
-func localModelName(name string) string {
-	for i := len(name) - 1; i >= 0; i-- {
-		if name[i] == '/' {
-			return name[i+1:]
-		}
-	}
-	return name
 }
 
 func copyVisitedVMs(m map[model.VirtualModelID]struct{}) map[model.VirtualModelID]struct{} {

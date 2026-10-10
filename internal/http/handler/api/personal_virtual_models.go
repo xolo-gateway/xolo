@@ -76,6 +76,9 @@ func (h *Handler) handleCreatePersonalVM(w http.ResponseWriter, r *http.Request)
 		writeError(w, http.StatusBadRequest, "name is required")
 		return
 	}
+	if h.rejectGraph(w, r, req.Graph) {
+		return
+	}
 
 	vm := model.NewPersonalVirtualModel(user.ID(), req.Name, req.Description)
 	if req.Graph != nil {
@@ -173,6 +176,10 @@ func (h *Handler) handleUpdatePersonalVM(w http.ResponseWriter, r *http.Request)
 	m, ok := vm.(mutable)
 	if !ok {
 		writeError(w, http.StatusInternalServerError, "cannot update this virtual model")
+		return
+	}
+
+	if h.rejectGraph(w, r, req.Graph) {
 		return
 	}
 
@@ -303,6 +310,9 @@ func (h *Handler) handleImportPersonalVM(w http.ResponseWriter, r *http.Request)
 	}
 	if bundle.Name == "" {
 		writeError(w, http.StatusBadRequest, "bundle must contain a non-empty name")
+		return
+	}
+	if h.rejectGraph(w, r, bundle.Graph) {
 		return
 	}
 

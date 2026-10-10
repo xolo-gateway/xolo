@@ -34,6 +34,7 @@ var OwnershipFamilies = []string{
 	FamilyOrganizationMembership,
 	FamilySubscription,
 	FamilyCustomRole,
+	FamilyTeam,
 	FamilyApplication,
 	FamilyQuota,
 	FamilyAlert,

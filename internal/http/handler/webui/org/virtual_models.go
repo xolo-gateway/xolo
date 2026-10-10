@@ -36,10 +36,27 @@ func (h *Handler) getVirtualModelsPage(w http.ResponseWriter, r *http.Request) {
 
 	baseURL := httpCtx.BaseURL(ctx)
 
+	selected := selectedVirtualModel(vms, r.URL.Query().Get("vm"))
+	var selectedTeams []model.Team
+	if selected != nil && h.teamStore != nil {
+		teams, err := h.teamStore.ListOrgTeams(ctx, org.ID())
+		if err != nil {
+			slog.ErrorContext(ctx, "could not list teams", slog.Any("error", err))
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
+		for _, team := range teams {
+			if model.TeamGrants(team, string(selected.ID()), rbac.ModelKindVirtual) {
+				selectedTeams = append(selectedTeams, team)
+			}
+		}
+	}
+
 	vmodel := component.VirtualModelsPageVModel{
 		Org:           org,
 		VirtualModels: vms,
-		Selected:      selectedVirtualModel(vms, r.URL.Query().Get("vm")),
+		Selected:      selected,
+		SelectedTeams: selectedTeams,
 		BaseURL:       baseURL.String(),
 		Success:       r.URL.Query().Get("success"),
 		Error:         r.URL.Query().Get("error"),
@@ -155,6 +172,15 @@ func (h *Handler) createVirtualModel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if msg, err := h.teamNameConflict(ctx, org.ID(), name); err != nil {
+		slog.ErrorContext(ctx, "could not check team slugs", slog.Any("error", err))
+		http.Redirect(w, r, "/orgs/"+orgSlug+"/admin/virtual-models?error=create_failed", http.StatusSeeOther)
+		return
+	} else if msg != "" {
+		http.Redirect(w, r, "/orgs/"+orgSlug+"/admin/virtual-models?error=team_conflict", http.StatusSeeOther)
+		return
+	}
+
 	vm := model.NewVirtualModel(org.ID(), name, description)
 
 	if err := h.virtualModelStore.CreateVirtualModel(ctx, vm); err != nil {
@@ -253,6 +279,14 @@ func (h *Handler) updateVirtualModel(w http.ResponseWriter, r *http.Request) {
 			// SaveVirtualModel (mapped to ErrAlreadyExists in the store).
 			slog.ErrorContext(ctx, "could not check virtual model name uniqueness", slog.Any("error", err))
 			http.Redirect(w, r, "/orgs/"+orgSlug+"/admin/virtual-models/"+modelID+"/edit?error=update_failed", http.StatusSeeOther)
+			return
+		}
+		if msg, err := h.teamNameConflict(ctx, org.ID(), name); err != nil {
+			slog.ErrorContext(ctx, "could not check team slugs", slog.Any("error", err))
+			http.Redirect(w, r, "/orgs/"+orgSlug+"/admin/virtual-models/"+modelID+"/edit?error=update_failed", http.StatusSeeOther)
+			return
+		} else if msg != "" {
+			http.Redirect(w, r, "/orgs/"+orgSlug+"/admin/virtual-models/"+modelID+"/edit?error=team_conflict", http.StatusSeeOther)
 			return
 		}
 	}

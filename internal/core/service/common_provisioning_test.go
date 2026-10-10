@@ -314,7 +314,7 @@ func TestPutOrgMember(t *testing.T) {
 
 	// A custom role survives a change of common role.
 	roleKey := uuid.NewString()
-	_, err = svc.PutCustomRole(ctx, tenantID, orgID, roleKey, model.MatchCondition{}, model.CustomRoleSettings{Name: "Auditor", Permissions: []string{}, ModelGrants: []model.ModelGrantSettings{}})
+	_, err = svc.PutCustomRole(ctx, tenantID, orgID, roleKey, model.MatchCondition{}, model.CustomRoleSettings{Name: "Auditor", Permissions: []string{}})
 	mustNoError(t, err)
 	membership, err := store.GetUserOrgMembership(ctx, memberID, orgID)
 	mustNoError(t, err)

@@ -81,6 +81,10 @@ La page principale affiche tous les middlewares avec :
 
 Les middlewares sont appliqués dans l'ordre de priorité croissant (du plus petit au plus grand). Cela permet de chaîner plusieurs traitements.
 
+Un middleware rattaché à une ou plusieurs [équipes](../equipes/equipes.md) ne s'applique qu'aux requêtes de ces équipes. Les middlewares de l'organisation (rattachés à aucune équipe) s'appliquent toujours en premier : ils portent les règles de conformité, qui ne doivent pas dépendre de l'équipe choisie par le membre. Les middlewares de l'équipe de la requête suivent, chacun dans son ordre de priorité.
+
+Les modèles nommés dans la configuration des nœuds d'un middleware sont accessibles à toutes les requêtes qu'il enveloppe, comme pour un modèle virtuel.
+
 **Exemple** :
 
 1. Logging (priorité 1)

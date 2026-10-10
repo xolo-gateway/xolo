@@ -48,16 +48,20 @@ func (e *ModelFallbackExecutor) Forward(ctx context.Context, node model.Pipeline
 	}
 
 	orgID := model.OrgID(ec.OrgID)
-	primary, realModel, modelID, err := e.resolver.ResolveRealModel(ctx, orgID, candidates[0])
+	resolve := func(ctx context.Context, name string) (llm.Client, string, model.LLMModelID, error) {
+		if err := ec.checkModelAccess(ctx, name); err != nil {
+			return nil, "", "", err
+		}
+		return e.resolver.ResolveRealModel(ctx, orgID, ec.withoutTeam(name))
+	}
+	primary, realModel, modelID, err := resolve(ctx, candidates[0])
 	if err != nil {
 		return nil, errors.Wrapf(err, "model_fallback node %s: could not resolve primary model %q", node.ID, candidates[0])
 	}
 
 	fc := &fallbackClient{
 		candidates: candidates,
-		resolve: func(ctx context.Context, name string) (llm.Client, string, model.LLMModelID, error) {
-			return e.resolver.ResolveRealModel(ctx, orgID, name)
-		},
+		resolve:    resolve,
 	}
 	fc.resolved = []resolvedCandidate{{client: primary, realModel: realModel, modelID: modelID}}
 

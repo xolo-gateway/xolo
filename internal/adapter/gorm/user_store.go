@@ -29,6 +29,7 @@ func fromAuthToken(t model.AuthToken) *AuthToken {
 		// response that follows its creation.
 		Value:     crypto.HashToken(t.Value()),
 		OrgID:     string(t.OrgID()),
+		TeamID:    string(t.TeamID()),
 		ExpiresAt: t.ExpiresAt(),
 	}
 }
@@ -474,6 +475,9 @@ func deleteUsersWithin(db *gorm.DB, userIDs []string) (int64, error) {
 	membershipIDs := db.Model(&Membership{}).Select("id").Where("user_id IN ?", userIDs)
 	if err := db.Where("membership_id IN (?)", membershipIDs).Delete(&MembershipRole{}).Error; err != nil {
 		return 0, errors.WithStack(err)
+	}
+	if err := deleteTeamMembershipsWithin(db, db.Model(&Membership{}).Select("id").Where("user_id IN ?", userIDs)); err != nil {
+		return 0, err
 	}
 	if err := db.Where("user_id IN ?", userIDs).Delete(&Membership{}).Error; err != nil {
 		return 0, errors.WithStack(err)

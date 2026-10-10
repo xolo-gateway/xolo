@@ -1,6 +1,12 @@
 package model
 
-import "regexp"
+import (
+	"regexp"
+	"strings"
+	"unicode"
+
+	"golang.org/x/text/unicode/norm"
+)
 
 // SlugPattern matches a DNS-label-like identifier, the form external systems
 // (Kubernetes operators, Terraform providers) can always produce. It lives here
@@ -16,4 +22,35 @@ const MaxSlugLength = 63
 // IsValidSlug reports whether s is a well-formed slug.
 func IsValidSlug(s string) bool {
 	return s != "" && len(s) <= MaxSlugLength && SlugPattern.MatchString(s)
+}
+
+// Slugify derives a slug from a free-form name: accents are dropped, runs of
+// other characters become a single dash. It returns fallback when nothing is
+// left.
+func Slugify(name, fallback string) string {
+	decomposed := norm.NFKD.String(strings.ToLower(name))
+	var b strings.Builder
+	dash := false
+	for _, r := range decomposed {
+		switch {
+		case unicode.Is(unicode.Mn, r):
+			continue
+		case (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9'):
+			if dash && b.Len() > 0 {
+				b.WriteByte('-')
+			}
+			dash = false
+			b.WriteRune(r)
+		default:
+			dash = true
+		}
+	}
+	slug := b.String()
+	if len(slug) > MaxSlugLength {
+		slug = strings.TrimRight(slug[:MaxSlugLength], "-")
+	}
+	if !IsValidSlug(slug) {
+		return fallback
+	}
+	return slug
 }

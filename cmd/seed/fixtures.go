@@ -56,7 +56,8 @@ const (
 	middlewareAcme   = "mw-acme-guardrails"
 	personalVMCarol  = "pvm-carol-notes"
 
-	roleAcmeAnalyst = "role-acme-analyst"
+	roleAcmeAnalyst  = "role-acme-analyst"
+	teamAcmeAnalysts = "team-acme-analysts"
 )
 
 // API token values. Plain-text on purpose: E2E tests send them as-is in the
@@ -112,6 +113,7 @@ func (s *seeder) seed(ctx context.Context) error {
 		{"users", s.seedUsers},
 		{"roles", s.seedRoles},
 		{"memberships", s.seedMemberships},
+		{"teams", s.seedTeams},
 		{"applications", s.seedApplications},
 		{"auth tokens", s.seedAuthTokens},
 		{"providers", s.seedProviders},
@@ -138,7 +140,7 @@ func (s *seeder) seed(ctx context.Context) error {
 func (s *seeder) create(records ...any) error {
 	for _, record := range records {
 		if err := s.db.Omit("Org", "User", "Owner", "Application", "Roles", "Providers",
-			"LLMModels", "Memberships", "AuthTokens", "ModelGrants", "Permissions").
+			"LLMModels", "Memberships", "AuthTokens", "ModelGrants", "Middlewares", "Permissions").
 			Create(record).Error; err != nil {
 			return errors.WithStack(err)
 		}
@@ -311,8 +313,7 @@ func (s *seeder) seedUsers(ctx context.Context) error {
 	return nil
 }
 
-// seedRoles adds an org-scoped custom role on top of the builtin ones, granting
-// access to a restricted set of models.
+// seedRoles adds an org-scoped custom role on top of the builtin ones.
 func (s *seeder) seedRoles(ctx context.Context) error {
 	role := &gormadapter.Role{
 		ID:          roleAcmeAnalyst,
@@ -320,21 +321,38 @@ func (s *seeder) seedRoles(ctx context.Context) error {
 		UpdatedAt:   now.AddDate(0, 0, -30),
 		OrgID:       orgAcme,
 		Name:        "Analyste",
-		Description: "Lecture de l'usage et accès aux seuls modèles économiques.",
+		Description: "Lecture de l'usage.",
 	}
 	if err := s.create(role); err != nil {
 		return errors.WithStack(err)
 	}
 
-	for _, code := range []rbac.Permission{rbac.PermUsageRead, rbac.PermModelUseOrg} {
-		if err := s.create(&gormadapter.RolePermission{RoleID: roleAcmeAnalyst, Code: string(code)}); err != nil {
-			return errors.WithStack(err)
-		}
+	if err := s.create(&gormadapter.RolePermission{RoleID: roleAcmeAnalyst, Code: string(rbac.PermUsageRead)}); err != nil {
+		return errors.WithStack(err)
+	}
+
+	return nil
+}
+
+// seedTeams adds a team granted a restricted set of models, with dave as
+// its member.
+func (s *seeder) seedTeams(ctx context.Context) error {
+	team := &gormadapter.Team{
+		ID:          teamAcmeAnalysts,
+		CreatedAt:   now.AddDate(0, 0, -30),
+		UpdatedAt:   now.AddDate(0, 0, -30),
+		OrgID:       orgAcme,
+		Slug:        "analystes",
+		Name:        "Analystes",
+		Description: "Accès aux seuls modèles économiques.",
+	}
+	if err := s.create(team); err != nil {
+		return errors.WithStack(err)
 	}
 
 	for _, modelID := range []string{modelAcmeGPT4oMini, modelAcmeMistral} {
-		if err := s.create(&gormadapter.RoleModel{
-			RoleID:    roleAcmeAnalyst,
+		if err := s.create(&gormadapter.TeamModelGrant{
+			TeamID:    teamAcmeAnalysts,
 			ModelID:   modelID,
 			ModelKind: rbac.ModelKindLLM,
 		}); err != nil {
@@ -342,7 +360,7 @@ func (s *seeder) seedRoles(ctx context.Context) error {
 		}
 	}
 
-	return nil
+	return s.create(&gormadapter.TeamMember{TeamID: teamAcmeAnalysts, MembershipID: "mbr-dave-acme", CreatedAt: now.AddDate(0, 0, -30)})
 }
 
 func (s *seeder) seedMemberships(ctx context.Context) error {

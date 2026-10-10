@@ -1,0 +1,512 @@
+package component
+
+import (
+	"strings"
+
+	"github.com/xolo-gateway/xolo/internal/core/model"
+	"github.com/xolo-gateway/xolo/internal/core/rbac"
+	common "github.com/xolo-gateway/xolo/internal/http/handler/webui/common/component"
+	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/button"
+	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/checkbox"
+	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/form"
+	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/icon"
+	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/input"
+	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/label"
+	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/radio"
+	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/selectbox"
+	switchcomp "github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/switch"
+	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/table"
+	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/textarea"
+)
+
+// ── Team Page ─────────────────────────────────────────────────────────────────
+templ TeamPage(vmodel TeamPageVModel) {
+	@common.AppLayout(vmodel.AppLayoutVModel, common.WithTitle("Équipe — "+vmodel.Team.Name())) {
+		<div class="max-w-5xl space-y-3.5">
+			@common.PageHeader(common.PageHeaderProps{
+				Title:    vmodel.Team.Name(),
+				Subtitle: "Les membres de l'équipe appellent ses modèles sous " + vmodel.SampleModel + " : la requête est alors débitée sur le budget de l'équipe.",
+			}) {
+				@button.Button(button.Props{Variant: button.VariantOutline, Size: button.SizeSm, Class: "gap-1.5", Href: teamsURL(ctx, vmodel.Org)}) {
+					@icon.ArrowLeft(icon.Props{Class: "size-3.5"})
+					Équipes
+				}
+			}
+			if vmodel.Success != "" {
+				@common.InfoBanner(common.TonePositive, teamSuccessMessage(vmodel.Success))
+			}
+			if vmodel.Error != "" {
+				@common.InfoBanner(common.ToneNegative, vmodel.Error)
+			}
+			<form method="POST" action={ templ.SafeURL(teamsURL(ctx, vmodel.Org, "/", string(vmodel.Team.ID()), "/edit")) } class="space-y-3.5">
+				@common.Section() {
+					@common.SectionHeader() {
+						@common.SectionTitle() {
+							Informations
+						}
+						<span class="ml-auto">
+							@common.Mono(vmodel.Org.Slug() + "/" + vmodel.Team.Slug() + "/…")
+						</span>
+					}
+					@common.SectionBody(common.SectionBodyProps{Class: "space-y-3.5"}) {
+						@form.Item() {
+							@label.Label(label.Props{For: "name"}) {
+								Nom
+							}
+							@input.Input(input.Props{ID: "name", Name: "name", Value: vmodel.Team.Name(), Disabled: !vmodel.CanEditTeam, Attributes: templ.Attributes{"required": "required"}})
+						}
+						@form.Item() {
+							@label.Label(label.Props{For: "description"}) {
+								Description
+							}
+							@textarea.Textarea(textarea.Props{ID: "description", Name: "description", Value: vmodel.Team.Description(), Rows: 2, Disabled: !vmodel.CanEditTeam})
+						}
+					}
+				}
+				<div class="grid gap-3.5 lg:grid-cols-2">
+					@common.Section() {
+						@common.SectionHeader() {
+							@common.SectionTitle() {
+								Modèles accessibles
+							}
+						}
+						@common.SectionBody(common.SectionBodyProps{Class: "space-y-2.5"}) {
+							<p class="text-xs text-muted-foreground">
+								Les membres de l'équipe utilisent ces modèles sans permission sur toute l'organisation. Un modèle virtuel donne aussi accès aux modèles que son pipeline référence.
+							</p>
+							if len(vmodel.ModelOptions) == 0 {
+								<p class="text-sm text-muted-foreground">Aucun modèle dans l'organisation.</p>
+							}
+							for _, opt := range vmodel.ModelOptions {
+								<div class="flex items-start gap-3">
+									@checkbox.Checkbox(checkbox.Props{
+										ID:       "model-" + opt.Kind + "-" + opt.ID,
+										Name:     "models",
+										Value:    opt.Kind + ":" + opt.ID,
+										Checked:  vmodel.SelectedModels[opt.Kind+":"+opt.ID],
+										Disabled: !vmodel.CanEditTeam,
+									})
+									@label.Label(label.Props{For: "model-" + opt.Kind + "-" + opt.ID}) {
+										<span class="font-mono text-xs">{ opt.Label }</span>
+										if opt.Kind == rbac.ModelKindVirtual {
+											<span class="ml-1">
+												@common.Badge(common.ToneInfo, "virtuel")
+											</span>
+										}
+									}
+								</div>
+							}
+						}
+					}
+					@common.Section() {
+						@common.SectionHeader() {
+							@common.SectionTitle() {
+								Middlewares de l'équipe
+							}
+						}
+						@common.SectionBody(common.SectionBodyProps{Class: "space-y-2.5"}) {
+							<p class="text-xs text-muted-foreground">
+								Un middleware coché ne s'applique plus qu'aux requêtes des équipes qui le cochent, après les middlewares de l'organisation.
+							</p>
+							if len(vmodel.MiddlewareOptions) == 0 {
+								<p class="text-sm text-muted-foreground">Aucun middleware dans l'organisation.</p>
+							}
+							for _, opt := range vmodel.MiddlewareOptions {
+								<div class="flex items-start gap-3">
+									@checkbox.Checkbox(checkbox.Props{
+										ID:       "mw-" + opt.ID,
+										Name:     "middlewares",
+										Value:    opt.ID,
+										Checked:  vmodel.SelectedMiddlewares[opt.ID],
+										Disabled: !vmodel.CanEditTeam,
+									})
+									@label.Label(label.Props{For: "mw-" + opt.ID}) {
+										{ opt.Name }
+										if !opt.Enabled {
+											<span class="ml-1">
+												@common.Badge(common.ToneNeutral, "désactivé")
+											</span>
+										}
+									}
+								</div>
+							}
+						}
+					}
+				</div>
+				if vmodel.CanEditTeam {
+					<div class="flex items-center gap-2">
+						@button.Button(button.Props{Type: button.TypeSubmit, Size: button.SizeSm, Class: "gap-1.5"}) {
+							@icon.Save(icon.Props{Class: "size-3.5"})
+							Enregistrer
+						}
+					</div>
+				}
+			</form>
+			@teamMembersSection(vmodel)
+			if vmodel.CanReadBudget {
+				@teamBudgetSection(vmodel)
+			}
+			if vmodel.CanEditTeam {
+				@common.Section() {
+					@common.SectionHeader() {
+						@common.SectionTitle() {
+							Supprimer l'équipe
+						}
+					}
+					@common.SectionBody(common.SectionBodyProps{Class: "flex flex-wrap items-center gap-3"}) {
+						<p class="flex-1 text-sm text-muted-foreground">
+							if len(vmodel.Applications) > 0 {
+								Des applications sont rattachées à cette équipe. Rattachez-les ailleurs avant de la supprimer.
+							} else {
+								Les membres perdent l'accès aux modèles de l'équipe, et les clients qui appellent { vmodel.SampleModel } reçoivent une erreur.
+							}
+						</p>
+						if len(vmodel.Applications) == 0 {
+							@common.ConfirmDelete(common.ConfirmDeleteProps{
+								URL:          teamsURL(ctx, vmodel.Org, "/", string(vmodel.Team.ID()), "/delete"),
+								Method:       "POST",
+								Label:        "Supprimer",
+								Variant:      button.VariantDestructive,
+								Title:        "Supprimer l'équipe ?",
+								Description:  "L'équipe, ses membres et ses budgets sont supprimés. Cette action est définitive.",
+								ConfirmLabel: "Supprimer",
+							})
+						}
+					}
+				}
+			}
+		</div>
+	}
+}
+
+templ teamMembersSection(vmodel TeamPageVModel) {
+	@common.Section() {
+		@common.SectionHeader() {
+			@common.SectionTitle() {
+				Membres
+			}
+		}
+		if len(vmodel.Members) == 0 {
+			@common.SectionBody() {
+				<p class="text-sm text-muted-foreground">Aucun membre dans cette équipe.</p>
+			}
+		} else {
+			@table.Table() {
+				@table.Header() {
+					@table.Head() {
+						Membre
+					}
+					@table.Head() {
+						Rôles dans l'équipe
+					}
+					@table.Head() {
+						Budget mensuel
+					}
+					@table.Head(table.HeadProps{Class: "text-right"}) {
+						Actions
+					}
+				}
+				@table.Body() {
+					for _, row := range vmodel.Members {
+						@table.Row() {
+							@table.Cell() {
+								<div class="flex items-center gap-2.5">
+									if row.Member.User() != nil {
+										@common.PersonAvatar(row.Member.User().DisplayName())
+										<div class="min-w-0">
+											<div class="truncate text-sm font-semibold">{ row.Member.User().DisplayName() }</div>
+											@common.Mono(row.Member.User().Email())
+										</div>
+									}
+								</div>
+							}
+							@table.Cell() {
+								<div class="flex flex-wrap gap-1">
+									if len(row.RoleNames) == 0 {
+										<span class="text-xs text-muted-foreground">—</span>
+									}
+									for _, name := range row.RoleNames {
+										@common.Badge(common.ToneInfo, name)
+									}
+								</div>
+							}
+							@table.Cell() {
+								<span class="tnum text-sm">
+									{ common.FormatCost(row.MonthSpend, vmodel.Org.Currency()) }
+									if row.Budget != nil && row.Budget.MonthlyBudget() != nil {
+										{ " / " + common.FormatCost(*row.Budget.MonthlyBudget(), vmodel.Org.Currency()) }
+									}
+								</span>
+							}
+							@table.Cell(table.CellProps{Class: "text-right"}) {
+								<div class="inline-flex gap-1">
+									@button.Button(button.Props{
+										Href:       teamsURL(ctx, vmodel.Org, "/", string(vmodel.Team.ID()), "/members/", string(row.Member.MembershipID())),
+										Variant:    button.VariantGhost,
+										Size:       button.SizeIcon,
+										Class:      "size-7",
+										Attributes: templ.Attributes{"title": "Rôles et budget"},
+									}) {
+										@icon.Pencil(icon.Props{Class: "size-3.5"})
+									}
+									if vmodel.CanManageMembers {
+										@common.ConfirmDelete(common.ConfirmDeleteProps{
+											URL:          teamsURL(ctx, vmodel.Org, "/", string(vmodel.Team.ID()), "/members/", string(row.Member.MembershipID())),
+											Icon:         icon.UserX,
+											Tooltip:      "Retirer de l'équipe",
+											Title:        "Retirer ce membre de l'équipe ?",
+											Description:  "Il perd l'accès aux modèles de l'équipe et son budget dans l'équipe est supprimé. Il reste membre de l'organisation.",
+											ConfirmLabel: "Retirer",
+										})
+									}
+								</div>
+							}
+						}
+					}
+				}
+			}
+		}
+		if vmodel.CanManageMembers && len(vmodel.Candidates) > 0 {
+			@common.SectionHeader(common.SectionHeaderProps{Class: "border-b-0 border-t"}) {
+				<form method="POST" action={ templ.SafeURL(teamsURL(ctx, vmodel.Org, "/", string(vmodel.Team.ID()), "/members")) } class="flex w-full flex-wrap items-center gap-2">
+					<div class="min-w-64 flex-1">
+						@selectbox.SelectBox(selectbox.Props{ID: "team-member-candidate"}) {
+							@selectbox.Trigger(selectbox.TriggerProps{Name: "membership_id"}) {
+								@selectbox.Value(selectbox.ValueProps{Placeholder: "Choisir un membre de l'organisation"})
+							}
+							@selectbox.Content() {
+								@selectbox.Group() {
+									for _, m := range vmodel.Candidates {
+										if m.User() != nil {
+											@selectbox.Item(selectbox.ItemProps{Value: string(m.ID())}) {
+												{ m.User().DisplayName() + " · " + m.User().Email() }
+											}
+										}
+									}
+								}
+							}
+						}
+					</div>
+					@button.Button(button.Props{Type: button.TypeSubmit, Size: button.SizeSm, Class: "gap-1.5"}) {
+						@icon.UserPlus(icon.Props{Class: "size-3.5"})
+						Ajouter à l'équipe
+					}
+				</form>
+			}
+		}
+	}
+}
+
+templ teamBudgetSection(vmodel TeamPageVModel) {
+	<form method="POST" action={ templ.SafeURL(teamsURL(ctx, vmodel.Org, "/", string(vmodel.Team.ID()), "/budget")) }>
+		@common.Section() {
+			@common.SectionHeader() {
+				@common.SectionTitle() {
+					Budget de l'équipe
+				}
+				<span class="ml-auto text-xs text-muted-foreground">
+					Devise : { vmodel.Org.Currency() }
+				</span>
+			}
+			@common.SectionBody(common.SectionBodyProps{Class: "space-y-3.5"}) {
+				<p class="text-xs text-muted-foreground">
+					L'organisation fixe l'enveloppe de l'équipe ; l'équipe la répartit entre ses membres. Chaque niveau (organisation, équipe, membre) est vérifié à chaque requête.
+				</p>
+				<div class="grid gap-3.5 sm:grid-cols-3">
+					@budgetField("team-daily", "daily_budget", "Journalier", "10.00", quotaFieldValue(vmodel.TeamQuota, budgetScopeDaily), vmodel.Org.Currency(), !vmodel.CanEditTeamBudget)
+					@budgetField("team-monthly", "monthly_budget", "Mensuel", "100.00", quotaFieldValue(vmodel.TeamQuota, budgetScopeMonthly), vmodel.Org.Currency(), !vmodel.CanEditTeamBudget)
+					@budgetField("team-yearly", "yearly_budget", "Annuel", "1000.00", quotaFieldValue(vmodel.TeamQuota, budgetScopeYearly), vmodel.Org.Currency(), !vmodel.CanEditTeamBudget)
+				</div>
+				if vmodel.TeamQuota != nil {
+					<div class="space-y-3.5">
+						if vmodel.TeamQuota.DailyBudget() != nil {
+							@quotaUsageRow("Journalier", vmodel.Spend[0], *vmodel.TeamQuota.DailyBudget(), vmodel.Org.Currency())
+						}
+						if vmodel.TeamQuota.MonthlyBudget() != nil {
+							@quotaUsageRow("Mensuel", vmodel.Spend[1], *vmodel.TeamQuota.MonthlyBudget(), vmodel.Org.Currency())
+						}
+						if vmodel.TeamQuota.YearlyBudget() != nil {
+							@quotaUsageRow("Annuel", vmodel.Spend[2], *vmodel.TeamQuota.YearlyBudget(), vmodel.Org.Currency())
+						}
+					</div>
+				}
+				@cascadeChoice("team-cascade", "Répartition entre les membres", quotaCascade(vmodel.TeamQuota), !vmodel.CanSplitBudget)
+				@form.ItemFlex() {
+					@switchcomp.Switch(switchcomp.Props{ID: "share_quota_equally", Name: "share_quota_equally", Value: "1", Checked: vmodel.Team.ShareQuotaEqually(), Disabled: !vmodel.CanSplitBudget})
+					@form.Label(form.LabelProps{For: "share_quota_equally"}) {
+						Partager l'enveloppe à parts égales entre les membres sans budget propre
+					}
+				}
+			}
+			if vmodel.CanEditTeamBudget || vmodel.CanSplitBudget {
+				@common.SectionHeader(common.SectionHeaderProps{Class: "border-b-0 border-t"}) {
+					@button.Button(button.Props{Type: button.TypeSubmit, Size: button.SizeSm}) {
+						Enregistrer
+					}
+				}
+			}
+		}
+	</form>
+}
+
+// cascadeChoice lets the parent level of a budget constrain the budgets of its
+// children when they are saved.
+templ cascadeChoice(id, title string, current model.QuotaCascade, readonly bool) {
+	<fieldset class="space-y-2">
+		<legend class="text-sm font-medium">{ title }</legend>
+		for _, opt := range cascadeOptions {
+			<div class="flex items-start gap-3">
+				@radio.Radio(radio.Props{ID: id + "-" + string(opt.Value), Name: "cascade", Value: string(opt.Value), Checked: current == opt.Value, Disabled: readonly})
+				@label.Label(label.Props{For: id + "-" + string(opt.Value)}) {
+					<span class="font-medium">{ opt.Label }</span>
+					<span class="block text-xs font-normal text-muted-foreground">{ opt.Help }</span>
+				}
+			</div>
+		}
+	</fieldset>
+}
+
+var cascadeOptions = []struct {
+	Value model.QuotaCascade
+	Label string
+	Help  string
+}{
+	{model.QuotaCascadeFree, "Libre", "Aucune contrainte à l'enregistrement : seules les limites vérifiées à chaque requête s'appliquent."},
+	{model.QuotaCascadeCapped, "Plafonnée", "Chaque budget enfant est au plus égal à celui-ci. Leur somme peut le dépasser."},
+	{model.QuotaCascadeSplit, "Partagée", "La somme des budgets enfants ne dépasse pas celui-ci : l'enveloppe est vraiment répartie."},
+}
+
+func quotaCascade(q model.Quota) model.QuotaCascade {
+	if q == nil {
+		return model.QuotaCascadeFree
+	}
+	return q.Cascade()
+}
+
+func quotaFieldValue(q model.Quota, scope budgetScope) string {
+	if q == nil {
+		return ""
+	}
+	return budgetFieldValue(QuotaPageVModel{Quota: q}, scope)
+}
+
+// ── Team Member Page ──────────────────────────────────────────────────────────
+templ TeamMemberPage(vmodel TeamMemberPageVModel) {
+	{{ name := "" }}
+	if vmodel.Member.User() != nil {
+		{{ name = vmodel.Member.User().DisplayName() }}
+	}
+	@common.AppLayout(vmodel.AppLayoutVModel, common.WithTitle(name+" — "+vmodel.Team.Name())) {
+		<div class="max-w-4xl space-y-3.5">
+			@common.PageHeader(common.PageHeaderProps{
+				Title:    name,
+				Subtitle: "Membre de l'équipe « " + vmodel.Team.Name() + " ». Les rôles attribués ici ne valent que dans cette équipe.",
+			}) {
+				@button.Button(button.Props{Variant: button.VariantOutline, Size: button.SizeSm, Class: "gap-1.5", Href: teamsURL(ctx, vmodel.Org, "/", string(vmodel.Team.ID()))}) {
+					@icon.ArrowLeft(icon.Props{Class: "size-3.5"})
+					{ vmodel.Team.Name() }
+				}
+			}
+			if vmodel.Success != "" {
+				@common.InfoBanner(common.TonePositive, teamSuccessMessage(vmodel.Success))
+			}
+			if vmodel.Error != "" {
+				@common.InfoBanner(common.ToneNegative, vmodel.Error)
+			}
+			<form method="POST" action={ templ.SafeURL(teamsURL(ctx, vmodel.Org, "/", string(vmodel.Team.ID()), "/members/", string(vmodel.Member.MembershipID()))) }>
+				@common.Section() {
+					@common.SectionHeader() {
+						@common.SectionTitle() {
+							Rôles dans l'équipe
+						}
+					}
+					@common.SectionBody(common.SectionBodyProps{Class: "space-y-2.5"}) {
+						<p class="text-xs text-muted-foreground">
+							Seules les permissions marquées « équipe » d'un rôle s'appliquent, et seulement à cette équipe : gérer ses membres, répartir son budget, consulter son usage. Vous ne pouvez attribuer que des rôles dont vous détenez vous-même les permissions sur l'équipe.
+						</p>
+						for _, role := range vmodel.Roles {
+							<div class="flex items-start gap-3">
+								@checkbox.Checkbox(checkbox.Props{
+									ID:       "role-" + string(role.ID()),
+									Name:     "roles",
+									Value:    string(role.ID()),
+									Checked:  vmodel.SelectedRoles[string(role.ID())],
+									Disabled: !vmodel.CanManageMembers || !vmodel.AssignableRoles[string(role.ID())],
+								})
+								@label.Label(label.Props{For: "role-" + string(role.ID())}) {
+									{ role.Name() }
+									<span class="block text-xs font-normal text-muted-foreground">{ teamScopedPermissionsLabel(role) }</span>
+								}
+							</div>
+						}
+					}
+					if vmodel.CanManageMembers {
+						@common.SectionHeader(common.SectionHeaderProps{Class: "border-b-0 border-t"}) {
+							@button.Button(button.Props{Type: button.TypeSubmit, Size: button.SizeSm}) {
+								Enregistrer les rôles
+							}
+						}
+					}
+				}
+			</form>
+			<form method="POST" action={ templ.SafeURL(teamsURL(ctx, vmodel.Org, "/", string(vmodel.Team.ID()), "/members/", string(vmodel.Member.MembershipID()), "/budget")) }>
+				@common.Section() {
+					@common.SectionHeader() {
+						@common.SectionTitle() {
+							Budget dans l'équipe
+						}
+					}
+					@common.SectionBody(common.SectionBodyProps{Class: "space-y-3.5"}) {
+						<div class="grid gap-3.5 sm:grid-cols-3">
+							@budgetField("member-daily", "daily_budget", "Journalier", "10.00", quotaFieldValue(vmodel.Budget, budgetScopeDaily), vmodel.Org.Currency(), !vmodel.CanSplitBudget)
+							@budgetField("member-monthly", "monthly_budget", "Mensuel", "100.00", quotaFieldValue(vmodel.Budget, budgetScopeMonthly), vmodel.Org.Currency(), !vmodel.CanSplitBudget)
+							@budgetField("member-yearly", "yearly_budget", "Annuel", "1000.00", quotaFieldValue(vmodel.Budget, budgetScopeYearly), vmodel.Org.Currency(), !vmodel.CanSplitBudget)
+						</div>
+						<p class="text-xs text-muted-foreground">
+							Un champ vide vaut « illimité » : le membre reste borné par le budget de l'équipe, ou par sa part si l'équipe la partage à parts égales.
+						</p>
+						if vmodel.Budget != nil {
+							if vmodel.Budget.DailyBudget() != nil {
+								@quotaUsageRow("Journalier", vmodel.Spend[0], *vmodel.Budget.DailyBudget(), vmodel.Org.Currency())
+							}
+							if vmodel.Budget.MonthlyBudget() != nil {
+								@quotaUsageRow("Mensuel", vmodel.Spend[1], *vmodel.Budget.MonthlyBudget(), vmodel.Org.Currency())
+							}
+							if vmodel.Budget.YearlyBudget() != nil {
+								@quotaUsageRow("Annuel", vmodel.Spend[2], *vmodel.Budget.YearlyBudget(), vmodel.Org.Currency())
+							}
+						}
+					}
+					if vmodel.CanSplitBudget {
+						@common.SectionHeader(common.SectionHeaderProps{Class: "border-b-0 border-t"}) {
+							@button.Button(button.Props{Type: button.TypeSubmit, Size: button.SizeSm}) {
+								Enregistrer le budget
+							}
+						}
+					}
+				}
+			</form>
+		</div>
+	}
+}
+
+// teamScopedPermissionsLabel lists what a role grants when held on a team.
+func teamScopedPermissionsLabel(role model.Role) string {
+	var labels []string
+	for _, group := range rbac.Catalog() {
+		for _, def := range group.Perms {
+			if !def.TeamScopable {
+				continue
+			}
+			for _, code := range role.Permissions() {
+				if code == string(def.Code) {
+					labels = append(labels, def.Label)
+				}
+			}
+		}
+	}
+	if len(labels) == 0 {
+		return "Aucune permission applicable à une équipe."
+	}
+	return strings.Join(labels, " · ")
+}

@@ -176,20 +176,13 @@ func quotaSumCacheKey(scope model.QuotaScope, scopeID string, orgID model.OrgID,
 }
 
 // quotaSumCacheKeysFor lists the cached totals a usage record contributes to:
-// the current day, month and year of the organization, of the application when
-// the call was made by one, and of the user when the record carries a user id
-// and no application id.
-//
-// Application records authenticate through a shadow user, so a record can
-// carry both a user id and an application id. The two are distinct budgets:
-// an application principal must invalidate its own scope (its id), the shadow
-// user has no budget to check, and the user scope is left untouched so a
-// human user's call on the same token doesn't double-count.
+// the current day, month and year of every counter model.QuotaCounters lists.
 //
 // Subscription-covered records consume no monetary budget and are left out, as
 // they are by the counters themselves.
 func quotaSumCacheKeysFor(record model.UsageRecord) []string {
-	if !model.FeedsMonetaryBudget(record) {
+	counters := model.QuotaCounters(record)
+	if len(counters) == 0 {
 		return nil
 	}
 
@@ -203,22 +196,10 @@ func quotaSumCacheKeysFor(record model.UsageRecord) []string {
 		model.StartOfYear(createdAt),
 	}, time.Time.Equal)
 
-	appID := record.ApplicationID()
-	userID := record.UserID()
-
-	// One org key per start, plus at most one of {user, application} per start
-	// (the if/else if below short-circuits, so the actual maximum is
-	// len(starts)*2, not *3). An application token can carry both a user id
-	// (the shadow user) and an application id on the same record; the user
-	// branch is skipped on purpose so the shadow user's user counter is not
-	// fed by application traffic.
-	keys := make([]string, 0, len(starts)*2)
+	keys := make([]string, 0, len(starts)*len(counters))
 	for _, start := range starts {
-		keys = append(keys, quotaSumCacheKey(model.QuotaScopeOrg, string(record.OrgID()), record.OrgID(), start))
-		if appID != "" {
-			keys = append(keys, quotaSumCacheKey(model.QuotaScopeApplication, string(appID), record.OrgID(), start))
-		} else if userID != "" {
-			keys = append(keys, quotaSumCacheKey(model.QuotaScopeUser, string(userID), record.OrgID(), start))
+		for _, c := range counters {
+			keys = append(keys, quotaSumCacheKey(c.Scope, c.ScopeID, record.OrgID(), start))
 		}
 	}
 

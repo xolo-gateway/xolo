@@ -36,6 +36,8 @@ type InvitationAcceptance struct {
 
 type CreateInvitationInput struct {
 	Role, Email, ExpiresAt, MaxUses string
+	// TeamID makes the invitee join a team of the organization with it.
+	TeamID model.TeamID
 }
 
 // Prepare checks scope and recipient before exposing any invitation details.
@@ -210,6 +212,16 @@ func (s *InvitationService) Create(ctx context.Context, tenantID model.TenantID,
 			limit = &n
 		}
 		invite := model.NewInviteToken(orgID, string(role.ID()), email, expires, limit, actorID)
+		if input.TeamID != "" {
+			team, err := tx.GetTeamByID(ctx, input.TeamID)
+			if errors.Is(err, port.ErrNotFound) || (err == nil && team.OrgID() != orgID) {
+				return fmt.Errorf("invitation team not found: %w", port.ErrInvalid)
+			}
+			if err != nil {
+				return fmt.Errorf("get invitation team: %w", err)
+			}
+			invite.SetTeamID(team.ID())
+		}
 		if err := tx.CreateInvite(ctx, invite); err != nil {
 			return fmt.Errorf("create invitation: %w", err)
 		}
@@ -253,6 +265,20 @@ func (s *InvitationService) Accept(ctx context.Context, tenantID model.TenantID,
 		}
 		if err := tx.SetMembershipRoles(ctx, membership.ID(), []model.RoleID{view.Role.ID()}); err != nil {
 			return fmt.Errorf("assign invitation role: %w", err)
+		}
+		// A team deleted since the invitation was sent is skipped: the
+		// invitee still joins the organization.
+		if teamID := view.Invite.TeamID(); teamID != "" {
+			team, err := tx.GetTeamByID(ctx, teamID)
+			switch {
+			case errors.Is(err, port.ErrNotFound):
+			case err != nil:
+				return fmt.Errorf("get invitation team: %w", err)
+			case team.OrgID() == view.Org.ID():
+				if err := tx.SetTeamMember(ctx, team.ID(), membership.ID(), nil); err != nil {
+					return fmt.Errorf("join invitation team: %w", err)
+				}
+			}
 		}
 		if err := tx.IncrementInviteUses(ctx, id); err != nil {
 			return fmt.Errorf("consume invitation: %w", err)

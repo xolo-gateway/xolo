@@ -161,8 +161,8 @@ func EventsExplorerPage(vmodel EventsExplorerVModel) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			if vmodel.CanReadAll {
-				templ_7745c5c3_Err = common.SegmentedNav(scopeSegments(base, vmodel.Query, vmodel.Scope, vmodel.View)).Render(ctx, templ_7745c5c3_Buffer)
+			if vmodel.CanReadAll || vmodel.CanReadTeams {
+				templ_7745c5c3_Err = common.SegmentedNav(scopeSegments(base, vmodel.Query, vmodel.Scope, vmodel.View, vmodel.CanReadAll)).Render(ctx, templ_7745c5c3_Buffer)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -612,14 +612,23 @@ func EventsExplorerPage(vmodel EventsExplorerVModel) templ.Component {
 // scopeSegments builds the "Mes événements / Tous / Globaux" segmented control.
 // Switching scope always restarts at page 1: the cursor of the previous scope
 // means nothing in the next one.
-func scopeSegments(base, query, current, view string) []common.Segment {
+func scopeSegments(base, query, current, view string, readAll bool) []common.Segment {
 	scopes := []struct {
 		scope string
 		label string
 	}{
 		{EventScopeMine, "Mes événements"},
-		{EventScopeAll, "Tous"},
-		{EventScopeGlobal, "Globaux"},
+		{EventScopeTeams, "Mes équipes"},
+	}
+	if readAll {
+		scopes = []struct {
+			scope string
+			label string
+		}{
+			{EventScopeMine, "Mes événements"},
+			{EventScopeAll, "Tous"},
+			{EventScopeGlobal, "Globaux"},
+		}
 	}
 
 	segments := make([]common.Segment, 0, len(scopes))
@@ -682,7 +691,7 @@ func eventRow(e model.Event, actors map[model.UserID]EventActor) templ.Component
 				var templ_7745c5c3_Var28 string
 				templ_7745c5c3_Var28, templ_7745c5c3_Err = templ.JoinStringErrs(formatEventTime(e.CreatedAt()))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/events_page.templ`, Line: 159, Col: 35}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/events_page.templ`, Line: 168, Col: 35}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var28))
 				if templ_7745c5c3_Err != nil {
@@ -739,7 +748,7 @@ func eventRow(e model.Event, actors map[model.UserID]EventActor) templ.Component
 				var templ_7745c5c3_Var31 string
 				templ_7745c5c3_Var31, templ_7745c5c3_Err = templ.JoinStringErrs(e.Type())
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/events_page.templ`, Line: 165, Col: 13}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/events_page.templ`, Line: 174, Col: 13}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var31))
 				if templ_7745c5c3_Err != nil {
@@ -770,7 +779,7 @@ func eventRow(e model.Event, actors map[model.UserID]EventActor) templ.Component
 				var templ_7745c5c3_Var33 string
 				templ_7745c5c3_Var33, templ_7745c5c3_Err = templ.JoinStringErrs(e.Source())
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/events_page.templ`, Line: 168, Col: 15}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/events_page.templ`, Line: 177, Col: 15}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var33))
 				if templ_7745c5c3_Err != nil {
@@ -807,7 +816,7 @@ func eventRow(e model.Event, actors map[model.UserID]EventActor) templ.Component
 					var templ_7745c5c3_Var35 string
 					templ_7745c5c3_Var35, templ_7745c5c3_Err = templ.JoinStringErrs(string(e.UserID()))
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/events_page.templ`, Line: 173, Col: 75}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/events_page.templ`, Line: 182, Col: 75}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var35))
 					if templ_7745c5c3_Err != nil {
@@ -826,7 +835,7 @@ func eventRow(e model.Event, actors map[model.UserID]EventActor) templ.Component
 					var templ_7745c5c3_Var36 string
 					templ_7745c5c3_Var36, templ_7745c5c3_Err = templ.JoinStringErrs(actor.Label)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/events_page.templ`, Line: 177, Col: 18}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/events_page.templ`, Line: 186, Col: 18}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var36))
 					if templ_7745c5c3_Err != nil {
@@ -871,7 +880,7 @@ func eventRow(e model.Event, actors map[model.UserID]EventActor) templ.Component
 				var templ_7745c5c3_Var38 string
 				templ_7745c5c3_Var38, templ_7745c5c3_Err = templ.JoinStringErrs(e.Message())
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/events_page.templ`, Line: 185, Col: 38}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/events_page.templ`, Line: 194, Col: 38}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var38))
 				if templ_7745c5c3_Err != nil {
@@ -894,7 +903,7 @@ func eventRow(e model.Event, actors map[model.UserID]EventActor) templ.Component
 						var templ_7745c5c3_Var39 string
 						templ_7745c5c3_Var39, templ_7745c5c3_Err = templ.JoinStringErrs(a.Key)
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/events_page.templ`, Line: 189, Col: 102}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/events_page.templ`, Line: 198, Col: 102}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var39))
 						if templ_7745c5c3_Err != nil {
@@ -907,7 +916,7 @@ func eventRow(e model.Event, actors map[model.UserID]EventActor) templ.Component
 						var templ_7745c5c3_Var40 string
 						templ_7745c5c3_Var40, templ_7745c5c3_Err = templ.JoinStringErrs(a.Value)
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/events_page.templ`, Line: 189, Col: 114}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/events_page.templ`, Line: 198, Col: 114}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var40))
 						if templ_7745c5c3_Err != nil {

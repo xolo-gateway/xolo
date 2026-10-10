@@ -33,6 +33,9 @@ type InviteToken interface {
 	CreatedByUserID() UserID
 	RevokedAt() *time.Time
 	CreatedAt() time.Time
+	// TeamID is the team the invitee joins with the organization, empty for
+	// none.
+	TeamID() TeamID
 
 	// Populated via preload
 	Org() Organization
@@ -49,6 +52,7 @@ type BaseInviteToken struct {
 	createdByUserID UserID
 	revokedAt       *time.Time
 	createdAt       time.Time
+	teamID          TeamID
 	org             Organization
 }
 
@@ -62,6 +66,10 @@ func (t *BaseInviteToken) UsesCount() int          { return t.usesCount }
 func (t *BaseInviteToken) CreatedByUserID() UserID { return t.createdByUserID }
 func (t *BaseInviteToken) RevokedAt() *time.Time   { return t.revokedAt }
 func (t *BaseInviteToken) CreatedAt() time.Time    { return t.createdAt }
+func (t *BaseInviteToken) TeamID() TeamID          { return t.teamID }
+
+// SetTeamID makes the invitee join the team with the organization.
+func (t *BaseInviteToken) SetTeamID(teamID TeamID) { t.teamID = teamID }
 func (t *BaseInviteToken) Org() Organization       { return t.org }
 
 var _ InviteToken = &BaseInviteToken{}

@@ -217,6 +217,14 @@ func applyEventFilterSQL(query *gorm.DB, filter port.EventFilter) *gorm.DB {
 			conds = append(conds, "user_id = ?")
 			args = append(args, string(*filter.UserID))
 		}
+		if len(filter.UserIDs) > 0 {
+			ids := make([]string, 0, len(filter.UserIDs))
+			for _, id := range filter.UserIDs {
+				ids = append(ids, string(id))
+			}
+			conds = append(conds, "user_id IN ?")
+			args = append(args, ids)
+		}
 		if filter.IncludeGlobal {
 			conds = append(conds, "user_id = ''")
 		}

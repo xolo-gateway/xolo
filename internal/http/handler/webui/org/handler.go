@@ -41,6 +41,8 @@ type Handler struct {
 	eventSettingsStore  port.EventSettingsStore
 	eventsMaxPerOrg     int
 	eventsDefaultPerOrg int
+	// teamStore enables the team pages, see SetTeams.
+	teamStore port.TeamStore
 }
 
 // ServeHTTP implements http.Handler.
@@ -190,13 +192,19 @@ func NewHandler(
 	h.mux.Handle("GET /{orgSlug}/admin/members/{membershipID}/quota", assertPerm(rbac.PermQuotaRead)(http.HandlerFunc(h.getMemberQuotaPage)))
 	h.mux.Handle("POST /{orgSlug}/admin/members/{membershipID}/quota", assertPerm(rbac.PermQuotaWrite)(http.HandlerFunc(h.saveMemberQuota)))
 
-	h.mux.Handle("GET /{orgSlug}/admin/invites", assertPerm(rbac.PermInvitesRead)(http.HandlerFunc(h.getInvitesPage)))
-	h.mux.Handle("GET /{orgSlug}/admin/invites/new", assertPerm(rbac.PermInvitesWrite)(http.HandlerFunc(h.getNewInvitePage)))
-	h.mux.Handle("POST /{orgSlug}/admin/invites", assertPerm(rbac.PermInvitesWrite)(http.HandlerFunc(h.createInvite)))
-	h.mux.Handle("DELETE /{orgSlug}/admin/invites/{inviteID}", assertPerm(rbac.PermInvitesWrite)(http.HandlerFunc(h.revokeInvite)))
-	h.mux.Handle("DELETE /{orgSlug}/admin/invites/{inviteID}/delete", assertPerm(rbac.PermInvitesWrite)(http.HandlerFunc(h.deleteInvite)))
+	h.mountTeams()
 
-	h.mux.Handle("GET /{orgSlug}/usage", assertPerm(rbac.PermUsageRead)(http.HandlerFunc(h.getUsagePage)))
+	// The invitation permissions can be held on a team only: the invitations
+	// then make their invitee join that team, as a member (see inviteScope).
+	h.mux.Handle("GET /{orgSlug}/admin/invites", http.HandlerFunc(h.getInvitesPage))
+	h.mux.Handle("GET /{orgSlug}/admin/invites/new", http.HandlerFunc(h.getNewInvitePage))
+	h.mux.Handle("POST /{orgSlug}/admin/invites", http.HandlerFunc(h.createInvite))
+	h.mux.Handle("DELETE /{orgSlug}/admin/invites/{inviteID}", http.HandlerFunc(h.revokeInvite))
+	h.mux.Handle("DELETE /{orgSlug}/admin/invites/{inviteID}/delete", http.HandlerFunc(h.deleteInvite))
+
+	// usage:read held on the organization shows every request; held on teams
+	// only, the requests of those teams (see usageScope).
+	h.mux.Handle("GET /{orgSlug}/usage", http.HandlerFunc(h.getUsagePage))
 
 	h.mux.Handle("GET /{orgSlug}/admin/settings", assertPerm(rbac.PermSettingsRead)(http.HandlerFunc(h.getSettingsPage)))
 	h.mux.Handle("POST /{orgSlug}/admin/settings", assertPerm(rbac.PermSettingsWrite)(http.HandlerFunc(h.saveSettings)))

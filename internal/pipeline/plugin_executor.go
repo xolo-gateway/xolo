@@ -50,6 +50,8 @@ func (e *PluginExecutor) Forward(ctx context.Context, node model.PipelineNode, i
 		DisplayName:   ec.DisplayName,
 		ConfigJson:    configJSON,
 		NodeId:        node.ID,
+		TeamId:        ec.TeamID,
+		TeamSlug:      ec.TeamSlug,
 	}
 
 	inputsJSON := InputsJSON(inputs)

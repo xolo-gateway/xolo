@@ -10,6 +10,9 @@ const (
 	EventScopeMine   = "mine"
 	EventScopeAll    = "all"
 	EventScopeGlobal = "global"
+	// EventScopeTeams shows the events of the members of the teams the viewer
+	// holds events:read:all on, without that permission on the organization.
+	EventScopeTeams = "teams"
 )
 
 type EventsExplorerVModel struct {
@@ -18,11 +21,13 @@ type EventsExplorerVModel struct {
 	Query      string
 	Scope      string
 	CanReadAll bool
-	Events     []model.Event
-	Error      string
-	Page       int
-	HasPrev    bool
-	HasNext    bool
+	// CanReadTeams offers the events of the viewer's team members.
+	CanReadTeams bool
+	Events       []model.Event
+	Error        string
+	Page         int
+	HasPrev      bool
+	HasNext      bool
 	// View carries the browsing context ("personal" or ""), preserved across links.
 	View       string
 	KnownTypes []model.EventTypeDef

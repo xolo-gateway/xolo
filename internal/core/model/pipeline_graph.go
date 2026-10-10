@@ -197,3 +197,35 @@ type ModelFallbackNodeData struct {
 	// Models are tried in order; the next one is called when the previous fails.
 	Models []string `json:"models"`
 }
+
+// StaticModelRefs returns the model names a graph references in the
+// configuration of its nodes: model, model_ref and model_fallback. Names
+// reaching a model_name port at run time are not static references.
+func StaticModelRefs(graph *PipelineGraph) []string {
+	if graph == nil {
+		return nil
+	}
+	var refs []string
+	for _, node := range graph.Nodes {
+		if node.Data == nil {
+			continue
+		}
+		switch node.Type {
+		case NodeTypeModel, NodeTypeModelRef:
+			var d ModelNodeData
+			if err := json.Unmarshal(node.Data, &d); err == nil && d.ProxyName != "" && !d.Passthrough {
+				refs = append(refs, d.ProxyName)
+			}
+		case NodeTypeModelFallback:
+			var d ModelFallbackNodeData
+			if err := json.Unmarshal(node.Data, &d); err == nil {
+				for _, m := range d.Models {
+					if m != "" {
+						refs = append(refs, m)
+					}
+				}
+			}
+		}
+	}
+	return refs
+}

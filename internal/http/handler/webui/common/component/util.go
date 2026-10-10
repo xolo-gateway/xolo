@@ -25,6 +25,16 @@ func HasPermission(ctx context.Context, orgID model.OrgID, perm rbac.Permission)
 	return perms.IsOwner() || perms.Has(perm)
 }
 
+// HasPermissionInAnyTeam reports whether the current user holds perm on the
+// organization or through a role held on at least one of its teams.
+func HasPermissionInAnyTeam(ctx context.Context, orgID model.OrgID, perm rbac.Permission) bool {
+	perms, err := httpCtx.ResolvePermissions(ctx, orgID)
+	if err != nil {
+		return false
+	}
+	return perms.HasInAnyTeam(perm)
+}
+
 var (
 	WithPath        = httpURL.WithPath
 	WithoutValues   = httpURL.WithoutValues
@@ -123,19 +133,15 @@ func HasPermissionInAnyOrg(ctx context.Context, perm rbac.Permission) bool {
 }
 
 // CanAccessModelsPage reports whether the current user can access the /models
-// page, i.e. has PermModelUseOrg, PermModelUseVirtual, or at least one
-// model-specific grant in any of their org memberships.
+// page, i.e. can use at least one model, organization-wide or through a team,
+// in any of their org memberships.
 func CanAccessModelsPage(ctx context.Context) bool {
 	for _, m := range httpCtx.Memberships(ctx) {
 		perms, err := httpCtx.ResolvePermissions(ctx, m.OrgID())
 		if err != nil {
 			continue
 		}
-		if perms.IsOwner() ||
-			perms.Has(rbac.PermModelUseOrg) ||
-			perms.Has(rbac.PermModelUseVirtual) ||
-			perms.HasAnyGrant(rbac.ModelKindLLM) ||
-			perms.HasAnyGrant(rbac.ModelKindVirtual) {
+		if perms.HasAnyModelAccess("") {
 			return true
 		}
 	}

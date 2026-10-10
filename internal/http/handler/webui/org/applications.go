@@ -162,10 +162,18 @@ func (h *Handler) getNewApplicationPage(w http.ResponseWriter, r *http.Request) 
 		}
 	}
 
+	teams, err := h.orgTeams(ctx, org.ID())
+	if err != nil {
+		slog.ErrorContext(ctx, "could not list teams", slogx.Error(err))
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+
 	vmodel := component.ApplicationFormVModel{
 		Org:             org,
 		OrgRoles:        orgRoles,
 		AssignedRoleIDs: assigned,
+		Teams:           teams,
 		IsNew:           true,
 		AppLayoutVModel: common.AppLayoutVModel{
 			User:         user,
@@ -219,7 +227,13 @@ func (h *Handler) createApplication(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	teamID, ok := h.selectedOrgTeam(w, r, org.ID())
+	if !ok {
+		return
+	}
+
 	app := model.NewApplication(org.ID(), name, description, true)
+	app.SetTeamID(teamID)
 	if err := h.applicationStore.CreateApplication(ctx, app); err != nil {
 		if webcommon.RejectLocked(w, r, err) {
 			return
@@ -327,6 +341,13 @@ func (h *Handler) renderEditApplicationPage(w http.ResponseWriter, r *http.Reque
 	}
 	quotaEditURL := common.BaseURLString(ctx, common.WithPath("/orgs/", orgSlug, "/admin/applications/", appID, "/quota"))
 
+	teams, err := h.orgTeams(ctx, org.ID())
+	if err != nil {
+		slog.ErrorContext(ctx, "could not list teams", slogx.Error(err))
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+
 	vmodel := component.ApplicationFormVModel{
 		Org:             org,
 		App:             app,
@@ -334,6 +355,7 @@ func (h *Handler) renderEditApplicationPage(w http.ResponseWriter, r *http.Reque
 		CreatedToken:    createdToken,
 		OrgRoles:        orgRoles,
 		AssignedRoleIDs: assigned,
+		Teams:           teams,
 		IsNew:           false,
 		QuotaSummary:    quotaSummary,
 		QuotaEditURL:    quotaEditURL,
@@ -422,10 +444,16 @@ func (h *Handler) updateApplication(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	teamID, ok := h.selectedOrgTeam(w, r, app.OrgID())
+	if !ok {
+		return
+	}
+
 	updated := model.UpdateApplication(app,
 		model.WithApplicationName(name),
 		model.WithApplicationDescription(description),
 		model.WithApplicationActive(active),
+		model.WithApplicationTeamID(teamID),
 	)
 
 	if err := h.applicationStore.UpdateApplication(ctx, updated); err != nil {
@@ -560,4 +588,34 @@ func generateTokenValue() string {
 	b := make([]byte, 32)
 	rand.Read(b)
 	return "xapp_" + hex.EncodeToString(b)
+}
+
+// orgTeams lists the teams of the organization, none when teams are not
+// enabled.
+func (h *Handler) orgTeams(ctx context.Context, orgID model.OrgID) ([]model.Team, error) {
+	if h.teamStore == nil {
+		return nil, nil
+	}
+	return h.teamStore.ListOrgTeams(ctx, orgID)
+}
+
+// selectedOrgTeam reads the team_id field of the form: empty, or a team of
+// the organization, so that a forged form can never bind a team of another
+// organization. It writes the response and returns false otherwise.
+func (h *Handler) selectedOrgTeam(w http.ResponseWriter, r *http.Request, orgID model.OrgID) (model.TeamID, bool) {
+	id := model.TeamID(r.FormValue("team_id"))
+	if id == "" || h.teamStore == nil {
+		return "", true
+	}
+	team, err := h.teamStore.GetTeamByID(r.Context(), id)
+	if errors.Is(err, port.ErrNotFound) || (err == nil && team.OrgID() != orgID) {
+		http.Error(w, "Team not found", http.StatusBadRequest)
+		return "", false
+	}
+	if err != nil {
+		slog.ErrorContext(r.Context(), "could not load team", slogx.Error(err))
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return "", false
+	}
+	return team.ID(), true
 }

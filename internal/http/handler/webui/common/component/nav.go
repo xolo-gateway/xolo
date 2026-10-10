@@ -171,12 +171,19 @@ func OrgNavGroups(ctx context.Context, slug string, orgID model.OrgID, selected 
 			Label: "Membres", Href: href("/admin/members"), Icon: icon.Users, Active: selected == prefix+"members",
 		})
 	}
+	// A team lead sees the teams it holds a role on, without teams:read.
+	if HasPermission(ctx, orgID, rbac.PermTeamsRead) || HasPermissionInAnyTeam(ctx, orgID, rbac.PermMembersRead) ||
+		HasPermissionInAnyTeam(ctx, orgID, rbac.PermQuotaRead) {
+		governance.Items = append(governance.Items, NavEntry{
+			Label: "Équipes", Href: href("/admin/teams"), Icon: icon.UsersRound, Active: selected == prefix+"teams",
+		})
+	}
 	if HasPermission(ctx, orgID, rbac.PermRolesRead) {
 		governance.Items = append(governance.Items, NavEntry{
 			Label: "Rôles", Href: href("/admin/roles"), Icon: icon.Shield, Active: selected == prefix+"roles",
 		})
 	}
-	if HasPermission(ctx, orgID, rbac.PermInvitesRead) {
+	if HasPermissionInAnyTeam(ctx, orgID, rbac.PermInvitesRead) {
 		governance.Items = append(governance.Items, NavEntry{
 			Label: "Invitations", Href: href("/admin/invites"), Icon: icon.Mail, Active: selected == prefix+"invites",
 		})

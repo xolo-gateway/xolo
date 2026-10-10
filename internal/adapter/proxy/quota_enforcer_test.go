@@ -501,6 +501,11 @@ func (r appQuotaResolver) ResolveEffectiveQuotaForApplication(context.Context, m
 	return r.appQuota, r.orgQuota, nil
 }
 
+// ResolveTeamQuotas sets no team budget.
+func (r appQuotaResolver) ResolveTeamQuotas(context.Context, model.TeamID, model.UserID) (model.Quota, *model.EffectiveQuota, error) {
+	return nil, nil, nil
+}
+
 // fakeQuota implements model.Quota with the minimum the enforcer reads.
 type fakeQuota struct {
 	scope    model.QuotaScope
@@ -517,6 +522,7 @@ func (q *fakeQuota) Currency() string        { return q.currency }
 func (q *fakeQuota) DailyBudget() *int64     { return q.daily }
 func (q *fakeQuota) MonthlyBudget() *int64   { return q.monthly }
 func (q *fakeQuota) YearlyBudget() *int64    { return q.yearly }
+func (q *fakeQuota) Cascade() model.QuotaCascade { return model.QuotaCascadeFree }
 func (q *fakeQuota) CreatedAt() time.Time    { return time.Time{} }
 func (q *fakeQuota) UpdatedAt() time.Time    { return time.Time{} }
 

@@ -549,7 +549,7 @@ func TestRoles(t *testing.T) {
 		return svc.PutCustomRole(ctx, tenantID, orgID, key, model.MatchCondition{}, v)
 	}
 	role := func(name string, permissions ...string) model.CustomRoleSettings {
-		return model.CustomRoleSettings{Name: name, Description: "", Permissions: append([]string{}, permissions...), ModelGrants: []model.ModelGrantSettings{}}
+		return model.CustomRoleSettings{Name: name, Description: "", Permissions: append([]string{}, permissions...)}
 	}
 
 	t.Run("creates and updates a custom role", func(t *testing.T) {
@@ -589,13 +589,6 @@ func TestRoles(t *testing.T) {
 		_, err := putRole(svc, testTenantID, org.Org.ID(), uuid.NewString(), role("bogus", "not:a:permission"))
 		if !errors.Is(err, port.ErrInvalid) {
 			t.Errorf("permission: got %v, want %v", err, port.ErrInvalid)
-		}
-
-		v := role("bogus")
-		v.ModelGrants = []model.ModelGrantSettings{{ModelID: "m1", Kind: "wat"}}
-		_, err = putRole(svc, testTenantID, org.Org.ID(), uuid.NewString(), v)
-		if !errors.Is(err, port.ErrInvalid) {
-			t.Errorf("grant kind: got %v, want %v", err, port.ErrInvalid)
 		}
 	})
 

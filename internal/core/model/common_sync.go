@@ -29,15 +29,16 @@ const (
 	FamilyQuota       = "quota"
 	FamilyAlert       = "alert"
 	FamilyProvider    = "provider"
+	FamilyTeam        = "team"
 )
 
 // CommonFamilies lists the families of the common contract, parents first.
 var CommonFamilies = []string{FamilyTenant, FamilyTenantDomain, FamilyOrganization, FamilyMember, FamilyOrganizationMembership}
 
-// BusinessFamilies lists the business families, parents first: role grants
-// designate the models of providers, applications hold roles, quotas cap
-// applications.
-var BusinessFamilies = []string{FamilyProvider, FamilyCustomRole, FamilyApplication, FamilyQuota, FamilyAlert}
+// BusinessFamilies lists the business families, parents first: team grants
+// designate the models of providers, team members hold roles, applications
+// are bound to teams, quotas cap applications and teams.
+var BusinessFamilies = []string{FamilyProvider, FamilyCustomRole, FamilyTeam, FamilyApplication, FamilyQuota, FamilyAlert}
 
 // IsBusinessFamily tells whether family is a business family.
 func IsBusinessFamily(family string) bool { return slices.Contains(BusinessFamilies, family) }

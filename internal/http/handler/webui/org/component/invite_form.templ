@@ -30,6 +30,42 @@ templ InviteForm(vmodel InviteFormVModel) {
 									Laisser vide pour un lien utilisable par n'importe qui. 
 								}
 							</div>
+							if len(vmodel.Teams) > 0 {
+								<div class="space-y-2">
+									@form.Label(form.LabelProps{}) {
+										Équipe
+										if !vmodel.TeamOnly {
+											{ " (optionnel)" }
+										}
+									}
+									@selectbox.SelectBox(selectbox.Props{ID: "invite_team"}) {
+										@selectbox.Trigger(selectbox.TriggerProps{Name: "team_id", Attributes: inviteTeamAttributes(vmodel)}) {
+											@selectbox.Value(selectbox.ValueProps{Placeholder: "Aucune équipe"})
+										}
+										@selectbox.Content(selectbox.ContentProps{NoSearch: len(vmodel.Teams) < 8}) {
+											@selectbox.Group() {
+												if !vmodel.TeamOnly {
+													@selectbox.Item(selectbox.ItemProps{Value: "", Selected: true}) {
+														Aucune équipe
+													}
+												}
+												for i, team := range vmodel.Teams {
+													@selectbox.Item(selectbox.ItemProps{Value: string(team.ID()), Selected: vmodel.TeamOnly && i == 0}) {
+														{ team.Name() }
+													}
+												}
+											}
+										}
+									}
+									@form.Description() {
+										L'invité rejoint aussi cette équipe en rejoignant l'organisation.
+									}
+								</div>
+							}
+							if vmodel.TeamOnly {
+								<input type="hidden" name="role" value={ model.RoleMember }/>
+								<p class="text-sm text-muted-foreground">L'invité rejoint l'organisation avec le rôle de membre.</p>
+							} else {
 							<div class="space-y-2">
 								@form.Label(form.LabelProps{}) {
 									Rôle 
@@ -53,6 +89,7 @@ templ InviteForm(vmodel InviteFormVModel) {
 									}
 								}
 							</div>
+							}
 							<div class="space-y-2">
 								@form.Label(form.LabelProps{}) {
 									Date d'expiration (optionnel) 
@@ -76,4 +113,13 @@ templ InviteForm(vmodel InviteFormVModel) {
 			</form>
 		</div>
 	}
+}
+
+// inviteTeamAttributes makes the team required for a viewer inviting on its
+// teams only.
+func inviteTeamAttributes(vmodel InviteFormVModel) templ.Attributes {
+	if vmodel.TeamOnly {
+		return templ.Attributes{"required": "required"}
+	}
+	return nil
 }

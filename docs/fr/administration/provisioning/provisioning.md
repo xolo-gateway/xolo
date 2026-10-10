@@ -316,7 +316,7 @@ sans représentation ni donnée personnelle :
 - `type` vaut `<resource_type>.created.v1`, `.updated.v1` ou `.deleted.v1`, où
   `resource_type` est `tenant`, `tenant_domain`, `organization`, `member`,
   `organization_membership` ou l'une des familles métier `provider`,
-  `custom_role`, `application`, `quota` et `alert`. Une suppression ne porte
+  `custom_role`, `team`, `application`, `quota` et `alert`. Une suppression ne porte
   pas d'`etag`.
 - **Un événement par ressource et par commit.** Un no-op ou une transaction
   annulée ne publie rien. Dans un commit, les suppressions viennent d'abord,
@@ -541,13 +541,14 @@ sont refusés.
 
 ## Ressources métier
 
-Cinq familles propres à Xolo suivent le même contrat que les familles
+Six familles propres à Xolo suivent le même contrat que les familles
 communes : lecture unitaire avec `ETag`, listes paginées, `PUT` conditionnels
 et événements. Le manifeste annonce `business_resources`.
 
 | Méthode | Route |
 |---|---|
 | `GET`, `GET`, `PUT`, `DELETE` | `/v1/xolo/tenants/{tenantID}/organizations/{orgID}/roles[/{key}]` |
+| `GET`, `GET`, `PUT`, `DELETE` | `/v1/xolo/tenants/{tenantID}/organizations/{orgID}/teams[/{key}]` |
 | `GET`, `GET`, `PUT`, `DELETE` | `/v1/xolo/tenants/{tenantID}/organizations/{orgID}/applications[/{key}]` |
 | `GET`, `GET`, `PUT`, `DELETE` | `/v1/xolo/tenants/{tenantID}/organizations/{orgID}/alerts[/{key}]` |
 | `GET`, `GET`, `PUT`, `DELETE` | `/v1/xolo/tenants/{tenantID}/organizations/{orgID}/providers[/{key}]` |
@@ -560,9 +561,10 @@ Les représentations sont en snake_case et complètes : chaque champ est requis,
 
 | Famille | Représentation |
 |---|---|
-| `custom_role` | `{"name","description","permissions":[…],"model_grants":[{"model_id","kind"}]}` |
-| `application` | `{"name","description","active","role_ids":[…]}` |
-| `quota` | `{"scope","scope_id","currency","daily_budget","monthly_budget","yearly_budget"}`, budgets en microcents ou `null` |
+| `custom_role` | `{"name","description","permissions":[…]}` |
+| `team` | `{"slug","name","description","share_quota_equally","model_grants":[{"model_id","kind"}],"middleware_ids":[…],"members":[{"user_id","role_ids":[…]}]}` |
+| `application` | `{"name","description","active","role_ids":[…]}`, plus `"team_id"` facultatif (vide pour aucune équipe) |
+| `quota` | `{"scope","scope_id","currency","daily_budget","monthly_budget","yearly_budget"}`, budgets en microcents ou `null`, plus `"cascade"` facultatif (`free` par défaut, `capped` ou `split`) |
 | `alert` | `{"name","description","scope","owner_id","query","aggregation","window_seconds","comparator","threshold","for_seconds","enabled"}` |
 | `provider` | `{"name","type","base_url","active","currency","cloud_tier","billing_mode","subscription_plan","retry_config","rate_limit_config"}`, les trois derniers `null` ou objets, plus `"api_key"` en écriture seule |
 
@@ -572,17 +574,30 @@ Les représentations sont en snake_case et complètes : chaque champ est requis,
   événements et les éléments de liste portent la clé dans `key.resource_id`,
   avec `key.organization_id` sauf pour les quotas.
 - **Parents.** Chaque référence est vérifiée dans la transaction de
-  l'écriture. Un grant désigne un modèle de l'organisation (et, pour un modèle
-  LLM, un provider de l'organisation) ; `role_ids` désigne des rôles de
-  l'organisation ; un quota plafonne une organisation du tenant, un membre du
-  tenant ou une application d'une de ses organisations ; le propriétaire d'une
+  l'écriture. Un grant d'équipe désigne un modèle de l'organisation (et, pour un modèle
+  LLM, un provider de l'organisation) ; `middleware_ids` désigne des
+  middlewares de l'organisation ; un membre d'équipe est un membre de
+  l'organisation, et ses `role_ids`, comme ceux d'une application, désignent
+  des rôles de l'organisation ; `team_id` désigne une équipe de l'organisation ;
+  un quota plafonne une organisation du tenant, un membre du tenant, une
+  application ou une équipe d'une de ses organisations, ou un membre d'une
+  équipe (portée `team_member`, `scope_id` `<team_id>:<user_id>`) ; le propriétaire d'une
   alerte est un membre actif de l'organisation, obligatoire pour une alerte
   `personal`. Un parent absent ou étranger répond `404 parent_not_found` ; une
   ressource d'une autre organisation ou d'un autre tenant répond
   `404 not_found`, comme une ressource absente.
 - **Champs immuables.** Le `scope` et le `scope_id` d'un quota, le `scope` et
-  l'`owner_id` d'une alerte ne changent jamais (`409 conflict`). Une portée
-  porte un seul quota : une autre clé sur la même portée répond `409 conflict`.
+  l'`owner_id` d'une alerte, le `slug` d'une équipe ne changent jamais
+  (`409 conflict`). Une portée porte un seul quota : une autre clé sur la même
+  portée répond `409 conflict`. Le `slug` d'une équipe suit le format des slugs
+  d'organisation et ne peut pas commencer le nom d'un modèle de l'organisation
+  (`409 conflict`).
+- **Répartition des budgets.** Le `cascade` d'un quota d'organisation ou
+  d'équipe contraint les quotas de ses équipes ou de ses membres à leur
+  écriture : `capped`, chacun au plus égal au parent, période par période ;
+  `split`, leur somme au plus égale au parent. Un quota qui la viole, enfant ou
+  parent, répond `422`. Seuls les quotas `org` et `team` en portent un autre
+  que `free`.
 - **Normalisation.** Permissions, grants et identifiants de rôles sont triés
   et dédoublonnés : un rejeu dans un autre ordre est un no-op.
 - **L'état d'exécution reste hors du contrat.** Un `PUT` de quota conserve la
@@ -600,7 +615,9 @@ Les représentations sont en snake_case et complètes : chaque champ est requis,
   un `If-Match` facultatif, et publie `<family>.deleted.v1`. Supprimer une
   ressource absente, ou celle d'une autre organisation, ne change rien, sauf si
   `If-Match` désigne une révision (`412`). Supprimer une application retire ses
-  rôles, ses jetons et son quota ; un provider, ses modèles ; un quota conserve
+  rôles, ses jetons et son quota ; un provider, ses modèles ; une équipe, ses
+  membres et ses quotas, et elle est refusée (`409 conflict`) tant qu'une
+  application y est rattachée ; un quota conserve
   la consommation enregistrée sur son périmètre. Un rôle intégré est refusé
   (`409 conflict`). Un périmètre gelé les refuse toutes
   (`409 resource_deleted`). Elles ne dépendent pas de
@@ -609,6 +626,11 @@ Les représentations sont en snake_case et complètes : chaque champ est requis,
   migration `202610120001` projette les ressources métier existantes sans
   publier d'événement ; comme les précédentes, elle exige l'arrêt de tous les
   serveurs.
+- La migration `202610150001` introduit les équipes : chaque rôle
+  personnalisé qui autorisait des modèles devient une équipe, publiée avec
+  `team.created.v1`, et les représentations des rôles (sans `model_grants`),
+  des applications (avec `team_id`) et des quotas (avec `cascade`) sont
+  publiées de nouveau quand elles changent.
 
 Limite connue : le cache de chaque processus garde valides les jetons d'une
 application désactivée jusqu'à l'expiration de ses entrées
@@ -623,7 +645,7 @@ invitations), le système de pilotage (cet écouteur), ou les deux.
 
 | Variable | Défaut | Description |
 |---|---|---|
-| `XOLO_OWNERSHIP` | — | Paires `famille=autorité` séparées par des virgules. Familles : `tenant`, `tenant_domain`, `organization`, `member`, `organization_membership`, `subscription`, et les familles métier `provider`, `custom_role`, `application`, `quota`, `alert`. Autorités : `shared`, `local`, `control_plane`. Les familles omises valent `shared` ; une famille ou une autorité inconnue empêche le démarrage. |
+| `XOLO_OWNERSHIP` | — | Paires `famille=autorité` séparées par des virgules. Familles : `tenant`, `tenant_domain`, `organization`, `member`, `organization_membership`, `subscription`, et les familles métier `provider`, `custom_role`, `team`, `application`, `quota`, `alert`. Autorités : `shared`, `local`, `control_plane`. Les familles omises valent `shared` ; une famille ou une autorité inconnue empêche le démarrage. |
 
 ```dotenv
 XOLO_OWNERSHIP=tenant=control_plane,tenant_domain=control_plane,organization=control_plane,member=control_plane,organization_membership=control_plane,subscription=control_plane
@@ -984,7 +1006,7 @@ actuel.
 | `…/organizations/{orgID}/roles[/{roleID}]` (toutes méthodes) | `/v1/xolo/…/organizations/{orgID}/roles[/{key}]`, avec les changements ci-dessous |
 | `GET /v1/xolo/…/roles` (intégrés et personnalisés, `roleDTO` en camelCase) | `GET /v1/xolo/…/roles` liste les rôles personnalisés en page de projections ; les rôles intégrés via `GET /v1/xolo/…/roles/builtin` |
 | `GET /v1/xolo/…/roles/{roleID}` (`roleDTO` en camelCase) | Même route : la représentation snake_case et son `ETag` |
-| `POST /v1/xolo/…/roles` `{name, description?, permissions?, modelGrants?}` | Même route, la représentation snake_case complète `{name, description, permissions, model_grants}` ; `201` avec `{key, representation, etag}` |
+| `POST /v1/xolo/…/roles` `{name, description?, permissions?, modelGrants?}` | Même route, la représentation snake_case complète `{name, description, permissions}` ; `201` avec `{key, representation, etag}`. Les accès aux modèles passent par les équipes : `/v1/xolo/…/teams/{key}` |
 | `PUT /v1/xolo/…/roles/{roleID}` partiel `{name?, description?, permissions?, modelGrants?}` | Même route, la représentation complète, `If-Match` optionnel ; crée le rôle sous un UUID de votre choix |
 | `GET`, `PUT /v1/tenants/{tenantID}/users` | `GET`, `PUT /v1/xolo/tenants/{tenantID}/users` (mêmes corps) |
 | `GET /v1/tenants/{tenantID}/users/{userID}` | `GET /v1/xolo/tenants/{tenantID}/users/{userID}` |

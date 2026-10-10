@@ -1140,7 +1140,7 @@ func TestMemberEndpoints(t *testing.T) {
 
 // roleBody is a complete custom role representation.
 func roleBody(name string, permissions ...string) map[string]any {
-	return map[string]any{"name": name, "description": "", "permissions": append([]string{}, permissions...), "model_grants": []any{}}
+	return map[string]any{"name": name, "description": "", "permissions": append([]string{}, permissions...)}
 }
 
 // createdKey reads the key of a resource created by POST.

@@ -13,6 +13,7 @@ import (
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/icon"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/input"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/label"
+	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/selectbox"
 	switchcomp "github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/switch"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/table"
 )
@@ -39,6 +40,8 @@ type ApplicationFormVModel struct {
 	CreatedToken    string
 	OrgRoles        []model.Role
 	AssignedRoleIDs map[model.RoleID]bool
+	// Teams are the teams the application can be bound to.
+	Teams []model.Team
 	IsNew           bool
 	Error           string
 	// QuotaSummary is a short description of the budget currently set on the
@@ -285,14 +288,15 @@ templ ApplicationForm(vmodel ApplicationFormVModel) {
 						}
 						@common.SectionBody(common.SectionBodyProps{Class: "flex flex-col gap-3.5"}) {
 							<p class="text-sm text-muted-foreground">
-								Les rôles déterminent les modèles et les sections d'administration
-								accessibles aux jetons de cette application.
+								Les rôles déterminent les sections d'administration accessibles aux
+								jetons de cette application, et l'accès à tous les modèles de
+								l'organisation.
 							</p>
 							if len(vmodel.OrgRoles) == 0 {
 								<p class="text-sm text-muted-foreground">Aucun rôle défini dans cette organisation.</p>
 							} else {
-								if !vmodel.HasAssignedRole() {
-									@common.InfoBanner(common.ToneNegative, "Sans rôle, cette application ne peut accéder à aucun modèle : ses appels API sont rejetés.")
+								if !vmodel.HasAssignedRole() && applicationTeamID(vmodel) == "" {
+									@common.InfoBanner(common.ToneNegative, "Sans rôle ni équipe, cette application ne peut accéder à aucun modèle : ses appels API sont rejetés.")
 								}
 								<div class="flex flex-col gap-3">
 									for _, role := range vmodel.OrgRoles {
@@ -315,6 +319,36 @@ templ ApplicationForm(vmodel ApplicationFormVModel) {
 										</div>
 									}
 								</div>
+							}
+						}
+					}
+					@common.Section() {
+						@common.SectionHeader() {
+							@common.SectionTitle() {
+								Équipe
+							}
+						}
+						@common.SectionBody(common.SectionBodyProps{Class: "flex flex-col gap-3.5"}) {
+							<p class="text-sm text-muted-foreground">
+								Une application rattachée à une équipe utilise les modèles de l'équipe,
+								et toutes ses requêtes sont débitées sur le budget de l'équipe.
+							</p>
+							@selectbox.SelectBox(selectbox.Props{ID: "application-team"}) {
+								@selectbox.Trigger(selectbox.TriggerProps{Name: "team_id", Disabled: readonly}) {
+									@selectbox.Value(selectbox.ValueProps{Placeholder: "Aucune équipe"})
+								}
+								@selectbox.Content(selectbox.ContentProps{NoSearch: len(vmodel.Teams) < 8}) {
+									@selectbox.Group() {
+										@selectbox.Item(selectbox.ItemProps{Value: "", Selected: applicationTeamID(vmodel) == ""}) {
+											Aucune équipe
+										}
+										for _, team := range vmodel.Teams {
+											@selectbox.Item(selectbox.ItemProps{Value: string(team.ID()), Selected: applicationTeamID(vmodel) == team.ID()}) {
+												{ team.Name() + " (" + team.Slug() + ")" }
+											}
+										}
+									}
+								}
 							}
 						}
 					}
@@ -502,4 +536,12 @@ func applicationDescription(vmodel ApplicationFormVModel) string {
 		return ""
 	}
 	return vmodel.App.Description()
+}
+
+// applicationTeamID returns the team the edited application is bound to.
+func applicationTeamID(vmodel ApplicationFormVModel) model.TeamID {
+	if vmodel.App == nil {
+		return ""
+	}
+	return vmodel.App.TeamID()
 }

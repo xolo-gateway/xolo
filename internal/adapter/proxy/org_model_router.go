@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log/slog"
 	"reflect"
-	"strings"
 	"sync"
 	"time"
 
@@ -18,6 +17,7 @@ import (
 	"github.com/xolo-gateway/xolo/internal/core/model"
 	"github.com/xolo-gateway/xolo/internal/core/port"
 	"github.com/xolo-gateway/xolo/internal/core/rbac"
+	"github.com/xolo-gateway/xolo/internal/core/service"
 	"github.com/xolo-gateway/xolo/internal/crypto"
 	httpCtx "github.com/xolo-gateway/xolo/internal/http/context"
 	"github.com/hashicorp/golang-lru/v2/expirable"
@@ -124,12 +124,13 @@ func (r *OrgModelRouter) ResolveModel(ctx context.Context, req *genaiProxy.Proxy
 	}
 
 	// Enforce RBAC: the user must be allowed to use this model, either through
-	// the generic org-model-usage permission or an explicit model grant.
+	// the organization-wide model access or the team the request is
+	// attributed to.
 	perms, err := httpCtx.ResolvePermissions(ctx, org.ID())
 	if err != nil {
 		return nil, "", errors.WithStack(err)
 	}
-	if !perms.IsOwner() && !perms.Has(rbac.PermModelUseOrg) && !perms.HasModelAccess(string(llmModel.ID()), rbac.ModelKindLLM) {
+	if !perms.CanUseModel(string(TeamIDFromMeta(req.Metadata)), string(llmModel.ID()), rbac.ModelKindLLM) {
 		return nil, "", errors.Errorf("model '%s' not available in your organization", req.Model)
 	}
 
@@ -283,40 +284,51 @@ func (r *OrgModelRouter) ListModels(ctx context.Context) ([]genaiProxy.ModelInfo
 		return nil, errors.WithStack(err)
 	}
 
+	bound := BoundTeamIDFromContext(ctx)
 	infos := make([]genaiProxy.ModelInfo, 0, len(models))
 	for _, m := range models {
-		if !perms.IsOwner() && !perms.Has(rbac.PermModelUseOrg) && !perms.HasModelAccess(string(m.ID()), rbac.ModelKindLLM) {
-			continue
+		for _, name := range service.ListedModelNames(perms, bound, org.Slug(), m.ProxyName(), string(m.ID()), rbac.ModelKindLLM) {
+			infos = append(infos, genaiProxy.ModelInfo{ID: name, OwnedBy: "xolo"})
 		}
-		infos = append(infos, genaiProxy.ModelInfo{
-			ID:      org.Slug() + "/" + m.ProxyName(),
-			OwnedBy: "xolo",
-		})
 	}
 	return infos, nil
 }
 
 // ResolveRealModel implements pipeline.ModelResolver.
-// proxyName may be local ("mistral-small") or qualified ("cadoles/mistral-small").
-// When qualified, the org slug in the name takes precedence over the orgID parameter,
-// allowing personal virtual models to reference models from any org by full name.
+// proxyName may be local ("mistral-small") or qualified ("cadoles/mistral-small"),
+// without team segment: the pipeline strips it. When qualified, the org slug in
+// the name takes precedence over the orgID parameter, allowing personal virtual
+// models to reference models from any org by full name. A first segment that
+// names no organization is first read as part of a local name holding a slash
+// ("meta/llama-3"), then dropped. Access to the model is the pipeline's to
+// check.
 func (r *OrgModelRouter) ResolveRealModel(ctx context.Context, orgID model.OrgID, proxyName string) (llm.Client, string, model.LLMModelID, error) {
-	if idx := strings.IndexByte(proxyName, '/'); idx > 0 {
-		orgSlug := proxyName[:idx]
-		proxyName = proxyName[idx+1:]
-		if org, err := r.orgStore.GetOrgBySlug(ctx, httpCtx.TenantID(ctx), orgSlug); err == nil {
+	name, ok := model.ParseModelName(proxyName, nil)
+	if !ok || name.Personal() {
+		return nil, "", "", errors.Errorf("model '%s' not available in organization", proxyName)
+	}
+	if name.Qualified() {
+		if org, err := r.orgStore.GetOrgBySlug(ctx, httpCtx.TenantID(ctx), name.Org); err == nil {
 			// When the referenced org differs from the token's org, verify that the
 			// requesting user is actually a member of that org.
 			if org.ID() != orgID {
 				if err := r.assertOrgMembership(ctx, org.ID()); err != nil {
-					return nil, "", "", errors.Errorf("model '%s/%s' not available in your organizations", orgSlug, proxyName)
+					return nil, "", "", errors.Errorf("model '%s' not available in your organizations", proxyName)
 				}
 			}
 			orgID = org.ID()
+			proxyName = name.Local
 		}
 	}
 
 	llmModel, err := r.providerStore.GetLLMModelByProxyName(ctx, orgID, proxyName)
+	if errors.Is(err, port.ErrNotFound) && name.Qualified() && proxyName != name.Local {
+		// The first segment named no organization reachable from this
+		// context (a plugin calling the host carries no tenant): read it as
+		// the organization of orgID, as the name of a model of orgID.
+		proxyName = name.Local
+		llmModel, err = r.providerStore.GetLLMModelByProxyName(ctx, orgID, proxyName)
+	}
 	if err != nil {
 		if errors.Is(err, port.ErrNotFound) {
 			return nil, "", "", errors.Errorf("model '%s' not available in organization", proxyName)
@@ -351,13 +363,14 @@ func (r *OrgModelRouter) assertOrgMembership(ctx context.Context, orgID model.Or
 	return errors.New("not a member of this organization")
 }
 
-// parseQualifiedModelName splits "org-slug/model-name" into its two parts.
+// parseQualifiedModelName splits "org-slug/model-name" into its two parts. The
+// name reaching the hooks has lost its team segment (see TeamScopeHook).
 func parseQualifiedModelName(name string) (orgSlug, proxyName string, err error) {
-	idx := strings.IndexByte(name, '/')
-	if idx <= 0 || idx == len(name)-1 {
+	n, ok := model.ParseModelName(name, nil)
+	if !ok || !n.Qualified() || n.Personal() {
 		return "", "", errors.New("expected format \"<org-slug>/<model-name>\"")
 	}
-	return name[:idx], name[idx+1:], nil
+	return n.Org, n.Local, nil
 }
 
 var _ genaiProxy.ModelResolverHook = &OrgModelRouter{}

@@ -29,6 +29,7 @@ Une invitation est un lien qui permet à un utilisateur de rejoindre votre organ
 | Champ | Description |
 |-------|-------------|
 | **Email de l'invité** | Email du destinataire (optionnel — laisser vide pour un lien ouvert) |
+| **Équipe** | Équipe que l'utilisateur rejoint en même temps que l'organisation (optionnel) |
 | **Rôle** | Rôle attribué à l'utilisateur à son arrivée (Membre, Admin, etc.) |
 | **Date d'expiration** | Date limite d'utilisation du lien (optionnel) |
 | **Nombre max d'utilisations** | Limite d'utilisations du lien (optionnel) |
@@ -85,6 +86,8 @@ Pour chaque invitation, plusieurs actions sont disponibles :
 |--------|-------------------|
 | Consulter les invitations | `invites:read` |
 | Créer, révoquer, supprimer | `invites:write` |
+
+Ces permissions peuvent être détenues sur une [équipe](../equipes/equipes.md) seulement. Leur détenteur voit et gère les invitations de cette équipe, et ses invitations font rejoindre l'organisation avec le rôle Membre et l'équipe.
 
 ## Acceptation et refus
 

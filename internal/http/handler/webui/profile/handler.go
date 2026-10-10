@@ -32,6 +32,14 @@ type Handler struct {
 	personalVMStore   port.PersonalVirtualModelStore
 	secretStore       port.SecretStore
 	pluginManager     pluginManagerIface
+	// teamStore enables the team pickers of tokens and personal virtual
+	// models, see SetTeams.
+	teamStore port.TeamStore
+}
+
+// SetTeams enables the team pickers of tokens and personal virtual models.
+func (h *Handler) SetTeams(teams port.TeamStore) {
+	h.teamStore = teams
 }
 
 // ServeHTTP implements http.Handler.
@@ -129,9 +137,17 @@ func (h *Handler) renderTokensPage(w http.ResponseWriter, r *http.Request, creat
 
 	deletedToken := r.URL.Query().Get("token_deleted")
 
+	teams, err := h.userTeams(ctx, user.ID())
+	if err != nil {
+		slog.ErrorContext(ctx, "could not list user teams", slogx.Error(err))
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+
 	vmodel := component.TokensPageVModel{
 		AuthTokens:     tokens,
 		OrgMemberships: memberships,
+		Teams:          teams,
 		CreatedToken:   createdToken,
 		DeletedToken:   deletedToken != "",
 		AppLayoutVModel: common.AppLayoutVModel{
@@ -186,7 +202,17 @@ func (h *Handler) createToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	team, ok := h.formTeam(w, r, user.ID())
+	if !ok {
+		return
+	}
+	if team.TeamID != "" && team.OrgID != orgID {
+		http.Error(w, "L'équipe n'appartient pas à l'organisation choisie", http.StatusBadRequest)
+		return
+	}
+
 	authToken := model.NewAuthToken(user, orgID, label, tokenValue, expiresAt)
+	authToken.SetTeamID(team.TeamID)
 	if err := h.userStore.CreateAuthToken(ctx, authToken); err != nil {
 		slog.ErrorContext(ctx, "could not create auth token", slogx.Error(err))
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)

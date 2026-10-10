@@ -83,3 +83,44 @@ func TestBusinessEndpoints(t *testing.T) {
 	rec = call(t, env.handler, http.MethodGet, strings.Replace(providers, orgID, uuid.NewString(), 1), nil)
 	assertStatus(t, rec, http.StatusNotFound)
 }
+
+func TestTeamEndpoints(t *testing.T) {
+	env := newEnv(t, service.WithSecretKey(testSecretKey))
+	orgID, _ := createOrganization(t, env.handler, env.tenantID, "acme", false)
+	teams := env.xoloBase + "/organizations/" + orgID + "/teams"
+	key := uuid.NewString()
+	body := map[string]any{
+		"slug": "legal", "name": "Juridique", "description": "", "share_quota_equally": false,
+		"model_grants": []any{}, "middleware_ids": []any{}, "members": []any{},
+	}
+
+	rec := call(t, env.handler, http.MethodPut, teams+"/"+key, body)
+	assertStatus(t, rec, http.StatusOK)
+	require.Equal(t, "legal", decodeBody(t, rec)["slug"])
+
+	rec = call(t, env.handler, http.MethodGet, teams, nil)
+	assertStatus(t, rec, http.StatusOK)
+	require.Len(t, decodeBody(t, rec)["items"], 1)
+
+	// The slug of a team never changes: clients store model names with it.
+	body["slug"] = "renamed"
+	rec = call(t, env.handler, http.MethodPut, teams+"/"+key, body)
+	require.Contains(t, []int{http.StatusConflict, http.StatusUnprocessableEntity}, rec.Code, rec.Body.String())
+
+	body["slug"] = "legal"
+	delete(body, "members")
+	rec = call(t, env.handler, http.MethodPut, teams+"/"+key, body)
+	assertStatus(t, rec, http.StatusBadRequest)
+
+	// A team budget hangs from the tenant, like every quota.
+	rec = call(t, env.handler, http.MethodPut, env.xoloBase+"/quotas/"+uuid.NewString(), map[string]any{
+		"scope": "team", "scope_id": key, "currency": "EUR", "daily_budget": nil, "monthly_budget": 1000, "yearly_budget": nil, "cascade": "split",
+	})
+	assertStatus(t, rec, http.StatusOK)
+	require.Equal(t, "split", decodeBody(t, rec)["cascade"])
+
+	rec = call(t, env.handler, http.MethodDelete, teams+"/"+key, nil)
+	require.Contains(t, []int{http.StatusOK, http.StatusNoContent}, rec.Code, rec.Body.String())
+	rec = call(t, env.handler, http.MethodGet, teams+"/"+key, nil)
+	assertStatus(t, rec, http.StatusNotFound)
+}

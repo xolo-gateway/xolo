@@ -334,7 +334,9 @@ func (e *ContextExecutor) Forward(_ context.Context, node model.PipelineNode, _ 
 		"org_id":          ec.OrgID,
 		"token_id":        ec.TokenID,
 		"display_name":    ec.DisplayName,
-		"requested_model": ec.TargetModelName,
+		"requested_model": requestedModel(ec),
+		"team_id":         ec.TeamID,
+		"team_slug":       ec.TeamSlug,
 		"hour":            float64(now.Hour()) + float64(now.Minute())/60,
 		"weekday":         weekdays[wd],
 		"is_weekend":      wd == time.Saturday || wd == time.Sunday,
@@ -351,4 +353,16 @@ func NewNoteExecutor() *NoteExecutor { return &NoteExecutor{} }
 
 func (e *NoteExecutor) Forward(context.Context, model.PipelineNode, map[string]interface{}, ExecutionContext) (*ForwardResult, error) {
 	return &ForwardResult{OutputValues: map[string]interface{}{}}, nil
+}
+
+// requestedModel is the model the caller requested, as it sent it. Only a
+// middleware knows it.
+func requestedModel(ec ExecutionContext) string {
+	if ec.TargetModelName == "" {
+		return ""
+	}
+	if ec.RequestedModel != "" {
+		return ec.RequestedModel
+	}
+	return ec.TargetModelName
 }

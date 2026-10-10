@@ -50,11 +50,7 @@ func (h *Handler) canAccessModelsPage() authz.AssertFunc {
 			if err != nil {
 				return false, errors.WithStack(err)
 			}
-			if set.IsOwner() ||
-				set.Has(rbac.PermModelUseOrg) ||
-				set.Has(rbac.PermModelUseVirtual) ||
-				set.HasAnyGrant(rbac.ModelKindLLM) ||
-				set.HasAnyGrant(rbac.ModelKindVirtual) {
+			if set.HasAnyModelAccess("") {
 				return true, nil
 			}
 		}

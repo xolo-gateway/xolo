@@ -126,7 +126,6 @@ func (h *Handler) createRole(w http.ResponseWriter, r *http.Request) {
 
 	role := model.NewRole(org.ID(), name, strings.TrimSpace(r.FormValue("description")))
 	role.SetPermissions(parsePermissions(r))
-	role.SetModelGrants(parseModelGrants(r))
 
 	if err := h.roleStore.CreateRole(ctx, role); err != nil {
 		if webcommon.RejectLocked(w, r, err) {
@@ -180,7 +179,6 @@ func (h *Handler) updateRole(w http.ResponseWriter, r *http.Request) {
 
 	opts := []model.RoleOption{
 		model.WithRolePermissions(parsePermissions(r)),
-		model.WithRoleModelGrants(parseModelGrants(r)),
 	}
 	// Builtin role names/descriptions stay fixed; only custom roles can be renamed.
 	if !role.Builtin() {
@@ -357,21 +355,10 @@ func (h *Handler) renderRoleForm(w http.ResponseWriter, r *http.Request, org mod
 	orgSlug := org.Slug()
 
 	selected := map[string]bool{}
-	selectedModels := map[string]bool{}
 	if role != nil {
 		for _, code := range role.Permissions() {
 			selected[code] = true
 		}
-		for _, grant := range role.ModelGrants() {
-			selectedModels[modelGrantKey(grant.Kind, grant.ModelID)] = true
-		}
-	}
-
-	modelOptions, err := h.roleModelOptions(ctx, org.ID())
-	if err != nil {
-		slog.ErrorContext(ctx, "could not list models for role form", slogx.Error(err))
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-		return
 	}
 
 	title := "Nouveau rôle"
@@ -387,8 +374,6 @@ func (h *Handler) renderRoleForm(w http.ResponseWriter, r *http.Request, org mod
 		IsNew:        isNew,
 		Error:        formErr,
 		Selected:     selected,
-		SelectedMode: selectedModels,
-		ModelOptions: modelOptions,
 		AppLayoutVModel: common.AppLayoutVModel{
 			User:         user,
 			SelectedItem: "org-" + orgSlug + "-roles",
@@ -408,15 +393,17 @@ func (h *Handler) renderRoleForm(w http.ResponseWriter, r *http.Request, org mod
 	templ.Handler(component.RoleForm(vmodel)).ServeHTTP(w, r)
 }
 
-func (h *Handler) roleModelOptions(ctx context.Context, orgID model.OrgID) ([]component.RoleModelOption, error) {
-	var options []component.RoleModelOption
+// modelGrantOptions lists the models of the organization a team can be
+// granted, real ones first.
+func (h *Handler) modelGrantOptions(ctx context.Context, orgID model.OrgID) ([]component.ModelGrantOption, error) {
+	var options []component.ModelGrantOption
 
 	llmModels, err := h.providerStore.ListLLMModels(ctx, orgID)
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
 	for _, m := range llmModels {
-		options = append(options, component.RoleModelOption{
+		options = append(options, component.ModelGrantOption{
 			ID:    string(m.ID()),
 			Kind:  rbac.ModelKindLLM,
 			Label: m.ProxyName(),
@@ -428,7 +415,7 @@ func (h *Handler) roleModelOptions(ctx context.Context, orgID model.OrgID) ([]co
 		return nil, errors.WithStack(err)
 	}
 	for _, m := range virtualModels {
-		options = append(options, component.RoleModelOption{
+		options = append(options, component.ModelGrantOption{
 			ID:    string(m.ID()),
 			Kind:  rbac.ModelKindVirtual,
 			Label: m.Name(),

@@ -133,6 +133,8 @@ type UsageFilter struct {
 	ApplicationID  *model.ApplicationID
 	ApplicationIDs []model.ApplicationID
 	OrgID          *model.OrgID
+	// TeamID keeps the records attributed to the team.
+	TeamID         *model.TeamID
 	ModelID        *model.LLMModelID
 	ProviderID     *model.ProviderID
 	AuthTokenID    *string

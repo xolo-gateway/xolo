@@ -17,5 +17,9 @@ var getQuotaServiceFromConfig = createFromConfigOnce(func(ctx context.Context, c
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
-	return service.NewQuotaService(quotaStore, orgStore), nil
+	teamStore, err := getTeamStoreFromConfig(ctx, conf)
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+	return service.NewQuotaService(quotaStore, orgStore, service.WithQuotaTeams(teamStore)), nil
 })

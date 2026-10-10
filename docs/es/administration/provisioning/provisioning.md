@@ -306,7 +306,7 @@ sin representación ni datos personales:
 - `type` es `<resource_type>.created.v1`, `.updated.v1` o `.deleted.v1`, donde
   `resource_type` es `tenant`, `tenant_domain`, `organization`, `member`,
   `organization_membership` o una de las familias de negocio `provider`,
-  `custom_role`, `application`, `quota` y `alert`. Una eliminación no lleva
+  `custom_role`, `team`, `application`, `quota` y `alert`. Una eliminación no lleva
   `etag`.
 - **Un evento por recurso y por commit.** Una operación sin cambios o una
   transacción revertida no publica nada. Dentro de un commit, las eliminaciones
@@ -527,13 +527,14 @@ se rechazan.
 
 ## Recursos de negocio
 
-Cinco familias propias de Xolo siguen el mismo contrato que las familias
+Seis familias propias de Xolo siguen el mismo contrato que las familias
 comunes: lectura unitaria con `ETag`, listas paginadas, `PUT` condicionales y
 eventos. El manifiesto anuncia `business_resources`.
 
 | Método | Ruta |
 |---|---|
 | `GET`, `GET`, `PUT`, `DELETE` | `/v1/xolo/tenants/{tenantID}/organizations/{orgID}/roles[/{key}]` |
+| `GET`, `GET`, `PUT`, `DELETE` | `/v1/xolo/tenants/{tenantID}/organizations/{orgID}/teams[/{key}]` |
 | `GET`, `GET`, `PUT`, `DELETE` | `/v1/xolo/tenants/{tenantID}/organizations/{orgID}/applications[/{key}]` |
 | `GET`, `GET`, `PUT`, `DELETE` | `/v1/xolo/tenants/{tenantID}/organizations/{orgID}/alerts[/{key}]` |
 | `GET`, `GET`, `PUT`, `DELETE` | `/v1/xolo/tenants/{tenantID}/organizations/{orgID}/providers[/{key}]` |
@@ -546,9 +547,10 @@ obligatorio, `null` solo donde se indica.
 
 | Familia | Representación |
 |---|---|
-| `custom_role` | `{"name","description","permissions":[…],"model_grants":[{"model_id","kind"}]}` |
-| `application` | `{"name","description","active","role_ids":[…]}` |
-| `quota` | `{"scope","scope_id","currency","daily_budget","monthly_budget","yearly_budget"}`, presupuestos en microcéntimos o `null` |
+| `custom_role` | `{"name","description","permissions":[…]}` |
+| `team` | `{"slug","name","description","share_quota_equally","model_grants":[{"model_id","kind"}],"middleware_ids":[…],"members":[{"user_id","role_ids":[…]}]}` |
+| `application` | `{"name","description","active","role_ids":[…]}`, más un `"team_id"` opcional (vacío para ningún equipo) |
+| `quota` | `{"scope","scope_id","currency","daily_budget","monthly_budget","yearly_budget"}`, presupuestos en microcéntimos o `null`, más un `"cascade"` opcional (`free` por defecto, `capped` o `split`) |
 | `alert` | `{"name","description","scope","owner_id","query","aggregation","window_seconds","comparator","threshold","for_seconds","enabled"}` |
 | `provider` | `{"name","type","base_url","active","currency","cloud_tier","billing_mode","subscription_plan","retry_config","rate_limit_config"}`, los tres últimos `null` u objetos, más `"api_key"` de solo escritura |
 
@@ -558,16 +560,29 @@ obligatorio, `null` solo donde se indica.
   los elementos de lista llevan la clave en `key.resource_id`, con
   `key.organization_id` salvo para las cuotas.
 - **Padres.** Cada referencia se comprueba en la transacción de la escritura.
-  Un grant designa un modelo de la organización (y, para un modelo LLM, un
-  proveedor de la organización); `role_ids` designa roles de la organización;
-  una cuota limita una organización del tenant, un miembro del tenant o una
-  aplicación de una de sus organizaciones; el propietario de una alerta es un
+  Un grant de equipo designa un modelo de la organización (y, para un modelo
+  LLM, un proveedor de la organización); `middleware_ids` designa middlewares
+  de la organización; un miembro de equipo es un miembro de la organización, y
+  sus `role_ids`, como los de una aplicación, designan roles de la
+  organización; `team_id` designa un equipo de la organización; una cuota
+  limita una organización del tenant, un miembro del tenant, una aplicación o
+  un equipo de una de sus organizaciones, o un miembro de un equipo (ámbito
+  `team_member`, `scope_id` `<team_id>:<user_id>`); el propietario de una alerta es un
   miembro activo de la organización, obligatorio para una alerta `personal`.
   Un padre ausente o ajeno responde `404 parent_not_found`; un recurso de otra
   organización o de otro tenant responde `404 not_found`, como uno ausente.
 - **Campos inmutables.** El `scope` y el `scope_id` de una cuota, el `scope` y
-  el `owner_id` de una alerta nunca cambian (`409 conflict`). Un ámbito tiene
-  una sola cuota: otra clave sobre el mismo ámbito responde `409 conflict`.
+  el `owner_id` de una alerta y el `slug` de un equipo nunca cambian
+  (`409 conflict`). Un ámbito tiene una sola cuota: otra clave sobre el mismo
+  ámbito responde `409 conflict`. El `slug` de un equipo sigue el formato de
+  los slugs de organización y no puede ser el comienzo del nombre de un modelo
+  de la organización (`409 conflict`).
+- **Reparto de los presupuestos.** El `cascade` de una cuota de organización o
+  de equipo restringe las cuotas de sus equipos o de sus miembros al
+  escribirlas: `capped`, cada una como máximo igual a la del padre, período por
+  período; `split`, su suma como máximo igual a la del padre. Una cuota que la
+  incumple, hija o padre, responde `422`. Solo las cuotas `org` y `team` llevan
+  un valor distinto de `free`.
 - **Normalización.** Permisos, grants e identificadores de roles se ordenan y
   deduplican: una repetición en otro orden no cambia nada.
 - **El estado de ejecución queda fuera del contrato.** Un `PUT` de cuota
@@ -585,7 +600,9 @@ obligatorio, `null` solo donde se indica.
   un `If-Match` opcional, y publica `<family>.deleted.v1`. Eliminar un recurso
   ausente, o el de otra organización, no cambia nada, salvo que `If-Match`
   designe una revisión (`412`). Eliminar una aplicación retira sus roles, sus
-  tokens y su cuota; un proveedor, sus modelos; una cuota conserva el consumo
+  tokens y su cuota; un proveedor, sus modelos; un equipo, sus miembros y sus
+  cuotas, y se rechaza (`409 conflict`) mientras tenga una aplicación
+  vinculada; una cuota conserva el consumo
   registrado en su ámbito. Un rol integrado se rechaza (`409 conflict`). Un
   ámbito congelado las rechaza todas (`409 resource_deleted`). No dependen de
   `XOLO_LIFECYCLE_ENABLED`. Los tokens de aplicación siguen gestionándose
@@ -593,6 +610,11 @@ obligatorio, `null` solo donde se indica.
 - Las escrituras de la interfaz web también publican sus eventos. La migración
   `202610120001` proyecta los recursos de negocio existentes sin publicar
   eventos; como las anteriores, exige detener todos los servidores.
+- La migración `202610150001` introduce los equipos: cada rol personalizado que
+  autorizaba modelos se convierte en un equipo, publicado con
+  `team.created.v1`, y las representaciones de los roles (sin `model_grants`),
+  de las aplicaciones (con `team_id`) y de las cuotas (con `cascade`) se
+  publican de nuevo cuando cambian.
 
 Límite conocido: la caché de cada proceso mantiene válidos los tokens de una
 aplicación desactivada hasta que caducan sus entradas
@@ -607,7 +629,7 @@ invitaciones), el plano de control (este listener) o ambos.
 
 | Variable | Por defecto | Descripción |
 |---|---|---|
-| `XOLO_OWNERSHIP` | — | Pares `familia=autoridad` separados por comas. Familias: `tenant`, `tenant_domain`, `organization`, `member`, `organization_membership`, `subscription`, y las familias de negocio `provider`, `custom_role`, `application`, `quota`, `alert`. Autoridades: `shared`, `local`, `control_plane`. Las familias omitidas valen `shared`; una familia o autoridad desconocida impide el arranque |
+| `XOLO_OWNERSHIP` | — | Pares `familia=autoridad` separados por comas. Familias: `tenant`, `tenant_domain`, `organization`, `member`, `organization_membership`, `subscription`, y las familias de negocio `provider`, `custom_role`, `team`, `application`, `quota`, `alert`. Autoridades: `shared`, `local`, `control_plane`. Las familias omitidas valen `shared`; una familia o autoridad desconocida impide el arranque |
 
 ```dotenv
 XOLO_OWNERSHIP=tenant=control_plane,tenant_domain=control_plane,organization=control_plane,member=control_plane,organization_membership=control_plane,subscription=control_plane
@@ -967,7 +989,7 @@ identificadores no cambian: un recurso existente se direcciona con su UUID actua
 | `…/organizations/{orgID}/roles[/{roleID}]` (todos los métodos) | `/v1/xolo/…/organizations/{orgID}/roles[/{key}]`, con los cambios siguientes |
 | `GET /v1/xolo/…/roles` (integrados y personalizados, `roleDTO` en camelCase) | `GET /v1/xolo/…/roles` enumera los roles personalizados como página de proyecciones; los roles integrados mediante `GET /v1/xolo/…/roles/builtin` |
 | `GET /v1/xolo/…/roles/{roleID}` (`roleDTO` en camelCase) | Misma ruta: la representación snake_case y su `ETag` |
-| `POST /v1/xolo/…/roles` `{name, description?, permissions?, modelGrants?}` | Misma ruta, la representación snake_case completa `{name, description, permissions, model_grants}`; `201` con `{key, representation, etag}` |
+| `POST /v1/xolo/…/roles` `{name, description?, permissions?, modelGrants?}` | Misma ruta, la representación snake_case completa `{name, description, permissions}`; `201` con `{key, representation, etag}`. El acceso a los modelos pasa por los equipos: `/v1/xolo/…/teams/{key}` |
 | `PUT /v1/xolo/…/roles/{roleID}` parcial `{name?, description?, permissions?, modelGrants?}` | Misma ruta, la representación completa, `If-Match` opcional; crea el rol con un UUID de su elección |
 | `GET`, `PUT /v1/tenants/{tenantID}/users` | `GET`, `PUT /v1/xolo/tenants/{tenantID}/users` (mismos cuerpos) |
 | `GET /v1/tenants/{tenantID}/users/{userID}` | `GET /v1/xolo/tenants/{tenantID}/users/{userID}` |

@@ -298,7 +298,7 @@ carry no representation and no personal data:
 - `type` is `<resource_type>.created.v1`, `.updated.v1` or `.deleted.v1`, with
   `resource_type` one of `tenant`, `tenant_domain`, `organization`, `member`,
   `organization_membership` and the business families `provider`,
-  `custom_role`, `application`, `quota` and `alert`. A deletion carries no
+  `custom_role`, `team`, `application`, `quota` and `alert`. A deletion carries no
   `etag`.
 - **One event per resource and per commit.** A no-op or a rolled back
   transaction publishes nothing. Within a commit, deletions come first, from
@@ -512,13 +512,14 @@ one: the same person signing in on two tenants owns two distinct accounts.
 
 ## Business resources
 
-Five families specific to Xolo follow the same contract as the common
+Six families specific to Xolo follow the same contract as the common
 families: unit reads with an `ETag`, paginated lists, conditional `PUT`s and
 events. The manifest announces `business_resources`.
 
 | Method | Route |
 |---|---|
 | `GET`, `GET`, `PUT`, `DELETE` | `/v1/xolo/tenants/{tenantID}/organizations/{orgID}/roles[/{key}]` |
+| `GET`, `GET`, `PUT`, `DELETE` | `/v1/xolo/tenants/{tenantID}/organizations/{orgID}/teams[/{key}]` |
 | `GET`, `GET`, `PUT`, `DELETE` | `/v1/xolo/tenants/{tenantID}/organizations/{orgID}/applications[/{key}]` |
 | `GET`, `GET`, `PUT`, `DELETE` | `/v1/xolo/tenants/{tenantID}/organizations/{orgID}/alerts[/{key}]` |
 | `GET`, `GET`, `PUT`, `DELETE` | `/v1/xolo/tenants/{tenantID}/organizations/{orgID}/providers[/{key}]` |
@@ -531,9 +532,10 @@ only where shown.
 
 | Family | Representation |
 |---|---|
-| `custom_role` | `{"name","description","permissions":[…],"model_grants":[{"model_id","kind"}]}` |
-| `application` | `{"name","description","active","role_ids":[…]}` |
-| `quota` | `{"scope","scope_id","currency","daily_budget","monthly_budget","yearly_budget"}`, budgets in microcents or `null` |
+| `custom_role` | `{"name","description","permissions":[…]}` |
+| `team` | `{"slug","name","description","share_quota_equally","model_grants":[{"model_id","kind"}],"middleware_ids":[…],"members":[{"user_id","role_ids":[…]}]}` |
+| `application` | `{"name","description","active","role_ids":[…]}`, plus an optional `"team_id"` (empty for no team) |
+| `quota` | `{"scope","scope_id","currency","daily_budget","monthly_budget","yearly_budget"}`, budgets in microcents or `null`, plus an optional `"cascade"` (`free` by default, `capped` or `split`) |
 | `alert` | `{"name","description","scope","owner_id","query","aggregation","window_seconds","comparator","threshold","for_seconds","enabled"}` |
 | `provider` | `{"name","type","base_url","active","currency","cloud_tier","billing_mode","subscription_plan","retry_config","rate_limit_config"}`, the last three `null` or objects, plus the write-only `"api_key"` |
 
@@ -542,16 +544,27 @@ only where shown.
   reads and updates accept; it never creates one. Events and list items carry
   the key in `key.resource_id`, with `key.organization_id` except for quotas.
 - **Parents.** Every reference is checked in the transaction of the write. A
-  model grant designates a model of the organization (and, for an LLM model,
-  a provider of the organization); `role_ids` are roles of the organization; a
-  quota caps an organization of the tenant, a member of the tenant or an
-  application of one of its organizations; the owner of an alert is an active
+  team model grant designates a model of the organization (and, for an LLM
+  model, a provider of the organization); `middleware_ids` are middlewares of
+  the organization; a team member is a member of the organization, and their
+  `role_ids`, like those of an application, are roles of the organization;
+  `team_id` is a team of the organization; a quota caps an organization of the
+  tenant, a member of the tenant, an application or a team of one of its
+  organizations, or a member of a team (scope `team_member`, `scope_id`
+  `<team_id>:<user_id>`); the owner of an alert is an active
   member of the organization, required for a `personal` alert. A missing or
   foreign parent is `404 parent_not_found`; a resource of another organization
   or tenant is `404 not_found`, like a missing one.
-- **Immutable fields.** The `scope` and `scope_id` of a quota and the `scope`
-  and `owner_id` of an alert never change (`409 conflict`). A scope holds one
-  quota: another key on the same scope is `409 conflict`.
+- **Immutable fields.** The `scope` and `scope_id` of a quota, the `scope`
+  and `owner_id` of an alert and the `slug` of a team never change
+  (`409 conflict`). A scope holds one quota: another key on the same scope is
+  `409 conflict`. The `slug` of a team follows the format of organization slugs
+  and cannot start the name of a model of the organization (`409 conflict`).
+- **Budget distribution.** The `cascade` of an organization or team quota
+  constrains the quotas of its teams or members when they are written:
+  `capped`, each at most equal to the parent, period by period; `split`, their
+  sum at most equal to the parent. A quota that violates it, child or parent,
+  is `422`. Only `org` and `team` quotas carry a value other than `free`.
 - **Normalization.** Permissions, grants and role identifiers are sorted and
   deduplicated: a replay in another order is a no-op.
 - **Runtime state stays out.** A quota `PUT` keeps the spend already recorded.
@@ -567,13 +580,19 @@ only where shown.
   optional `If-Match`, and publishes `<family>.deleted.v1`. Deleting a missing
   resource, or one of another organization, changes nothing, unless `If-Match`
   designates a revision (`412`). Deleting an application removes its role
-  assignments, tokens and quota; a provider its models; a quota keeps the
+  assignments, tokens and quota; a provider its models; a team its members and
+  quotas, and it is refused (`409 conflict`) while an application is attached
+  to it; a quota keeps the
   spend recorded on its scope. A builtin role is refused (`409 conflict`). A
   frozen scope refuses them all (`409 resource_deleted`). They do not depend
   on `XOLO_LIFECYCLE_ENABLED`. Application tokens stay managed locally.
 - The web UI writes publish their events as well. Migration `202610120001`
   projects the existing business resources without publishing any event;
   like the previous ones, it requires every server to be stopped.
+- Migration `202610150001` introduces teams: each custom role that granted
+  models becomes a team, published with `team.created.v1`, and the
+  representations of roles (without `model_grants`), applications (with
+  `team_id`) and quotas (with `cascade`) are published again when they change.
 
 Known limit: the cache of each process keeps a deactivated application's
 tokens valid until its entries expire (`XOLO_STORAGE_DATABASE_CACHE_USERS_TTL`):
@@ -587,7 +606,7 @@ control plane (this listener), or both.
 
 | Variable | Default | Description |
 |---|---|---|
-| `XOLO_OWNERSHIP` | — | Comma-separated `family=owner` pairs. Families: `tenant`, `tenant_domain`, `organization`, `member`, `organization_membership`, `subscription`, and the business families `provider`, `custom_role`, `application`, `quota`, `alert`. Owners: `shared`, `local`, `control_plane`. Omitted families are `shared`; an unknown family or owner prevents startup |
+| `XOLO_OWNERSHIP` | — | Comma-separated `family=owner` pairs. Families: `tenant`, `tenant_domain`, `organization`, `member`, `organization_membership`, `subscription`, and the business families `provider`, `custom_role`, `team`, `application`, `quota`, `alert`. Owners: `shared`, `local`, `control_plane`. Omitted families are `shared`; an unknown family or owner prevents startup |
 
 ```dotenv
 XOLO_OWNERSHIP=tenant=control_plane,tenant_domain=control_plane,organization=control_plane,member=control_plane,organization_membership=control_plane,subscription=control_plane
@@ -929,7 +948,7 @@ unchanged: an existing resource is addressed by its current UUID.
 | `…/organizations/{orgID}/roles[/{roleID}]` (all methods) | `/v1/xolo/…/organizations/{orgID}/roles[/{key}]`, with the changes below |
 | `GET /v1/xolo/…/roles` (builtin and custom, camelCase `roleDTO`) | `GET /v1/xolo/…/roles` lists the custom roles as a page of projections; builtin roles through `GET /v1/xolo/…/roles/builtin` |
 | `GET /v1/xolo/…/roles/{roleID}` (camelCase `roleDTO`) | Same route: the snake_case representation and its `ETag` |
-| `POST /v1/xolo/…/roles` `{name, description?, permissions?, modelGrants?}` | Same route, the complete snake_case representation `{name, description, permissions, model_grants}`; `201` with `{key, representation, etag}` |
+| `POST /v1/xolo/…/roles` `{name, description?, permissions?, modelGrants?}` | Same route, the complete snake_case representation `{name, description, permissions}`; `201` with `{key, representation, etag}`. Model access goes through teams: `/v1/xolo/…/teams/{key}` |
 | `PUT /v1/xolo/…/roles/{roleID}` partial `{name?, description?, permissions?, modelGrants?}` | Same route, the complete representation, optional `If-Match`; creates the role under a UUID of your choice |
 | `GET`, `PUT /v1/tenants/{tenantID}/users` | `GET`, `PUT /v1/xolo/tenants/{tenantID}/users` (same bodies) |
 | `GET /v1/tenants/{tenantID}/users/{userID}` | `GET /v1/xolo/tenants/{tenantID}/users/{userID}` |

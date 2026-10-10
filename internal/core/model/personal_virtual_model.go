@@ -18,6 +18,11 @@ type PersonalVirtualModel interface {
 	UserID() UserID
 	Name() string
 	Description() string
+	// TeamID is the team the model's requests are charged to, picked by its
+	// owner among its teams. Every model the graph reaches is checked against
+	// that team's access: a personal model delegates nothing. Empty when the
+	// owner picked none, which only works when a single path exists.
+	TeamID() TeamID
 	// Graph returns the pipeline graph. Nil means no pipeline configured.
 	Graph() *PipelineGraph
 	CreatedAt() time.Time
@@ -29,6 +34,7 @@ type BasePersonalVirtualModel struct {
 	userID      UserID
 	name        string
 	description string
+	teamID      TeamID
 	graph       *PipelineGraph
 	createdAt   time.Time
 	updatedAt   time.Time
@@ -38,12 +44,14 @@ func (m *BasePersonalVirtualModel) ID() PersonalVirtualModelID { return m.id }
 func (m *BasePersonalVirtualModel) UserID() UserID             { return m.userID }
 func (m *BasePersonalVirtualModel) Name() string               { return m.name }
 func (m *BasePersonalVirtualModel) Description() string        { return m.description }
+func (m *BasePersonalVirtualModel) TeamID() TeamID             { return m.teamID }
 func (m *BasePersonalVirtualModel) Graph() *PipelineGraph      { return m.graph }
 func (m *BasePersonalVirtualModel) CreatedAt() time.Time       { return m.createdAt }
 func (m *BasePersonalVirtualModel) UpdatedAt() time.Time       { return m.updatedAt }
 
 func (m *BasePersonalVirtualModel) SetName(v string)          { m.name = v }
 func (m *BasePersonalVirtualModel) SetDescription(v string)   { m.description = v }
+func (m *BasePersonalVirtualModel) SetTeamID(v TeamID)        { m.teamID = v }
 func (m *BasePersonalVirtualModel) SetGraph(v *PipelineGraph) { m.graph = v }
 func (m *BasePersonalVirtualModel) SetUpdatedAt(v time.Time)  { m.updatedAt = v }
 

@@ -48,8 +48,8 @@ templ EventsExplorerPage(vmodel EventsExplorerVModel) {
 				@button.Button(button.Props{Type: button.TypeSubmit, Size: button.SizeSm}) {
 					Rechercher
 				}
-				if vmodel.CanReadAll {
-					@common.SegmentedNav(scopeSegments(base, vmodel.Query, vmodel.Scope, vmodel.View))
+				if vmodel.CanReadAll || vmodel.CanReadTeams {
+					@common.SegmentedNav(scopeSegments(base, vmodel.Query, vmodel.Scope, vmodel.View, vmodel.CanReadAll))
 				}
 			</form>
 			if vmodel.Error != "" {
@@ -131,14 +131,23 @@ templ EventsExplorerPage(vmodel EventsExplorerVModel) {
 // scopeSegments builds the "Mes événements / Tous / Globaux" segmented control.
 // Switching scope always restarts at page 1: the cursor of the previous scope
 // means nothing in the next one.
-func scopeSegments(base, query, current, view string) []common.Segment {
+func scopeSegments(base, query, current, view string, readAll bool) []common.Segment {
 	scopes := []struct {
 		scope string
 		label string
 	}{
 		{EventScopeMine, "Mes événements"},
-		{EventScopeAll, "Tous"},
-		{EventScopeGlobal, "Globaux"},
+		{EventScopeTeams, "Mes équipes"},
+	}
+	if readAll {
+		scopes = []struct {
+			scope string
+			label string
+		}{
+			{EventScopeMine, "Mes événements"},
+			{EventScopeAll, "Tous"},
+			{EventScopeGlobal, "Globaux"},
+		}
 	}
 
 	segments := make([]common.Segment, 0, len(scopes))

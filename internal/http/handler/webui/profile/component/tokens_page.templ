@@ -17,7 +17,9 @@ type TokensPageVModel struct {
 	AppLayoutVModel common.AppLayoutVModel
 	AuthTokens      []model.AuthToken
 	OrgMemberships  []model.Membership
-	CreatedToken    string
+	// Teams are the user's teams, a token can be bound to one of them.
+	Teams        []TeamOption
+	CreatedToken string
 	DeletedToken    bool
 }
 
@@ -83,6 +85,9 @@ templ TokensPage(vmodel TokensPageVModel) {
 									}
 									@table.Cell(table.CellProps{Class: "text-muted-foreground"}) {
 										{ tokenOrgName(token, vmodel.OrgMemberships) }
+										if team := tokenTeamName(token, vmodel.Teams); team != "" {
+											<span class="ml-1 text-xs text-muted-foreground">{ "· " + team }</span>
+										}
 									}
 									@table.Cell(table.CellProps{Class: "text-muted-foreground"}) {
 										{ tokenExpiry(token) }
@@ -154,6 +159,33 @@ templ TokensPage(vmodel TokensPageVModel) {
 											}
 										}
 									}
+								}
+							}
+						}
+						if len(vmodel.Teams) > 0 {
+							@form.Item() {
+								@form.Label(form.LabelProps{For: "token-team-trigger"}) {
+									Équipe (optionnel)
+								}
+								@selectbox.SelectBox(selectbox.Props{ID: "token-team"}) {
+									@selectbox.Trigger(selectbox.TriggerProps{ID: "token-team-trigger", Name: "team_id"}) {
+										@selectbox.Value(selectbox.ValueProps{Placeholder: "Aucune équipe"})
+									}
+									@selectbox.Content(selectbox.ContentProps{NoSearch: len(vmodel.Teams) < 8}) {
+										@selectbox.Group() {
+											@selectbox.Item(selectbox.ItemProps{Value: "", Selected: true}) {
+												Aucune équipe
+											}
+											for _, opt := range vmodel.Teams {
+												@selectbox.Item(selectbox.ItemProps{Value: string(opt.TeamID)}) {
+													{ opt.Label() }
+												}
+											}
+										}
+									}
+								}
+								@form.Description() {
+									Une clé rattachée à une équipe débite toujours son budget et n'accède qu'à ses modèles. L'équipe doit appartenir à l'organisation choisie.
 								}
 							}
 						}
@@ -230,4 +262,18 @@ templ apiCallExample() {
 			}
 		}
 	</div>
+}
+
+// tokenTeamName names the team a token is bound to, empty when none or when
+// the user left it.
+func tokenTeamName(token model.AuthToken, teams []TeamOption) string {
+	if token.TeamID() == "" {
+		return ""
+	}
+	for _, t := range teams {
+		if t.TeamID == token.TeamID() {
+			return t.TeamName
+		}
+	}
+	return "équipe quittée"
 }

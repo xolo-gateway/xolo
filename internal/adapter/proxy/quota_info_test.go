@@ -23,6 +23,10 @@ func (f fakeQuotaResolver) ResolveEffectiveQuotaForApplication(context.Context, 
 	return f.quota, nil, f.err
 }
 
+func (f fakeQuotaResolver) ResolveTeamQuotas(context.Context, model.TeamID, model.UserID) (model.Quota, *model.EffectiveQuota, error) {
+	return nil, nil, f.err
+}
+
 // fakeUsage answers SumQuotaCostSince with the amount registered for the period start.
 type fakeUsage struct {
 	port.UsageStore
@@ -50,7 +54,7 @@ func TestQuotaInfoResolver_Resolve(t *testing.T) {
 	}}, usage)
 	r.now = func() time.Time { return now }
 
-	info := r.Resolve(context.Background(), "u", "o")
+	info := r.Resolve(context.Background(), "u", "o", "")
 	if info == nil {
 		t.Fatal("expected quota info")
 	}
@@ -72,7 +76,7 @@ func TestQuotaInfoResolver_OverspentClampsToZero(t *testing.T) {
 	now := time.Now()
 	usage := &fakeUsage{spent: map[time.Time]int64{model.StartOfDay(now): 500}}
 	r := NewQuotaInfoResolver(fakeQuotaResolver{quota: &model.EffectiveQuota{DailyBudget: i64(100)}}, usage)
-	info := r.Resolve(context.Background(), "u", "o")
+	info := r.Resolve(context.Background(), "u", "o", "")
 	if info == nil || info.DailyRemaining != 0 {
 		t.Fatalf("expected remaining clamped to 0, got %+v", info)
 	}
@@ -80,14 +84,14 @@ func TestQuotaInfoResolver_OverspentClampsToZero(t *testing.T) {
 
 func TestQuotaInfoResolver_NilCases(t *testing.T) {
 	usage := &fakeUsage{}
-	if got := NewQuotaInfoResolver(fakeQuotaResolver{quota: &model.EffectiveQuota{}}, usage).Resolve(context.Background(), "u", "o"); got != nil {
+	if got := NewQuotaInfoResolver(fakeQuotaResolver{quota: &model.EffectiveQuota{}}, usage).Resolve(context.Background(), "u", "o", ""); got != nil {
 		t.Errorf("no budget must yield nil, got %+v", got)
 	}
-	if got := NewQuotaInfoResolver(fakeQuotaResolver{err: errors.New("boom")}, usage).Resolve(context.Background(), "u", "o"); got != nil {
+	if got := NewQuotaInfoResolver(fakeQuotaResolver{err: errors.New("boom")}, usage).Resolve(context.Background(), "u", "o", ""); got != nil {
 		t.Errorf("resolver error must yield nil, got %+v", got)
 	}
 	failing := &fakeUsage{err: errors.New("db down")}
-	if got := NewQuotaInfoResolver(fakeQuotaResolver{quota: &model.EffectiveQuota{DailyBudget: i64(1)}}, failing).Resolve(context.Background(), "u", "o"); got != nil {
+	if got := NewQuotaInfoResolver(fakeQuotaResolver{quota: &model.EffectiveQuota{DailyBudget: i64(1)}}, failing).Resolve(context.Background(), "u", "o", ""); got != nil {
 		t.Errorf("usage error must yield nil, got %+v", got)
 	}
 }

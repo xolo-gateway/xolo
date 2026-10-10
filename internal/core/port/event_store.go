@@ -41,6 +41,9 @@ type EventFilter struct {
 	UserID        *model.UserID
 	IncludeGlobal bool
 	AllUsers      bool
+	// UserIDs restricts the events to these users, OR'd with UserID. A team
+	// lead reads the events of its team members through it.
+	UserIDs []model.UserID
 
 	Limit  *int
 	Offset *int

@@ -96,6 +96,7 @@ func (h *Handler) getUserFromToken(ctx context.Context, token string) (*authn.Us
 			DisplayName: app.Name(),
 			OrgID:       string(authToken.OrgID()),
 			TokenID:     string(authToken.ID()),
+			TeamID:      string(app.TeamID()),
 			TenantID:    string(org.TenantID()),
 		}, nil
 	}
@@ -125,6 +126,7 @@ func (h *Handler) getUserFromToken(ctx context.Context, token string) (*authn.Us
 		DisplayName: user.DisplayName(),
 		OrgID:       string(authToken.OrgID()),
 		TokenID:     string(authToken.ID()),
+		TeamID:      string(authToken.TeamID()),
 		AccountID:   string(user.ID()),
 		TenantID:    string(user.TenantID()),
 	}, nil

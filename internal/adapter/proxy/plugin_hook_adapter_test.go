@@ -229,11 +229,12 @@ func TestBuildEC_PopulatesBodyJSON(t *testing.T) {
 
 	body := []byte(`{"model":"m","messages":[{"role":"user","content":"hi"}],"temperature":0.7}`)
 
-	ec := adapter.buildEC(context.Background(), &genaiProxy.ProxyRequest{
+	ec, err := adapter.buildEC(context.Background(), &genaiProxy.ProxyRequest{
 		Body:  body,
 		Type:  genaiProxy.RequestTypeChatCompletion,
 		Model: "m",
 	}, nil, &stubVM{id: "vm-1"})
+	require.NoError(t, err)
 
 	if ec.BodyJSON != string(body) {
 		t.Fatalf("BodyJSON = %q, want %q", ec.BodyJSON, string(body))
@@ -253,11 +254,12 @@ func TestBuildEC_PopulatesBodyJSON_PersonalVMPath(t *testing.T) {
 
 	ctx := context.WithValue(context.Background(), contextKeyOrgID, "org-from-token")
 
-	ec := adapter.buildEC(ctx, &genaiProxy.ProxyRequest{
+	ec, err := adapter.buildEC(ctx, &genaiProxy.ProxyRequest{
 		Body:  body,
 		Type:  genaiProxy.RequestTypeChatCompletion,
 		Model: "m",
 	}, nil, &stubVM{id: "vm-personal"})
+	require.NoError(t, err)
 
 	if ec.OrgID != "org-from-token" {
 		t.Errorf("OrgID = %q, want %q (derived from ctx)", ec.OrgID, "org-from-token")
@@ -312,10 +314,12 @@ func TestBuildEC_SecretScopeFollowsGraphOwner(t *testing.T) {
 	req := &genaiProxy.ProxyRequest{}
 	for _, orgID := range []string{"org-a", "org-b"} {
 		ctx := context.WithValue(t.Context(), contextKeyOrgID, orgID)
-		ec := adapter.buildEC(ctx, req, nil, &personalVMAdapter{pvm: personal})
+		ec, err := adapter.buildEC(ctx, req, nil, &personalVMAdapter{pvm: personal})
+		require.NoError(t, err)
 		require.Equal(t, "~:owner", ec.SecretScopeID)
 		require.Equal(t, orgID, ec.OrgID)
-		ec = adapter.buildEC(ctx, req, org, vm)
+		ec, err = adapter.buildEC(ctx, req, org, vm)
+		require.NoError(t, err)
 		require.Equal(t, string(org.ID()), ec.SecretScopeID)
 		ec = adapter.buildMiddlewareEC(ctx, req, org)
 		require.Equal(t, string(org.ID()), ec.SecretScopeID)

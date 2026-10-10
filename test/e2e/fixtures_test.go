@@ -203,7 +203,20 @@ func prepareDatabase(dsn, providerURL string) error {
 	if err := createVirtualModels(db); err != nil {
 		return err
 	}
+	if err := joinSeededTeam(db); err != nil {
+		return err
+	}
 	return createPersonalHashModels(db)
+}
+
+// joinSeededTeam adds Carol to the seeded "analystes" team of Acme, which
+// grants gpt-4o-mini and mistral-small. Carol keeps the organization-wide
+// access of the builtin member role: the short names stay hers.
+func joinSeededTeam(db *gorm.DB) error {
+	if err := db.Create(&gormadapter.TeamMember{TeamID: teamAcmeAnalysts, MembershipID: membershipCarolAcme, CreatedAt: time.Now()}).Error; err != nil {
+		return fmt.Errorf("join seeded team: %w", err)
+	}
+	return nil
 }
 
 // createAnthropicProvider clones the seeded OpenAI provider (whose API key is

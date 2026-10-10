@@ -391,7 +391,7 @@ func TestProvisioningRequiresAdapterAndParents(t *testing.T) {
 		org := provisionedOrg(t, svc, tenant, "owner")
 		otherTenant := provisionedTenant(t, store)
 		otherOrg := provisionedOrg(t, svc, otherTenant, "other")
-		_, err = svc.PutCustomRole(t.Context(), otherTenant.ID(), org.Org.ID(), uuid.NewString(), model.MatchCondition{}, model.CustomRoleSettings{Name: "foreign", Permissions: []string{}, ModelGrants: []model.ModelGrantSettings{}})
+		_, err = svc.PutCustomRole(t.Context(), otherTenant.ID(), org.Org.ID(), uuid.NewString(), model.MatchCondition{}, model.CustomRoleSettings{Name: "foreign", Permissions: []string{}})
 		require.ErrorIs(t, err, port.ErrParentNotFound)
 		_, err = svc.AddMember(t.Context(), otherTenant.ID(), org.Org.ID(), service.AddMemberParams{UserID: otherOrg.Owner.ID()})
 		require.ErrorIs(t, err, port.ErrNotFound)

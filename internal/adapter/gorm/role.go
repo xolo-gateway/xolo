@@ -18,7 +18,6 @@ type Role struct {
 
 	Org         *Organization     `gorm:"foreignKey:OrgID"`
 	Permissions []*RolePermission `gorm:"foreignKey:RoleID;constraint:OnDelete:CASCADE"`
-	ModelGrants []*RoleModel      `gorm:"foreignKey:RoleID;constraint:OnDelete:CASCADE"`
 }
 
 type RolePermission struct {
@@ -27,12 +26,17 @@ type RolePermission struct {
 	Code   string `gorm:"index:role_perm_index,unique;not null"`
 }
 
-type RoleModel struct {
+// legacyRoleModel is the model grant a role carried before teams. The table
+// only exists between the RBAC migration and the teams migration, which turns
+// the grants into teams and drops it.
+type legacyRoleModel struct {
 	ID        uint   `gorm:"primaryKey"`
 	RoleID    string `gorm:"index:role_model_index,unique;not null"`
 	ModelID   string `gorm:"index:role_model_index,unique;not null"`
 	ModelKind string `gorm:"index:role_model_index,unique;not null"`
 }
+
+func (legacyRoleModel) TableName() string { return "role_models" }
 
 // MembershipRole is the join table between memberships and roles.
 type MembershipRole struct {
@@ -72,14 +76,6 @@ func (w *wrappedRole) Permissions() []string {
 	return codes
 }
 
-func (w *wrappedRole) ModelGrants() []model.ModelGrant {
-	grants := make([]model.ModelGrant, 0, len(w.r.ModelGrants))
-	for _, g := range w.r.ModelGrants {
-		grants = append(grants, model.ModelGrant{ModelID: g.ModelID, Kind: g.ModelKind})
-	}
-	return grants
-}
-
 var _ model.Role = &wrappedRole{}
 
 func fromRole(r model.Role) *Role {
@@ -97,13 +93,6 @@ func fromRole(r model.Role) *Role {
 		role.Permissions = append(role.Permissions, &RolePermission{
 			RoleID: role.ID,
 			Code:   code,
-		})
-	}
-	for _, grant := range r.ModelGrants() {
-		role.ModelGrants = append(role.ModelGrants, &RoleModel{
-			RoleID:    role.ID,
-			ModelID:   grant.ModelID,
-			ModelKind: grant.Kind,
 		})
 	}
 	return role

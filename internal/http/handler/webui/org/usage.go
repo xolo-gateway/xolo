@@ -17,6 +17,7 @@ import (
 	"github.com/xolo-gateway/xolo/internal/adapter/cache"
 	"github.com/xolo-gateway/xolo/internal/core/model"
 	"github.com/xolo-gateway/xolo/internal/core/port"
+	"github.com/xolo-gateway/xolo/internal/core/rbac"
 	"github.com/xolo-gateway/xolo/internal/estimator"
 	httpCtx "github.com/xolo-gateway/xolo/internal/http/context"
 	common "github.com/xolo-gateway/xolo/internal/http/handler/webui/common/component"
@@ -33,6 +34,11 @@ func (h *Handler) getUsagePage(w http.ResponseWriter, r *http.Request) {
 	org, err := h.orgFromSlug(ctx, orgSlug)
 	if err != nil {
 		http.Error(w, "Organization not found", http.StatusNotFound)
+		return
+	}
+
+	scope, ok := h.usageScope(w, r, org)
+	if !ok {
 		return
 	}
 
@@ -61,7 +67,7 @@ func (h *Handler) getUsagePage(w http.ResponseWriter, r *http.Request) {
 
 	// CSV export
 	if r.URL.Query().Get("format") == "csv" {
-		h.serveOrgUsageCSV(w, r, org, ownerFilter, since)
+		h.serveOrgUsageCSV(w, r, org, scope, ownerFilter, since)
 		return
 	}
 
@@ -78,6 +84,7 @@ func (h *Handler) getUsagePage(w http.ResponseWriter, r *http.Request) {
 		slog.WarnContext(ctx, "could not list applications", slogx.Error(err))
 		applications = nil
 	}
+	members, applications = scope.restrict(members, applications)
 
 	// Build maps for filtering
 	applicationsMap := make(map[model.ApplicationID]model.Application)
@@ -106,6 +113,7 @@ func (h *Handler) getUsagePage(w http.ResponseWriter, r *http.Request) {
 
 	usageFilter := port.UsageFilter{
 		OrgID:          &orgID,
+		TeamID:         scope.filter(),
 		Since:          &since,
 		ApplicationIDs: appIDs,
 	}
@@ -120,8 +128,9 @@ func (h *Handler) getUsagePage(w http.ResponseWriter, r *http.Request) {
 		agg = &port.UsageAggregate{}
 	}
 
-	// Compute total cost with per-currency conversion
-	if agg != nil {
+	// Compute total cost with per-currency conversion. With a team filter, the
+	// total is the sum of the daily chart below, which is filtered too.
+	if agg != nil && scope.team == nil {
 		byCurrency, sumErr := h.usageStore.SumCostSinceByCurrency(ctx, userIDs, orgID, since)
 		if sumErr != nil {
 			slog.ErrorContext(ctx, "could not sum cost by currency", slogx.Error(sumErr))
@@ -145,6 +154,7 @@ func (h *Handler) getUsagePage(w http.ResponseWriter, r *http.Request) {
 	// Fetch one extra record to detect whether a next page exists
 	rawRecords, err := h.usageStore.QueryUsage(ctx, port.UsageFilter{
 		OrgID:          &orgID,
+		TeamID:         scope.filter(),
 		Since:          &since,
 		Limit:          intPtr(usagePageSize + 1),
 		Offset:         intPtr(offset),
@@ -195,11 +205,12 @@ func (h *Handler) getUsagePage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Cache key for energy totals (includes user and app filter for uniqueness)
-	energyCacheKey := fmt.Sprintf("org-usage:%s:%d:%v:%v", orgID, since.Unix(), userIDs, appIDs)
+	energyCacheKey := fmt.Sprintf("org-usage:%s:%d:%v:%v:%s", orgID, since.Unix(), userIDs, appIDs, scope.teamID())
 
 	// Filter matching the whole selected period, used by every chart aggregation.
 	chartFilter := port.UsageFilter{
 		OrgID:          &orgID,
+		TeamID:         scope.filter(),
 		Since:          &since,
 		UserIDs:        userIDs,
 		ApplicationIDs: appIDs,
@@ -257,6 +268,13 @@ func (h *Handler) getUsagePage(w http.ResponseWriter, r *http.Request) {
 	paygDayRows, coveredDayRows := port.SplitPlanCovered(h.aggregateCostRows(ctx, chartFilter, port.UsageDimensionDay))
 	perDay := convertToOrg(paygDayRows)
 	coveredPerDay := convertToOrg(coveredDayRows)
+	if agg != nil && scope.team != nil {
+		var total int64
+		for _, cost := range perDay {
+			total += cost
+		}
+		agg.TotalCost, agg.Currency = total, orgCurrency
+	}
 
 	// Per-user PAYG cost, keyed by display name (two ids sharing a name merge, as before).
 	// The subscription consumption is charted apart, in tokens, below.
@@ -354,17 +372,30 @@ func (h *Handler) getUsagePage(w http.ResponseWriter, r *http.Request) {
 		records = append(records, dr)
 	}
 
-	// Fetch org quota for budget pie charts
+	// Fetch the budget of the card: the org's, or the filtered team's.
 	var orgQuota model.Quota
-	if q, err := h.quotaStore.GetQuota(ctx, model.QuotaScopeOrg, string(orgID)); err == nil && q != nil {
-		orgQuota = q
-	}
-
-	// Compute daily/monthly/yearly spending for quota pie charts
+	var dailyCost, monthlyCost, yearlyCost int64
 	now := time.Now()
-	dailyCost := h.sumConvertedCost(ctx, nil, orgID, startOfPeriod("day", now), orgCurrency)
-	monthlyCost := h.sumConvertedCost(ctx, nil, orgID, startOfPeriod("month", now), orgCurrency)
-	yearlyCost := h.sumConvertedCost(ctx, nil, orgID, startOfPeriod("year", now), orgCurrency)
+	budgetTitle, budgetHref := "", ""
+	if scope.team != nil {
+		if q, err := h.optionalQuota(ctx, model.QuotaScopeTeam, string(scope.team.ID())); err == nil {
+			orgQuota = q
+		}
+		if spend, err := h.scopeSpend(ctx, model.QuotaScopeTeam, string(scope.team.ID()), orgID, now); err == nil {
+			dailyCost, monthlyCost, yearlyCost = spend[0], spend[1], spend[2]
+		}
+		budgetTitle = " · équipe " + scope.team.Name()
+		budgetHref = teamURL(org, scope.team)
+	} else {
+		if q, err := h.quotaStore.GetQuota(ctx, model.QuotaScopeOrg, string(orgID)); err == nil && q != nil {
+			orgQuota = q
+		}
+
+		// Compute daily/monthly/yearly spending for quota pie charts
+		dailyCost = h.sumConvertedCost(ctx, nil, orgID, startOfPeriod("day", now), orgCurrency)
+		monthlyCost = h.sumConvertedCost(ctx, nil, orgID, startOfPeriod("month", now), orgCurrency)
+		yearlyCost = h.sumConvertedCost(ctx, nil, orgID, startOfPeriod("year", now), orgCurrency)
+	}
 
 	// Build provider name map for chart labels
 	providerNames := make(map[model.ProviderID]string)
@@ -388,6 +419,11 @@ func (h *Handler) getUsagePage(w http.ResponseWriter, r *http.Request) {
 		Users:                 users,
 		Members:               members,
 		OwnerFilter:           ownerFilter,
+		Teams:                 scope.teams,
+		TeamFilter:            scope.teamID(),
+		TeamOnly:              scope.teamOnly,
+		BudgetTitle:           budgetTitle,
+		BudgetHref:            budgetHref,
 		Applications:          applications,
 		ApplicationsMap:       applicationsMap,
 		Since:                 since,
@@ -614,7 +650,7 @@ func chartByProvider(m map[model.ProviderID]int64, names map[model.ProviderID]st
 	return pts
 }
 
-func (h *Handler) serveOrgUsageCSV(w http.ResponseWriter, r *http.Request, org model.Organization, ownerFilter []string, since time.Time) {
+func (h *Handler) serveOrgUsageCSV(w http.ResponseWriter, r *http.Request, org model.Organization, scope usageScope, ownerFilter []string, since time.Time) {
 	ctx := r.Context()
 	orgID := org.ID()
 
@@ -627,6 +663,7 @@ func (h *Handler) serveOrgUsageCSV(w http.ResponseWriter, r *http.Request, org m
 	if err != nil {
 		slog.WarnContext(ctx, "could not list applications for CSV", slogx.Error(err))
 	}
+	members, applications = scope.restrict(members, applications)
 
 	applicationsMap := make(map[model.ApplicationID]model.Application)
 	for _, app := range applications {
@@ -651,8 +688,9 @@ func (h *Handler) serveOrgUsageCSV(w http.ResponseWriter, r *http.Request, org m
 	}
 
 	usageFilter := port.UsageFilter{
-		OrgID: &orgID,
-		Since: &since,
+		OrgID:  &orgID,
+		TeamID: scope.filter(),
+		Since:  &since,
 	}
 	if len(userIDs) > 0 {
 		usageFilter.UserIDs = userIDs
@@ -854,4 +892,107 @@ func (h *Handler) buildSubscriptionProviderUsage(ctx context.Context, orgID mode
 	}
 
 	return result
+}
+
+// usageScope is what the usage page shows: the organization, or one team.
+type usageScope struct {
+	// teams are the teams the viewer can filter on.
+	teams []model.Team
+	// team is the selected team, nil for the whole organization.
+	team model.Team
+	// teamOnly is set when the viewer reads the usage of its teams only.
+	teamOnly bool
+	// teamMembers holds the users of the selected team.
+	teamMembers map[model.UserID]bool
+}
+
+func (s usageScope) teamID() model.TeamID {
+	if s.team == nil {
+		return ""
+	}
+	return s.team.ID()
+}
+
+func (s usageScope) filter() *model.TeamID {
+	if s.team == nil {
+		return nil
+	}
+	id := s.team.ID()
+	return &id
+}
+
+// restrict keeps, with a team selected, the members and applications of the
+// team: the caller filter of a team view lists nobody else.
+func (s usageScope) restrict(members []model.Membership, apps []model.Application) ([]model.Membership, []model.Application) {
+	if s.team == nil {
+		return members, apps
+	}
+	var keptMembers []model.Membership
+	for _, m := range members {
+		if s.teamMembers[m.UserID()] {
+			keptMembers = append(keptMembers, m)
+		}
+	}
+	var keptApps []model.Application
+	for _, app := range apps {
+		if app.TeamID() == s.team.ID() {
+			keptApps = append(keptApps, app)
+		}
+	}
+	return keptMembers, keptApps
+}
+
+// usageScope resolves what the usage page may show. usage:read on the
+// organization shows everything, the "team" query parameter narrowing it to
+// one team; usage:read held on teams only shows one of them, never the
+// organization. It writes the response and returns false otherwise.
+func (h *Handler) usageScope(w http.ResponseWriter, r *http.Request, org model.Organization) (usageScope, bool) {
+	ctx := r.Context()
+	perms, err := httpCtx.ResolvePermissions(ctx, org.ID())
+	if err != nil {
+		slog.ErrorContext(ctx, "could not resolve permissions", slogx.Error(err))
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return usageScope{}, false
+	}
+	var scope usageScope
+	if h.teamStore != nil {
+		teams, err := h.teamStore.ListOrgTeams(ctx, org.ID())
+		if err != nil {
+			slog.ErrorContext(ctx, "could not list teams", slogx.Error(err))
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return usageScope{}, false
+		}
+		for _, team := range teams {
+			if perms.HasInTeam(string(team.ID()), rbac.PermUsageRead) {
+				scope.teams = append(scope.teams, team)
+			}
+		}
+	}
+	scope.teamOnly = !perms.Has(rbac.PermUsageRead)
+	if scope.teamOnly && len(scope.teams) == 0 {
+		http.Error(w, "Forbidden", http.StatusForbidden)
+		return usageScope{}, false
+	}
+	wanted := model.TeamID(r.URL.Query().Get("team"))
+	for _, team := range scope.teams {
+		if team.ID() == wanted {
+			scope.team = team
+		}
+	}
+	if scope.team == nil && scope.teamOnly {
+		scope.team = scope.teams[0]
+	}
+	if scope.team != nil {
+		members, err := h.teamStore.ListTeamMembers(ctx, scope.team.ID())
+		if err != nil {
+			slog.ErrorContext(ctx, "could not list team members", slogx.Error(err))
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return usageScope{}, false
+		}
+		scope.teamMembers = map[model.UserID]bool{}
+		for _, m := range members {
+			scope.teamMembers[m.UserID()] = true
+		}
+	}
+	return scope, true
 }

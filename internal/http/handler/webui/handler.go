@@ -36,6 +36,15 @@ type Handler struct {
 	pluginManager       pluginManagerIface
 	subscriptionMonitor port.SubscriptionMonitor
 	fairShare           *service.FairShareService
+	orgHandler          *org.Handler
+	profileHandler      *profile.Handler
+}
+
+// WithTeams enables the team pages and the team pickers of the profile.
+func (h *Handler) WithTeams(teams port.TeamStore) *Handler {
+	h.orgHandler.SetTeams(teams)
+	h.profileHandler.SetTeams(teams)
+	return h
 }
 
 // ServeHTTP implements http.Handler.
@@ -100,9 +109,11 @@ func NewHandler(
 	mount(h.mux, "/events", isActive(http.HandlerFunc(h.getPersonalEventsRedirect)))
 	hasModelAccess := authz.Middleware(http.HandlerFunc(h.getForbiddenPage), h.canAccessModelsPage())
 	mount(h.mux, "/models", isActive(hasModelAccess(http.HandlerFunc(h.getModelsPage))))
-	mount(h.mux, "/profile/", isActive(profile.NewHandler(userStore, orgStore, inviteStore, invitationService, personalVMStore, secretStore, pluginManager)))
+	h.profileHandler = profile.NewHandler(userStore, orgStore, inviteStore, invitationService, personalVMStore, secretStore, pluginManager)
+	mount(h.mux, "/profile/", isActive(h.profileHandler))
 	mount(h.mux, "/admin/", isActive(admin.NewHandler(userStore, orgStore, roleStore, usageStore, taskRunner, exchangeRateService, pluginManager)))
-	mount(h.mux, "/orgs/", isActive(org.NewHandler(orgStore, roleStore, providerStore, virtualModelStore, middlewareStore, usageStore, inviteStore, invitationService, userStore, applicationStore, exchangeRateService, quotaStore, secretStore, secretKey, pluginManager, subscriptionMonitor, eventStore, alertStore, alertIncidentStore, eventSettingsStore, eventsMaxPerOrg, eventsDefaultPerOrg)))
+	h.orgHandler = org.NewHandler(orgStore, roleStore, providerStore, virtualModelStore, middlewareStore, usageStore, inviteStore, invitationService, userStore, applicationStore, exchangeRateService, quotaStore, secretStore, secretKey, pluginManager, subscriptionMonitor, eventStore, alertStore, alertIncidentStore, eventSettingsStore, eventsMaxPerOrg, eventsDefaultPerOrg)
+	mount(h.mux, "/orgs/", isActive(h.orgHandler))
 
 	// Public join flow — no isActive wrapper (unauthenticated users get a sign-in prompt)
 	h.mux.Handle("/join/", http.StripPrefix("/join", join.NewHandler(invitationService)))

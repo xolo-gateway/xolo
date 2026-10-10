@@ -21,7 +21,6 @@ import (
 
 func (h *Handler) getOrgQuotaPage(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	user := httpCtx.User(ctx)
 	orgSlug := r.PathValue("orgSlug")
 
 	org, err := h.orgFromSlug(ctx, orgSlug)
@@ -29,6 +28,15 @@ func (h *Handler) getOrgQuotaPage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Organization not found", http.StatusNotFound)
 		return
 	}
+	h.renderOrgQuotaPage(w, r, org, "")
+}
+
+// renderOrgQuotaPage renders the budget of the organization, with formErr
+// explaining why a submitted budget was refused.
+func (h *Handler) renderOrgQuotaPage(w http.ResponseWriter, r *http.Request, org model.Organization, formErr string) {
+	ctx := r.Context()
+	user := httpCtx.User(ctx)
+	orgSlug := org.Slug()
 
 	existing, err := h.quotaStore.GetQuota(ctx, model.QuotaScopeOrg, string(org.ID()))
 	loadError := ""
@@ -70,6 +78,7 @@ func (h *Handler) getOrgQuotaPage(w http.ResponseWriter, r *http.Request) {
 		MonthlyCost: monthlyCost,
 		YearlyCost:  yearlyCost,
 		LoadError:   loadError,
+		Error:       formErr,
 		AppLayoutVModel: common.AppLayoutVModel{
 			User:         user,
 			SelectedItem: "org-" + orgSlug + "-quota",
@@ -110,15 +119,15 @@ func (h *Handler) saveOrgQuota(w http.ResponseWriter, r *http.Request) {
 	monthly := parseBudgetField(r.FormValue("monthly_budget"))
 	yearly := parseBudgetField(r.FormValue("yearly_budget"))
 
-	quotaStore := h.quotaStore
+	cascade := model.QuotaCascade(r.FormValue("cascade")).Normalize()
+	if !cascade.Valid() {
+		http.Error(w, "Invalid cascade", http.StatusBadRequest)
+		return
+	}
 
 	quota := model.NewQuota(model.QuotaScopeOrg, string(org.ID()), currency, daily, monthly, yearly)
-	if err := quotaStore.SetQuota(ctx, quota); err != nil {
-		if webcommon.RejectLocked(w, r, err) {
-			return
-		}
-		slog.ErrorContext(ctx, "could not save org quota", slogx.Error(err))
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+	quota.SetCascade(cascade)
+	if !h.saveQuotaChecked(w, r, quota, func(msg string) { h.renderOrgQuotaPage(w, r, org, msg) }) {
 		return
 	}
 

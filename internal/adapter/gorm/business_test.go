@@ -41,14 +41,15 @@ func ptrTo[T any](v T) *T { return &v }
 // businessFixture provisions one resource of each business family in the
 // organization of fixture.
 type businessFixture struct {
-	provider, role, app, quota, alert string
-	llm                               model.LLMModelID
+	provider, role, team, app, quota, alert string
+	llm                                     model.LLMModelID
+	user                                    model.UserID
 }
 
 func newBusinessFixture(t *testing.T, store *xologorm.Store, svc *service.ProvisioningService, fixture ownershipFixture) businessFixture {
 	t.Helper()
 	ctx := t.Context()
-	f := businessFixture{provider: uuid.NewString(), role: uuid.NewString(), app: uuid.NewString(), quota: uuid.NewString(), alert: uuid.NewString()}
+	f := businessFixture{provider: uuid.NewString(), role: uuid.NewString(), team: uuid.NewString(), app: uuid.NewString(), quota: uuid.NewString(), alert: uuid.NewString(), user: fixture.user}
 	_, err := svc.PutProvider(ctx, testTenantID, fixture.org, f.provider, noCondition, providerSettings("OpenAI", ptrTo("sk-first-secret")))
 	require.NoError(t, err)
 	llm := model.NewLLMModel(model.ProviderID(f.provider), fixture.org, "gpt-"+uuid.NewString()[:8], "gpt-4o", "", 0, 0)
@@ -56,10 +57,11 @@ func newBusinessFixture(t *testing.T, store *xologorm.Store, svc *service.Provis
 	f.llm = llm.ID()
 	_, err = svc.PutCustomRole(ctx, testTenantID, fixture.org, f.role, noCondition, model.CustomRoleSettings{
 		Name: "Analyst", Permissions: []string{string(rbac.PermUsageRead)},
-		ModelGrants: []model.ModelGrantSettings{{ModelID: string(llm.ID()), Kind: rbac.ModelKindLLM}},
 	})
 	require.NoError(t, err)
-	_, err = svc.PutApplication(ctx, testTenantID, fixture.org, f.app, noCondition, model.ApplicationSettings{Name: "Batch", Active: true, RoleIDs: []string{f.role}})
+	_, err = svc.PutTeam(ctx, testTenantID, fixture.org, f.team, noCondition, teamSettings(f))
+	require.NoError(t, err)
+	_, err = svc.PutApplication(ctx, testTenantID, fixture.org, f.app, noCondition, model.ApplicationSettings{Name: "Batch", Active: true, RoleIDs: []string{f.role}, TeamID: f.team})
 	require.NoError(t, err)
 	_, err = svc.PutQuota(ctx, testTenantID, f.quota, noCondition, model.QuotaSettings{Scope: model.QuotaScopeApplication, ScopeID: f.app, Currency: "EUR", MonthlyBudget: ptrTo(int64(1000))})
 	require.NoError(t, err)
@@ -68,12 +70,23 @@ func newBusinessFixture(t *testing.T, store *xologorm.Store, svc *service.Provis
 	return f
 }
 
+// teamSettings grants the fixture model to a team holding the fixture user,
+// with the fixture role on the team.
+func teamSettings(f businessFixture) model.TeamSettings {
+	return model.TeamSettings{
+		Slug: "analysts", Name: "Analysts", Description: "",
+		ModelGrants:   []model.ModelGrantSettings{{ModelID: string(f.llm), Kind: rbac.ModelKindLLM}},
+		MiddlewareIDs: []string{},
+		Members:       []model.TeamMemberSettings{{UserID: string(f.user), RoleIDs: []string{f.role}}},
+	}
+}
+
 func businessScopes(fixture ownershipFixture, f businessFixture) map[string]model.CommonScope {
 	org := func(family string) model.CommonScope {
 		return model.CommonScope{Family: family, TenantID: string(testTenantID), OrganizationID: string(fixture.org)}
 	}
 	return map[string]model.CommonScope{
-		f.provider: org(model.FamilyProvider), f.role: org(model.FamilyCustomRole), f.app: org(model.FamilyApplication),
+		f.provider: org(model.FamilyProvider), f.role: org(model.FamilyCustomRole), f.team: org(model.FamilyTeam), f.app: org(model.FamilyApplication),
 		f.alert: org(model.FamilyAlert), f.quota: {Family: model.FamilyQuota, TenantID: string(testTenantID)},
 	}
 }
@@ -92,10 +105,10 @@ func TestBusinessRoundTrip(t *testing.T) {
 
 		events, _ := feedSince(t, store, cursor)
 		require.Equal(t, []string{
-			"provider.created.v1", "custom_role.created.v1", "application.created.v1", "quota.created.v1", "alert.created.v1",
+			"provider.created.v1", "custom_role.created.v1", "team.created.v1", "application.created.v1", "quota.created.v1", "alert.created.v1",
 		}, eventTypes(events))
-		require.Equal(t, f.app, events[2].Data.Key.ResourceID)
-		require.Equal(t, string(fixture.org), events[2].Data.Key.OrganizationID)
+		require.Equal(t, f.app, events[3].Data.Key.ResourceID)
+		require.Equal(t, string(fixture.org), events[3].Data.Key.OrganizationID)
 
 		items := map[string]model.CommonItem{}
 		for key, scope := range businessScopes(fixture, f) {
@@ -108,10 +121,16 @@ func TestBusinessRoundTrip(t *testing.T) {
 		}
 		var role map[string]any
 		require.NoError(t, json.Unmarshal(items[f.role].Representation, &role))
-		require.Equal(t, []any{map[string]any{"model_id": string(f.llm), "kind": rbac.ModelKindLLM}}, role["model_grants"])
+		require.NotContains(t, role, "model_grants", "a role grants no model")
+		var team map[string]any
+		require.NoError(t, json.Unmarshal(items[f.team].Representation, &team))
+		require.Equal(t, []any{map[string]any{"model_id": string(f.llm), "kind": rbac.ModelKindLLM}}, team["model_grants"])
+		require.Equal(t, []any{map[string]any{"user_id": string(f.user), "role_ids": []any{f.role}}}, team["members"])
+		require.Equal(t, "analysts", team["slug"])
 		var app map[string]any
 		require.NoError(t, json.Unmarshal(items[f.app].Representation, &app))
 		require.Equal(t, []any{f.role}, app["role_ids"])
+		require.Equal(t, f.team, app["team_id"])
 
 		// Replays keep every ETag, write no audit and publish nothing.
 		audits, published := auditCount(t, db), eventCount(t, db)
@@ -140,10 +159,13 @@ func newBusinessReplay(t *testing.T, svc *service.ProvisioningService, fixture o
 	require.NoError(t, err)
 	out[f.role], err = svc.PutCustomRole(ctx, testTenantID, fixture.org, f.role, noCondition, model.CustomRoleSettings{
 		Name: "Analyst", Permissions: []string{string(rbac.PermUsageRead), string(rbac.PermUsageRead)},
-		ModelGrants: []model.ModelGrantSettings{{ModelID: string(f.llm), Kind: rbac.ModelKindLLM}},
 	})
 	require.NoError(t, err)
-	out[f.app], err = svc.PutApplication(ctx, testTenantID, fixture.org, f.app, noCondition, model.ApplicationSettings{Name: "Batch", Active: true, RoleIDs: []string{f.role, f.role}})
+	replayTeam := teamSettings(f)
+	replayTeam.ModelGrants = append(replayTeam.ModelGrants, replayTeam.ModelGrants...)
+	out[f.team], err = svc.PutTeam(ctx, testTenantID, fixture.org, f.team, noCondition, replayTeam)
+	require.NoError(t, err)
+	out[f.app], err = svc.PutApplication(ctx, testTenantID, fixture.org, f.app, noCondition, model.ApplicationSettings{Name: "Batch", Active: true, RoleIDs: []string{f.role, f.role}, TeamID: f.team})
 	require.NoError(t, err)
 	out[f.quota], err = svc.PutQuota(ctx, testTenantID, f.quota, noCondition, model.QuotaSettings{Scope: model.QuotaScopeApplication, ScopeID: f.app, Currency: "EUR", MonthlyBudget: ptrTo(int64(1000))})
 	require.NoError(t, err)
@@ -223,9 +245,9 @@ func TestBusinessParents(t *testing.T) {
 		other := newOwnershipFixture(t, store)
 		f := newBusinessFixture(t, store, svc, other)
 
-		foreignGrant := model.CustomRoleSettings{Name: "Thief", Permissions: []string{},
-			ModelGrants: []model.ModelGrantSettings{{ModelID: string(f.llm), Kind: rbac.ModelKindLLM}}}
-		_, err := svc.PutCustomRole(ctx, testTenantID, fixture.org, uuid.NewString(), noCondition, foreignGrant)
+		foreignGrant := model.TeamSettings{Slug: "thieves", Name: "Thieves", ModelGrants: []model.ModelGrantSettings{{ModelID: string(f.llm), Kind: rbac.ModelKindLLM}},
+			MiddlewareIDs: []string{}, Members: []model.TeamMemberSettings{}}
+		_, err := svc.PutTeam(ctx, testTenantID, fixture.org, uuid.NewString(), noCondition, foreignGrant)
 		require.ErrorIs(t, err, port.ErrParentNotFound)
 
 		_, err = svc.PutApplication(ctx, testTenantID, fixture.org, uuid.NewString(), noCondition, model.ApplicationSettings{Name: "Thief", RoleIDs: []string{f.role}})
@@ -399,5 +421,73 @@ func TestBusinessBackfill(t *testing.T) {
 		var alerts int64
 		require.NoError(t, db.Model(&xologorm.ProvisioningProjection{}).Where("family = ?", model.FamilyAlert).Count(&alerts).Error)
 		require.Zero(t, alerts, "an orphan is left out")
+	})
+}
+
+// TestTeamProvisioning covers what the team family adds to the business
+// contract: an immutable slug, members of the organization only, team
+// budgets and their cascade.
+func TestTeamProvisioning(t *testing.T) {
+	eachBackendDB(t, func(t *testing.T, db *gormpkg.DB) {
+		ctx := t.Context()
+		store := newSeededStore(t, db)
+		svc := businessService(store)
+		fixture := newOwnershipFixture(t, store)
+		f := newBusinessFixture(t, store, svc, fixture)
+
+		renamed := teamSettings(f)
+		renamed.Slug = "renamed"
+		_, err := svc.PutTeam(ctx, testTenantID, fixture.org, f.team, noCondition, renamed)
+		require.ErrorIs(t, err, port.ErrNotAllowed, "a slug never changes")
+
+		stranger := newOwnershipFixture(t, store)
+		withStranger := teamSettings(f)
+		withStranger.Members = append(withStranger.Members, model.TeamMemberSettings{UserID: string(stranger.user), RoleIDs: []string{}})
+		_, err = svc.PutTeam(ctx, testTenantID, fixture.org, f.team, noCondition, withStranger)
+		require.ErrorIs(t, err, port.ErrParentNotFound, "a team member belongs to the organization")
+
+		twice := teamSettings(f)
+		twice.Members = append(twice.Members, twice.Members[0])
+		_, err = svc.PutTeam(ctx, testTenantID, fixture.org, f.team, noCondition, twice)
+		require.ErrorIs(t, err, port.ErrInvalid)
+
+		// A model whose proxy name starts with a slug keeps the slug free.
+		llm := model.NewLLMModel(model.ProviderID(f.provider), fixture.org, "ops/llama", "llama", "", 0, 0)
+		require.NoError(t, store.CreateLLMModel(ctx, llm))
+		ops := model.TeamSettings{Slug: "ops", Name: "Ops", ModelGrants: []model.ModelGrantSettings{}, MiddlewareIDs: []string{}, Members: []model.TeamMemberSettings{}}
+		_, err = svc.PutTeam(ctx, testTenantID, fixture.org, uuid.NewString(), noCondition, ops)
+		require.ErrorIs(t, err, port.ErrTeamNameConflict)
+
+		// Team budgets: the organization splits its envelope among teams.
+		_, err = svc.PutQuota(ctx, testTenantID, uuid.NewString(), noCondition, model.QuotaSettings{
+			Scope: model.QuotaScopeOrg, ScopeID: string(fixture.org), Currency: "EUR", MonthlyBudget: ptrTo(int64(1000)), Cascade: model.QuotaCascadeSplit,
+		})
+		require.NoError(t, err)
+		teamQuota := model.QuotaSettings{Scope: model.QuotaScopeTeam, ScopeID: f.team, Currency: "EUR", MonthlyBudget: ptrTo(int64(1500))}
+		_, err = svc.PutQuota(ctx, testTenantID, uuid.NewString(), noCondition, teamQuota)
+		var violation *service.CascadeViolation
+		require.ErrorAs(t, err, &violation)
+		teamQuota.MonthlyBudget = ptrTo(int64(800))
+		teamQuotaKey := uuid.NewString()
+		item, err := svc.PutQuota(ctx, testTenantID, teamQuotaKey, noCondition, teamQuota)
+		require.NoError(t, err)
+		var rep map[string]any
+		require.NoError(t, json.Unmarshal(item.Representation, &rep))
+		require.Equal(t, "free", rep["cascade"], "a cascade defaults to free")
+
+		// A member budget needs a member of the team.
+		_, err = svc.PutQuota(ctx, testTenantID, uuid.NewString(), noCondition, model.QuotaSettings{
+			Scope: model.QuotaScopeTeamMember, ScopeID: string(model.TeamMemberScopeID(model.TeamID(f.team), stranger.user)), Currency: "EUR",
+		})
+		require.ErrorIs(t, err, port.ErrParentNotFound)
+		_, err = svc.PutQuota(ctx, testTenantID, uuid.NewString(), noCondition, model.QuotaSettings{
+			Scope: model.QuotaScopeTeamMember, ScopeID: model.TeamMemberScopeID(model.TeamID(f.team), f.user), Currency: "EUR", MonthlyBudget: ptrTo(int64(100)),
+			Cascade: model.QuotaCascadeSplit,
+		})
+		require.ErrorIs(t, err, port.ErrInvalid, "a member budget has no children to constrain")
+
+		// The bound application keeps the team from going.
+		err = svc.DeleteBusiness(ctx, model.CommonScope{Family: model.FamilyTeam, TenantID: string(testTenantID), OrganizationID: string(fixture.org)}, f.team, noCondition)
+		require.ErrorIs(t, err, port.ErrNotAllowed)
 	})
 }

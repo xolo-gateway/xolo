@@ -1,6 +1,7 @@
 package component
 
 import (
+	"context"
 	"fmt"
 	common "github.com/xolo-gateway/xolo/internal/http/handler/webui/common/component"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/button"
@@ -35,7 +36,7 @@ templ OrgUsagePage(vmodel OrgUsagePageVModel) {
 					Variant: button.VariantOutline,
 					Size:    button.SizeSm,
 					Class:   "gap-1.5",
-					Href:    common.BaseURLString(ctx, common.WithPath("/orgs/", vmodel.Org.Slug(), "/usage"), common.WithValues("range", vmodel.Range, "owner", strings.Join(vmodel.OwnerFilter, ","), "format", "csv")),
+					Href:    common.BaseURLString(ctx, common.WithPath("/orgs/", vmodel.Org.Slug(), "/usage"), common.WithValues("range", vmodel.Range, "owner", strings.Join(vmodel.OwnerFilter, ","), "team", string(vmodel.TeamFilter), "format", "csv")),
 				}) {
 					@icon.Download(icon.Props{Class: "size-3.5"})
 					CSV
@@ -76,7 +77,7 @@ templ OrgUsagePage(vmodel OrgUsagePageVModel) {
 								une seule ligne : la maquette les lit d'un trait, « Budget
 								mensuel pay-as-you-go · 64 % · 1 284,40 € sur 2 000,00 € ». -->
 								<div class="flex min-w-0 flex-wrap items-center gap-2">
-									<h2 class="text-sm font-semibold">Budget { periodLabel } pay-as-you-go</h2>
+									<h2 class="text-sm font-semibold">Budget { periodLabel } pay-as-you-go{ vmodel.BudgetTitle }</h2>
 									if budget != nil {
 										@common.Badge(common.BudgetTone(pct), fmt.Sprintf("%d %%", pct))
 										<span class="text-xs text-muted-foreground">
@@ -94,7 +95,7 @@ templ OrgUsagePage(vmodel OrgUsagePageVModel) {
 										Variant: button.VariantOutline,
 										Size:    button.SizeSm,
 										Class:   "gap-1.5",
-										Href:    common.BaseURLString(ctx, common.WithPath("/orgs/", vmodel.Org.Slug(), "/admin/quota")),
+										Href:    usageBudgetHref(ctx, vmodel),
 									}) {
 										@icon.Settings(icon.Props{Class: "size-3.5"})
 										Gérer le budget
@@ -115,7 +116,9 @@ templ OrgUsagePage(vmodel OrgUsagePageVModel) {
 				</div>
 			}
 			<!-- Subscription providers plan usage -->
-			@SubscriptionUsageSection(vmodel.SubscriptionProviders)
+			if !vmodel.TeamOnly {
+				@SubscriptionUsageSection(vmodel.SubscriptionProviders)
+			}
 			<!-- Bande de KPI : cellules jointives séparées d'un filet, pas des
 			cartes détachées (design system §06). -->
 			@common.KPIBand(common.KPIBandProps{Class: "grid-cols-2 md:grid-cols-3 2xl:grid-cols-5"}) {
@@ -443,8 +446,11 @@ templ OrgUsagePage(vmodel OrgUsagePageVModel) {
 // The panel is a GET form, so applying a filter is a plain navigation that keeps
 // the criteria in the URL — shareable, bookmarkable, and unaffected by the swap.
 templ orgUsageFilters(vmodel OrgUsagePageVModel) {
-	if len(vmodel.Members) > 0 || len(vmodel.Applications) > 0 {
+	if len(vmodel.Members) > 0 || len(vmodel.Applications) > 0 || len(vmodel.Teams) > 0 {
 		{{ activeCount := len(vmodel.OwnerFilter) }}
+		if vmodel.TeamFilter != "" && !vmodel.TeamOnly {
+			{{ activeCount++ }}
+		}
 		@popover.Trigger(popover.TriggerProps{For: "usage-filters"}) {
 			@button.Button(button.Props{
 				Variant: button.VariantOutline,
@@ -464,6 +470,32 @@ templ orgUsageFilters(vmodel OrgUsagePageVModel) {
 		@popover.Content(popover.ContentProps{ID: "usage-filters", Placement: popover.PlacementBottomEnd, Class: "w-80 p-3.5"}) {
 			<form method="GET" class="flex flex-col gap-3">
 				<input type="hidden" name="range" value={ vmodel.Range }/>
+				if len(vmodel.Teams) > 0 {
+					@form.Item() {
+						@form.Label(form.LabelProps{For: "team-trigger"}) {
+							Équipe
+						}
+						@selectbox.SelectBox(selectbox.Props{ID: "usage-team"}) {
+							@selectbox.Trigger(selectbox.TriggerProps{ID: "team-trigger", Name: "team"}) {
+								@selectbox.Value(selectbox.ValueProps{Placeholder: "Toutes"})
+							}
+							@selectbox.Content(selectbox.ContentProps{NoSearch: len(vmodel.Teams) < 8}) {
+								@selectbox.Group() {
+									if !vmodel.TeamOnly {
+										@selectbox.Item(selectbox.ItemProps{Value: "", Selected: vmodel.TeamFilter == ""}) {
+											Toutes
+										}
+									}
+									for _, team := range vmodel.Teams {
+										@selectbox.Item(selectbox.ItemProps{Value: string(team.ID()), Selected: vmodel.TeamFilter == team.ID()}) {
+											{ team.Name() }
+										}
+									}
+								}
+							}
+						}
+					}
+				}
 				@form.Item() {
 					@form.Label(form.LabelProps{For: "owner-trigger"}) {
 						Appelant
@@ -550,4 +582,12 @@ templ budgetForecastCell(forecast int64, projectionPct int, periodLabel string, 
 			{ common.FormatCost(forecast, currency) }
 		</div>
 	</div>
+}
+
+// usageBudgetHref is the page managing the budget the usage card shows.
+func usageBudgetHref(ctx context.Context, vmodel OrgUsagePageVModel) string {
+	if vmodel.BudgetHref != "" {
+		return common.BaseURLString(ctx, common.WithPath(vmodel.BudgetHref))
+	}
+	return common.BaseURLString(ctx, common.WithPath("/orgs/", vmodel.Org.Slug(), "/admin/quota"))
 }

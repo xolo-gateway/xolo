@@ -2,7 +2,7 @@
 
 ## L'organisation
 
-L'**organisation** est l'entité centrale de Xolo : elle regroupe des **membres**, un ou plusieurs **fournisseurs** LLM, des **budgets**, des **middlewares** et des **paramètres** (devise, rétention des événements…). Toutes les données et configurations sont cloisonnées par organisation.
+L'**organisation** est l'entité centrale de Xolo : elle regroupe des **membres**, des **équipes**, un ou plusieurs **fournisseurs** LLM, des **budgets**, des **middlewares** et des **paramètres** (devise, rétention des événements…). Toutes les données et configurations sont cloisonnées par organisation.
 
 Un même utilisateur peut appartenir à plusieurs organisations ; il bascule de l'une à l'autre depuis le menu de l'interface.
 
@@ -42,9 +42,15 @@ Les permissions suivent un schéma `<ressource>:<action>`, par exemple `provider
 
 Lorsqu'une permission d'écriture (`*:write`) est attribuée, la permission de lecture correspondante (`*:read`) est automatiquement accordée. Il n'est donc jamais nécessaire d'attribuer les deux permissions séparément.
 
-### Accès restreint aux modèles
+## Équipes
 
-Au-delà des permissions globales (`model:use:org` par exemple), un rôle peut se voir accorder l'accès à une liste explicite de modèles. Ce mécanisme permet de limiter l'usage à certains modèles même sans permission globale d'usage.
+Un rôle dit ce qu'un membre peut faire ; une **équipe** dit avec quoi. Une équipe regroupe des membres, les modèles et middlewares qu'ils utilisent, et leur budget. Un membre peut appartenir à plusieurs équipes.
+
+- **Accès aux modèles.** Un membre utilise un modèle si l'une de ses équipes y donne accès. Les permissions `model:use:org` et `model:use:virtual` ouvrent tous les modèles de l'organisation sans passer par une équipe ; le rôle intégré **Membre** les porte.
+- **Attribution.** Chaque requête est attribuée à une équipe, choisie par le nom du modèle `<organisation>/<équipe>/<modèle>`, ou à l'organisation seule.
+- **Rôles d'équipe.** Un rôle peut être attribué à un membre sur une équipe seulement. Ses permissions marquées « équipe » (membres, budget, usage, événements, invitations) ne valent alors que pour cette équipe ; les autres ne s'appliquent pas. L'organisation alloue, l'équipe répartit.
+
+Voir le tutoriel [Équipes](../administration/organisation/equipes/equipes.md).
 
 ## Membres et invitations
 

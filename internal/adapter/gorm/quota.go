@@ -16,6 +16,8 @@ type Quota struct {
 	DailyBudget   *int64
 	MonthlyBudget *int64
 	YearlyBudget  *int64
+	// Cascade is the model.QuotaCascade of the scope over its children.
+	Cascade string `gorm:"not null;default:'free'"`
 }
 
 type wrappedQuota struct {
@@ -29,6 +31,9 @@ func (w *wrappedQuota) Currency() string            { return w.q.Currency }
 func (w *wrappedQuota) DailyBudget() *int64         { return w.q.DailyBudget }
 func (w *wrappedQuota) MonthlyBudget() *int64       { return w.q.MonthlyBudget }
 func (w *wrappedQuota) YearlyBudget() *int64        { return w.q.YearlyBudget }
+func (w *wrappedQuota) Cascade() model.QuotaCascade {
+	return model.QuotaCascade(w.q.Cascade).Normalize()
+}
 func (w *wrappedQuota) CreatedAt() time.Time        { return w.q.CreatedAt }
 func (w *wrappedQuota) UpdatedAt() time.Time        { return w.q.UpdatedAt }
 
@@ -43,5 +48,6 @@ func fromQuota(q model.Quota) *Quota {
 		DailyBudget:   q.DailyBudget(),
 		MonthlyBudget: q.MonthlyBudget(),
 		YearlyBudget:  q.YearlyBudget(),
+		Cascade:       string(q.Cascade().Normalize()),
 	}
 }

@@ -6,6 +6,8 @@
 
 Un rôle est un ensemble de permissions qui définit ce qu'un membre peut faire dans l'organisation. Chaque membre peut se voir attribuer plusieurs rôles.
 
+Un rôle ne donne accès à aucun modèle précis : les modèles se règlent sur les [équipes](../equipes/equipes.md). Un rôle peut aussi être attribué à un membre sur une seule équipe, depuis la page de l'équipe : seules ses permissions marquées « équipe » dans l'éditeur s'appliquent alors, et seulement à cette équipe.
+
 ### Rôles intégrés
 
 | Rôle       | Description                                                             |
@@ -60,6 +62,13 @@ Les permissions sont organisées par catégorie :
 | ------------------- | ------------------------------------ |
 | Consulter les rôles | Voir les rôles existants             |
 | Gérer les rôles     | Créer, modifier, supprimer des rôles |
+
+### Équipes
+
+| Permission                       | Description                                                       |
+| -------------------------------- | ----------------------------------------------------------------- |
+| Consulter les équipes            | Voir les équipes de l'organisation                                |
+| Gérer les équipes et leurs accès | Créer, modifier, supprimer des équipes, choisir leurs modèles et middlewares |
 
 ### Fournisseurs & modèles
 
@@ -128,23 +137,18 @@ Les permissions sont organisées par catégorie :
 
 | Permission                                  | Description                       |
 | ------------------------------------------- | --------------------------------- |
-| Utiliser tous les modèles de l'organisation | Accès à tous les modèles LLM      |
-| Utiliser tous les modèles virtuels          | Accès à tous les modèles virtuels |
+| Utiliser tous les modèles de l'organisation | Accès à tous les modèles LLM, sans passer par une équipe |
+| Utiliser tous les modèles virtuels          | Accès à tous les modèles virtuels, sans passer par une équipe |
+
+### Permissions applicables à une équipe
+
+Les permissions suivantes portent la marque « équipe » dans l'éditeur. Attribuées par un rôle sur une équipe, elles ne valent que pour cette équipe : `members:read`, `members:write`, `quota:read`, `quota:write`, `usage:read`, `events:read:all`, `invites:read` et `invites:write`. Les autres permissions d'un rôle attribué sur une équipe ne s'appliquent pas.
 
 ### Personnel
 
 | Permission                            | Description                       |
 | ------------------------------------- | --------------------------------- |
 | Créer des modèles virtuels personnels | Créer des modèles virtuels privés |
-
-## Accès restreint aux modèles
-
-En plus des permissions globales, vous pouvez autoriser explicitement l'accès à des modèles spécifiques :
-
-1. Dans le formulaire du rôle, descendez jusqu'à la section **Modèles autorisés (accès restreint)**
-2. Cochez les modèles auxquels ce rôle doit avoir accès
-
-> **Note** : Cette fonctionnalité permet de limiter l'accès à certains modèles même sans la permission globale `model:use:org`.
 
 ## Modifier un rôle
 
@@ -169,4 +173,4 @@ En plus des permissions globales, vous pouvez autoriser explicitement l'accès �
 
 Lorsqu'une permission d'écriture (`*:write`) est attribuée, la permission de lecture correspondante (`*:read`) est automatiquement accordée.
 
-Pour le modèle de permissions dans son ensemble (rôles intégrés, accès restreint aux modèles), voir le concept [Organisation, rôles et permissions](../../../concepts/organisation-et-permissions.md).
+Pour le modèle de permissions dans son ensemble (rôles intégrés, équipes), voir le concept [Organisation, rôles et permissions](../../../concepts/organisation-et-permissions.md).

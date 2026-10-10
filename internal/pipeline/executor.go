@@ -14,9 +14,27 @@ type ExecutionContext struct {
 	// SecretScopeID is the graph owner, independent of the org used for models and quotas.
 	SecretScopeID string
 	OrgID         string
-	UserID        string
-	TokenID       string
-	DisplayName   string
+	// OrgSlug is the slug of OrgID, which model names are qualified with.
+	OrgSlug     string
+	UserID      string
+	TokenID     string
+	DisplayName string
+	// TeamID and TeamSlug designate the team the request is attributed to,
+	// empty when it is charged to the organization alone.
+	TeamID   string
+	TeamSlug string
+	// RequestedModel is the model name as the client sent it, team segment
+	// included.
+	RequestedModel string
+	// Access checks every model a node reaches by name against the access of
+	// the request. Nil checks nothing.
+	Access ModelAccess
+	// Delegated holds the static model references of the graph being run when
+	// that graph delegates access: an organization virtual model or a
+	// middleware, whose author configured them. A request may reach them
+	// without access of its own. Nil in a personal virtual model, which
+	// delegates nothing: every model it reaches is checked.
+	Delegated map[string]struct{}
 	// BodyJSON is the raw JSON of the LLM request body. It is the single source
 	// of truth for "the incoming request" inside the pipeline engine: the
 	// generator node's "request" output is seeded from it, and it is exposed

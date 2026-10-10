@@ -17,6 +17,8 @@ type InviteToken struct {
 	UsesCount       int    `gorm:"default:0"`
 	CreatedByUserID string `gorm:"not null"`
 	RevokedAt       *time.Time
+	// TeamID is the team the invitee joins with the organization.
+	TeamID string `gorm:"index"`
 
 	Org *Organization `gorm:"foreignKey:OrgID"`
 }
@@ -35,6 +37,7 @@ func (w *wrappedInviteToken) UsesCount() int                   { return w.t.Uses
 func (w *wrappedInviteToken) CreatedByUserID() model.UserID    { return model.UserID(w.t.CreatedByUserID) }
 func (w *wrappedInviteToken) RevokedAt() *time.Time            { return w.t.RevokedAt }
 func (w *wrappedInviteToken) CreatedAt() time.Time             { return w.t.CreatedAt }
+func (w *wrappedInviteToken) TeamID() model.TeamID             { return model.TeamID(w.t.TeamID) }
 func (w *wrappedInviteToken) Org() model.Organization {
 	if w.t.Org == nil {
 		return nil
@@ -62,5 +65,6 @@ func fromInviteToken(t model.InviteToken) *InviteToken {
 		UsesCount:       t.UsesCount(),
 		CreatedByUserID: string(t.CreatedByUserID()),
 		RevokedAt:       t.RevokedAt(),
+		TeamID:          string(t.TeamID()),
 	}
 }

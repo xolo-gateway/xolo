@@ -91,11 +91,11 @@ func scenarioRoleStore_BuiltinRolesAndResolution(t *testing.T, store *xologorm.S
 	}
 }
 
-func TestRoleStore_CustomRoleAndModelGrant(t *testing.T) {
-	eachBackend(t, scenarioRoleStore_CustomRoleAndModelGrant)
+func TestRoleStore_CustomRole(t *testing.T) {
+	eachBackend(t, scenarioRoleStore_CustomRole)
 }
 
-func scenarioRoleStore_CustomRoleAndModelGrant(t *testing.T, store *xologorm.Store) {
+func scenarioRoleStore_CustomRole(t *testing.T, store *xologorm.Store) {
 	ctx := context.Background()
 
 	org := model.NewOrganization(testTenantID, "acme", "Acme", "")
@@ -105,7 +105,6 @@ func scenarioRoleStore_CustomRoleAndModelGrant(t *testing.T, store *xologorm.Sto
 
 	role := model.NewRole(org.ID(), "Lecteur", "Accès lecture")
 	role.SetPermissions([]string{string(rbac.PermUsageRead), string(rbac.PermMembersWrite)})
-	role.SetModelGrants([]model.ModelGrant{{ModelID: "m1", Kind: rbac.ModelKindLLM}})
 	if err := store.CreateRole(ctx, role); err != nil {
 		t.Fatalf("CreateRole: %v", err)
 	}
@@ -117,12 +116,9 @@ func scenarioRoleStore_CustomRoleAndModelGrant(t *testing.T, store *xologorm.Sto
 	if len(got.Permissions()) != 2 {
 		t.Errorf("expected 2 permissions, got %d", len(got.Permissions()))
 	}
-	if len(got.ModelGrants()) != 1 {
-		t.Errorf("expected 1 model grant, got %d", len(got.ModelGrants()))
-	}
 
-	// SaveRole fully replaces permissions and grants.
-	updated := model.UpdateRole(got, model.WithRolePermissions([]string{string(rbac.PermUsageRead)}), model.WithRoleModelGrants(nil))
+	// SaveRole fully replaces permissions.
+	updated := model.UpdateRole(got, model.WithRolePermissions([]string{string(rbac.PermUsageRead)}))
 	if err := store.SaveRole(ctx, updated); err != nil {
 		t.Fatalf("SaveRole: %v", err)
 	}
@@ -130,8 +126,8 @@ func scenarioRoleStore_CustomRoleAndModelGrant(t *testing.T, store *xologorm.Sto
 	if err != nil {
 		t.Fatalf("GetRoleByID after save: %v", err)
 	}
-	if len(got.Permissions()) != 1 || len(got.ModelGrants()) != 0 {
-		t.Errorf("expected 1 perm / 0 grants after save, got %d / %d", len(got.Permissions()), len(got.ModelGrants()))
+	if len(got.Permissions()) != 1 {
+		t.Errorf("expected 1 perm after save, got %d", len(got.Permissions()))
 	}
 
 	// Custom role is deletable.

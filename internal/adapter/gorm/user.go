@@ -124,6 +124,7 @@ type AuthToken struct {
 	Label     string
 	Value     string     `gorm:"unique"`
 	OrgID     string     `gorm:"index"`
+	TeamID    string     `gorm:"index"`
 	ExpiresAt *time.Time `gorm:"index"`
 }
 
@@ -135,6 +136,7 @@ type Application struct {
 	Name        string
 	Description string
 	Active      bool
+	TeamID      string `gorm:"index"`
 
 	AuthTokens []*AuthToken `gorm:"foreignKey:ApplicationID;constraint:OnDelete:CASCADE;"`
 }
@@ -148,6 +150,7 @@ func (w *wrappedApplication) OrgID() model.OrgID      { return model.OrgID(w.a.O
 func (w *wrappedApplication) Name() string            { return w.a.Name }
 func (w *wrappedApplication) Description() string     { return w.a.Description }
 func (w *wrappedApplication) Active() bool            { return w.a.Active }
+func (w *wrappedApplication) TeamID() model.TeamID    { return model.TeamID(w.a.TeamID) }
 func (w *wrappedApplication) CreatedAt() time.Time    { return w.a.CreatedAt }
 func (w *wrappedApplication) UpdatedAt() time.Time    { return w.a.UpdatedAt }
 
@@ -259,6 +262,7 @@ func (w *wrappedAuthToken) Application() model.Application {
 func (w *wrappedAuthToken) Label() string         { return w.t.Label }
 func (w *wrappedAuthToken) Value() string         { return w.t.Value }
 func (w *wrappedAuthToken) OrgID() model.OrgID    { return model.OrgID(w.t.OrgID) }
+func (w *wrappedAuthToken) TeamID() model.TeamID  { return model.TeamID(w.t.TeamID) }
 func (w *wrappedAuthToken) ExpiresAt() *time.Time { return w.t.ExpiresAt }
 
 var _ model.AuthToken = &wrappedAuthToken{}
@@ -284,6 +288,7 @@ func (w *wrappedApplicationAuthToken) Application() model.Application {
 func (w *wrappedApplicationAuthToken) Label() string         { return w.t.Label }
 func (w *wrappedApplicationAuthToken) Value() string         { return w.t.Value }
 func (w *wrappedApplicationAuthToken) OrgID() model.OrgID    { return model.OrgID(w.t.OrgID) }
+func (w *wrappedApplicationAuthToken) TeamID() model.TeamID  { return model.TeamID(w.t.TeamID) }
 func (w *wrappedApplicationAuthToken) ExpiresAt() *time.Time { return w.t.ExpiresAt }
 
 var _ model.AuthToken = &wrappedApplicationAuthToken{}

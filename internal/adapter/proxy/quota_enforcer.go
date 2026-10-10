@@ -28,9 +28,14 @@ import (
 // the shadow user's counter is never fed for an application record (see
 // quotaUsageRows). The application budget is the only one the enforcer checks
 // on the application path (issue #64).
+//
+// ResolveTeamQuotas returns the budgets of the team levels of a request
+// attributed to a team: the team budget, and the member budget of the user
+// inside it (nil for an application). Each is checked against its own counter.
 type quotaResolver interface {
 	ResolveEffectiveQuota(ctx context.Context, userID model.UserID, orgID model.OrgID) (*model.EffectiveQuota, model.Quota, error)
 	ResolveEffectiveQuotaForApplication(ctx context.Context, appID model.ApplicationID, orgID model.OrgID) (*model.EffectiveQuota, model.Quota, error)
+	ResolveTeamQuotas(ctx context.Context, teamID model.TeamID, userID model.UserID) (model.Quota, *model.EffectiveQuota, error)
 }
 
 // XoloQuotaEnforcer is a PreRequestHook that checks the effective budget quota
@@ -144,6 +149,37 @@ func (e *XoloQuotaEnforcer) PreRequest(ctx context.Context, req *genaiProxy.Prox
 			return nil, err
 		} else if result != nil {
 			return result, nil
+		}
+	}
+
+	// ── Team levels, for a request attributed to a team ─────────────────────────
+	// Every level on the request's path is checked against its own counter: an
+	// organization or team budget would mean nothing otherwise.
+	if teamID := TeamIDFromMeta(req.Metadata); teamID != "" {
+		memberID := userID
+		if appID != "" {
+			// An application has no member budget in its team.
+			memberID = ""
+		}
+		teamQuota, member, err := e.quotaResolver.ResolveTeamQuotas(ctx, teamID, memberID)
+		if err != nil {
+			return nil, errors.WithStack(err)
+		}
+		if teamQuota != nil {
+			effective := &model.EffectiveQuota{
+				Currency:      teamQuota.Currency(),
+				DailyBudget:   teamQuota.DailyBudget(),
+				MonthlyBudget: teamQuota.MonthlyBudget(),
+				YearlyBudget:  teamQuota.YearlyBudget(),
+			}
+			if result, err := e.checkScope(ctx, model.QuotaScopeTeam, string(teamID), orgID, now, effective, "Team"); err != nil || result != nil {
+				return result, err
+			}
+		}
+		if member != nil {
+			if result, err := e.checkScope(ctx, model.QuotaScopeTeamMember, model.TeamMemberScopeID(teamID, memberID), orgID, now, member, "Team member"); err != nil || result != nil {
+				return result, err
+			}
 		}
 	}
 

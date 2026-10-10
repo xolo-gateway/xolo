@@ -203,6 +203,9 @@ func applyUsageFilter(query *gorm.DB, filter port.UsageFilter) *gorm.DB {
 	if filter.OrgID != nil {
 		query = query.Where("org_id = ?", string(*filter.OrgID))
 	}
+	if filter.TeamID != nil {
+		query = query.Where("team_id = ?", string(*filter.TeamID))
+	}
 	if filter.ProviderID != nil {
 		query = query.Where("provider_id = ?", string(*filter.ProviderID))
 	}

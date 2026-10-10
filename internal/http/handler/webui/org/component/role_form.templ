@@ -44,6 +44,9 @@ templ RoleForm(vmodel RoleFormVModel) {
 					@commonComp.InfoBanner(commonComp.ToneNegative, vmodel.Error)
 				</div>
 			}
+			<div class="mb-3.5">
+				@commonComp.InfoBanner(commonComp.ToneInfo, "Un rôle ne donne accès à aucun modèle précis : les modèles se règlent sur les équipes. Les permissions marquées « équipe » peuvent aussi être accordées sur une seule équipe, en attribuant le rôle à un membre depuis la page de l'équipe.")
+			</div>
 			<form method="POST" action={ templ.SafeURL(roleFormAction(ctx, vmodel)) }>
 				<div class="space-y-3.5">
 					@commonComp.Section() {
@@ -104,6 +107,9 @@ templ RoleForm(vmodel RoleFormVModel) {
 											})
 											@label.Label(label.Props{For: "perm-" + string(def.Code)}) {
 												{ def.Label }
+												if def.TeamScopable {
+													<span class={ "ml-1.5 inline-flex rounded px-1.5 py-0.5 text-[11px] font-medium", commonComp.ToneInfo.BadgeClass() }>équipe</span>
+												}
 											}
 										</div>
 									}
@@ -111,39 +117,6 @@ templ RoleForm(vmodel RoleFormVModel) {
 							}
 						}
 					</div>
-					if len(vmodel.ModelOptions) > 0 {
-						@commonComp.Section() {
-							@commonComp.SectionHeader() {
-								@commonComp.SectionTitle() {
-									Modèles autorisés (accès restreint)
-								}
-							}
-							@commonComp.SectionBody() {
-								<p class="mb-3 text-sm text-muted-foreground">
-									Cochez des modèles pour autoriser explicitement leur usage, même sans la permission globale correspondante.
-								</p>
-								<div class="space-y-3">
-									for _, opt := range vmodel.ModelOptions {
-										<div class="flex items-start gap-3">
-											@checkbox.Checkbox(checkbox.Props{
-												ID:       "model-" + opt.Kind + "-" + opt.ID,
-												Name:     "models",
-												Value:    opt.Kind + ":" + opt.ID,
-												Checked:  vmodel.SelectedMode[opt.Kind+":"+opt.ID],
-												Disabled: readonly,
-											})
-											@label.Label(label.Props{For: "model-" + opt.Kind + "-" + opt.ID}) {
-												{ opt.Label }
-												if opt.Kind == rbac.ModelKindVirtual {
-													<span class="text-xs text-muted-foreground ml-1">(virtuel)</span>
-												}
-											}
-										</div>
-									}
-								</div>
-							}
-						}
-					}
 					<div class="flex items-center gap-2">
 						if commonComp.HasPermission(ctx, vmodel.Org.ID(), rbac.PermRolesWrite) {
 							@button.Button(button.Props{Type: button.TypeSubmit, Size: button.SizeSm, Class: "gap-1.5"}) {

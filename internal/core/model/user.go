@@ -212,6 +212,9 @@ type AuthToken interface {
 	Label() string
 	Value() string
 	OrgID() OrgID
+	// TeamID is the team the token is bound to, empty when none. A bound
+	// token attributes every request to that team and cannot name another.
+	TeamID() TeamID
 	ExpiresAt() *time.Time
 }
 
@@ -222,6 +225,7 @@ type BaseAuthToken struct {
 	label       string
 	value       string
 	orgID       OrgID
+	teamID      TeamID
 	expiresAt   *time.Time
 }
 
@@ -242,6 +246,12 @@ func (t *BaseAuthToken) Value() string { return t.value }
 
 // OrgID implements AuthToken.
 func (t *BaseAuthToken) OrgID() OrgID { return t.orgID }
+
+// TeamID implements AuthToken.
+func (t *BaseAuthToken) TeamID() TeamID { return t.teamID }
+
+// SetTeamID binds the token to a team of its organization.
+func (t *BaseAuthToken) SetTeamID(teamID TeamID) { t.teamID = teamID }
 
 // ExpiresAt implements AuthToken.
 func (t *BaseAuthToken) ExpiresAt() *time.Time { return t.expiresAt }
