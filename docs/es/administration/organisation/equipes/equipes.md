@@ -15,7 +15,7 @@ Cada solicitud se atribuye a un solo equipo, o solo a la organización. El nombr
 - `/v1/models` lista un nombre por cada equipo que da acceso al modelo, en la forma calificada. Los miembros que tienen `model:use:org` también ven la forma corta `acme/gpt-4o`, que se carga solo a la organización.
 - La forma corta `acme/gpt-4o` sigue aceptándose cuando solo existe un camino: el token está vinculado a un equipo, uno solo de los equipos del miembro da acceso al modelo, o el miembro tiene `model:use:org` (entonces solo se carga a la organización). Si no, la pasarela responde `400` con el código `model_ambiguous` y la lista de los nombres calificados que se pueden usar.
 - Una clave de API o una aplicación vinculada a un equipo siempre carga a ese equipo, y no puede nombrar otro equipo.
-- Un modelo virtual personal (`~/…`) carga al equipo elegido en su configuración.
+- Un modelo virtual personal (`~/…`) carga al equipo elegido en su configuración. Si su autor deja ese equipo, o si el equipo se elimina, sus solicitudes se rechazan (`400 model_team_required`) hasta que el autor elija otro equipo.
 
 El identificador de un equipo ya no cambia después de su creación, porque los clientes guardan los nombres de modelos en su configuración. Su nombre visible sigue siendo editable.
 
@@ -100,3 +100,5 @@ Un equipo que tiene aplicaciones vinculadas no se puede eliminar. Vincúlelas pr
 Antes de los equipos, un rol personalizado podía autorizar modelos concretos. La actualización convierte cada rol personalizado que autorizaba modelos en un equipo, con los mismos modelos y con los titulares del rol como miembros. Una aplicación que tenía uno de esos roles se vincula a su equipo. Una aplicación que tenía varios recibe un equipo propio que reúne sus modelos. Nadie pierde acceso. Los roles conservan sus permisos.
 
 Un miembro que tenía varios de esos roles pertenece ahora a varios equipos. Si dos de ellos dan acceso al mismo modelo, la forma corta del nombre se vuelve ambigua y el miembro debe nombrar el equipo.
+
+> **Nota**: Detenga las demás instancias de Xolo durante la actualización. La migración elimina la tabla de accesos de los roles, que una instancia anterior todavía lee.

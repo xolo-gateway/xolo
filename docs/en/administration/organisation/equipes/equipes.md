@@ -15,7 +15,7 @@ Each request is attributed to a single team, or to the organization alone. The m
 - `/v1/models` lists one name per team that grants access to the model, in the qualified form. Members who have `model:use:org` also see the short form `acme/gpt-4o`, charged to the organization alone.
 - The short form `acme/gpt-4o` is still accepted when only one path exists: the token is attached to a team, only one of the member's teams grants access to the model, or the member has `model:use:org` (only the organization is then charged). Otherwise, the gateway answers `400` with the code `model_ambiguous` and the list of usable qualified names.
 - An API key or an application attached to a team always charges that team, and cannot name another team.
-- A personal virtual model (`~/…`) charges the team chosen in its settings.
+- A personal virtual model (`~/…`) charges the team chosen in its settings. If its author leaves that team, or the team is deleted, its requests are refused (`400 model_team_required`) until the author picks another team.
 
 The identifier of a team never changes after its creation, because clients store model names in their configuration. Its display name stays editable.
 
@@ -100,3 +100,5 @@ A team that has applications attached to it cannot be deleted. Attach them elsew
 Before teams, a custom role could grant specific models. The upgrade turns each custom role that granted models into a team, with the same models and the role holders as members. An application that held such a role is attached to its team. An application that held several gets its own team combining their models. Nobody loses access. Roles keep their permissions.
 
 A member who held several of these roles now belongs to several teams. If two of them grant access to the same model, the short form of the name becomes ambiguous and the member must name the team.
+
+> **Note**: Stop the other Xolo instances during the upgrade. The migration drops the table of role access, which an older instance still reads.

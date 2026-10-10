@@ -57,6 +57,7 @@ func BoundTeamIDFromContext(ctx context.Context) model.TeamID {
 // TeamLookup resolves the teams of an organization.
 type TeamLookup interface {
 	GetTeamBySlug(ctx context.Context, orgID model.OrgID, slug string) (model.Team, error)
+	GetTeamByID(ctx context.Context, id model.TeamID) (model.Team, error)
 }
 
 // TeamScopeHook attributes every proxied request to exactly one team, or to
@@ -150,7 +151,7 @@ func (h *TeamScopeHook) PreRequest(ctx context.Context, req *genaiProxy.ProxyReq
 
 	var team rbac.TeamRef
 	if name.Personal() {
-		team, err = h.personalTeam(ctx, perms, bound, name)
+		team, err = h.personalTeam(ctx, org.ID(), perms, bound, name)
 		if err != nil {
 			var answer *teamScopeAnswer
 			if errors.As(err, &answer) {
@@ -159,27 +160,30 @@ func (h *TeamScopeHook) PreRequest(ctx context.Context, req *genaiProxy.ProxyReq
 			return nil, err
 		}
 	} else {
+		if named != nil && (!perms.InTeam(string(named.ID())) || (bound != "" && bound != named.ID())) {
+			// A team the caller can not charge is answered like a team that
+			// does not exist: the name reaches the router unchanged, which
+			// knows no model of that name. Telling them apart would let any
+			// member list the teams of the organization.
+			return nil, nil
+		}
 		kind, modelID, found := lookupLocalModel(ctx, h.providerStore, h.virtualModelStore, org.ID(), name.Local)
 		if !found {
-			// Unknown model: let the router answer, with the team kept for
-			// the error path only.
+			// Unknown model: let the router answer.
 			h.setScope(req, name, refOf(named))
 			return nil, nil
 		}
 		switch {
 		case named != nil:
-			if bound != "" && string(bound) != string(named.ID()) {
-				return teamForbidden(req.Model, "the token is bound to another team"), nil
-			}
-			if !perms.InTeam(string(named.ID())) {
-				return teamForbidden(req.Model, "not a member of team '"+named.Slug()+"'"), nil
-			}
 			if !perms.CanUseModel(string(named.ID()), modelID, kind) {
 				return virtualModelForbidden(req.Model), nil
 			}
 			team = refOf(named)
 		case bound != "":
-			team = teamRefOf(perms, string(bound))
+			var ok bool
+			if team, ok = teamRefOf(perms, string(bound)); !ok {
+				return teamForbidden(req.Model, "the token is bound to a team it can no longer use"), nil
+			}
 			if !perms.CanUseModel(team.ID, modelID, kind) {
 				return virtualModelForbidden(req.Model), nil
 			}
@@ -214,15 +218,34 @@ func (h *TeamScopeHook) setScope(req *genaiProxy.ProxyRequest, name model.ModelN
 
 // personalTeam attributes a personal virtual model: to the bound team, else
 // the team its owner picked, else the single path left.
-func (h *TeamScopeHook) personalTeam(ctx context.Context, perms rbac.PermissionSet, bound model.TeamID, name model.ModelName) (rbac.TeamRef, error) {
+//
+// A team picked by the owner that the owner can no longer charge, because it
+// left the team or the team was deleted, refuses the request until the owner
+// picks another one: the team it designated to pay is never swapped for
+// another payer behind its back. A team of another organization is not this
+// organization's to charge, and leaves the single path rule.
+func (h *TeamScopeHook) personalTeam(ctx context.Context, orgID model.OrgID, perms rbac.PermissionSet, bound model.TeamID, name model.ModelName) (rbac.TeamRef, error) {
 	if bound != "" {
-		return teamRefOf(perms, string(bound)), nil
+		if team, ok := teamRefOf(perms, string(bound)); ok {
+			return team, nil
+		}
+		return rbac.TeamRef{}, &teamScopeAnswer{result: teamForbidden(name.String(), "the token is bound to a team it can no longer use")}
 	}
 	if h.personalVMStore != nil {
 		if u := httpCtx.User(ctx); u != nil {
 			pvm, err := h.personalVMStore.GetPersonalVirtualModelByName(ctx, u.ID(), name.Local)
-			if err == nil && pvm.TeamID() != "" && perms.InTeam(string(pvm.TeamID())) {
-				return teamRefOf(perms, string(pvm.TeamID())), nil
+			if err == nil && pvm.TeamID() != "" {
+				if team, ok := teamRefOf(perms, string(pvm.TeamID())); ok {
+					return team, nil
+				}
+				team, err := h.teamStore.GetTeamByID(ctx, pvm.TeamID())
+				switch {
+				case errors.Is(err, port.ErrNotFound) || (err == nil && team.OrgID() == orgID):
+					return rbac.TeamRef{}, &teamScopeAnswer{result: teamRequired(
+						"the team personal virtual model '" + name.String() + "' charges is no longer yours: pick another team in its settings")}
+				case err != nil:
+					return rbac.TeamRef{}, errors.WithStack(err)
+				}
 			}
 		}
 	}
@@ -236,16 +259,23 @@ func (h *TeamScopeHook) personalTeam(ctx context.Context, perms rbac.PermissionS
 	case 1:
 		return teams[0], nil
 	}
-	return rbac.TeamRef{}, &teamScopeAnswer{result: &genaiProxy.HookResult{
+	return rbac.TeamRef{}, &teamScopeAnswer{result: teamRequired(
+		"personal virtual model '" + name.String() + "' has no team in this organization: pick the team it charges in its settings, or use a token bound to a team")}
+}
+
+// teamRequired refuses a personal virtual model whose charged team must be
+// picked again.
+func teamRequired(message string) *genaiProxy.HookResult {
+	return &genaiProxy.HookResult{
 		Response: &genaiProxy.ProxyResponse{
 			StatusCode: http.StatusBadRequest,
 			Body: map[string]any{"error": map[string]any{
 				"type":    "invalid_request_error",
-				"message": "personal virtual model '" + name.String() + "' has no team in this organization: pick the team it charges in its settings, or use a token bound to a team",
+				"message": message,
 				"code":    "model_team_required",
 			}},
 		},
-	}}
+	}
 }
 
 var _ genaiProxy.PreRequestHook = &TeamScopeHook{}
@@ -264,13 +294,16 @@ func refOf(team model.Team) rbac.TeamRef {
 	return rbac.TeamRef{ID: string(team.ID()), Slug: team.Slug()}
 }
 
-func teamRefOf(perms rbac.PermissionSet, teamID string) rbac.TeamRef {
+// teamRefOf returns the team of the permission set, false when the principal
+// is not in it: a caller then refuses rather than attribute a team it can not
+// name.
+func teamRefOf(perms rbac.PermissionSet, teamID string) (rbac.TeamRef, bool) {
 	for _, t := range perms.Teams() {
 		if t.ID == teamID {
-			return t
+			return t, true
 		}
 	}
-	return rbac.TeamRef{ID: teamID}
+	return rbac.TeamRef{}, false
 }
 
 func teamForbidden(modelName, reason string) *genaiProxy.HookResult {

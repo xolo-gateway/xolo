@@ -21,6 +21,10 @@ type fakeQuotaStore struct {
 
 func (f *fakeQuotaStore) SetQuota(_ context.Context, _ model.Quota) error { return nil }
 
+func (f *fakeQuotaStore) ListQuotas(context.Context, model.QuotaScope, []string) ([]model.Quota, error) {
+	return nil, nil
+}
+
 func (f *fakeQuotaStore) GetQuota(_ context.Context, scope model.QuotaScope, _ string) (model.Quota, error) {
 	switch scope {
 	case model.QuotaScopeUser:

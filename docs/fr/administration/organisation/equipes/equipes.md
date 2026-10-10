@@ -15,7 +15,7 @@ Chaque requête est attribuée à une seule équipe, ou à l'organisation seule.
 - `/v1/models` liste un nom par équipe donnant accès au modèle, sous la forme qualifiée. Les membres qui ont `model:use:org` voient aussi la forme courte `acme/gpt-4o`, débitée sur l'organisation seule.
 - La forme courte `acme/gpt-4o` reste acceptée quand un seul chemin existe : le jeton est rattaché à une équipe, une seule des équipes du membre donne accès au modèle, ou le membre a `model:use:org` (seule l'organisation est alors débitée). Sinon, la passerelle répond `400` avec le code `model_ambiguous` et la liste des noms qualifiés utilisables.
 - Une clé d'API ou une application rattachée à une équipe débite toujours cette équipe, et ne peut pas nommer une autre équipe.
-- Un modèle virtuel personnel (`~/…`) débite l'équipe choisie dans ses réglages.
+- Un modèle virtuel personnel (`~/…`) débite l'équipe choisie dans ses réglages. Si son auteur quitte cette équipe, ou si elle est supprimée, ses requêtes sont refusées (`400 model_team_required`) jusqu'à ce qu'il en choisisse une autre.
 
 L'identifiant d'une équipe ne change plus après sa création : les clients enregistrent les noms de modèles dans leur configuration. Son nom affiché reste modifiable.
 
@@ -100,3 +100,5 @@ Une équipe à laquelle des applications sont rattachées ne peut pas être supp
 Avant les équipes, un rôle personnalisé pouvait autoriser des modèles précis. La mise à jour transforme chaque rôle personnalisé qui autorisait des modèles en une équipe : mêmes modèles, et pour membres les détenteurs du rôle. Une application qui détenait un tel rôle est rattachée à son équipe ; une application qui en détenait plusieurs reçoit une équipe propre réunissant leurs modèles. Personne ne perd d'accès. Les rôles gardent leurs permissions.
 
 Un membre qui détenait plusieurs de ces rôles appartient désormais à plusieurs équipes : si deux d'entre elles donnent accès au même modèle, la forme courte du nom devient ambiguë et il doit nommer l'équipe.
+
+> **Note** : Arrêtez les autres instances de Xolo pendant la mise à jour. La migration supprime la table des accès des rôles, qu'une instance plus ancienne lit encore.

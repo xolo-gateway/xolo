@@ -56,6 +56,7 @@ func CheckModelLocalName(ctx context.Context, store TeamNameReader, orgID model.
 // QuotaCascadeReader is what the cascade check reads.
 type QuotaCascadeReader interface {
 	GetQuota(ctx context.Context, scope model.QuotaScope, scopeID string) (model.Quota, error)
+	ListQuotas(ctx context.Context, scope model.QuotaScope, scopeIDs []string) ([]model.Quota, error)
 	GetTeamByID(ctx context.Context, id model.TeamID) (model.Team, error)
 	ListOrgTeams(ctx context.Context, orgID model.OrgID) ([]model.Team, error)
 	ListTeamMembers(ctx context.Context, id model.TeamID) ([]model.TeamMember, error)
@@ -198,15 +199,14 @@ func cascadeChildren(ctx context.Context, store QuotaCascadeReader, scope model.
 	default:
 		return nil, nil
 	}
-	var children []cascadeNode
-	for _, id := range ids {
-		q, err := getOptionalQuota(ctx, store, childScope, id)
-		if err != nil {
-			return nil, err
-		}
-		if q != nil {
-			children = append(children, cascadeNode{childScope, id, q})
-		}
+	// One read for every child, whatever the size of the organization.
+	quotas, err := store.ListQuotas(ctx, childScope, ids)
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+	children := make([]cascadeNode, 0, len(quotas))
+	for _, q := range quotas {
+		children = append(children, cascadeNode{childScope, q.ScopeID(), q})
 	}
 	return children, nil
 }

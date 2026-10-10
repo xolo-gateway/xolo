@@ -83,6 +83,25 @@ func (s *Store) GetQuota(ctx context.Context, scope model.QuotaScope, scopeID st
 	return &wrappedQuota{&q}, nil
 }
 
+// ListQuotas implements port.QuotaStore.
+func (s *Store) ListQuotas(ctx context.Context, scope model.QuotaScope, scopeIDs []string) ([]model.Quota, error) {
+	if len(scopeIDs) == 0 {
+		return nil, nil
+	}
+	var rows []*Quota
+	err := s.withRetry(ctx, false, func(ctx context.Context, db *gorm.DB) error {
+		return errors.WithStack(db.Where("scope = ? AND scope_id IN ?", string(scope), scopeIDs).Order("scope_id").Find(&rows).Error)
+	})
+	if err != nil {
+		return nil, err
+	}
+	quotas := make([]model.Quota, 0, len(rows))
+	for _, q := range rows {
+		quotas = append(quotas, &wrappedQuota{q})
+	}
+	return quotas, nil
+}
+
 // ResolveEffectiveQuota implements port.QuotaStore.
 // Takes the minimum non-nil budget at each period across user and org quotas.
 // The second return value is the raw org quota the resolver loaded to feed the

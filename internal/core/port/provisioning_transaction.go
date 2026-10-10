@@ -69,6 +69,7 @@ type ProvisioningBusinessStore interface {
 	SetQuota(ctx context.Context, quota model.Quota) error
 	GetQuotaByID(ctx context.Context, id model.QuotaID) (model.Quota, error)
 	GetQuota(ctx context.Context, scope model.QuotaScope, scopeID string) (model.Quota, error)
+	ListQuotas(ctx context.Context, scope model.QuotaScope, scopeIDs []string) ([]model.Quota, error)
 	CreateAlert(ctx context.Context, alert model.Alert) error
 	UpdateAlert(ctx context.Context, alert model.Alert) error
 	GetAlertByID(ctx context.Context, id model.AlertID) (model.Alert, error)

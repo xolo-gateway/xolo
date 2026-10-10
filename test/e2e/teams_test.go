@@ -91,9 +91,15 @@ func TestTeams_QualifiedModelName(t *testing.T) {
 }
 
 // A member outside the team can not charge it.
+// A team the caller is not in is answered like a team that does not exist,
+// so that no member can list the teams of the organization.
 func TestTeams_NotAMember(t *testing.T) {
 	res := chat(t, tokenAlice, modelAnalysts, "Bonjour")
-	if res.Status != http.StatusForbidden {
-		t.Fatalf("status = %d, want 403: %s", res.Status, res.Body)
+	if res.Status == http.StatusOK {
+		t.Fatalf("status = 200, want a refusal: %s", res.Body)
+	}
+	unknown := chat(t, tokenAlice, "acme/no-such-team/gpt-4o-mini", "Bonjour")
+	if res.Status != unknown.Status {
+		t.Fatalf("status = %d, want %d as for an unknown team: %s", res.Status, unknown.Status, res.Body)
 	}
 }

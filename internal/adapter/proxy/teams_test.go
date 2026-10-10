@@ -3,6 +3,7 @@ package proxy
 import (
 	"context"
 	"net/http"
+	"strings"
 	"testing"
 
 	genaiProxy "github.com/bornholm/genai/proxy"
@@ -139,6 +140,15 @@ func (s teamsOrgStore) GetOrgBySlug(_ context.Context, _ model.TenantID, slug st
 
 type teamsTeamStore struct{ w *teamsWorld }
 
+func (s teamsTeamStore) GetTeamByID(_ context.Context, id model.TeamID) (model.Team, error) {
+	for _, team := range s.w.teams {
+		if team.ID() == id {
+			return team, nil
+		}
+	}
+	return nil, port.ErrNotFound
+}
+
 func (s teamsTeamStore) GetTeamBySlug(_ context.Context, orgID model.OrgID, slug string) (model.Team, error) {
 	if team, ok := s.w.teams[slug]; ok && team.OrgID() == orgID {
 		return team, nil
@@ -227,10 +237,27 @@ func TestTeamScopeRefusesATeamOfOthers(t *testing.T) {
 	w.addTeam("legal", "gpt")
 	rd := w.addTeam("rd", "mistral")
 
-	result, err := w.hook().PreRequest(w.ctx(nil, []model.Team{rd}, nil), w.request("acme/legal/gpt"))
-	require.NoError(t, err)
-	require.Equal(t, "model_forbidden", errorCode(t, result))
-	require.Equal(t, http.StatusForbidden, result.Response.StatusCode)
+	ctx := w.ctx(nil, []model.Team{rd}, nil)
+	requireAnsweredLikeAnUnknownTeam(t, w, ctx, "acme/legal/gpt", "acme/nosuch/gpt")
+}
+
+// requireAnsweredLikeAnUnknownTeam checks that naming a team the caller can
+// not charge gets the very answer of a team that does not exist: nothing lets
+// a member list the teams of the organization.
+func requireAnsweredLikeAnUnknownTeam(t *testing.T, w *teamsWorld, ctx context.Context, foreign, unknown string) {
+	t.Helper()
+	answer := func(name string) string {
+		req := w.request(name)
+		result, err := w.hook().PreRequest(ctx, req)
+		require.NoError(t, err)
+		require.Nil(t, result, "the router answers")
+		require.Empty(t, TeamIDFromMeta(req.Metadata), "no team is attributed")
+		router := NewOrgModelRouter(teamsProviderStore{w: w}, teamsOrgStore{w: w}, teamsTestSecretKey)
+		_, _, err = router.ResolveModel(ctx, req)
+		require.Error(t, err)
+		return strings.ReplaceAll(err.Error(), name, "<name>")
+	}
+	require.Equal(t, answer(unknown), answer(foreign))
 }
 
 func TestTeamScopeRefusesAModelTheTeamDoesNotGrant(t *testing.T) {
@@ -290,9 +317,8 @@ func TestTeamScopeBoundToken(t *testing.T) {
 	require.Nil(t, result, "a bound token is never ambiguous")
 	require.Equal(t, string(legal.ID()), string(TeamIDFromMeta(req.Metadata)))
 
-	result, err = w.hook().PreRequest(ctx, w.request("acme/rd/gpt"))
-	require.NoError(t, err)
-	require.Equal(t, "model_forbidden", errorCode(t, result), "a bound token can not name another team")
+	// A bound token can not name another team.
+	requireAnsweredLikeAnUnknownTeam(t, w, ctx, "acme/rd/gpt", "acme/nosuch/gpt")
 }
 
 func TestTeamScopeTokenBoundToATeamLeft(t *testing.T) {
@@ -543,4 +569,60 @@ func TestAccessReadsUnknownOrganizationsLikeTheResolution(t *testing.T) {
 	ok, err = access.CanUse(ctx, "bogus/gpt")
 	require.NoError(t, err)
 	require.True(t, ok)
+}
+
+func personalModel(w *teamsWorld, name string, team model.TeamID) {
+	pvm := model.NewPersonalVirtualModel(w.user.ID(), name, "")
+	pvm.SetTeamID(team)
+	pvm.SetGraph(pipelinetest.NewGraph().Generator("in").ModelWithProxy("m", "gpt").Sink("out").
+		Edge("in", "request", "m", "request").Edge("m", "response", "out", "response").Build())
+	w.pvms[name] = pvm
+}
+
+// The team a personal virtual model charges is never swapped for another
+// payer: once its author left it, the request is refused until the author
+// picks another team, even with the organization-wide access.
+func TestPersonalVirtualModelWhoseTeamWasLeft(t *testing.T) {
+	w := newTeamsWorld(t)
+	legal := w.addTeam("legal", "gpt")
+	rd := w.addTeam("rd", "gpt")
+	personalModel(w, "mine", legal.ID())
+	codes := []string{string(rbac.PermPersonalVMCreate), string(rbac.PermModelUseOrg)}
+
+	result, err := w.hook().PreRequest(w.ctx(codes, []model.Team{rd}, nil), w.request("~/mine"))
+	require.NoError(t, err)
+	require.Equal(t, "model_team_required", errorCode(t, result))
+	require.Equal(t, http.StatusBadRequest, result.Response.StatusCode)
+
+	// A deleted team is refused the same way.
+	delete(w.teams, "legal")
+	result, err = w.hook().PreRequest(w.ctx(codes, []model.Team{rd}, nil), w.request("~/mine"))
+	require.NoError(t, err)
+	require.Equal(t, "model_team_required", errorCode(t, result))
+
+	// A token bound to a team charges it whatever the model's own team.
+	req := w.request("~/mine")
+	result, err = w.hook().PreRequest(w.ctx(codes, []model.Team{rd}, rd), req)
+	require.NoError(t, err)
+	require.Nil(t, result)
+	require.Equal(t, string(rd.ID()), string(TeamIDFromMeta(req.Metadata)))
+}
+
+// A personal virtual model without team is refused when several paths exist.
+func TestPersonalVirtualModelWithoutTeam(t *testing.T) {
+	w := newTeamsWorld(t)
+	legal := w.addTeam("legal", "gpt")
+	rd := w.addTeam("rd", "gpt")
+	personalModel(w, "mine", "")
+	ctx := w.ctx([]string{string(rbac.PermPersonalVMCreate)}, []model.Team{legal, rd}, nil)
+
+	result, err := w.hook().PreRequest(ctx, w.request("~/mine"))
+	require.NoError(t, err)
+	require.Equal(t, "model_team_required", errorCode(t, result))
+
+	req := w.request("~/mine")
+	result, err = w.hook().PreRequest(w.ctx([]string{string(rbac.PermPersonalVMCreate)}, []model.Team{legal}, nil), req)
+	require.NoError(t, err)
+	require.Nil(t, result)
+	require.Equal(t, string(legal.ID()), string(TeamIDFromMeta(req.Metadata)), "the single team is charged")
 }

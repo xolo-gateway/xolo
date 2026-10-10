@@ -54,6 +54,16 @@ func (w *teamWorld) GetQuota(_ context.Context, scope model.QuotaScope, scopeID 
 	return nil, port.ErrNotFound
 }
 
+func (w *teamWorld) ListQuotas(_ context.Context, scope model.QuotaScope, scopeIDs []string) ([]model.Quota, error) {
+	var out []model.Quota
+	for _, id := range scopeIDs {
+		if q, ok := w.quotas[string(scope)+"/"+id]; ok {
+			out = append(out, q)
+		}
+	}
+	return out, nil
+}
+
 func (w *teamWorld) GetTeamByID(_ context.Context, id model.TeamID) (model.Team, error) {
 	if team, ok := w.teams[id]; ok {
 		return team, nil

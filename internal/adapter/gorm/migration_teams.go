@@ -29,6 +29,10 @@ const teamsMigrationID = "202610150001"
 // The builtin admin roles gain the teams permissions, and the projections of
 // the custom roles (which no longer carry grants), applications (now bound to
 // a team) and quotas (now with a cascade) are published again.
+//
+// The migration must run with the other instances stopped: an older instance
+// still reading role_models would fail once the table is dropped, and one
+// still writing it would lose its grants.
 func migrateTeams(tx *gorm.DB) error {
 	if err := tx.AutoMigrate(
 		&Team{}, &TeamModelGrant{}, &TeamMiddleware{}, &TeamMember{}, &TeamMemberRole{},
@@ -92,6 +96,8 @@ func convertRoleGrantsToTeams(tx *gorm.DB) ([]string, error) {
 		return nil, errors.WithStack(err)
 	}
 
+	logOrphanRoleGrants(tx, roleIDs, roles, grants)
+
 	var created []string
 	teamOfRole := map[string]string{}
 	for _, role := range roles {
@@ -121,8 +127,10 @@ func convertRoleGrantsToTeams(tx *gorm.DB) ([]string, error) {
 	}
 	byApp := map[string][]string{}
 	var appIDs []string
+	skipped := 0
 	for _, ar := range appRoles {
 		if _, ok := teamOfRole[ar.RoleID]; !ok {
+			skipped++
 			continue
 		}
 		if _, seen := byApp[ar.ApplicationID]; !seen {
@@ -151,7 +159,37 @@ func convertRoleGrantsToTeams(tx *gorm.DB) ([]string, error) {
 			return nil, errors.WithStack(err)
 		}
 	}
+	if skipped > 0 {
+		slog.InfoContext(tx.Statement.Context, "application roles of a deleted role skipped",
+			slog.Int("application_roles", skipped))
+	}
 	return created, nil
+}
+
+// logOrphanRoleGrants logs the role grants left behind by a deleted role: they
+// matched nothing and are dropped with role_models.
+func logOrphanRoleGrants(tx *gorm.DB, roleIDs []string, roles []Role, grants []legacyRoleModel) {
+	found := make(map[string]bool, len(roles))
+	for _, role := range roles {
+		found[role.ID] = true
+	}
+	orphans := 0
+	var missing []string
+	for _, id := range roleIDs {
+		if found[id] {
+			continue
+		}
+		missing = append(missing, id)
+		for _, g := range grants {
+			if g.RoleID == id {
+				orphans++
+			}
+		}
+	}
+	if orphans > 0 {
+		slog.InfoContext(tx.Statement.Context, "role model grants of a deleted role dropped",
+			slog.Int("grants", orphans), slog.Any("roles", missing))
+	}
 }
 
 // createMigratedTeam creates a team of the organization with the given grants

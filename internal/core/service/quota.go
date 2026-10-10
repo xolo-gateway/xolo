@@ -92,6 +92,8 @@ func (s *QuotaService) ResolveTeamQuotas(ctx context.Context, teamID model.TeamI
 	}
 	n := int64(len(members))
 	if n == 0 {
+		// A request charged to a team without members (a member removed since
+		// its token was minted) has no share: the undivided envelope bounds it.
 		return teamQuota, nil, nil
 	}
 	return teamQuota, &model.EffectiveQuota{
