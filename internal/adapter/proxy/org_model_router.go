@@ -308,7 +308,15 @@ func (r *OrgModelRouter) ResolveRealModel(ctx context.Context, orgID model.OrgID
 		return nil, "", "", errors.Errorf("model '%s' not available in organization", proxyName)
 	}
 	if name.Qualified() {
-		if org, err := r.orgStore.GetOrgBySlug(ctx, httpCtx.TenantID(ctx), name.Org); err == nil {
+		org, err := r.orgStore.GetOrgBySlug(ctx, httpCtx.TenantID(ctx), name.Org)
+		switch {
+		case errors.Is(err, port.ErrNotFound):
+			// Not an organization: a local name holding a slash, read below.
+		case err != nil:
+			// Never fall back to a model of orgID: the access check read the
+			// name as one of the organization it names.
+			return nil, "", "", errors.WithStack(err)
+		default:
 			// When the referenced org differs from the token's org, verify that the
 			// requesting user is actually a member of that org.
 			if org.ID() != orgID {

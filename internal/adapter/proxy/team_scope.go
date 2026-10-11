@@ -164,7 +164,13 @@ func (h *TeamScopeHook) PreRequest(ctx context.Context, req *genaiProxy.ProxyReq
 			// A team the caller can not charge is answered like a team that
 			// does not exist: the name reaches the router unchanged, which
 			// knows no model of that name. Telling them apart would let any
-			// member list the teams of the organization.
+			// member list the teams of the organization. The server logs why.
+			reason := "caller not in the team"
+			if perms.InTeam(string(named.ID())) {
+				reason = "token bound to another team"
+			}
+			slog.InfoContext(ctx, "team scope: model name names a team the caller can not charge",
+				slog.String("model", req.Model), slog.String("team", string(named.ID())), slog.String("reason", reason))
 			return nil, nil
 		}
 		kind, modelID, found := lookupLocalModel(ctx, h.providerStore, h.virtualModelStore, org.ID(), name.Local)

@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strings"
 	"testing"
@@ -548,6 +549,30 @@ func TestCompleterResolvesQualifiedNames(t *testing.T) {
 	ctx := w.ctx([]string{string(rbac.PermModelUseOrg)}, nil, nil)
 	_, realModel, err := w.adapter().modelExecutor.ResolveClient(ctx, "acme/gpt", pipelineEC(w))
 	require.NoError(t, err)
+	require.Equal(t, "gpt-real", realModel)
+}
+
+// failingOrgStore fails every organization lookup by slug.
+type failingOrgStore struct {
+	teamsOrgStore
+}
+
+func (failingOrgStore) GetOrgBySlug(context.Context, model.TenantID, string) (model.Organization, error) {
+	return nil, errors.New("store unavailable")
+}
+
+// A store failure on the organization of a qualified name is reported, never
+// read as a local name of the caller's organization.
+func TestResolveRealModelReportsOrganizationLookupErrors(t *testing.T) {
+	w := newTeamsWorld(t)
+	router := NewOrgModelRouter(teamsProviderStore{w: w}, failingOrgStore{teamsOrgStore{w: w}}, teamsTestSecretKey)
+	ctx := w.ctx([]string{string(rbac.PermModelUseOrg)}, nil, nil)
+
+	_, _, _, err := router.ResolveRealModel(ctx, w.org.ID(), "other/gpt")
+	require.ErrorContains(t, err, "store unavailable")
+
+	_, realModel, _, err := router.ResolveRealModel(ctx, w.org.ID(), "gpt")
+	require.NoError(t, err, "a local name needs no organization lookup")
 	require.Equal(t, "gpt-real", realModel)
 }
 

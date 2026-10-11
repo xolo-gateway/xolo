@@ -257,6 +257,13 @@ func TestMigrateTeamsConvertsRoleGrants(t *testing.T) {
 		require.NoError(t, store.CreateApplication(ctx, double))
 		require.NoError(t, store.SetApplicationRoles(ctx, double.ID(), []model.RoleID{analyst.ID(), other.ID()}))
 
+		// Grants and an application role left by a role deleted since.
+		deleted := string(model.NewRoleID())
+		require.NoError(t, db.Create(&xologorm.LegacyRoleModel{RoleID: deleted, ModelID: "m3", ModelKind: rbac.ModelKindLLM}).Error)
+		orphan := model.NewApplication(f.org.ID(), "Orphan", "", true)
+		require.NoError(t, store.CreateApplication(ctx, orphan))
+		require.NoError(t, db.Create(&xologorm.ApplicationRole{ApplicationID: string(orphan.ID()), RoleID: deleted}).Error)
+
 		cursor, err := store.CaptureEventCursor(ctx)
 		require.NoError(t, err)
 		require.NoError(t, db.Transaction(func(tx *gormpkg.DB) error { return xologorm.MigrateTeams(tx) }))
@@ -286,6 +293,14 @@ func TestMigrateTeamsConvertsRoleGrants(t *testing.T) {
 		got, err = store.GetApplication(ctx, double.ID())
 		require.NoError(t, err)
 		require.Equal(t, joint.ID(), got.TeamID())
+		got, err = store.GetApplication(ctx, orphan.ID())
+		require.NoError(t, err)
+		require.Empty(t, got.TeamID(), "a deleted role gives no team")
+		for _, team := range teams {
+			for _, g := range team.ModelGrants() {
+				require.NotEqual(t, "m3", g.ModelID, "the grants of a deleted role are dropped")
+			}
+		}
 
 		perms, err := store.ResolveEffectivePermissions(ctx, f.user.ID(), f.org.ID())
 		require.NoError(t, err)
