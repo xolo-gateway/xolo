@@ -56,6 +56,15 @@ templ TeamPage(vmodel TeamPageVModel) {
 							@input.Input(input.Props{ID: "name", Name: "name", Value: vmodel.Team.Name(), Disabled: !vmodel.CanEditTeam, Attributes: templ.Attributes{"required": "required"}})
 						}
 						@form.Item() {
+							@label.Label(label.Props{For: "slug"}) {
+								Identifiant
+							}
+							@input.Input(input.Props{ID: "slug", Name: "slug", Value: vmodel.Team.Slug(), Disabled: !vmodel.CanEditTeam, Attributes: templ.Attributes{"required": "required", "pattern": "[a-z0-9]([a-z0-9-]*[a-z0-9])?", "maxlength": "63"}})
+							@form.Description() {
+								{ "Les membres appellent " + vmodel.Org.Slug() + "/" + vmodel.Team.Slug() + "/<modèle>. Changer l'identifiant casse les noms de modèles déjà enregistrés dans leurs clients : ils devront les mettre à jour." }
+							}
+						}
+						@form.Item() {
 							@label.Label(label.Props{For: "description"}) {
 								Description
 							}

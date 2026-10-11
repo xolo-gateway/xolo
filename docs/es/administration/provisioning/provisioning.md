@@ -572,11 +572,12 @@ obligatorio, `null` solo donde se indica.
   Un padre ausente o ajeno responde `404 parent_not_found`; un recurso de otra
   organización o de otro tenant responde `404 not_found`, como uno ausente.
 - **Campos inmutables.** El `scope` y el `scope_id` de una cuota, el `scope` y
-  el `owner_id` de una alerta y el `slug` de un equipo nunca cambian
-  (`409 conflict`). Un ámbito tiene una sola cuota: otra clave sobre el mismo
-  ámbito responde `409 conflict`. El `slug` de un equipo sigue el formato de
-  los slugs de organización y no puede ser el comienzo del nombre de un modelo
-  de la organización (`409 conflict`).
+  el `owner_id` de una alerta nunca cambian (`409 conflict`). Un ámbito tiene una sola cuota: otra clave sobre el mismo
+  ámbito responde `409 conflict`. El `slug` de un equipo, al crearlo como al
+  cambiarlo, sigue el formato de los slugs de organización, no lo tiene ningún
+  otro equipo y no puede ser el comienzo del nombre de un modelo de la
+  organización (`409 conflict`). Cambiarlo rompe los nombres de modelos que los
+  clientes guardaron con el anterior.
 - **Reparto de los presupuestos.** El `cascade` de una cuota de organización o
   de equipo restringe las cuotas de sus equipos o de sus miembros al
   escribirlas: `capped`, cada una como máximo igual a la del padre, período por

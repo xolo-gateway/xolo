@@ -17,7 +17,8 @@ type TeamNameReader interface {
 	ModelNamePrefixTaken(ctx context.Context, orgID model.OrgID, slug string) (bool, error)
 }
 
-// CheckTeamSlug validates the slug of a new team of the organization. A slug
+// CheckTeamSlug validates the slug of a new or renamed team of the
+// organization; another team holding it is left to the store. A slug
 // is a DNS label, and "<org>/<slug>/<rest>" must never also designate a model
 // whose local name is "<slug>/<rest>".
 func CheckTeamSlug(ctx context.Context, store TeamNameReader, orgID model.OrgID, slug string) error {

@@ -17,7 +17,7 @@ Each request is attributed to a single team, or to the organization alone. The m
 - An API key or an application attached to a team always charges that team, even when its holder has `model:use:org`, and cannot name another team.
 - A personal virtual model (`~/…`) charges the team chosen in its settings. If its author leaves that team, the team is deleted, or it belongs to another organization than the request's, its requests are refused (`400 model_team_required`) until the author picks another team.
 
-The identifier of a team never changes after its creation, because clients store model names in their configuration. Its display name stays editable.
+The identifier of a team can be changed on its page, with the same rules as at creation. Clients store model names in their configuration: those using the former identifier stop working and must be updated. The tokens, applications, personal virtual models and budgets attached to the team follow it unchanged.
 
 > **Name conflicts.** A model name can contain a slash, like a vLLM model declared under its Hugging Face identifier (`meta/llama-3`). Xolo refuses a team whose identifier would start an existing model name (`meta`), and a model name that would start with a team identifier followed by `/`.
 

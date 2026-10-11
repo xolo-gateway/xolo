@@ -587,11 +587,12 @@ Les représentations sont en snake_case et complètes : chaque champ est requis,
   ressource d'une autre organisation ou d'un autre tenant répond
   `404 not_found`, comme une ressource absente.
 - **Champs immuables.** Le `scope` et le `scope_id` d'un quota, le `scope` et
-  l'`owner_id` d'une alerte, le `slug` d'une équipe ne changent jamais
-  (`409 conflict`). Une portée porte un seul quota : une autre clé sur la même
-  portée répond `409 conflict`. Le `slug` d'une équipe suit le format des slugs
-  d'organisation et ne peut pas commencer le nom d'un modèle de l'organisation
-  (`409 conflict`).
+  l'`owner_id` d'une alerte ne changent jamais (`409 conflict`). Une portée porte un seul quota : une autre clé sur la même
+  portée répond `409 conflict`. Le `slug` d'une équipe, à sa création comme à
+  son changement, suit le format des slugs d'organisation, n'est porté par
+  aucune autre équipe et ne peut pas commencer le nom d'un modèle de
+  l'organisation (`409 conflict`). Le changer casse les noms de modèles que les
+  clients ont enregistrés avec l'ancien.
 - **Répartition des budgets.** Le `cascade` d'un quota d'organisation ou
   d'équipe contraint les quotas de ses équipes ou de ses membres à leur
   écriture : `capped`, chacun au plus égal au parent, période par période ;

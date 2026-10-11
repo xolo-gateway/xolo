@@ -25,8 +25,9 @@ type Team interface {
 	WithID[TeamID]
 
 	OrgID() OrgID
-	// Slug is the team segment of qualified model names. It never changes once
-	// the team exists, since clients store model names in their configuration.
+	// Slug is the team segment of qualified model names. It can be changed,
+	// but clients store model names in their configuration: those naming the
+	// former slug stop resolving.
 	Slug() string
 	Name() string
 	Description() string
@@ -69,6 +70,7 @@ func (t *BaseTeam) UpdatedAt() time.Time          { return t.updatedAt }
 // SetID gives the team an identifier chosen by the provisioning client.
 func (t *BaseTeam) SetID(id TeamID) { t.id = id }
 
+func (t *BaseTeam) SetSlug(slug string)               { t.slug = slug }
 func (t *BaseTeam) SetName(name string)               { t.name = name }
 func (t *BaseTeam) SetDescription(description string) { t.description = description }
 func (t *BaseTeam) SetShareQuotaEqually(v bool)       { t.shareQuotaEqually = v }

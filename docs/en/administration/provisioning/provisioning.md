@@ -556,10 +556,11 @@ only where shown.
   foreign parent is `404 parent_not_found`; a resource of another organization
   or tenant is `404 not_found`, like a missing one.
 - **Immutable fields.** The `scope` and `scope_id` of a quota, the `scope`
-  and `owner_id` of an alert and the `slug` of a team never change
-  (`409 conflict`). A scope holds one quota: another key on the same scope is
-  `409 conflict`. The `slug` of a team follows the format of organization slugs
-  and cannot start the name of a model of the organization (`409 conflict`).
+  and `owner_id` of an alert never change (`409 conflict`). A scope holds one quota: another key on the same scope is
+  `409 conflict`. The `slug` of a team, at creation or when it changes, follows
+  the format of organization slugs, is held by no other team and cannot start
+  the name of a model of the organization (`409 conflict`). Changing it breaks
+  the model names clients stored with the former one.
 - **Budget distribution.** The `cascade` of an organization or team quota
   constrains the quotas of its teams or members when they are written:
   `capped`, each at most equal to the parent, period by period; `split`, their

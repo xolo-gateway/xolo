@@ -17,7 +17,7 @@ Chaque requête est attribuée à une seule équipe, ou à l'organisation seule.
 - Une clé d'API ou une application rattachée à une équipe débite toujours cette équipe, même quand son détenteur a `model:use:org`, et ne peut pas nommer une autre équipe.
 - Un modèle virtuel personnel (`~/…`) débite l'équipe choisie dans ses réglages. Si son auteur quitte cette équipe, si elle est supprimée ou si elle appartient à une autre organisation que celle de la requête, ses requêtes sont refusées (`400 model_team_required`) jusqu'à ce qu'il en choisisse une autre.
 
-L'identifiant d'une équipe ne change plus après sa création : les clients enregistrent les noms de modèles dans leur configuration. Son nom affiché reste modifiable.
+L'identifiant d'une équipe peut être modifié sur sa page, avec les mêmes règles qu'à la création. Les clients enregistrent les noms de modèles dans leur configuration : ceux qui portent l'ancien identifiant ne fonctionnent plus et doivent être mis à jour. Les jetons, applications, modèles virtuels personnels et budgets rattachés à l'équipe la suivent sans changement.
 
 > **Conflit de noms.** Un nom de modèle peut contenir une barre oblique, comme un modèle vLLM déclaré sous son identifiant Hugging Face (`meta/llama-3`). Xolo refuse une équipe dont l'identifiant commencerait un nom de modèle existant (`meta`), et un nom de modèle qui commencerait par l'identifiant d'une équipe suivi de `/`.
 

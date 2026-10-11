@@ -192,6 +192,34 @@ func TestDeleteTeam(t *testing.T) {
 	})
 }
 
+// A team can change its slug, but not to one another team of the
+// organization holds.
+func TestRenameTeam(t *testing.T) {
+	eachBackend(t, func(t *testing.T, store *xologorm.Store) {
+		ctx := context.Background()
+		f := newTeamFixture(t, store)
+		legal := model.NewTeam(f.org.ID(), "legal", "Legal", "")
+		require.NoError(t, store.CreateTeam(ctx, legal))
+		require.NoError(t, store.CreateTeam(ctx, model.NewTeam(f.org.ID(), "rd", "R&D", "")))
+
+		renamed := model.CopyTeam(legal)
+		renamed.SetSlug("juridique")
+		require.NoError(t, store.SaveTeam(ctx, renamed))
+		got, err := store.GetTeamBySlug(ctx, f.org.ID(), "juridique")
+		require.NoError(t, err)
+		require.Equal(t, legal.ID(), got.ID())
+		_, err = store.GetTeamBySlug(ctx, f.org.ID(), "legal")
+		require.ErrorIs(t, err, port.ErrNotFound)
+
+		taken := model.CopyTeam(got)
+		taken.SetSlug("rd")
+		require.ErrorIs(t, store.SaveTeam(ctx, taken), port.ErrAlreadyExists)
+		got, err = store.GetTeamByID(ctx, legal.ID())
+		require.NoError(t, err)
+		require.Equal(t, "juridique", got.Slug())
+	})
+}
+
 // A middleware attached to no team runs for the whole organization: deleting
 // the only team it is attached to would widen it silently.
 func TestDeleteTeamHoldingAMiddleware(t *testing.T) {

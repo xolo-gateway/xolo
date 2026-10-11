@@ -102,8 +102,12 @@ func TestTeamEndpoints(t *testing.T) {
 	assertStatus(t, rec, http.StatusOK)
 	require.Len(t, decodeBody(t, rec)["items"], 1)
 
-	// The slug of a team never changes: clients store model names with it.
+	// A slug can change, checked like the slug of a new team.
 	body["slug"] = "renamed"
+	rec = call(t, env.handler, http.MethodPut, teams+"/"+key, body)
+	assertStatus(t, rec, http.StatusOK)
+	require.Equal(t, "renamed", decodeBody(t, rec)["slug"])
+	body["slug"] = "Not a slug"
 	rec = call(t, env.handler, http.MethodPut, teams+"/"+key, body)
 	require.Contains(t, []int{http.StatusConflict, http.StatusUnprocessableEntity}, rec.Code, rec.Body.String())
 

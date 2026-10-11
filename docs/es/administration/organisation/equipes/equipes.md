@@ -17,7 +17,7 @@ Cada solicitud se atribuye a un solo equipo, o solo a la organización. El nombr
 - Una clave de API o una aplicación vinculada a un equipo siempre carga a ese equipo, incluso cuando su titular tiene `model:use:org`, y no puede nombrar otro equipo.
 - Un modelo virtual personal (`~/…`) carga al equipo elegido en su configuración. Si su autor deja ese equipo, si el equipo se elimina o si pertenece a otra organización que la de la solicitud, sus solicitudes se rechazan (`400 model_team_required`) hasta que el autor elija otro equipo.
 
-El identificador de un equipo ya no cambia después de su creación, porque los clientes guardan los nombres de modelos en su configuración. Su nombre visible sigue siendo editable.
+El identificador de un equipo se puede modificar en su página, con las mismas reglas que en la creación. Los clientes guardan los nombres de modelos en su configuración: los que usan el identificador anterior dejan de funcionar y deben actualizarse. Los tokens, las aplicaciones, los modelos virtuales personales y los presupuestos vinculados al equipo lo siguen sin cambios.
 
 > **Conflicto de nombres.** Un nombre de modelo puede contener una barra, como un modelo vLLM declarado con su identificador de Hugging Face (`meta/llama-3`). Xolo rechaza un equipo cuyo identificador sería el comienzo de un nombre de modelo existente (`meta`), y un nombre de modelo que empezaría por el identificador de un equipo seguido de `/`.
 

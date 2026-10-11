@@ -124,8 +124,8 @@ func (s *ProvisioningService) PutApplication(ctx context.Context, tenantID model
 
 // PutTeam creates the team or brings it to the given representation, its
 // members, their team roles, its model grants and middlewares included, in one
-// transaction. The slug of a team never changes: clients store model names
-// qualified with it.
+// transaction. A new slug is checked like the slug of a new team; the model
+// names clients stored with the former one stop resolving.
 func (s *ProvisioningService) PutTeam(ctx context.Context, tenantID model.TenantID, orgID model.OrgID, key string, condition model.MatchCondition, v model.TeamSettings) (model.CommonItem, error) {
 	if err := normalizeTeam(&v); err != nil {
 		return model.CommonItem{}, err
@@ -149,9 +149,12 @@ func (s *ProvisioningService) PutTeam(ctx context.Context, tenantID model.Tenant
 				return errors.WithStack(err)
 			}
 			if current.Slug() != v.Slug {
-				return errors.Wrap(port.ErrNotAllowed, "the slug of a team can not change")
+				if err := CheckTeamSlug(ctx, tx.tx, orgID, v.Slug); err != nil {
+					return err
+				}
 			}
 			team = model.CopyTeam(current)
+			team.SetSlug(v.Slug)
 			team.SetName(v.Name)
 			team.SetDescription(v.Description)
 		} else {

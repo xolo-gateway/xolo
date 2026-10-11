@@ -425,8 +425,8 @@ func TestBusinessBackfill(t *testing.T) {
 }
 
 // TestTeamProvisioning covers what the team family adds to the business
-// contract: an immutable slug, members of the organization only, team
-// budgets and their cascade.
+// contract: a slug checked when it changes, members of the organization
+// only, team budgets and their cascade.
 func TestTeamProvisioning(t *testing.T) {
 	eachBackendDB(t, func(t *testing.T, db *gormpkg.DB) {
 		ctx := t.Context()
@@ -435,10 +435,20 @@ func TestTeamProvisioning(t *testing.T) {
 		fixture := newOwnershipFixture(t, store)
 		f := newBusinessFixture(t, store, svc, fixture)
 
+		invalid := teamSettings(f)
+		invalid.Slug = "Not a slug"
+		_, err := svc.PutTeam(ctx, testTenantID, fixture.org, f.team, noCondition, invalid)
+		require.ErrorIs(t, err, port.ErrInvalid, "a new slug is checked")
+
 		renamed := teamSettings(f)
 		renamed.Slug = "renamed"
-		_, err := svc.PutTeam(ctx, testTenantID, fixture.org, f.team, noCondition, renamed)
-		require.ErrorIs(t, err, port.ErrNotAllowed, "a slug never changes")
+		_, err = svc.PutTeam(ctx, testTenantID, fixture.org, f.team, noCondition, renamed)
+		require.NoError(t, err)
+		team, err := store.GetTeamByID(ctx, model.TeamID(f.team))
+		require.NoError(t, err)
+		require.Equal(t, "renamed", team.Slug())
+		_, err = svc.PutTeam(ctx, testTenantID, fixture.org, f.team, noCondition, teamSettings(f))
+		require.NoError(t, err, "and back")
 
 		stranger := newOwnershipFixture(t, store)
 		withStranger := teamSettings(f)

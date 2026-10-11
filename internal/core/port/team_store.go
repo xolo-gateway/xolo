@@ -11,7 +11,8 @@ type TeamStore interface {
 	// organization.
 	CreateTeam(ctx context.Context, team model.Team) error
 	// SaveTeam updates the team and fully replaces its model grants and
-	// middlewares. The slug never changes.
+	// middlewares. A slug another team of the organization holds fails with
+	// ErrAlreadyExists; the caller checks a new slug with service.CheckTeamSlug.
 	SaveTeam(ctx context.Context, team model.Team) error
 	// DeleteTeam removes the team, its members and their team roles. The
 	// budgets of the team are removed with it. It fails with ErrNotAllowed

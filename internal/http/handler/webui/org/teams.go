@@ -123,6 +123,23 @@ func (h *Handler) teamLayout(ctx context.Context, org model.Organization, crumbs
 	}
 }
 
+const teamSlugTakenMessage = "Une équipe de l'organisation porte déjà cet identifiant."
+
+// teamSlugError checks the slug of a new or renamed team, and returns the
+// message to show when it is refused.
+func (h *Handler) teamSlugError(ctx context.Context, orgID model.OrgID, slug string) (string, error) {
+	err := service.CheckTeamSlug(ctx, h.teamStore, orgID, slug)
+	switch {
+	case err == nil:
+		return "", nil
+	case errors.Is(err, port.ErrInvalid):
+		return "L'identifiant ne peut contenir que des minuscules, des chiffres et des tirets, sans tiret au début ni à la fin.", nil
+	case errors.Is(err, port.ErrTeamNameConflict):
+		return "Un modèle de l'organisation porte déjà un nom commençant par « " + slug + "/ » : choisissez un autre identifiant.", nil
+	}
+	return "", err
+}
+
 func teamURL(org model.Organization, team model.Team, parts ...string) string {
 	return "/orgs/" + org.Slug() + "/admin/teams/" + string(team.ID()) + strings.Join(parts, "")
 }
@@ -208,17 +225,12 @@ func (h *Handler) createTeam(w http.ResponseWriter, r *http.Request) {
 		h.renderTeamForm(w, r, scope.org, form)
 		return
 	}
-	if err := service.CheckTeamSlug(ctx, h.teamStore, scope.org.ID(), form.Slug); err != nil {
-		switch {
-		case errors.Is(err, port.ErrInvalid):
-			form.Error = "L'identifiant ne peut contenir que des minuscules, des chiffres et des tirets, sans tiret au début ni à la fin."
-		case errors.Is(err, port.ErrTeamNameConflict):
-			form.Error = "Un modèle de l'organisation porte déjà un nom commençant par « " + form.Slug + "/ » : choisissez un autre identifiant."
-		default:
-			slog.ErrorContext(ctx, "could not check team slug", slogx.Error(err))
-			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-			return
-		}
+	if msg, err := h.teamSlugError(ctx, scope.org.ID(), form.Slug); err != nil {
+		slog.ErrorContext(ctx, "could not check team slug", slogx.Error(err))
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	} else if msg != "" {
+		form.Error = msg
 		h.renderTeamForm(w, r, scope.org, form)
 		return
 	}
@@ -228,7 +240,7 @@ func (h *Handler) createTeam(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if errors.Is(err, port.ErrAlreadyExists) {
-			form.Error = "Une équipe de l'organisation porte déjà cet identifiant."
+			form.Error = teamSlugTakenMessage
 			h.renderTeamForm(w, r, scope.org, form)
 			return
 		}
@@ -409,6 +421,20 @@ func (h *Handler) updateTeam(w http.ResponseWriter, r *http.Request) {
 		h.renderTeamPage(w, r, scope, "", "Le nom de l'équipe est requis.")
 		return
 	}
+	slug := strings.TrimSpace(r.FormValue("slug"))
+	if slug == "" {
+		slug = scope.team.Slug()
+	}
+	if slug != scope.team.Slug() {
+		if msg, err := h.teamSlugError(ctx, scope.org.ID(), slug); err != nil {
+			slog.ErrorContext(ctx, "could not check team slug", slogx.Error(err))
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		} else if msg != "" {
+			h.renderTeamPage(w, r, scope, "", msg)
+			return
+		}
+	}
 
 	// Only models and middlewares of the organization can be granted.
 	options, err := h.modelGrantOptions(ctx, scope.org.ID())
@@ -441,12 +467,17 @@ func (h *Handler) updateTeam(w http.ResponseWriter, r *http.Request) {
 	}
 
 	team := model.CopyTeam(scope.team)
+	team.SetSlug(slug)
 	team.SetName(name)
 	team.SetDescription(strings.TrimSpace(r.FormValue("description")))
 	team.SetModelGrants(grants)
 	team.SetMiddlewareIDs(mwIDs)
 	if err := h.teamStore.SaveTeam(ctx, team); err != nil {
 		if webcommon.RejectLocked(w, r, err) {
+			return
+		}
+		if errors.Is(err, port.ErrAlreadyExists) {
+			h.renderTeamPage(w, r, scope, "", teamSlugTakenMessage)
 			return
 		}
 		slog.ErrorContext(ctx, "could not save team", slogx.Error(err))
