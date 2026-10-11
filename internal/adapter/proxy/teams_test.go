@@ -605,6 +605,42 @@ func TestTeamScopeReportsTeamLookupErrors(t *testing.T) {
 	require.ErrorContains(t, err, "store unavailable")
 }
 
+// A failing model lookup fails the access check: read as an unknown model, it
+// would be let through to a resolution that grants nothing of its own.
+func TestModelLookupErrorsFailClosed(t *testing.T) {
+	w := newTeamsWorld(t)
+	legal := w.addTeam("legal", "gpt")
+	ctx := w.ctx(nil, []model.Team{legal}, nil)
+
+	access := newRequestModelAccess(w.org, string(legal.ID()), "legal", teamsOrgStore{w: w}, failingProviderStore{teamsProviderStore{w: w}}, w.vms)
+	_, err := access.CanUse(ctx, "mistral")
+	require.ErrorContains(t, err, "store unavailable")
+
+	hook := NewTeamScopeHook(teamsOrgStore{w: w}, teamsTeamStore{w}, failingProviderStore{teamsProviderStore{w: w}}, w.vms, teamsPVMStore{w: w})
+	_, err = hook.PreRequest(ctx, w.request("acme/legal/gpt"))
+	require.ErrorContains(t, err, "store unavailable")
+}
+
+// A request naming an unknown model of a team is refused by the router: no
+// team is recorded for it.
+func TestTeamScopeUnknownModelRecordsNoTeam(t *testing.T) {
+	w := newTeamsWorld(t)
+	legal := w.addTeam("legal", "gpt")
+	req := w.request("acme/legal/nosuch")
+
+	result, err := w.hook().PreRequest(w.ctx(nil, []model.Team{legal}, nil), req)
+	require.NoError(t, err)
+	require.Nil(t, result)
+	require.Equal(t, "acme/nosuch", req.Model)
+	require.Empty(t, TeamIDFromMeta(req.Metadata))
+}
+
+type failingProviderStore struct{ teamsProviderStore }
+
+func (failingProviderStore) GetLLMModelByProxyName(context.Context, model.OrgID, string) (model.LLMModel, error) {
+	return nil, errors.New("store unavailable")
+}
+
 type failingTeamStore struct{ teamsTeamStore }
 
 func (failingTeamStore) GetTeamBySlug(context.Context, model.OrgID, string) (model.Team, error) {

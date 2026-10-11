@@ -181,12 +181,15 @@ func (h *TeamScopeHook) PreRequest(ctx context.Context, req *genaiProxy.ProxyReq
 				slog.String("model", req.Model), slog.String("team", string(named.ID())), slog.String("reason", reason))
 			return nil, nil
 		}
-		kind, modelID, found := lookupLocalModel(ctx, h.providerStore, h.virtualModelStore, org.ID(), name.Local)
+		kind, modelID, found, err := lookupLocalModel(ctx, h.providerStore, h.virtualModelStore, org.ID(), name.Local)
+		if err != nil {
+			return nil, err
+		}
 		if !found {
 			// Unknown model: let the router answer. The team segment is
 			// stripped all the same so that the router reads the name it
-			// knows; the request fails there, nothing is charged.
-			h.setScope(req, name, refOf(named))
+			// knows; the request fails there, so no team is recorded.
+			h.setScope(req, name, rbac.TeamRef{})
 			return nil, nil
 		}
 		switch {

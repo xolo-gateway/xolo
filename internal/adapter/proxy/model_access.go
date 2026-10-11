@@ -75,12 +75,18 @@ func (a *requestModelAccess) CanUse(ctx context.Context, name string) (bool, err
 		}
 	}
 
-	kind, modelID, found := lookupLocalModel(ctx, a.providerStore, a.virtualModelStore, org.ID(), local)
+	kind, modelID, found, err := lookupLocalModel(ctx, a.providerStore, a.virtualModelStore, org.ID(), local)
+	if err != nil {
+		return false, err
+	}
 	if !found && local != n.Local {
 		// The resolution reads the name the same way: a first segment that
 		// names no organization nor a local name is dropped.
 		local = n.Local
-		kind, modelID, found = lookupLocalModel(ctx, a.providerStore, a.virtualModelStore, org.ID(), local)
+		kind, modelID, found, err = lookupLocalModel(ctx, a.providerStore, a.virtualModelStore, org.ID(), local)
+		if err != nil {
+			return false, err
+		}
 	}
 	if !found {
 		return true, nil
@@ -99,17 +105,28 @@ func (a *requestModelAccess) CanUse(ctx context.Context, name string) (bool, err
 var _ pipeline.ModelAccess = &requestModelAccess{}
 
 // lookupLocalModel resolves a local name of the organization to the model it
-// designates, a virtual model first, as the pipeline does.
-func lookupLocalModel(ctx context.Context, providerStore port.ProviderStore, virtualModelStore port.VirtualModelStore, orgID model.OrgID, local string) (kind, id string, found bool) {
+// designates, a virtual model first, as the pipeline does. A store error is
+// returned, never read as an unknown model: an unknown model is let through
+// to its resolution, and a model the resolution then finds would skip the
+// access check.
+func lookupLocalModel(ctx context.Context, providerStore port.ProviderStore, virtualModelStore port.VirtualModelStore, orgID model.OrgID, local string) (kind, id string, found bool, err error) {
 	if virtualModelStore != nil {
-		if vm, err := virtualModelStore.GetVirtualModelByName(ctx, orgID, local); err == nil && vm != nil {
-			return rbac.ModelKindVirtual, string(vm.ID()), true
+		vm, err := virtualModelStore.GetVirtualModelByName(ctx, orgID, local)
+		switch {
+		case err == nil && vm != nil:
+			return rbac.ModelKindVirtual, string(vm.ID()), true, nil
+		case err != nil && !errors.Is(err, port.ErrNotFound):
+			return "", "", false, errors.WithStack(err)
 		}
 	}
 	if providerStore != nil {
-		if m, err := providerStore.GetLLMModelByProxyName(ctx, orgID, local); err == nil && m != nil {
-			return rbac.ModelKindLLM, string(m.ID()), true
+		m, err := providerStore.GetLLMModelByProxyName(ctx, orgID, local)
+		switch {
+		case err == nil && m != nil:
+			return rbac.ModelKindLLM, string(m.ID()), true, nil
+		case err != nil && !errors.Is(err, port.ErrNotFound):
+			return "", "", false, errors.WithStack(err)
 		}
 	}
-	return "", "", false
+	return "", "", false, nil
 }
