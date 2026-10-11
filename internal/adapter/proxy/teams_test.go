@@ -331,6 +331,24 @@ func TestTeamScopeTokenBoundToATeamLeft(t *testing.T) {
 	require.Equal(t, "model_forbidden", errorCode(t, result))
 }
 
+// A token bound to a team of another organization charges nothing here, even
+// with the organization-wide access: the permissions only hold the teams of
+// the organization the request is made in.
+func TestTeamScopeTokenBoundToAnotherOrganizationsTeam(t *testing.T) {
+	w := newTeamsWorld(t)
+	rd := w.addTeam("rd", "gpt")
+	other := model.NewOrganization(testTenantID, "globex", "Globex", "")
+	foreign := model.NewTeam(other.ID(), "legal", "legal", "")
+	w.teams["globex-legal"] = foreign
+	ctx := w.ctx([]string{string(rbac.PermModelUseOrg)}, []model.Team{rd}, foreign)
+
+	for _, name := range []string{"acme/gpt", "acme/rd/gpt"} {
+		result, err := w.hook().PreRequest(ctx, w.request(name))
+		require.NoError(t, err)
+		require.Equal(t, "model_forbidden", errorCode(t, result), name)
+	}
+}
+
 // A personal virtual model delegates nothing: before teams, it only checked
 // personal-vm:create, then resolved any model of the organization, whatever
 // the model grants of its author (issue #141).

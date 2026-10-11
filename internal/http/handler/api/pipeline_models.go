@@ -56,9 +56,11 @@ func (h *Handler) handlePipelineModels(w http.ResponseWriter, r *http.Request) {
 // handlePersonalPipelineModels lists what a personal pipeline can name: the
 // user's own virtual models (~/name) and, qualified by org slug, the models of
 // every organisation the user belongs to that it can use. A personal pipeline
-// delegates nothing: it only reaches what its owner can use. With ?vm=, the
-// models of the organization of the team the virtual model charges are those
-// of that team, plus the organization-wide access.
+// delegates nothing: it only reaches what its owner can use. With ?vm= naming
+// a virtual model that charges a team, only the organization of that team
+// offers models, those of the team plus the organization-wide access: the
+// proxy refuses the requests to any other organization, and every request
+// while the owner is no longer in the team (see proxy.TeamScopeHook).
 func (h *Handler) handlePersonalPipelineModels(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	user := httpCtx.User(ctx)
@@ -108,18 +110,10 @@ func (h *Handler) handlePersonalPipelineModels(w http.ResponseWriter, r *http.Re
 			writeError(w, http.StatusInternalServerError, "internal error")
 			return
 		}
-		lost, err := h.chargedTeamLost(r, charged, perms, org.ID())
-		if err != nil {
-			writeError(w, http.StatusInternalServerError, "internal error")
-			return
-		}
 		usable := func(id, kind string) bool {
-			switch {
-			case lost:
-				// The requests are refused until another team is picked.
-				return false
-			case charged != "" && perms.InTeam(string(charged)):
-				return perms.CanUseModel(string(charged), id, kind)
+			if charged != "" {
+				// perms only knows the teams of this organization.
+				return perms.InTeam(string(charged)) && perms.CanUseModel(string(charged), id, kind)
 			}
 			return perms.HasOrgWideModelAccess(kind) || len(perms.TeamsGranting(id, kind)) > 0
 		}
@@ -194,22 +188,4 @@ func (h *Handler) orgModelOptionsWhere(r *http.Request, org model.Organization, 
 		return options[i].ProxyName < options[j].ProxyName
 	})
 	return options, nil
-}
-
-// chargedTeamLost reports whether the team a personal virtual model charges
-// belongs to the organization, or no longer exists, while its owner is no
-// longer in it: the proxy then refuses its requests until another team is
-// picked (see proxy.TeamScopeHook).
-func (h *Handler) chargedTeamLost(r *http.Request, charged model.TeamID, perms rbac.PermissionSet, orgID model.OrgID) (bool, error) {
-	if charged == "" || perms.InTeam(string(charged)) || h.teamStore == nil {
-		return false, nil
-	}
-	team, err := h.teamStore.GetTeamByID(r.Context(), charged)
-	if errors.Is(err, port.ErrNotFound) {
-		return true, nil
-	}
-	if err != nil {
-		return false, err
-	}
-	return team.OrgID() == orgID, nil
 }

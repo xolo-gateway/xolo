@@ -78,6 +78,35 @@ func backfillQuotaUsage(tx *gorm.DB) error {
 		return errors.WithStack(err)
 	}
 
+	// The migrations replaying this backfill can run before the teams one adds
+	// team_id: no record is attributed to a team yet then.
+	if !tx.Migrator().HasColumn(&UsageRecord{}, "team_id") {
+		return nil
+	}
+
+	// The team counters follow model.QuotaCounters: the team for every record
+	// attributed to it, and the member inside the team for a user only, never
+	// for an application.
+	teamSQL := `
+		INSERT INTO ` + quotaUsageTable + ` (scope, scope_id, org_id, currency, day, cost)
+		SELECT 'team', team_id, org_id, currency, ` + dayExpr + `, SUM(cost)
+		  FROM usage_records
+		 WHERE plan_covered = 0 AND org_id <> '' AND cost <> 0 AND team_id <> ''
+		 GROUP BY team_id, org_id, currency, ` + dayExpr
+	if err := tx.Exec(teamSQL, append(append([]any{}, args...), args...)...).Error; err != nil {
+		return errors.WithStack(err)
+	}
+
+	teamMemberSQL := `
+		INSERT INTO ` + quotaUsageTable + ` (scope, scope_id, org_id, currency, day, cost)
+		SELECT 'team_member', team_id || ':' || user_id, org_id, currency, ` + dayExpr + `, SUM(cost)
+		  FROM usage_records
+		 WHERE plan_covered = 0 AND org_id <> '' AND cost <> 0 AND team_id <> '' AND user_id <> '' AND application_id = ''
+		 GROUP BY team_id, user_id, org_id, currency, ` + dayExpr
+	if err := tx.Exec(teamMemberSQL, append(append([]any{}, args...), args...)...).Error; err != nil {
+		return errors.WithStack(err)
+	}
+
 	return nil
 }
 

@@ -38,6 +38,10 @@ func TestBackfillQuotaUsage(t *testing.T) {
 		{ID: "u5", CreatedAt: now, UserID: "user-a", OrgID: "org-1", ProviderID: "p", ModelID: "m", Cost: 9_999, Currency: "USD", PlanCovered: 1},
 		// Another organization, to catch a backfill that mixes scopes.
 		{ID: "u6", CreatedAt: now, UserID: "user-a", OrgID: "org-2", ProviderID: "p", ModelID: "m", Cost: 42, Currency: "USD"},
+		// Records attributed to a team feed the team counter, and for a user the
+		// member counter inside the team, as model.QuotaCounters does.
+		{ID: "u7", CreatedAt: now, UserID: "user-c", TeamID: "team-1", OrgID: "org-3", ProviderID: "p", ModelID: "m", Cost: 70, Currency: "USD"},
+		{ID: "u8", CreatedAt: now, ApplicationID: "app-2", UserID: "shadow-2", TeamID: "team-1", OrgID: "org-3", ProviderID: "p", ModelID: "m", Cost: 30, Currency: "USD"},
 	}
 	for _, r := range records {
 		if err := db.Create(r).Error; err != nil {
@@ -87,6 +91,16 @@ func TestBackfillQuotaUsage(t *testing.T) {
 	}
 	if got := sum("org", "org-2", "org-2", startOfDayLocal(now)); got != 42 {
 		t.Errorf("org-2 today = %d, want 42", got)
+	}
+	if got := sum("team", "team-1", "org-3", startOfDayLocal(now)); got != 100 {
+		t.Errorf("team-1 today = %d, want 100", got)
+	}
+	if got := sum("team_member", model.TeamMemberScopeID("team-1", "user-c"), "org-3", startOfDayLocal(now)); got != 70 {
+		t.Errorf("user-c in team-1 today = %d, want 70", got)
+	}
+	// An application feeds no member counter of its team.
+	if got := sum("team_member", model.TeamMemberScopeID("team-1", "shadow-2"), "org-3", startOfDayLocal(now)); got != 0 {
+		t.Errorf("shadow user in team-1 today = %d, want 0", got)
 	}
 
 	// Re-running the migration must not double the totals: the backfill is
