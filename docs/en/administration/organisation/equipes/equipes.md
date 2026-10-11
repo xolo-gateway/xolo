@@ -83,7 +83,7 @@ The same rule can be set on the organization budget, for the envelopes of its te
 - An **application** can be attached to a team from its page. It then uses the team's models and all its requests are charged to the team.
 - A **personal virtual model** chooses the team it charges in its settings. It delegates nothing: each model it calls must be accessible to that team.
 
-A team that has applications attached to it cannot be deleted. Attach them elsewhere first.
+A team that has applications attached to it cannot be deleted. Attach them elsewhere first. The same goes while a middleware is attached to this team alone: with no team left, it would apply to the whole organization. Remove it from the team or attach it to another one.
 
 ## Permissions
 

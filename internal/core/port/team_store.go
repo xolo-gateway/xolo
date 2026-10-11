@@ -16,7 +16,9 @@ type TeamStore interface {
 	// DeleteTeam removes the team, its members and their team roles. The
 	// budgets of the team are removed with it. It fails with ErrNotAllowed
 	// while applications are bound to the team: unbinding them silently would
-	// change what they can reach.
+	// change what they can reach. It fails with ErrTeamHasMiddlewares while a
+	// middleware is attached to this team and no other: with no team left, it
+	// would run for the whole organization.
 	DeleteTeam(ctx context.Context, id model.TeamID) error
 	GetTeamByID(ctx context.Context, id model.TeamID) (model.Team, error)
 	GetTeamBySlug(ctx context.Context, orgID model.OrgID, slug string) (model.Team, error)

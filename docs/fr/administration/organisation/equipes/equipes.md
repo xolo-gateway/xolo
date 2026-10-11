@@ -83,7 +83,7 @@ La même règle se règle sur le budget de l'organisation, pour les enveloppes d
 - Une **application** peut être rattachée à une équipe depuis sa page : elle utilise alors les modèles de l'équipe et toutes ses requêtes sont débitées sur l'équipe.
 - Un **modèle virtuel personnel** choisit l'équipe qu'il débite dans ses réglages. Il ne délègue rien : chaque modèle qu'il appelle doit être accessible à cette équipe.
 
-Une équipe à laquelle des applications sont rattachées ne peut pas être supprimée : rattachez-les ailleurs d'abord.
+Une équipe à laquelle des applications sont rattachées ne peut pas être supprimée : rattachez-les ailleurs d'abord. Il en va de même tant qu'un middleware n'est rattaché qu'à elle : sans équipe, il s'appliquerait à toute l'organisation. Retirez-le de l'équipe ou rattachez-le à une autre.
 
 ## Permissions
 

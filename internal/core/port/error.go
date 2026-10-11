@@ -36,6 +36,11 @@ var (
 	// organization that would make "<org>/<team>/<model>" names ambiguous.
 	ErrTeamNameConflict = fmt.Errorf("conflicts with a team slug or a model name: %w", ErrAlreadyExists)
 
+	// ErrTeamHasMiddlewares refuses the deletion of a team that alone holds a
+	// middleware: detached from every team, the middleware would run for every
+	// request of the organization.
+	ErrTeamHasMiddlewares = fmt.Errorf("middlewares are attached to the team alone: %w", ErrNotAllowed)
+
 	// ErrPlatformAdminProtected refuses any provisioning change to a platform
 	// administrator: provisioning never acts on platform-wide privileges.
 	ErrPlatformAdminProtected = fmt.Errorf("platform admin protected: %w", ErrNotAllowed)

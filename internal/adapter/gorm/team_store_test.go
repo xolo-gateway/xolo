@@ -192,6 +192,29 @@ func TestDeleteTeam(t *testing.T) {
 	})
 }
 
+// A middleware attached to no team runs for the whole organization: deleting
+// the only team it is attached to would widen it silently.
+func TestDeleteTeamHoldingAMiddleware(t *testing.T) {
+	eachBackend(t, func(t *testing.T, store *xologorm.Store) {
+		ctx := context.Background()
+		f := newTeamFixture(t, store)
+		mw := model.NewMiddleware(f.org.ID(), "legal-prompt", "")
+		require.NoError(t, store.CreateMiddleware(ctx, mw))
+		legal := model.NewTeam(f.org.ID(), "legal", "Legal", "")
+		legal.SetMiddlewareIDs([]model.MiddlewareID{mw.ID(), "deleted-since"})
+		require.NoError(t, store.CreateTeam(ctx, legal))
+
+		require.ErrorIs(t, store.DeleteTeam(ctx, legal.ID()), port.ErrTeamHasMiddlewares)
+		require.ErrorIs(t, store.DeleteTeam(ctx, legal.ID()), port.ErrNotAllowed)
+
+		// Still attached to another team, it stays a team middleware.
+		rd := model.NewTeam(f.org.ID(), "rd", "R&D", "")
+		rd.SetMiddlewareIDs([]model.MiddlewareID{mw.ID()})
+		require.NoError(t, store.CreateTeam(ctx, rd))
+		require.NoError(t, store.DeleteTeam(ctx, legal.ID()))
+	})
+}
+
 func TestTeamUsageCounters(t *testing.T) {
 	eachBackend(t, func(t *testing.T, store *xologorm.Store) {
 		ctx := context.Background()

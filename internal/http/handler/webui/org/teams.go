@@ -470,6 +470,10 @@ func (h *Handler) deleteTeam(w http.ResponseWriter, r *http.Request) {
 		if webcommon.RejectLocked(w, r, err) {
 			return
 		}
+		if errors.Is(err, port.ErrTeamHasMiddlewares) {
+			h.renderTeamPage(w, r, scope, "", "Des middlewares ne sont rattachés qu'à cette équipe : sans elle, ils s'appliqueraient à toute l'organisation. Retirez-les de l'équipe ou rattachez-les à une autre avant de la supprimer.")
+			return
+		}
 		if errors.Is(err, port.ErrNotAllowed) {
 			h.renderTeamPage(w, r, scope, "", "Des applications sont rattachées à cette équipe : rattachez-les ailleurs avant de la supprimer.")
 			return

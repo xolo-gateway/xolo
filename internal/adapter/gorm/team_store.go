@@ -76,6 +76,17 @@ func (s *Store) DeleteTeam(ctx context.Context, id model.TeamID) error {
 		if count > 0 {
 			return errors.Wrapf(port.ErrNotAllowed, "%d application(s) are bound to the team", count)
 		}
+		// A middleware deleted since keeps its attachment rows: it runs nowhere.
+		others := db.Model(&TeamMiddleware{}).Select("middleware_id").Where("team_id <> ?", string(id))
+		existing := db.Model(&Middleware{}).Select("id")
+		if err := db.Model(&TeamMiddleware{}).
+			Where("team_id = ? AND middleware_id NOT IN (?) AND middleware_id IN (?)", string(id), others, existing).
+			Count(&count).Error; err != nil {
+			return errors.WithStack(err)
+		}
+		if count > 0 {
+			return errors.Wrapf(port.ErrTeamHasMiddlewares, "%d middleware(s)", count)
+		}
 		return deleteTeamsWithin(db, db.Model(&Team{}).Select("id").Where("id = ?", string(id)))
 	})
 }

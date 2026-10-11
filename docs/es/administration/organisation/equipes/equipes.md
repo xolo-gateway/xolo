@@ -83,7 +83,7 @@ La misma regla se configura en el presupuesto de la organización, para las asig
 - Una **aplicación** puede vincularse a un equipo desde su página. Entonces utiliza los modelos del equipo y todas sus solicitudes se cargan al equipo.
 - Un **modelo virtual personal** elige en su configuración el equipo al que carga. No delega nada: cada modelo al que llama debe ser accesible para ese equipo.
 
-Un equipo que tiene aplicaciones vinculadas no se puede eliminar. Vincúlelas primero a otro equipo.
+Un equipo que tiene aplicaciones vinculadas no se puede eliminar. Vincúlelas primero a otro equipo. Lo mismo ocurre mientras un middleware esté vinculado solo a este equipo: sin equipo, se aplicaría a toda la organización. Retírelo del equipo o vincúlelo a otro.
 
 ## Permisos
 

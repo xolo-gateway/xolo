@@ -594,6 +594,23 @@ func TestResolveRealModelReportsOrganizationLookupErrors(t *testing.T) {
 	require.Equal(t, "gpt-real", realModel)
 }
 
+// A failing team lookup fails the request: reading the segment as part of the
+// model name would answer it as naming an unknown model.
+func TestTeamScopeReportsTeamLookupErrors(t *testing.T) {
+	w := newTeamsWorld(t)
+	w.addTeam("legal", "gpt")
+	hook := NewTeamScopeHook(teamsOrgStore{w: w}, failingTeamStore{teamsTeamStore{w}}, teamsProviderStore{w: w}, w.vms, teamsPVMStore{w: w})
+
+	_, err := hook.PreRequest(w.ctx([]string{string(rbac.PermModelUseOrg)}, nil, nil), w.request("acme/legal/gpt"))
+	require.ErrorContains(t, err, "store unavailable")
+}
+
+type failingTeamStore struct{ teamsTeamStore }
+
+func (failingTeamStore) GetTeamBySlug(context.Context, model.OrgID, string) (model.Team, error) {
+	return nil, errors.New("store unavailable")
+}
+
 func pipelineEC(w *teamsWorld) pipeline.ExecutionContext {
 	return pipeline.ExecutionContext{OrgID: string(w.org.ID()), UserID: string(w.user.ID()), VisitedVMs: map[model.VirtualModelID]struct{}{}}
 }

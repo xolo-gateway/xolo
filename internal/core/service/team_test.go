@@ -174,6 +174,25 @@ func TestQuotaCascadeSplit(t *testing.T) {
 	require.NoError(t, service.CheckQuotaCascade(ctx, w, q))
 }
 
+// The cascade is checked period by period: a period one side leaves without a
+// budget constrains nothing, the others still do.
+func TestQuotaCascadeChecksEachPeriodOnItsOwn(t *testing.T) {
+	ctx := context.Background()
+	w := newTeamWorld()
+	legal, rd := w.team("legal"), w.team("rd")
+	w.set(model.QuotaScopeOrg, string(w.org.ID()), model.QuotaCascadeSplit, amount(10), nil)
+	w.set(model.QuotaScopeTeam, string(rd.ID()), model.QuotaCascadeFree, amount(4), amount(1000))
+
+	// The parent budgets the day only: a monthly budget takes no share of it.
+	q := model.NewQuota(model.QuotaScopeTeam, string(legal.ID()), "EUR", nil, amount(500), nil)
+	require.NoError(t, service.CheckQuotaCascade(ctx, w, q))
+
+	// A daily budget over what is left is refused, whatever the month.
+	q = model.NewQuota(model.QuotaScopeTeam, string(legal.ID()), "EUR", amount(7), nil, nil)
+	v := requireViolation(t, service.CheckQuotaCascade(ctx, w, q), model.QuotaCascadeSplit, "daily")
+	require.Equal(t, int64(11), v.Got)
+}
+
 // A parent budget is checked against its children too: lowering it below
 // what is already split is refused.
 func TestQuotaCascadeChecksTheChildrenOfAParent(t *testing.T) {

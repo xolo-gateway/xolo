@@ -120,6 +120,7 @@ func (h *TeamScopeHook) PreRequest(ctx context.Context, req *genaiProxy.ProxyReq
 	}
 
 	var named model.Team
+	var lookupErr error
 	name, ok := model.ParseModelName(req.Model, func(orgSlug, segment string) bool {
 		if orgSlug != org.Slug() {
 			return false
@@ -127,15 +128,22 @@ func (h *TeamScopeHook) PreRequest(ctx context.Context, req *genaiProxy.ProxyReq
 		team, err := h.teamStore.GetTeamBySlug(ctx, org.ID(), segment)
 		if err != nil {
 			if !errors.Is(err, port.ErrNotFound) {
-				slog.ErrorContext(ctx, "team scope: could not look up team", slog.Any("error", err))
+				lookupErr = err
 			}
 			return false
 		}
 		named = team
 		return true
 	})
+	if lookupErr != nil {
+		// Never read the segment as part of a model name: the request would
+		// be answered as naming an unknown model.
+		return nil, errors.WithStack(lookupErr)
+	}
 	if !ok || (!name.Personal() && name.Org != org.Slug()) {
 		// Not a name of the token's organization: the router answers.
+		slog.DebugContext(ctx, "team scope: model name not of the token's organization, left to the router",
+			slog.String("model", req.Model), slog.String("org", name.Org))
 		return nil, nil
 	}
 
