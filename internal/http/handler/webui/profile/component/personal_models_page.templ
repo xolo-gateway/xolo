@@ -241,6 +241,11 @@ templ PersonalModelFormPage(vmodel PersonalModelFormVModel) {
 						}
 					</div>
 				}
+				if vmodel.VirtualModel != nil {
+					@common.CatalogOverridesFields(vmodel.VirtualModel.CatalogOverrides())
+				} else {
+					@common.CatalogOverridesFields(nil)
+				}
 				<div class="flex gap-2">
 					@button.Button(button.Props{Type: button.TypeSubmit}) {
 						Enregistrer

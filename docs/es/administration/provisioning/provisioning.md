@@ -610,7 +610,7 @@ obligatorio, `null` solo donde se indica.
 - Las escrituras de la interfaz web también publican sus eventos. La migración
   `202610120001` proyecta los recursos de negocio existentes sin publicar
   eventos; como las anteriores, exige detener todos los servidores.
-- La migración `202610150001` introduce los equipos: cada rol personalizado que
+- La migración `202610150002` introduce los equipos: cada rol personalizado que
   autorizaba modelos se convierte en un equipo, publicado con
   `team.created.v1`, y las representaciones de los roles (sin `model_grants`),
   de las aplicaciones (con `team_id`) y de las cuotas (con `cascade`) se

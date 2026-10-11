@@ -149,6 +149,8 @@ func errorMessage(reason, subject string) string {
 		return "Le nom est obligatoire."
 	case "team_conflict":
 		return "Ce nom commence par l'identifiant d'une équipe suivi de « / » : il serait lu comme un modèle de cette équipe. Choisissez un autre nom."
+	case "invalid_overrides":
+		return "La fenêtre de contexte et la sortie maximale doivent être des entiers positifs."
 	case "create_failed":
 		return "La création a échoué."
 	case "update_failed":

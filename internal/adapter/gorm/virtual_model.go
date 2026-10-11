@@ -14,8 +14,10 @@ type VirtualModel struct {
 	Description string
 	// GraphJSON stores the PipelineGraph as JSON. Empty string or "{}" means no graph.
 	GraphJSON string `gorm:"type:text;default:'{}'"`
-	CreatedAt time.Time
-	UpdatedAt time.Time
+	// OverridesJSON stores the model.CatalogOverrides as JSON. Empty means none.
+	OverridesJSON string `gorm:"type:text"`
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
 }
 
 type wrappedVirtualModel struct {
@@ -35,6 +37,14 @@ func (w *wrappedVirtualModel) SetName(v string) { w.m.Name = v }
 func (w *wrappedVirtualModel) SetDescription(v string) {
 	w.m.Description = v
 }
+func (w *wrappedVirtualModel) CatalogOverrides() *model.CatalogOverrides {
+	return decodeCatalogOverrides(w.m.OverridesJSON)
+}
+
+func (w *wrappedVirtualModel) SetCatalogOverrides(v *model.CatalogOverrides) {
+	w.m.OverridesJSON = encodeCatalogOverrides(v)
+}
+
 func (w *wrappedVirtualModel) SetGraph(v *model.PipelineGraph) {
 	if v == nil {
 		w.m.GraphJSON = "{}"
@@ -74,12 +84,13 @@ func fromVirtualModel(vm model.VirtualModel) *VirtualModel {
 		}
 	}
 	return &VirtualModel{
-		ID:          string(vm.ID()),
-		OrgID:       string(vm.OrgID()),
-		Name:        vm.Name(),
-		Description: vm.Description(),
-		GraphJSON:   graphJSON,
-		CreatedAt:   vm.CreatedAt(),
-		UpdatedAt:   vm.UpdatedAt(),
+		ID:            string(vm.ID()),
+		OrgID:         string(vm.OrgID()),
+		Name:          vm.Name(),
+		Description:   vm.Description(),
+		GraphJSON:     graphJSON,
+		OverridesJSON: encodeCatalogOverrides(vm.CatalogOverrides()),
+		CreatedAt:     vm.CreatedAt(),
+		UpdatedAt:     vm.UpdatedAt(),
 	}
 }

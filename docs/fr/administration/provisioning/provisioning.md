@@ -626,7 +626,7 @@ Les représentations sont en snake_case et complètes : chaque champ est requis,
   migration `202610120001` projette les ressources métier existantes sans
   publier d'événement ; comme les précédentes, elle exige l'arrêt de tous les
   serveurs.
-- La migration `202610150001` introduit les équipes : chaque rôle
+- La migration `202610150002` introduit les équipes : chaque rôle
   personnalisé qui autorisait des modèles devient une équipe, publiée avec
   `team.created.v1`, et les représentations des rôles (sans `model_grants`),
   des applications (avec `team_id`) et des quotas (avec `cascade`) sont

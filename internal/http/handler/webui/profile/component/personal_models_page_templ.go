@@ -1161,6 +1161,17 @@ func PersonalModelFormPage(vmodel PersonalModelFormVModel) templ.Component {
 					return templ_7745c5c3_Err
 				}
 			}
+			if vmodel.VirtualModel != nil {
+				templ_7745c5c3_Err = common.CatalogOverridesFields(vmodel.VirtualModel.CatalogOverrides()).Render(ctx, templ_7745c5c3_Buffer)
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			} else {
+				templ_7745c5c3_Err = common.CatalogOverridesFields(nil).Render(ctx, templ_7745c5c3_Buffer)
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			}
 			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 53, "<div class=\"flex gap-2\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err

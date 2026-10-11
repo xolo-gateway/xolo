@@ -589,7 +589,7 @@ only where shown.
 - The web UI writes publish their events as well. Migration `202610120001`
   projects the existing business resources without publishing any event;
   like the previous ones, it requires every server to be stopped.
-- Migration `202610150001` introduces teams: each custom role that granted
+- Migration `202610150002` introduces teams: each custom role that granted
   models becomes a team, published with `team.created.v1`, and the
   representations of roles (without `model_grants`), applications (with
   `team_id`) and quotas (with `cascade`) are published again when they change.

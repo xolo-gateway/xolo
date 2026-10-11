@@ -623,6 +623,16 @@ func schemaMigrations(artifact *RecoveryArtifact) []*gormigrate.Migration {
 			},
 		},
 		{
+			ID:      catalogOverridesMigrationID,
+			Migrate: migrateCatalogOverrides,
+			Rollback: func(tx *gorm.DB) error {
+				if err := tx.Migrator().DropColumn(&VirtualModel{}, "overrides_json"); err != nil {
+					return errors.WithStack(err)
+				}
+				return errors.WithStack(tx.Migrator().DropColumn(&PersonalVirtualModel{}, "overrides_json"))
+			},
+		},
+		{
 			ID:      teamsMigrationID,
 			Migrate: migrateTeams,
 			Rollback: func(*gorm.DB) error {

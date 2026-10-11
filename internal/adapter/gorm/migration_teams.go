@@ -15,7 +15,7 @@ import (
 	"gorm.io/gorm/clause"
 )
 
-const teamsMigrationID = "202610150001"
+const teamsMigrationID = "202610150002"
 
 // migrateTeams introduces teams and moves model access from roles to them.
 //

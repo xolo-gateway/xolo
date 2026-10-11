@@ -1743,6 +1743,9 @@
   .pb-\[14px\] {
     padding-bottom: 14px;
   }
+  .pl-2 {
+    padding-left: calc(var(--spacing) * 2);
+  }
   .pl-7 {
     padding-left: calc(var(--spacing) * 7);
   }
