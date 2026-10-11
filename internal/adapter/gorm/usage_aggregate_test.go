@@ -17,7 +17,7 @@ func recordUsage(t *testing.T, store interface {
 }, userID, provider, modelID, proxyName, resolvedName, currency string, cost int64, promptTokens, completionTokens int, planCovered bool) {
 	t.Helper()
 	rec := model.NewUsageRecord(
-		model.UserID(userID), "", "org-1", model.ProviderID(provider), model.LLMModelID(modelID),
+		model.UserID(userID), "", "org-1", "", model.ProviderID(provider), model.LLMModelID(modelID),
 		proxyName, "", promptTokens, 0, completionTokens, cost, currency, model.CostSourceProvider, resolvedName,
 	)
 	rec.SetPlanCovered(planCovered)

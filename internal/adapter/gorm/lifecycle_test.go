@@ -216,7 +216,7 @@ func TestFreezeProtectsScope(t *testing.T) {
 		require.NoError(t, err)
 
 		usage := func(org model.OrgID, user model.UserID) error {
-			return store.RecordUsage(ctx, model.NewUsageRecord(user, "", org, "", "", "model", "", 1, 0, 1, 10, "EUR", model.CostSourceComputed, "model"))
+			return store.RecordUsage(ctx, model.NewUsageRecord(user, "", org, "", "", "", "model", "", 1, 0, 1, 10, "EUR", model.CostSourceComputed, "model"))
 		}
 		writes := map[string]func(org model.OrgID, user model.UserID) error{
 			"usage": usage,
@@ -415,7 +415,7 @@ func TestFreezeRaces(t *testing.T) {
 		// Usage, written at read committed, against a member freeze.
 		member := newOwnershipFixture(t, base)
 		usage := func() error {
-			return store.RecordUsage(context.Background(), model.NewUsageRecord(member.user, "", member.org, "", "", "model", "", 1, 0, 1, 10, "EUR", model.CostSourceComputed, "model"))
+			return store.RecordUsage(context.Background(), model.NewUsageRecord(member.user, "", member.org, "", "", "", "model", "", 1, 0, 1, 10, "EUR", model.CostSourceComputed, "model"))
 		}
 		results = make(chan error, 20)
 		for i := 0; i < 20; i++ {

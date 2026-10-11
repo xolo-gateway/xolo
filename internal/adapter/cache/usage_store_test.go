@@ -51,7 +51,7 @@ func (s *countingUsageStore) readCount() int {
 }
 
 func newPAYGRecord(userID model.UserID, orgID model.OrgID, cost int64) *model.BaseUsageRecord {
-	return model.NewUsageRecord(userID, "", orgID, "provider", "llm-model",
+	return model.NewUsageRecord(userID, "", orgID, "", "provider", "llm-model",
 		"fast", "", 10, 0, 10, cost, "USD", model.CostSourceComputed, "")
 }
 
@@ -170,7 +170,7 @@ func TestUsageStore_KeysFollowThePrincipalOnTheRecord(t *testing.T) {
 
 	// An application call as the auth extractor produces it: the shadow user's
 	// id in UserID, the application's own id alongside.
-	shadow := model.NewUsageRecord("usr-shadow-app-1", "app-1", "org-1", "provider", "llm-model",
+	shadow := model.NewUsageRecord("usr-shadow-app-1", "app-1", "org-1", "", "provider", "llm-model",
 		"fast", "", 10, 0, 10, 700, "USD", model.CostSourceComputed, "")
 
 	// Mid-month, so that the day, the month and the year are three windows.
@@ -196,7 +196,7 @@ func TestUsageStore_KeysFollowThePrincipalOnTheRecord(t *testing.T) {
 
 	// A record with no principal at all — possible if a caller hands a UsageRecord
 	// directly without an auth context — feeds the organization windows only.
-	orphan := model.NewUsageRecord("", "", "org-1", "provider", "llm-model",
+	orphan := model.NewUsageRecord("", "", "org-1", "", "provider", "llm-model",
 		"fast", "", 10, 0, 10, 700, "USD", model.CostSourceComputed, "")
 	if keys := quotaSumCacheKeysFor(datedRecord{orphan, midMonth}); len(keys) != 3 {
 		t.Errorf("keys = %v, want the three organization windows only", keys)
@@ -308,7 +308,7 @@ func TestUsageStore_DropsApplicationTotalReadBeforeAConcurrentRecord(t *testing.
 	<-backend.entered
 	// Record an application call (the only kind that should affect the
 	// application counter): application scope id, no user id.
-	record := model.NewUsageRecord("", "app-1", "org-1", "provider", "llm-model",
+	record := model.NewUsageRecord("", "app-1", "org-1", "", "provider", "llm-model",
 		"fast", "", 10, 0, 10, 250, "USD", model.CostSourceComputed, "")
 	if err := store.RecordUsage(ctx, record); err != nil {
 		t.Fatalf("RecordUsage: %v", err)

@@ -157,12 +157,14 @@ func (r *BaseUsageRecord) SetResolvedModelName(v string) { r.resolvedModelName =
 func (r *BaseUsageRecord) SetPlanCovered(v bool)         { r.planCovered = v }
 func (r *BaseUsageRecord) SetProviderCost(v int64)       { r.providerCost = v }
 func (r *BaseUsageRecord) SetStatus(v UsageStatus)       { r.status = v }
-func (r *BaseUsageRecord) SetTeamID(v TeamID)            { r.teamID = v }
 
 var _ UsageRecord = &BaseUsageRecord{}
 
+// NewUsageRecord builds the record of a request. teamID is the team the
+// request is attributed to, empty for the organization alone: it feeds the
+// team counters (see QuotaCounters).
 func NewUsageRecord(
-	userID UserID, applicationID ApplicationID, orgID OrgID, providerID ProviderID, modelID LLMModelID,
+	userID UserID, applicationID ApplicationID, orgID OrgID, teamID TeamID, providerID ProviderID, modelID LLMModelID,
 	proxyModelName, authTokenID string,
 	promptTokens, cachedTokens, completionTokens int,
 	cost int64,
@@ -176,6 +178,7 @@ func NewUsageRecord(
 		userID:            userID,
 		applicationID:     applicationID,
 		orgID:             orgID,
+		teamID:            teamID,
 		providerID:        providerID,
 		modelID:           modelID,
 		proxyModelName:    proxyModelName,

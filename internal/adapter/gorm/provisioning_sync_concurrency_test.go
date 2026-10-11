@@ -94,7 +94,7 @@ func TestProvisioningHotPathTakesNoFeedLock(t *testing.T) {
 			require.NoError(t, err)
 			require.NoError(t, store.SaveUser(ctx, found))
 		}
-		require.NoError(t, store.RecordUsage(ctx, model.NewUsageRecord(user.ID(), "", org.ID(), "provider", "model", "model", "", 10, 0, 10, 1, "EUR", model.CostSourceComputed, "")))
+		require.NoError(t, store.RecordUsage(ctx, model.NewUsageRecord(user.ID(), "", org.ID(), "", "provider", "model", "model", "", 10, 0, 10, 1, "EUR", model.CostSourceComputed, "")))
 		require.Equal(t, before, eventCount(t, db))
 	})
 }

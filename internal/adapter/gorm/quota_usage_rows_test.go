@@ -15,7 +15,7 @@ import (
 // `else if` to two `if`s would not be caught at the gorm layer otherwise.
 func TestQuotaUsageRows_BothIDsSkipsUserScope(t *testing.T) {
 	record := model.NewUsageRecord(
-		"usr-shadow-app-1", "app-1", "org-1", "provider", "model",
+		"usr-shadow-app-1", "app-1", "org-1", "", "provider", "model",
 		"fast", "", 10, 0, 10, 700, "USD", model.CostSourceComputed, "")
 
 	rows := quotaUsageRows(record)
@@ -43,7 +43,7 @@ func TestQuotaUsageRows_BothIDsSkipsUserScope(t *testing.T) {
 // trivial today but pinning it locks the shape the backfill expects.
 func TestQuotaUsageRows_UserOnly(t *testing.T) {
 	record := model.NewUsageRecord(
-		"user-1", "", "org-1", "provider", "model",
+		"user-1", "", "org-1", "", "provider", "model",
 		"fast", "", 10, 0, 10, 700, "USD", model.CostSourceComputed, "")
 
 	rows := quotaUsageRows(record)
@@ -67,7 +67,7 @@ func TestQuotaUsageRows_UserOnly(t *testing.T) {
 // test for the same shape.
 func TestQuotaUsageRows_NoPrincipal(t *testing.T) {
 	record := model.NewUsageRecord(
-		"", "", "org-1", "provider", "model",
+		"", "", "org-1", "", "provider", "model",
 		"fast", "", 10, 0, 10, 700, "USD", model.CostSourceComputed, "")
 
 	rows := quotaUsageRows(record)

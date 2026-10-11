@@ -181,6 +181,7 @@ func (t *XoloUsageTracker) PostResponse(ctx context.Context, req *genaiProxy.Pro
 		model.UserID(req.UserID),
 		applicationID,
 		orgID,
+		TeamIDFromMeta(req.Metadata),
 		llmModel.ProviderID(),
 		modelID,
 		originalModel,
@@ -196,7 +197,6 @@ func (t *XoloUsageTracker) PostResponse(ctx context.Context, req *genaiProxy.Pro
 	record.SetPlanCovered(planCovered)
 	record.SetProviderCost(providerCost)
 	record.SetStatus(status)
-	record.SetTeamID(TeamIDFromMeta(req.Metadata))
 
 	if err := t.usageStore.RecordUsage(ctx, record); err != nil {
 		slog.ErrorContext(ctx, "usage tracker: could not record usage", slog.Any("error", errors.WithStack(err)))

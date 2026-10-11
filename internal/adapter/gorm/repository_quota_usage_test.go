@@ -76,7 +76,7 @@ func scenarioQuotaUsageAccumulates(t *testing.T, store *xologorm.Store) {
 	since := model.StartOfDay(time.Now())
 
 	for i := 0; i < 5; i++ {
-		record := model.NewUsageRecord(userID, "", orgID, providerID, modelID,
+		record := model.NewUsageRecord(userID, "", orgID, "", providerID, modelID,
 			"fast", "", 10, 0, 10, 100, "USD", model.CostSourceComputed, "")
 		if err := store.RecordUsage(ctx, record); err != nil {
 			t.Fatalf("RecordUsage(%d): %v", i, err)

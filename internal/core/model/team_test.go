@@ -80,9 +80,7 @@ func TestTeamMemberScopeID(t *testing.T) {
 
 func TestQuotaCounters(t *testing.T) {
 	record := func(user UserID, app ApplicationID, team TeamID) *BaseUsageRecord {
-		r := NewUsageRecord(user, app, "org", "p", "m", "acme/gpt", "", 10, 0, 10, 100, "EUR", CostSourceComputed, "")
-		r.SetTeamID(team)
-		return r
+		return NewUsageRecord(user, app, "org", team, "p", "m", "acme/gpt", "", 10, 0, 10, 100, "EUR", CostSourceComputed, "")
 	}
 	got := QuotaCounters(record("u1", "", "t1"))
 	want := []QuotaCounter{{QuotaScopeOrg, "org"}, {QuotaScopeUser, "u1"}, {QuotaScopeTeam, "t1"}, {QuotaScopeTeamMember, "t1:u1"}}

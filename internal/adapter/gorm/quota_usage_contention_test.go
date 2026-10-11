@@ -53,7 +53,7 @@ func TestQuotaUsageWriteContention(t *testing.T) {
 			go func() {
 				defer wg.Done()
 				for i := 0; i < recordsPerWriter; i++ {
-					record := model.NewUsageRecord(userID, "", orgID, "provider", "llm-model",
+					record := model.NewUsageRecord(userID, "", orgID, "", "provider", "llm-model",
 						"fast", "", 10, 0, 10, 100, "USD", model.CostSourceComputed, "")
 					if err := store.RecordUsage(ctx, record); err != nil {
 						errs <- err

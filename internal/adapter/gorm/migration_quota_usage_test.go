@@ -249,7 +249,7 @@ func TestUpgradeFromExistingDatabase(t *testing.T) {
 	}
 
 	// A record written after the upgrade keeps adding to the same counters.
-	record := model.NewUsageRecord("user-a", "", "org-1", "p", "m",
+	record := model.NewUsageRecord("user-a", "", "org-1", "", "p", "m",
 		"fast", "", 10, 0, 10, 300, "USD", model.CostSourceComputed, "")
 	if err := store.RecordUsage(context.Background(), record); err != nil {
 		t.Fatalf("RecordUsage after upgrade: %v", err)

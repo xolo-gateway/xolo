@@ -199,10 +199,9 @@ func TestTeamUsageCounters(t *testing.T) {
 		team := model.NewTeam(f.org.ID(), "legal", "Legal", "")
 		require.NoError(t, store.CreateTeam(ctx, team))
 
-		record := model.NewUsageRecord(f.user.ID(), "", f.org.ID(), "p", "m", "acme/gpt", "", 10, 0, 10, 250, "EUR", model.CostSourceComputed, "")
-		record.SetTeamID(team.ID())
+		record := model.NewUsageRecord(f.user.ID(), "", f.org.ID(), team.ID(), "p", "m", "acme/gpt", "", 10, 0, 10, 250, "EUR", model.CostSourceComputed, "")
 		require.NoError(t, store.RecordUsage(ctx, record))
-		without := model.NewUsageRecord(f.user.ID(), "", f.org.ID(), "p", "m", "acme/gpt", "", 10, 0, 10, 100, "EUR", model.CostSourceComputed, "")
+		without := model.NewUsageRecord(f.user.ID(), "", f.org.ID(), "", "p", "m", "acme/gpt", "", 10, 0, 10, 100, "EUR", model.CostSourceComputed, "")
 		require.NoError(t, store.RecordUsage(ctx, without))
 
 		since := model.StartOfDay(time.Now())

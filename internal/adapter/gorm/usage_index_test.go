@@ -69,7 +69,7 @@ func TestUsageRecord_PlanIndexIsAddedToAnExistingSchema(t *testing.T) {
 // migrateSchema runs the store's migrations by performing one write.
 func migrateSchema(t *testing.T, store *xologorm.Store) {
 	t.Helper()
-	rec := model.NewUsageRecord(model.NewUserID(), "", model.NewOrgID(), model.NewProviderID(), model.NewLLMModelID(),
+	rec := model.NewUsageRecord(model.NewUserID(), "", model.NewOrgID(), "", model.NewProviderID(), model.NewLLMModelID(),
 		"fast", "", 100, 10, 50, 0, "USD", model.CostSourceComputed, "")
 	if err := store.RecordUsage(context.Background(), rec); err != nil {
 		t.Fatalf("RecordUsage: %v", err)

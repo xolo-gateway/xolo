@@ -86,7 +86,7 @@ func seedUsage(t *testing.T, store *xologorm.Store) usageFixture {
 	}
 
 	payg := func(user model.UserID, orgID model.OrgID, providerID model.ProviderID, proxyName, resolved, currency string, cost int64) *model.BaseUsageRecord {
-		return model.NewUsageRecord(user, "", orgID, providerID, f.modelID,
+		return model.NewUsageRecord(user, "", orgID, "", providerID, f.modelID,
 			proxyName, "", 100, 10, 50, cost, currency, model.CostSourceComputed, resolved)
 	}
 
@@ -99,7 +99,7 @@ func seedUsage(t *testing.T, store *xologorm.Store) usageFixture {
 	}
 
 	// A record attributed to an application rather than a user.
-	records = append(records, model.NewUsageRecord("", f.appID, f.orgID, f.providerID, f.modelID,
+	records = append(records, model.NewUsageRecord("", f.appID, f.orgID, "", f.providerID, f.modelID,
 		"fast", "", 100, 10, 50, 8_000, "USD", model.CostSourceComputed, ""))
 
 	// A subscription-covered record: excluded from every PAYG aggregate.
@@ -367,7 +367,7 @@ func scenarioUsageStoreCountActivePlanUsers(t *testing.T, store *xologorm.Store)
 	}
 
 	plan := func(user model.UserID, appID model.ApplicationID, orgID model.OrgID, providerID model.ProviderID) *model.BaseUsageRecord {
-		r := model.NewUsageRecord(user, appID, orgID, providerID, f.modelID,
+		r := model.NewUsageRecord(user, appID, orgID, "", providerID, f.modelID,
 			"fast", "", 100, 10, 50, 0, "USD", model.CostSourceComputed, "")
 		r.SetPlanCovered(true)
 		r.SetProviderCost(100)
@@ -386,7 +386,7 @@ func scenarioUsageStoreCountActivePlanUsers(t *testing.T, store *xologorm.Store)
 		plan(model.NewUserID(), "", f.otherOrgID, f.providerID),
 	}
 	// PAYG traffic is not covered by the plan and must be ignored too.
-	records = append(records, model.NewUsageRecord(model.NewUserID(), "", f.orgID, f.providerID, f.modelID,
+	records = append(records, model.NewUsageRecord(model.NewUserID(), "", f.orgID, "", f.providerID, f.modelID,
 		"fast", "", 100, 10, 50, 1_000, "USD", model.CostSourceComputed, ""))
 
 	for i, r := range records {

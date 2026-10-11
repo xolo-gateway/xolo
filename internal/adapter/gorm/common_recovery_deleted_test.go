@@ -40,7 +40,7 @@ func TestRecoveryAfterNormalUserDeletion(t *testing.T) {
 						secret.ValueEncrypted = encrypted
 						require.NoError(t, db.Create(&secret).Error)
 					}
-					record := model.NewUsageRecord(model.UserID(id), "", "org-old", "provider", "model",
+					record := model.NewUsageRecord(model.UserID(id), "", "org-old", "", "provider", "model",
 						"model", "", 10, 0, 10, 123, "EUR", model.CostSourceComputed, "")
 					require.NoError(t, store.RecordUsage(t.Context(), record))
 				}

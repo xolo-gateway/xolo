@@ -177,7 +177,7 @@ func TestPurgeOrganization(t *testing.T) {
 		business := newBusinessFixture(t, base, svc, fixture)
 		bystander := newOwnershipFixture(t, base)
 		org := string(fixture.org)
-		require.NoError(t, base.RecordUsage(ctx, model.NewUsageRecord(fixture.user, "", fixture.org, model.ProviderID(business.provider), business.llm,
+		require.NoError(t, base.RecordUsage(ctx, model.NewUsageRecord(fixture.user, "", fixture.org, "", model.ProviderID(business.provider), business.llm,
 			"fast", "", 100, 10, 50, 1_000, "EUR", model.CostSourceComputed, "")))
 		require.NoError(t, base.RecordEvent(ctx, model.NewEvent("test", "llm.request.failed", model.WithEventOrg(fixture.org), model.WithEventUser(fixture.user))))
 		hook := putHook(t, base, testTenantID)
@@ -525,7 +525,7 @@ func TestPurgeLocksOnlyItsScope(t *testing.T) {
 		purged := newWebhookTenant(t, base, "purged")
 		org := model.NewOrganization(purged, "inside", "Inside", "")
 		require.NoError(t, base.CreateOrg(ctx, org))
-		require.NoError(t, base.RecordUsage(ctx, model.NewUsageRecord("", "", org.ID(), "", "", "fast", "", 1, 1, 2, 10, "EUR", model.CostSourceComputed, "")))
+		require.NoError(t, base.RecordUsage(ctx, model.NewUsageRecord("", "", org.ID(), "", "", "", "fast", "", 1, 1, 2, 10, "EUR", model.CostSourceComputed, "")))
 		d := confirmDeletion(t, db, store, tenantScope, string(purged))
 
 		// Another tenant writes, and does not commit yet: its guard holds its
@@ -562,7 +562,7 @@ func TestPurgeHoldsOnlyItsScope(t *testing.T) {
 		purged := newWebhookTenant(t, base, "purged")
 		org := model.NewOrganization(purged, "inside", "Inside", "")
 		require.NoError(t, base.CreateOrg(ctx, org))
-		require.NoError(t, base.RecordUsage(ctx, model.NewUsageRecord("", "", org.ID(), "", "", "fast", "", 1, 1, 2, 10, "EUR", model.CostSourceComputed, "")))
+		require.NoError(t, base.RecordUsage(ctx, model.NewUsageRecord("", "", org.ID(), "", "", "", "fast", "", 1, 1, 2, 10, "EUR", model.CostSourceComputed, "")))
 		d := confirmDeletion(t, db, store, tenantScope, string(purged))
 
 		// The purge stops inside its transaction, right after removing the
@@ -587,7 +587,7 @@ func TestPurgeHoldsOnlyItsScope(t *testing.T) {
 
 		other := make(chan error, 1)
 		go func() {
-			other <- base.RecordUsage(context.Background(), model.NewUsageRecord(fixture.user, "", fixture.org, "", "", "fast", "", 1, 1, 2, 10, "EUR", model.CostSourceComputed, ""))
+			other <- base.RecordUsage(context.Background(), model.NewUsageRecord(fixture.user, "", fixture.org, "", "", "", "fast", "", 1, 1, 2, 10, "EUR", model.CostSourceComputed, ""))
 		}()
 		select {
 		case err := <-other:
@@ -597,7 +597,7 @@ func TestPurgeHoldsOnlyItsScope(t *testing.T) {
 			t.Fatal("a purge in progress blocked another tenant")
 		}
 		// The purge skips the guards only in its own transaction.
-		require.ErrorIs(t, base.RecordUsage(context.Background(), model.NewUsageRecord("", "", org.ID(), "", "", "fast", "", 1, 1, 2, 10, "EUR", model.CostSourceComputed, "")),
+		require.ErrorIs(t, base.RecordUsage(context.Background(), model.NewUsageRecord("", "", org.ID(), "", "", "", "fast", "", 1, 1, 2, 10, "EUR", model.CostSourceComputed, "")),
 			port.ErrResourceDeleted)
 		close(release)
 		require.NoError(t, <-done)
