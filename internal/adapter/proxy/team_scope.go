@@ -209,7 +209,9 @@ func (h *TeamScopeHook) PreRequest(ctx context.Context, req *genaiProxy.ProxyReq
 }
 
 // setScope records the team of the request and strips the team segment from
-// its model name.
+// its model name. A name carrying a team segment only reaches it with that
+// team resolved, or for an unknown model the router refuses: PreRequest
+// answers every team the caller can not charge before.
 func (h *TeamScopeHook) setScope(req *genaiProxy.ProxyRequest, name model.ModelName, team rbac.TeamRef) {
 	if team.ID != "" {
 		req.Metadata[MetaTeamID] = team.ID

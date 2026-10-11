@@ -50,6 +50,8 @@ func (a *requestModelAccess) CanUse(ctx context.Context, name string) (bool, err
 	}
 
 	if n.Personal() {
+		// personal-vm:create is also the right to use one's personal virtual
+		// models: each model they reach is checked in turn.
 		perms, err := httpCtx.ResolvePermissions(ctx, a.org.ID())
 		if err != nil {
 			return false, errors.WithStack(err)

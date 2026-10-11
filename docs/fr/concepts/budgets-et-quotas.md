@@ -41,6 +41,10 @@ Cette règle ne s'applique **qu'aux membres sans quota individuel défini** :
 
 Une équipe a la même option, sur sa page : son enveloppe est alors divisée entre ses membres sans budget propre dans l'équipe.
 
+La division est entière et arrondie à l'inférieur, au millionième de l'unité monétaire près : partagé entre 3 membres, un budget de 1 € donne 0,333333 € à chacun. Le reste ne peut pas être dépensé.
+
+Une équipe qui partage son enveloppe mais n'a plus de membres n'a rien à diviser : une requête qui lui est encore attribuée, par une application rattachée par exemple, est bornée par l'enveloppe entière.
+
 ## Répartition entre niveaux
 
 Le budget d'une organisation contraint ceux de ses équipes, et le budget d'une équipe ceux de ses membres, selon la règle de **répartition** choisie sur le niveau parent. La règle s'applique à l'enregistrement d'un budget, d'un enfant comme du parent :

@@ -481,7 +481,7 @@ func (a *PipelineHookAdapter) buildMiddlewareEC(ctx context.Context, req *genaiP
 		Access:          newRequestModelAccess(org, string(teamID), teamSlug, a.orgStore, a.providerStore, a.virtualModelStore),
 		MessagesJSON:    extractMessagesJSON(req.Body),
 		BodyJSON:        string(req.Body),
-		QuotaInfo:       a.quotaInfoFunc(model.UserID(userID), orgID, teamID),
+		QuotaInfo:       a.quotaInfoFunc(model.UserID(userID), ApplicationIDFromMeta(req.Metadata), orgID, teamID),
 		VisitedVMs:      map[model.VirtualModelID]struct{}{},
 		PersonalVMStore: a.personalVMStore,
 		ToolInspectors:  pipeline.NewToolInspectorSet(),
@@ -744,7 +744,7 @@ func (a *PipelineHookAdapter) buildEC(ctx context.Context, req *genaiProxy.Proxy
 		return ec, nil
 	}
 	ec.OrgSlug = org.Slug()
-	ec.QuotaInfo = a.quotaInfoFunc(model.UserID(userID), org.ID(), teamID)
+	ec.QuotaInfo = a.quotaInfoFunc(model.UserID(userID), ApplicationIDFromMeta(req.Metadata), org.ID(), teamID)
 	ec.Access = newRequestModelAccess(org, string(teamID), teamSlug, a.orgStore, a.providerStore, a.virtualModelStore)
 	if !isPersonal {
 		// An organization virtual model delegates its static references: a
@@ -938,7 +938,7 @@ var (
 // nil when quota resolution is not configured. The memo guarantees that the
 // underlying store queries run at most once per pipeline execution, however
 // many plugin nodes ask for the quota.
-func (a *PipelineHookAdapter) quotaInfoFunc(userID model.UserID, orgID model.OrgID, teamID model.TeamID) func(context.Context) *proto.QuotaInfo {
+func (a *PipelineHookAdapter) quotaInfoFunc(userID model.UserID, appID model.ApplicationID, orgID model.OrgID, teamID model.TeamID) func(context.Context) *proto.QuotaInfo {
 	if a.quotaInfo == nil || userID == "" || orgID == "" {
 		return nil
 	}
@@ -947,7 +947,7 @@ func (a *PipelineHookAdapter) quotaInfoFunc(userID model.UserID, orgID model.Org
 		info *proto.QuotaInfo
 	)
 	return func(ctx context.Context) *proto.QuotaInfo {
-		once.Do(func() { info = a.quotaInfo.Resolve(ctx, userID, orgID, teamID) })
+		once.Do(func() { info = a.quotaInfo.Resolve(ctx, userID, appID, orgID, teamID) })
 		return info
 	}
 }

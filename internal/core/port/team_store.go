@@ -28,8 +28,9 @@ type TeamStore interface {
 	// membership.
 	ListMembershipTeams(ctx context.Context, membershipID model.MembershipID) ([]model.TeamMember, error)
 	// SetTeamMember adds the membership to the team, or replaces its team
-	// roles when it is a member already. The membership must belong to the
-	// organization of the team.
+	// roles when it is a member already: it is idempotent, and a member
+	// already in the team keeps its join date. The membership must belong to
+	// the organization of the team.
 	SetTeamMember(ctx context.Context, id model.TeamID, membershipID model.MembershipID, roleIDs []model.RoleID) error
 	RemoveTeamMember(ctx context.Context, id model.TeamID, membershipID model.MembershipID) error
 

@@ -13,9 +13,9 @@ import (
 // QuotaInfoResolver computes the proto.QuotaInfo handed to pipeline plugins:
 // for the current day, month and year, what remains on the most constrained
 // level of the request's path. The levels are those the enforcer checks: the
-// user (its effective budget, see QuotaService.ResolveEffectiveQuota), the
-// organization and, for a request attributed to a team, the team and the
-// member inside it. Amounts are expressed in microcents of the organization
+// user (its effective budget, see QuotaService.ResolveEffectiveQuota) or, for
+// an application, the application; the organization; and, for a request
+// attributed to a team, the team and, for a user, the member inside it. Amounts are expressed in microcents of the organization
 // currency. A period without a budget at any level is reported with a zero
 // total, which plugins must read as "unlimited".
 type QuotaInfoResolver struct {
@@ -39,9 +39,9 @@ type quotaLevel struct {
 // Resolve returns nil when the quota cannot be resolved or when no budget is
 // configured on the request's path, so that plugins fall back to their
 // neutral value instead of reacting to a spurious zero. teamID is empty for a
-// request charged to the organization alone.
-func (r *QuotaInfoResolver) Resolve(ctx context.Context, userID model.UserID, orgID model.OrgID, teamID model.TeamID) *proto.QuotaInfo {
-	levels, err := r.levels(ctx, userID, orgID, teamID)
+// request charged to the organization alone, appID for a user's request.
+func (r *QuotaInfoResolver) Resolve(ctx context.Context, userID model.UserID, appID model.ApplicationID, orgID model.OrgID, teamID model.TeamID) *proto.QuotaInfo {
+	levels, err := r.levels(ctx, userID, appID, orgID, teamID)
 	if err != nil {
 		slog.WarnContext(ctx, "pipeline: could not resolve effective quota", slog.Any("error", err))
 		return nil
@@ -80,7 +80,7 @@ func (r *QuotaInfoResolver) Resolve(ctx context.Context, userID model.UserID, or
 }
 
 // levels lists the budgets set on the request's path.
-func (r *QuotaInfoResolver) levels(ctx context.Context, userID model.UserID, orgID model.OrgID, teamID model.TeamID) ([]quotaLevel, error) {
+func (r *QuotaInfoResolver) levels(ctx context.Context, userID model.UserID, appID model.ApplicationID, orgID model.OrgID, teamID model.TeamID) ([]quotaLevel, error) {
 	var levels []quotaLevel
 	add := func(scope model.QuotaScope, scopeID string, daily, monthly, yearly *int64) {
 		if daily == nil && monthly == nil && yearly == nil {
@@ -89,18 +89,30 @@ func (r *QuotaInfoResolver) levels(ctx context.Context, userID model.UserID, org
 		levels = append(levels, quotaLevel{scope, scopeID, [3]*int64{daily, monthly, yearly}})
 	}
 
-	effective, orgQuota, err := r.quotaResolver.ResolveEffectiveQuota(ctx, userID, orgID)
+	// An application request is checked on the application budget, never on
+	// its shadow user, whose counter is not fed (see XoloQuotaEnforcer).
+	scope, scopeID, memberID := model.QuotaScopeUser, string(userID), userID
+	resolve := func() (*model.EffectiveQuota, model.Quota, error) {
+		return r.quotaResolver.ResolveEffectiveQuota(ctx, userID, orgID)
+	}
+	if appID != "" {
+		scope, scopeID, memberID = model.QuotaScopeApplication, string(appID), ""
+		resolve = func() (*model.EffectiveQuota, model.Quota, error) {
+			return r.quotaResolver.ResolveEffectiveQuotaForApplication(ctx, appID, orgID)
+		}
+	}
+	effective, orgQuota, err := resolve()
 	if err != nil {
 		return nil, err
 	}
-	add(model.QuotaScopeUser, string(userID), effective.DailyBudget, effective.MonthlyBudget, effective.YearlyBudget)
+	add(scope, scopeID, effective.DailyBudget, effective.MonthlyBudget, effective.YearlyBudget)
 	if orgQuota != nil {
 		add(model.QuotaScopeOrg, string(orgID), orgQuota.DailyBudget(), orgQuota.MonthlyBudget(), orgQuota.YearlyBudget())
 	}
 	if teamID == "" {
 		return levels, nil
 	}
-	teamQuota, member, err := r.quotaResolver.ResolveTeamQuotas(ctx, teamID, userID)
+	teamQuota, member, err := r.quotaResolver.ResolveTeamQuotas(ctx, teamID, memberID)
 	if err != nil {
 		return nil, err
 	}
@@ -108,7 +120,7 @@ func (r *QuotaInfoResolver) levels(ctx context.Context, userID model.UserID, org
 		add(model.QuotaScopeTeam, string(teamID), teamQuota.DailyBudget(), teamQuota.MonthlyBudget(), teamQuota.YearlyBudget())
 	}
 	if member != nil {
-		add(model.QuotaScopeTeamMember, model.TeamMemberScopeID(teamID, userID), member.DailyBudget, member.MonthlyBudget, member.YearlyBudget)
+		add(model.QuotaScopeTeamMember, model.TeamMemberScopeID(teamID, memberID), member.DailyBudget, member.MonthlyBudget, member.YearlyBudget)
 	}
 	return levels, nil
 }

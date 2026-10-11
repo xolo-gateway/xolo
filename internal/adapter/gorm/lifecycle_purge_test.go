@@ -355,6 +355,44 @@ func TestPurgeMember(t *testing.T) {
 	})
 }
 
+// TestPurgeMemberDetachesTeams purges a member of a team holding a budget in
+// it: the team outlives the member, which leaves it with its team roles and
+// budget, and the team and quota projections are published again.
+func TestPurgeMemberDetachesTeams(t *testing.T) {
+	eachBackendDB(t, func(t *testing.T, db *gormpkg.DB) {
+		ctx := t.Context()
+		base := newSeededStore(t, db)
+		fixture := newOwnershipFixture(t, base)
+		svc := businessService(base)
+		f := newBusinessFixture(t, base, svc, fixture)
+		budget := uuid.NewString()
+		_, err := svc.PutQuota(ctx, testTenantID, budget, noCondition, model.QuotaSettings{
+			Scope: model.QuotaScopeTeamMember, ScopeID: model.TeamMemberScopeID(model.TeamID(f.team), f.user), Currency: "EUR", MonthlyBudget: ptrTo(int64(100)),
+		})
+		require.NoError(t, err)
+		require.Equal(t, int64(1), countRows(t, db, "team_members", "team_id = ?", f.team))
+		require.Equal(t, int64(1), countRows(t, db, "team_member_roles", "team_id = ?", f.team))
+		store := lifecycleStore(t, db)
+
+		confirmDeletion(t, db, store, memberScope(testTenantID), string(f.user))
+		cursor, err := store.CaptureEventCursor(ctx)
+		require.NoError(t, err)
+		require.Equal(t, 1, purgeDue(t, store))
+
+		require.True(t, exists(t, db, "teams", f.team), "the team outlives its member")
+		require.Zero(t, countRows(t, db, "team_members", "team_id = ?", f.team))
+		require.Zero(t, countRows(t, db, "team_member_roles", "team_id = ?", f.team))
+		require.False(t, exists(t, db, "quota", budget), "the member budget leaves with it")
+
+		item, err := svc.GetCommon(ctx, businessScopes(fixture, f)[f.team], f.team)
+		require.NoError(t, err)
+		require.NotContains(t, string(item.Representation), string(f.user), "the team projection is published again")
+		events, _ := feedSince(t, store, cursor)
+		require.Contains(t, eventTypes(events), "team.updated.v1")
+		require.Contains(t, eventTypes(events), "quota.deleted.v1")
+	})
+}
+
 // TestPurgeCrossedScopes purges an organization and one of its members, both
 // deleted, in either order.
 func TestPurgeCrossedScopes(t *testing.T) {
