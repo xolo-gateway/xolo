@@ -28,6 +28,8 @@ func (s *Store) CreateTeam(ctx context.Context, team model.Team) error {
 func (s *Store) SaveTeam(ctx context.Context, team model.Team) error {
 	return s.recorded(ctx, tracking("team", string(team.ID())), func(ctx context.Context, db *gorm.DB) error {
 		row := fromTeam(team)
+		// The slug is left out on purpose: clients keep it in the model names
+		// they send, so it never changes once the team is created.
 		result := db.Model(&Team{}).Where("id = ? AND org_id = ?", row.ID, row.OrgID).Updates(map[string]any{
 			"name":                row.Name,
 			"description":         row.Description,

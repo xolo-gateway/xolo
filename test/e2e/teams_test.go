@@ -4,6 +4,7 @@ package e2e
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"testing"
 	"time"
@@ -90,16 +91,58 @@ func TestTeams_QualifiedModelName(t *testing.T) {
 	}
 }
 
-// A member outside the team can not charge it.
-// A team the caller is not in is answered like a team that does not exist,
-// so that no member can list the teams of the organization.
+// A member outside the team can not charge it. A team the caller is not in
+// is answered like a team that does not exist, so that no member can list the
+// teams of the organization.
 func TestTeams_NotAMember(t *testing.T) {
-	res := chat(t, tokenAlice, modelAnalysts, "Bonjour")
+	// Carol, a plain member, leaves the team for the time of the test.
+	db, err := openDB(env.dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sqlDB, _ := db.DB()
+	left := db.Where("team_id = ? AND membership_id = ?", teamAcmeAnalysts, membershipCarolAcme).Delete(&gormadapter.TeamMember{})
+	if left.Error != nil || left.RowsAffected != 1 {
+		t.Fatalf("leave the team: %v, %d row(s)", left.Error, left.RowsAffected)
+	}
+	t.Cleanup(func() {
+		defer sqlDB.Close()
+		if err := joinSeededTeam(db); err != nil {
+			t.Errorf("rejoin the team: %v", err)
+		}
+	})
+
+	res := chat(t, tokenCarol, modelAnalysts, "Bonjour")
 	if res.Status == http.StatusOK {
 		t.Fatalf("status = 200, want a refusal: %s", res.Body)
 	}
-	unknown := chat(t, tokenAlice, "acme/no-such-team/gpt-4o-mini", "Bonjour")
+	unknown := chat(t, tokenCarol, "acme/no-such-team/gpt-4o-mini", "Bonjour")
 	if res.Status != unknown.Status {
 		t.Fatalf("status = %d, want %d as for an unknown team: %s", res.Status, unknown.Status, res.Body)
 	}
+	if got, want := errorKind(t, res.Body), errorKind(t, unknown.Body); got != want {
+		t.Fatalf("error = %q, want %q as for an unknown team", got, want)
+	}
+
+	// The refusal is about the team: the organization-wide access still
+	// reaches the model.
+	if res := chat(t, tokenCarol, "acme/gpt-4o-mini", "Bonjour"); res.Status != http.StatusOK {
+		t.Fatalf("short name: status = %d, want 200: %s", res.Status, res.Body)
+	}
+}
+
+// errorKind returns the code and type of an OpenAI-style error body: the
+// message names the model, the rest must not tell two refusals apart.
+func errorKind(t *testing.T, body string) string {
+	t.Helper()
+	var payload struct {
+		Error struct {
+			Code any    `json:"code"`
+			Type string `json:"type"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal([]byte(body), &payload); err != nil {
+		t.Fatalf("decode error body %q: %v", body, err)
+	}
+	return fmt.Sprintf("%v/%s", payload.Error.Code, payload.Error.Type)
 }
