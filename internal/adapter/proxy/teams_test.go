@@ -501,6 +501,16 @@ func TestQuotaEnforcerChecksTheTeamLevels(t *testing.T) {
 	_, err = enforcer.PreRequest(context.Background(), req)
 	require.NoError(t, err)
 	require.Equal(t, model.UserID(""), resolver.calls[len(resolver.calls)-1])
+
+	// But it spends the team envelope like a member does.
+	usage.byScope[model.QuotaScopeTeam] = 1_000
+	req = teamQuotaRequest(t, w, legal)
+	req.Metadata[MetaApplicationID] = "app-1"
+	result, err = enforcer.PreRequest(context.Background(), req)
+	require.NoError(t, err)
+	require.NotNil(t, result, "the team envelope is spent for its applications too")
+	require.Equal(t, http.StatusTooManyRequests, result.Response.StatusCode)
+	require.Contains(t, errorMessage(result), "Team monthly budget exceeded")
 }
 
 func errorMessage(result *genaiProxy.HookResult) string {
