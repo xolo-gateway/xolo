@@ -81,7 +81,7 @@ La même règle se règle sur le budget de l'organisation, pour les enveloppes d
 
 ## Clés d'API et applications
 
-- Une **clé d'API** peut être rattachée à une de vos équipes à sa création, depuis **Profil > Jetons API**.
+- Une **clé d'API** peut être rattachée à une de vos équipes à sa création, depuis **Profil > Jetons API**. Si vous quittez l'équipe ou si elle est supprimée, la clé est refusée et la liste l'indique (« équipe quittée ou supprimée ») : supprimez-la et créez-en une autre. Une clé ne change jamais d'équipe d'elle-même.
 - Une **application** peut être rattachée à une équipe depuis sa page : elle utilise alors les modèles de l'équipe et toutes ses requêtes sont débitées sur l'équipe.
 - Un **modèle virtuel personnel** choisit l'équipe qu'il débite dans ses réglages. Il ne délègue rien : chaque modèle qu'il appelle doit être accessible à cette équipe.
 

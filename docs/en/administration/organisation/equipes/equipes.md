@@ -81,7 +81,7 @@ The same rule can be set on the organization budget, for the envelopes of its te
 
 ## API keys and applications
 
-- An **API key** can be attached to one of your teams when you create it, from **Profil > Jetons API** (Profile > API tokens).
+- An **API key** can be attached to one of your teams when you create it, from **Profil > Jetons API** (Profile > API tokens). If you leave the team or it is deleted, the key is refused and the list says so ("équipe quittée ou supprimée", team left or deleted): delete it and create another one. A key never changes team on its own.
 - An **application** can be attached to a team from its page. It then uses the team's models and all its requests are charged to the team.
 - A **personal virtual model** chooses the team it charges in its settings. It delegates nothing: each model it calls must be accessible to that team.
 

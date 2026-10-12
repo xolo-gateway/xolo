@@ -1480,7 +1480,7 @@ func tokenTeamName(token model.AuthToken, teams []TeamOption) string {
 			return t.TeamName
 		}
 	}
-	return "équipe quittée"
+	return "équipe quittée ou supprimée"
 }
 
 var _ = templruntime.GeneratedTemplate

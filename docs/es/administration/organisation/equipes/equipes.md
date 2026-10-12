@@ -81,7 +81,7 @@ La misma regla se configura en el presupuesto de la organización, para las asig
 
 ## Claves de API y aplicaciones
 
-- Una **clave de API** puede vincularse a uno de sus equipos al crearla, desde **Profil > Jetons API** (Perfil > Tokens de API).
+- Una **clave de API** puede vincularse a uno de sus equipos al crearla, desde **Profil > Jetons API** (Perfil > Tokens de API). Si deja el equipo o si este se elimina, la clave se rechaza y la lista lo indica ("équipe quittée ou supprimée", equipo abandonado o eliminado): elimínela y cree otra. Una clave nunca cambia de equipo por sí sola.
 - Una **aplicación** puede vincularse a un equipo desde su página. Entonces utiliza los modelos del equipo y todas sus solicitudes se cargan al equipo.
 - Un **modelo virtual personal** elige en su configuración el equipo al que carga. No delega nada: cada modelo al que llama debe ser accesible para ese equipo.
 
