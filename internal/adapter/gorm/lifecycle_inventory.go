@@ -69,7 +69,10 @@ var lifecycleTables = []lifecycleTable{
 	{table: "plugin_node_secrets", org: "CASE WHEN r.org_id NOT LIKE '~:%' THEN r.org_id END", member: "CASE WHEN r.org_id LIKE '~:%' THEN substr(r.org_id, 3) END", secret: []string{"value_encrypted"}},
 	{table: "alerts", org: "r.org_id", member: "CASE WHEN r.scope = 'personal' THEN r.owner_id END", family: model.FamilyAlert},
 	{table: "alert_incidents", org: "r.org_id"},
-	// A team member budget is scoped "<team id>:<user id>".
+	// A team member budget is scoped "<team id>:<user id>". The LIKE patterns
+	// below match exactly only because no team or user id contains ":", "%" or
+	// "_" (they are xids or UUIDs): the ":" they anchor on is the separator. An
+	// id format allowing these characters must change them (see #143).
 	{table: "quota", org: "CASE WHEN r.scope = 'org' THEN r.scope_id WHEN r.scope = 'application' THEN (SELECT org_id FROM applications WHERE id = r.scope_id)" +
 		" WHEN r.scope = 'team' THEN (SELECT org_id FROM teams WHERE id = r.scope_id)" +
 		" WHEN r.scope = 'team_member' THEN (SELECT org_id FROM teams WHERE r.scope_id LIKE teams.id || ':%') END",

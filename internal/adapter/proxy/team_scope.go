@@ -249,6 +249,10 @@ func (h *TeamScopeHook) setScope(req *genaiProxy.ProxyRequest, name model.ModelN
 // another payer behind its back. A team of another organization is refused
 // too: this organization can not charge it, and charging another one instead
 // would be that swap.
+//
+// Only a model whose owner picked no team falls back on the path left: the
+// organization alone with the organization-wide access, else the owner's
+// single team, else model_team_required.
 func (h *TeamScopeHook) personalTeam(ctx context.Context, orgID model.OrgID, perms rbac.PermissionSet, bound rbac.TeamRef, name model.ModelName) (rbac.TeamRef, error) {
 	if bound.ID != "" {
 		return bound, nil
