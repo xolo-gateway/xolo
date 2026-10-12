@@ -74,6 +74,12 @@ func TestTeamStore(t *testing.T) {
 		require.Equal(t, []model.RoleID{f.role.ID()}, members[0].RoleIDs())
 		require.NotNil(t, members[0].User())
 
+		// A role given twice is held once.
+		require.NoError(t, store.SetTeamMember(ctx, team.ID(), f.membership.ID(), []model.RoleID{f.role.ID(), f.role.ID()}))
+		members, err = store.ListTeamMembers(ctx, team.ID())
+		require.NoError(t, err)
+		require.Equal(t, []model.RoleID{f.role.ID()}, members[0].RoleIDs())
+
 		teams, err := store.ListMembershipTeams(ctx, f.membership.ID())
 		require.NoError(t, err)
 		require.Len(t, teams, 1)
