@@ -152,6 +152,56 @@ func TestTeamMembershipFollowsTheMember(t *testing.T) {
 	})
 }
 
+// Leaving a team takes the member's team roles and budget with it, and only
+// that member's.
+func TestRemoveTeamMember(t *testing.T) {
+	eachBackendDB(t, func(t *testing.T, db *gormpkg.DB) {
+		ctx := context.Background()
+		store := newSeededStore(t, db)
+		f := newTeamFixture(t, store)
+		bob := model.NewUser(testTenantID, "oidc", "bob", "bob@acme.test", "Bob", true, model.PlatformRoleUser)
+		require.NoError(t, store.SaveUser(ctx, bob))
+		bobMembership := model.NewMembership(bob.ID(), f.org.ID())
+		require.NoError(t, store.AddMember(ctx, bobMembership))
+
+		team := model.NewTeam(f.org.ID(), "legal", "Legal", "")
+		require.NoError(t, store.CreateTeam(ctx, team))
+		for _, m := range []struct {
+			membership model.MembershipID
+			user       model.UserID
+		}{{f.membership.ID(), f.user.ID()}, {bobMembership.ID(), bob.ID()}} {
+			require.NoError(t, store.SetTeamMember(ctx, team.ID(), m.membership, []model.RoleID{f.role.ID()}))
+			require.NoError(t, store.SetQuota(ctx, model.NewQuota(model.QuotaScopeTeamMember, model.TeamMemberScopeID(team.ID(), m.user), "EUR", nil, ptrTo(int64(10)), nil)))
+		}
+
+		cursor, err := store.CaptureEventCursor(ctx)
+		require.NoError(t, err)
+		require.NoError(t, store.RemoveTeamMember(ctx, team.ID(), f.membership.ID()))
+
+		members, err := store.ListTeamMembers(ctx, team.ID())
+		require.NoError(t, err)
+		require.Len(t, members, 1)
+		require.Equal(t, bob.ID(), members[0].UserID())
+		require.Equal(t, []model.RoleID{f.role.ID()}, members[0].RoleIDs())
+		var roles int64
+		require.NoError(t, db.Table("team_member_roles").Where("team_id = ? AND membership_id = ?", string(team.ID()), string(f.membership.ID())).Count(&roles).Error)
+		require.Zero(t, roles, "the team roles go with the member")
+		_, err = store.GetQuota(ctx, model.QuotaScopeTeamMember, model.TeamMemberScopeID(team.ID(), f.user.ID()))
+		require.ErrorIs(t, err, port.ErrNotFound, "the member budget goes with the member")
+		_, err = store.GetQuota(ctx, model.QuotaScopeTeamMember, model.TeamMemberScopeID(team.ID(), bob.ID()))
+		require.NoError(t, err, "another member keeps its budget")
+
+		events, _ := feedSince(t, store, cursor)
+		require.Contains(t, eventTypes(events), "team.updated.v1")
+		require.Contains(t, eventTypes(events), "quota.deleted.v1")
+
+		require.ErrorIs(t, store.RemoveTeamMember(ctx, team.ID(), f.membership.ID()), port.ErrNotFound)
+		members, err = store.ListTeamMembers(ctx, team.ID())
+		require.NoError(t, err)
+		require.Len(t, members, 1, "a second removal changes nothing")
+	})
+}
+
 func TestDeleteTeam(t *testing.T) {
 	eachBackend(t, func(t *testing.T, store *xologorm.Store) {
 		ctx := context.Background()

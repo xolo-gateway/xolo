@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"slices"
 	"strings"
 	"testing"
 
@@ -154,7 +155,17 @@ func TestTeamPages(t *testing.T) {
 		require.Contains(t, rr.Body.String(), "plafonnée")
 
 		// The lead leaves its team: its team role goes with it.
-		rr = f.do(t, f.owner, http.MethodDelete, teamPath+"/members/"+string(members[0].MembershipID()), nil)
+		lead := slices.IndexFunc(members, func(m model.TeamMember) bool { return m.UserID() == f.lead.ID() })
+		require.NotEqual(t, -1, lead)
+		rr = f.do(t, f.owner, http.MethodDelete, teamPath+"/members/"+string(members[lead].MembershipID()), nil)
 		require.Equal(t, http.StatusSeeOther, rr.Code, rr.Body.String())
+		members, err = store.ListTeamMembers(ctx, f.team.ID())
+		require.NoError(t, err)
+		require.Len(t, members, 1)
+		require.Equal(t, f.plain.ID(), members[0].UserID())
+		perms, err := store.ResolveEffectivePermissions(ctx, f.lead.ID(), f.org.ID())
+		require.NoError(t, err)
+		require.False(t, perms.InTeam(string(f.team.ID())))
+		require.False(t, perms.HasInTeam(string(f.team.ID()), rbac.PermMembersWrite))
 	})
 }
