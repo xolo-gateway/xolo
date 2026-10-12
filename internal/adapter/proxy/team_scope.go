@@ -152,14 +152,20 @@ func (h *TeamScopeHook) PreRequest(ctx context.Context, req *genaiProxy.ProxyReq
 		return nil, errors.WithStack(err)
 	}
 
+	// A token bound to a team is refused here, once, when its principal can no
+	// longer charge that team: every path below charges boundTeam as is.
 	bound := BoundTeamIDFromContext(ctx)
-	if bound != "" && !perms.InTeam(string(bound)) {
-		return teamForbidden(req.Model, "the token is bound to a team it can no longer use"), nil
+	var boundTeam rbac.TeamRef
+	if bound != "" {
+		var ok bool
+		if boundTeam, ok = teamRefOf(perms, string(bound)); !ok {
+			return teamForbidden(req.Model, "the token is bound to a team it can no longer use"), nil
+		}
 	}
 
 	var team rbac.TeamRef
 	if name.Personal() {
-		team, err = h.personalTeam(ctx, org.ID(), perms, bound, name)
+		team, err = h.personalTeam(ctx, org.ID(), perms, boundTeam, name)
 		if err != nil {
 			var answer *teamScopeAnswer
 			if errors.As(err, &answer) {
@@ -198,11 +204,8 @@ func (h *TeamScopeHook) PreRequest(ctx context.Context, req *genaiProxy.ProxyReq
 				return virtualModelForbidden(req.Model), nil
 			}
 			team = refOf(named)
-		case bound != "":
-			var ok bool
-			if team, ok = teamRefOf(perms, string(bound)); !ok {
-				return teamForbidden(req.Model, "the token is bound to a team it can no longer use"), nil
-			}
+		case boundTeam.ID != "":
+			team = boundTeam
 			if !perms.CanUseModel(team.ID, modelID, kind) {
 				return virtualModelForbidden(req.Model), nil
 			}
@@ -246,12 +249,9 @@ func (h *TeamScopeHook) setScope(req *genaiProxy.ProxyRequest, name model.ModelN
 // another payer behind its back. A team of another organization is refused
 // too: this organization can not charge it, and charging another one instead
 // would be that swap.
-func (h *TeamScopeHook) personalTeam(ctx context.Context, orgID model.OrgID, perms rbac.PermissionSet, bound model.TeamID, name model.ModelName) (rbac.TeamRef, error) {
-	if bound != "" {
-		if team, ok := teamRefOf(perms, string(bound)); ok {
-			return team, nil
-		}
-		return rbac.TeamRef{}, &teamScopeAnswer{result: teamForbidden(name.String(), "the token is bound to a team it can no longer use")}
+func (h *TeamScopeHook) personalTeam(ctx context.Context, orgID model.OrgID, perms rbac.PermissionSet, bound rbac.TeamRef, name model.ModelName) (rbac.TeamRef, error) {
+	if bound.ID != "" {
+		return bound, nil
 	}
 	if h.personalVMStore != nil {
 		if u := httpCtx.User(ctx); u != nil {
