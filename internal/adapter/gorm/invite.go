@@ -9,8 +9,8 @@ import (
 type InviteToken struct {
 	ID              string `gorm:"primaryKey;autoIncrement:false"`
 	CreatedAt       time.Time
-	OrgID           string `gorm:"index;not null"`
-	Role            string `gorm:"not null"`
+	OrgID           string  `gorm:"index;not null"`
+	Role            string  `gorm:"not null"`
 	InviteeEmail    *string `gorm:"index"`
 	ExpiresAt       *time.Time
 	MaxUses         *int
@@ -27,17 +27,17 @@ type wrappedInviteToken struct {
 	t *InviteToken
 }
 
-func (w *wrappedInviteToken) ID() model.InviteTokenID          { return model.InviteTokenID(w.t.ID) }
-func (w *wrappedInviteToken) OrgID() model.OrgID               { return model.OrgID(w.t.OrgID) }
-func (w *wrappedInviteToken) Role() string                     { return w.t.Role }
-func (w *wrappedInviteToken) InviteeEmail() *string            { return w.t.InviteeEmail }
-func (w *wrappedInviteToken) ExpiresAt() *time.Time            { return w.t.ExpiresAt }
-func (w *wrappedInviteToken) MaxUses() *int                    { return w.t.MaxUses }
-func (w *wrappedInviteToken) UsesCount() int                   { return w.t.UsesCount }
-func (w *wrappedInviteToken) CreatedByUserID() model.UserID    { return model.UserID(w.t.CreatedByUserID) }
-func (w *wrappedInviteToken) RevokedAt() *time.Time            { return w.t.RevokedAt }
-func (w *wrappedInviteToken) CreatedAt() time.Time             { return w.t.CreatedAt }
-func (w *wrappedInviteToken) TeamID() model.TeamID             { return model.TeamID(w.t.TeamID) }
+func (w *wrappedInviteToken) ID() model.InviteTokenID       { return model.InviteTokenID(w.t.ID) }
+func (w *wrappedInviteToken) OrgID() model.OrgID            { return model.OrgID(w.t.OrgID) }
+func (w *wrappedInviteToken) Role() string                  { return w.t.Role }
+func (w *wrappedInviteToken) InviteeEmail() *string         { return w.t.InviteeEmail }
+func (w *wrappedInviteToken) ExpiresAt() *time.Time         { return w.t.ExpiresAt }
+func (w *wrappedInviteToken) MaxUses() *int                 { return w.t.MaxUses }
+func (w *wrappedInviteToken) UsesCount() int                { return w.t.UsesCount }
+func (w *wrappedInviteToken) CreatedByUserID() model.UserID { return model.UserID(w.t.CreatedByUserID) }
+func (w *wrappedInviteToken) RevokedAt() *time.Time         { return w.t.RevokedAt }
+func (w *wrappedInviteToken) CreatedAt() time.Time          { return w.t.CreatedAt }
+func (w *wrappedInviteToken) TeamID() model.TeamID          { return model.TeamID(w.t.TeamID) }
 func (w *wrappedInviteToken) Org() model.Organization {
 	if w.t.Org == nil {
 		return nil

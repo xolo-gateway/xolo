@@ -4,6 +4,8 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"net/url"
+	"strings"
 	"time"
 
 	"github.com/a-h/templ"
@@ -135,7 +137,15 @@ func (h *Handler) renderTokensPage(w http.ResponseWriter, r *http.Request, creat
 		return
 	}
 
-	deletedToken := r.URL.Query().Get("token_deleted")
+	q := r.URL.Query()
+	deletedToken := q.Get("token_deleted")
+	tokenError := q.Get("error")
+	// The dialog reopens only when the previous POST bounced back with an
+	// error. On a successful create the clear-text token is rendered in a
+	// page-level alert (see TokensPage), and opening the dialog on top of it
+	// would dim the alert under the modal overlay — the user would have to
+	// dismiss an empty form before they could copy the one-time key.
+	openDialog := tokenError != ""
 
 	teams, err := h.userTeams(ctx, user.ID())
 	if err != nil {
@@ -150,6 +160,12 @@ func (h *Handler) renderTokensPage(w http.ResponseWriter, r *http.Request, creat
 		Teams:          teams,
 		CreatedToken:   createdToken,
 		DeletedToken:   deletedToken != "",
+		Error:          tokenError,
+		OpenDialog:     openDialog,
+		FormLabel:      q.Get("label"),
+		FormOrgID:      model.OrgID(q.Get("org_id")),
+		FormExpiresAt:  q.Get("expires_at"),
+		FormTeamID:     model.TeamID(q.Get("team_id")),
 		AppLayoutVModel: common.AppLayoutVModel{
 			User:         user,
 			SelectedItem: "tokens",
@@ -170,19 +186,45 @@ func (h *Handler) createToken(w http.ResponseWriter, r *http.Request) {
 	user := httpCtx.User(ctx)
 
 	if err := r.ParseForm(); err != nil {
-		http.Error(w, "Invalid form", http.StatusBadRequest)
+		http.Redirect(w, r, redirectTokensWithForm(r, "invalid_form"), http.StatusSeeOther)
 		return
 	}
 
-	label := r.FormValue("label")
+	label := strings.TrimSpace(r.FormValue("label"))
 	if label == "" {
-		http.Error(w, "Le nom du jeton est requis", http.StatusBadRequest)
+		http.Redirect(w, r, redirectTokensWithForm(r, "label_required"), http.StatusSeeOther)
 		return
 	}
 
-	orgID := model.OrgID(r.FormValue("org_id"))
+	orgID := model.OrgID(strings.TrimSpace(r.FormValue("org_id")))
 	if orgID == "" {
-		http.Error(w, "L'organisation est requise", http.StatusBadRequest)
+		http.Redirect(w, r, redirectTokensWithForm(r, "org_required"), http.StatusSeeOther)
+		return
+	}
+
+	// Authorization: the AuthToken's OrgID is later used verbatim by the proxy
+	// to resolve which models and quotas the bearer can reach. Without this
+	// check any authenticated user could mint a key for any org they could
+	// guess the ID of, and consume that organisation's budget.
+	//
+	// The IsMember check is a one-shot gate at creation time, not a
+	// per-request re-validation. A user removed from the org after this
+	// point keeps the token and its OrgID: FindAuthToken only checks the
+	// expiry, and RemoveMember does not delete AuthToken rows (see
+	// internal/adapter/gorm/user_store.go::FindAuthToken and
+	// org_store.go::RemoveMember, and the "keeps its API tokens" comment
+	// at http/middleware/authn/token/login.go:120). Closing that residual
+	// window — revalidating membership on every authenticated request, or
+	// deleting keys on RemoveMember — is a store- or middleware-level
+	// change, not something this handler can solve.
+	isMember, err := h.orgStore.IsMember(ctx, user.ID(), orgID)
+	if err != nil {
+		slog.ErrorContext(ctx, "could not verify org membership", slogx.Error(err), slog.String("org_id", string(orgID)))
+		http.Redirect(w, r, redirectTokensWithForm(r, "org_lookup_failed"), http.StatusSeeOther)
+		return
+	}
+	if !isMember {
+		http.Redirect(w, r, redirectTokensWithForm(r, "org_not_member"), http.StatusSeeOther)
 		return
 	}
 
@@ -191,6 +233,31 @@ func (h *Handler) createToken(w http.ResponseWriter, r *http.Request) {
 		t, err := time.Parse("2006-01-02", expiresStr)
 		if err == nil {
 			expiresAt = &t
+		} else {
+			// The optional date field used to be dropped silently: the user
+			// would see a success page with no warning that the date they
+			// typed was rejected, and the key would simply never expire.
+			// Surface it instead so the round-tripped draft still contains
+			// the rejected value (the user can fix the format and resubmit).
+			http.Redirect(w, r, redirectTokensWithForm(r, "invalid_expires_at"), http.StatusSeeOther)
+			return
+		}
+	}
+
+	// The team, when one is picked, is one of the user's teams in the chosen
+	// organization.
+	var team component.TeamOption
+	if teamID := model.TeamID(strings.TrimSpace(r.FormValue("team_id"))); teamID != "" {
+		teams, err := h.userTeams(ctx, user.ID())
+		if err != nil {
+			slog.ErrorContext(ctx, "could not list user teams", slogx.Error(err))
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
+		var ok bool
+		if team, ok = pickTeam(teams, teamID); !ok || team.OrgID != orgID {
+			http.Redirect(w, r, redirectTokensWithForm(r, "team_not_in_org"), http.StatusSeeOther)
+			return
 		}
 	}
 
@@ -199,15 +266,6 @@ func (h *Handler) createToken(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		slog.ErrorContext(ctx, "could not generate secure token", slogx.Error(err))
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-		return
-	}
-
-	team, ok := h.formTeam(w, r, user.ID())
-	if !ok {
-		return
-	}
-	if team.TeamID != "" && team.OrgID != orgID {
-		http.Error(w, "L'équipe n'appartient pas à l'organisation choisie", http.StatusBadRequest)
 		return
 	}
 
@@ -220,6 +278,33 @@ func (h *Handler) createToken(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.renderTokensPage(w, r, tokenValue)
+}
+
+// redirectTokensWithForm builds a URL that sends the user back to the tokens
+// page with their in-progress values preserved: a typed name and a chosen
+// expiry should not be lost because the form bounced back for a missing
+// organisation. The `error` query parameter carries the failure code that
+// common/flash.templ translates into a user-facing message; the dialog
+// reopens on its own as soon as `error` is set.
+//
+// `label`, `org_id` and `expires_at` are the trimmed values the handler
+// actually validated; passing the raw `r.FormValue(...)` would round-trip
+// a whitespace-padded draft that does not match what was checked. For
+// `org_id` the visible effect is that the selectbox no longer finds the
+// matching item to pre-select, so the user loses their previous choice
+// without anything telling them why; for `expires_at` the browser silently
+// drops a non-ISO date and the user lands on a blank field, again without
+// a signal. The native <input type=date> normally cannot post padding, so
+// this matters mostly for non-browser clients and for symmetry with the
+// other two fields.
+func redirectTokensWithForm(r *http.Request, errorCode string) string {
+	q := url.Values{}
+	q.Set("error", errorCode)
+	q.Set("label", strings.TrimSpace(r.FormValue("label")))
+	q.Set("expires_at", strings.TrimSpace(r.FormValue("expires_at")))
+	q.Set("org_id", strings.TrimSpace(r.FormValue("org_id")))
+	q.Set("team_id", strings.TrimSpace(r.FormValue("team_id")))
+	return "/profile/tokens?" + q.Encode()
 }
 
 func (h *Handler) deleteToken(w http.ResponseWriter, r *http.Request) {

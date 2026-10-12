@@ -138,6 +138,15 @@ func FlashError(reason, subject string) templ.Component {
 
 // errorMessage words the `?error=` code. Handlers also pass free-form messages
 // through the same field, so anything unrecognised is shown as-is.
+//
+// `subject` lets a screen specialise the noun when a generic wording
+// reads as awkward. The exists branch already uses it ("Un middleware
+// portant ce nom existe déjà."); other branches ignore it. The
+// label_required branch keeps a subject-aware path on purpose so a
+// future screen that wants "Le nom de la <subject> est obligatoire."
+// can opt in without touching flash.templ again, but today's only
+// caller (the tokens page) passes an empty subject, so the
+// branch collapses to the generic wording.
 func errorMessage(reason, subject string) string {
 	switch reason {
 	case "exists":
@@ -151,12 +160,41 @@ func errorMessage(reason, subject string) string {
 		return "Ce nom commence par l'identifiant d'une équipe suivi de « / » : il serait lu comme un modèle de cette équipe. Choisissez un autre nom."
 	case "invalid_overrides":
 		return "La fenêtre de contexte et la sortie maximale doivent être des entiers positifs."
+	case "label_required":
+		// The dialog inline message uses the same wording ("Le nom de la clé
+		// est obligatoire."), so the dialog-level alert has to match — the
+		// two would otherwise read as two different problems. The subject
+		// plumbing exists for future screens that want a specialised noun;
+		// today it is unused and we collapse back to the generic wording.
+		if subject == "" {
+			return "Le nom de la clé est obligatoire."
+		}
+		return "Le nom de la " + subject + " est obligatoire."
+	case "org_required":
+		// Selecting an organisation is the only constraint the API-key dialog
+		// cannot satisfy from a fresh account, which is why it earns its own
+		// message instead of falling back to the generic "name_required".
+		return "Veuillez sélectionner une organisation."
+	case "org_not_member":
+		// Surfaced by createToken's IsMember check: the caller posted an
+		// org_id that does not belong to any of their memberships. Reading
+		// "Veuillez sélectionner une organisation" here would be misleading —
+		// the field is filled, the user just does not own the value.
+		return "Vous n'appartenez pas à cette organisation."
+	case "org_lookup_failed":
+		return "La vérification de l'organisation a échoué. Réessayez."
+	case "team_not_in_org":
+		return "L'équipe choisie n'est pas une de vos équipes dans cette organisation."
+	case "invalid_expires_at":
+		return "La date d'expiration est invalide."
 	case "create_failed":
 		return "La création a échoué."
 	case "update_failed":
 		return "L'enregistrement a échoué."
 	case "delete_failed":
 		return "La suppression a échoué."
+	case "invalid_form":
+		return "Le formulaire envoyé est invalide."
 	default:
 		return reason
 	}
