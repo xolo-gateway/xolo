@@ -339,6 +339,79 @@ func TestParseSubscriptionPlanFromForm_InvalidTuningIsReported(t *testing.T) {
 	}
 }
 
+// TestParseSubscriptionPlanFromForm_InvalidValueBudgetIsReported covers
+// the value_budget path on a rolling_window constraint. The same fix
+// that turned parseBudgetField from "silently map invalid input to nil"
+// into "return a parse error" (issue #88) is wired into the plan
+// parser at providers.go:619-621: a typo on value_budget must surface
+// through fail() with the constraint name, not silently drop the cap.
+// 0 is a strict zero cap (the enforcer rejects spent >= 0).
+func TestParseSubscriptionPlanFromForm_InvalidValueBudgetIsReported(t *testing.T) {
+	cases := []string{
+		"1e16", // overflows int64(f * 1_000_000)
+		"-1",   // negative: must reject
+		"abc",  // unparsable: must reject
+		"NaN",  // NaN: must reject
+		"Inf",  // +Inf: must reject
+	}
+
+	for _, value := range cases {
+		t.Run(value, func(t *testing.T) {
+			fields := map[string]string{
+				"plan_label":            "Pro",
+				"plan_constraint_count": "1",
+				"plan_c0_kind":          "rolling_window",
+				"plan_c0_label":         "5h",
+				"plan_c0_duration":      "5h",
+				"plan_c0_token_budget":  "1000",
+				"plan_c0_value_budget":  value,
+			}
+
+			plan, err := parseSubscriptionPlanFromForm(makeRequest(fields))
+			if err == nil {
+				t.Fatalf("plan_c0_value_budget = %q accepted, want a validation error", value)
+			}
+			if plan == nil || len(plan.Constraints) != 1 {
+				t.Fatalf("plan = %+v, want the constraint as submitted", plan)
+			}
+			if got := plan.Constraints[0]; got.Label != "5h" || got.Duration.Duration() != 5*time.Hour {
+				t.Errorf("constraint = %+v, want the fields that were readable", got)
+			}
+			if !strings.Contains(err.Error(), "5h") {
+				t.Errorf("error = %q, want it to name the constraint", err)
+			}
+		})
+	}
+}
+
+// TestParseSubscriptionPlanFromForm_ZeroValueBudgetIsAccepted covers the
+// positive case for value_budget = 0. Issue #88 documents that 0 must
+// mean "strict zero cap" (every request gets a 429), not "unlimited";
+// the plan parser must accept 0 and store the strict-cap pointer.
+func TestParseSubscriptionPlanFromForm_ZeroValueBudgetIsAccepted(t *testing.T) {
+	r := makeRequest(map[string]string{
+		"plan_label":            "Pro",
+		"plan_constraint_count": "1",
+		"plan_c0_kind":          "rolling_window",
+		"plan_c0_label":         "5h",
+		"plan_c0_duration":      "5h",
+		"plan_c0_token_budget":  "1000",
+		"plan_c0_value_budget":  "0",
+	})
+
+	plan, err := parseSubscriptionPlanFromForm(r)
+	if err != nil {
+		t.Fatalf("unexpected error for value_budget=0: %v", err)
+	}
+	c := plan.Constraints[0]
+	if c.ValueBudget == nil {
+		t.Fatalf("ValueBudget = nil, want pointer to 0 (strict zero cap)")
+	}
+	if *c.ValueBudget != 0 {
+		t.Errorf("ValueBudget = %d, want 0", *c.ValueBudget)
+	}
+}
+
 func TestParseSubscriptionPlanFromForm_EmptyTuningKeepsTheDefaults(t *testing.T) {
 	// Clearing a field is a deliberate act: it returns the setting to its default.
 	r := makeRequest(map[string]string{

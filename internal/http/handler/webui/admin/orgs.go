@@ -8,13 +8,13 @@ import (
 
 	"github.com/a-h/templ"
 	"github.com/bornholm/go-x/slogx"
+	"github.com/pkg/errors"
 	"github.com/xolo-gateway/xolo/internal/core/model"
 	"github.com/xolo-gateway/xolo/internal/core/port"
 	httpCtx "github.com/xolo-gateway/xolo/internal/http/context"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/admin/component"
-	common "github.com/xolo-gateway/xolo/internal/http/handler/webui/common/component"
 	webcommon "github.com/xolo-gateway/xolo/internal/http/handler/webui/common"
-	"github.com/pkg/errors"
+	common "github.com/xolo-gateway/xolo/internal/http/handler/webui/common/component"
 )
 
 func (h *Handler) getOrgsPage(w http.ResponseWriter, r *http.Request) {

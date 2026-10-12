@@ -10,8 +10,8 @@ import (
 	"github.com/xolo-gateway/xolo/internal/core/model"
 	"github.com/xolo-gateway/xolo/internal/core/port"
 	httpCtx "github.com/xolo-gateway/xolo/internal/http/context"
-	common "github.com/xolo-gateway/xolo/internal/http/handler/webui/common/component"
 	webcommon "github.com/xolo-gateway/xolo/internal/http/handler/webui/common"
+	common "github.com/xolo-gateway/xolo/internal/http/handler/webui/common/component"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/org/component"
 )
 

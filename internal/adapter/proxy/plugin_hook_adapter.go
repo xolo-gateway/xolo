@@ -689,8 +689,8 @@ func (a *personalVMAdapter) Graph() *model.PipelineGraph { return a.pvm.Graph() 
 func (a *personalVMAdapter) CatalogOverrides() *model.CatalogOverrides {
 	return a.pvm.CatalogOverrides()
 }
-func (a *personalVMAdapter) CreatedAt() time.Time        { return a.pvm.CreatedAt() }
-func (a *personalVMAdapter) UpdatedAt() time.Time        { return a.pvm.UpdatedAt() }
+func (a *personalVMAdapter) CreatedAt() time.Time { return a.pvm.CreatedAt() }
+func (a *personalVMAdapter) UpdatedAt() time.Time { return a.pvm.UpdatedAt() }
 
 var _ model.VirtualModel = &personalVMAdapter{}
 

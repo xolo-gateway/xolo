@@ -1757,15 +1757,15 @@ func teamBudgetSection(vmodel TeamPageVModel) templ.Component {
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = budgetField("team-daily", "daily_budget", "Journalier", "10.00", quotaFieldValue(vmodel.TeamQuota, budgetScopeDaily), vmodel.Org.Currency(), !vmodel.CanEditTeamBudget).Render(ctx, templ_7745c5c3_Buffer)
+				templ_7745c5c3_Err = budgetField("team-daily", "daily_budget", "Journalier", "10.00", quotaFieldValue(vmodel.TeamQuota, budgetScopeDaily), vmodel.Org.Currency(), !vmodel.CanEditTeamBudget, "").Render(ctx, templ_7745c5c3_Buffer)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = budgetField("team-monthly", "monthly_budget", "Mensuel", "100.00", quotaFieldValue(vmodel.TeamQuota, budgetScopeMonthly), vmodel.Org.Currency(), !vmodel.CanEditTeamBudget).Render(ctx, templ_7745c5c3_Buffer)
+				templ_7745c5c3_Err = budgetField("team-monthly", "monthly_budget", "Mensuel", "100.00", quotaFieldValue(vmodel.TeamQuota, budgetScopeMonthly), vmodel.Org.Currency(), !vmodel.CanEditTeamBudget, "").Render(ctx, templ_7745c5c3_Buffer)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = budgetField("team-yearly", "yearly_budget", "Annuel", "1000.00", quotaFieldValue(vmodel.TeamQuota, budgetScopeYearly), vmodel.Org.Currency(), !vmodel.CanEditTeamBudget).Render(ctx, templ_7745c5c3_Buffer)
+				templ_7745c5c3_Err = budgetField("team-yearly", "yearly_budget", "Annuel", "1000.00", quotaFieldValue(vmodel.TeamQuota, budgetScopeYearly), vmodel.Org.Currency(), !vmodel.CanEditTeamBudget, "").Render(ctx, templ_7745c5c3_Buffer)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -2471,15 +2471,15 @@ func TeamMemberPage(vmodel TeamMemberPageVModel) templ.Component {
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
-					templ_7745c5c3_Err = budgetField("member-daily", "daily_budget", "Journalier", "10.00", quotaFieldValue(vmodel.Budget, budgetScopeDaily), vmodel.Org.Currency(), !vmodel.CanSplitBudget).Render(ctx, templ_7745c5c3_Buffer)
+					templ_7745c5c3_Err = budgetField("member-daily", "daily_budget", "Journalier", "10.00", quotaFieldValue(vmodel.Budget, budgetScopeDaily), vmodel.Org.Currency(), !vmodel.CanSplitBudget, "").Render(ctx, templ_7745c5c3_Buffer)
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
-					templ_7745c5c3_Err = budgetField("member-monthly", "monthly_budget", "Mensuel", "100.00", quotaFieldValue(vmodel.Budget, budgetScopeMonthly), vmodel.Org.Currency(), !vmodel.CanSplitBudget).Render(ctx, templ_7745c5c3_Buffer)
+					templ_7745c5c3_Err = budgetField("member-monthly", "monthly_budget", "Mensuel", "100.00", quotaFieldValue(vmodel.Budget, budgetScopeMonthly), vmodel.Org.Currency(), !vmodel.CanSplitBudget, "").Render(ctx, templ_7745c5c3_Buffer)
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
-					templ_7745c5c3_Err = budgetField("member-yearly", "yearly_budget", "Annuel", "1000.00", quotaFieldValue(vmodel.Budget, budgetScopeYearly), vmodel.Org.Currency(), !vmodel.CanSplitBudget).Render(ctx, templ_7745c5c3_Buffer)
+					templ_7745c5c3_Err = budgetField("member-yearly", "yearly_budget", "Annuel", "1000.00", quotaFieldValue(vmodel.Budget, budgetScopeYearly), vmodel.Org.Currency(), !vmodel.CanSplitBudget, "").Render(ctx, templ_7745c5c3_Buffer)
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}

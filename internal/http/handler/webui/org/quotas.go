@@ -2,6 +2,7 @@ package org
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"math"
 	"net/http"
@@ -98,6 +99,7 @@ func (h *Handler) renderOrgQuotaPage(w http.ResponseWriter, r *http.Request, org
 
 func (h *Handler) saveOrgQuota(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
+	user := httpCtx.User(ctx)
 	orgSlug := r.PathValue("orgSlug")
 
 	org, err := h.orgFromSlug(ctx, orgSlug)
@@ -115,11 +117,32 @@ func (h *Handler) saveOrgQuota(w http.ResponseWriter, r *http.Request) {
 	if currency == "" {
 		currency = model.DefaultCurrency
 	}
-	daily := parseBudgetField(r.FormValue("daily_budget"))
-	monthly := parseBudgetField(r.FormValue("monthly_budget"))
-	yearly := parseBudgetField(r.FormValue("yearly_budget"))
+	// Load the existing quota so parseQuotaBudgetFields can preserve
+	// fields the operator did not touch on a partial POST (issue #88).
+	existing, err := h.quotaStore.GetQuota(ctx, model.QuotaScopeOrg, string(org.ID()))
+	if err != nil && !errors.Is(err, port.ErrNotFound) {
+		slog.ErrorContext(ctx, "could not load org budget for save", slogx.Error(err))
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+	if existing == nil {
+		existing = model.NewQuota(model.QuotaScopeOrg, string(org.ID()), currency, nil, nil, nil)
+	}
+	daily, monthly, yearly, fieldErrors := parseQuotaBudgetFields(r, existing)
 
-	cascade := model.QuotaCascade(r.FormValue("cascade")).Normalize()
+	if len(fieldErrors) > 0 {
+		// Re-render the form rather than 400 + redirect: an operator who
+		// typed a bad value needs the page back with their input and the
+		// reason it was rejected, not a generic error and certainly not a
+		// ?success=saved banner that lies about the outcome (issue #88).
+		h.renderOrgQuotaFormError(w, r, ctx, user, orgSlug, org, existing, fieldErrors)
+		return
+	}
+	// Like a budget field, an absent cascade keeps the stored one.
+	cascade := existing.Cascade().Normalize()
+	if r.Form.Has("cascade") {
+		cascade = model.QuotaCascade(r.FormValue("cascade")).Normalize()
+	}
 	if !cascade.Valid() {
 		http.Error(w, "Invalid cascade", http.StatusBadRequest)
 		return
@@ -209,6 +232,7 @@ func (h *Handler) getMemberQuotaPage(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) saveMemberQuota(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
+	user := httpCtx.User(ctx)
 	orgSlug := r.PathValue("orgSlug")
 	membershipID := r.PathValue("membershipID")
 
@@ -227,14 +251,26 @@ func (h *Handler) saveMemberQuota(w http.ResponseWriter, r *http.Request) {
 	if currency == "" {
 		currency = model.DefaultCurrency
 	}
-	daily := parseBudgetField(r.FormValue("daily_budget"))
-	monthly := parseBudgetField(r.FormValue("monthly_budget"))
-	yearly := parseBudgetField(r.FormValue("yearly_budget"))
+	// Load the existing quota so parseQuotaBudgetFields can preserve
+	// fields the operator did not touch on a partial POST (issue #88).
+	existing, err := h.quotaStore.GetQuota(ctx, model.QuotaScopeUser, string(membership.UserID()))
+	if err != nil && !errors.Is(err, port.ErrNotFound) {
+		slog.ErrorContext(ctx, "could not load member budget for save", slogx.Error(err))
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+	if existing == nil {
+		existing = model.NewQuota(model.QuotaScopeUser, string(membership.UserID()), currency, nil, nil, nil)
+	}
+	daily, monthly, yearly, fieldErrors := parseQuotaBudgetFields(r, existing)
 
-	quotaStore := h.quotaStore
+	if len(fieldErrors) > 0 {
+		h.renderMemberQuotaFormError(w, r, ctx, user, orgSlug, org, membership, existing, fieldErrors)
+		return
+	}
 
 	quota := model.NewQuota(model.QuotaScopeUser, string(membership.UserID()), currency, daily, monthly, yearly)
-	if err := quotaStore.SetQuota(ctx, quota); err != nil {
+	if err := h.quotaStore.SetQuota(ctx, quota); err != nil {
 		if webcommon.RejectLocked(w, r, err) {
 			return
 		}
@@ -336,10 +372,11 @@ func (h *Handler) getApplicationQuotaPage(w http.ResponseWriter, r *http.Request
 // the form action.
 func (h *Handler) saveApplicationQuota(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
+	user := httpCtx.User(ctx)
 	orgSlug := r.PathValue("orgSlug")
 	appID := r.PathValue("appID")
 
-	org, _, err := h.resolveOrgAndApplication(ctx, orgSlug, appID)
+	org, app, err := h.resolveOrgAndApplication(ctx, orgSlug, appID)
 	if err != nil {
 		writeApplicationLookupError(ctx, w, err)
 		return
@@ -354,9 +391,23 @@ func (h *Handler) saveApplicationQuota(w http.ResponseWriter, r *http.Request) {
 	if currency == "" {
 		currency = model.DefaultCurrency
 	}
-	daily := parseBudgetField(r.FormValue("daily_budget"))
-	monthly := parseBudgetField(r.FormValue("monthly_budget"))
-	yearly := parseBudgetField(r.FormValue("yearly_budget"))
+	// Load the existing quota so parseQuotaBudgetFields can preserve
+	// fields the operator did not touch on a partial POST (issue #88).
+	existing, err := h.quotaStore.GetQuota(ctx, model.QuotaScopeApplication, appID)
+	if err != nil && !errors.Is(err, port.ErrNotFound) {
+		slog.ErrorContext(ctx, "could not load application budget for save", slogx.Error(err))
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+	if existing == nil {
+		existing = model.NewQuota(model.QuotaScopeApplication, appID, currency, nil, nil, nil)
+	}
+	daily, monthly, yearly, fieldErrors := parseQuotaBudgetFields(r, existing)
+
+	if len(fieldErrors) > 0 {
+		h.renderApplicationQuotaFormError(w, r, ctx, user, orgSlug, org, app, existing, fieldErrors)
+		return
+	}
 
 	quota := model.NewQuota(model.QuotaScopeApplication, appID, currency, daily, monthly, yearly)
 	if err := h.quotaStore.SetQuota(ctx, quota); err != nil {
@@ -369,6 +420,315 @@ func (h *Handler) saveApplicationQuota(w http.ResponseWriter, r *http.Request) {
 	}
 
 	http.Redirect(w, r, "/orgs/"+orgSlug+"/admin/applications/"+appID+"/quota?success=saved", http.StatusSeeOther)
+}
+
+// parseQuotaBudgetFields runs parseBudgetField over the three budget
+// inputs of the quota editor form. The first error wins per field, so a
+// single field with two issues does not produce two messages; the whole
+// map is still returned so the caller can highlight every offending
+// input at once.
+//
+// One entry per invalid field: an absent key means the field parsed
+// cleanly (a number was typed or the field was empty, both of which
+// parseBudgetField accepts), and a present key carries the error string
+// for the field's first issue. The map is nil when every field parsed
+// cleanly — callers check len(fieldErrors) > 0 to decide whether to
+// re-render the form.
+//
+// A field absent from r.Form keeps its value from the stored quota; a
+// present-and-empty field stores nil (unlimited), which matches the
+// "Un champ vide vaut « illimité »" help text. The distinction matters:
+// the browser form always submits all three names, so an absent field
+// only happens on a partial POST — a hand-crafted request, a re-submit
+// after a rejection, or an API client omitting a key the operator never
+// touched. The stored fallback is the right behaviour for the operator
+// who edits one field at a time; nil is the right behaviour for the
+// operator who explicitly cleared a field to remove the cap. The
+// previous parser's r.FormValue conflates the two and returns nil for
+// both, which is the silent data-loss class issue #88 is the fix for.
+func parseQuotaBudgetFields(r *http.Request, stored model.Quota) (daily, monthly, yearly *int64, fieldErrors map[string]string) {
+	// parse returns the parsed value (nil for absent or empty, both of
+	// which parseBudgetField treats as "no cap"), a present flag, and
+	// any error. The present flag lets the merge below fall back to
+	// the stored value only when the operator did not touch the field;
+	// a present-but-empty value stores nil (unlimited) as the help
+	// text and the rest of the UI promise.
+	parse := func(field string) (*int64, bool, error) {
+		values, ok := r.Form[field]
+		if !ok {
+			return nil, false, nil // absent
+		}
+		v, err := parseBudgetField(values[0])
+		return v, true, err
+	}
+	daily, dailyPresent, errD := parse("daily_budget")
+	monthly, monthlyPresent, errM := parse("monthly_budget")
+	yearly, yearlyPresent, errY := parse("yearly_budget")
+	if !dailyPresent {
+		daily = stored.DailyBudget()
+	}
+	if !monthlyPresent {
+		monthly = stored.MonthlyBudget()
+	}
+	if !yearlyPresent {
+		yearly = stored.YearlyBudget()
+	}
+	if errD != nil || errM != nil || errY != nil {
+		fieldErrors = make(map[string]string)
+		if errD != nil {
+			fieldErrors["daily_budget"] = errD.Error()
+		}
+		if errM != nil {
+			fieldErrors["monthly_budget"] = errM.Error()
+		}
+		if errY != nil {
+			fieldErrors["yearly_budget"] = errY.Error()
+		}
+	}
+	return daily, monthly, yearly, fieldErrors
+}
+
+// quotaFormSubmitted picks the raw string the operator typed out of the
+// POSTed form, one entry per *present* budget field. The form re-renders
+// with these values rather than the stored quota, so a rejected value
+// does not silently vanish and the next save can be a fix-up of the same
+// input rather than a re-typing from memory.
+//
+// Reading from r.Form (not r.FormValue) is what makes this distinction
+// work: r.FormValue returns "" for both an absent key and a present-but-
+// empty value, and treating them as the same erases the stored budget for
+// every field the operator did not re-submit. With r.Form, an absent key
+// means the operator did not touch that field and budgetInputValue falls
+// back to the stored value; a present key with an empty string means the
+// operator cleared the field intentionally and the re-render keeps it
+// empty. Conflating the two was the silent-data-loss regression Conclave
+// review #2 caught (issue #88).
+func quotaFormSubmitted(r *http.Request) map[string]string {
+	submitted := make(map[string]string, 3)
+	for _, field := range []string{"daily_budget", "monthly_budget", "yearly_budget"} {
+		if values, ok := r.Form[field]; ok && len(values) > 0 {
+			submitted[field] = values[0]
+		}
+	}
+	return submitted
+}
+
+// quotaSpendLoader abstracts the three ways the quota editor reads the
+// spent-so-far totals for a scope. Org and member scopes both go through
+// loadOrgSpend (with a nil vs per-member user list), application scope goes
+// through applicationSpend (issue #64). Returning a single function type
+// lets renderQuotaFormError share its body across the three editors.
+type quotaSpendLoader func(ctx context.Context, currency string) (daily, monthly, yearly int64, err error)
+
+// loadOrgScopeSpend is the org-wide loader: every user in the org counts.
+func (h *Handler) loadOrgScopeSpend(ctx context.Context, org model.Organization, currency string) (int64, int64, int64, error) {
+	now := time.Now()
+	daily, err := h.loadOrgSpend(ctx, nil, org.ID(), startOfPeriod("day", now), currency)
+	if err != nil {
+		return 0, 0, 0, err
+	}
+	monthly, err := h.loadOrgSpend(ctx, nil, org.ID(), startOfPeriod("month", now), currency)
+	if err != nil {
+		return 0, 0, 0, err
+	}
+	yearly, err := h.loadOrgSpend(ctx, nil, org.ID(), startOfPeriod("year", now), currency)
+	if err != nil {
+		return 0, 0, 0, err
+	}
+	return daily, monthly, yearly, nil
+}
+
+// loadMemberScopeSpend narrows the org spend to a single member.
+func (h *Handler) loadMemberScopeSpend(ctx context.Context, org model.Organization, membership model.Membership, currency string) (int64, int64, int64, error) {
+	now := time.Now()
+	userIDs := []model.UserID{membership.UserID()}
+	daily, err := h.loadOrgSpend(ctx, userIDs, org.ID(), startOfPeriod("day", now), currency)
+	if err != nil {
+		return 0, 0, 0, err
+	}
+	monthly, err := h.loadOrgSpend(ctx, userIDs, org.ID(), startOfPeriod("month", now), currency)
+	if err != nil {
+		return 0, 0, 0, err
+	}
+	yearly, err := h.loadOrgSpend(ctx, userIDs, org.ID(), startOfPeriod("year", now), currency)
+	if err != nil {
+		return 0, 0, 0, err
+	}
+	return daily, monthly, yearly, nil
+}
+
+// loadApplicationScopeSpend reads the application spend via applicationSpend.
+func loadApplicationScopeSpend(ctx context.Context, usageStore port.UsageStore, orgID model.OrgID, appID model.ApplicationID, currency string) (int64, int64, int64, error) {
+	now := time.Now()
+	daily, err := applicationSpend(ctx, usageStore, appID, orgID, model.StartOfDay(now))
+	if err != nil {
+		return 0, 0, 0, err
+	}
+	monthly, err := applicationSpend(ctx, usageStore, appID, orgID, model.StartOfMonth(now))
+	if err != nil {
+		return 0, 0, 0, err
+	}
+	yearly, err := applicationSpend(ctx, usageStore, appID, orgID, model.StartOfYear(now))
+	if err != nil {
+		return 0, 0, 0, err
+	}
+	return daily, monthly, yearly, nil
+}
+
+// quotaFormConfig captures everything that varies between the three quota
+// editors, so renderQuotaFormError can serve all three without
+// duplication. The fields are read once at the call site and never
+// mutated; passing the struct by value keeps the helper pure with respect
+// to its inputs.
+type quotaFormConfig struct {
+	Scope        model.QuotaScope
+	ScopeID      string
+	Membership   model.Membership  // optional
+	Application  model.Application // optional
+	Breadcrumbs  []common.BreadcrumbItem
+	SelectedItem string
+	SpendLoader  quotaSpendLoader
+	LoadLog      string // describes the scope in log lines, e.g. "member budget"
+	// Existing is the quota already loaded by the save handler for
+	// parseQuotaBudgetFields. Passing it through avoids a second
+	// quotaStore.GetQuota read in the re-render path. nil is a valid
+	// value meaning "no row on file" and is rendered as such by the
+	// template.
+	Existing model.Quota
+}
+
+// renderQuotaFormError re-renders the quota editor with HTTP 422 when
+// validation fails on POST. The page carries the operator's submitted
+// values, per-field errors and the existing budget/spend figures so the
+// "?success=saved" redirect is never reached on a rejected submit
+// (issue #88). Quota-load and spend-load failures are reported
+// separately and combined into a single banner, matching the GET path:
+// dropping one to surface the other would hide a real store failure
+// from the operator.
+func (h *Handler) renderQuotaFormError(w http.ResponseWriter, r *http.Request, ctx context.Context, user model.User, org model.Organization, cfg quotaFormConfig, fieldErrors map[string]string) {
+	// The save handler already loaded the existing quota for
+	// parseQuotaBudgetFields; we reuse it here so a rejected submit
+	// makes one quotaStore read, not two. The spend side still queries
+	// the usage store fresh because it is not loaded on the save path.
+	existing := cfg.Existing
+
+	orgCurrency := org.Currency()
+	if orgCurrency == "" {
+		orgCurrency = model.DefaultCurrency
+	}
+	dailyCost, monthlyCost, yearlyCost, spendErr := cfg.SpendLoader(ctx, orgCurrency)
+	spendLoadError := ""
+	if spendErr != nil {
+		slog.ErrorContext(ctx, "could not load "+cfg.LoadLog+" spend for re-render", slogx.Error(spendErr))
+		spendLoadError = "Consommation indisponible : le store a renvoyé une erreur. Les barres peuvent afficher 0 %."
+	}
+	loadError := ""
+	if spendLoadError != "" {
+		loadError = spendLoadError
+	}
+
+	scopeType := ""
+	switch cfg.Scope {
+	case model.QuotaScopeOrg:
+		scopeType = "org"
+	case model.QuotaScopeUser:
+		scopeType = "user"
+	case model.QuotaScopeApplication:
+		scopeType = "application"
+	}
+
+	vmodel := component.QuotaPageVModel{
+		Org:         org,
+		Membership:  cfg.Membership,
+		Application: cfg.Application,
+		ScopeType:   scopeType,
+		ScopeID:     cfg.ScopeID,
+		Quota:       existing,
+		DailyCost:   dailyCost,
+		MonthlyCost: monthlyCost,
+		YearlyCost:  yearlyCost,
+		LoadError:   loadError,
+		Submitted:   quotaFormSubmitted(r),
+		FieldErrors: fieldErrors,
+		AppLayoutVModel: common.AppLayoutVModel{
+			User:         user,
+			SelectedItem: cfg.SelectedItem,
+			Context:      common.ContextOrg,
+			ContextName:  org.Name(),
+			ContextSlug:  org.Slug(),
+			ContextOrgID: org.ID(),
+			Breadcrumbs:  cfg.Breadcrumbs,
+		},
+	}
+	w.WriteHeader(http.StatusUnprocessableEntity)
+	templ.Handler(component.QuotaPage(vmodel)).ServeHTTP(w, r)
+}
+
+// renderOrgQuotaFormError re-renders the org quota editor when validation
+// fails on POST. See renderQuotaFormError for the shared body.
+func (h *Handler) renderOrgQuotaFormError(w http.ResponseWriter, r *http.Request, ctx context.Context, user model.User, orgSlug string, org model.Organization, existing model.Quota, fieldErrors map[string]string) {
+	h.renderQuotaFormError(w, r, ctx, user, org, quotaFormConfig{
+		Scope:        model.QuotaScopeOrg,
+		ScopeID:      string(org.ID()),
+		SelectedItem: "org-" + orgSlug + "-quota",
+		LoadLog:      "org budget",
+		SpendLoader: func(ctx context.Context, currency string) (int64, int64, int64, error) {
+			return h.loadOrgScopeSpend(ctx, org, currency)
+		},
+		Breadcrumbs: []common.BreadcrumbItem{
+			{Label: org.Name(), Href: "/orgs/" + orgSlug + "/usage"},
+			{Label: "Budget", Href: "/orgs/" + orgSlug + "/admin/quota"},
+		},
+		Existing: existing,
+	}, fieldErrors)
+}
+
+// renderMemberQuotaFormError re-renders the per-member quota editor when
+// validation fails on POST. resolveOrgAndMembership is the only safe way
+// for callers to obtain the membership here: GetMembership is keyed by
+// membership id alone, so a foreign membership would let an operator
+// rewrite another org's per-user budget.
+func (h *Handler) renderMemberQuotaFormError(w http.ResponseWriter, r *http.Request, ctx context.Context, user model.User, orgSlug string, org model.Organization, membership model.Membership, existing model.Quota, fieldErrors map[string]string) {
+	h.renderQuotaFormError(w, r, ctx, user, org, quotaFormConfig{
+		Scope:        model.QuotaScopeUser,
+		ScopeID:      string(membership.UserID()),
+		Membership:   membership,
+		SelectedItem: "org-" + orgSlug + "-members",
+		LoadLog:      "member budget",
+		SpendLoader: func(ctx context.Context, currency string) (int64, int64, int64, error) {
+			return h.loadMemberScopeSpend(ctx, org, membership, currency)
+		},
+		Breadcrumbs: []common.BreadcrumbItem{
+			{Label: org.Name(), Href: "/orgs/" + orgSlug + "/usage"},
+			{Label: "Membres", Href: "/orgs/" + orgSlug + "/admin/members"},
+			{Label: membership.User().DisplayName(), Href: ""},
+			{Label: "Budget", Href: ""},
+		},
+		Existing: existing,
+	}, fieldErrors)
+}
+
+// renderApplicationQuotaFormError re-renders the per-application quota
+// editor when validation fails on POST (issue #64).
+func (h *Handler) renderApplicationQuotaFormError(w http.ResponseWriter, r *http.Request, ctx context.Context, user model.User, orgSlug string, org model.Organization, app model.Application, existing model.Quota, fieldErrors map[string]string) {
+	appID := string(app.ID())
+	h.renderQuotaFormError(w, r, ctx, user, org, quotaFormConfig{
+		Scope:        model.QuotaScopeApplication,
+		ScopeID:      appID,
+		Application:  app,
+		SelectedItem: "org-" + orgSlug + "-applications",
+		LoadLog:      "application budget",
+		SpendLoader: func(ctx context.Context, currency string) (int64, int64, int64, error) {
+			return loadApplicationScopeSpend(ctx, h.usageStore, org.ID(), model.ApplicationID(appID), currency)
+		},
+		Breadcrumbs: []common.BreadcrumbItem{
+			{Label: org.Name(), Href: "/orgs/" + orgSlug + "/usage"},
+			{Label: "Applications", Href: "/orgs/" + orgSlug + "/admin/applications"},
+			{Label: app.Name(), Href: "/orgs/" + orgSlug + "/admin/applications/" + appID + "/edit"},
+			{Label: "Budget", Href: ""},
+		},
+		Existing: existing,
+	}, fieldErrors)
 }
 
 // applicationSpend returns the PAYG spending attributed to one application
@@ -396,25 +756,57 @@ func applicationSpend(ctx context.Context, store port.UsageStore, appID model.Ap
 	return total, nil
 }
 
+// maxBudgetUnits is the largest amount, in whole currency units,
+// parseBudgetField will accept. The parser multiplies the parsed value
+// by 1_000_000 to produce microcents, so the bound is the floor of
+// math.MaxInt64 / 1_000_000. Without it, an out-of-range float converts
+// to an arbitrary int64 (the Go spec leaves float→int64 out-of-range
+// conversion implementation-defined), which a downstream store would
+// happily keep.
+const maxBudgetUnits = math.MaxInt64 / 1_000_000
+
 // parseBudgetField parses a currency budget field into microcents.
 //
-//   - Empty → nil (unlimited, the historical default).
-//   - "0" → pointer to 0 (strict zero cap: any spend exceeds the budget and
-//     the enforcer rejects every request — distinct from "unlimited").
-//   - NaN, ±Inf, parse error → nil (caller cannot trust the input; treating
-//     it as "unlimited" preserves the previous behaviour for now, but a future
-//     iteration should return a validation error to surface the bad input).
+// Return values:
 //
-// Tracking: issue #88 is the proper fix (return 400 + form re-render on
-// invalid input). This function still swallows NaN/Inf for now.
-func parseBudgetField(v string) *int64 {
+//   - Empty → (nil, nil): unlimited, the historical default.
+//
+//   - "0" → (&0, nil): strict zero cap. The enforcer compares spent >= budget
+//     and spent is always >= 0, so every PAYG request gets a 429. This is the
+//     documented way to freeze an application or member immediately, and the
+//     reason the field accepts 0 in the first place: the MoneyInput renders
+//     with min="0", so removing that value would also reject the legitimate
+//     freeze case.
+//
+//   - Anything else → (*int64, nil) on success, (nil, error) on a value that
+//     cannot be trusted. The caller is expected to surface the error on the
+//     form rather than silently storing "no cap" (the previous parser's
+//     behaviour, which is what issue #88 is the fix for).
+//
+//   - Negative values, NaN, ±Inf and unparsable strings are rejected. A value
+//     larger than maxBudgetUnits is also rejected with a clear message: a
+//     hand-crafted value just over the cap would otherwise overflow the
+//     microcent conversion and store an arbitrary amount.
+func parseBudgetField(v string) (*int64, error) {
 	if v == "" {
-		return nil
+		return nil, nil
 	}
 	f, err := strconv.ParseFloat(v, 64)
-	if err != nil || math.IsNaN(f) || math.IsInf(f, 0) || f < 0 {
-		return nil
+	if err != nil {
+		return nil, fmt.Errorf("valeur invalide %q : nombre attendu (ex. 10.50)", v)
+	}
+	if math.IsNaN(f) {
+		return nil, errors.New("valeur invalide : NaN n'est pas un plafond acceptable")
+	}
+	if math.IsInf(f, 0) {
+		return nil, errors.New("valeur invalide : un nombre infini n'est pas un plafond acceptable")
+	}
+	if f < 0 {
+		return nil, fmt.Errorf("valeur invalide %q : le plafond doit être positif ou nul", v)
+	}
+	if f > float64(maxBudgetUnits) {
+		return nil, fmt.Errorf("valeur invalide %q : le plafond dépasse le maximum supporté (%d)", v, maxBudgetUnits)
 	}
 	mc := int64(f * 1_000_000)
-	return &mc
+	return &mc, nil
 }

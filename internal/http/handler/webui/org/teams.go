@@ -546,9 +546,16 @@ func (h *Handler) saveTeamBudget(w http.ResponseWriter, r *http.Request) {
 	}
 	daily, monthly, yearly := quotaBudgets(current)
 	if canEnvelope {
-		daily = parseBudgetField(r.FormValue("daily_budget"))
-		monthly = parseBudgetField(r.FormValue("monthly_budget"))
-		yearly = parseBudgetField(r.FormValue("yearly_budget"))
+		stored := current
+		if stored == nil {
+			stored = model.NewQuota(model.QuotaScopeTeam, string(scope.team.ID()), orgCurrency(scope.org), nil, nil, nil)
+		}
+		var fieldErrors map[string]string
+		daily, monthly, yearly, fieldErrors = parseQuotaBudgetFields(r, stored)
+		if len(fieldErrors) > 0 {
+			h.renderTeamPage(w, r, scope, "", component.QuotaFormErrorSummary(fieldErrors))
+			return
+		}
 	}
 	cascade := model.QuotaCascadeFree
 	if current != nil {
@@ -835,8 +842,22 @@ func (h *Handler) saveTeamMemberBudget(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Invalid form", http.StatusBadRequest)
 		return
 	}
-	quota := model.NewQuota(model.QuotaScopeTeamMember, model.TeamMemberScopeID(scope.team.ID(), member.UserID()), orgCurrency(scope.org),
-		parseBudgetField(r.FormValue("daily_budget")), parseBudgetField(r.FormValue("monthly_budget")), parseBudgetField(r.FormValue("yearly_budget")))
+	scopeID := model.TeamMemberScopeID(scope.team.ID(), member.UserID())
+	stored, err := h.optionalQuota(r.Context(), model.QuotaScopeTeamMember, scopeID)
+	if err != nil {
+		slog.ErrorContext(r.Context(), "could not load team member budget", slogx.Error(err))
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+	if stored == nil {
+		stored = model.NewQuota(model.QuotaScopeTeamMember, scopeID, orgCurrency(scope.org), nil, nil, nil)
+	}
+	daily, monthly, yearly, fieldErrors := parseQuotaBudgetFields(r, stored)
+	if len(fieldErrors) > 0 {
+		h.renderTeamMemberPage(w, r, scope, member, "", component.QuotaFormErrorSummary(fieldErrors))
+		return
+	}
+	quota := model.NewQuota(model.QuotaScopeTeamMember, scopeID, orgCurrency(scope.org), daily, monthly, yearly)
 	if !h.saveQuotaChecked(w, r, quota, func(msg string) { h.renderTeamMemberPage(w, r, scope, member, "", msg) }) {
 		return
 	}

@@ -4,12 +4,13 @@ import (
 	"context"
 	"net/http"
 	"slices"
-	"strings"
 	"strconv"
+	"strings"
 
 	"github.com/a-h/templ"
 	"github.com/bornholm/go-x/templx/form"
 	formx "github.com/bornholm/go-x/templx/form"
+	"github.com/pkg/errors"
 	"github.com/xolo-gateway/xolo/internal/core/model"
 	"github.com/xolo-gateway/xolo/internal/core/port"
 	httpCtx "github.com/xolo-gateway/xolo/internal/http/context"
@@ -18,7 +19,6 @@ import (
 	commonComp "github.com/xolo-gateway/xolo/internal/http/handler/webui/common/component"
 	"github.com/xolo-gateway/xolo/internal/http/middleware/authz"
 	"github.com/xolo-gateway/xolo/templx/form/renderer/templui"
-	"github.com/pkg/errors"
 )
 
 func (h *Handler) getUsersPage(w http.ResponseWriter, r *http.Request) {

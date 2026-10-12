@@ -322,9 +322,9 @@ templ teamBudgetSection(vmodel TeamPageVModel) {
 					L'organisation fixe l'enveloppe de l'équipe ; l'équipe la répartit entre ses membres. Chaque niveau (organisation, équipe, membre) est vérifié à chaque requête.
 				</p>
 				<div class="grid gap-3.5 sm:grid-cols-3">
-					@budgetField("team-daily", "daily_budget", "Journalier", "10.00", quotaFieldValue(vmodel.TeamQuota, budgetScopeDaily), vmodel.Org.Currency(), !vmodel.CanEditTeamBudget)
-					@budgetField("team-monthly", "monthly_budget", "Mensuel", "100.00", quotaFieldValue(vmodel.TeamQuota, budgetScopeMonthly), vmodel.Org.Currency(), !vmodel.CanEditTeamBudget)
-					@budgetField("team-yearly", "yearly_budget", "Annuel", "1000.00", quotaFieldValue(vmodel.TeamQuota, budgetScopeYearly), vmodel.Org.Currency(), !vmodel.CanEditTeamBudget)
+					@budgetField("team-daily", "daily_budget", "Journalier", "10.00", quotaFieldValue(vmodel.TeamQuota, budgetScopeDaily), vmodel.Org.Currency(), !vmodel.CanEditTeamBudget, "")
+					@budgetField("team-monthly", "monthly_budget", "Mensuel", "100.00", quotaFieldValue(vmodel.TeamQuota, budgetScopeMonthly), vmodel.Org.Currency(), !vmodel.CanEditTeamBudget, "")
+					@budgetField("team-yearly", "yearly_budget", "Annuel", "1000.00", quotaFieldValue(vmodel.TeamQuota, budgetScopeYearly), vmodel.Org.Currency(), !vmodel.CanEditTeamBudget, "")
 				</div>
 				if vmodel.TeamQuota != nil {
 					<div class="space-y-3.5">
@@ -467,9 +467,9 @@ templ TeamMemberPage(vmodel TeamMemberPageVModel) {
 					}
 					@common.SectionBody(common.SectionBodyProps{Class: "space-y-3.5"}) {
 						<div class="grid gap-3.5 sm:grid-cols-3">
-							@budgetField("member-daily", "daily_budget", "Journalier", "10.00", quotaFieldValue(vmodel.Budget, budgetScopeDaily), vmodel.Org.Currency(), !vmodel.CanSplitBudget)
-							@budgetField("member-monthly", "monthly_budget", "Mensuel", "100.00", quotaFieldValue(vmodel.Budget, budgetScopeMonthly), vmodel.Org.Currency(), !vmodel.CanSplitBudget)
-							@budgetField("member-yearly", "yearly_budget", "Annuel", "1000.00", quotaFieldValue(vmodel.Budget, budgetScopeYearly), vmodel.Org.Currency(), !vmodel.CanSplitBudget)
+							@budgetField("member-daily", "daily_budget", "Journalier", "10.00", quotaFieldValue(vmodel.Budget, budgetScopeDaily), vmodel.Org.Currency(), !vmodel.CanSplitBudget, "")
+							@budgetField("member-monthly", "monthly_budget", "Mensuel", "100.00", quotaFieldValue(vmodel.Budget, budgetScopeMonthly), vmodel.Org.Currency(), !vmodel.CanSplitBudget, "")
+							@budgetField("member-yearly", "yearly_budget", "Annuel", "1000.00", quotaFieldValue(vmodel.Budget, budgetScopeYearly), vmodel.Org.Currency(), !vmodel.CanSplitBudget, "")
 						</div>
 						<p class="text-xs text-muted-foreground">
 							Un champ vide vaut « illimité » : le membre reste borné par le budget de l'équipe, ou par sa part si l'équipe la partage à parts égales.

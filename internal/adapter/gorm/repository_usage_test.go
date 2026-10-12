@@ -5,10 +5,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/pkg/errors"
 	xologorm "github.com/xolo-gateway/xolo/internal/adapter/gorm"
 	"github.com/xolo-gateway/xolo/internal/core/model"
 	"github.com/xolo-gateway/xolo/internal/core/port"
-	"github.com/pkg/errors"
 )
 
 func TestQuotaStore_SetAndGet(t *testing.T) {

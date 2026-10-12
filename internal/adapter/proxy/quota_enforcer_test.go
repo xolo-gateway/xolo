@@ -607,16 +607,16 @@ func (endToEndOrgStore) ListOrgMembers(context.Context, model.OrgID, port.ListOr
 // and Currency, the rest can be zero values.
 type endToEndOrg struct{}
 
-func (endToEndOrg) ID() model.OrgID                 { return "" }
-func (endToEndOrg) TenantID() model.TenantID        { return "" }
-func (endToEndOrg) Slug() string                    { return "" }
-func (endToEndOrg) Name() string                    { return "" }
-func (endToEndOrg) Description() string             { return "" }
-func (endToEndOrg) Active() bool                    { return true }
-func (endToEndOrg) Currency() string                { return "EUR" }
-func (endToEndOrg) CreatedAt() time.Time            { return time.Time{} }
-func (endToEndOrg) UpdatedAt() time.Time            { return time.Time{} }
-func (endToEndOrg) ShareQuotaEqually() bool         { return false }
+func (endToEndOrg) ID() model.OrgID          { return "" }
+func (endToEndOrg) TenantID() model.TenantID { return "" }
+func (endToEndOrg) Slug() string             { return "" }
+func (endToEndOrg) Name() string             { return "" }
+func (endToEndOrg) Description() string      { return "" }
+func (endToEndOrg) Active() bool             { return true }
+func (endToEndOrg) Currency() string         { return "EUR" }
+func (endToEndOrg) CreatedAt() time.Time     { return time.Time{} }
+func (endToEndOrg) UpdatedAt() time.Time     { return time.Time{} }
+func (endToEndOrg) ShareQuotaEqually() bool  { return false }
 
 var _ service.OrgProvider = endToEndOrgStore{}
 

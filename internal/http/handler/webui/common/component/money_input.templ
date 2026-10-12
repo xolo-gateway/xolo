@@ -10,6 +10,11 @@ type MoneyInputProps struct {
 	// Currency is an ISO 4217 code; its symbol is what the affix shows.
 	Currency string
 	Disabled bool
+	// HasError propagates to the underlying input. The component flips its
+	// border to the destructive palette and adds aria-invalid="true" so a
+	// screen reader announces the field as invalid. Set this when the form
+	// is re-rendered after a parse failure on a budget input (issue #88).
+	HasError bool
 	Class    string
 }
 
@@ -31,6 +36,7 @@ templ MoneyInput(props MoneyInputProps) {
 			Value:       props.Value,
 			Placeholder: props.Placeholder,
 			Disabled:    props.Disabled,
+			HasError:    props.HasError,
 			Class:       "pl-10 tnum",
 			Attributes:  templ.Attributes{"step": "any", "min": "0"},
 		})

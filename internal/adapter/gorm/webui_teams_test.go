@@ -150,6 +150,14 @@ func TestTeamPages(t *testing.T) {
 
 		rr = f.do(t, f.owner, http.MethodPost, teamPath+"/budget", url.Values{"monthly_budget": {"100"}})
 		require.Equal(t, http.StatusSeeOther, rr.Code, rr.Body.String())
+
+		// An invalid amount is refused on the page, the budget left as it was.
+		rr = f.do(t, f.owner, http.MethodPost, teamPath+"/budget", url.Values{"monthly_budget": {"-5"}})
+		require.Equal(t, http.StatusOK, rr.Code)
+		require.Contains(t, rr.Body.String(), "le plafond doit être positif ou nul")
+		quota, err = store.GetQuota(ctx, model.QuotaScopeTeam, string(f.team.ID()))
+		require.NoError(t, err)
+		require.Equal(t, int64(100_000_000), *quota.MonthlyBudget())
 		rr = f.do(t, f.lead, http.MethodPost, memberPath+"/budget", url.Values{"monthly_budget": {"150"}})
 		require.Equal(t, http.StatusOK, rr.Code, "a member budget above a capped envelope is refused on the page")
 		require.Contains(t, rr.Body.String(), "plafonnée")
