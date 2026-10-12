@@ -322,6 +322,20 @@ func TestTeamScopeBoundToken(t *testing.T) {
 	requireAnsweredLikeAnUnknownTeam(t, w, ctx, "acme/rd/gpt", "acme/nosuch/gpt")
 }
 
+// A bound token charges its team even for a model the team does not grant,
+// when its holder reaches that model through model:use:org.
+func TestTeamScopeBoundTokenWithOrgWideAccess(t *testing.T) {
+	w := newTeamsWorld(t)
+	legal := w.addTeam("legal", "gpt")
+	ctx := w.ctx([]string{string(rbac.PermModelUseOrg)}, []model.Team{legal}, legal)
+
+	req := w.request("acme/mistral")
+	result, err := w.hook().PreRequest(ctx, req)
+	require.NoError(t, err)
+	require.Nil(t, result)
+	require.Equal(t, string(legal.ID()), string(TeamIDFromMeta(req.Metadata)))
+}
+
 func TestTeamScopeTokenBoundToATeamLeft(t *testing.T) {
 	w := newTeamsWorld(t)
 	legal := w.addTeam("legal", "gpt")
