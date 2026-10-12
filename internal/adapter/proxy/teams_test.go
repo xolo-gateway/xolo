@@ -745,6 +745,28 @@ func TestPersonalVirtualModelOfAnotherOrganizationsTeam(t *testing.T) {
 	require.Equal(t, http.StatusBadRequest, result.Response.StatusCode)
 }
 
+// failingPVMStore fails every personal virtual model lookup.
+type failingPVMStore struct{ teamsPVMStore }
+
+func (failingPVMStore) GetPersonalVirtualModelByName(context.Context, model.UserID, string) (model.PersonalVirtualModel, error) {
+	return nil, errors.New("store unavailable")
+}
+
+// A failing personal virtual model lookup fails the request: read as no model,
+// it would charge the single team left instead of the one its owner picked.
+func TestPersonalVirtualModelLookupErrorsFailTheRequest(t *testing.T) {
+	w := newTeamsWorld(t)
+	legal := w.addTeam("legal", "gpt")
+	rd := w.addTeam("rd", "gpt")
+	personalModel(w, "mine", legal.ID())
+	hook := NewTeamScopeHook(teamsOrgStore{w: w}, teamsTeamStore{w}, teamsProviderStore{w: w}, w.vms, failingPVMStore{teamsPVMStore{w: w}})
+
+	req := w.request("~/mine")
+	_, err := hook.PreRequest(w.ctx([]string{string(rbac.PermPersonalVMCreate)}, []model.Team{rd}, nil), req)
+	require.ErrorContains(t, err, "store unavailable")
+	require.Empty(t, TeamIDFromMeta(req.Metadata))
+}
+
 // A personal virtual model without team is refused when several paths exist.
 func TestPersonalVirtualModelWithoutTeam(t *testing.T) {
 	w := newTeamsWorld(t)

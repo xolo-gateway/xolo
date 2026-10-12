@@ -256,6 +256,10 @@ func (h *TeamScopeHook) personalTeam(ctx context.Context, orgID model.OrgID, per
 	if h.personalVMStore != nil {
 		if u := httpCtx.User(ctx); u != nil {
 			pvm, err := h.personalVMStore.GetPersonalVirtualModelByName(ctx, u.ID(), name.Local)
+			if err != nil && !errors.Is(err, port.ErrNotFound) {
+				// Read as "no model", the error would charge another payer.
+				return rbac.TeamRef{}, errors.WithStack(err)
+			}
 			if err == nil && pvm.TeamID() != "" {
 				if team, ok := teamRefOf(perms, string(pvm.TeamID())); ok {
 					return team, nil
