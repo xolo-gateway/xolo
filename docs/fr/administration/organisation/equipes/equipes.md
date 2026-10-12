@@ -36,7 +36,7 @@ Sur la page de l'équipe, la section **Modèles accessibles** liste les modèles
 
 Un modèle virtuel délègue l'accès aux modèles que son pipeline référence dans la configuration de ses nœuds : une équipe qui a accès au modèle virtuel peut utiliser ces modèles à travers lui, sans y avoir accès directement. Un nom de modèle calculé pendant la requête (par un plugin ou un nœud valeur) est, lui, vérifié contre l'accès de l'équipe. Voir [Modèles virtuels](../virtual_model/virtual_model.md).
 
-La section **Middlewares de l'équipe** rattache des middlewares à l'équipe. Un middleware rattaché à au moins une équipe ne s'applique plus qu'aux requêtes de ces équipes, après les middlewares de l'organisation, qui portent les règles de conformité et s'appliquent à toutes les requêtes.
+La section **Middlewares de l'équipe** rattache des middlewares à l'équipe. Un middleware rattaché à au moins une équipe ne s'applique plus qu'aux requêtes de ces équipes, après les middlewares de l'organisation, qui portent les règles de conformité et s'appliquent à toutes les requêtes. Un middleware qui n'est rattaché qu'à cette équipe ne peut pas en être décoché : sans équipe, il s'appliquerait à toute l'organisation. Rattachez-le d'abord à une autre équipe, ou supprimez-le.
 
 ## Gérer les membres
 
@@ -85,7 +85,7 @@ La même règle se règle sur le budget de l'organisation, pour les enveloppes d
 - Une **application** peut être rattachée à une équipe depuis sa page : elle utilise alors les modèles de l'équipe et toutes ses requêtes sont débitées sur l'équipe.
 - Un **modèle virtuel personnel** choisit l'équipe qu'il débite dans ses réglages. Il ne délègue rien : chaque modèle qu'il appelle doit être accessible à cette équipe.
 
-Une équipe à laquelle des applications sont rattachées ne peut pas être supprimée : rattachez-les ailleurs d'abord. Il en va de même tant qu'un middleware n'est rattaché qu'à elle : sans équipe, il s'appliquerait à toute l'organisation. Retirez-le de l'équipe ou rattachez-le à une autre.
+Une équipe à laquelle des applications sont rattachées ne peut pas être supprimée : rattachez-les ailleurs d'abord. Il en va de même tant qu'un middleware n'est rattaché qu'à elle : sans équipe, il s'appliquerait à toute l'organisation. Rattachez-le à une autre équipe, ou supprimez-le.
 
 ## Permissions
 

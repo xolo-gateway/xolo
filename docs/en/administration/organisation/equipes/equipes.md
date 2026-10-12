@@ -36,7 +36,7 @@ On the team page, the **Modèles accessibles** (Accessible models) section lists
 
 A virtual model delegates access to the models its pipeline references in the configuration of its nodes. A team that has access to the virtual model can use these models through it, without direct access to them. A model name computed during the request (by a plugin or a value node) is checked against the team's access. See [Virtual models](../virtual_model/virtual_model.md).
 
-The **Middlewares de l'équipe** (Team middlewares) section attaches middlewares to the team. A middleware attached to at least one team only applies to the requests of these teams. It runs after the organization middlewares, which carry the compliance rules and apply to every request.
+The **Middlewares de l'équipe** (Team middlewares) section attaches middlewares to the team. A middleware attached to at least one team only applies to the requests of these teams. It runs after the organization middlewares, which carry the compliance rules and apply to every request. A middleware attached to this team alone cannot be unchecked: with no team left, it would apply to the whole organization. Attach it to another team first, or delete it.
 
 ## Managing members
 
@@ -85,7 +85,7 @@ The same rule can be set on the organization budget, for the envelopes of its te
 - An **application** can be attached to a team from its page. It then uses the team's models and all its requests are charged to the team.
 - A **personal virtual model** chooses the team it charges in its settings. It delegates nothing: each model it calls must be accessible to that team.
 
-A team that has applications attached to it cannot be deleted. Attach them elsewhere first. The same goes while a middleware is attached to this team alone: with no team left, it would apply to the whole organization. Remove it from the team or attach it to another one.
+A team that has applications attached to it cannot be deleted. Attach them elsewhere first. The same goes while a middleware is attached to this team alone: with no team left, it would apply to the whole organization. Attach it to another team, or delete it.
 
 ## Permissions
 

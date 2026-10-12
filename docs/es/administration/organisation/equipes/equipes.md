@@ -36,7 +36,7 @@ En la página del equipo, la sección **Modèles accessibles** (Modelos accesibl
 
 Un modelo virtual delega el acceso a los modelos que su pipeline referencia en la configuración de sus nodos. Un equipo que tiene acceso al modelo virtual puede utilizar esos modelos a través de él, sin tener acceso directo a ellos. En cambio, un nombre de modelo calculado durante la solicitud (por un plugin o un nodo de valor) se comprueba contra el acceso del equipo. Consulte [Modelos virtuales](../virtual_model/virtual_model.md).
 
-La sección **Middlewares de l'équipe** (Middlewares del equipo) vincula middlewares al equipo. Un middleware vinculado a al menos un equipo solo se aplica a las solicitudes de esos equipos. Se ejecuta después de los middlewares de la organización, que llevan las reglas de cumplimiento y se aplican a todas las solicitudes.
+La sección **Middlewares de l'équipe** (Middlewares del equipo) vincula middlewares al equipo. Un middleware vinculado a al menos un equipo solo se aplica a las solicitudes de esos equipos. Se ejecuta después de los middlewares de la organización, que llevan las reglas de cumplimiento y se aplican a todas las solicitudes. Un middleware vinculado solo a este equipo no se puede desmarcar: sin equipo, se aplicaría a toda la organización. Vincúlelo primero a otro equipo, o elimínelo.
 
 ## Gestionar los miembros
 
@@ -85,7 +85,7 @@ La misma regla se configura en el presupuesto de la organización, para las asig
 - Una **aplicación** puede vincularse a un equipo desde su página. Entonces utiliza los modelos del equipo y todas sus solicitudes se cargan al equipo.
 - Un **modelo virtual personal** elige en su configuración el equipo al que carga. No delega nada: cada modelo al que llama debe ser accesible para ese equipo.
 
-Un equipo que tiene aplicaciones vinculadas no se puede eliminar. Vincúlelas primero a otro equipo. Lo mismo ocurre mientras un middleware esté vinculado solo a este equipo: sin equipo, se aplicaría a toda la organización. Retírelo del equipo o vincúlelo a otro.
+Un equipo que tiene aplicaciones vinculadas no se puede eliminar. Vincúlelas primero a otro equipo. Lo mismo ocurre mientras un middleware esté vinculado solo a este equipo: sin equipo, se aplicaría a toda la organización. Vincúlelo a otro equipo, o elimínelo.
 
 ## Permisos
 

@@ -47,6 +47,21 @@ func (s *Store) SaveTeam(ctx context.Context, team model.Team) error {
 		if result.RowsAffected == 0 {
 			return errors.WithStack(port.ErrNotFound)
 		}
+		var attached []string
+		if err := db.Model(&TeamMiddleware{}).Where("team_id = ?", row.ID).Pluck("middleware_id", &attached).Error; err != nil {
+			return errors.WithStack(err)
+		}
+		var detached []string
+		for _, id := range attached {
+			if !slices.ContainsFunc(row.Middlewares, func(m *TeamMiddleware) bool { return m.MiddlewareID == id }) {
+				detached = append(detached, id)
+			}
+		}
+		if len(detached) > 0 {
+			if err := refuseSoleHeldMiddlewares(db, row.ID, detached); err != nil {
+				return err
+			}
+		}
 		if err := db.Where("team_id = ?", row.ID).Delete(&TeamModelGrant{}).Error; err != nil {
 			return errors.WithStack(err)
 		}
@@ -86,26 +101,41 @@ func (s *Store) DeleteTeam(ctx context.Context, id model.TeamID) error {
 		if count > 0 {
 			return errors.Wrapf(port.ErrNotAllowed, "%d application(s) are bound to the team", count)
 		}
-		// A middleware deleted since keeps its attachment rows: it runs nowhere.
-		others := db.Model(&TeamMiddleware{}).Select("middleware_id").Where("team_id <> ?", string(id))
-		existing := db.Model(&Middleware{}).Select("id")
-		if err := db.Model(&TeamMiddleware{}).
-			Where("team_id = ? AND middleware_id NOT IN (?) AND middleware_id IN (?)", string(id), others, existing).
-			Count(&count).Error; err != nil {
-			return errors.WithStack(err)
-		}
-		if count > 0 {
-			return errors.Wrapf(port.ErrTeamHasMiddlewares, "%d middleware(s)", count)
+		if err := refuseSoleHeldMiddlewares(db, string(id), nil); err != nil {
+			return err
 		}
 		return deleteTeamsWithin(db, db.Model(&Team{}).Select("id").Where("id = ?", string(id)))
 	})
 }
 
+// refuseSoleHeldMiddlewares returns port.ErrTeamHasMiddlewares when the team
+// is the only one holding one of the middlewares ids, all of its middlewares
+// when ids is nil: detached from every team, a middleware runs for the whole
+// organization. A middleware deleted since keeps its attachment rows and runs
+// nowhere, so it does not count.
+func refuseSoleHeldMiddlewares(db *gorm.DB, teamID string, ids []string) error {
+	others := db.Model(&TeamMiddleware{}).Select("middleware_id").Where("team_id <> ?", teamID)
+	existing := db.Model(&Middleware{}).Select("id")
+	q := db.Model(&TeamMiddleware{}).
+		Where("team_id = ? AND middleware_id NOT IN (?) AND middleware_id IN (?)", teamID, others, existing)
+	if ids != nil {
+		q = q.Where("middleware_id IN ?", ids)
+	}
+	var count int64
+	if err := q.Count(&count).Error; err != nil {
+		return errors.WithStack(err)
+	}
+	if count > 0 {
+		return errors.Wrapf(port.ErrTeamHasMiddlewares, "%d middleware(s)", count)
+	}
+	return nil
+}
+
 // lockTeamMiddlewares locks the middlewares attached to the team, in id order,
 // until the end of the transaction. Every write that detaches a middleware
-// from a team takes it first, so that the check of DeleteTeam sees the
-// attachments a concurrent detach removed: without it, deleting two teams
-// sharing a middleware at once would both pass, and leave it running for the
+// from a team takes it first, so that refuseSoleHeldMiddlewares sees the
+// attachments a concurrent detach removed: without it, two teams sharing a
+// middleware detaching it at once would both pass, and leave it running for the
 // whole organization.
 //
 // SQLite needs no lock: the server holds a single connection, so its

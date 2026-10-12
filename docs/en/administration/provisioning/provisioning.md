@@ -546,7 +546,9 @@ only where shown.
 - **Parents.** Every reference is checked in the transaction of the write. A
   team model grant designates a model of the organization (and, for an LLM
   model, a provider of the organization); `middleware_ids` are middlewares of
-  the organization; a team member is a member of the organization, and their
+  the organization, and a team can neither drop nor be deleted with a
+  middleware it alone holds (`409`), since it would then run for the whole
+  organization; a team member is a member of the organization, and their
   `role_ids`, like those of an application, are roles of the organization,
   but unlike them never a builtin role (`422`); `team_id` is a team of the organization; a quota caps an organization of the
   tenant, a member of the tenant, an application or a team of one of its

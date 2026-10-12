@@ -480,6 +480,10 @@ func (h *Handler) updateTeam(w http.ResponseWriter, r *http.Request) {
 			h.renderTeamPage(w, r, scope, "", teamSlugTakenMessage)
 			return
 		}
+		if errors.Is(err, port.ErrTeamHasMiddlewares) {
+			h.renderTeamPage(w, r, scope, "", "Des middlewares décochés ne sont rattachés qu'à cette équipe : sans équipe, ils s'appliqueraient à toute l'organisation. Rattachez-les d'abord à une autre équipe, ou supprimez-les.")
+			return
+		}
 		slog.ErrorContext(ctx, "could not save team", slogx.Error(err))
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
@@ -502,7 +506,7 @@ func (h *Handler) deleteTeam(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if errors.Is(err, port.ErrTeamHasMiddlewares) {
-			h.renderTeamPage(w, r, scope, "", "Des middlewares ne sont rattachés qu'à cette équipe : sans elle, ils s'appliqueraient à toute l'organisation. Retirez-les de l'équipe ou rattachez-les à une autre avant de la supprimer.")
+			h.renderTeamPage(w, r, scope, "", "Des middlewares ne sont rattachés qu'à cette équipe : sans elle, ils s'appliqueraient à toute l'organisation. Rattachez-les à une autre équipe, ou supprimez-les, avant de la supprimer.")
 			return
 		}
 		if errors.Is(err, port.ErrNotAllowed) {

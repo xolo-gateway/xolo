@@ -576,7 +576,9 @@ Les représentations sont en snake_case et complètes : chaque champ est requis,
 - **Parents.** Chaque référence est vérifiée dans la transaction de
   l'écriture. Un grant d'équipe désigne un modèle de l'organisation (et, pour un modèle
   LLM, un provider de l'organisation) ; `middleware_ids` désigne des
-  middlewares de l'organisation ; un membre d'équipe est un membre de
+  middlewares de l'organisation, et une équipe ne peut ni retirer un middleware
+  qu'elle seule porte, ni être supprimée avec lui (`409`) : il s'appliquerait
+  alors à toute l'organisation ; un membre d'équipe est un membre de
   l'organisation, et ses `role_ids`, comme ceux d'une application, désignent
   des rôles de l'organisation, mais jamais, à la différence de ces derniers, un rôle intégré (`422`) ; `team_id` désigne une équipe de l'organisation ;
   un quota plafonne une organisation du tenant, un membre du tenant, une

@@ -286,10 +286,25 @@ func TestDeleteTeamHoldingAMiddleware(t *testing.T) {
 		require.ErrorIs(t, store.DeleteTeam(ctx, legal.ID()), port.ErrTeamHasMiddlewares)
 		require.ErrorIs(t, store.DeleteTeam(ctx, legal.ID()), port.ErrNotAllowed)
 
+		// Nor can the team drop it. A middleware deleted since can go.
+		dropped := model.CopyTeam(legal)
+		dropped.SetMiddlewareIDs(nil)
+		require.ErrorIs(t, store.SaveTeam(ctx, dropped), port.ErrTeamHasMiddlewares)
+		kept := model.CopyTeam(legal)
+		kept.SetMiddlewareIDs([]model.MiddlewareID{mw.ID()})
+		require.NoError(t, store.SaveTeam(ctx, kept))
+		got, err := store.GetTeamByID(ctx, legal.ID())
+		require.NoError(t, err)
+		require.Equal(t, []model.MiddlewareID{mw.ID()}, got.MiddlewareIDs())
+
 		// Still attached to another team, it stays a team middleware.
 		rd := model.NewTeam(f.org.ID(), "rd", "R&D", "")
 		rd.SetMiddlewareIDs([]model.MiddlewareID{mw.ID()})
 		require.NoError(t, store.CreateTeam(ctx, rd))
+		require.NoError(t, store.SaveTeam(ctx, dropped))
+		rdDropped := model.CopyTeam(rd)
+		rdDropped.SetMiddlewareIDs(nil)
+		require.ErrorIs(t, store.SaveTeam(ctx, rdDropped), port.ErrTeamHasMiddlewares, "rd holds it alone now")
 		require.NoError(t, store.DeleteTeam(ctx, legal.ID()))
 	})
 }

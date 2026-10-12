@@ -562,7 +562,9 @@ obligatorio, `null` solo donde se indica.
 - **Padres.** Cada referencia se comprueba en la transacción de la escritura.
   Un grant de equipo designa un modelo de la organización (y, para un modelo
   LLM, un proveedor de la organización); `middleware_ids` designa middlewares
-  de la organización; un miembro de equipo es un miembro de la organización, y
+  de la organización, y un equipo no puede quitar, ni ser eliminado con, un
+  middleware que solo él tiene (`409`), ya que entonces se aplicaría a toda la
+  organización; un miembro de equipo es un miembro de la organización, y
   sus `role_ids`, como los de una aplicación, designan roles de la
   organización, pero a diferencia de estos nunca un rol integrado (`422`); `team_id` designa un equipo de la organización; una cuota
   limita una organización del tenant, un miembro del tenant, una aplicación o
