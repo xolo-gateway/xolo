@@ -28,6 +28,9 @@ func (s *Store) CreateTeam(ctx context.Context, team model.Team) error {
 func (s *Store) SaveTeam(ctx context.Context, team model.Team) error {
 	return s.recorded(ctx, tracking("team", string(team.ID())), func(ctx context.Context, db *gorm.DB) error {
 		row := fromTeam(team)
+		if err := lockTeamMiddlewares(db, row.ID); err != nil {
+			return err
+		}
 		result := db.Model(&Team{}).Where("id = ? AND org_id = ?", row.ID, row.OrgID).Updates(map[string]any{
 			"slug":                row.Slug,
 			"name":                row.Name,
@@ -67,6 +70,9 @@ func (s *Store) SaveTeam(ctx context.Context, team model.Team) error {
 // DeleteTeam implements port.TeamStore.
 func (s *Store) DeleteTeam(ctx context.Context, id model.TeamID) error {
 	return s.recorded(ctx, trackingTree("team", string(id)), func(ctx context.Context, db *gorm.DB) error {
+		if err := lockTeamMiddlewares(db, string(id)); err != nil {
+			return err
+		}
 		var count int64
 		if err := db.Model(&Team{}).Where("id = ?", string(id)).Count(&count).Error; err != nil {
 			return errors.WithStack(err)
@@ -93,6 +99,24 @@ func (s *Store) DeleteTeam(ctx context.Context, id model.TeamID) error {
 		}
 		return deleteTeamsWithin(db, db.Model(&Team{}).Select("id").Where("id = ?", string(id)))
 	})
+}
+
+// lockTeamMiddlewares locks the middlewares attached to the team, in id order,
+// until the end of the transaction. Every write that detaches a middleware
+// from a team takes it first, so that the check of DeleteTeam sees the
+// attachments a concurrent detach removed: without it, deleting two teams
+// sharing a middleware at once would both pass, and leave it running for the
+// whole organization. SQLite serializes writers already.
+func lockTeamMiddlewares(db *gorm.DB, teamID string) error {
+	if !isPostgres(db) {
+		return nil
+	}
+	var ids []string
+	err := db.Model(&Middleware{}).
+		Where("id IN (?)", db.Model(&TeamMiddleware{}).Select("middleware_id").Where("team_id = ?", teamID)).
+		Order("id").Clauses(clause.Locking{Strength: "NO KEY UPDATE"}).
+		Pluck("id", &ids).Error
+	return errors.WithStack(err)
 }
 
 // deleteTeamsWithin removes the teams selected by teamIDs, with their members,

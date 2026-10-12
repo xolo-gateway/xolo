@@ -11,6 +11,7 @@ import (
 	"github.com/xolo-gateway/xolo/internal/core/port"
 	"github.com/xolo-gateway/xolo/internal/core/rbac"
 	gormpkg "gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // teamFixture is an organization with a member and a custom role.
@@ -422,5 +423,47 @@ func TestMigrateTeamsConvertsRoleGrants(t *testing.T) {
 		require.Contains(t, types, "team.created.v1")
 		require.Contains(t, types, "application.updated.v1")
 		require.NotContains(t, types, "custom_role.updated.v1", "a projection that does not change is not published again")
+	})
+}
+
+// Two teams sharing a middleware deleted at once: the second deletion sees the
+// first one and is refused, instead of leaving the middleware running for the
+// whole organization. SQLite serializes writers, so only PostgreSQL can run
+// both checks at once.
+func TestDeleteTeamWaitsForAConcurrentDetach(t *testing.T) {
+	eachBackendDB(t, func(t *testing.T, db *gormpkg.DB) {
+		if db.Dialector.Name() != "postgres" {
+			t.Skip("SQLite serializes writers")
+		}
+		ctx := context.Background()
+		store := newSeededStore(t, db)
+		f := newTeamFixture(t, store)
+		mw := model.NewMiddleware(f.org.ID(), "legal-prompt", "")
+		require.NoError(t, store.CreateMiddleware(ctx, mw))
+		legal := model.NewTeam(f.org.ID(), "legal", "Legal", "")
+		legal.SetMiddlewareIDs([]model.MiddlewareID{mw.ID()})
+		require.NoError(t, store.CreateTeam(ctx, legal))
+		rd := model.NewTeam(f.org.ID(), "rd", "R&D", "")
+		rd.SetMiddlewareIDs([]model.MiddlewareID{mw.ID()})
+		require.NoError(t, store.CreateTeam(ctx, rd))
+
+		// Another writer detaches the middleware from rd, holding its lock.
+		other := db.Begin()
+		require.NoError(t, other.Error)
+		t.Cleanup(func() { other.Rollback() })
+		var locked xologorm.Middleware
+		require.NoError(t, other.Clauses(clause.Locking{Strength: "UPDATE"}).First(&locked, "id = ?", string(mw.ID())).Error)
+		require.NoError(t, other.Where("team_id = ?", string(rd.ID())).Delete(&xologorm.TeamMiddleware{}).Error)
+
+		done := make(chan error, 1)
+		go func() { done <- store.DeleteTeam(ctx, legal.ID()) }()
+		select {
+		case err := <-done:
+			t.Fatalf("the deletion did not wait for the detach: %v", err)
+		case <-time.After(300 * time.Millisecond):
+		}
+
+		require.NoError(t, other.Commit().Error)
+		require.ErrorIs(t, <-done, port.ErrTeamHasMiddlewares)
 	})
 }
