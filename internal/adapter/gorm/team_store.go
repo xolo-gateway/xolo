@@ -252,11 +252,17 @@ func (s *Store) queryTeamMembers(ctx context.Context, withUsers bool, scope func
 			return nil
 		}
 		teamIDs := make([]string, 0, len(rows))
+		membershipIDs := make([]string, 0, len(rows))
 		for _, r := range rows {
 			teamIDs = append(teamIDs, r.TeamID)
+			membershipIDs = append(membershipIDs, r.MembershipID)
 		}
+		// Both filters bound the read to the rows found; the pairs are matched
+		// below.
 		var roles []TeamMemberRole
-		if err := db.Where("team_id IN ?", slices.Compact(slices.Sorted(slices.Values(teamIDs)))).Order("role_id").Find(&roles).Error; err != nil {
+		if err := db.Where("team_id IN ? AND membership_id IN ?",
+			slices.Compact(slices.Sorted(slices.Values(teamIDs))), slices.Compact(slices.Sorted(slices.Values(membershipIDs)))).
+			Order("role_id").Find(&roles).Error; err != nil {
 			return errors.WithStack(err)
 		}
 		for _, r := range rows {
