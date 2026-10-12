@@ -1611,6 +1611,10 @@ func (x *ModelInfo) GetSupportsEmbeddings() bool {
 	return false
 }
 
+// QuotaInfo reports, for each period, the level of the request with the least
+// left to spend (user or application, organization, team, team member): the
+// remaining amount and the budget of that level, not necessarily the budget
+// of the request's team.
 type QuotaInfo struct {
 	state            protoimpl.MessageState `protogen:"open.v1"`
 	DailyRemaining   float64                `protobuf:"fixed64,1,opt,name=daily_remaining,json=dailyRemaining,proto3" json:"daily_remaining,omitempty"`

@@ -197,6 +197,10 @@ message ModelInfo {
   bool supports_embeddings = 13;
 }
 
+// QuotaInfo reports, for each period, the level of the request with the least
+// left to spend (user or application, organization, team, team member): the
+// remaining amount and the budget of that level, not necessarily the budget
+// of the request's team.
 message QuotaInfo {
   double daily_remaining = 1;
   double daily_total = 2;

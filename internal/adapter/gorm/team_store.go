@@ -106,7 +106,12 @@ func (s *Store) DeleteTeam(ctx context.Context, id model.TeamID) error {
 // from a team takes it first, so that the check of DeleteTeam sees the
 // attachments a concurrent detach removed: without it, deleting two teams
 // sharing a middleware at once would both pass, and leave it running for the
-// whole organization. SQLite serializes writers already.
+// whole organization.
+//
+// SQLite needs no lock: the server holds a single connection, so its
+// transactions run one after the other, and a transaction of another process
+// that read before a concurrent write fails with BUSY_SNAPSHOT when it writes,
+// then replays from the start (isRetryableError), check included.
 func lockTeamMiddlewares(db *gorm.DB, teamID string) error {
 	if !isPostgres(db) {
 		return nil
