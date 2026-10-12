@@ -52,7 +52,9 @@ func (n ModelName) OrgLevel() ModelName {
 // The first segment is always the organization. The second one is a team only
 // when isTeam says so: a proxy name can contain slashes, and team slugs are
 // kept from clashing with proxy names when either is created (see
-// ModelNameConflicts). A nil isTeam reads no team segment.
+// ModelNameConflicts). A nil isTeam reads no team segment. isTeam is called
+// at most once, synchronously, before ParseModelName returns: a caller may
+// record a lookup error in a variable it captured and read it afterwards.
 //
 // A name with an empty segment where one is required is invalid.
 func ParseModelName(name string, isTeam func(org, segment string) bool) (ModelName, bool) {
