@@ -3,6 +3,7 @@ package api_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"slices"
@@ -121,14 +122,47 @@ func TestPersonalPipelineModelsFollowTheChargedTeam(t *testing.T) {
 	}
 }
 
+// A store error on the virtual model fails the picker: read as no virtual
+// model, it would offer the models of every organization. An unknown one
+// offers them, as without a virtual model.
+func TestPersonalPipelineModelsReportStoreErrors(t *testing.T) {
+	user := model.NewUser(testTenantID, "oidc", "human-1", "alice@example.com", "Alice", true, "user")
+	for _, tc := range []struct {
+		name string
+		err  error
+		want int
+	}{
+		{"store error", errors.New("store unavailable"), http.StatusInternalServerError},
+		{"unknown virtual model", port.ErrNotFound, http.StatusOK},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			h := api.NewHandler(&fakeProviderStoreForPicker{fakeProviderStoreForModels{}},
+				&fakeOrgStoreForModels{orgsByID: map[string]model.Organization{}, memberships: map[string][]model.Membership{}},
+				&fakeVirtualModelStoreForModels{models: map[string][]model.VirtualModel{}},
+				&fakePersonalVMStore{err: tc.err},
+				nil, nil, nil, nil)
+			req := httptest.NewRequest(http.MethodGet, "/api/personal-models/pipeline-models?vm=some-id", nil)
+			rec := httptest.NewRecorder()
+			h.ServeHTTP(rec, req.WithContext(httpCtx.SetUser(req.Context(), user)))
+			if rec.Code != tc.want {
+				t.Fatalf("expected %d, got %d: %s", tc.want, rec.Code, rec.Body.String())
+			}
+		})
+	}
+}
+
 // fakePersonalVMStore exposes the PersonalVirtualModelStore reads of the
 // picker; the rest panic loudly.
 type fakePersonalVMStore struct {
 	port.PersonalVirtualModelStore
 	vms []model.PersonalVirtualModel
+	err error
 }
 
 func (s *fakePersonalVMStore) GetPersonalVirtualModelByID(ctx context.Context, id model.PersonalVirtualModelID) (model.PersonalVirtualModel, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
 	for _, vm := range s.vms {
 		if vm.ID() == id {
 			return vm, nil

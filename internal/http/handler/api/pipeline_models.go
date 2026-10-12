@@ -1,9 +1,11 @@
 package api
 
 import (
+	"log/slog"
 	"net/http"
 	"sort"
 
+	"github.com/bornholm/go-x/slogx"
 	"github.com/pkg/errors"
 	"github.com/xolo-gateway/xolo/internal/core/model"
 	"github.com/xolo-gateway/xolo/internal/core/port"
@@ -72,8 +74,15 @@ func (h *Handler) handlePersonalPipelineModels(w http.ResponseWriter, r *http.Re
 	var charged model.TeamID
 	if id := r.URL.Query().Get("vm"); id != "" && h.personalVMStore != nil {
 		pvm, err := h.personalVMStore.GetPersonalVirtualModelByID(ctx, model.PersonalVirtualModelID(id))
-		if err == nil && pvm.UserID() == user.ID() {
+		switch {
+		case err == nil && pvm.UserID() == user.ID():
 			charged = pvm.TeamID()
+		case err != nil && !errors.Is(err, port.ErrNotFound):
+			// Read as no virtual model, the error would offer the models of
+			// every organization instead of the charged team's.
+			slog.ErrorContext(ctx, "could not get personal virtual model", slogx.Error(err))
+			writeError(w, http.StatusInternalServerError, "internal error")
+			return
 		}
 	}
 
