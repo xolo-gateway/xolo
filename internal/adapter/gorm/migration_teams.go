@@ -127,10 +127,14 @@ func convertRoleGrantsToTeams(tx *gorm.DB) ([]string, error) {
 	}
 	byApp := map[string][]string{}
 	var appIDs []string
-	skipped := 0
+	// An application role whose role is gone matches nothing. Its application
+	// is named so that an operator can bind it to a team after the upgrade.
+	var skipped []string
 	for _, ar := range appRoles {
 		if _, ok := teamOfRole[ar.RoleID]; !ok {
-			skipped++
+			if !slices.Contains(skipped, ar.ApplicationID) {
+				skipped = append(skipped, ar.ApplicationID)
+			}
 			continue
 		}
 		if _, seen := byApp[ar.ApplicationID]; !seen {
@@ -159,9 +163,9 @@ func convertRoleGrantsToTeams(tx *gorm.DB) ([]string, error) {
 			return nil, errors.WithStack(err)
 		}
 	}
-	if skipped > 0 {
-		slog.InfoContext(tx.Statement.Context, "application roles of a deleted role skipped",
-			slog.Int("application_roles", skipped))
+	if len(skipped) > 0 {
+		slog.WarnContext(tx.Statement.Context, "applications holding a deleted role bound to no team",
+			slog.Any("applications", skipped))
 	}
 	return created, nil
 }
