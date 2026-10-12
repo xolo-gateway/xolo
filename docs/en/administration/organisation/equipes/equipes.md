@@ -75,6 +75,8 @@ The **distribution** rule constrains member budgets when they are saved:
 | **Plafonnée** (Capped) | Each member's budget is at most equal to the team budget. Their sum can exceed it. |
 | **Partagée** (Split) | The sum of the member budgets does not exceed the team budget. |
 
+The rule works both ways: lowering the team budget is refused when the member budgets no longer fit in it.
+
 The same rule can be set on the organization budget, for the envelopes of its teams. See [Budgets and quotas](../../../concepts/budgets-et-quotas.md).
 
 ## API keys and applications

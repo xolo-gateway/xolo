@@ -75,6 +75,8 @@ La **répartition** contraint les budgets des membres à leur enregistrement :
 | **Plafonnée** | Le budget de chaque membre est au plus égal à celui de l'équipe. Leur somme peut le dépasser. |
 | **Partagée** | La somme des budgets des membres ne dépasse pas celui de l'équipe. |
 
+La règle vaut dans les deux sens : baisser le budget de l'équipe est refusé si les budgets des membres n'y tiennent plus.
+
 La même règle se règle sur le budget de l'organisation, pour les enveloppes de ses équipes. Voir [Budgets et quotas](../../../concepts/budgets-et-quotas.md).
 
 ## Clés d'API et applications

@@ -55,6 +55,8 @@ Le budget d'une organisation contraint ceux de ses équipes, et le budget d'une 
 | **Plafonnée** | Chaque budget enfant est au plus égal à celui du parent, période par période. Leur somme peut le dépasser. |
 | **Partagée** | La somme des budgets enfants ne dépasse pas celle du parent, période par période : l'enveloppe est vraiment répartie. |
 
+Baisser le budget d'un parent est donc refusé si les budgets enfants déjà enregistrés n'y tiennent plus : il faut d'abord baisser ces derniers.
+
 Un enfant sans budget propre sur une période n'est pas contraint : il reste borné par le parent à chaque requête.
 
 ## Permissions associées

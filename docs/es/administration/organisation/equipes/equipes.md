@@ -75,6 +75,8 @@ El **reparto** restringe los presupuestos de los miembros al guardarlos:
 | **Plafonnée** (Limitada) | El presupuesto de cada miembro es como máximo igual al del equipo. Su suma puede superarlo. |
 | **Partagée** (Compartida) | La suma de los presupuestos de los miembros no supera el del equipo. |
 
+La regla vale en ambos sentidos: bajar el presupuesto del equipo se rechaza si los presupuestos de los miembros ya no caben en él.
+
 La misma regla se configura en el presupuesto de la organización, para las asignaciones de sus equipos. Consulte [Presupuestos y cuotas](../../../concepts/budgets-et-quotas.md).
 
 ## Claves de API y aplicaciones
