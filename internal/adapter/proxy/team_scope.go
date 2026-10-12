@@ -257,7 +257,7 @@ func (h *TeamScopeHook) personalTeam(ctx context.Context, orgID model.OrgID, per
 		if u := httpCtx.User(ctx); u != nil {
 			pvm, err := h.personalVMStore.GetPersonalVirtualModelByName(ctx, u.ID(), name.Local)
 			if err != nil && !errors.Is(err, port.ErrNotFound) {
-				// Read as "no model", the error would charge another payer.
+				// Reading it as "no model" would charge another payer: fail the request.
 				return rbac.TeamRef{}, errors.WithStack(err)
 			}
 			if err == nil && pvm.TeamID() != "" {
@@ -271,7 +271,7 @@ func (h *TeamScopeHook) personalTeam(ctx context.Context, orgID model.OrgID, per
 						"personal virtual model '" + name.String() + "' charges a team of another organization: pick a team of this organization in its settings")}
 				case err == nil || errors.Is(err, port.ErrNotFound):
 					return rbac.TeamRef{}, &teamScopeAnswer{result: teamRequired(
-						"the team personal virtual model '" + name.String() + "' charges is no longer yours: pick another team in its settings")}
+						"the team personal virtual model '" + name.String() + "' charges is no longer available to you: pick another team in its settings")}
 				default:
 					return rbac.TeamRef{}, errors.WithStack(err)
 				}
