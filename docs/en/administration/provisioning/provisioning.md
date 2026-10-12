@@ -547,8 +547,8 @@ only where shown.
   team model grant designates a model of the organization (and, for an LLM
   model, a provider of the organization); `middleware_ids` are middlewares of
   the organization; a team member is a member of the organization, and their
-  `role_ids`, like those of an application, are roles of the organization;
-  `team_id` is a team of the organization; a quota caps an organization of the
+  `role_ids`, like those of an application, are roles of the organization,
+  but unlike them never a builtin role (`422`); `team_id` is a team of the organization; a quota caps an organization of the
   tenant, a member of the tenant, an application or a team of one of its
   organizations, or a member of a team (scope `team_member`, `scope_id`
   `<team_id>:<user_id>`); the owner of an alert is an active

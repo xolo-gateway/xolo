@@ -2,6 +2,7 @@ package gorm_test
 
 import (
 	"encoding/json"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -460,6 +461,15 @@ func TestTeamProvisioning(t *testing.T) {
 		twice.Members = append(twice.Members, twice.Members[0])
 		_, err = svc.PutTeam(ctx, testTenantID, fixture.org, f.team, noCondition, twice)
 		require.ErrorIs(t, err, port.ErrInvalid)
+
+		roles, err := store.ListOrgRoles(ctx, fixture.org)
+		require.NoError(t, err)
+		builtin := slices.IndexFunc(roles, func(r model.Role) bool { return r.Builtin() })
+		require.NotEqual(t, -1, builtin)
+		withBuiltin := teamSettings(f)
+		withBuiltin.Members[0].RoleIDs = []string{string(roles[builtin].ID())}
+		_, err = svc.PutTeam(ctx, testTenantID, fixture.org, f.team, noCondition, withBuiltin)
+		require.ErrorIs(t, err, port.ErrInvalid, "a builtin role is not held on a team")
 
 		// A model whose proxy name starts with a slug keeps the slug free.
 		llm := model.NewLLMModel(model.ProviderID(f.provider), fixture.org, "ops/llama", "llama", "", 0, 0)

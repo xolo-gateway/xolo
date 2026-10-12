@@ -564,7 +564,7 @@ obligatorio, `null` solo donde se indica.
   LLM, un proveedor de la organización); `middleware_ids` designa middlewares
   de la organización; un miembro de equipo es un miembro de la organización, y
   sus `role_ids`, como los de una aplicación, designan roles de la
-  organización; `team_id` designa un equipo de la organización; una cuota
+  organización, pero a diferencia de estos nunca un rol integrado (`422`); `team_id` designa un equipo de la organización; una cuota
   limita una organización del tenant, un miembro del tenant, una aplicación o
   un equipo de una de sus organizaciones, o un miembro de un equipo (ámbito
   `team_member`, `scope_id` `<team_id>:<user_id>`); el propietario de una alerta es un

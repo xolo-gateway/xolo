@@ -578,7 +578,7 @@ Les représentations sont en snake_case et complètes : chaque champ est requis,
   LLM, un provider de l'organisation) ; `middleware_ids` désigne des
   middlewares de l'organisation ; un membre d'équipe est un membre de
   l'organisation, et ses `role_ids`, comme ceux d'une application, désignent
-  des rôles de l'organisation ; `team_id` désigne une équipe de l'organisation ;
+  des rôles de l'organisation, mais jamais, à la différence de ces derniers, un rôle intégré (`422`) ; `team_id` désigne une équipe de l'organisation ;
   un quota plafonne une organisation du tenant, un membre du tenant, une
   application ou une équipe d'une de ses organisations, ou un membre d'une
   équipe (portée `team_member`, `scope_id` `<team_id>:<user_id>`) ; le propriétaire d'une

@@ -212,6 +212,11 @@ func (s *ProvisioningService) PutTeam(ctx context.Context, tenantID model.Tenant
 				if err != nil {
 					return errors.WithStack(err)
 				}
+				// Like the web UI, never hold a builtin role on a team: its
+				// codes would be cut to the team-scopable ones without a word.
+				if role.Builtin() {
+					return errors.Wrapf(port.ErrInvalid, "builtin role %q cannot be held on a team", id)
+				}
 				roles = append(roles, role.ID())
 			}
 			wanted = append(wanted, member{membership.ID(), roles})
