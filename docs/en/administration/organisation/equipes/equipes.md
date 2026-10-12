@@ -103,4 +103,4 @@ Before teams, a custom role could grant specific models. The upgrade turns each 
 
 A member who held several of these roles now belongs to several teams. If two of them grant access to the same model, the short form of the name becomes ambiguous and the member must name the team.
 
-> **Note**: Stop the other Xolo instances during the upgrade. The migration drops the table of role access, which an older instance still reads.
+> **Note**: Stop the other Xolo instances during the upgrade. The migration drops the table of role access, which an older instance still reads. It cannot be rolled back: back up the database before the upgrade to be able to return to the previous version.

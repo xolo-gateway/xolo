@@ -103,4 +103,4 @@ Avant les équipes, un rôle personnalisé pouvait autoriser des modèles préci
 
 Un membre qui détenait plusieurs de ces rôles appartient désormais à plusieurs équipes : si deux d'entre elles donnent accès au même modèle, la forme courte du nom devient ambiguë et il doit nommer l'équipe.
 
-> **Note** : Arrêtez les autres instances de Xolo pendant la mise à jour. La migration supprime la table des accès des rôles, qu'une instance plus ancienne lit encore.
+> **Note** : Arrêtez les autres instances de Xolo pendant la mise à jour. La migration supprime la table des accès des rôles, qu'une instance plus ancienne lit encore. Elle ne peut pas être annulée : sauvegardez la base avant la mise à jour pour pouvoir revenir à la version précédente.

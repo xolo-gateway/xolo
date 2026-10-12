@@ -103,4 +103,4 @@ Antes de los equipos, un rol personalizado podía autorizar modelos concretos. L
 
 Un miembro que tenía varios de esos roles pertenece ahora a varios equipos. Si dos de ellos dan acceso al mismo modelo, la forma corta del nombre se vuelve ambigua y el miembro debe nombrar el equipo.
 
-> **Nota**: Detenga las demás instancias de Xolo durante la actualización. La migración elimina la tabla de accesos de los roles, que una instancia anterior todavía lee.
+> **Nota**: Detenga las demás instancias de Xolo durante la actualización. La migración elimina la tabla de accesos de los roles, que una instancia anterior todavía lee. No se puede deshacer: haga una copia de seguridad de la base de datos antes de la actualización para poder volver a la versión anterior.
