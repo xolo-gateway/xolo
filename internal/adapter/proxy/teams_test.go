@@ -233,6 +233,20 @@ func TestTeamScopeAttributesQualifiedNames(t *testing.T) {
 	require.Equal(t, "acme/legal/gpt", RequestedModelFromMeta(req.Metadata))
 }
 
+// A name whose first segment is a team rather than the organization is not a
+// name of the organization: it reaches the router as sent, charged to no team.
+func TestTeamScopeLeavesANameWithoutItsOrganization(t *testing.T) {
+	w := newTeamsWorld(t)
+	legal := w.addTeam("legal", "gpt")
+	req := w.request("legal/gpt")
+
+	result, err := w.hook().PreRequest(w.ctx(nil, []model.Team{legal}, nil), req)
+	require.NoError(t, err)
+	require.Nil(t, result)
+	require.Equal(t, "legal/gpt", req.Model)
+	require.Empty(t, TeamIDFromMeta(req.Metadata))
+}
+
 func TestTeamScopeRefusesATeamOfOthers(t *testing.T) {
 	w := newTeamsWorld(t)
 	w.addTeam("legal", "gpt")
