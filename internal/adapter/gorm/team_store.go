@@ -326,6 +326,13 @@ func (s *Store) SetTeamMember(ctx context.Context, id model.TeamID, membershipID
 			if int(count) != len(ids) {
 				return errors.Wrap(port.ErrParentNotFound, "role not found in the organization of the team")
 			}
+			// Its codes would be cut to the team-scopable ones without a word.
+			if err := db.Model(&Role{}).Where("id IN ? AND builtin = ?", ids, true).Count(&count).Error; err != nil {
+				return errors.WithStack(err)
+			}
+			if count > 0 {
+				return errors.Wrap(port.ErrInvalid, "a builtin role cannot be held on a team")
+			}
 		}
 		if err := db.Clauses(clause.OnConflict{DoNothing: true}).Create(&TeamMember{TeamID: string(id), MembershipID: string(membershipID)}).Error; err != nil {
 			return errors.WithStack(err)

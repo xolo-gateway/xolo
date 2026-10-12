@@ -2,6 +2,7 @@ package gorm_test
 
 import (
 	"context"
+	"slices"
 	"testing"
 	"time"
 
@@ -79,6 +80,16 @@ func TestTeamStore(t *testing.T) {
 		members, err = store.ListTeamMembers(ctx, team.ID())
 		require.NoError(t, err)
 		require.Equal(t, []model.RoleID{f.role.ID()}, members[0].RoleIDs())
+
+		// A builtin role is never held on a team, whoever the caller.
+		roles, err := store.ListOrgRoles(ctx, f.org.ID())
+		require.NoError(t, err)
+		builtin := slices.IndexFunc(roles, func(r model.Role) bool { return r.Builtin() })
+		require.NotEqual(t, -1, builtin)
+		require.ErrorIs(t, store.SetTeamMember(ctx, team.ID(), f.membership.ID(), []model.RoleID{roles[builtin].ID()}), port.ErrInvalid)
+		members, err = store.ListTeamMembers(ctx, team.ID())
+		require.NoError(t, err)
+		require.Equal(t, []model.RoleID{f.role.ID()}, members[0].RoleIDs(), "a refused write changes nothing")
 
 		teams, err := store.ListMembershipTeams(ctx, f.membership.ID())
 		require.NoError(t, err)
