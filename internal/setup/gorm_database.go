@@ -67,13 +67,13 @@ var getGormDatabaseFromConfig = createFromConfigOnce(func(ctx context.Context, c
 
 	// A lookup that finds nothing is an answer, not an error: the stores turn it
 	// into port.ErrNotFound. Logging it buried the slow queries under hundreds
-	// of lines an hour.
+	// of lines an hour. No colors: the escape codes end up in collected logs.
 	db, err := gorm.Open(dialector, &gorm.Config{
 		Logger: logger.New(log.New(os.Stdout, "\r\n", log.LstdFlags), logger.Config{
 			SlowThreshold:             200 * time.Millisecond,
 			LogLevel:                  logLevel,
 			IgnoreRecordNotFoundError: true,
-			Colorful:                  true,
+			Colorful:                  false,
 		}),
 	})
 	if err != nil {
