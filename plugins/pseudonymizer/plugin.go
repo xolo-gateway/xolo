@@ -353,20 +353,20 @@ func (p *Plugin) PreRequest(ctx context.Context, in *proto.PreRequestInput) (*pr
 	// anonymize is the one entry point to the anonymizer for this request: it
 	// shares the session, so a value always gets the same placeholder.
 	//
-	// A placeholder already in the content is neutralized first. The client
-	// only ever sees restored text, so one found here is an artifact: a
-	// placeholder the model invented on an earlier turn and the client kept
-	// in its history, or an attempt to have one restored. go-anon refuses
-	// such a text, and a refused content leaves in clear: one invented
-	// placeholder would switch pseudonymization off for the rest of the
-	// conversation (#113).
+	// go-anon refuses a text that already holds a placeholder, and a refused
+	// content leaves in clear: one placeholder the model invented, kept by the
+	// client in its history, switched pseudonymization off for the rest of
+	// the conversation (#113). The placeholders are masked first, see
+	// maskPlaceholders.
+	ownPlaceholder := ownedBy(session.Nonce())
 	anonymize := func(s string) (*anonymizer.Result, error) {
-		s, neutralized := neutralizePlaceholders(s, nil)
-		result, err := anon.Anonymize(s, append(anonymOpts, anonymizer.WithSession(session))...)
+		masked := maskPlaceholders(s, ownPlaceholder)
+		result, err := anon.Anonymize(masked.Text, append(anonymOpts, anonymizer.WithSession(session))...)
 		if err != nil {
 			return nil, err
 		}
-		neutralizedPlaceholders += neutralized
+		result.Text = masked.Unmask(result.Text)
+		neutralizedPlaceholders += masked.Neutralized
 		return result, nil
 	}
 
@@ -680,6 +680,7 @@ func (p *Plugin) PreRequest(ctx context.Context, in *proto.PreRequestInput) (*pr
 	state := pluginState{
 		Mapping:      session.Mapping,
 		RemovedParts: removedParts,
+		Nonce:        session.Nonce(),
 	}
 	stateJSON, err := json.Marshal(state)
 	if err != nil {
@@ -791,15 +792,19 @@ func (p *Plugin) PostResponse(_ context.Context, in *proto.PostResponseInput) (*
 	}
 
 	// restore puts the original values back, then neutralizes the
-	// placeholders left over. The mapping holds every placeholder the
-	// request carried, so a leftover is one the model made up, typically
-	// in place of a common noun once it has seen many of them. Left as is,
-	// it reaches the client verbatim and comes back in the history of the
-	// next turn. The marker of a redacted secret is left alone: nothing
-	// restores it, by design, and the model repeating it invented nothing.
+	// placeholders of this node left over. The mapping holds every
+	// placeholder of this node the request carried, so a leftover is one the
+	// model made up, typically in place of a common noun once it has seen
+	// many of them. Left as is, it reaches the client verbatim and comes back
+	// in the history of the next turn.
+	//
+	// The placeholders of another pseudonymizer node of the pipeline are left
+	// for that node, which restores them after this one. So are the markers
+	// of redacted secrets: nothing restores them, by design.
 	invented := 0
+	ownPlaceholder := ownedBy(state.Nonce)
 	restore := func(s string) string {
-		restored, n := neutralizePlaceholders(deanonymize(s, state.Mapping), isRedactedMarker)
+		restored, n := neutralizePlaceholders(deanonymize(s, state.Mapping), ownPlaceholder)
 		invented += n
 		return restored
 	}
@@ -1078,6 +1083,9 @@ func emitLeakEvent(in *proto.PreRequestInput, verr *anonymizer.VerificationError
 type pluginState struct {
 	Mapping      map[string]string `json:"mapping"`
 	RemovedParts []removedPart     `json:"removed_parts,omitempty"`
+	// Nonce is the one of this node's placeholders, which tells them from
+	// those of another pseudonymizer node of the pipeline.
+	Nonce string `json:"nonce,omitempty"`
 }
 
 // removedPart describes a content part that was stripped from the request

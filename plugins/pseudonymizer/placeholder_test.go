@@ -10,25 +10,31 @@ import (
 	proto "github.com/xolo-gateway/xolo/pkg/pluginsdk/proto"
 )
 
-// inventedPlaceholder carries a session nonce, but no mapping holds it: the
-// model wrote it in place of a common noun (#113).
-const inventedPlaceholder = "⟦LOCATION_15_95881f⟧"
+// testNonce stands for the nonce of the node under test in the PostResponse
+// tests, which hand the plugin its state directly.
+const testNonce = "95881f"
+
+// nodeNonce is the nonce PreRequest derives for org-1, user-1 and nodeID.
+func nodeNonce(nodeID string) string {
+	return newSession(context.Background(), &proto.RequestContext{OrgId: "org-1", UserId: "user-1", NodeId: nodeID}).Nonce()
+}
 
 func TestNeutralizePlaceholders(t *testing.T) {
+	own := ownedBy(testNonce)
 	for name, tc := range map[string]struct {
 		in, want string
 		count    int
 	}{
-		"indexed":         {in: "le " + inventedPlaceholder + " du site", want: "le [[LOCATION_15_95881f]] du site", count: 1},
-		"hashed":          {in: "⟦PERSON_3fa9c1d2⟧", want: "[[PERSON_3fa9c1d2]]", count: 1},
-		"redacted":        {in: "clé ⟦API_KEY_REDACTED⟧", want: "clé [[API_KEY_REDACTED]]", count: 1},
-		"several":         {in: "⟦A_1_x⟧ et ⟦B_2_y⟧", want: "[[A_1_x]] et [[B_2_y]]", count: 2},
+		"own":             {in: "le ⟦LOCATION_15_95881f⟧ du site", want: "le [[LOCATION_15_95881f]] du site", count: 1},
+		"several":         {in: "⟦A_1_95881f⟧ et ⟦B_2_95881f⟧", want: "[[A_1_95881f]] et [[B_2_95881f]]", count: 2},
+		"another node":    {in: "⟦PERSON_1_a57a4e⟧", want: "⟦PERSON_1_a57a4e⟧"},
+		"hashed":          {in: "⟦PERSON_3fa9c1d2e4b5⟧", want: "⟦PERSON_3fa9c1d2e4b5⟧"},
+		"redacted":        {in: "⟦API_KEY_REDACTED⟧", want: "⟦API_KEY_REDACTED⟧"},
 		"lone delimiters": {in: "⟦ et ⟧ ne sont pas un jeton", want: "⟦ et ⟧ ne sont pas un jeton"},
-		"not a token":     {in: "⟦deux mots⟧", want: "⟦deux mots⟧"},
-		"plain text":      {in: "rien à faire", want: "rien à faire"},
+		"not a token":     {in: "⟦deux mots_95881f⟧", want: "⟦deux mots_95881f⟧"},
 	} {
 		t.Run(name, func(t *testing.T) {
-			got, count := neutralizePlaceholders(tc.in, nil)
+			got, count := neutralizePlaceholders(tc.in, own)
 			if got != tc.want || count != tc.count {
 				t.Errorf("neutralizePlaceholders(%q) = %q, %d; want %q, %d", tc.in, got, count, tc.want, tc.count)
 			}
@@ -36,22 +42,44 @@ func TestNeutralizePlaceholders(t *testing.T) {
 	}
 }
 
-func TestNeutralizePlaceholders_KeepsWhatKeepAccepts(t *testing.T) {
-	got, count := neutralizePlaceholders("⟦API_KEY_REDACTED⟧ et "+inventedPlaceholder, isRedactedMarker)
-	if want := "⟦API_KEY_REDACTED⟧ et [[LOCATION_15_95881f]]"; got != want || count != 1 {
-		t.Errorf("got %q, %d; want %q, 1", got, count, want)
+func TestOwnedBy_EmptyNonceOwnsNothing(t *testing.T) {
+	if ownedBy("")("⟦PERSON_1_⟧") {
+		t.Error("an empty nonce must own nothing")
 	}
 }
 
-// postResponseWithHost runs PostResponse over a known mapping, capturing the
-// events emitted along the way.
+// go-anon refuses a text holding any placeholder: all of them are masked, but
+// only the node's own stay inert once the text comes back.
+func TestMaskPlaceholders(t *testing.T) {
+	masked := maskPlaceholders("⟦LOCATION_15_95881f⟧, ⟦PERSON_1_a57a4e⟧, ⟦API_KEY_REDACTED⟧ et ⟦PERSON_1_a57a4e⟧", ownedBy(testNonce))
+
+	if strings.Contains(masked.Text, "⟦") {
+		t.Errorf("a placeholder reaches the anonymizer: %q", masked.Text)
+	}
+	if masked.Neutralized != 1 {
+		t.Errorf("neutralized = %d, want 1", masked.Neutralized)
+	}
+	want := "[[LOCATION_15_95881f]], ⟦PERSON_1_a57a4e⟧, ⟦API_KEY_REDACTED⟧ et ⟦PERSON_1_a57a4e⟧"
+	if got := masked.Unmask(masked.Text); got != want {
+		t.Errorf("unmasked = %q, want %q", got, want)
+	}
+}
+
+// postResponseWithHost runs PostResponse over a known mapping, as the node of
+// nonce testNonce, capturing the events emitted along the way.
 func postResponseWithHost(t *testing.T, mapping map[string]string, content, toolCallsJSON string) (*proto.PostResponseOutput, *captureHost) {
 	t.Helper()
 
-	state, err := json.Marshal(pluginState{Mapping: mapping})
+	state, err := json.Marshal(pluginState{Mapping: mapping, Nonce: testNonce})
 	if err != nil {
 		t.Fatalf("marshal state: %v", err)
 	}
+	return postResponseWithState(t, state, content, toolCallsJSON)
+}
+
+func postResponseWithState(t *testing.T, state []byte, content, toolCallsJSON string) (*proto.PostResponseOutput, *captureHost) {
+	t.Helper()
+
 	host := &captureHost{}
 	p := newPlugin()
 	p.SetHostClient(host)
@@ -70,12 +98,12 @@ func postResponseWithHost(t *testing.T, mapping map[string]string, content, tool
 
 // An invented placeholder has no original to restore. Left as is, it reached
 // the client, was stored in its history, and switched pseudonymization off for
-// the rest of the conversation.
+// the rest of the conversation (#113).
 func TestPostResponse_NeutralizesInventedPlaceholders(t *testing.T) {
 	mapping := map[string]string{"⟦LOCATION_1_95881f⟧": "Lyon"}
 
 	out, host := postResponseWithHost(t, mapping,
-		"À ⟦LOCATION_1_95881f⟧, vérifiez le SIREN, le "+inventedPlaceholder+" et le ⟦LOCATION_16_95881f⟧.",
+		"À ⟦LOCATION_1_95881f⟧, vérifiez le SIREN, le ⟦LOCATION_15_95881f⟧ et le ⟦LOCATION_16_95881f⟧.",
 		"",
 	)
 
@@ -115,25 +143,26 @@ func TestPostResponse_NeutralizesInventedPlaceholdersInToolCalls(t *testing.T) {
 	}
 }
 
-// The marker of a redacted secret is restored by nothing, by design: the model
-// repeating it invented nothing.
-func TestPostResponse_LeavesRedactedMarkersAlone(t *testing.T) {
+// The placeholders of another pseudonymizer node of the pipeline are restored
+// by that node, after this one; the marker of a redacted secret by nothing.
+func TestPostResponse_LeavesPlaceholdersItDoesNotOwn(t *testing.T) {
 	out, host := postResponseWithHost(t, map[string]string{"⟦PERSON_1_95881f⟧": "Jean Dupont"},
-		"⟦PERSON_1_95881f⟧, votre clé ⟦API_KEY_REDACTED⟧ est révoquée.",
+		"⟦PERSON_1_95881f⟧ écrit à ⟦PERSON_1_a57a4e⟧, clé ⟦API_KEY_REDACTED⟧.",
 		"",
 	)
 
-	if want := "Jean Dupont, votre clé ⟦API_KEY_REDACTED⟧ est révoquée."; out.ModifiedResponseContent != want {
+	if want := "Jean Dupont écrit à ⟦PERSON_1_a57a4e⟧, clé ⟦API_KEY_REDACTED⟧."; out.ModifiedResponseContent != want {
 		t.Errorf("content = %q, want %q", out.ModifiedResponseContent, want)
 	}
 	host.assertNoEventOfType(t, eventPlaceholdersNeutralized, 100*time.Millisecond)
 }
 
-// preRequestMessagesWithHost runs PreRequest on a conversation, capturing the
-// events emitted along the way.
-func preRequestMessagesWithHost(t *testing.T, cfg Config, messages []map[string]any) (*proto.PreRequestOutput, *captureHost) {
+// preRequestOnNode runs PreRequest on a conversation as the node nodeID,
+// capturing the events emitted along the way.
+func preRequestOnNode(t *testing.T, nodeID string, messages []map[string]any) (*proto.PreRequestOutput, *captureHost) {
 	t.Helper()
 
+	cfg := attachmentConfig(t)
 	cfgJSON, err := json.Marshal(cfg)
 	if err != nil {
 		t.Fatalf("marshal config: %v", err)
@@ -148,7 +177,7 @@ func preRequestMessagesWithHost(t *testing.T, cfg Config, messages []map[string]
 	p.SetHostClient(host)
 
 	out, err := p.PreRequest(context.Background(), &proto.PreRequestInput{
-		Ctx:          &proto.RequestContext{OrgId: "org-1", UserId: "user-1", NodeId: "node-1", ConfigJson: string(cfgJSON)},
+		Ctx:          &proto.RequestContext{OrgId: "org-1", UserId: "user-1", NodeId: nodeID, ConfigJson: string(cfgJSON)},
 		MessagesJson: string(messagesJSON),
 	})
 	if err != nil {
@@ -162,7 +191,8 @@ func preRequestMessagesWithHost(t *testing.T, cfg Config, messages []map[string]
 // leave in clear: every shape that goes through the anonymizer must neutralize
 // it first and still pseudonymize the rest.
 func TestPreRequest_PlaceholderInHistoryIsNeutralizedNotForwardedInClear(t *testing.T) {
-	historyText := "Vérifiez le " + inventedPlaceholder + " de " + agentBlockSecret
+	invented := "⟦LOCATION_15_" + nodeNonce("node-1") + "⟧"
+	historyText := "Vérifiez le " + invented + " de " + agentBlockSecret
 	args, err := json.Marshal(map[string]any{"query": historyText})
 	if err != nil {
 		t.Fatal(err)
@@ -188,7 +218,7 @@ func TestPreRequest_PlaceholderInHistoryIsNeutralizedNotForwardedInClear(t *test
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
-			out, host := preRequestMessagesWithHost(t, attachmentConfig(t), messages)
+			out, host := preRequestOnNode(t, "node-1", messages)
 
 			if !out.Allowed {
 				t.Fatalf("request refused: %s", out.RejectionReason)
@@ -196,10 +226,10 @@ func TestPreRequest_PlaceholderInHistoryIsNeutralizedNotForwardedInClear(t *test
 			if strings.Contains(out.ModifiedMessagesJson, agentBlockSecret) {
 				t.Errorf("content forwarded in clear: %s", out.ModifiedMessagesJson)
 			}
-			if strings.Contains(out.ModifiedMessagesJson, "LOCATION_15_95881f⟧") {
+			if strings.Contains(out.ModifiedMessagesJson, invented) {
 				t.Errorf("placeholder forwarded as is: %s", out.ModifiedMessagesJson)
 			}
-			if !strings.Contains(out.ModifiedMessagesJson, "[[LOCATION_15_95881f]]") {
+			if !strings.Contains(out.ModifiedMessagesJson, inert(invented)) {
 				t.Errorf("neutralized placeholder missing: %s", out.ModifiedMessagesJson)
 			}
 
@@ -215,15 +245,36 @@ func TestPreRequest_PlaceholderInHistoryIsNeutralizedNotForwardedInClear(t *test
 	}
 }
 
+// A placeholder this node did not write — another node's, a redacted secret's
+// — no longer makes go-anon refuse the content: the rest is pseudonymized and
+// the placeholder kept as is, for whoever restores it.
+func TestPreRequest_ForeignPlaceholderIsKeptAndTheRestPseudonymized(t *testing.T) {
+	text := "Écrire à ⟦PERSON_1_a57a4e⟧ (clé ⟦API_KEY_REDACTED⟧) et à " + agentBlockSecret
+	out, host := preRequestOnNode(t, "node-1", []map[string]any{{"role": "user", "content": text}})
+
+	if strings.Contains(out.ModifiedMessagesJson, agentBlockSecret) {
+		t.Errorf("content forwarded in clear: %s", out.ModifiedMessagesJson)
+	}
+	for _, placeholder := range []string{"⟦PERSON_1_a57a4e⟧", "⟦API_KEY_REDACTED⟧"} {
+		if !strings.Contains(out.ModifiedMessagesJson, placeholder) {
+			t.Errorf("%s not kept: %s", placeholder, out.ModifiedMessagesJson)
+		}
+	}
+	host.assertNoEventOfType(t, "passthrough", 100*time.Millisecond)
+	host.assertNoEventOfType(t, eventPlaceholdersNeutralized, 0)
+}
+
 // The round trip of #113: what PostResponse hands the client is what the
 // client sends back on the next turn, and it must be pseudonymized again.
 func TestInventedPlaceholder_NextTurnStaysPseudonymized(t *testing.T) {
-	response, _ := postResponseWithHost(t, map[string]string{"⟦PERSON_1_95881f⟧": agentBlockSecret},
-		"Écrivez à ⟦PERSON_1_95881f⟧ au sujet du "+inventedPlaceholder+".",
-		"",
-	)
+	nonce := nodeNonce("node-1")
+	state, err := json.Marshal(pluginState{Mapping: map[string]string{"⟦PERSON_1_" + nonce + "⟧": agentBlockSecret}, Nonce: nonce})
+	if err != nil {
+		t.Fatal(err)
+	}
+	response, _ := postResponseWithState(t, state, "Écrivez à ⟦PERSON_1_"+nonce+"⟧ au sujet du ⟦LOCATION_15_"+nonce+"⟧.", "")
 
-	out, host := preRequestMessagesWithHost(t, attachmentConfig(t), []map[string]any{
+	out, host := preRequestOnNode(t, "node-1", []map[string]any{
 		{"role": "assistant", "content": response.ModifiedResponseContent},
 		{"role": "user", "content": "Merci, et ensuite ?"},
 	})
@@ -234,4 +285,43 @@ func TestInventedPlaceholder_NextTurnStaysPseudonymized(t *testing.T) {
 	host.assertNoEventOfType(t, "passthrough", 100*time.Millisecond)
 	// Already inert: nothing left to neutralize on this turn.
 	host.assertNoEventOfType(t, eventPlaceholdersNeutralized, 0)
+}
+
+// A middleware wrapping a virtual model can put two pseudonymizer nodes on the
+// same request. The inner node sees the outer node's placeholders on the way
+// in and restores first on the way out: it must leave them to the outer node.
+func TestChainedNodes_EachRestoresItsOwnPlaceholders(t *testing.T) {
+	const innerSecret = "marc.durand@exemple.fr"
+
+	outerOut, _ := preRequestOnNode(t, "node-outer", []map[string]any{
+		{"role": "user", "content": "Écrire à " + agentBlockSecret},
+	})
+	var outerMessages []map[string]any
+	if err := json.Unmarshal([]byte(outerOut.ModifiedMessagesJson), &outerMessages); err != nil {
+		t.Fatal(err)
+	}
+	// What the inner node receives: the outer node's output, plus a value the
+	// inner node pseudonymizes itself.
+	outerMessages = append(outerMessages, map[string]any{"role": "user", "content": "Et en copie " + innerSecret})
+	innerOut, innerHost := preRequestOnNode(t, "node-inner", outerMessages)
+
+	outerPlaceholder := "⟦EMAIL_1_" + nodeNonce("node-outer") + "⟧"
+	innerPlaceholder := "⟦EMAIL_1_" + nodeNonce("node-inner") + "⟧"
+	for _, placeholder := range []string{outerPlaceholder, innerPlaceholder} {
+		if !strings.Contains(innerOut.ModifiedMessagesJson, placeholder) {
+			t.Fatalf("the model does not see %s: %s", placeholder, innerOut.ModifiedMessagesJson)
+		}
+	}
+	innerHost.assertNoEventOfType(t, "passthrough", 100*time.Millisecond)
+	innerHost.assertNoEventOfType(t, eventPlaceholdersNeutralized, 0)
+
+	// The backward pass runs in reverse order: inner node first.
+	response := "J'écris à " + outerPlaceholder + " avec " + innerPlaceholder + " en copie."
+	fromInner, innerBackHost := postResponseWithState(t, innerOut.NodeState, response, "")
+	fromOuter, _ := postResponseWithState(t, outerOut.NodeState, fromInner.ModifiedResponseContent, "")
+
+	if want := "J'écris à " + agentBlockSecret + " avec " + innerSecret + " en copie."; fromOuter.ModifiedResponseContent != want {
+		t.Errorf("restored = %q, want %q", fromOuter.ModifiedResponseContent, want)
+	}
+	innerBackHost.assertNoEventOfType(t, eventPlaceholdersNeutralized, 100*time.Millisecond)
 }

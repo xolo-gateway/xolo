@@ -15,32 +15,84 @@ var placeholderPattern = regexp.MustCompile(`⟦[A-Za-z0-9_]{1,128}⟧`)
 // by the model in a response, or found in the content of a request.
 const eventPlaceholdersNeutralized = "placeholders.neutralized"
 
-// redactedMarkerSuffix ends the marker of a redacted secret. No mapping ever
-// restores it, by design.
-const redactedMarkerSuffix = "_REDACTED⟧"
-
-// neutralizePlaceholders rewrites the placeholders of text into an inert
-// form, ⟦X⟧ becoming [[X]] as go-anon's own escaping does, and returns how
-// many it rewrote. keep, when set, spares the placeholders it accepts.
+// ownedBy returns a predicate matching the indexed placeholders a session with
+// nonce writes: ⟦PERSON_1_<nonce>⟧. Hashed placeholders and the markers of
+// redacted secrets carry no nonce, so no node can tell its own from another's.
 //
-// A neutralized placeholder is plain text: go-anon no longer refuses the text
-// that carries it, and no restoration can substitute anything for it.
-func neutralizePlaceholders(text string, keep func(placeholder string) bool) (string, int) {
+// A pipeline can hold several pseudonymizer nodes: a middleware wrapping a
+// virtual model that has its own. Each node derives its own nonce, so the
+// placeholders of the other nodes are the ones this predicate rejects.
+func ownedBy(nonce string) func(placeholder string) bool {
+	suffix := "_" + nonce + "⟧"
+	return func(placeholder string) bool {
+		return nonce != "" && strings.HasSuffix(placeholder, suffix)
+	}
+}
+
+// inert is the form a neutralized placeholder takes, ⟦X⟧ becoming [[X]] as
+// go-anon's own escaping does.
+func inert(placeholder string) string {
+	return "[[" + strings.TrimSuffix(strings.TrimPrefix(placeholder, "⟦"), "⟧") + "]]"
+}
+
+// neutralizePlaceholders rewrites the placeholders of text that match into
+// their inert form, and returns how many it rewrote. An inert placeholder is
+// plain text: go-anon no longer refuses the text that carries it, and no
+// restoration can substitute anything for it.
+func neutralizePlaceholders(text string, match func(placeholder string) bool) (string, int) {
 	if !strings.Contains(text, "⟦") {
 		return text, 0
 	}
 	count := 0
 	out := placeholderPattern.ReplaceAllStringFunc(text, func(placeholder string) string {
-		if keep != nil && keep(placeholder) {
+		if !match(placeholder) {
 			return placeholder
 		}
 		count++
-		return "[[" + strings.TrimSuffix(strings.TrimPrefix(placeholder, "⟦"), "⟧") + "]]"
+		return inert(placeholder)
 	})
 	return out, count
 }
 
-// isRedactedMarker reports whether placeholder marks a redacted secret.
-func isRedactedMarker(placeholder string) bool {
-	return strings.HasSuffix(placeholder, redactedMarkerSuffix)
+// maskedText is a text ready for go-anon: none of the placeholders it held is
+// left in it.
+type maskedText struct {
+	// Text is what goes to the anonymizer.
+	Text string
+	// Neutralized counts the placeholders of this node, made inert for good.
+	Neutralized int
+	// foreign are the placeholders of other nodes, masked the same way and
+	// put back by Unmask.
+	foreign []string
+}
+
+// maskPlaceholders prepares text for go-anon, which refuses a text that
+// already holds a placeholder. Those of this node are neutralized: the client
+// only ever sees restored text, so one found here is a placeholder the model
+// invented on an earlier turn, or an attempt to have one restored. Those of
+// another node, upstream in the pipeline, are masked and put back after
+// anonymization, for that node to restore them.
+func maskPlaceholders(text string, own func(placeholder string) bool) maskedText {
+	masked := maskedText{Text: text}
+	if !strings.Contains(text, "⟦") {
+		return masked
+	}
+	masked.Text = placeholderPattern.ReplaceAllStringFunc(text, func(placeholder string) string {
+		if own(placeholder) {
+			masked.Neutralized++
+		} else {
+			masked.foreign = append(masked.foreign, placeholder)
+		}
+		return inert(placeholder)
+	})
+	return masked
+}
+
+// Unmask puts the placeholders of other nodes back into anonymized, the text
+// go-anon returned for m.Text.
+func (m maskedText) Unmask(anonymized string) string {
+	for _, placeholder := range m.foreign {
+		anonymized = strings.Replace(anonymized, inert(placeholder), placeholder, 1)
+	}
+	return anonymized
 }
