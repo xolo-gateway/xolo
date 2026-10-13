@@ -15,6 +15,7 @@ import (
 	"github.com/xolo-gateway/xolo/internal/core/rbac"
 	"github.com/xolo-gateway/xolo/internal/core/service"
 	httpCtx "github.com/xolo-gateway/xolo/internal/http/context"
+	webcommon "github.com/xolo-gateway/xolo/internal/http/handler/webui/common"
 	common "github.com/xolo-gateway/xolo/internal/http/handler/webui/common/component"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/profile/component"
 	"github.com/xolo-gateway/xolo/internal/http/middleware/authz"
@@ -26,7 +27,7 @@ func (h *Handler) getModelsPage(w http.ResponseWriter, r *http.Request) {
 	memberships := httpCtx.Memberships(ctx)
 
 	rangeParam := r.URL.Query().Get("range")
-	since := dashboardRangeToSince(rangeParam)
+	_, since := webcommon.UsageRange(rangeParam, time.Now())
 	showAll := r.URL.Query().Get("show_all") == "true"
 	sortParam := r.URL.Query().Get("sort")
 	orderParam := r.URL.Query().Get("order")

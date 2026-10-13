@@ -18,6 +18,7 @@ import (
 	"github.com/xolo-gateway/xolo/internal/core/service"
 	"github.com/xolo-gateway/xolo/internal/estimator"
 	httpCtx "github.com/xolo-gateway/xolo/internal/http/context"
+	webcommon "github.com/xolo-gateway/xolo/internal/http/handler/webui/common"
 	common "github.com/xolo-gateway/xolo/internal/http/handler/webui/common/component"
 	orgcomponent "github.com/xolo-gateway/xolo/internal/http/handler/webui/org/component"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/profile/component"
@@ -48,7 +49,7 @@ func (h *Handler) getDashboardPage(w http.ResponseWriter, r *http.Request) {
 
 	// Time range
 	rangeParam := r.URL.Query().Get("range")
-	since := dashboardRangeToSince(rangeParam)
+	period, since := webcommon.UsageRange(rangeParam, time.Now())
 
 	// CSV export
 	if r.URL.Query().Get("format") == "csv" {
@@ -161,7 +162,7 @@ func (h *Handler) getDashboardPage(w http.ResponseWriter, r *http.Request) {
 
 	// Cache key for energy totals. It names the range, not its start: since moves
 	// with the clock, and a key built from it never hit the cache.
-	energyCacheKey := fmt.Sprintf("dashboard:%s:%s", userID, dashboardRangeKey(rangeParam))
+	energyCacheKey := fmt.Sprintf("dashboard:%s:%s", userID, period)
 
 	// Filter matching the whole selected period, used by every chart aggregation.
 	chartFilter := port.UsageFilter{
@@ -355,36 +356,6 @@ func (h *Handler) getDashboardPage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	templ.Handler(component.DashboardPage(vmodel)).ServeHTTP(w, r)
-}
-
-func dashboardRangeToSince(r string) time.Time {
-	now := time.Now()
-	switch r {
-	case "1d":
-		return now.AddDate(0, 0, -1)
-	case "30d":
-		return now.AddDate(0, -1, 0)
-	case "90d":
-		return now.AddDate(0, -3, 0)
-	case "180d":
-		return now.AddDate(0, -6, 0)
-	case "365d":
-		return now.AddDate(-1, 0, 0)
-	default: // "7d"
-		return now.AddDate(0, 0, -7)
-	}
-}
-
-// dashboardRangeKey names the period a range parameter selects, unknown values falling
-// back to 7 days like the start of the period does. It keys the energy cache,
-// so a client varying the parameter cannot fill it.
-func dashboardRangeKey(r string) string {
-	switch r {
-	case "1d", "30d", "90d", "180d", "365d":
-		return r
-	default:
-		return "7d"
-	}
 }
 
 func intPtr(n int) *int { return &n }

@@ -22,6 +22,7 @@ import (
 	"github.com/xolo-gateway/xolo/internal/core/service"
 	"github.com/xolo-gateway/xolo/internal/estimator"
 	httpCtx "github.com/xolo-gateway/xolo/internal/http/context"
+	webcommon "github.com/xolo-gateway/xolo/internal/http/handler/webui/common"
 	common "github.com/xolo-gateway/xolo/internal/http/handler/webui/common/component"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/org/component"
 )
@@ -53,7 +54,7 @@ func (h *Handler) getUsagePage(w http.ResponseWriter, r *http.Request) {
 	offset := (page - 1) * usagePageSize
 
 	rangeParam := r.URL.Query().Get("range")
-	since := rangeToSince(rangeParam)
+	period, since := webcommon.UsageRange(rangeParam, time.Now())
 	orgID := org.ID()
 
 	// Support comma-separated owner values (users + applications) via 'owner' param
@@ -210,7 +211,7 @@ func (h *Handler) getUsagePage(w http.ResponseWriter, r *http.Request) {
 	// names the range, not its start: since moves with the clock, and a key built
 	// from it never hit the cache. The owners are sorted: their order in the
 	// query string selects nothing.
-	energyCacheKey := fmt.Sprintf("org-usage:%s:%s:%v:%v:%s", orgID, rangeKey(rangeParam), slices.Sorted(slices.Values(userIDs)), slices.Sorted(slices.Values(appIDs)), scope.teamID())
+	energyCacheKey := fmt.Sprintf("org-usage:%s:%s:%v:%v:%s", orgID, period, slices.Sorted(slices.Values(userIDs)), slices.Sorted(slices.Values(appIDs)), scope.teamID())
 
 	// Filter matching the whole selected period, used by every chart aggregation.
 	chartFilter := port.UsageFilter{
@@ -505,36 +506,6 @@ func (h *Handler) computeEnergyTotals(ctx context.Context, filter port.UsageFilt
 		return 0, 0, false
 	}
 	return totalEnergyWh, totalCO2GramsMid, true
-}
-
-// rangeKey names the period a range parameter selects, unknown values falling
-// back to 7 days like the start of the period does. It keys the energy cache,
-// so a client varying the parameter cannot fill it.
-func rangeKey(r string) string {
-	switch r {
-	case "1d", "30d", "90d", "180d", "365d":
-		return r
-	default:
-		return "7d"
-	}
-}
-
-func rangeToSince(r string) time.Time {
-	now := time.Now()
-	switch r {
-	case "1d":
-		return now.AddDate(0, 0, -1)
-	case "30d":
-		return now.AddDate(0, -1, 0)
-	case "90d":
-		return now.AddDate(0, -3, 0)
-	case "180d":
-		return now.AddDate(0, -6, 0)
-	case "365d":
-		return now.AddDate(-1, 0, 0)
-	default: // "7d" and anything else
-		return now.AddDate(0, 0, -7)
-	}
 }
 
 // sumConvertedCost sums costs from the given time, converting each currency to targetCurrency.
