@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"math/big"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
@@ -140,19 +141,25 @@ func (h *Handler) validateToken(ctx context.Context, rawToken string, provider P
 			return nil, errors.New("token missing kid")
 		}
 
-		for _, key := range jwks.Keys {
-			if key.Kid != kid {
-				continue
+		key, found := findKey(jwks, kid)
+		// An unknown key ID from this provider's issuer may come from a key
+		// rotation: refetch the key set once, rate limited.
+		if !found {
+			if issuer, err := t.Claims.GetIssuer(); err == nil && issuer == provider.Issuer {
+				if refreshed, ok, err := refetchJWKS(ctx, provider.JWKSURL); err == nil && ok {
+					key, found = findKey(refreshed, kid)
+				}
 			}
-
-			if key.Kty != "RSA" {
-				return nil, errors.Errorf("unsupported key type: %s", key.Kty)
-			}
-
-			return parseRSAPublicKey(key)
+		}
+		if !found {
+			return nil, errors.New("key not found")
 		}
 
-		return nil, errors.New("key not found")
+		if key.Kty != "RSA" {
+			return nil, errors.Errorf("unsupported key type: %s", key.Kty)
+		}
+
+		return parseRSAPublicKey(key)
 	}, parseOpts...)
 
 	if err != nil {
@@ -165,6 +172,10 @@ func (h *Handler) validateToken(ctx context.Context, rawToken string, provider P
 	}
 
 	if cl.Subject == "" {
+		return nil, errInvalidToken
+	}
+
+	if !audienceAllowed(cl.Audience, provider.AllowedAudiences) {
 		return nil, errInvalidToken
 	}
 
@@ -186,6 +197,29 @@ func (h *Handler) validateToken(ctx context.Context, rawToken string, provider P
 	}
 
 	return user, nil
+}
+
+func findKey(jwks JWKS, kid string) (JWK, bool) {
+	for _, key := range jwks.Keys {
+		if key.Kid == kid {
+			return key, true
+		}
+	}
+	return JWK{}, false
+}
+
+// audienceAllowed reports whether one of the token audiences is allowed. An
+// empty allow list accepts any audience, as before the setting existed.
+func audienceAllowed(audiences jwt.ClaimStrings, allowed []string) bool {
+	if len(allowed) == 0 {
+		return true
+	}
+	for _, aud := range audiences {
+		if slices.Contains(allowed, aud) {
+			return true
+		}
+	}
+	return false
 }
 
 func parseRSAPublicKey(key JWK) (*rsa.PublicKey, error) {

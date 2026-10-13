@@ -8,6 +8,10 @@ Aplica migraciones al arrancar (por defecto: `true`). Con `false`, comprueba el 
 
 ## Sesiones OIDC y cierre de sesión back-channel
 
+Un navegador no autenticado que pide una página de la interfaz vuelve a ella tras iniciar sesión. Con un único proveedor interactivo, se le envía directamente a ese proveedor sin la página de elección; para evitar un bucle si el inicio de sesión falla, esto ocurre como máximo una vez cada 30 segundos (cookie `xolo_auto_sign_in`).
+
+Un ID token presentado a la API (`oidctoken`) se acepta sea cual sea su audiencia, salvo si `XOLO_HTTP_AUTHN_OIDC_PROVIDER_<ID>_ALLOWED_AUDIENCES` enumera los valores `aud` aceptados (lista separada por comas). Un token firmado con un `kid` ausente del JWKS en caché provoca una única recarga del JWKS, como máximo una vez por minuto y por proveedor.
+
 Un inicio de sesión interactivo mediante un proveedor OAuth2/OIDC abre una sesión registrada en la base de datos; la cookie solo lleva su identificador. Una cookie copiada no sobrevive al cierre de sesión, y una sesión sigue siendo válida tras un reinicio y entre réplicas siempre que todas compartan `XOLO_HTTP_SESSION_KEYS`. Una sesión caduca tras `XOLO_HTTP_SESSION_COOKIE_MAX_AGE` (por defecto: `24h`), que debe ser positivo o el servidor no arranca. Cada réplica elimina las entradas caducadas cada 10 minutos.
 
 Un inicio de sesión debe comenzar en Xolo (`/auth/oidc/providers/{proveedor}`) y volver al mismo navegador en un plazo de 15 minutos. Un inicio de sesión iniciado por el proveedor de identidad, o un retorno sin la cookie fijada al principio, falla con `sign-in start missing` en el registro: el usuario debe volver a iniciar sesión desde Xolo.

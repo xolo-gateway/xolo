@@ -99,6 +99,10 @@ type OIDCProvider struct {
 	// RequiredAudience, when set, requires an introspected access token's `aud`
 	// to include this value. Only enforced on the introspection path.
 	RequiredAudience string `env:"REQUIRED_AUDIENCE"`
+	// AllowedAudiences, when set, requires an ID token presented as a bearer
+	// token or cookie to have at least one of these values in its `aud`. Empty
+	// accepts any audience from the provider's issuer.
+	AllowedAudiences []string `env:"ALLOWED_AUDIENCES" envSeparator:","`
 }
 
 type GiteaProvider struct {

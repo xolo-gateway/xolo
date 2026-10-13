@@ -41,6 +41,9 @@ type ProviderWithJWKS struct {
 	// the introspection path.
 	RequiredScope    string
 	RequiredAudience string
+	// AllowedAudiences, when not empty, restricts the ID tokens accepted by
+	// the oidctoken authenticator to these `aud` values.
+	AllowedAudiences []string
 }
 
 type Handler struct {
@@ -91,13 +94,14 @@ func (h *Handler) ProvidersWithJWKS() []oidctoken.Provider {
 	providers := make([]oidctoken.Provider, 0, len(h.providersWithJWKS))
 	for _, p := range h.providersWithJWKS {
 		providers = append(providers, oidctoken.Provider{
-			ID:           p.ID,
-			Label:        p.Label,
-			Icon:         p.Icon,
-			DiscoveryURL: p.DiscoveryURL,
-			Issuer:       p.Issuer,
-			JWKSURL:      p.JWKSURL,
-			ProvesIssuer: p.ProvesIssuer,
+			ID:               p.ID,
+			Label:            p.Label,
+			Icon:             p.Icon,
+			DiscoveryURL:     p.DiscoveryURL,
+			Issuer:           p.Issuer,
+			JWKSURL:          p.JWKSURL,
+			ProvesIssuer:     p.ProvesIssuer,
+			AllowedAudiences: p.AllowedAudiences,
 		})
 	}
 	return providers

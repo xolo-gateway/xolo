@@ -60,12 +60,7 @@ func NewHTTPServerFromConfig(ctx context.Context, conf *config.Config) (*http.Se
 	}
 	apiAuthenticators = append(apiAuthenticators, oidcAuthn)
 
-	authnMiddleware := authn.Middleware(
-		func(w gohttp.ResponseWriter, r *gohttp.Request) {
-			gohttp.Redirect(w, r, "/auth/oidc/login", gohttp.StatusSeeOther)
-		},
-		authenticators...,
-	)
+	authnMiddleware := authn.Middleware(oidcAuthn.LoginRedirect, authenticators...)
 
 	apiAuthnMiddleware := authn.Middleware(
 		func(w gohttp.ResponseWriter, r *gohttp.Request) {

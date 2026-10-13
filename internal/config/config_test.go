@@ -117,3 +117,22 @@ func TestValidate_SecretKey(t *testing.T) {
 		})
 	}
 }
+
+func TestParse_OIDCProviderAllowedAudiences(t *testing.T) {
+	t.Setenv("XOLO_SECRET_KEY", testSecretKey)
+	t.Setenv("XOLO_HTTP_AUTHN_OIDC_PROVIDERS", "dex")
+	t.Setenv("XOLO_HTTP_AUTHN_OIDC_PROVIDER_DEX_KEY", "xolo")
+	t.Setenv("XOLO_HTTP_AUTHN_OIDC_PROVIDER_DEX_SECRET", "secret")
+	t.Setenv("XOLO_HTTP_AUTHN_OIDC_PROVIDER_DEX_DISCOVERY_URL", "https://dex.example.com/dex/.well-known/openid-configuration")
+	t.Setenv("XOLO_HTTP_AUTHN_OIDC_PROVIDER_DEX_ALLOWED_AUDIENCES", " xolo, ,chat-demo ")
+
+	conf, err := Parse()
+	if err != nil {
+		t.Fatalf("Parse failed: %v", err)
+	}
+
+	got := conf.HTTP.Authn.OIDCProviders[0].AllowedAudiences
+	if len(got) != 2 || got[0] != "xolo" || got[1] != "chat-demo" {
+		t.Errorf("unexpected allowed audiences: %q", got)
+	}
+}

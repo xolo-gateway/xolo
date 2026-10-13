@@ -99,12 +99,14 @@ func (h *Handler) handleProviderCallback(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	// Honour a post-login redirect stored in the session (e.g. from the invite join flow).
+	// Honour a post-login redirect stored in the session (see LoginRedirect).
 	redirectTo := "/"
 	if sess, err := h.getSession(r); err == nil && sess != nil {
-		if next, ok := sess.Values["nextURL"].(string); ok && next != "" {
-			redirectTo = next
-			delete(sess.Values, "nextURL")
+		if next, ok := sess.Values[nextURLAttr].(string); ok {
+			if local, ok := localPath(next); ok {
+				redirectTo = local
+			}
+			delete(sess.Values, nextURLAttr)
 			_ = sess.Save(r, w)
 		}
 	}

@@ -53,6 +53,14 @@ Le champ `jwks_uri` n'est pas obligatoire : un IdP non conforme peut démarrer s
 
 Pour valider des jetons d'accès opaques côté API (introspection RFC 7662, ou UserInfo à défaut) plutôt que des ID Tokens OIDC autoportés, activez `XOLO_HTTP_AUTHN_OAUTH2TOKEN_ENABLED=true`.
 
+Un ID Token présenté à l'API (en-tête `Authorization: Bearer` ou cookie, `oidctoken`) est accepté par défaut quelle que soit son audience, pourvu qu'il soit signé par l'émetteur du fournisseur. Quand plusieurs applications partagent le même fournisseur, restreignez les audiences acceptées :
+
+```bash
+XOLO_HTTP_AUTHN_OIDC_PROVIDER_KEYCLOAK_ALLOWED_AUDIENCES=xolo,mon-frontend
+```
+
+Le claim `aud` du jeton doit alors contenir au moins une de ces valeurs, sinon le jeton est refusé (401). Si un jeton désigne une clé (`kid`) absente du JWKS en cache, Xolo recharge le JWKS une fois, au plus une fois par minute et par fournisseur, pour suivre une rotation de clés sans redémarrage.
+
 ### Fournisseur Gitea
 
 Le fournisseur Gitea est aligné sur les fournisseurs OIDC nommés dès que `XOLO_HTTP_AUTHN_PROVIDERS_GITEA_DISCOVERY_URL` est configuré : le document téléchargé doit alors contenir `issuer`, `authorization_endpoint` et `token_endpoint`. Si le document est inaccessible, mal formé ou incomplet, le serveur refuse de démarrer.
@@ -73,6 +81,8 @@ Comme pour les fournisseurs OIDC nommés, `jwks_uri` est optionnel : en son abse
 ### Sessions OIDC et déconnexion back-channel
 
 Une connexion interactive par un fournisseur OAuth2/OIDC ouvre une session enregistrée en base ; le cookie ne porte que son identifiant. Chaque requête vérifie la session par une simple lecture : un cookie copié ne survit pas à la déconnexion, et une session reste valide après un redémarrage et d'un réplica à l'autre, pourvu que tous partagent `XOLO_HTTP_SESSION_KEYS`. Une session expire au bout de `XOLO_HTTP_SESSION_COOKIE_MAX_AGE`. Les sessions expirées et les entrées devenues inutiles sont supprimées toutes les 10 minutes par chaque réplica.
+
+Un navigateur non authentifié qui demande une page de l'interface y revient après la connexion. Si un seul fournisseur interactif est configuré, il y est envoyé directement, sans page de choix : avec une session déjà ouverte chez le fournisseur, la connexion se fait sans interaction. Pour éviter une boucle si la connexion échoue, ce saut n'a lieu qu'une fois toutes les 30 secondes (cookie `xolo_auto_sign_in`) ; sinon la page de connexion s'affiche.
 
 Une connexion doit commencer chez Xolo (`/auth/oidc/providers/{fournisseur}`) et revenir sur le même navigateur dans les 15 minutes. Une connexion initiée par le fournisseur d'identité, ou un retour sans le cookie posé au départ, échoue avec `sign-in start missing` dans le journal ; l'utilisateur doit relancer la connexion depuis Xolo.
 

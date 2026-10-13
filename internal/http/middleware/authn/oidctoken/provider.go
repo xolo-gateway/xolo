@@ -11,6 +11,9 @@ type Provider struct {
 	// identity declared by provisioning.
 	ProvesIssuer bool
 	CookieNames  []string
+	// AllowedAudiences, when not empty, requires the token `aud` to contain at
+	// least one of these values. Empty accepts any audience.
+	AllowedAudiences []string
 }
 
 type JWKS struct {

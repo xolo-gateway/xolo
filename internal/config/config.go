@@ -73,6 +73,7 @@ func parseOIDCProviders() ([]NamedOIDCProvider, error) {
 		if legacy.Key == "" {
 			return nil, nil
 		}
+		legacy.AllowedAudiences = nonEmptyTrimmed(legacy.AllowedAudiences)
 		return []NamedOIDCProvider{{ID: "openid-connect", OIDCProvider: legacy}}, nil
 	}
 
@@ -87,10 +88,21 @@ func parseOIDCProviders() ([]NamedOIDCProvider, error) {
 		if err != nil {
 			return nil, errors.Wrapf(err, "could not parse OIDC provider %q", id)
 		}
+		pc.AllowedAudiences = nonEmptyTrimmed(pc.AllowedAudiences)
 		providers = append(providers, NamedOIDCProvider{ID: id, OIDCProvider: pc})
 	}
 
 	return providers, nil
+}
+
+func nonEmptyTrimmed(values []string) []string {
+	var out []string
+	for _, v := range values {
+		if v = strings.TrimSpace(v); v != "" {
+			out = append(out, v)
+		}
+	}
+	return out
 }
 
 // secretKeyBytes is the key length AES-GCM is used with throughout the

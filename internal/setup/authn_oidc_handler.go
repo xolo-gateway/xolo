@@ -503,6 +503,7 @@ func buildOIDCProvider(
 		ClientSecret:     secret,
 		RequiredScope:    np.RequiredScope,
 		RequiredAudience: np.RequiredAudience,
+		AllowedAudiences: np.AllowedAudiences,
 	}
 
 	return factory, provider, withJWKS, nil
