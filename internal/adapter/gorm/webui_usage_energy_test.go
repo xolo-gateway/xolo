@@ -42,8 +42,14 @@ func TestUsagePagesReuseTheEnergyEstimate(t *testing.T) {
 			nil, nil, nil, store, store, store, store, 100, 100,
 		).WithTeams(store))
 
-		rec := model.NewUsageRecord(f.owner.ID(), "", f.org.ID(), "", "p1", "m1", "gpt", "", 10, 0, 5, 0, "EUR", model.CostSourceProvider, "")
-		require.NoError(t, store.RecordUsage(context.Background(), rec))
+		ctx := context.Background()
+		provider := model.NewProvider(f.org.ID(), "Local", "openai", "", "k", "EUR")
+		require.NoError(t, store.CreateProvider(ctx, provider))
+		llm := model.NewLLMModel(provider.ID(), f.org.ID(), "gpt", "gpt", "", 0, 0)
+		llm.SetActiveParams(8_000_000_000)
+		require.NoError(t, store.CreateLLMModel(ctx, llm))
+		rec := model.NewUsageRecord(f.owner.ID(), "", f.org.ID(), "", provider.ID(), llm.ID(), "gpt", "", 10, 0, 5, 0, "EUR", model.CostSourceProvider, "")
+		require.NoError(t, store.RecordUsage(ctx, rec))
 
 		// The second pass comes over a second later: the start of the range has
 		// moved, the cached estimate must still answer.
@@ -58,13 +64,20 @@ func TestUsagePagesReuseTheEnergyEstimate(t *testing.T) {
 			}
 		}
 		require.Equal(t, int32(len(paths)), usage.sizes.Load())
+		// The cached figures come from the recorded request, not an empty period.
+		cached := cache.EnergyEstimateCache.Values()
+		require.Len(t, cached, len(paths))
+		for _, totals := range cached {
+			require.Positive(t, totals.TotalEnergyWh)
+			require.Positive(t, totals.TotalCO2GramsMid)
+		}
 
-		// Spellings of one period, or one set of owners in another order, share
-		// the estimate.
+		// Spellings of one period, or one set of owners in another order or
+		// repeated, share the estimate.
 		owner, lead := string(f.owner.ID()), string(f.lead.ID())
 		for _, same := range [][]string{
 			{"/usage", "/usage?range=7d", "/usage?range=unknown"},
-			{"/orgs/acme/usage?owner=" + owner + "&owner=" + lead, "/orgs/acme/usage?owner=" + lead + "," + owner},
+			{"/orgs/acme/usage?owner=" + owner + "&owner=" + lead, "/orgs/acme/usage?owner=" + lead + "," + owner, "/orgs/acme/usage?owner=" + owner + "&owner=" + lead + "," + owner},
 		} {
 			before := usage.sizes.Load()
 			for _, path := range same {

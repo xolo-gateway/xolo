@@ -209,9 +209,9 @@ func (h *Handler) getUsagePage(w http.ResponseWriter, r *http.Request) {
 
 	// Cache key for energy totals (includes user and app filter for uniqueness). It
 	// names the range, not its start: since moves with the clock, and a key built
-	// from it never hit the cache. The owners are sorted: their order in the
-	// query string selects nothing.
-	energyCacheKey := fmt.Sprintf("org-usage:%s:%s:%v:%v:%s", orgID, period, slices.Sorted(slices.Values(userIDs)), slices.Sorted(slices.Values(appIDs)), scope.teamID())
+	// from it never hit the cache. The owners are sorted and deduplicated: their
+	// order and repetition in the query string select nothing.
+	energyCacheKey := fmt.Sprintf("org-usage:%s:%s:%v:%v:%s", orgID, period, slices.Compact(slices.Sorted(slices.Values(userIDs))), slices.Compact(slices.Sorted(slices.Values(appIDs))), scope.teamID())
 
 	// Filter matching the whole selected period, used by every chart aggregation.
 	chartFilter := port.UsageFilter{
