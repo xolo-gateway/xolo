@@ -307,8 +307,10 @@ func (p *Plugin) PreRequest(ctx context.Context, in *proto.PreRequestInput) (*pr
 		// normalization matches the session's, so the two sides count the same
 		// unit: "Marc Durand" and "marc durand" are one value on both.
 		leakValues = map[string]bool{}
-		// neutralizedPlaceholders compte les placeholders trouvés dans le
-		// contenu reçu et rendus inertes avant l'anonymisation.
+		// neutralizedPlaceholders compte les placeholders du nœud trouvés
+		// dans le contenu reçu et rendus inertes. Un contenu dont
+		// l'anonymisation échoue part tel quel, placeholders compris : il
+		// relève de anonymizeFailures, pas de ce compte.
 		neutralizedPlaceholders int
 	)
 
@@ -365,7 +367,13 @@ func (p *Plugin) PreRequest(ctx context.Context, in *proto.PreRequestInput) (*pr
 		if err != nil {
 			return nil, err
 		}
-		result.Text = masked.Unmask(result.Text)
+		var missing int
+		result.Text, missing = masked.Unmask(result.Text)
+		if missing > 0 {
+			slog.WarnContext(ctx, "pseudonymizer: the anonymizer rewrote placeholders of another node, which cannot restore them",
+				slog.Int("placeholders", missing),
+			)
+		}
 		neutralizedPlaceholders += masked.Neutralized
 		return result, nil
 	}
@@ -775,9 +783,12 @@ func (p *Plugin) PreRequest(ctx context.Context, in *proto.PreRequestInput) (*pr
 		OutputsJson:          outputsJSON,
 		NodeState:            stateJSON,
 		// With nothing anonymized and no attachment removed, PostResponse has
-		// nothing to restore and returns the response untouched. Saying so lets
-		// the host stream the response live instead of buffering it whole.
-		NoResponseRewrite: len(session.Mapping) == 0 && len(removedParts) == 0,
+		// nothing to restore. Saying so lets the host stream the response live
+		// instead of buffering it whole, at the cost of skipping PostResponse:
+		// so only when the model saw no placeholder of the node, live or inert,
+		// and has no form to invent one from.
+		NoResponseRewrite: len(session.Mapping) == 0 && len(removedParts) == 0 &&
+			!mentionsNonce(string(modifiedMessagesJSON), session.Nonce()),
 	}, nil
 }
 

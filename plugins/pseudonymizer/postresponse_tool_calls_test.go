@@ -9,7 +9,9 @@ import (
 	proto "github.com/xolo-gateway/xolo/pkg/pluginsdk/proto"
 )
 
-// postResponseWithToolCalls runs PostResponse over a known mapping.
+// postResponseWithToolCalls runs PostResponse over a known mapping. The state
+// carries no nonce, so the node owns no placeholder: these tests cover
+// restoration only, neutralization is in placeholder_test.go.
 func postResponseWithToolCalls(t *testing.T, mapping map[string]string, content, toolCallsJSON string) *proto.PostResponseOutput {
 	t.Helper()
 

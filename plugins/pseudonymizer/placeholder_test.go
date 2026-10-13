@@ -30,13 +30,15 @@ func TestNeutralizePlaceholders(t *testing.T) {
 		in, want string
 		count    int
 	}{
-		"own":             {in: "le ⟦LOCATION_15_95881f⟧ du site", want: "le [[LOCATION_15_95881f]] du site", count: 1},
-		"several":         {in: "⟦A_1_95881f⟧ et ⟦B_2_95881f⟧", want: "[[A_1_95881f]] et [[B_2_95881f]]", count: 2},
-		"another node":    {in: "⟦PERSON_1_a57a4e⟧", want: "⟦PERSON_1_a57a4e⟧"},
-		"hashed":          {in: "⟦PERSON_3fa9c1d2e4b5⟧", want: "⟦PERSON_3fa9c1d2e4b5⟧"},
-		"redacted":        {in: "⟦API_KEY_REDACTED⟧", want: "⟦API_KEY_REDACTED⟧"},
-		"lone delimiters": {in: "⟦ et ⟧ ne sont pas un jeton", want: "⟦ et ⟧ ne sont pas un jeton"},
-		"not a token":     {in: "⟦deux mots_95881f⟧", want: "⟦deux mots_95881f⟧"},
+		"own":          {in: "le ⟦LOCATION_15_95881f⟧ du site", want: "le [[LOCATION_15_95881f]] du site", count: 1},
+		"several":      {in: "⟦A_1_95881f⟧ et ⟦B_2_95881f⟧", want: "[[A_1_95881f]] et [[B_2_95881f]]", count: 2},
+		"another node": {in: "⟦PERSON_1_a57a4e⟧", want: "⟦PERSON_1_a57a4e⟧"},
+		"hashed":       {in: "⟦PERSON_3fa9c1d2e4b5⟧", want: "⟦PERSON_3fa9c1d2e4b5⟧"},
+		// Without a key, go-anon truncates a hash to six hexadecimal digits.
+		"hashed like the nonce": {in: "⟦PERSON_95881f⟧", want: "⟦PERSON_95881f⟧"},
+		"redacted":              {in: "⟦API_KEY_REDACTED⟧", want: "⟦API_KEY_REDACTED⟧"},
+		"lone delimiters":       {in: "⟦ et ⟧ ne sont pas un jeton", want: "⟦ et ⟧ ne sont pas un jeton"},
+		"not a token":           {in: "⟦deux mots_95881f⟧", want: "⟦deux mots_95881f⟧"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			got, count := neutralizePlaceholders(tc.in, own)
@@ -65,8 +67,19 @@ func TestMaskPlaceholders(t *testing.T) {
 		t.Errorf("neutralized = %d, want 1", masked.Neutralized)
 	}
 	want := "[[LOCATION_15_95881f]], ⟦PERSON_1_a57a4e⟧, ⟦API_KEY_REDACTED⟧ et ⟦PERSON_1_a57a4e⟧"
-	if got := masked.Unmask(masked.Text); got != want {
-		t.Errorf("unmasked = %q, want %q", got, want)
+	if got, missing := masked.Unmask(masked.Text); got != want || missing != 0 {
+		t.Errorf("unmasked = %q, %d missing; want %q, 0 missing", got, missing, want)
+	}
+}
+
+// An anonymizer that rewrites the inert form of another node's placeholder
+// loses it for that node: Unmask says so rather than failing silently.
+func TestMaskPlaceholders_UnmaskReportsWhatTheAnonymizerRewrote(t *testing.T) {
+	masked := maskPlaceholders("à ⟦PERSON_1_a57a4e⟧", ownedBy(testNonce))
+
+	got, missing := masked.Unmask("à ⟦MISC_1_95881f⟧")
+	if got != "à ⟦MISC_1_95881f⟧" || missing != 1 {
+		t.Errorf("unmasked = %q, %d missing; want the text untouched and 1 missing", got, missing)
 	}
 }
 
@@ -421,6 +434,31 @@ func TestMaskPlaceholders_CoversEveryFormGoAnonWrites(t *testing.T) {
 				} else if err != nil {
 					t.Errorf("anonymize masked text: %v", err)
 				}
+			}
+		})
+	}
+}
+
+// Skipping PostResponse lets the host stream the response, and also skips the
+// neutralization of invented placeholders: only when the model saw no
+// placeholder of the node, live or inert, to imitate.
+func TestPreRequest_NoResponseRewriteOnlyWhenTheModelSawNoPlaceholder(t *testing.T) {
+	nonce := nodeNonce("node-1")
+
+	for name, tc := range map[string]struct {
+		content string
+		want    bool
+	}{
+		"nothing to pseudonymize":       {content: "Bonjour, quel temps fait-il ?", want: true},
+		"another node's placeholder":    {content: "Bonjour ⟦PERSON_1_a57a4e⟧", want: true},
+		"live placeholder of the node":  {content: "Le ⟦LOCATION_15_" + nonce + "⟧ convient.", want: false},
+		"inert placeholder of the node": {content: "Le [[LOCATION_15_" + nonce + "]] convient.", want: false},
+		"an entity":                     {content: "Écrire à " + agentBlockSecret, want: false},
+	} {
+		t.Run(name, func(t *testing.T) {
+			out, _ := preRequestOnNode(t, "node-1", []map[string]any{{"role": "user", "content": tc.content}})
+			if out.NoResponseRewrite != tc.want {
+				t.Errorf("NoResponseRewrite = %v, want %v", out.NoResponseRewrite, tc.want)
 			}
 		})
 	}
