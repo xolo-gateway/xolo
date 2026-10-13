@@ -2,8 +2,11 @@ package setup
 
 import (
 	"context"
+	"log"
 	"log/slog"
+	"os"
 	"strings"
+	"time"
 
 	"github.com/ncruces/go-sqlite3/gormlite"
 	"github.com/pkg/errors"
@@ -62,8 +65,16 @@ var getGormDatabaseFromConfig = createFromConfigOnce(func(ctx context.Context, c
 		logLevel = logger.Error
 	}
 
+	// A lookup that finds nothing is an answer, not an error: the stores turn it
+	// into port.ErrNotFound. Logging it buried the slow queries under hundreds
+	// of lines an hour.
 	db, err := gorm.Open(dialector, &gorm.Config{
-		Logger: logger.Default.LogMode(logLevel),
+		Logger: logger.New(log.New(os.Stdout, "\r\n", log.LstdFlags), logger.Config{
+			SlowThreshold:             200 * time.Millisecond,
+			LogLevel:                  logLevel,
+			IgnoreRecordNotFoundError: true,
+			Colorful:                  true,
+		}),
 	})
 	if err != nil {
 		return nil, errors.WithStack(err)
