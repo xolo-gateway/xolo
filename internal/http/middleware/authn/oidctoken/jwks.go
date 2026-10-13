@@ -17,6 +17,10 @@ const jwksCacheDuration = 1 * time.Hour
 // ID, so tokens with forged key IDs cannot hammer the identity provider.
 const jwksRefetchInterval = 1 * time.Minute
 
+// jwksRefetchRetryDelay is the wait after a failed forced refetch: a failure
+// must not block picking up a rotated key for a whole jwksRefetchInterval.
+const jwksRefetchRetryDelay = 5 * time.Second
+
 type cachedJWKS struct {
 	JWKS      JWKS
 	ExpiresAt time.Time
@@ -78,6 +82,15 @@ func (c *jwksCache) allowRefetch(jwksURL string) bool {
 	return true
 }
 
+// refetchFailed lets a forced refetch of jwksURL happen again after
+// jwksRefetchRetryDelay instead of jwksRefetchInterval.
+func (c *jwksCache) refetchFailed(jwksURL string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	c.refetched[jwksURL] = time.Now().Add(jwksRefetchRetryDelay - jwksRefetchInterval)
+}
+
 func fetchJWKS(ctx context.Context, jwksURL string) (JWKS, error) {
 	if cached, ok := cache.Get(jwksURL); ok {
 		return cached, nil
@@ -96,6 +109,7 @@ func refetchJWKS(ctx context.Context, jwksURL string) (JWKS, bool, error) {
 
 	jwks, err := downloadJWKS(ctx, jwksURL)
 	if err != nil {
+		cache.refetchFailed(jwksURL)
 		return JWKS{}, false, err
 	}
 	return jwks, true, nil

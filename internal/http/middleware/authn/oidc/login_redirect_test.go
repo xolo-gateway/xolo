@@ -76,6 +76,7 @@ func TestLoginRedirectRemembersOnlyPageNavigations(t *testing.T) {
 			}
 			rec := httptest.NewRecorder()
 			h.LoginRedirect(rec, r)
+			require.Empty(t, rec.Result().Cookies(), "a hit that stores nothing saved the session")
 			b.keep(rec)
 			_, ok := storedNextURL(t, h, b)
 			require.False(t, ok)
@@ -114,4 +115,21 @@ func TestLoginRedirectShowsChoiceAfterLogout(t *testing.T) {
 	h.LoginRedirect(rec, b.request(http.MethodGet, "/"))
 	require.Equal(t, http.StatusSeeOther, rec.Code)
 	require.Equal(t, "/auth/oidc/login", rec.Header().Get("Location"))
+}
+
+// A previously stored path that the current hit does not replace is removed,
+// which needs the session to be saved.
+func TestLoginRedirectForgetsPreviousPath(t *testing.T) {
+	h := newLoginRedirectHandler(Provider{ID: "dex"}, Provider{ID: "google"})
+	b := newBrowser()
+
+	rec := httptest.NewRecorder()
+	h.LoginRedirect(rec, b.request(http.MethodGet, "/orgs/home/"))
+	b.keep(rec)
+
+	rec = httptest.NewRecorder()
+	h.LoginRedirect(rec, b.request(http.MethodGet, "/"))
+	b.keep(rec)
+	_, ok := storedNextURL(t, h, b)
+	require.False(t, ok)
 }

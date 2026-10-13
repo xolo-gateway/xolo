@@ -44,6 +44,7 @@ func (h *Handler) LoginRedirect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	previous, hadNext := sess.Values[nextURLAttr]
 	delete(sess.Values, nextURLAttr)
 	if r.Method == http.MethodGet && r.Header.Get("HX-Request") == "" {
 		if next, ok := localPath(r.URL.RequestURI()); ok && next != "/" {
@@ -51,10 +52,13 @@ func (h *Handler) LoginRedirect(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	if err := sess.Save(r, w); err != nil {
-		slog.ErrorContext(r.Context(), "could not save sign-in redirect", slogx.Error(err))
-		http.Redirect(w, r, target, http.StatusSeeOther)
-		return
+	// An unauthenticated hit that stores nothing leaves the session alone.
+	if current, hasNext := sess.Values[nextURLAttr]; hasNext != hadNext || current != previous {
+		if err := sess.Save(r, w); err != nil {
+			slog.ErrorContext(r.Context(), "could not save sign-in redirect", slogx.Error(err))
+			http.Redirect(w, r, target, http.StatusSeeOther)
+			return
+		}
 	}
 
 	if len(h.providers) == 1 && !hasCookie(r, autoSignInCookie) && !hasCookie(r, signedOutCookie) {

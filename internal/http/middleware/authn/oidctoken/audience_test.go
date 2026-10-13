@@ -5,6 +5,7 @@ import (
 	"crypto/rsa"
 	"encoding/base64"
 	"encoding/json"
+	"io"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
@@ -150,5 +151,49 @@ func TestValidateTokenDoesNotRefetchForForeignIssuer(t *testing.T) {
 	}
 	if got := s.downloads.Load(); got != 1 {
 		t.Fatalf("downloads = %d, want 1", got)
+	}
+}
+
+// A failed refetch does not hold the slot for a whole jwksRefetchInterval: a
+// rotated key is picked up once jwksRefetchRetryDelay has passed.
+func TestValidateTokenRetriesFailedJWKSRefetch(t *testing.T) {
+	s, jwksURL := newRotatingSigner(t)
+	var failing atomic.Bool
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if failing.Load() {
+			http.Error(w, "unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		resp, err := http.Get(jwksURL)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadGateway)
+			return
+		}
+		defer resp.Body.Close()
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.Copy(w, resp.Body)
+	}))
+	t.Cleanup(srv.Close)
+	h := NewHandler(nil)
+	provider := Provider{ID: "dex", Issuer: testIssuer, JWKSURL: srv.URL}
+
+	if _, err := h.validateToken(t.Context(), s.sign(t, testIssuer), provider); err != nil {
+		t.Fatal(err)
+	}
+
+	s.rotate(t, "k2")
+	failing.Store(true)
+	if _, err := h.validateToken(t.Context(), s.sign(t, testIssuer), provider); err != errInvalidToken {
+		t.Fatalf("expected errInvalidToken while the provider fails, got %v", err)
+	}
+
+	// Let jwksRefetchRetryDelay pass.
+	cache.mu.Lock()
+	cache.refetched[srv.URL] = cache.refetched[srv.URL].Add(-jwksRefetchRetryDelay)
+	cache.mu.Unlock()
+
+	failing.Store(false)
+	if _, err := h.validateToken(t.Context(), s.sign(t, testIssuer), provider); err != nil {
+		t.Fatalf("rotated key not picked up after a failed refetch: %v", err)
 	}
 }
