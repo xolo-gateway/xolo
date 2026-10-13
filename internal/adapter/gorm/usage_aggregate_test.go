@@ -221,3 +221,43 @@ func scenarioAggregatePlanTokensByUser(t *testing.T, store *xologorm.Store) {
 		t.Errorf("u2: expected 2 plan tokens, got %d", got["u2"])
 	}
 }
+
+func TestAggregateRequestSizes(t *testing.T) {
+	eachBackend(t, scenarioAggregateRequestSizes)
+}
+
+func scenarioAggregateRequestSizes(t *testing.T, store *xologorm.Store) {
+	ctx := context.Background()
+	orgID := model.OrgID("org-1")
+
+	// Two requests of the same size, one larger, one by another user and one
+	// without a model.
+	recordUsage(t, store, "u1", "p1", "m-gpt", "gpt-4", "", "USD", 10, 40, 60, false)
+	recordUsage(t, store, "u1", "p1", "m-gpt", "gpt-4", "", "USD", 10, 40, 60, true)
+	recordUsage(t, store, "u1", "p1", "m-gpt", "gpt-4", "", "USD", 10, 400, 60, false)
+	recordUsage(t, store, "u2", "p1", "m-gpt", "gpt-4", "", "USD", 10, 40, 60, false)
+	recordUsage(t, store, "u1", "p1", "", "gpt-4", "", "USD", 10, 40, 60, false)
+
+	since := time.Now().Add(-time.Hour)
+	u1 := model.UserID("u1")
+	rows, err := store.AggregateRequestSizes(ctx, port.UsageFilter{OrgID: &orgID, UserID: &u1, Since: &since})
+	if err != nil {
+		t.Fatalf("AggregateRequestSizes: %v", err)
+	}
+	got := make(map[port.RequestSize]bool)
+	for _, r := range rows {
+		got[r] = true
+	}
+	want := []port.RequestSize{
+		{ModelID: "m-gpt", PromptTokens: 40, CompletionTokens: 60, Requests: 2},
+		{ModelID: "m-gpt", PromptTokens: 400, CompletionTokens: 60, Requests: 1},
+	}
+	if len(rows) != len(want) {
+		t.Fatalf("expected %d rows, got %+v", len(want), rows)
+	}
+	for _, w := range want {
+		if !got[w] {
+			t.Errorf("missing %+v in %+v", w, rows)
+		}
+	}
+}

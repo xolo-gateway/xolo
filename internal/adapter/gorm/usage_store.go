@@ -444,6 +444,39 @@ func (s *Store) AggregatePlanTokensByUser(ctx context.Context, filter port.Usage
 	return result, nil
 }
 
+// AggregateRequestSizes implements port.UsageStore.
+func (s *Store) AggregateRequestSizes(ctx context.Context, filter port.UsageFilter) ([]port.RequestSize, error) {
+	var rows []struct {
+		ModelID          string
+		PromptTokens     int64
+		CompletionTokens int64
+		Requests         int64
+	}
+
+	err := s.withRetry(ctx, false, func(ctx context.Context, db *gorm.DB) error {
+		query := db.Model(&UsageRecord{}).
+			Select("model_id as model_id, prompt_tokens as prompt_tokens, completion_tokens as completion_tokens, COUNT(*) as requests").
+			Where("model_id <> ''")
+		query = applyUsageFilter(query, filter)
+		query = query.Group("model_id, prompt_tokens, completion_tokens")
+		return errors.WithStack(query.Scan(&rows).Error)
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]port.RequestSize, 0, len(rows))
+	for _, r := range rows {
+		result = append(result, port.RequestSize{
+			ModelID:          model.LLMModelID(r.ModelID),
+			PromptTokens:     r.PromptTokens,
+			CompletionTokens: r.CompletionTokens,
+			Requests:         r.Requests,
+		})
+	}
+	return result, nil
+}
+
 // EarliestPlanUsageSince implements port.UsageStore.
 func (s *Store) EarliestPlanUsageSince(ctx context.Context, orgID model.OrgID, providerID model.ProviderID, since time.Time) (time.Time, error) {
 	var row struct {

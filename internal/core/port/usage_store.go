@@ -77,6 +77,18 @@ type UsageStore interface {
 	// AggregatePlanTokensByUser returns subscription-covered (plan_covered=true) token
 	// sub-totals grouped by user, honoring the filter.
 	AggregatePlanTokensByUser(ctx context.Context, filter UsageFilter) ([]UserTokenUsage, error)
+	// AggregateRequestSizes counts the requests matching the filter by model and
+	// token counts. The energy estimate is non-linear per request: these rows
+	// give it every request without loading the records of the period.
+	AggregateRequestSizes(ctx context.Context, filter UsageFilter) ([]RequestSize, error)
+}
+
+// RequestSize counts the requests made to a model with the same token counts.
+type RequestSize struct {
+	ModelID          model.LLMModelID
+	PromptTokens     int64
+	CompletionTokens int64
+	Requests         int64
 }
 
 // UsageDimension identifies a grouping axis for AggregateCostByDimension.
