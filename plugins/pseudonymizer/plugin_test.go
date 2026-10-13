@@ -192,13 +192,59 @@ type captureHost struct {
 	pluginsdk.HostClient
 	mu    sync.Mutex
 	event pluginsdk.Event
+	// events keeps every event, for a request that emits several.
+	events []pluginsdk.Event
 }
 
 func (c *captureHost) EmitEvent(_ context.Context, e pluginsdk.Event) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.event = e
+	c.events = append(c.events, e)
 	return nil
+}
+
+// eventsOfType returns the events of type emitted so far.
+func (c *captureHost) eventsOfType(typ string) []pluginsdk.Event {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	var out []pluginsdk.Event
+	for _, e := range c.events {
+		if e.Type == typ {
+			out = append(out, e)
+		}
+	}
+	return out
+}
+
+// waitForEventOfType polls until an event of type turns up.
+func (c *captureHost) waitForEventOfType(t *testing.T, typ string) pluginsdk.Event {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if events := c.eventsOfType(typ); len(events) > 0 {
+			return events[0]
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("no %s event emitted", typ)
+	return pluginsdk.Event{}
+}
+
+// assertNoEventOfType waits out the window, see assertNoEvent, and checks at
+// least once: a zero window checks what an earlier wait let through.
+func (c *captureHost) assertNoEventOfType(t *testing.T, typ string, window time.Duration) {
+	t.Helper()
+	deadline := time.Now().Add(window)
+	for {
+		if events := c.eventsOfType(typ); len(events) > 0 {
+			t.Fatalf("a %s event was emitted: %v", typ, events[0].Attributes)
+		}
+		if !time.Now().Before(deadline) {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
 }
 
 func (c *captureHost) waitForEvent(t *testing.T) pluginsdk.Event {

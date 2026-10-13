@@ -83,7 +83,7 @@ func TestDeanonymizeToolCalls_Shapes(t *testing.T) {
 		"malformed JSON": {in: "not json", mapping: mapping, wantErr: true},
 	} {
 		t.Run(name, func(t *testing.T) {
-			got, err := deanonymizeToolCalls(tc.in, tc.mapping)
+			got, err := deanonymizeToolCalls(tc.in, func(s string) string { return deanonymize(s, tc.mapping) })
 			if tc.wantErr != (err != nil) {
 				t.Fatalf("err = %v, wantErr = %v", err, tc.wantErr)
 			}

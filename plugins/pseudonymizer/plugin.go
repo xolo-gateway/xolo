@@ -168,8 +168,8 @@ func passthroughOutput() *proto.PreRequestOutput {
 // conversation keeps the prefix it sent on the previous turn.
 //
 // A derived nonce does not weaken the protection against injected
-// placeholders: go-anon refuses any ⟦…⟧ already present in the source text,
-// whatever its nonce. It is predictable from the org, user and node IDs and
+// placeholders: any ⟦…⟧ already present in the content is neutralized before
+// anonymization, whatever its nonce, so nothing restores it. It is predictable from the org, user and node IDs and
 // the same across a sender's conversations, which tells the provider nothing
 // it does not already know from the API key the request comes with.
 func newSession(ctx context.Context, reqCtx *proto.RequestContext) *anonymizer.Session {
@@ -307,6 +307,9 @@ func (p *Plugin) PreRequest(ctx context.Context, in *proto.PreRequestInput) (*pr
 		// normalization matches the session's, so the two sides count the same
 		// unit: "Marc Durand" and "marc durand" are one value on both.
 		leakValues = map[string]bool{}
+		// neutralizedPlaceholders compte les placeholders trouvés dans le
+		// contenu reçu et rendus inertes avant l'anonymisation.
+		neutralizedPlaceholders int
 	)
 
 	// detectKept expose la détection en lecture seule sur laquelle s'appuient les
@@ -347,11 +350,29 @@ func (p *Plugin) PreRequest(ctx context.Context, in *proto.PreRequestInput) (*pr
 		}
 	}
 
-	// anonymizeText is the one entry point to the anonymizer for this request:
-	// it shares the session, so a value always gets the same placeholder, and
-	// counts the entities it finds for the event.
-	anonymizeText := func(s string) (string, error) {
+	// anonymize is the one entry point to the anonymizer for this request: it
+	// shares the session, so a value always gets the same placeholder.
+	//
+	// A placeholder already in the content is neutralized first. The client
+	// only ever sees restored text, so one found here is an artifact: a
+	// placeholder the model invented on an earlier turn and the client kept
+	// in its history, or an attempt to have one restored. go-anon refuses
+	// such a text, and a refused content leaves in clear: one invented
+	// placeholder would switch pseudonymization off for the rest of the
+	// conversation (#113).
+	anonymize := func(s string) (*anonymizer.Result, error) {
+		s, neutralized := neutralizePlaceholders(s, nil)
 		result, err := anon.Anonymize(s, append(anonymOpts, anonymizer.WithSession(session))...)
+		if err != nil {
+			return nil, err
+		}
+		neutralizedPlaceholders += neutralized
+		return result, nil
+	}
+
+	// anonymizeText also counts the entities it finds for the event.
+	anonymizeText := func(s string) (string, error) {
+		result, err := anonymize(s)
 		if err != nil {
 			return "", err
 		}
@@ -392,7 +413,7 @@ func (p *Plugin) PreRequest(ctx context.Context, in *proto.PreRequestInput) (*pr
 		}
 		switch c := content.(type) {
 		case string:
-			result, err := anon.Anonymize(c, append(anonymOpts, anonymizer.WithSession(session))...)
+			result, err := anonymize(c)
 			if err != nil {
 				if out := handleVerificationError(in, err, cfg, p.getHostClient()); out != nil {
 					return out, nil
@@ -422,7 +443,7 @@ func (p *Plugin) PreRequest(ctx context.Context, in *proto.PreRequestInput) (*pr
 					// traffic to the catch-all, forwarded in clear when it is
 					// plainly rewritable.
 					text, _ := partMap["text"].(string)
-					result, err := anon.Anonymize(text, append(anonymOpts, anonymizer.WithSession(session))...)
+					result, err := anonymize(text)
 					if err != nil {
 						if out := handleVerificationError(in, err, cfg, p.getHostClient()); out != nil {
 							return out, nil
@@ -551,7 +572,7 @@ func (p *Plugin) PreRequest(ctx context.Context, in *proto.PreRequestInput) (*pr
 						continue
 					}
 
-					result, err := anon.Anonymize(text, append(anonymOpts, anonymizer.WithSession(session))...)
+					result, err := anonymize(text)
 					if err != nil {
 						if out := handleVerificationError(in, err, cfg, p.getHostClient()); out != nil {
 							return out, nil
@@ -730,6 +751,23 @@ func (p *Plugin) PreRequest(ctx context.Context, in *proto.PreRequestInput) (*pr
 		})
 	}
 
+	// Informational: the invention was reported on the turn that produced it,
+	// and the client sends its history back on every turn.
+	if neutralizedPlaceholders > 0 {
+		p.emitEvent(pluginsdk.Event{
+			PluginName: "pseudonymizer",
+			OrgID:      in.GetCtx().GetOrgId(),
+			UserID:     in.GetCtx().GetUserId(),
+			Type:       eventPlaceholdersNeutralized,
+			Severity:   "info",
+			Message:    fmt.Sprintf("%d placeholder(s) reçu(s) dans la requête rendu(s) inerte(s) avant pseudonymisation", neutralizedPlaceholders),
+			Attributes: map[string]string{
+				"direction":    "request",
+				"placeholders": strconv.Itoa(neutralizedPlaceholders),
+			},
+		})
+	}
+
 	return &proto.PreRequestOutput{
 		Allowed:              true,
 		ModifiedMessagesJson: string(modifiedMessagesJSON),
@@ -752,7 +790,21 @@ func (p *Plugin) PostResponse(_ context.Context, in *proto.PostResponseInput) (*
 		return &proto.PostResponseOutput{}, nil
 	}
 
-	restored := deanonymize(in.ResponseContent, state.Mapping)
+	// restore puts the original values back, then neutralizes the
+	// placeholders left over. The mapping holds every placeholder the
+	// request carried, so a leftover is one the model made up, typically
+	// in place of a common noun once it has seen many of them. Left as is,
+	// it reaches the client verbatim and comes back in the history of the
+	// next turn. The marker of a redacted secret is left alone: nothing
+	// restores it, by design, and the model repeating it invented nothing.
+	invented := 0
+	restore := func(s string) string {
+		restored, n := neutralizePlaceholders(deanonymize(s, state.Mapping), isRedactedMarker)
+		invented += n
+		return restored
+	}
+
+	restored := restore(in.ResponseContent)
 
 	slog.Debug("pseudonymizer: deanonymization done",
 		slog.Int("entities", len(state.Mapping)),
@@ -768,12 +820,27 @@ func (p *Plugin) PostResponse(_ context.Context, in *proto.PostResponseInput) (*
 	// calls from what it read — Read(path="/home/⟦PERSON_1⟧/notes.md"). Left
 	// alone, the placeholder reaches the client, which runs the call against a
 	// path that does not exist.
-	restoredToolCalls, err := deanonymizeToolCalls(in.ResponseToolCallsJson, state.Mapping)
+	restoredToolCalls, err := deanonymizeToolCalls(in.ResponseToolCallsJson, restore)
 	if err != nil {
 		slog.Warn("pseudonymizer: could not restore the response tool calls",
 			slog.Any("error", err),
 		)
 		restoredToolCalls = ""
+	}
+
+	if invented > 0 {
+		p.emitEvent(pluginsdk.Event{
+			PluginName: "pseudonymizer",
+			OrgID:      in.GetCtx().GetOrgId(),
+			UserID:     in.GetCtx().GetUserId(),
+			Type:       eventPlaceholdersNeutralized,
+			Severity:   "warning",
+			Message:    fmt.Sprintf("%d placeholder(s) inventé(s) par le modèle rendu(s) inerte(s) dans la réponse", invented),
+			Attributes: map[string]string{
+				"direction":    "response",
+				"placeholders": strconv.Itoa(invented),
+			},
+		})
 	}
 
 	return &proto.PostResponseOutput{
@@ -782,14 +849,14 @@ func (p *Plugin) PostResponse(_ context.Context, in *proto.PostResponseInput) (*
 	}, nil
 }
 
-// deanonymizeToolCalls restores the placeholders inside the arguments of the
-// response tool calls, returning the rewritten JSON array or an empty string
-// when there was nothing to restore.
+// deanonymizeToolCalls applies restore to the arguments of the response tool
+// calls, returning the rewritten JSON array or an empty string when there was
+// nothing to restore.
 //
 // Only `arguments` is touched: the id and the name of a call pair it with its
 // result, exactly as on the request side.
-func deanonymizeToolCalls(toolCallsJSON string, mapping map[string]string) (string, error) {
-	if toolCallsJSON == "" || len(mapping) == 0 {
+func deanonymizeToolCalls(toolCallsJSON string, restore func(string) string) (string, error) {
+	if toolCallsJSON == "" {
 		return "", nil
 	}
 
@@ -805,7 +872,7 @@ func deanonymizeToolCalls(toolCallsJSON string, mapping map[string]string) (stri
 			if args == "" {
 				continue
 			}
-			if restored := deanonymizeArguments(args, mapping); restored != args {
+			if restored := deanonymizeArguments(args, restore); restored != args {
 				call["arguments"] = restored
 				changed = true
 			}
@@ -816,7 +883,7 @@ func deanonymizeToolCalls(toolCallsJSON string, mapping map[string]string) (stri
 			// object is the other reasonable reading of the field and skipping
 			// it would leave placeholders in a call nobody can see went wrong.
 			restored, err := rewriteLeaves(args, func(s string) (string, error) {
-				return deanonymize(s, mapping), nil
+				return restore(s), nil
 			})
 			if err != nil {
 				continue
@@ -837,7 +904,7 @@ func deanonymizeToolCalls(toolCallsJSON string, mapping map[string]string) (stri
 	return encodeToolJSON(calls)
 }
 
-// deanonymizeArguments restores the placeholders inside one call's arguments.
+// deanonymizeArguments applies restore to one call's arguments.
 //
 // The arguments are a JSON document, so the substitution happens on the decoded
 // values and the document is re-encoded around them. Replacing the text of the
@@ -848,15 +915,15 @@ func deanonymizeToolCalls(toolCallsJSON string, mapping map[string]string) (stri
 // Arguments that are not valid JSON fall back to the plain substitution:
 // nothing can be lost that way, and a provider is free to send something else
 // there.
-func deanonymizeArguments(args string, mapping map[string]string) string {
+func deanonymizeArguments(args string, restore func(string) string) string {
 	restored, err := rewriteToolArguments(args, func(s string) (string, error) {
-		return deanonymize(s, mapping), nil
+		return restore(s), nil
 	})
 	if err != nil {
 		// The rewrite itself never fails here, so this is the encoder giving
 		// up on a value it cannot represent. Plain substitution is the answer
 		// that loses the least.
-		return deanonymize(args, mapping)
+		return restore(args)
 	}
 	return restored
 }
