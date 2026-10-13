@@ -148,6 +148,30 @@ func TestPostResponse_NeutralizesInventedPlaceholdersInToolCalls(t *testing.T) {
 	}
 }
 
+// A response can carry inventions while the request anonymized nothing the
+// model echoes back: the mapping is empty, the node's nonce is still known.
+// The text and the tool calls add up in one event.
+func TestPostResponse_NeutralizesInventionsWithAnEmptyMapping(t *testing.T) {
+	out, host := postResponseWithHost(t, nil,
+		"Voir le ⟦LOCATION_3_95881f⟧.",
+		`[{"id":"call_1","name":"Read","arguments":"{\"path\":\"/srv/⟦ORGANIZATION_2_95881f⟧/⟦MISC_1_95881f⟧\"}"}]`,
+	)
+
+	if want := "Voir le [[LOCATION_3_95881f]]."; out.ModifiedResponseContent != want {
+		t.Errorf("content = %q, want %q", out.ModifiedResponseContent, want)
+	}
+	if got := toolCallArgumentValue(t, out.ModifiedToolCallsJson, "path"); got != "/srv/[[ORGANIZATION_2_95881f]]/[[MISC_1_95881f]]" {
+		t.Errorf("path = %q", got)
+	}
+	evt := host.waitForEventOfType(t, eventPlaceholdersNeutralized)
+	if evt.Attributes["placeholders"] != "3" {
+		t.Errorf("placeholders = %q, want 3", evt.Attributes["placeholders"])
+	}
+	if events := host.eventsOfType(eventPlaceholdersNeutralized); len(events) != 1 {
+		t.Errorf("events = %d, want 1", len(events))
+	}
+}
+
 // The placeholders of another pseudonymizer node of the pipeline are restored
 // by that node, after this one; the marker of a redacted secret by nothing.
 func TestPostResponse_LeavesPlaceholdersItDoesNotOwn(t *testing.T) {
