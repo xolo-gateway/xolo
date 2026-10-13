@@ -25,7 +25,7 @@ var inventoryFamilies = append(append([]string{}, model.CommonFamilies...), mode
 // The transaction is never replayed: its callbacks may already have written
 // to a stream. A failure leaves an export without trailer.
 func (s *Store) ReadInventory(ctx context.Context, start func(source, cursor string) error, item func(family string, item model.CommonItem) error) error {
-	db, err := s.getDatabase(ctx)
+	db, err := s.readDatabase(ctx)
 	if err != nil {
 		return errors.WithStack(err)
 	}

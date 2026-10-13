@@ -12,7 +12,7 @@ import (
 
 func (s *Store) GetRate(ctx context.Context, from, to string) (*model.ExchangeRate, error) {
 	var row ExchangeRate
-	err := s.withRetry(ctx, false, func(ctx context.Context, db *gorm.DB) error {
+	err := s.read(ctx, func(ctx context.Context, db *gorm.DB) error {
 		if err := db.First(&row, "from_currency = ? AND to_currency = ?", from, to).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				return errors.WithStack(port.ErrNotFound)
@@ -36,7 +36,7 @@ func (s *Store) GetRate(ctx context.Context, from, to string) (*model.ExchangeRa
 
 func (s *Store) ListRates(ctx context.Context) ([]model.ExchangeRate, error) {
 	var rows []ExchangeRate
-	err := s.withRetry(ctx, false, func(ctx context.Context, db *gorm.DB) error {
+	err := s.read(ctx, func(ctx context.Context, db *gorm.DB) error {
 		return errors.WithStack(db.Order("from_currency, to_currency").Find(&rows).Error)
 	})
 	if err != nil {

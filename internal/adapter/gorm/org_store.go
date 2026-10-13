@@ -29,7 +29,7 @@ func (s *Store) CreateOrg(ctx context.Context, org model.Organization) error {
 // GetOrgByID implements port.OrgStore.
 func (s *Store) GetOrgByID(ctx context.Context, id model.OrgID) (model.Organization, error) {
 	var org Organization
-	err := s.withRetry(ctx, false, func(ctx context.Context, db *gorm.DB) error {
+	err := s.read(ctx, func(ctx context.Context, db *gorm.DB) error {
 		if err := db.First(&org, "id = ?", string(id)).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				return errors.WithStack(port.ErrNotFound)
@@ -47,7 +47,7 @@ func (s *Store) GetOrgByID(ctx context.Context, id model.OrgID) (model.Organizat
 // GetOrgBySlug implements port.OrgStore.
 func (s *Store) GetOrgBySlug(ctx context.Context, tenantID model.TenantID, slug string) (model.Organization, error) {
 	var org Organization
-	err := s.withRetry(ctx, false, func(ctx context.Context, db *gorm.DB) error {
+	err := s.read(ctx, func(ctx context.Context, db *gorm.DB) error {
 		if err := db.First(&org, "tenant_id = ? AND slug = ?", string(tenantID), slug).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				return errors.WithStack(port.ErrNotFound)
@@ -67,7 +67,7 @@ func (s *Store) ListOrgs(ctx context.Context, opts port.ListOrgsOptions) ([]mode
 	var orgs []*Organization
 	var total int64
 
-	err := s.withRetry(ctx, false, func(ctx context.Context, db *gorm.DB) error {
+	err := s.read(ctx, func(ctx context.Context, db *gorm.DB) error {
 		query := db.Model(&Organization{})
 
 		if opts.TenantID != nil {
@@ -241,7 +241,7 @@ func (s *Store) RemoveMember(ctx context.Context, id model.MembershipID) error {
 // GetMembership implements port.OrgStore.
 func (s *Store) GetMembership(ctx context.Context, id model.MembershipID) (model.Membership, error) {
 	var m Membership
-	err := s.withRetry(ctx, false, func(ctx context.Context, db *gorm.DB) error {
+	err := s.read(ctx, func(ctx context.Context, db *gorm.DB) error {
 		if err := db.Preload("User").Preload("Org").Preload("Roles").First(&m, "id = ?", string(id)).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				return errors.WithStack(port.ErrNotFound)
@@ -259,7 +259,7 @@ func (s *Store) GetMembership(ctx context.Context, id model.MembershipID) (model
 // GetUserOrgMembership implements port.OrgStore.
 func (s *Store) GetUserOrgMembership(ctx context.Context, userID model.UserID, orgID model.OrgID) (model.Membership, error) {
 	var m Membership
-	err := s.withRetry(ctx, false, func(ctx context.Context, db *gorm.DB) error {
+	err := s.read(ctx, func(ctx context.Context, db *gorm.DB) error {
 		if err := db.Preload("User").Preload("Org").Preload("Roles").
 			Where("user_id = ? AND org_id = ?", string(userID), string(orgID)).
 			First(&m).Error; err != nil {
@@ -281,7 +281,7 @@ func (s *Store) ListOrgMembers(ctx context.Context, orgID model.OrgID, opts port
 	var members []*Membership
 	var total int64
 
-	err := s.withRetry(ctx, false, func(ctx context.Context, db *gorm.DB) error {
+	err := s.read(ctx, func(ctx context.Context, db *gorm.DB) error {
 		base := db.Model(&Membership{}).Where("org_id = ?", string(orgID))
 
 		if err := base.Count(&total).Error; err != nil {
@@ -313,7 +313,7 @@ func (s *Store) ListOrgMembers(ctx context.Context, orgID model.OrgID, opts port
 // GetUserMemberships implements port.OrgStore.
 func (s *Store) GetUserMemberships(ctx context.Context, userID model.UserID) ([]model.Membership, error) {
 	var members []*Membership
-	err := s.withRetry(ctx, false, func(ctx context.Context, db *gorm.DB) error {
+	err := s.read(ctx, func(ctx context.Context, db *gorm.DB) error {
 		return errors.WithStack(db.Preload("Org").Preload("Roles").Preload("Roles.Permissions").
 			Where("user_id = ? AND status = ?", string(userID), string(model.StatusActive)).
 			// A suspended or deleted organization grants nothing. The user
@@ -353,7 +353,7 @@ func (s *Store) SetMembershipStatus(ctx context.Context, id model.MembershipID, 
 // IsMember implements port.OrgStore.
 func (s *Store) IsMember(ctx context.Context, userID model.UserID, orgID model.OrgID) (bool, error) {
 	var count int64
-	err := s.withRetry(ctx, false, func(ctx context.Context, db *gorm.DB) error {
+	err := s.read(ctx, func(ctx context.Context, db *gorm.DB) error {
 		return errors.WithStack(db.Model(&Membership{}).
 			Where("user_id = ? AND org_id = ? AND status = ?", string(userID), string(orgID), string(model.StatusActive)).
 			// As in GetUserMemberships, an inactive user is refused upstream.

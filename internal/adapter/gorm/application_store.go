@@ -68,7 +68,7 @@ func (s *Store) CreateApplication(ctx context.Context, app model.Application) er
 func (s *Store) GetApplication(ctx context.Context, appID model.ApplicationID) (model.Application, error) {
 	var app Application
 
-	err := s.withRetry(ctx, false, func(ctx context.Context, db *gorm.DB) error {
+	err := s.read(ctx, func(ctx context.Context, db *gorm.DB) error {
 		if err := db.First(&app, "id = ?", string(appID)).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				return errors.WithStack(port.ErrNotFound)
@@ -88,7 +88,7 @@ func (s *Store) GetApplication(ctx context.Context, appID model.ApplicationID) (
 func (s *Store) QueryApplications(ctx context.Context, orgID model.OrgID) ([]model.Application, error) {
 	var apps []*Application
 
-	err := s.withRetry(ctx, false, func(ctx context.Context, db *gorm.DB) error {
+	err := s.read(ctx, func(ctx context.Context, db *gorm.DB) error {
 		query := db.Model(&Application{}).Where("org_id = ?", string(orgID))
 
 		if err := query.Find(&apps).Error; err != nil {
@@ -180,7 +180,7 @@ func (s *Store) DeleteApplication(ctx context.Context, appID model.ApplicationID
 func (s *Store) FindApplicationAuthToken(ctx context.Context, token string) (model.AuthToken, error) {
 	var authToken AuthToken
 
-	err := s.withRetry(ctx, false, func(ctx context.Context, db *gorm.DB) error {
+	err := s.read(ctx, func(ctx context.Context, db *gorm.DB) error {
 		if err := db.Preload("Application").First(&authToken, "value = ?", crypto.HashToken(token)).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				return errors.WithStack(port.ErrNotFound)
@@ -205,7 +205,7 @@ func (s *Store) FindApplicationAuthToken(ctx context.Context, token string) (mod
 func (s *Store) GetApplicationAuthToken(ctx context.Context, tokenID model.AuthTokenID) (model.AuthToken, error) {
 	var authToken AuthToken
 
-	err := s.withRetry(ctx, false, func(ctx context.Context, db *gorm.DB) error {
+	err := s.read(ctx, func(ctx context.Context, db *gorm.DB) error {
 		if err := db.Preload("Application").First(&authToken, "id = ?", string(tokenID)).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				return errors.WithStack(port.ErrNotFound)
@@ -225,7 +225,7 @@ func (s *Store) GetApplicationAuthToken(ctx context.Context, tokenID model.AuthT
 func (s *Store) GetApplicationAuthTokens(ctx context.Context, appID model.ApplicationID) ([]model.AuthToken, error) {
 	var authTokens []*AuthToken
 
-	err := s.withRetry(ctx, false, func(ctx context.Context, db *gorm.DB) error {
+	err := s.read(ctx, func(ctx context.Context, db *gorm.DB) error {
 		if err := db.Where("application_id = ?", string(appID)).Find(&authTokens).Error; err != nil {
 			return errors.WithStack(err)
 		}

@@ -109,12 +109,13 @@ func (s *Store) OpenSession(ctx context.Context, session model.OIDCSession) (str
 }
 
 // CheckSession implements port.SessionRegistry. It runs on every request
-// carrying a session cookie: one read by primary key, no transaction.
+// carrying a session cookie: one read by primary key on the reader, no
+// transaction.
 func (s *Store) CheckSession(ctx context.Context, id string, tenant model.TenantID, issuer, subject string) error {
 	if id == "" || tenant == "" || issuer == "" || subject == "" {
 		return errors.WithStack(port.ErrNotFound)
 	}
-	db, err := s.getDatabase(ctx)
+	db, err := s.readDatabase(ctx)
 	if err != nil {
 		return errors.WithStack(err)
 	}

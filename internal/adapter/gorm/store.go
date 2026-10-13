@@ -14,6 +14,10 @@ import (
 type Store struct {
 	getDatabase        func(ctx context.Context) (*gorm.DB, error)
 	initializeDatabase func(context.Context, bool) (*gorm.DB, error)
+	// reader serves the plain reads (see read) when set: on SQLite, a pool of
+	// read-only connections to the same file, so that a long read never holds
+	// the single writer connection. Nil reads through getDatabase.
+	reader *gorm.DB
 	// Invitation and provisioning callbacks own the transaction and retry boundary: on a
 	// transaction-bound store, withRetry runs fn exactly once
 	// on that transaction and never opens its own.
@@ -88,6 +92,34 @@ func (s *Store) withRetry(ctx context.Context, withTx bool, fn func(ctx context.
 	if err != nil {
 		return errors.WithStack(err)
 	}
+	return s.retry(ctx, db, withTx, fn)
+}
+
+// read runs a plain read on the reader, retried like withRetry. Only a read
+// whose result feeds no write of the same call may go through it: the
+// reader may not see a transaction still open on the writer. A bound store
+// keeps reading through its transaction.
+func (s *Store) read(ctx context.Context, fn func(ctx context.Context, db *gorm.DB) error) error {
+	db, err := s.readDatabase(ctx)
+	if err != nil {
+		return errors.WithStack(err)
+	}
+	return s.retry(ctx, db, false, fn)
+}
+
+// readDatabase returns the handle plain reads run on: the reader when the
+// store has one, the database (or the bound transaction) otherwise.
+func (s *Store) readDatabase(ctx context.Context) (*gorm.DB, error) {
+	// getDatabase also applies or checks the migrations, which the reader
+	// relies on.
+	db, err := s.getDatabase(ctx)
+	if err != nil || s.transactionBound || s.reader == nil {
+		return db, err
+	}
+	return s.reader, nil
+}
+
+func (s *Store) retry(ctx context.Context, db *gorm.DB, withTx bool, fn func(ctx context.Context, db *gorm.DB) error) error {
 	if s.transactionBound {
 		// db is already bound: withTx is ignored and a
 		// failure goes back to the transaction adapter, which replays the
@@ -142,6 +174,13 @@ type storeOptions struct {
 	// lifecycleRetention is zero while the lifecycle is disabled.
 	lifecycleRetention time.Duration
 	purgeBatch         int
+	reader             *gorm.DB
+}
+
+// WithReader serves the plain reads from reader, a handle on the same
+// database that must see every committed write (see OpenSQLiteReader).
+func WithReader(reader *gorm.DB) StoreOption {
+	return func(opts *storeOptions) { opts.reader = reader }
 }
 
 // WithAutoMigrate controls implicit schema changes; explicit Migrate still works.
@@ -172,6 +211,7 @@ func NewStore(db *gorm.DB, options ...StoreOption) *Store {
 	return &Store{
 		initializeDatabase: initialize,
 		getDatabase:        func(ctx context.Context) (*gorm.DB, error) { return initialize(ctx, opts.autoMigrate) },
+		reader:             opts.reader,
 		identityIssuers:    opts.identityIssuers,
 		ownership:          opts.ownership,
 		lifecycleRetention: opts.lifecycleRetention,

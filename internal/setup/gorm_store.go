@@ -15,7 +15,13 @@ var getGormStoreFromConfig = createFromConfigOnce(func(ctx context.Context, conf
 		return nil, errors.WithStack(err)
 	}
 
+	reader, err := getGormReaderFromConfig(ctx, conf)
+	if err != nil {
+		return nil, errors.Wrap(err, "open database reader")
+	}
+
 	store := gormAdapter.NewStore(db,
+		gormAdapter.WithReader(reader),
 		gormAdapter.WithAutoMigrate(conf.Storage.AutoMigrate),
 		gormAdapter.WithIdentityIssuers(getIdentityIssuersFromConfig(ctx, conf)),
 		gormAdapter.WithOwnership(conf.Ownership),

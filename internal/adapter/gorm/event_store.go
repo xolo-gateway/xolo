@@ -31,7 +31,7 @@ func (s *Store) QueryEvents(ctx context.Context, filter port.EventFilter) ([]mod
 	memoryFilter := needsMemoryFilter(filter.Query)
 
 	var rows []*Event
-	err := s.withRetry(ctx, false, func(ctx context.Context, db *gorm.DB) error {
+	err := s.read(ctx, func(ctx context.Context, db *gorm.DB) error {
 		query := applyEventFilterSQL(db.Model(&Event{}), filter)
 		query = query.Order("created_at DESC")
 
@@ -87,7 +87,7 @@ func (s *Store) QueryEvents(ctx context.Context, filter port.EventFilter) ([]mod
 // CountEvents implements port.EventStore.
 func (s *Store) CountEvents(ctx context.Context, orgID model.OrgID) (int64, error) {
 	var count int64
-	err := s.withRetry(ctx, false, func(ctx context.Context, db *gorm.DB) error {
+	err := s.read(ctx, func(ctx context.Context, db *gorm.DB) error {
 		return errors.WithStack(db.Model(&Event{}).
 			Where("org_id = ? AND pinned = ?", string(orgID), false).
 			Count(&count).Error)
@@ -154,7 +154,7 @@ func (s *Store) EvictOverflow(ctx context.Context, orgID model.OrgID, keepN int)
 // ListEventOrgIDs implements port.EventStore.
 func (s *Store) ListEventOrgIDs(ctx context.Context) ([]model.OrgID, error) {
 	var ids, frozen []string
-	err := s.withRetry(ctx, false, func(ctx context.Context, db *gorm.DB) error {
+	err := s.read(ctx, func(ctx context.Context, db *gorm.DB) error {
 		if err := db.Model(&Event{}).Distinct().Pluck("org_id", &ids).Error; err != nil {
 			return errors.WithStack(err)
 		}
@@ -182,7 +182,7 @@ func (s *Store) ListEventOrgIDs(ctx context.Context) ([]model.OrgID, error) {
 // ListIncidentEvents implements port.EventStore.
 func (s *Store) ListIncidentEvents(ctx context.Context, incidentID model.AlertIncidentID) ([]model.Event, error) {
 	var rows []*Event
-	err := s.withRetry(ctx, false, func(ctx context.Context, db *gorm.DB) error {
+	err := s.read(ctx, func(ctx context.Context, db *gorm.DB) error {
 		return errors.WithStack(db.Where("incident_id = ?", string(incidentID)).
 			Order("created_at DESC").Find(&rows).Error)
 	})

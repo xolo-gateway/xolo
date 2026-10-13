@@ -104,9 +104,9 @@ La déconnexion locale (`/auth/oidc/logout`) ferme la session Xolo ; elle ne fer
 | --- | --- | --- |
 | `XOLO_STORAGE_AUTO_MIGRATE` | `true` | Applique les migrations au démarrage. Avec `false`, vérifie seulement le schéma et refuse les migrations en attente. Voir la [procédure UUID](./uuid-migration.md), qui impose l’arrêt de tous les anciens réplicas. |
 | `XOLO_STORAGE_DATABASE_DSN` | `data.sqlite` | Base de données. Un DSN commençant par `postgres://` (ou une chaîne libpq `host=… dbname=…`) cible PostgreSQL ; toute autre valeur est interprétée comme un chemin de fichier SQLite. |
-| `XOLO_STORAGE_DATABASE_POOL_MAX_OPEN_CONNS` | `25` | Connexions ouvertes maximum (PostgreSQL uniquement ; SQLite reste sur une seule connexion). |
-| `XOLO_STORAGE_DATABASE_POOL_MAX_IDLE_CONNS` | `5` | Connexions inactives conservées dans le pool (PostgreSQL uniquement). |
-| `XOLO_STORAGE_DATABASE_POOL_CONN_MAX_LIFETIME` | `60m` | Durée de vie maximale d'une connexion (PostgreSQL uniquement). |
+| `XOLO_STORAGE_DATABASE_POOL_MAX_OPEN_CONNS` | `25` | Connexions ouvertes maximum. Sur SQLite, les écritures passent par une seule connexion et ce pool ne sert que les lectures. |
+| `XOLO_STORAGE_DATABASE_POOL_MAX_IDLE_CONNS` | `5` | Connexions inactives conservées dans le pool (le pool de lecture sur SQLite). |
+| `XOLO_STORAGE_DATABASE_POOL_CONN_MAX_LIFETIME` | `60m` | Durée de vie maximale d'une connexion (du pool de lecture sur SQLite). |
 | `XOLO_STORAGE_DATABASE_CACHE_USERS_*` / `_PROVIDERS_*` | — | Taille et TTL des caches en mémoire pour les utilisateurs et fournisseurs (activés par défaut, 25 entrées, 60 min). |
 | `XOLO_STORAGE_DATABASE_CACHE_QUOTA_ENABLED` | `true` | Réutilise les totaux de dépense lus à chaque requête proxy pour la vérification des budgets, au lieu de les relire à chaque fois. Les totaux eux-mêmes viennent de compteurs journaliers tenus à l'enregistrement de l'usage, pas d'une agrégation de l'historique. |
 | `XOLO_STORAGE_DATABASE_CACHE_QUOTA_SIZE` | `4096` | Nombre maximal de totaux conservés. Chaque organisation active en occupe trois (jour, mois, année), plus trois par utilisateur actif. |
@@ -114,7 +114,7 @@ La déconnexion locale (`/auth/oidc/logout`) ferme la session Xolo ; elle ne fer
 
 ### Choisir entre SQLite et PostgreSQL
 
-SQLite reste le défaut : aucune dépendance externe, idéal pour une instance unique. PostgreSQL est recommandé dès que plusieurs instances de Xolo partagent le même stockage, ou lorsque le volume d'événements et d'enregistrements d'usage devient important.
+SQLite reste le défaut : aucune dépendance externe, idéal pour une instance unique. La base y passe en mode WAL : les écritures sont sérialisées sur une connexion, les lectures servies en parallèle par un pool de connexions en lecture seule, si bien qu'un rapport long ne bloque pas le proxy. Une base en mémoire (`:memory:`) n'a pas de pool de lecture. PostgreSQL est recommandé dès que plusieurs instances de Xolo partagent le même stockage, ou lorsque le volume d'événements et d'enregistrements d'usage devient important.
 
 ```bash
 XOLO_STORAGE_DATABASE_DSN="postgres://xolo:motdepasse@postgres:5432/xolo?sslmode=disable"

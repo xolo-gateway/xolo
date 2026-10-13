@@ -24,7 +24,7 @@ func (s *Store) CreateInvite(ctx context.Context, invite model.InviteToken) erro
 // GetInviteByID implements port.InviteStore.
 func (s *Store) GetInviteByID(ctx context.Context, id model.InviteTokenID) (model.InviteToken, error) {
 	var t InviteToken
-	err := s.withRetry(ctx, false, func(ctx context.Context, db *gorm.DB) error {
+	err := s.read(ctx, func(ctx context.Context, db *gorm.DB) error {
 		if err := db.Preload("Org").First(&t, "id = ?", string(id)).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				return errors.WithStack(port.ErrNotFound)
@@ -42,7 +42,7 @@ func (s *Store) GetInviteByID(ctx context.Context, id model.InviteTokenID) (mode
 // ListInvites implements port.InviteStore.
 func (s *Store) ListInvites(ctx context.Context, orgID model.OrgID) ([]model.InviteToken, error) {
 	var tokens []*InviteToken
-	err := s.withRetry(ctx, false, func(ctx context.Context, db *gorm.DB) error {
+	err := s.read(ctx, func(ctx context.Context, db *gorm.DB) error {
 		return errors.WithStack(db.Preload("Org").
 			Where("org_id = ?", string(orgID)).
 			Order("created_at DESC").
@@ -129,7 +129,7 @@ func (s *Store) ListPendingInvitesForEmail(ctx context.Context, tenantID model.T
 	}
 	var tokens []*InviteToken
 	now := time.Now()
-	err := s.withRetry(ctx, false, func(ctx context.Context, db *gorm.DB) error {
+	err := s.read(ctx, func(ctx context.Context, db *gorm.DB) error {
 		return errors.WithStack(db.Preload("Org").
 			Joins("JOIN organizations ON organizations.id = invite_tokens.org_id").
 			Where("organizations.tenant_id = ? AND organizations.active <> 0", string(tenantID)).

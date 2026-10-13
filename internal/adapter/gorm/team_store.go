@@ -192,7 +192,7 @@ func (s *Store) GetTeamBySlug(ctx context.Context, orgID model.OrgID, slug strin
 
 func (s *Store) getTeam(ctx context.Context, scope func(*gorm.DB) *gorm.DB) (model.Team, error) {
 	var team Team
-	err := s.withRetry(ctx, false, func(ctx context.Context, db *gorm.DB) error {
+	err := s.read(ctx, func(ctx context.Context, db *gorm.DB) error {
 		if err := scope(db.Preload("ModelGrants").Preload("Middlewares")).First(&team).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				return errors.WithStack(port.ErrNotFound)
@@ -210,7 +210,7 @@ func (s *Store) getTeam(ctx context.Context, scope func(*gorm.DB) *gorm.DB) (mod
 // ListOrgTeams implements port.TeamStore.
 func (s *Store) ListOrgTeams(ctx context.Context, orgID model.OrgID) ([]model.Team, error) {
 	var teams []*Team
-	err := s.withRetry(ctx, false, func(ctx context.Context, db *gorm.DB) error {
+	err := s.read(ctx, func(ctx context.Context, db *gorm.DB) error {
 		return errors.WithStack(db.Preload("ModelGrants").Preload("Middlewares").
 			Where("org_id = ?", string(orgID)).Order("name ASC, slug ASC").Find(&teams).Error)
 	})
@@ -240,7 +240,7 @@ func (s *Store) ListMembershipTeams(ctx context.Context, membershipID model.Memb
 
 func (s *Store) queryTeamMembers(ctx context.Context, withUsers bool, scope func(*gorm.DB) *gorm.DB) ([]model.TeamMember, error) {
 	var rows []*teamMemberRow
-	err := s.withRetry(ctx, false, func(ctx context.Context, db *gorm.DB) error {
+	err := s.read(ctx, func(ctx context.Context, db *gorm.DB) error {
 		if err := scope(db.Table("team_members").
 			Select("team_members.team_id, team_members.membership_id, memberships.user_id, team_members.created_at").
 			Joins("JOIN memberships ON memberships.id = team_members.membership_id")).
@@ -418,7 +418,7 @@ func deleteTeamMembershipsWithin(db *gorm.DB, membershipIDs *gorm.DB) error {
 // ModelNamePrefixTaken implements port.TeamStore.
 func (s *Store) ModelNamePrefixTaken(ctx context.Context, orgID model.OrgID, slug string) (bool, error) {
 	var taken bool
-	err := s.withRetry(ctx, false, func(ctx context.Context, db *gorm.DB) error {
+	err := s.read(ctx, func(ctx context.Context, db *gorm.DB) error {
 		var err error
 		taken, err = modelNamePrefixTaken(db, string(orgID), slug)
 		return err

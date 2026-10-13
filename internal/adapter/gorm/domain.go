@@ -37,7 +37,7 @@ func toDomain(d *Domain) model.Domain {
 // GetDomain implements port.DomainStore.
 func (s *Store) GetDomain(ctx context.Context, hostname string) (model.Domain, error) {
 	var d Domain
-	err := s.withRetry(ctx, false, func(ctx context.Context, db *gorm.DB) error {
+	err := s.read(ctx, func(ctx context.Context, db *gorm.DB) error {
 		if err := db.First(&d, "hostname = ?", hostname).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				return errors.WithStack(port.ErrNotFound)
@@ -55,7 +55,7 @@ func (s *Store) GetDomain(ctx context.Context, hostname string) (model.Domain, e
 // ListTenantDomains implements port.DomainStore.
 func (s *Store) ListTenantDomains(ctx context.Context, tenantID model.TenantID) ([]model.Domain, error) {
 	var rows []*Domain
-	err := s.withRetry(ctx, false, func(ctx context.Context, db *gorm.DB) error {
+	err := s.read(ctx, func(ctx context.Context, db *gorm.DB) error {
 		return errors.WithStack(db.Where("tenant_id = ?", string(tenantID)).Order("hostname").Find(&rows).Error)
 	})
 	if err != nil {

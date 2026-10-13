@@ -30,7 +30,7 @@ func (s *Store) CreateRole(ctx context.Context, role model.Role) error {
 // GetRoleByID implements port.RoleStore.
 func (s *Store) GetRoleByID(ctx context.Context, id model.RoleID) (model.Role, error) {
 	var role Role
-	err := s.withRetry(ctx, false, func(ctx context.Context, db *gorm.DB) error {
+	err := s.read(ctx, func(ctx context.Context, db *gorm.DB) error {
 		if err := db.Preload("Permissions").
 			First(&role, "id = ?", string(id)).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -49,7 +49,7 @@ func (s *Store) GetRoleByID(ctx context.Context, id model.RoleID) (model.Role, e
 // ListOrgRoles implements port.RoleStore.
 func (s *Store) ListOrgRoles(ctx context.Context, orgID model.OrgID) ([]model.Role, error) {
 	var roles []*Role
-	err := s.withRetry(ctx, false, func(ctx context.Context, db *gorm.DB) error {
+	err := s.read(ctx, func(ctx context.Context, db *gorm.DB) error {
 		return errors.WithStack(db.Preload("Permissions").
 			Where("org_id = ?", string(orgID)).
 			Order("builtin DESC, name ASC").
@@ -141,7 +141,7 @@ func (s *Store) SetMembershipRoles(ctx context.Context, membershipID model.Membe
 // ListMembershipRoles implements port.RoleStore.
 func (s *Store) ListMembershipRoles(ctx context.Context, membershipID model.MembershipID) ([]model.Role, error) {
 	var roles []*Role
-	err := s.withRetry(ctx, false, func(ctx context.Context, db *gorm.DB) error {
+	err := s.read(ctx, func(ctx context.Context, db *gorm.DB) error {
 		return errors.WithStack(db.Preload("Permissions").
 			Joins("JOIN membership_roles mr ON mr.role_id = roles.id").
 			Where("mr.membership_id = ?", string(membershipID)).
@@ -179,7 +179,7 @@ func (s *Store) SetApplicationRoles(ctx context.Context, appID model.Application
 // ListApplicationRoles implements port.RoleStore.
 func (s *Store) ListApplicationRoles(ctx context.Context, appID model.ApplicationID) ([]model.Role, error) {
 	var roles []*Role
-	err := s.withRetry(ctx, false, func(ctx context.Context, db *gorm.DB) error {
+	err := s.read(ctx, func(ctx context.Context, db *gorm.DB) error {
 		return errors.WithStack(db.Preload("Permissions").
 			Joins("JOIN application_roles ar ON ar.role_id = roles.id").
 			Where("ar.application_id = ?", string(appID)).
@@ -227,7 +227,7 @@ func (s *Store) ResolveEffectivePermissions(ctx context.Context, userID model.Us
 		roles []*Role
 		teams []rbac.TeamAccess
 	)
-	err := s.withRetry(ctx, false, func(ctx context.Context, db *gorm.DB) error {
+	err := s.read(ctx, func(ctx context.Context, db *gorm.DB) error {
 		roles, teams = nil, nil
 		var m Membership
 		// A suspended membership, or a suspended or deleted organization,
@@ -308,7 +308,7 @@ func (s *Store) ResolveApplicationPermissions(ctx context.Context, appID model.A
 		roles []*Role
 		teams []rbac.TeamAccess
 	)
-	err := s.withRetry(ctx, false, func(ctx context.Context, db *gorm.DB) error {
+	err := s.read(ctx, func(ctx context.Context, db *gorm.DB) error {
 		roles, teams = nil, nil
 		var app Application
 		if err := db.Where("id = ? AND org_id = ?", string(appID), string(orgID)).

@@ -641,7 +641,7 @@ func (s *Store) SweepWebhooks(ctx context.Context, finishedBefore time.Time) err
 // WebhookStats implements port.WebhookStore.
 func (s *Store) WebhookStats(ctx context.Context) (model.WebhookStats, error) {
 	var out model.WebhookStats
-	db, err := s.getDatabase(ctx)
+	db, err := s.readDatabase(ctx)
 	if err != nil {
 		return out, errors.WithStack(err)
 	}

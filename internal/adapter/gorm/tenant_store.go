@@ -29,7 +29,7 @@ func (s *Store) CreateTenant(ctx context.Context, tenant model.Tenant) error {
 // GetTenantByID implements port.TenantStore.
 func (s *Store) GetTenantByID(ctx context.Context, id model.TenantID) (model.Tenant, error) {
 	var tenant Tenant
-	err := s.withRetry(ctx, false, func(ctx context.Context, db *gorm.DB) error {
+	err := s.read(ctx, func(ctx context.Context, db *gorm.DB) error {
 		if err := db.First(&tenant, "id = ?", string(id)).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				return errors.WithStack(port.ErrNotFound)
@@ -47,7 +47,7 @@ func (s *Store) GetTenantByID(ctx context.Context, id model.TenantID) (model.Ten
 // GetTenantBySlug implements port.TenantStore.
 func (s *Store) GetTenantBySlug(ctx context.Context, slug string) (model.Tenant, error) {
 	var tenant Tenant
-	err := s.withRetry(ctx, false, func(ctx context.Context, db *gorm.DB) error {
+	err := s.read(ctx, func(ctx context.Context, db *gorm.DB) error {
 		if err := db.First(&tenant, "slug = ?", slug).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				return errors.WithStack(port.ErrNotFound)
@@ -67,7 +67,7 @@ func (s *Store) ListTenants(ctx context.Context, opts port.ListTenantsOptions) (
 	var tenants []*Tenant
 	var total int64
 
-	err := s.withRetry(ctx, false, func(ctx context.Context, db *gorm.DB) error {
+	err := s.read(ctx, func(ctx context.Context, db *gorm.DB) error {
 		query := db.Model(&Tenant{})
 
 		if err := query.Count(&total).Error; err != nil {

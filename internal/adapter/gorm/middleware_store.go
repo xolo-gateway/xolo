@@ -29,7 +29,7 @@ func (s *Store) CreateMiddleware(ctx context.Context, mw model.Middleware) error
 
 func (s *Store) GetMiddlewareByID(ctx context.Context, id model.MiddlewareID) (model.Middleware, error) {
 	var mw Middleware
-	err := s.withRetry(ctx, false, func(ctx context.Context, db *gorm.DB) error {
+	err := s.read(ctx, func(ctx context.Context, db *gorm.DB) error {
 		if err := db.First(&mw, "id = ?", string(id)).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				return errors.WithStack(port.ErrNotFound)
@@ -58,7 +58,7 @@ func (s *Store) ListEnabledMiddlewares(ctx context.Context, orgID model.OrgID) (
 
 func (s *Store) queryMiddlewares(ctx context.Context, scope func(*gorm.DB) *gorm.DB) ([]model.Middleware, error) {
 	var mws []*Middleware
-	err := s.withRetry(ctx, false, func(ctx context.Context, db *gorm.DB) error {
+	err := s.read(ctx, func(ctx context.Context, db *gorm.DB) error {
 		return errors.WithStack(scope(db).Find(&mws).Error)
 	})
 	if err != nil {

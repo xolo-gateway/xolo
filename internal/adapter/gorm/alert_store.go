@@ -42,7 +42,7 @@ func (s *Store) DeleteAlert(ctx context.Context, id model.AlertID) error {
 // GetAlertByID implements port.AlertStore.
 func (s *Store) GetAlertByID(ctx context.Context, id model.AlertID) (model.Alert, error) {
 	var a Alert
-	err := s.withRetry(ctx, false, func(ctx context.Context, db *gorm.DB) error {
+	err := s.read(ctx, func(ctx context.Context, db *gorm.DB) error {
 		if err := db.First(&a, "id = ?", string(id)).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				return errors.WithStack(port.ErrNotFound)
@@ -60,7 +60,7 @@ func (s *Store) GetAlertByID(ctx context.Context, id model.AlertID) (model.Alert
 // ListAlerts implements port.AlertStore.
 func (s *Store) ListAlerts(ctx context.Context, orgID model.OrgID) ([]model.Alert, error) {
 	var alerts []*Alert
-	err := s.withRetry(ctx, false, func(ctx context.Context, db *gorm.DB) error {
+	err := s.read(ctx, func(ctx context.Context, db *gorm.DB) error {
 		return errors.WithStack(db.Where("org_id = ?", string(orgID)).
 			Order("created_at DESC").Find(&alerts).Error)
 	})
@@ -77,7 +77,7 @@ func (s *Store) ListAlerts(ctx context.Context, orgID model.OrgID) ([]model.Aler
 // ListEnabledAlerts implements port.AlertStore.
 func (s *Store) ListEnabledAlerts(ctx context.Context) ([]model.Alert, error) {
 	var alerts []*Alert
-	err := s.withRetry(ctx, false, func(ctx context.Context, db *gorm.DB) error {
+	err := s.read(ctx, func(ctx context.Context, db *gorm.DB) error {
 		// The alerts of a frozen scope are not evaluated: their state can
 		// not be written anymore.
 		return errors.WithStack(db.Where("enabled = ?", true).Where(notFrozen("alerts", "alerts")).Find(&alerts).Error)
@@ -138,7 +138,7 @@ func (s *Store) UpdateIncidentPeak(ctx context.Context, id model.AlertIncidentID
 // GetOpenIncident implements port.AlertIncidentStore.
 func (s *Store) GetOpenIncident(ctx context.Context, alertID model.AlertID) (model.AlertIncident, error) {
 	var i AlertIncident
-	err := s.withRetry(ctx, false, func(ctx context.Context, db *gorm.DB) error {
+	err := s.read(ctx, func(ctx context.Context, db *gorm.DB) error {
 		if err := db.Where("alert_id = ? AND resolved_at IS NULL", string(alertID)).
 			Order("started_at DESC").First(&i).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -157,7 +157,7 @@ func (s *Store) GetOpenIncident(ctx context.Context, alertID model.AlertID) (mod
 // ListIncidents implements port.AlertIncidentStore.
 func (s *Store) ListIncidents(ctx context.Context, filter port.IncidentFilter) ([]model.AlertIncident, error) {
 	var incidents []*AlertIncident
-	err := s.withRetry(ctx, false, func(ctx context.Context, db *gorm.DB) error {
+	err := s.read(ctx, func(ctx context.Context, db *gorm.DB) error {
 		query := db.Model(&AlertIncident{})
 		if filter.OrgID != nil {
 			query = query.Where("org_id = ?", string(*filter.OrgID))

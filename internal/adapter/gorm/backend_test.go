@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	_ "github.com/ncruces/go-sqlite3/embed"
 	"github.com/ncruces/go-sqlite3/gormlite"
@@ -63,24 +64,49 @@ func newTestStore(t *testing.T) *xologorm.Store {
 func sqliteBackend() backend {
 	newDB := func(t *testing.T) *gormpkg.DB {
 		t.Helper()
-		// A file-backed WAL database is shared by all pooled connections. Plain
-		// :memory: silently creates a different database for each connection and
-		// cannot exercise invitation snapshot conflicts or concurrent writers.
-		db, err := gormpkg.Open(gormlite.Open("file:"+filepath.Join(t.TempDir(), "store.sqlite")+"?_pragma=journal_mode(WAL)&_pragma=busy_timeout(1000)"), &gormpkg.Config{})
-		if err != nil {
-			t.Fatalf("open db: %v", err)
-		}
-		t.Cleanup(func() { closeDB(t, db) })
-		return db
+		return openSQLite(t, newSQLiteDSN(t))
 	}
 	return backend{
 		name:  "sqlite",
 		newDB: newDB,
 		newStore: func(t *testing.T) *xologorm.Store {
 			t.Helper()
-			return newSeededStore(t, newDB(t))
+			// The plain reads go through a read-only pool, as in production:
+			// a write routed there by mistake fails the test.
+			dsn := newSQLiteDSN(t)
+			db := openSQLite(t, dsn)
+			return newSeededStore(t, db, xologorm.WithReader(openSQLiteReader(t, dsn)))
 		},
 	}
+}
+
+// newSQLiteDSN designates an empty database file. A file-backed WAL database
+// is shared by all pooled connections. Plain :memory: silently creates a
+// different database for each connection and cannot exercise invitation
+// snapshot conflicts, concurrent writers or the read pool.
+func newSQLiteDSN(t *testing.T) string {
+	t.Helper()
+	return "file:" + filepath.Join(t.TempDir(), "store.sqlite") + "?_pragma=journal_mode(WAL)&_pragma=busy_timeout(1000)"
+}
+
+func openSQLite(t *testing.T, dsn string) *gormpkg.DB {
+	t.Helper()
+	db, err := gormpkg.Open(gormlite.Open(dsn), &gormpkg.Config{})
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	t.Cleanup(func() { closeDB(t, db) })
+	return db
+}
+
+func openSQLiteReader(t *testing.T, dsn string) *gormpkg.DB {
+	t.Helper()
+	reader, err := xologorm.OpenSQLiteReader(dsn, time.Second, &gormpkg.Config{})
+	if err != nil {
+		t.Fatalf("open reader: %v", err)
+	}
+	t.Cleanup(func() { closeDB(t, reader) })
+	return reader
 }
 
 // eachBackendDB is eachBackend for tests that need the database handle itself.
@@ -192,8 +218,8 @@ func postgresDSNFromEnv() string {
 	return os.Getenv(testPostgresDSNEnv)
 }
 
-func newSeededStore(t *testing.T, db *gormpkg.DB) *xologorm.Store {
-	store := xologorm.NewStore(db)
+func newSeededStore(t *testing.T, db *gormpkg.DB, options ...xologorm.StoreOption) *xologorm.Store {
+	store := xologorm.NewStore(db, options...)
 	if err := store.Migrate(context.Background()); err != nil {
 		t.Fatal(err)
 	}

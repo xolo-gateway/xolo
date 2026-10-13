@@ -53,7 +53,7 @@ func incrementQuotaUsage(db *gorm.DB, rows []*QuotaUsage) error {
 func (s *Store) SumQuotaCostSince(ctx context.Context, scope model.QuotaScope, scopeID string, orgID model.OrgID, since time.Time) (int64, error) {
 	var total int64
 
-	err := s.withRetry(ctx, false, func(ctx context.Context, db *gorm.DB) error {
+	err := s.read(ctx, func(ctx context.Context, db *gorm.DB) error {
 		var result struct{ Total int64 }
 		err := db.Model(&QuotaUsage{}).
 			Select("COALESCE(SUM(cost), 0) as total").
@@ -72,7 +72,7 @@ func (s *Store) SumQuotaCostSince(ctx context.Context, scope model.QuotaScope, s
 func (s *Store) QueryUsage(ctx context.Context, filter port.UsageFilter) ([]model.UsageRecord, error) {
 	var records []*UsageRecord
 
-	err := s.withRetry(ctx, false, func(ctx context.Context, db *gorm.DB) error {
+	err := s.read(ctx, func(ctx context.Context, db *gorm.DB) error {
 		query := db.Model(&UsageRecord{})
 		query = applyUsageFilter(query, filter)
 		query = query.Order("created_at DESC")
@@ -106,7 +106,7 @@ func (s *Store) AggregateUsage(ctx context.Context, filter port.UsageFilter) (*p
 		TotalTokens      int64
 	}
 
-	err := s.withRetry(ctx, false, func(ctx context.Context, db *gorm.DB) error {
+	err := s.read(ctx, func(ctx context.Context, db *gorm.DB) error {
 		query := db.Model(&UsageRecord{}).
 			Select("COUNT(*) as total_requests, COALESCE(SUM(cost),0) as total_cost, COALESCE(SUM(prompt_tokens),0) as prompt_tokens, COALESCE(SUM(cached_tokens),0) as cached_tokens, COALESCE(SUM(completion_tokens),0) as completion_tokens, COALESCE(SUM(total_tokens),0) as total_tokens")
 		query = applyUsageFilter(query, filter)
@@ -118,7 +118,7 @@ func (s *Store) AggregateUsage(ctx context.Context, filter port.UsageFilter) (*p
 
 	// Detect the currency from the most recent record matching the filter
 	var currency string
-	_ = s.withRetry(ctx, false, func(ctx context.Context, db *gorm.DB) error {
+	_ = s.read(ctx, func(ctx context.Context, db *gorm.DB) error {
 		var row struct{ Currency string }
 		query := db.Model(&UsageRecord{}).Select("currency").Order("created_at DESC")
 		query = applyUsageFilter(query, filter)
@@ -144,7 +144,7 @@ func (s *Store) AggregateUsage(ctx context.Context, filter port.UsageFilter) (*p
 func (s *Store) SumCostSince(ctx context.Context, userID model.UserID, orgID model.OrgID, since time.Time) (int64, error) {
 	var total int64
 
-	err := s.withRetry(ctx, false, func(ctx context.Context, db *gorm.DB) error {
+	err := s.read(ctx, func(ctx context.Context, db *gorm.DB) error {
 		var result struct{ Total int64 }
 		err := db.Model(&UsageRecord{}).
 			Select("COALESCE(SUM(cost), 0) as total").
@@ -246,7 +246,7 @@ func (s *Store) SumCostSinceByCurrency(ctx context.Context, userIDs []model.User
 		Total    int64
 	}
 
-	err := s.withRetry(ctx, false, func(ctx context.Context, db *gorm.DB) error {
+	err := s.read(ctx, func(ctx context.Context, db *gorm.DB) error {
 		query := db.Model(&UsageRecord{}).
 			Select("currency, COALESCE(SUM(cost), 0) as total").
 			Where("org_id = ? AND created_at >= ? AND plan_covered = 0", string(orgID), since)
@@ -277,7 +277,7 @@ func (s *Store) SumPlanUsageSince(ctx context.Context, orgID model.OrgID, provid
 		ProviderValue int64
 	}
 
-	err = s.withRetry(ctx, false, func(ctx context.Context, db *gorm.DB) error {
+	err = s.read(ctx, func(ctx context.Context, db *gorm.DB) error {
 		return errors.WithStack(db.Model(&UsageRecord{}).
 			Select("COALESCE(SUM(total_tokens), 0) as tokens, COALESCE(SUM(provider_cost), 0) as provider_value").
 			Where("org_id = ? AND provider_id = ? AND created_at >= ? AND plan_covered = 1",
@@ -297,7 +297,7 @@ func (s *Store) SumUserPlanUsageSince(ctx context.Context, userID model.UserID, 
 		ProviderValue int64
 	}
 
-	err = s.withRetry(ctx, false, func(ctx context.Context, db *gorm.DB) error {
+	err = s.read(ctx, func(ctx context.Context, db *gorm.DB) error {
 		return errors.WithStack(db.Model(&UsageRecord{}).
 			Select("COALESCE(SUM(total_tokens), 0) as tokens, COALESCE(SUM(provider_cost), 0) as provider_value").
 			Where("user_id = ? AND org_id = ? AND provider_id = ? AND created_at >= ? AND plan_covered = 1",
@@ -314,7 +314,7 @@ func (s *Store) SumUserPlanUsageSince(ctx context.Context, userID model.UserID, 
 func (s *Store) CountActivePlanUsersSince(ctx context.Context, orgID model.OrgID, providerID model.ProviderID, since time.Time, excludeUserID model.UserID) (int64, error) {
 	var count int64
 
-	err := s.withRetry(ctx, false, func(ctx context.Context, db *gorm.DB) error {
+	err := s.read(ctx, func(ctx context.Context, db *gorm.DB) error {
 		query := db.Model(&UsageRecord{}).
 			Select("COUNT(DISTINCT user_id)").
 			Where("org_id = ? AND provider_id = ? AND created_at >= ? AND plan_covered = 1 AND user_id <> ''",
@@ -334,7 +334,7 @@ func (s *Store) CountActivePlanUsersSince(ctx context.Context, orgID model.OrgID
 func (s *Store) HasPlanUsageSince(ctx context.Context, userID model.UserID, orgID model.OrgID, providerID model.ProviderID, since time.Time) (bool, error) {
 	var ids []string
 
-	err := s.withRetry(ctx, false, func(ctx context.Context, db *gorm.DB) error {
+	err := s.read(ctx, func(ctx context.Context, db *gorm.DB) error {
 		// A probe the planner can stop at the first hit. Not COUNT with a LIMIT:
 		// GORM keeps the LIMIT but turns the SELECT into count(*), which
 		// aggregates every matching row before the LIMIT applies to the result.
@@ -386,7 +386,7 @@ func (s *Store) AggregateCostByDimension(ctx context.Context, filter port.UsageF
 		Cost        int64
 	}
 
-	err := s.withRetry(ctx, false, func(ctx context.Context, db *gorm.DB) error {
+	err := s.read(ctx, func(ctx context.Context, db *gorm.DB) error {
 		groupExpr, err := dimensionGroupExpr(db, dimension)
 		if err != nil {
 			return err
@@ -422,7 +422,7 @@ func (s *Store) AggregatePlanTokensByUser(ctx context.Context, filter port.Usage
 		Tokens int64
 	}
 
-	err := s.withRetry(ctx, false, func(ctx context.Context, db *gorm.DB) error {
+	err := s.read(ctx, func(ctx context.Context, db *gorm.DB) error {
 		query := db.Model(&UsageRecord{}).
 			Select("user_id as user_id, COALESCE(SUM(total_tokens), 0) as tokens").
 			Where("plan_covered = 1")
@@ -453,7 +453,7 @@ func (s *Store) AggregateRequestSizes(ctx context.Context, filter port.UsageFilt
 		Requests         int64
 	}
 
-	err := s.withRetry(ctx, false, func(ctx context.Context, db *gorm.DB) error {
+	err := s.read(ctx, func(ctx context.Context, db *gorm.DB) error {
 		query := db.Model(&UsageRecord{}).
 			Select("model_id as model_id, prompt_tokens as prompt_tokens, completion_tokens as completion_tokens, COUNT(*) as requests").
 			Where("model_id <> ''")
@@ -483,7 +483,7 @@ func (s *Store) EarliestPlanUsageSince(ctx context.Context, orgID model.OrgID, p
 		Earliest *time.Time
 	}
 
-	err := s.withRetry(ctx, false, func(ctx context.Context, db *gorm.DB) error {
+	err := s.read(ctx, func(ctx context.Context, db *gorm.DB) error {
 		return errors.WithStack(db.Model(&UsageRecord{}).
 			Select("MIN(created_at) as earliest").
 			Where("org_id = ? AND provider_id = ? AND created_at >= ? AND plan_covered = 1",

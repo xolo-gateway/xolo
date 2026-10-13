@@ -28,7 +28,7 @@ func (s *Store) CreatePersonalVirtualModel(ctx context.Context, vm model.Persona
 
 func (s *Store) GetPersonalVirtualModelByID(ctx context.Context, id model.PersonalVirtualModelID) (model.PersonalVirtualModel, error) {
 	var vm PersonalVirtualModel
-	err := s.withRetry(ctx, false, func(ctx context.Context, db *gorm.DB) error {
+	err := s.read(ctx, func(ctx context.Context, db *gorm.DB) error {
 		if err := db.First(&vm, "id = ?", string(id)).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				return errors.WithStack(port.ErrNotFound)
@@ -45,7 +45,7 @@ func (s *Store) GetPersonalVirtualModelByID(ctx context.Context, id model.Person
 
 func (s *Store) GetPersonalVirtualModelByName(ctx context.Context, userID model.UserID, name string) (model.PersonalVirtualModel, error) {
 	var vm PersonalVirtualModel
-	err := s.withRetry(ctx, false, func(ctx context.Context, db *gorm.DB) error {
+	err := s.read(ctx, func(ctx context.Context, db *gorm.DB) error {
 		if err := db.First(&vm, "user_id = ? AND name = ?", string(userID), name).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				return errors.WithStack(port.ErrNotFound)
@@ -62,7 +62,7 @@ func (s *Store) GetPersonalVirtualModelByName(ctx context.Context, userID model.
 
 func (s *Store) ListPersonalVirtualModels(ctx context.Context, userID model.UserID) ([]model.PersonalVirtualModel, error) {
 	var vms []*PersonalVirtualModel
-	err := s.withRetry(ctx, false, func(ctx context.Context, db *gorm.DB) error {
+	err := s.read(ctx, func(ctx context.Context, db *gorm.DB) error {
 		return errors.WithStack(db.Where("user_id = ?", string(userID)).Order("name ASC").Find(&vms).Error)
 	})
 	if err != nil {

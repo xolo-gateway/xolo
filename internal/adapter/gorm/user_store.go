@@ -86,7 +86,7 @@ func (s *Store) FindOrCreateUser(ctx context.Context, tenantID model.TenantID, p
 func (s *Store) GetUserByID(ctx context.Context, userID model.UserID) (model.User, error) {
 	var user User
 
-	err := s.withRetry(ctx, false, func(ctx context.Context, db *gorm.DB) error {
+	err := s.read(ctx, func(ctx context.Context, db *gorm.DB) error {
 		if err := db.Preload("Roles").Preload("Preferences").First(&user, "id = ?", string(userID)).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				return errors.WithStack(port.ErrNotFound)
@@ -112,7 +112,7 @@ func (s *Store) GetUserByIdentity(ctx context.Context, tenantID model.TenantID, 
 
 	var user User
 
-	err := s.withRetry(ctx, false, func(ctx context.Context, db *gorm.DB) error {
+	err := s.read(ctx, func(ctx context.Context, db *gorm.DB) error {
 		err := db.Preload("Roles").Preload("Preferences").
 			Where("tenant_id = ? AND provider = ? AND subject = ?", string(tenantID), provider, subject).
 			First(&user).Error
@@ -134,7 +134,7 @@ func (s *Store) GetUserByIdentity(ctx context.Context, tenantID model.TenantID, 
 // GetUserByDeclaredIdentity implements port.UserStore.
 func (s *Store) GetUserByDeclaredIdentity(ctx context.Context, tenantID model.TenantID, identity model.Identity) (model.User, error) {
 	var user model.User
-	err := s.withRetry(ctx, false, func(ctx context.Context, db *gorm.DB) error {
+	err := s.read(ctx, func(ctx context.Context, db *gorm.DB) error {
 		var err error
 		user, err = getUserByDeclaredIdentity(db, tenantID, identity)
 		return err
@@ -165,7 +165,7 @@ func getUserByDeclaredIdentity(db *gorm.DB, tenantID model.TenantID, identity mo
 // FindUsersByEmail implements port.UserStore.
 func (s *Store) FindUsersByEmail(ctx context.Context, tenantID model.TenantID, email string, limit int) ([]model.User, error) {
 	var users []model.User
-	err := s.withRetry(ctx, false, func(ctx context.Context, db *gorm.DB) error {
+	err := s.read(ctx, func(ctx context.Context, db *gorm.DB) error {
 		var err error
 		users, err = findUsersByEmail(db, tenantID, email, limit)
 		return err
@@ -358,7 +358,7 @@ func (s *Store) SaveUser(ctx context.Context, user model.User) error {
 func (s *Store) FindAuthToken(ctx context.Context, token string) (model.AuthToken, error) {
 	var authToken AuthToken
 
-	err := s.withRetry(ctx, false, func(ctx context.Context, db *gorm.DB) error {
+	err := s.read(ctx, func(ctx context.Context, db *gorm.DB) error {
 		if err := db.Preload("Owner").Preload("Application").First(&authToken, "value = ?", crypto.HashToken(token)).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				return errors.WithStack(port.ErrNotFound)
@@ -383,7 +383,7 @@ func (s *Store) FindAuthToken(ctx context.Context, token string) (model.AuthToke
 func (s *Store) GetUserAuthTokens(ctx context.Context, userID model.UserID) ([]model.AuthToken, error) {
 	var authTokens []*AuthToken
 
-	err := s.withRetry(ctx, false, func(ctx context.Context, db *gorm.DB) error {
+	err := s.read(ctx, func(ctx context.Context, db *gorm.DB) error {
 		if err := db.Where("owner_id = ?", string(userID)).Find(&authTokens).Error; err != nil {
 			return errors.WithStack(err)
 		}
@@ -552,7 +552,7 @@ func applyUserTenant(query *gorm.DB, tenantID *model.TenantID) *gorm.DB {
 func (s *Store) CountUsers(ctx context.Context, opts port.QueryUsersOptions) (int64, error) {
 	var count int64
 
-	err := s.withRetry(ctx, false, func(ctx context.Context, db *gorm.DB) error {
+	err := s.read(ctx, func(ctx context.Context, db *gorm.DB) error {
 		query := db.Model(&User{})
 
 		if len(opts.Roles) > 0 {
@@ -581,7 +581,7 @@ func (s *Store) CountUsers(ctx context.Context, opts port.QueryUsersOptions) (in
 func (s *Store) QueryUsers(ctx context.Context, opts port.QueryUsersOptions) ([]model.User, error) {
 	var users []*User
 
-	err := s.withRetry(ctx, false, func(ctx context.Context, db *gorm.DB) error {
+	err := s.read(ctx, func(ctx context.Context, db *gorm.DB) error {
 		query := db.Model(&User{}).Preload("Roles")
 
 		// Apply role filtering if specified

@@ -13,8 +13,9 @@ type Database struct {
 	// a libpq "host=... dbname=..." string) targets PostgreSQL, anything else
 	// is a SQLite file path.
 	DSN string `env:"DSN,expand" envDefault:"data.sqlite"`
-	// Pool tunes the connection pool. Ignored on SQLite, which is pinned to a
-	// single connection.
+	// Pool tunes the connection pool. On SQLite, where writes go through a
+	// single connection, it sizes the pool of read-only connections serving
+	// the plain reads.
 	Pool  DatabasePool `envPrefix:"POOL_"`
 	Cache struct {
 		Users     StoreCache `envPrefix:"USERS_"`

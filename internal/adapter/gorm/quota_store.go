@@ -50,7 +50,7 @@ func (s *Store) DeleteQuota(ctx context.Context, id model.QuotaID) error {
 // GetQuotaByID implements port.ProvisioningBusinessStore.
 func (s *Store) GetQuotaByID(ctx context.Context, id model.QuotaID) (model.Quota, error) {
 	var q Quota
-	err := s.withRetry(ctx, false, func(ctx context.Context, db *gorm.DB) error {
+	err := s.read(ctx, func(ctx context.Context, db *gorm.DB) error {
 		if err := db.First(&q, "id = ?", string(id)).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				return errors.WithStack(port.ErrNotFound)
@@ -68,7 +68,7 @@ func (s *Store) GetQuotaByID(ctx context.Context, id model.QuotaID) (model.Quota
 // GetQuota implements port.QuotaStore.
 func (s *Store) GetQuota(ctx context.Context, scope model.QuotaScope, scopeID string) (model.Quota, error) {
 	var q Quota
-	err := s.withRetry(ctx, false, func(ctx context.Context, db *gorm.DB) error {
+	err := s.read(ctx, func(ctx context.Context, db *gorm.DB) error {
 		if err := db.Where("scope = ? AND scope_id = ?", string(scope), scopeID).First(&q).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				return errors.WithStack(port.ErrNotFound)
@@ -89,7 +89,7 @@ func (s *Store) ListQuotas(ctx context.Context, scope model.QuotaScope, scopeIDs
 		return nil, nil
 	}
 	var rows []*Quota
-	err := s.withRetry(ctx, false, func(ctx context.Context, db *gorm.DB) error {
+	err := s.read(ctx, func(ctx context.Context, db *gorm.DB) error {
 		return errors.WithStack(db.Where("scope = ? AND scope_id IN ?", string(scope), scopeIDs).Order("scope_id").Find(&rows).Error)
 	})
 	if err != nil {

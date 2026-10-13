@@ -187,10 +187,10 @@ func readProjection(db *gorm.DB, scope model.CommonScope, key string) (model.Com
 	return rows[0].item()
 }
 
-// readTransaction runs fn on one snapshot: on PostgreSQL a read-only
-// repeatable read transaction, on SQLite a deferred transaction.
+// readTransaction runs fn on one snapshot of the reader: on PostgreSQL a
+// read-only repeatable read transaction, on SQLite a deferred transaction.
 func (s *Store) readTransaction(ctx context.Context, fn func(db *gorm.DB) error) error {
-	db, err := s.getDatabase(ctx)
+	db, err := s.readDatabase(ctx)
 	if err != nil {
 		return errors.WithStack(err)
 	}

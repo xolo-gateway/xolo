@@ -20,7 +20,7 @@ func (s *Store) CreateProvider(ctx context.Context, p model.Provider) error {
 // GetProviderByID implements port.ProviderStore.
 func (s *Store) GetProviderByID(ctx context.Context, id model.ProviderID) (model.Provider, error) {
 	var p Provider
-	err := s.withRetry(ctx, false, func(ctx context.Context, db *gorm.DB) error {
+	err := s.read(ctx, func(ctx context.Context, db *gorm.DB) error {
 		if err := db.First(&p, "id = ?", string(id)).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				return errors.WithStack(port.ErrNotFound)
@@ -38,7 +38,7 @@ func (s *Store) GetProviderByID(ctx context.Context, id model.ProviderID) (model
 // ListProviders implements port.ProviderStore.
 func (s *Store) ListProviders(ctx context.Context, orgID model.OrgID) ([]model.Provider, error) {
 	var providers []*Provider
-	err := s.withRetry(ctx, false, func(ctx context.Context, db *gorm.DB) error {
+	err := s.read(ctx, func(ctx context.Context, db *gorm.DB) error {
 		return errors.WithStack(db.Where("org_id = ?", string(orgID)).Order("name ASC").Find(&providers).Error)
 	})
 	if err != nil {
@@ -85,7 +85,7 @@ func (s *Store) CreateLLMModel(ctx context.Context, m model.LLMModel) error {
 // GetLLMModelByID implements port.ProviderStore.
 func (s *Store) GetLLMModelByID(ctx context.Context, id model.LLMModelID) (model.LLMModel, error) {
 	var m LLMModel
-	err := s.withRetry(ctx, false, func(ctx context.Context, db *gorm.DB) error {
+	err := s.read(ctx, func(ctx context.Context, db *gorm.DB) error {
 		if err := db.First(&m, "id = ?", string(id)).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				return errors.WithStack(port.ErrNotFound)
@@ -103,7 +103,7 @@ func (s *Store) GetLLMModelByID(ctx context.Context, id model.LLMModelID) (model
 // GetLLMModelByProxyName implements port.ProviderStore.
 func (s *Store) GetLLMModelByProxyName(ctx context.Context, orgID model.OrgID, proxyName string) (model.LLMModel, error) {
 	var m LLMModel
-	err := s.withRetry(ctx, false, func(ctx context.Context, db *gorm.DB) error {
+	err := s.read(ctx, func(ctx context.Context, db *gorm.DB) error {
 		// LLMModel.Enabled maps to an integer column, so the flag is bound as
 		// 1: PostgreSQL refuses to encode a Go bool into a bigint parameter.
 		if err := db.Where("org_id = ? AND proxy_name = ? AND enabled = ?", string(orgID), proxyName, 1).First(&m).Error; err != nil {
@@ -123,7 +123,7 @@ func (s *Store) GetLLMModelByProxyName(ctx context.Context, orgID model.OrgID, p
 // ListLLMModels implements port.ProviderStore.
 func (s *Store) ListLLMModels(ctx context.Context, orgID model.OrgID) ([]model.LLMModel, error) {
 	var models []*LLMModel
-	err := s.withRetry(ctx, false, func(ctx context.Context, db *gorm.DB) error {
+	err := s.read(ctx, func(ctx context.Context, db *gorm.DB) error {
 		return errors.WithStack(db.Where("org_id = ?", string(orgID)).Order("proxy_name ASC").Find(&models).Error)
 	})
 	if err != nil {
@@ -139,7 +139,7 @@ func (s *Store) ListLLMModels(ctx context.Context, orgID model.OrgID) ([]model.L
 // ListEnabledLLMModels implements port.ProviderStore.
 func (s *Store) ListEnabledLLMModels(ctx context.Context, orgID model.OrgID) ([]model.LLMModel, error) {
 	var models []*LLMModel
-	err := s.withRetry(ctx, false, func(ctx context.Context, db *gorm.DB) error {
+	err := s.read(ctx, func(ctx context.Context, db *gorm.DB) error {
 		return errors.WithStack(db.Where("org_id = ? AND enabled = ?", string(orgID), 1).Order("proxy_name ASC").Find(&models).Error)
 	})
 	if err != nil {

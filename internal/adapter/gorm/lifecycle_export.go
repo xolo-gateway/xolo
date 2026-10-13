@@ -25,7 +25,7 @@ const auditTable = "mutation_audits"
 // The transaction is never replayed: its callbacks may already have written
 // to a stream. A failure leaves an export without trailer.
 func (s *Store) ReadDeletionScope(ctx context.Context, scope model.CommonScope, key string, start func(source string, deletion model.Deletion) error, row func(table string, row json.RawMessage) error) error {
-	db, err := s.getDatabase(ctx)
+	db, err := s.readDatabase(ctx)
 	if err != nil {
 		return errors.WithStack(err)
 	}

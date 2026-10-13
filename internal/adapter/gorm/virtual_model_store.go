@@ -29,7 +29,7 @@ func (s *Store) CreateVirtualModel(ctx context.Context, vm model.VirtualModel) e
 
 func (s *Store) GetVirtualModelByID(ctx context.Context, id model.VirtualModelID) (model.VirtualModel, error) {
 	var vm VirtualModel
-	err := s.withRetry(ctx, false, func(ctx context.Context, db *gorm.DB) error {
+	err := s.read(ctx, func(ctx context.Context, db *gorm.DB) error {
 		if err := db.First(&vm, "id = ?", string(id)).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				return errors.WithStack(port.ErrNotFound)
@@ -46,7 +46,7 @@ func (s *Store) GetVirtualModelByID(ctx context.Context, id model.VirtualModelID
 
 func (s *Store) GetVirtualModelByName(ctx context.Context, orgID model.OrgID, name string) (model.VirtualModel, error) {
 	var vm VirtualModel
-	err := s.withRetry(ctx, false, func(ctx context.Context, db *gorm.DB) error {
+	err := s.read(ctx, func(ctx context.Context, db *gorm.DB) error {
 		if err := db.First(&vm, "org_id = ? AND name = ?", string(orgID), name).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				return errors.WithStack(port.ErrNotFound)
@@ -63,7 +63,7 @@ func (s *Store) GetVirtualModelByName(ctx context.Context, orgID model.OrgID, na
 
 func (s *Store) ListVirtualModels(ctx context.Context, orgID model.OrgID) ([]model.VirtualModel, error) {
 	var vms []*VirtualModel
-	err := s.withRetry(ctx, false, func(ctx context.Context, db *gorm.DB) error {
+	err := s.read(ctx, func(ctx context.Context, db *gorm.DB) error {
 		return errors.WithStack(db.Where("org_id = ?", string(orgID)).Order("name ASC").Find(&vms).Error)
 	})
 	if err != nil {

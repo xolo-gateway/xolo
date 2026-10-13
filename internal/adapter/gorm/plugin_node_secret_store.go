@@ -16,7 +16,7 @@ func (s *Store) GetSecret(ctx context.Context, scopeID, pluginName, nodeID, key 
 		return "", false, err
 	}
 	var secret PluginNodeSecret
-	err := s.withRetry(ctx, false, func(ctx context.Context, db *gorm.DB) error {
+	err := s.read(ctx, func(ctx context.Context, db *gorm.DB) error {
 		if err := db.Where("org_id = ? AND plugin_name = ? AND node_id = ? AND key = ?", scopeID, pluginName, nodeID, key).First(&secret).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				return nil

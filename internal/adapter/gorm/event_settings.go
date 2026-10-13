@@ -19,7 +19,7 @@ type EventSettings struct {
 // GetMaxEvents implements port.EventSettingsStore.
 func (s *Store) GetMaxEvents(ctx context.Context, orgID model.OrgID) (*int, error) {
 	var settings EventSettings
-	err := s.withRetry(ctx, false, func(ctx context.Context, db *gorm.DB) error {
+	err := s.read(ctx, func(ctx context.Context, db *gorm.DB) error {
 		if err := db.First(&settings, "org_id = ?", string(orgID)).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				return errors.WithStack(port.ErrNotFound)
