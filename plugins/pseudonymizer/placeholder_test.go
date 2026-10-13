@@ -3,10 +3,15 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
 
+	goanon "github.com/bornholm/go-anon"
+	"github.com/bornholm/go-anon/pkg/anonymizer"
+	"github.com/bornholm/go-anon/pkg/ner"
 	proto "github.com/xolo-gateway/xolo/pkg/pluginsdk/proto"
 )
 
@@ -261,7 +266,7 @@ func TestPreRequest_ForeignPlaceholderIsKeptAndTheRestPseudonymized(t *testing.T
 		}
 	}
 	host.assertNoEventOfType(t, "passthrough", 100*time.Millisecond)
-	host.assertNoEventOfType(t, eventPlaceholdersNeutralized, 0)
+	host.assertNoEventOfType(t, eventPlaceholdersNeutralized, 100*time.Millisecond)
 }
 
 // The round trip of #113: what PostResponse hands the client is what the
@@ -284,7 +289,7 @@ func TestInventedPlaceholder_NextTurnStaysPseudonymized(t *testing.T) {
 	}
 	host.assertNoEventOfType(t, "passthrough", 100*time.Millisecond)
 	// Already inert: nothing left to neutralize on this turn.
-	host.assertNoEventOfType(t, eventPlaceholdersNeutralized, 0)
+	host.assertNoEventOfType(t, eventPlaceholdersNeutralized, 100*time.Millisecond)
 }
 
 // A middleware wrapping a virtual model can put two pseudonymizer nodes on the
@@ -313,7 +318,7 @@ func TestChainedNodes_EachRestoresItsOwnPlaceholders(t *testing.T) {
 		}
 	}
 	innerHost.assertNoEventOfType(t, "passthrough", 100*time.Millisecond)
-	innerHost.assertNoEventOfType(t, eventPlaceholdersNeutralized, 0)
+	innerHost.assertNoEventOfType(t, eventPlaceholdersNeutralized, 100*time.Millisecond)
 
 	// The backward pass runs in reverse order: inner node first.
 	response := "J'écris à " + outerPlaceholder + " avec " + innerPlaceholder + " en copie."
@@ -324,4 +329,75 @@ func TestChainedNodes_EachRestoresItsOwnPlaceholders(t *testing.T) {
 		t.Errorf("restored = %q, want %q", fromOuter.ModifiedResponseContent, want)
 	}
 	innerBackHost.assertNoEventOfType(t, eventPlaceholdersNeutralized, 100*time.Millisecond)
+}
+
+// regexOnlyRecognizer finds the identifiers and secrets go-anon knows by
+// pattern, so placeholders of every form can be produced without a model.
+type regexOnlyRecognizer struct{}
+
+func (regexOnlyRecognizer) Recognize(text string) ([]ner.Entity, error) {
+	patterns := append(append([]ner.RegexPattern{}, goanon.BuiltinRegexPatterns...), goanon.SecretPatterns()...)
+	return ner.RegexEntityFilter(patterns)(text, nil), nil
+}
+
+// anyDelimited matches whatever sits between the placeholder delimiters, so a
+// change of format in go-anon shows up as a placeholder placeholderPattern
+// misses.
+var anyDelimited = regexp.MustCompile(`⟦[^⟦⟧]*⟧`)
+
+// placeholderPattern copies the pattern go-anon refuses a text with. If go-anon
+// changes its format, masking misses the new placeholders and the content they
+// sit in leaves in clear again: produce one of every form with go-anon itself
+// and check go-anon accepts the masked text.
+func TestMaskPlaceholders_CoversEveryFormGoAnonWrites(t *testing.T) {
+	key, err := goanon.ParseHashKey(strings.Repeat("ab", 32))
+	if err != nil {
+		t.Fatal(err)
+	}
+	source := "Écrire à " + agentBlockSecret + " depuis 192.168.1.10, IBAN FR7630006000011234567890189, clé AKIAIOSFODNN7EXAMPLE."
+
+	for name, tc := range map[string]struct {
+		strategy goanon.Strategy
+		opts     []goanon.AnonymizeOption
+	}{
+		"tag":        {strategy: goanon.TagReplace},
+		"consistent": {strategy: goanon.Consistent},
+		"hash":       {strategy: goanon.Hash, opts: []goanon.AnonymizeOption{goanon.WithHashKey(key)}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			anon := goanon.NewAnonymizer(regexOnlyRecognizer{}, goanon.Config{Strategy: tc.strategy, ConsistentMap: true})
+			session := goanon.NewSession()
+			result, err := anon.Anonymize(source, append(tc.opts, anonymizer.WithSession(session))...)
+			if err != nil {
+				t.Fatalf("anonymize: %v", err)
+			}
+
+			placeholders := anyDelimited.FindAllString(result.Text, -1)
+			if len(placeholders) < 3 {
+				t.Fatalf("expected several placeholders, got %q", result.Text)
+			}
+			redacted := false
+			for _, placeholder := range placeholders {
+				if !placeholderPattern.MatchString(placeholder) || placeholderPattern.FindString(placeholder) != placeholder {
+					t.Errorf("placeholderPattern misses %q", placeholder)
+				}
+				redacted = redacted || strings.HasSuffix(placeholder, "_REDACTED⟧")
+			}
+			if !redacted {
+				t.Errorf("no redacted marker produced: %q", result.Text)
+			}
+
+			// The next turn: go-anon must accept the masked text, whichever
+			// node the placeholders belong to.
+			for _, own := range []func(string) bool{ownedBy(session.Nonce()), ownedBy("")} {
+				masked := maskPlaceholders(result.Text, own)
+				_, err := anon.Anonymize(masked.Text, append(tc.opts, anonymizer.WithSession(goanon.NewSession()))...)
+				if errors.Is(err, anonymizer.ErrPlaceholderCollision) {
+					t.Errorf("go-anon refuses the masked text %q", masked.Text)
+				} else if err != nil {
+					t.Errorf("anonymize masked text: %v", err)
+				}
+			}
+		})
+	}
 }
