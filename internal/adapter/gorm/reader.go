@@ -15,7 +15,8 @@ import (
 // the plain reads (see WithReader). In WAL mode its connections read beside
 // the single writer connection instead of queueing behind it. Every
 // connection is query_only: a write routed there by mistake fails instead of
-// racing the writer. The caller sizes the pool.
+// racing the writer. Foreign keys are left alone, they only apply to writes.
+// The caller sizes the pool.
 //
 // An in-memory database is private to the connection that opened it: the
 // reader would see an empty database, and is refused.
@@ -41,7 +42,8 @@ func OpenSQLiteReader(dsn string, busyTimeout time.Duration, config *gorm.Config
 }
 
 // IsSQLiteMemoryDSN reports whether dsn designates an in-memory SQLite
-// database, which another connection cannot reach without a shared cache.
+// database. The shared-cache form is included on purpose: shared cache
+// serializes its connections on table locks, which defeats the read pool.
 func IsSQLiteMemoryDSN(dsn string) bool {
 	return dsn == ":memory:" || dsn == "" ||
 		strings.HasPrefix(dsn, "file::memory:") ||
