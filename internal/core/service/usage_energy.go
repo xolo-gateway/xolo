@@ -13,7 +13,8 @@ import (
 // estimate) of the requests matching the filter. The estimate is non-linear
 // per request, so it is computed once per model and token counts, then
 // multiplied by the number of requests sharing them. Models without an active
-// parameter count are left out.
+// parameter count, or deleted since, are left out. Any other store error is
+// returned: a partial total must not be shown, nor cached, as the real one.
 func EstimateUsageEnergy(ctx context.Context, usage port.UsageStore, providers port.ProviderStore, filter port.UsageFilter) (totalEnergyWh, totalCO2GramsMid float64, err error) {
 	sizes, err := usage.AggregateRequestSizes(ctx, filter)
 	if err != nil {
@@ -26,8 +27,11 @@ func EstimateUsageEnergy(ctx context.Context, usage port.UsageStore, providers p
 		m, ok := models[size.ModelID]
 		if !ok {
 			loaded, err := providers.GetLLMModelByID(ctx, size.ModelID)
-			if err != nil {
+			switch {
+			case errors.Is(err, port.ErrNotFound):
 				loaded = nil
+			case err != nil:
+				return 0, 0, errors.WithStack(err)
 			}
 			models[size.ModelID] = loaded
 			m = loaded
@@ -39,8 +43,12 @@ func EstimateUsageEnergy(ctx context.Context, usage port.UsageStore, providers p
 		tier, ok := tiers[pid]
 		if !ok {
 			tier = estimator.TierHyperscaler
-			if p, err := providers.GetProviderByID(ctx, pid); err == nil {
+			p, err := providers.GetProviderByID(ctx, pid)
+			switch {
+			case err == nil:
 				tier = estimator.CloudTier(p.CloudTier())
+			case !errors.Is(err, port.ErrNotFound):
+				return 0, 0, errors.WithStack(err)
 			}
 			tiers[pid] = tier
 		}

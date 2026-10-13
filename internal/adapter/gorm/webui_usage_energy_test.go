@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"github.com/xolo-gateway/xolo/internal/adapter/cache"
 	xologorm "github.com/xolo-gateway/xolo/internal/adapter/gorm"
 	"github.com/xolo-gateway/xolo/internal/core/model"
 	"github.com/xolo-gateway/xolo/internal/core/port"
@@ -31,6 +32,7 @@ func (s *countingUsageStore) AggregateRequestSizes(ctx context.Context, filter p
 // does not aggregate the period a second time.
 func TestUsagePagesReuseTheEnergyEstimate(t *testing.T) {
 	eachBackend(t, func(t *testing.T, store *xologorm.Store) {
+		cache.EnergyEstimateCache.Purge()
 		f := newTeamPagesFixture(t, store)
 		usage := &countingUsageStore{UsageStore: store}
 		f.handler = memberships.Middleware(store, store)(webui.NewHandler(
@@ -56,5 +58,20 @@ func TestUsagePagesReuseTheEnergyEstimate(t *testing.T) {
 			}
 		}
 		require.Equal(t, int32(len(paths)), usage.sizes.Load())
+
+		// Spellings of one period, or one set of owners in another order, share
+		// the estimate.
+		owner, lead := string(f.owner.ID()), string(f.lead.ID())
+		for _, same := range [][]string{
+			{"/usage", "/usage?range=7d", "/usage?range=unknown"},
+			{"/orgs/acme/usage?owner=" + owner + "&owner=" + lead, "/orgs/acme/usage?owner=" + lead + "," + owner},
+		} {
+			before := usage.sizes.Load()
+			for _, path := range same {
+				rr := f.do(t, f.owner, http.MethodGet, path, nil)
+				require.Equal(t, http.StatusOK, rr.Code, path)
+			}
+			require.Equal(t, int32(1), usage.sizes.Load()-before, same)
+		}
 	})
 }

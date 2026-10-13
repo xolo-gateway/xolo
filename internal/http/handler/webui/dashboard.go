@@ -161,7 +161,7 @@ func (h *Handler) getDashboardPage(w http.ResponseWriter, r *http.Request) {
 
 	// Cache key for energy totals. It names the range, not its start: since moves
 	// with the clock, and a key built from it never hit the cache.
-	energyCacheKey := fmt.Sprintf("dashboard:%s:%s", userID, rangeParam)
+	energyCacheKey := fmt.Sprintf("dashboard:%s:%s", userID, dashboardRangeKey(rangeParam))
 
 	// Filter matching the whole selected period, used by every chart aggregation.
 	chartFilter := port.UsageFilter{
@@ -255,11 +255,14 @@ func (h *Handler) getDashboardPage(w http.ResponseWriter, r *http.Request) {
 		totalEnergyWh = cached.TotalEnergyWh
 		totalCO2GramsMid = cached.TotalCO2GramsMid
 	} else {
-		totalEnergyWh, totalCO2GramsMid = h.computeEnergyTotals(ctx, chartFilter)
-		cache.EnergyEstimateCache.Add(energyCacheKey, cache.EnergyTotals{
-			TotalEnergyWh:    totalEnergyWh,
-			TotalCO2GramsMid: totalCO2GramsMid,
-		})
+		var computed bool
+		totalEnergyWh, totalCO2GramsMid, computed = h.computeEnergyTotals(ctx, chartFilter)
+		if computed {
+			cache.EnergyEstimateCache.Add(energyCacheKey, cache.EnergyTotals{
+				TotalEnergyWh:    totalEnergyWh,
+				TotalCO2GramsMid: totalCO2GramsMid,
+			})
+		}
 	}
 
 	// Build display records with cost converted to org currency where needed
@@ -372,6 +375,18 @@ func dashboardRangeToSince(r string) time.Time {
 	}
 }
 
+// dashboardRangeKey names the period a range parameter selects, unknown values falling
+// back to 7 days like the start of the period does. It keys the energy cache,
+// so a client varying the parameter cannot fill it.
+func dashboardRangeKey(r string) string {
+	switch r {
+	case "1d", "30d", "90d", "180d", "365d":
+		return r
+	default:
+		return "7d"
+	}
+}
+
 func intPtr(n int) *int { return &n }
 
 // aggregateCostRows fetches the PAYG cost sub-totals for a dimension, logging and
@@ -386,14 +401,15 @@ func (h *Handler) aggregateCostRows(ctx context.Context, filter port.UsageFilter
 }
 
 // computeEnergyTotals estimates the energy and CO₂ of the usage matching the
-// filter, logging and returning zero on error so the page still renders.
-func (h *Handler) computeEnergyTotals(ctx context.Context, filter port.UsageFilter) (totalEnergyWh, totalCO2GramsMid float64) {
+// filter. On error it logs and reports false: the page shows zero and the
+// caller does not cache it.
+func (h *Handler) computeEnergyTotals(ctx context.Context, filter port.UsageFilter) (totalEnergyWh, totalCO2GramsMid float64, ok bool) {
 	totalEnergyWh, totalCO2GramsMid, err := service.EstimateUsageEnergy(ctx, h.usageStore, h.providerStore, filter)
 	if err != nil {
 		slog.WarnContext(ctx, "could not estimate usage energy", slogx.Error(err))
-		return 0, 0
+		return 0, 0, false
 	}
-	return totalEnergyWh, totalCO2GramsMid
+	return totalEnergyWh, totalCO2GramsMid, true
 }
 
 func dashChartByValue(m map[string]int64) []component.ProfileChartDataPoint {

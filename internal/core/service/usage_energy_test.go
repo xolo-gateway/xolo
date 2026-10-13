@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"math"
 	"testing"
 
@@ -23,9 +24,13 @@ type energyProviderStore struct {
 	port.ProviderStore
 	models    map[model.LLMModelID]model.LLMModel
 	providers map[model.ProviderID]model.Provider
+	err       error
 }
 
 func (s *energyProviderStore) GetLLMModelByID(_ context.Context, id model.LLMModelID) (model.LLMModel, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
 	if m, ok := s.models[id]; ok {
 		return m, nil
 	}
@@ -80,5 +85,19 @@ func TestEstimateUsageEnergyCountsEveryRequest(t *testing.T) {
 	}
 	if math.Abs(energy-wantEnergy) > 1e-9*wantEnergy || math.Abs(co2-wantCO2) > 1e-9*wantCO2 {
 		t.Errorf("got %v Wh / %v g, want %v Wh / %v g", energy, co2, wantEnergy, wantCO2)
+	}
+}
+
+// A store failure is not a deleted model: the estimate fails instead of
+// leaving the model out of a total the page would show and cache.
+func TestEstimateUsageEnergyReportsStoreErrors(t *testing.T) {
+	failure := errors.New("store unavailable")
+	providers := &energyProviderStore{err: failure}
+	usage := &requestSizeStore{sizes: []port.RequestSize{
+		{ModelID: "m1", PromptTokens: 100, CompletionTokens: 50, Requests: 1},
+	}}
+
+	if _, _, err := EstimateUsageEnergy(context.Background(), usage, providers, port.UsageFilter{}); !errors.Is(err, failure) {
+		t.Fatalf("expected the store error, got %v", err)
 	}
 }

@@ -80,6 +80,10 @@ type UsageStore interface {
 	// AggregateRequestSizes counts the requests matching the filter by model and
 	// token counts. The energy estimate is non-linear per request: these rows
 	// give it every request without loading the records of the period.
+	//
+	// Rows merge on (model, prompt tokens, completion tokens) alone: requests of
+	// different orgs, currencies or billing arrangements within the filter share
+	// a row. Records without a model are left out.
 	AggregateRequestSizes(ctx context.Context, filter UsageFilter) ([]RequestSize, error)
 }
 
