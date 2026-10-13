@@ -23,11 +23,18 @@ const autoSignInCookie = "xolo_auto_sign_in"
 
 const autoSignInCooldown = 30 * time.Second
 
+// signedOutCookie marks a browser that signed out. Signing out of Xolo does
+// not end the session at the identity provider: skipping the provider choice
+// would sign the browser straight back in. It lasts as long as the browser
+// session and is cleared by the next successful sign-in.
+const signedOutCookie = "xolo_signed_out"
+
 // LoginRedirect sends an unauthenticated browser to sign in. A GET request
 // that is not an HTMX fragment remembers its path, so the callback returns to
 // the requested page. With a single provider, the provider choice is skipped
-// at most once per autoSignInCooldown: a browser that still has a session at
-// the identity provider is then signed in without any interaction.
+// at most once per autoSignInCooldown, and never after a sign-out: a browser
+// that still has a session at the identity provider is then signed in without
+// any interaction.
 func (h *Handler) LoginRedirect(w http.ResponseWriter, r *http.Request) {
 	target := "/auth/oidc/login"
 
@@ -50,20 +57,36 @@ func (h *Handler) LoginRedirect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if _, err := r.Cookie(autoSignInCookie); len(h.providers) == 1 && errors.Is(err, http.ErrNoCookie) {
-		http.SetCookie(w, &http.Cookie{
-			Name:     autoSignInCookie,
-			Value:    "1",
-			Path:     "/",
-			MaxAge:   int(autoSignInCooldown.Seconds()),
-			HttpOnly: true,
-			Secure:   sess.Options != nil && sess.Options.Secure,
-			SameSite: http.SameSiteLaxMode,
-		})
+	if len(h.providers) == 1 && !hasCookie(r, autoSignInCookie) && !hasCookie(r, signedOutCookie) {
+		h.setFlagCookie(w, r, autoSignInCookie, int(autoSignInCooldown.Seconds()))
 		target = fmt.Sprintf("/auth/oidc/providers/%s", h.providers[0].ID)
 	}
 
 	http.Redirect(w, r, target, http.StatusSeeOther)
+}
+
+func hasCookie(r *http.Request, name string) bool {
+	_, err := r.Cookie(name)
+	return !errors.Is(err, http.ErrNoCookie)
+}
+
+// setFlagCookie sets a cookie that only carries a flag, with the Secure
+// attribute of the session cookie. A zero maxAge lasts as long as the browser
+// session, a negative one deletes the cookie.
+func (h *Handler) setFlagCookie(w http.ResponseWriter, r *http.Request, name string, maxAge int) {
+	secure := false
+	if sess, err := h.getSession(r); err == nil && sess != nil && sess.Options != nil {
+		secure = sess.Options.Secure
+	}
+	http.SetCookie(w, &http.Cookie{
+		Name:     name,
+		Value:    "1",
+		Path:     "/",
+		MaxAge:   maxAge,
+		HttpOnly: true,
+		Secure:   secure,
+		SameSite: http.SameSiteLaxMode,
+	})
 }
 
 // localPath accepts only an absolute path on the current origin: no scheme,

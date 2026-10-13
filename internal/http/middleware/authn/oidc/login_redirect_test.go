@@ -98,3 +98,20 @@ func TestLocalPath(t *testing.T) {
 		require.Equal(t, want, ok, value)
 	}
 }
+
+// Signing out of Xolo leaves the session at the identity provider open: the
+// next unauthenticated page shows the login page instead of signing the
+// browser straight back in.
+func TestLoginRedirectShowsChoiceAfterLogout(t *testing.T) {
+	h := newLoginRedirectHandler(Provider{ID: "dex"})
+	b := newBrowser()
+
+	rec := httptest.NewRecorder()
+	h.handleLogout(rec, b.request(http.MethodGet, "/auth/oidc/logout"))
+	b.keep(rec)
+
+	rec = httptest.NewRecorder()
+	h.LoginRedirect(rec, b.request(http.MethodGet, "/"))
+	require.Equal(t, http.StatusSeeOther, rec.Code)
+	require.Equal(t, "/auth/oidc/login", rec.Header().Get("Location"))
+}

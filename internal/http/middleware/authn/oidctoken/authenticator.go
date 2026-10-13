@@ -143,7 +143,11 @@ func (h *Handler) validateToken(ctx context.Context, rawToken string, provider P
 
 		key, found := findKey(jwks, kid)
 		// An unknown key ID from this provider's issuer may come from a key
-		// rotation: refetch the key set once, rate limited.
+		// rotation: refetch the key set once, rate limited. The issuer is read
+		// before the signature is checked, so an unsigned token can use up the
+		// refetch slot and delay picking up a real rotation by up to
+		// jwksRefetchInterval: accepted, the identity provider is never hit
+		// more than once per interval.
 		if !found {
 			if issuer, err := t.Claims.GetIssuer(); err == nil && issuer == provider.Issuer {
 				if refreshed, ok, err := refetchJWKS(ctx, provider.JWKSURL); err == nil && ok {

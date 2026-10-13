@@ -231,4 +231,24 @@ func TestOIDCDurableSession(t *testing.T) {
 
 	require.Equal(t, http.StatusBadRequest, logout("not-a-token"))
 	require.True(t, signedIn())
+
+	// Signing out leaves the session at the identity provider open: with a
+	// single provider, the next page must show the login page instead of
+	// signing the browser straight back in.
+	resp, err = browser.Get(baseURL + "/auth/oidc/logout")
+	require.NoError(t, err)
+	resp.Body.Close()
+	require.Equal(t, "/auth/oidc/login", resp.Request.URL.Path, "the sign-out signed the browser back in")
+	require.False(t, signedIn())
+
+	// An explicit sign-in lifts it.
+	resp, err = browser.Get(baseURL + "/auth/oidc/providers/" + fakeIdPProvider)
+	require.NoError(t, err)
+	resp.Body.Close()
+	require.True(t, signedIn())
+	base, err := url.Parse(baseURL)
+	require.NoError(t, err)
+	for _, c := range jar.Cookies(base) {
+		require.NotEqual(t, "xolo_signed_out", c.Name, "the sign-in kept the sign-out marker")
+	}
 }

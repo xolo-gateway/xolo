@@ -99,6 +99,10 @@ func (h *Handler) handleProviderCallback(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	if hasCookie(r, signedOutCookie) {
+		h.setFlagCookie(w, r, signedOutCookie, -1)
+	}
+
 	// Honour a post-login redirect stored in the session (see LoginRedirect).
 	redirectTo := "/"
 	if sess, err := h.getSession(r); err == nil && sess != nil {
@@ -128,6 +132,8 @@ func (h *Handler) handleLogout(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	h.setFlagCookie(w, r, signedOutCookie, 0)
+
 	if user == nil {
 		http.Redirect(w, r, "/", http.StatusTemporaryRedirect)
 		return
@@ -148,6 +154,8 @@ func (h *Handler) handleProviderLogout(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
+
+	h.setFlagCookie(w, r, signedOutCookie, 0)
 
 	baseURL := httpCtx.BaseURL(ctx)
 

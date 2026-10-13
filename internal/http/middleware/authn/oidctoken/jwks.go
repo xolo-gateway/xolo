@@ -102,7 +102,6 @@ func refetchJWKS(ctx context.Context, jwksURL string) (JWKS, bool, error) {
 }
 
 func downloadJWKS(ctx context.Context, jwksURL string) (JWKS, error) {
-
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, jwksURL, nil)
 	if err != nil {
 		return JWKS{}, errors.WithStack(err)
