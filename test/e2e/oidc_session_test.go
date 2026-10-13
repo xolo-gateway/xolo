@@ -194,7 +194,7 @@ func TestOIDCDurableSession(t *testing.T) {
 		resp.Body.Close()
 		location := resp.Header.Get("Location")
 		require.Falsef(t, resp.StatusCode >= 500, "status %d", resp.StatusCode)
-		return !strings.Contains(location, "/auth/oidc/login")
+		return !strings.HasPrefix(location, "/auth/oidc/")
 	}
 
 	resp, err := browser.Get(baseURL + "/auth/oidc/providers/" + fakeIdPProvider)
