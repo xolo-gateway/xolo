@@ -194,6 +194,14 @@ type captureHost struct {
 	event pluginsdk.Event
 	// events keeps every event, for a request that emits several.
 	events []pluginsdk.Event
+	// settle waits for the emissions of the plugin the host is attached to.
+	settle func()
+}
+
+// attachTo makes c the host of p, and lets it wait for p's emissions.
+func (c *captureHost) attachTo(p *Plugin) {
+	c.settle = p.emitting.Wait
+	p.SetHostClient(c)
 }
 
 func (c *captureHost) EmitEvent(_ context.Context, e pluginsdk.Event) error {
@@ -231,19 +239,17 @@ func (c *captureHost) waitForEventOfType(t *testing.T, typ string) pluginsdk.Eve
 	return pluginsdk.Event{}
 }
 
-// assertNoEventOfType waits out the window, see assertNoEvent, and checks at
-// least once: a zero window checks what an earlier wait let through.
-func (c *captureHost) assertNoEventOfType(t *testing.T, typ string, window time.Duration) {
+// assertNoEventOfType fails if an event of type was emitted. It waits for the
+// emissions under way first: emitEvent publishes from a goroutine, and an
+// event still on its way would otherwise go unnoticed.
+func (c *captureHost) assertNoEventOfType(t *testing.T, typ string) {
 	t.Helper()
-	deadline := time.Now().Add(window)
-	for {
-		if events := c.eventsOfType(typ); len(events) > 0 {
-			t.Fatalf("a %s event was emitted: %v", typ, events[0].Attributes)
-		}
-		if !time.Now().Before(deadline) {
-			return
-		}
-		time.Sleep(10 * time.Millisecond)
+	if c.settle == nil {
+		t.Fatal("captureHost not attached to a plugin, see attachTo")
+	}
+	c.settle()
+	if events := c.eventsOfType(typ); len(events) > 0 {
+		t.Fatalf("a %s event was emitted: %v", typ, events[0].Attributes)
 	}
 }
 

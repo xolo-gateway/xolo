@@ -34,6 +34,11 @@ func ownedBy(nonce string) func(placeholder string) bool {
 
 // mentionsNonce reports whether text shows the model a placeholder of the
 // node, live or inert. A model that saw none has no form to imitate.
+//
+// It is looser than ownedBy on purpose: any form ending with the nonce counts,
+// including a hashed placeholder whose digest happens to end with it. A false
+// positive only costs the streaming of one response, held back for
+// PostResponse; a false negative would let an invented placeholder through.
 func mentionsNonce(text, nonce string) bool {
 	return nonce != "" && (strings.Contains(text, "_"+nonce+"⟧") || strings.Contains(text, "_"+nonce+"]]"))
 }

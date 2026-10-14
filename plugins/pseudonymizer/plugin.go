@@ -38,6 +38,10 @@ type Plugin struct {
 
 	hostMu     sync.Mutex
 	hostClient pluginsdk.HostClient
+
+	// emitting counts the emitEvent calls still under way, for a test to
+	// assert an event was not emitted without guessing how long to wait.
+	emitting sync.WaitGroup
 }
 
 // SetHostClient implémente pluginsdk.HostClientSetter : le runtime l'appelle une
@@ -61,7 +65,9 @@ func (p *Plugin) emitEvent(evt pluginsdk.Event) {
 	if hc == nil {
 		return
 	}
+	p.emitting.Add(1)
 	go func() {
+		defer p.emitting.Done()
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		if err := hc.EmitEvent(ctx, evt); err != nil {
@@ -169,9 +175,10 @@ func passthroughOutput() *proto.PreRequestOutput {
 //
 // A derived nonce does not weaken the protection against injected
 // placeholders: any ⟦…⟧ already present in the content is neutralized before
-// anonymization, whatever its nonce, so nothing restores it. It is predictable from the org, user and node IDs and
-// the same across a sender's conversations, which tells the provider nothing
-// it does not already know from the API key the request comes with.
+// anonymization, whatever its nonce, so nothing restores it. The nonce is
+// predictable from the org, user and node IDs and the same across a sender's
+// conversations, which tells the provider nothing it does not already know
+// from the API key the request comes with.
 func newSession(ctx context.Context, reqCtx *proto.RequestContext) *anonymizer.Session {
 	if reqCtx.GetUserId() == "" && reqCtx.GetOrgId() == "" {
 		// The host always resolves a user before a pipeline runs, so this
@@ -999,7 +1006,9 @@ func injectPlaceholderInstruction(messages []map[string]any, mapping map[string]
 
 // instructionText returns the placeholder instruction in the conversation's
 // language. It names the delimiters rather than any placeholder: see
-// injectPlaceholderInstruction.
+// injectPlaceholderInstruction. It never writes them around a word, as in an
+// example: the instruction is added after masking, so such a form would reach
+// the model unmasked, as one more placeholder to reproduce.
 func instructionText(language string) string {
 	switch language {
 	case "en":

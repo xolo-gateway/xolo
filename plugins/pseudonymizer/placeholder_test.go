@@ -7,7 +7,6 @@ import (
 	"regexp"
 	"strings"
 	"testing"
-	"time"
 
 	goanon "github.com/bornholm/go-anon"
 	"github.com/bornholm/go-anon/pkg/anonymizer"
@@ -100,7 +99,7 @@ func postResponseWithState(t *testing.T, state []byte, content, toolCallsJSON st
 
 	host := &captureHost{}
 	p := newPlugin()
-	p.SetHostClient(host)
+	host.attachTo(p)
 
 	out, err := p.PostResponse(context.Background(), &proto.PostResponseInput{
 		Ctx:                   &proto.RequestContext{OrgId: "org-1", UserId: "user-1"},
@@ -196,7 +195,7 @@ func TestPostResponse_LeavesPlaceholdersItDoesNotOwn(t *testing.T) {
 	if want := "Jean Dupont écrit à ⟦PERSON_1_a57a4e⟧, clé ⟦API_KEY_REDACTED⟧."; out.ModifiedResponseContent != want {
 		t.Errorf("content = %q, want %q", out.ModifiedResponseContent, want)
 	}
-	host.assertNoEventOfType(t, eventPlaceholdersNeutralized, 100*time.Millisecond)
+	host.assertNoEventOfType(t, eventPlaceholdersNeutralized)
 }
 
 // preRequestOnNode runs PreRequest on a conversation as the node nodeID,
@@ -216,7 +215,7 @@ func preRequestOnNode(t *testing.T, nodeID string, messages []map[string]any) (*
 
 	host := &captureHost{HostClient: newFakeUIHost()}
 	p := attachmentPlugin(t, cfg)
-	p.SetHostClient(host)
+	host.attachTo(p)
 
 	out, err := p.PreRequest(context.Background(), &proto.PreRequestInput{
 		Ctx:          &proto.RequestContext{OrgId: "org-1", UserId: "user-1", NodeId: nodeID, ConfigJson: string(cfgJSON)},
@@ -282,7 +281,7 @@ func TestPreRequest_PlaceholderInHistoryIsNeutralizedNotForwardedInClear(t *test
 			if evt.Attributes["direction"] != "request" || evt.Attributes["placeholders"] != "1" {
 				t.Errorf("attributes = %v, want direction=request placeholders=1", evt.Attributes)
 			}
-			host.assertNoEventOfType(t, "passthrough", 100*time.Millisecond)
+			host.assertNoEventOfType(t, "passthrough")
 		})
 	}
 }
@@ -302,8 +301,8 @@ func TestPreRequest_ForeignPlaceholderIsKeptAndTheRestPseudonymized(t *testing.T
 			t.Errorf("%s not kept: %s", placeholder, out.ModifiedMessagesJson)
 		}
 	}
-	host.assertNoEventOfType(t, "passthrough", 100*time.Millisecond)
-	host.assertNoEventOfType(t, eventPlaceholdersNeutralized, 100*time.Millisecond)
+	host.assertNoEventOfType(t, "passthrough")
+	host.assertNoEventOfType(t, eventPlaceholdersNeutralized)
 }
 
 // The round trip of #113: what PostResponse hands the client is what the
@@ -324,9 +323,9 @@ func TestInventedPlaceholder_NextTurnStaysPseudonymized(t *testing.T) {
 	if strings.Contains(out.ModifiedMessagesJson, agentBlockSecret) {
 		t.Errorf("history forwarded in clear: %s", out.ModifiedMessagesJson)
 	}
-	host.assertNoEventOfType(t, "passthrough", 100*time.Millisecond)
+	host.assertNoEventOfType(t, "passthrough")
 	// Already inert: nothing left to neutralize on this turn.
-	host.assertNoEventOfType(t, eventPlaceholdersNeutralized, 100*time.Millisecond)
+	host.assertNoEventOfType(t, eventPlaceholdersNeutralized)
 }
 
 // A middleware wrapping a virtual model can put two pseudonymizer nodes on the
@@ -354,8 +353,8 @@ func TestChainedNodes_EachRestoresItsOwnPlaceholders(t *testing.T) {
 			t.Fatalf("the model does not see %s: %s", placeholder, innerOut.ModifiedMessagesJson)
 		}
 	}
-	innerHost.assertNoEventOfType(t, "passthrough", 100*time.Millisecond)
-	innerHost.assertNoEventOfType(t, eventPlaceholdersNeutralized, 100*time.Millisecond)
+	innerHost.assertNoEventOfType(t, "passthrough")
+	innerHost.assertNoEventOfType(t, eventPlaceholdersNeutralized)
 
 	// The backward pass runs in reverse order: inner node first.
 	response := "J'écris à " + outerPlaceholder + " avec " + innerPlaceholder + " en copie."
@@ -365,7 +364,7 @@ func TestChainedNodes_EachRestoresItsOwnPlaceholders(t *testing.T) {
 	if want := "J'écris à " + agentBlockSecret + " avec " + innerSecret + " en copie."; fromOuter.ModifiedResponseContent != want {
 		t.Errorf("restored = %q, want %q", fromOuter.ModifiedResponseContent, want)
 	}
-	innerBackHost.assertNoEventOfType(t, eventPlaceholdersNeutralized, 100*time.Millisecond)
+	innerBackHost.assertNoEventOfType(t, eventPlaceholdersNeutralized)
 }
 
 // regexOnlyRecognizer finds the identifiers and secrets go-anon knows by
