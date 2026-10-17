@@ -29,7 +29,7 @@ func preRequestPartsWithHost(t *testing.T, cfg Config, parts []any) (*proto.PreR
 
 	host := &captureHost{HostClient: newFakeUIHost()}
 	p := attachmentPlugin(t, cfg)
-	p.SetHostClient(host)
+	host.attachTo(p)
 
 	out, err := p.PreRequest(context.Background(), &proto.PreRequestInput{
 		Ctx:          &proto.RequestContext{OrgId: "org-1", ConfigJson: string(cfgJSON)},

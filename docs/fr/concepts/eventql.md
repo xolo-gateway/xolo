@@ -232,6 +232,7 @@ par `plugin.<nom>.` (voir le tutoriel plugin, section _Emitting Events_).
 | `plugin.pseudonymizer.sensitive-data.leak` | `error` | Le mode strict du plugin `pseudonymizer` détecte une fuite résiduelle après anonymisation | `leak_count`, `leak_<type>` |
 | `plugin.pseudonymizer.attachment.blocked` | `warning` | Le plugin `pseudonymizer` refuse une requête portant une pièce jointe non pseudonymisable | `attachments`, `reasons` |
 | `plugin.pseudonymizer.request.blocked` | `error` | Le plugin `pseudonymizer` refuse une requête en stratégie `hash` faute de clé HMAC exploitable sur le nœud (fail-closed) | `reason`, `error`, `strategy` |
+| `plugin.pseudonymizer.placeholders.neutralized` | `warning` / `info` | Le plugin `pseudonymizer` rend inertes (`⟦X⟧` devient `[[X]]`) des jetons du nœud qu'aucune correspondance ne restitue : inventés par le modèle dans une réponse (`warning`), ou présents dans le contenu d'une requête, le plus souvent l'historique d'un tour précédent (`info`) | `direction` (`response` ou `request`), `placeholders` |
 | `plugin.pseudonymizer.passthrough` | `error` | Le plugin `pseudonymizer` laisse passer une requête **sans** la pseudonymiser : configuration invalide, modèle NER indisponible (hors-ligne, cache vide), échec d'anonymisation d'un contenu | `reason`, `error`, `contents` |
 | `plugin.time-restriction.request.blocked` | `warning` | Le plugin `time-restriction` bloque une requête hors des plages autorisées | `reason` |
 

@@ -9,7 +9,9 @@ import (
 	proto "github.com/xolo-gateway/xolo/pkg/pluginsdk/proto"
 )
 
-// postResponseWithToolCalls runs PostResponse over a known mapping.
+// postResponseWithToolCalls runs PostResponse over a known mapping. The state
+// carries no nonce, so the node owns no placeholder: these tests cover
+// restoration only, neutralization is in placeholder_test.go.
 func postResponseWithToolCalls(t *testing.T, mapping map[string]string, content, toolCallsJSON string) *proto.PostResponseOutput {
 	t.Helper()
 
@@ -83,7 +85,7 @@ func TestDeanonymizeToolCalls_Shapes(t *testing.T) {
 		"malformed JSON": {in: "not json", mapping: mapping, wantErr: true},
 	} {
 		t.Run(name, func(t *testing.T) {
-			got, err := deanonymizeToolCalls(tc.in, tc.mapping)
+			got, err := deanonymizeToolCalls(tc.in, func(s string) string { return deanonymize(s, tc.mapping) })
 			if tc.wantErr != (err != nil) {
 				t.Fatalf("err = %v, wantErr = %v", err, tc.wantErr)
 			}

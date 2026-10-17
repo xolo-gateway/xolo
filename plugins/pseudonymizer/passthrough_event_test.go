@@ -17,7 +17,7 @@ func preRequestFR(t *testing.T, cfgJSON, text string) (*proto.PreRequestOutput, 
 	// with the in-memory fake so that lookup answers "no key".
 	host := &captureHost{HostClient: newFakeUIHost()}
 	p := newPlugin()
-	p.SetHostClient(host)
+	host.attachTo(p)
 
 	msgs, err := json.Marshal([]map[string]any{{"role": "user", "content": text}})
 	if err != nil {

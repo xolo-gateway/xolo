@@ -192,13 +192,65 @@ type captureHost struct {
 	pluginsdk.HostClient
 	mu    sync.Mutex
 	event pluginsdk.Event
+	// events keeps every event, for a request that emits several.
+	events []pluginsdk.Event
+	// settle waits for the emissions of the plugin the host is attached to.
+	settle func()
+}
+
+// attachTo makes c the host of p, and lets it wait for p's emissions.
+func (c *captureHost) attachTo(p *Plugin) {
+	c.settle = p.emitting.Wait
+	p.SetHostClient(c)
 }
 
 func (c *captureHost) EmitEvent(_ context.Context, e pluginsdk.Event) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.event = e
+	c.events = append(c.events, e)
 	return nil
+}
+
+// eventsOfType returns the events of type emitted so far.
+func (c *captureHost) eventsOfType(typ string) []pluginsdk.Event {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	var out []pluginsdk.Event
+	for _, e := range c.events {
+		if e.Type == typ {
+			out = append(out, e)
+		}
+	}
+	return out
+}
+
+// waitForEventOfType polls until an event of type turns up.
+func (c *captureHost) waitForEventOfType(t *testing.T, typ string) pluginsdk.Event {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if events := c.eventsOfType(typ); len(events) > 0 {
+			return events[0]
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("no %s event emitted", typ)
+	return pluginsdk.Event{}
+}
+
+// assertNoEventOfType fails if an event of type was emitted. It waits for the
+// emissions under way first: emitEvent publishes from a goroutine, and an
+// event still on its way would otherwise go unnoticed.
+func (c *captureHost) assertNoEventOfType(t *testing.T, typ string) {
+	t.Helper()
+	if c.settle == nil {
+		t.Fatal("captureHost not attached to a plugin, see attachTo")
+	}
+	c.settle()
+	if events := c.eventsOfType(typ); len(events) > 0 {
+		t.Fatalf("a %s event was emitted: %v", typ, events[0].Attributes)
+	}
 }
 
 func (c *captureHost) waitForEvent(t *testing.T) pluginsdk.Event {
