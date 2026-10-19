@@ -646,5 +646,19 @@ func schemaMigrations(artifact *RecoveryArtifact) []*gormigrate.Migration {
 				return errors.New("team contract migration cannot be rolled back: team IDs were converted to UUIDs")
 			},
 		},
+		{
+			// (org_id, provider_id, model_id, plan_covered, created_at, user_id)
+			// for the plan-wide reads of per-model subscription constraints,
+			// which narrow them to the models targeting one upstream model.
+			ID: planModelUsageIndexMigrationID,
+			Migrate: func(tx *gorm.DB) error {
+				return errors.WithStack(tx.AutoMigrate(&UsageRecord{}))
+			},
+			Rollback: func(tx *gorm.DB) error {
+				return errors.WithStack(tx.Migrator().DropIndex(&UsageRecord{}, "idx_usage_org_prov_model_plan"))
+			},
+		},
 	}
 }
+
+const planModelUsageIndexMigrationID = "202610190001"

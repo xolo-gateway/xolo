@@ -770,6 +770,68 @@ func (h *Handler) serveOrgUsageCSV(w http.ResponseWriter, r *http.Request, org m
 	}
 }
 
+// fillRollingWindowUsage reads the consumption of a rolling-window constraint
+// on a plan scope: the whole provider, or one upstream model. totals, when
+// set, is the window's consumption as the caller already read it.
+func (h *Handler) fillRollingWindowUsage(ctx context.Context, cu *component.SubscriptionConstraintUsage, c model.PlanConstraint, scope model.PlanUsageScope, now time.Time, totals *port.PlanUsageTotals) {
+	if c.Duration.Duration() <= 0 {
+		return
+	}
+	since := c.CurrentWindowStart(now)
+	cu.WindowStart = since
+	cu.Anchored = c.IsAnchored()
+	cu.ResetAt = c.NextResetAt(now)
+	if totals != nil {
+		cu.TokensUsed, cu.ValueUsed = totals.Tokens, totals.Value
+	} else if tokens, value, err := h.usageStore.SumPlanUsageSince(ctx, scope, since); err != nil {
+		slog.WarnContext(ctx, "could not sum plan usage", slogx.Error(err))
+	} else {
+		cu.TokensUsed = tokens
+		cu.ValueUsed = value
+	}
+	if oldest, err := h.usageStore.EarliestPlanUsageSince(ctx, scope, since); err != nil {
+		slog.WarnContext(ctx, "could not get earliest plan usage", slogx.Error(err))
+	} else {
+		cu.OldestUsage = oldest
+	}
+}
+
+// perModelConstraintUsage expands a per-model constraint into one gauge per
+// upstream model consumed in the current window. A plan metering a few dozen
+// models would bury the page under idle gauges; when none is in use a single
+// row says so.
+func (h *Handler) perModelConstraintUsage(ctx context.Context, c model.PlanConstraint, providerScope model.PlanUsageScope, models []model.LLMModel, now time.Time) []component.SubscriptionConstraintUsage {
+	idle := component.SubscriptionConstraintUsage{Constraint: c, Anchored: c.IsAnchored(), ResetAt: c.NextResetAt(now)}
+	if c.Duration.Duration() <= 0 {
+		return []component.SubscriptionConstraintUsage{idle}
+	}
+
+	byModel, err := h.usageStore.SumPlanUsageByModelSince(ctx, providerScope, "", c.CurrentWindowStart(now))
+	if err != nil {
+		slog.WarnContext(ctx, "could not sum per-model plan usage", slogx.Error(err))
+		return []component.SubscriptionConstraintUsage{idle}
+	}
+
+	upstream := service.GroupPlanUsageByUpstreamModel(models, providerScope.ProviderID, byModel)
+	if len(upstream) == 0 {
+		return []component.SubscriptionConstraintUsage{idle}
+	}
+
+	result := make([]component.SubscriptionConstraintUsage, 0, len(upstream))
+	for _, um := range upstream {
+		mc := c.ForModel(um.UpstreamModel)
+		cu := component.SubscriptionConstraintUsage{Constraint: mc, UpstreamModel: um.UpstreamModel}
+		scope := providerScope
+		scope.ModelIDs = um.ModelIDs
+		h.fillRollingWindowUsage(ctx, &cu, mc, scope, now, &port.PlanUsageTotals{Tokens: um.Tokens, Value: um.Value})
+		if h.subscriptionMonitor != nil {
+			cu.Exhausted = h.subscriptionMonitor.IsExhausted(providerScope.OrgID, providerScope.ProviderID, c.Label, um.UpstreamModel)
+		}
+		result = append(result, cu)
+	}
+	return result
+}
+
 // buildSubscriptionProviderUsage collects runtime plan consumption for every
 // subscription provider belonging to the org.
 func (h *Handler) buildSubscriptionProviderUsage(ctx context.Context, orgID model.OrgID) []component.SubscriptionProviderUsage {
@@ -797,36 +859,31 @@ func (h *Handler) buildSubscriptionProviderUsage(ctx context.Context, orgID mode
 			Constraints: make([]component.SubscriptionConstraintUsage, 0, len(plan.Constraints)),
 		}
 
+		providerScope := model.PlanUsageScope{OrgID: orgID, ProviderID: p.ID()}
+		var models []model.LLMModel
+		if plan.HasPerModelConstraint() {
+			if models, err = h.providerStore.ListLLMModels(ctx, orgID); err != nil {
+				slog.WarnContext(ctx, "could not list models for per-model plan usage", slogx.Error(err))
+			}
+		}
+
 		for _, c := range plan.Constraints {
+			if c.PerModel() {
+				pu.Constraints = append(pu.Constraints, h.perModelConstraintUsage(ctx, c, providerScope, models, now)...)
+				continue
+			}
+
 			cu := component.SubscriptionConstraintUsage{Constraint: c}
 
 			switch c.Kind {
 			case model.ConstraintRollingWindow:
-				dur := c.Duration.Duration()
-				if dur > 0 {
-					since := c.CurrentWindowStart(now)
-					cu.WindowStart = since
-					cu.Anchored = c.IsAnchored()
-					cu.ResetAt = c.NextResetAt(now)
-					tokens, value, sumErr := h.usageStore.SumPlanUsageSince(ctx, orgID, p.ID(), since)
-					if sumErr != nil {
-						slog.WarnContext(ctx, "could not sum plan usage", slogx.Error(sumErr))
-					} else {
-						cu.TokensUsed = tokens
-						cu.ValueUsed = value
-					}
-					if oldest, oldestErr := h.usageStore.EarliestPlanUsageSince(ctx, orgID, p.ID(), since); oldestErr != nil {
-						slog.WarnContext(ctx, "could not get earliest plan usage", slogx.Error(oldestErr))
-					} else {
-						cu.OldestUsage = oldest
-					}
-				}
+				h.fillRollingWindowUsage(ctx, &cu, c, providerScope, now, nil)
 
 			case model.ConstraintConcurrency:
 				if h.subscriptionMonitor != nil {
 					cu.InFlight = h.subscriptionMonitor.CurrentInFlight(orgID, p.ID())
 					if c.MaxConcurrent != nil {
-						cu.Exhausted = h.subscriptionMonitor.IsExhausted(orgID, p.ID(), c.Label)
+						cu.Exhausted = h.subscriptionMonitor.IsExhausted(orgID, p.ID(), c.Label, "")
 					}
 				}
 			}

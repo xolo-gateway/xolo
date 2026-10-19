@@ -33,15 +33,20 @@ type UsageStore interface {
 	// org (and optionally a subset of users) since the given time. When userIDs is empty, all users
 	// are included.
 	SumCostSinceByCurrency(ctx context.Context, userIDs []model.UserID, orgID model.OrgID, since time.Time) (map[string]int64, error)
-	// SumPlanUsageSince aggregates subscription-covered (plan_covered=true) usage for a specific
-	// provider+org since the given time, returning total tokens and total provider-currency value
-	// (in microcents of provider currency). Used to enforce rolling-window budgets.
-	SumPlanUsageSince(ctx context.Context, orgID model.OrgID, providerID model.ProviderID, since time.Time) (tokens int64, providerValue int64, err error)
+	// SumPlanUsageSince aggregates subscription-covered (plan_covered=true) usage of a plan
+	// scope (provider+org, narrowed to some models for a per-model constraint) since the given
+	// time, returning total tokens and total provider-currency value (in microcents of provider
+	// currency). Used to enforce rolling-window budgets.
+	SumPlanUsageSince(ctx context.Context, scope model.PlanUsageScope, since time.Time) (tokens int64, providerValue int64, err error)
+	// SumPlanUsageByModelSince is SumPlanUsageSince grouped by model, restricted to one user
+	// when userID is set. Models without usage in the window are absent from the result. It
+	// lets the dashboards show per-model constraints without one aggregation per model.
+	SumPlanUsageByModelSince(ctx context.Context, scope model.PlanUsageScope, userID model.UserID, since time.Time) (map[model.LLMModelID]PlanUsageTotals, error)
 	// SumUserPlanUsageSince aggregates subscription-covered (plan_covered=true) usage for a specific
-	// user+provider+org since the given time. Used to enforce per-user fair-share rolling-window budgets.
-	SumUserPlanUsageSince(ctx context.Context, userID model.UserID, orgID model.OrgID, providerID model.ProviderID, since time.Time) (tokens int64, providerValue int64, err error)
+	// user on a plan scope since the given time. Used to enforce per-user fair-share rolling-window budgets.
+	SumUserPlanUsageSince(ctx context.Context, userID model.UserID, scope model.PlanUsageScope, since time.Time) (tokens int64, providerValue int64, err error)
 	// CountActivePlanUsersSince counts the distinct users who consumed
-	// subscription-covered (plan_covered=true) usage for a provider+org since the
+	// subscription-covered (plan_covered=true) usage on a plan scope since the
 	// given time. It sizes the shared part of the per-user fair-share allocation,
 	// so that the plan budget left unused by quiet members is redistributed to the
 	// members actually competing for it. Requests without a user (application
@@ -51,19 +56,19 @@ type UsageStore interface {
 	// user add them back unconditionally, which is exact whether or not they have
 	// consumed yet — inferring their presence from a zero usage sum is not, since
 	// a request can be recorded with no billable token.
-	CountActivePlanUsersSince(ctx context.Context, orgID model.OrgID, providerID model.ProviderID, since time.Time, excludeUserID model.UserID) (int64, error)
+	CountActivePlanUsersSince(ctx context.Context, scope model.PlanUsageScope, since time.Time, excludeUserID model.UserID) (int64, error)
 	// HasPlanUsageSince reports whether the user consumed subscription-covered
-	// (plan_covered=true) usage for a provider+org since the given time. It is a
+	// (plan_covered=true) usage on a plan scope since the given time. It is a
 	// probe that stops at the first matching row, bounded to the caller's rows on
 	// the window by idx_usage_org_prov_user. The allocator uses it to tell whether
 	// the caller is already among the counted active users, so the expensive
 	// count itself can be shared by everyone on the plan.
-	HasPlanUsageSince(ctx context.Context, userID model.UserID, orgID model.OrgID, providerID model.ProviderID, since time.Time) (bool, error)
+	HasPlanUsageSince(ctx context.Context, userID model.UserID, scope model.PlanUsageScope, since time.Time) (bool, error)
 	// EarliestPlanUsageSince returns the creation time of the oldest subscription-covered
-	// (plan_covered=true) usage record for a provider+org still inside the rolling window
+	// (plan_covered=true) usage record of a plan scope still inside the rolling window
 	// starting at `since`. Used to display when the window will next free up. Returns a zero
 	// time when no such record exists.
-	EarliestPlanUsageSince(ctx context.Context, orgID model.OrgID, providerID model.ProviderID, since time.Time) (time.Time, error)
+	EarliestPlanUsageSince(ctx context.Context, scope model.PlanUsageScope, since time.Time) (time.Time, error)
 	// AggregateCostByDimension returns cost sub-totals grouped by the given dimension, the
 	// record's org, currency and billing arrangement, honoring the filter. It lets the
 	// usage/dashboard charts bucket costs in SQL instead of loading every record into memory.
@@ -85,6 +90,13 @@ type UsageStore interface {
 	// different orgs, currencies or billing arrangements within the filter share
 	// a row. Records without a model are left out.
 	AggregateRequestSizes(ctx context.Context, filter UsageFilter) ([]RequestSize, error)
+}
+
+// PlanUsageTotals is the subscription-covered consumption of a window.
+type PlanUsageTotals struct {
+	Tokens int64
+	// Value is in microcents of the provider currency.
+	Value int64
 }
 
 // RequestSize counts the requests made to a model with the same token counts.

@@ -31,15 +31,15 @@ type fairShareUsageStore struct {
 	excludedUser model.UserID
 }
 
-func (f *fairShareUsageStore) SumPlanUsageSince(_ context.Context, _ model.OrgID, _ model.ProviderID, _ time.Time) (int64, int64, error) {
+func (f *fairShareUsageStore) SumPlanUsageSince(_ context.Context, _ model.PlanUsageScope, _ time.Time) (int64, int64, error) {
 	return f.orgTokens, f.orgValue, nil
 }
 
-func (f *fairShareUsageStore) SumUserPlanUsageSince(_ context.Context, _ model.UserID, _ model.OrgID, _ model.ProviderID, _ time.Time) (int64, int64, error) {
+func (f *fairShareUsageStore) SumUserPlanUsageSince(_ context.Context, _ model.UserID, _ model.PlanUsageScope, _ time.Time) (int64, int64, error) {
 	return f.userTokens, f.userValue, nil
 }
 
-func (f *fairShareUsageStore) CountActivePlanUsersSince(_ context.Context, _ model.OrgID, _ model.ProviderID, _ time.Time, excludeUserID model.UserID) (int64, error) {
+func (f *fairShareUsageStore) CountActivePlanUsersSince(_ context.Context, _ model.PlanUsageScope, _ time.Time, excludeUserID model.UserID) (int64, error) {
 	f.countCalls++
 	f.excludedUser = excludeUserID
 	if f.countErr != nil {
@@ -50,7 +50,7 @@ func (f *fairShareUsageStore) CountActivePlanUsersSince(_ context.Context, _ mod
 
 // The caller is never among the counted in these fixtures: otherActiveUsers is
 // the number of other users, as its name says.
-func (f *fairShareUsageStore) HasPlanUsageSince(_ context.Context, _ model.UserID, _ model.OrgID, _ model.ProviderID, _ time.Time) (bool, error) {
+func (f *fairShareUsageStore) HasPlanUsageSince(_ context.Context, _ model.UserID, _ model.PlanUsageScope, _ time.Time) (bool, error) {
 	return false, nil
 }
 

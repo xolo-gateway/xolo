@@ -12,16 +12,20 @@ import (
 // PlanUsageReader is the narrow slice of port.UsageStore the fair-share
 // allocation reads. It is satisfied by port.UsageStore and by any fake.
 type PlanUsageReader interface {
-	SumPlanUsageSince(ctx context.Context, orgID model.OrgID, providerID model.ProviderID, since time.Time) (tokens int64, providerValue int64, err error)
-	SumUserPlanUsageSince(ctx context.Context, userID model.UserID, orgID model.OrgID, providerID model.ProviderID, since time.Time) (tokens int64, providerValue int64, err error)
-	CountActivePlanUsersSince(ctx context.Context, orgID model.OrgID, providerID model.ProviderID, since time.Time, excludeUserID model.UserID) (int64, error)
-	HasPlanUsageSince(ctx context.Context, userID model.UserID, orgID model.OrgID, providerID model.ProviderID, since time.Time) (bool, error)
+	SumPlanUsageSince(ctx context.Context, scope model.PlanUsageScope, since time.Time) (tokens int64, providerValue int64, err error)
+	SumUserPlanUsageSince(ctx context.Context, userID model.UserID, scope model.PlanUsageScope, since time.Time) (tokens int64, providerValue int64, err error)
+	CountActivePlanUsersSince(ctx context.Context, scope model.PlanUsageScope, since time.Time, excludeUserID model.UserID) (int64, error)
+	HasPlanUsageSince(ctx context.Context, userID model.UserID, scope model.PlanUsageScope, since time.Time) (bool, error)
 }
 
 // FairShareRequest describes whose share of which constraint is being resolved.
 type FairShareRequest struct {
-	OrgID       model.OrgID
-	ProviderID  model.ProviderID
+	OrgID      model.OrgID
+	ProviderID model.ProviderID
+	// ModelIDs narrows the plan to these models, for a per-model constraint:
+	// the budget, the consumption and the competing users are then those of
+	// one upstream model. Empty means the whole provider.
+	ModelIDs    []model.LLMModelID
 	UserID      model.UserID
 	MemberCount int
 	Constraint  model.PlanConstraint
@@ -31,6 +35,10 @@ type FairShareRequest struct {
 	// allocating pass it so the window is aggregated once per request instead of
 	// twice — this runs on the proxy hot path, per constraint.
 	PlanUsage *PlanUsage
+}
+
+func (r FairShareRequest) usageScope() model.PlanUsageScope {
+	return model.PlanUsageScope{OrgID: r.OrgID, ProviderID: r.ProviderID, ModelIDs: r.ModelIDs}
 }
 
 // PlanUsage is the plan-wide consumption of a window.
@@ -99,7 +107,7 @@ func (s *FairShareService) countActive(ctx context.Context, req FairShareRequest
 // with this very request. A failed lookup reads as absent, which counts the
 // caller in and only narrows.
 func (s *FairShareService) isPresent(ctx context.Context, req FairShareRequest, since time.Time) bool {
-	key := presenceKeyFor(req.OrgID, req.ProviderID, since, req.UserID, s.presence.ttl)
+	key := presenceKeyFor(req.usageScope(), since, req.UserID, s.presence.ttl)
 	if s.presence.has(key, req.Now) {
 		return true
 	}
@@ -108,7 +116,7 @@ func (s *FairShareService) isPresent(ctx context.Context, req FairShareRequest, 
 	// its answer is not shared, so a client that hangs up may take it along.
 	probeCtx, cancel := context.WithTimeout(ctx, s.probeTimeout())
 	defer cancel()
-	present, err := s.usageReader.HasPlanUsageSince(probeCtx, req.UserID, req.OrgID, req.ProviderID, since)
+	present, err := s.usageReader.HasPlanUsageSince(probeCtx, req.UserID, req.usageScope(), since)
 	if err != nil || !present {
 		return false
 	}
@@ -124,7 +132,7 @@ func (s *FairShareService) isPresent(ctx context.Context, req FairShareRequest, 
 // and again while it is struggling; concurrent reloads of one key are folded
 // into a single query.
 func (s *FairShareService) countAll(ctx context.Context, req FairShareRequest, since time.Time) (count int64, degraded bool) {
-	key := activeUserKeyFor(req.OrgID, req.ProviderID, since, s.activeUsers.ttl)
+	key := activeUserKeyFor(req.usageScope(), since, s.activeUsers.ttl)
 
 	entry, fresh, ok := s.activeUsers.lookup(key, req.Now)
 	if ok && fresh {
@@ -142,7 +150,7 @@ func (s *FairShareService) countAll(ctx context.Context, req FairShareRequest, s
 		// then the database's own, and worth caching.
 		countCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), s.countTimeout)
 		defer cancel()
-		n, err := s.usageReader.CountActivePlanUsersSince(countCtx, req.OrgID, req.ProviderID, since, "")
+		n, err := s.usageReader.CountActivePlanUsersSince(countCtx, req.usageScope(), since, "")
 		entry := activeUserEntry{count: n, degraded: err != nil}
 		s.activeUsers.put(key, entry, req.Now)
 		return entry, nil
@@ -280,13 +288,13 @@ func (s *FairShareService) Resolve(ctx context.Context, req FairShareRequest) (*
 		planTokens, planValue = req.PlanUsage.Tokens, req.PlanUsage.Value
 	} else {
 		var err error
-		planTokens, planValue, err = s.usageReader.SumPlanUsageSince(ctx, req.OrgID, req.ProviderID, since)
+		planTokens, planValue, err = s.usageReader.SumPlanUsageSince(ctx, req.usageScope(), since)
 		if err != nil {
 			return nil, errors.WithStack(err)
 		}
 	}
 
-	userTokens, userValue, err := s.usageReader.SumUserPlanUsageSince(ctx, req.UserID, req.OrgID, req.ProviderID, since)
+	userTokens, userValue, err := s.usageReader.SumUserPlanUsageSince(ctx, req.UserID, req.usageScope(), since)
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}

@@ -2,6 +2,8 @@ package model
 
 import (
 	"encoding/json"
+	"slices"
+	"strings"
 	"time"
 )
 
@@ -41,9 +43,29 @@ func (d *PlanDuration) UnmarshalJSON(data []byte) error {
 
 func (d PlanDuration) Duration() time.Duration { return time.Duration(d) }
 
+// PlanConstraintScope tells what a rolling_window constraint counts.
+type PlanConstraintScope string
+
+const (
+	// PlanScopeProvider counts every model of the provider against one budget.
+	// It is the scope of a constraint that sets none.
+	PlanScopeProvider PlanConstraintScope = "provider"
+	// PlanScopeModel gives each upstream model its own budget and its own
+	// window, as plans that meter every model separately do (OpenCode Go).
+	PlanScopeModel PlanConstraintScope = "model"
+)
+
+// PlanBudget is the budget of one upstream model on a per-model constraint.
+// A nil field leaves that dimension unlimited for the model.
+type PlanBudget struct {
+	TokenBudget *int64 `json:"token_budget,omitempty"`
+	ValueBudget *int64 `json:"value_budget,omitempty"` // microcents in provider currency
+}
+
 // PlanConstraint describes a single limit within a subscription plan.
 // Fields used depend on Kind:
-//   - rolling_window: Duration (e.g. "5h", "168h"), TokenBudget (optional), ValueBudget (optional, microcents in provider currency)
+//   - rolling_window: Duration (e.g. "5h", "168h"), TokenBudget (optional), ValueBudget (optional, microcents in provider currency),
+//     Scope and ModelBudgets (optional, per-model metering)
 //   - concurrency:    MaxConcurrent
 type PlanConstraint struct {
 	Kind          PlanConstraintKind `json:"kind"`
@@ -52,6 +74,16 @@ type PlanConstraint struct {
 	TokenBudget   *int64             `json:"token_budget,omitempty"`
 	ValueBudget   *int64             `json:"value_budget,omitempty"` // microcents in provider currency
 	MaxConcurrent *int               `json:"max_concurrent,omitempty"`
+	// Scope is what a rolling_window constraint counts: the whole provider
+	// (empty or PlanScopeProvider) or each upstream model on its own
+	// (PlanScopeModel). Concurrency constraints are always provider-wide.
+	Scope PlanConstraintScope `json:"scope,omitempty"`
+	// ModelBudgets overrides, on a per-model constraint, the budgets of the
+	// upstream models named by their real model name. An override replaces
+	// TokenBudget and ValueBudget as a whole: a model listed with no budget is
+	// unlimited, which is how a plan's free models are described. Models not
+	// listed take the constraint's own budgets.
+	ModelBudgets map[string]PlanBudget `json:"model_budgets,omitempty"`
 	// ReserveRatio, PaceSlack, HappyHourStart and HappyHourMaxLead tune the
 	// per-user fair-share allocator (see ComputeFairShare); nil means the package
 	// default.
@@ -70,6 +102,75 @@ type PlanConstraint struct {
 	// reset schedule (e.g. MiniMax "Resets in 4h29"). When nil, the window behaves as a
 	// continuous sliding window (now - Duration).
 	WindowAnchor *time.Time `json:"window_anchor,omitempty"`
+}
+
+// PerModel reports whether the constraint meters each upstream model on its own.
+func (c PlanConstraint) PerModel() bool {
+	return c.Kind == ConstraintRollingWindow && c.Scope == PlanScopeModel
+}
+
+// ForModel returns the constraint as it applies to one upstream model: its
+// budgets are the model's override when there is one. A provider-wide
+// constraint is returned unchanged.
+func (c PlanConstraint) ForModel(realModel string) PlanConstraint {
+	if !c.PerModel() {
+		return c
+	}
+	if b, ok := c.ModelBudgets[realModel]; ok {
+		c.TokenBudget, c.ValueBudget = b.TokenBudget, b.ValueBudget
+	}
+	c.ModelBudgets = nil
+	return c
+}
+
+// HasPerModelConstraint reports whether one of the plan's constraints meters
+// each upstream model on its own.
+func (p *SubscriptionPlan) HasPerModelConstraint() bool {
+	if p == nil {
+		return false
+	}
+	for _, c := range p.Constraints {
+		if c.PerModel() {
+			return true
+		}
+	}
+	return false
+}
+
+// PlanUsageScope identifies the subscription-covered usage a plan constraint
+// counts: the consumption of one provider by one organization, narrowed to a
+// set of models when the constraint is per model.
+type PlanUsageScope struct {
+	OrgID      OrgID
+	ProviderID ProviderID
+	// ModelIDs narrows the count to these models; empty counts the whole
+	// provider. A per-model constraint lists every model of the provider that
+	// targets the same upstream model, since the provider meters them as one.
+	ModelIDs []LLMModelID
+}
+
+// UpstreamModelIDs returns the ids of the models, among models, that m's
+// provider serves under the same upstream model as m, m always included. The
+// provider meters them as one whatever proxy name they are published under.
+func UpstreamModelIDs(models []LLMModel, m LLMModel) []LLMModelID {
+	ids := []LLMModelID{m.ID()}
+	for _, other := range models {
+		if other.ID() != m.ID() && other.ProviderID() == m.ProviderID() && other.RealModel() == m.RealModel() {
+			ids = append(ids, other.ID())
+		}
+	}
+	return ids
+}
+
+// Key identifies the scope in cache keys. The model ids are sorted, so two
+// scopes naming the same models in another order share a key.
+func (s PlanUsageScope) Key() string {
+	ids := make([]string, len(s.ModelIDs))
+	for i, id := range s.ModelIDs {
+		ids[i] = string(id)
+	}
+	slices.Sort(ids)
+	return string(s.OrgID) + "|" + string(s.ProviderID) + "|" + strings.Join(ids, ",")
 }
 
 // IsAnchored reports whether the constraint uses a fixed (tumbling) window aligned on a

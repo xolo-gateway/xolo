@@ -646,6 +646,20 @@ func parseSubscriptionPlanFromForm(r *http.Request) (*model.SubscriptionPlan, er
 			if c.HappyHourStart != nil && *c.HappyHourStart <= 0 {
 				fail(errors.Errorf("contrainte « %s » : l'ouverture de fin de fenêtre doit être strictement supérieure à 0 (100 désactive l'ouverture)", c.Label))
 			}
+			// Per-model metering: the budgets above become those of every
+			// upstream model, each with its own window, and the overrides
+			// below give some models a budget of their own.
+			if r.FormValue(prefix+"scope") == string(model.PlanScopeModel) {
+				c.Scope = model.PlanScopeModel
+			}
+			if budgets, err := parsePlanModelBudgets(r.FormValue(prefix + "model_budgets")); err != nil {
+				fail(errors.Wrapf(err, "contrainte « %s » : budgets par modèle", c.Label))
+			} else if len(budgets) > 0 {
+				if c.Scope != model.PlanScopeModel {
+					fail(errors.Errorf("contrainte « %s » : des budgets par modèle n'ont de sens que si la contrainte est décomptée par modèle", c.Label))
+				}
+				c.ModelBudgets = budgets
+			}
 			if lead := strings.TrimSpace(r.FormValue(prefix + "happy_hour_max_lead")); lead != "" {
 				// Same parser as the "reset dans" field above: a form that accepts
 				// "4d13h" in one duration field and refuses "1d" in the next is a
@@ -723,6 +737,56 @@ func parseResetIn(s string) (time.Duration, bool) {
 		return 0, false
 	}
 	return total, true
+}
+
+// parsePlanModelBudgets reads the per-model budget overrides of a constraint,
+// one model per line:
+//
+//	kimi-k3 = 3
+//	deepseek-v4.1-flash = 16, 50000000 tokens
+//	longcat-2.5-preview-free = illimité
+//
+// The model is the upstream (real) model name. A value is in the provider's
+// currency, a token budget is suffixed with "tokens", and "illimité" leaves
+// the model unlimited. Blank lines and lines starting with # are ignored.
+func parsePlanModelBudgets(text string) (map[string]model.PlanBudget, error) {
+	budgets := make(map[string]model.PlanBudget)
+	for i, line := range strings.Split(text, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		name, spec, ok := strings.Cut(line, "=")
+		name = strings.TrimSpace(name)
+		if !ok || name == "" {
+			return nil, errors.Errorf("ligne %d : format attendu « modèle = budget », reçu %q", i+1, line)
+		}
+		if _, dup := budgets[name]; dup {
+			return nil, errors.Errorf("ligne %d : le modèle %q est déjà listé", i+1, name)
+		}
+		var b model.PlanBudget
+		for part := range strings.SplitSeq(spec, ",") {
+			part = strings.TrimSpace(part)
+			switch lower := strings.ToLower(part); {
+			case lower == "illimité" || lower == "illimite" || lower == "unlimited":
+				// No budget on this dimension.
+			case strings.HasSuffix(lower, "tokens"):
+				n, err := strconv.ParseInt(strings.TrimSpace(strings.TrimSuffix(lower, "tokens")), 10, 64)
+				if err != nil || n < 0 {
+					return nil, errors.Errorf("ligne %d : budget tokens invalide %q", i+1, part)
+				}
+				b.TokenBudget = &n
+			default:
+				v, err := parseBudgetField(part)
+				if err != nil || v == nil {
+					return nil, errors.Errorf("ligne %d : budget invalide %q (ex : 3.50, 2000000 tokens, illimité)", i+1, part)
+				}
+				b.ValueBudget = v
+			}
+		}
+		budgets[name] = b
+	}
+	return budgets, nil
 }
 
 func parsePlanTokenBudget(v string) *int64 {

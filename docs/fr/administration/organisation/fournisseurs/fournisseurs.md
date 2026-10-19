@@ -100,6 +100,44 @@ Le champ « Reset dans » se recopie depuis l'écran du fournisseur (par exemple
 `4h29m`) : Xolo le convertit en un ancrage absolu, de sorte que ses fenêtres
 coïncident avec les réinitialisations réelles du forfait.
 
+### Limites par modèle
+
+Certains forfaits ne limitent pas le fournisseur dans son ensemble, mais chaque
+modèle séparément. C'est le cas d'OpenCode Go : chaque modèle dispose de son
+propre budget mensuel, dont 20 % sur 5 heures et 50 % sur une semaine. Cocher
+**Décompter par modèle** sur une fenêtre lui donne ce comportement : chaque
+modèle amont a sa propre fenêtre et ses propres budgets, et épuiser un modèle ne
+bloque pas les autres.
+
+Les budgets de la contrainte s'appliquent alors à chaque modèle. Le champ
+**Budgets propres à certains modèles** les remplace pour les modèles qu'il
+liste, un par ligne, sous leur nom amont (le « modèle réel ») :
+
+```
+kimi-k3 = 3
+deepseek-v4.1-flash = 16, 50000000 tokens
+longcat-2.5-preview-free = illimité
+```
+
+Une valeur s'exprime dans la devise du fournisseur, un budget tokens porte le
+suffixe `tokens`, et `illimité` lève toute limite pour ce modèle. Un modèle listé
+remplace les deux budgets de la contrainte : `kimi-k3 = 3` ne garde pas le
+budget tokens de la contrainte pour `kimi-k3`.
+
+Deux modèles Xolo qui pointent vers le même modèle amont, par exemple deux noms
+publiés avec des réglages différents, sont décomptés ensemble, comme le fait le
+fournisseur. La répartition entre utilisateurs s'applique modèle par modèle : un
+utilisateur actif sur un modèle n'entame pas la part des autres modèles.
+
+Un plan peut mêler les deux portées : une fenêtre décomptée par modèle et une
+autre sur l'ensemble du fournisseur s'appliquent toutes les deux. Quand un plan
+décompte par modèle et que le fournisseur répond `429`, seul le modèle demandé
+est mis en pause, pour la durée indiquée par l'en-tête `Retry-After`, ou cinq
+minutes à défaut.
+
+Sur la page d'usage et le tableau de bord, une contrainte par modèle affiche une
+jauge par modèle consommé dans la fenêtre en cours.
+
 ### Répartition entre utilisateurs
 
 Le budget est commun, mais un utilisateur ne peut pas le consommer en entier. Sa

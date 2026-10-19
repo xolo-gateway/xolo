@@ -29,18 +29,18 @@ type fakePlanUsageReader struct {
 	presenceCalls atomic.Int64 // read concurrently by every caller of a plan
 }
 
-func (f *fakePlanUsageReader) SumPlanUsageSince(_ context.Context, _ model.OrgID, _ model.ProviderID, _ time.Time) (int64, int64, error) {
+func (f *fakePlanUsageReader) SumPlanUsageSince(_ context.Context, _ model.PlanUsageScope, _ time.Time) (int64, int64, error) {
 	if f.sumErr != nil {
 		return 0, 0, f.sumErr
 	}
 	return f.planTokens, f.planValue, nil
 }
 
-func (f *fakePlanUsageReader) SumUserPlanUsageSince(_ context.Context, _ model.UserID, _ model.OrgID, _ model.ProviderID, _ time.Time) (int64, int64, error) {
+func (f *fakePlanUsageReader) SumUserPlanUsageSince(_ context.Context, _ model.UserID, _ model.PlanUsageScope, _ time.Time) (int64, int64, error) {
 	return f.userTokens, f.userValue, nil
 }
 
-func (f *fakePlanUsageReader) CountActivePlanUsersSince(_ context.Context, _ model.OrgID, _ model.ProviderID, _ time.Time, excludeUserID model.UserID) (int64, error) {
+func (f *fakePlanUsageReader) CountActivePlanUsersSince(_ context.Context, _ model.PlanUsageScope, _ time.Time, excludeUserID model.UserID) (int64, error) {
 	f.excludedUser = excludeUserID
 	if f.countErr != nil {
 		return 0, f.countErr
@@ -48,7 +48,7 @@ func (f *fakePlanUsageReader) CountActivePlanUsersSince(_ context.Context, _ mod
 	return f.otherActiveUsers, nil
 }
 
-func (f *fakePlanUsageReader) HasPlanUsageSince(_ context.Context, _ model.UserID, _ model.OrgID, _ model.ProviderID, _ time.Time) (bool, error) {
+func (f *fakePlanUsageReader) HasPlanUsageSince(_ context.Context, _ model.UserID, _ model.PlanUsageScope, _ time.Time) (bool, error) {
 	f.presenceCalls.Add(1)
 	return f.callerPresent, nil
 }
@@ -253,9 +253,9 @@ type countingPlanUsageReader struct {
 	planSums int
 }
 
-func (f *countingPlanUsageReader) SumPlanUsageSince(ctx context.Context, orgID model.OrgID, providerID model.ProviderID, since time.Time) (int64, int64, error) {
+func (f *countingPlanUsageReader) SumPlanUsageSince(ctx context.Context, scope model.PlanUsageScope, since time.Time) (int64, int64, error) {
 	f.planSums++
-	return f.fakePlanUsageReader.SumPlanUsageSince(ctx, orgID, providerID, since)
+	return f.fakePlanUsageReader.SumPlanUsageSince(ctx, scope, since)
 }
 
 // countingCountReader counts how many times the active-user count is read.
@@ -274,7 +274,7 @@ func (f *countingCountReader) setCountErr(err error) {
 	f.countErr = err
 }
 
-func (f *countingCountReader) CountActivePlanUsersSince(ctx context.Context, orgID model.OrgID, providerID model.ProviderID, since time.Time, excludeUserID model.UserID) (int64, error) {
+func (f *countingCountReader) CountActivePlanUsersSince(ctx context.Context, scope model.PlanUsageScope, since time.Time, excludeUserID model.UserID) (int64, error) {
 	f.counts.Add(1)
 	f.errMu.Lock()
 	err := f.countErr
@@ -282,7 +282,7 @@ func (f *countingCountReader) CountActivePlanUsersSince(ctx context.Context, org
 	if err != nil {
 		return 0, err
 	}
-	return f.fakePlanUsageReader.CountActivePlanUsersSince(ctx, orgID, providerID, since, excludeUserID)
+	return f.fakePlanUsageReader.CountActivePlanUsersSince(ctx, scope, since, excludeUserID)
 }
 
 // waitForCounts blocks until the reader has seen n counts, or fails the test:
@@ -575,11 +575,11 @@ func (b *blockingCountReader) waitForFirst() {
 	<-b.started
 }
 
-func (b *blockingCountReader) CountActivePlanUsersSince(ctx context.Context, orgID model.OrgID, providerID model.ProviderID, since time.Time, excludeUserID model.UserID) (int64, error) {
+func (b *blockingCountReader) CountActivePlanUsersSince(ctx context.Context, scope model.PlanUsageScope, since time.Time, excludeUserID model.UserID) (int64, error) {
 	b.counts.Add(1)
 	b.first.Do(func() { close(b.started) })
 	<-b.release
-	return b.fakePlanUsageReader.CountActivePlanUsersSince(ctx, orgID, providerID, since, excludeUserID)
+	return b.fakePlanUsageReader.CountActivePlanUsersSince(ctx, scope, since, excludeUserID)
 }
 
 func TestFairShareService_PresenceIsRememberedOncePositive(t *testing.T) {
@@ -653,11 +653,11 @@ type ctxCheckingReader struct {
 	fakePlanUsageReader
 }
 
-func (r *ctxCheckingReader) CountActivePlanUsersSince(ctx context.Context, orgID model.OrgID, providerID model.ProviderID, since time.Time, excludeUserID model.UserID) (int64, error) {
+func (r *ctxCheckingReader) CountActivePlanUsersSince(ctx context.Context, scope model.PlanUsageScope, since time.Time, excludeUserID model.UserID) (int64, error) {
 	if err := ctx.Err(); err != nil {
 		return 0, err
 	}
-	return r.fakePlanUsageReader.CountActivePlanUsersSince(ctx, orgID, providerID, since, excludeUserID)
+	return r.fakePlanUsageReader.CountActivePlanUsersSince(ctx, scope, since, excludeUserID)
 }
 
 func TestFairShareService_StaleCountIsServedWhileRefreshing(t *testing.T) {
@@ -727,7 +727,7 @@ func (r *signallingCountReader) setOthers(n int64) {
 	r.otherActiveUsers = n
 }
 
-func (r *signallingCountReader) CountActivePlanUsersSince(ctx context.Context, orgID model.OrgID, providerID model.ProviderID, since time.Time, excludeUserID model.UserID) (int64, error) {
+func (r *signallingCountReader) CountActivePlanUsersSince(ctx context.Context, scope model.PlanUsageScope, since time.Time, excludeUserID model.UserID) (int64, error) {
 	r.mu.Lock()
 	n := r.otherActiveUsers
 	r.mu.Unlock()
@@ -766,10 +766,10 @@ type slowCountReader struct {
 	delay time.Duration
 }
 
-func (r *slowCountReader) CountActivePlanUsersSince(ctx context.Context, orgID model.OrgID, providerID model.ProviderID, since time.Time, excludeUserID model.UserID) (int64, error) {
+func (r *slowCountReader) CountActivePlanUsersSince(ctx context.Context, scope model.PlanUsageScope, since time.Time, excludeUserID model.UserID) (int64, error) {
 	select {
 	case <-time.After(r.delay):
-		return r.fakePlanUsageReader.CountActivePlanUsersSince(ctx, orgID, providerID, since, excludeUserID)
+		return r.fakePlanUsageReader.CountActivePlanUsersSince(ctx, scope, since, excludeUserID)
 	case <-ctx.Done():
 		return 0, ctx.Err()
 	}
@@ -840,7 +840,7 @@ type slowProbeReader struct {
 	fakePlanUsageReader
 }
 
-func (r *slowProbeReader) HasPlanUsageSince(ctx context.Context, _ model.UserID, _ model.OrgID, _ model.ProviderID, _ time.Time) (bool, error) {
+func (r *slowProbeReader) HasPlanUsageSince(ctx context.Context, _ model.UserID, _ model.PlanUsageScope, _ time.Time) (bool, error) {
 	<-ctx.Done()
 	return false, ctx.Err()
 }

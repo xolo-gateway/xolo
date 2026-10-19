@@ -30,6 +30,9 @@ const (
 	maxAlertQueryLength          = 8192
 	maxAlertDuration             = 31 * 24 * time.Hour
 	maxProviderKeyLength         = 16384
+	// maxPlanModelBudgets bounds the per-model overrides of one plan
+	// constraint; aggregators list a few dozen models.
+	maxPlanModelBudgets = 1000
 )
 
 // PutCustomRole creates the custom role or brings it to the given
@@ -612,6 +615,28 @@ func validatePlanConstraint(c model.PlanConstraint) error {
 	for _, budget := range []*int64{c.TokenBudget, c.ValueBudget} {
 		if budget != nil && *budget < 0 {
 			return invalid
+		}
+	}
+	switch c.Scope {
+	case "", model.PlanScopeProvider:
+		if len(c.ModelBudgets) > 0 {
+			return invalid
+		}
+	case model.PlanScopeModel:
+		if c.Kind != model.ConstraintRollingWindow || len(c.ModelBudgets) > maxPlanModelBudgets {
+			return invalid
+		}
+	default:
+		return invalid
+	}
+	for name, b := range c.ModelBudgets {
+		if !validCommonText(name, 1, maxBusinessNameLength) {
+			return invalid
+		}
+		for _, budget := range []*int64{b.TokenBudget, b.ValueBudget} {
+			if budget != nil && *budget < 0 {
+				return invalid
+			}
 		}
 	}
 	for _, ratio := range []*float64{c.ReserveRatio, c.PaceSlack, c.HappyHourStart} {

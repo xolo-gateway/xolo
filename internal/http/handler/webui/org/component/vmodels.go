@@ -163,6 +163,10 @@ type ChartShare = common.ChartShare
 // SubscriptionConstraintUsage holds runtime consumption data for one plan constraint.
 type SubscriptionConstraintUsage struct {
 	Constraint model.PlanConstraint
+	// UpstreamModel is the model a per-model constraint's gauge is for; empty
+	// for a provider-wide constraint, and for the single row of a per-model
+	// constraint no model has consumed in the window.
+	UpstreamModel string
 	// rolling_window fields
 	TokensUsed  int64
 	ValueUsed   int64     // microcents, provider currency

@@ -3,6 +3,8 @@ package service
 import (
 	"testing"
 	"time"
+
+	"github.com/xolo-gateway/xolo/internal/core/model"
 )
 
 func TestActiveUserCache_SweepsExpiredEntriesWithoutWalkingOnEveryPut(t *testing.T) {
@@ -17,7 +19,7 @@ func TestActiveUserCache_SweepsExpiredEntriesWithoutWalkingOnEveryPut(t *testing
 	// and each already expired by the time the next batch arrives.
 	for i := 0; i < 10*minPurgeAt; i++ {
 		at := now.Add(time.Duration(i) * ttl)
-		key := activeUserKeyFor("org", "prov", at, ttl)
+		key := activeUserKeyFor(model.PlanUsageScope{OrgID: "org", ProviderID: "prov"}, at, ttl)
 		c.put(key, activeUserEntry{count: int64(i)}, at)
 	}
 
@@ -34,14 +36,14 @@ func TestActiveUserKeyFor_QuantisesTheWindowStart(t *testing.T) {
 	// boundary, so the instants compared here must sit inside the same step.
 	base := time.Unix(1_700_000_000, 0).Truncate(ttl)
 
-	same := activeUserKeyFor("org", "prov", base.Add(time.Second), ttl)
-	if got := activeUserKeyFor("org", "prov", base.Add(20*time.Second), ttl); got != same {
+	same := activeUserKeyFor(model.PlanUsageScope{OrgID: "org", ProviderID: "prov"}, base.Add(time.Second), ttl)
+	if got := activeUserKeyFor(model.PlanUsageScope{OrgID: "org", ProviderID: "prov"}, base.Add(20*time.Second), ttl); got != same {
 		t.Errorf("two starts within one TTL produced different keys: %+v vs %+v", same, got)
 	}
-	if got := activeUserKeyFor("org", "prov", base.Add(2*ttl), ttl); got == same {
+	if got := activeUserKeyFor(model.PlanUsageScope{OrgID: "org", ProviderID: "prov"}, base.Add(2*ttl), ttl); got == same {
 		t.Error("two starts a TTL apart produced the same key")
 	}
-	if got := activeUserKeyFor("org", "other", base.Add(time.Second), ttl); got == same {
+	if got := activeUserKeyFor(model.PlanUsageScope{OrgID: "org", ProviderID: "other"}, base.Add(time.Second), ttl); got == same {
 		t.Error("two providers produced the same key")
 	}
 }

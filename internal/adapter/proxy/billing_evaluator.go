@@ -6,11 +6,11 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/xolo-gateway/xolo/internal/core/model"
 	"github.com/xolo-gateway/xolo/internal/core/port"
 	"github.com/xolo-gateway/xolo/internal/core/service"
 	"github.com/xolo-gateway/xolo/internal/metrics"
-	"github.com/prometheus/client_golang/prometheus"
 )
 
 // planScope identifies the org+provider+user context for a subscription plan constraint.
@@ -22,6 +22,31 @@ type planScope struct {
 	// Currency is the provider's, in which value budgets and provider costs are
 	// expressed. Denial messages format amounts with it.
 	Currency string
+	// UpstreamModel and ModelIDs describe the requested model for per-model
+	// constraints: its real (upstream) name, and every model of the provider
+	// targeting it, which the provider meters as one. Unused by provider-wide
+	// constraints.
+	UpstreamModel string
+	ModelIDs      []model.LLMModelID
+}
+
+// usageScope is the usage a constraint counts: the whole provider, or the
+// requested upstream model alone for a per-model constraint.
+func (s planScope) usageScope(c model.PlanConstraint) model.PlanUsageScope {
+	scope := model.PlanUsageScope{OrgID: s.OrgID, ProviderID: s.ProviderID}
+	if c.PerModel() {
+		scope.ModelIDs = s.ModelIDs
+	}
+	return scope
+}
+
+// constraintName names a constraint in denial messages, with the upstream
+// model it was evaluated for when it is per model.
+func (s planScope) constraintName(c model.PlanConstraint) string {
+	if c.PerModel() && s.UpstreamModel != "" {
+		return c.Label + " · " + s.UpstreamModel
+	}
+	return c.Label
 }
 
 // planDenial describes why a constraint blocked a request.
@@ -115,7 +140,9 @@ func (e *rollingWindowEvaluator) Acquire(ctx context.Context, scope planScope, c
 	// upstream provider's reset schedule) or falls back to a sliding window when unset.
 	now := time.Now()
 	since := c.CurrentWindowStart(now)
-	tokens, providerValue, err := e.usageStore.SumPlanUsageSince(ctx, scope.OrgID, scope.ProviderID, since)
+	usage := scope.usageScope(c)
+	name := scope.constraintName(c)
+	tokens, providerValue, err := e.usageStore.SumPlanUsageSince(ctx, usage, since)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -123,14 +150,14 @@ func (e *rollingWindowEvaluator) Acquire(ctx context.Context, scope planScope, c
 	if c.TokenBudget != nil && tokens >= *c.TokenBudget {
 		return nil, &planDenial{
 			Message: fmt.Sprintf("plan quota exceeded [%s]: %d / %d tokens used in the last %s",
-				c.Label, tokens, *c.TokenBudget, formatDuration(dur)),
+				name, tokens, *c.TokenBudget, formatDuration(dur)),
 		}, nil
 	}
 
 	if c.ValueBudget != nil && providerValue >= *c.ValueBudget {
 		return nil, &planDenial{
 			Message: fmt.Sprintf("plan quota exceeded [%s]: value budget of %s reached in the last %s",
-				c.Label, formatMicrocents(providerValue, scope.Currency), formatDuration(dur)),
+				name, formatMicrocents(providerValue, scope.Currency), formatDuration(dur)),
 		}, nil
 	}
 
@@ -141,6 +168,7 @@ func (e *rollingWindowEvaluator) Acquire(ctx context.Context, scope planScope, c
 		share, err := e.fairShare.Resolve(ctx, service.FairShareRequest{
 			OrgID:       scope.OrgID,
 			ProviderID:  scope.ProviderID,
+			ModelIDs:    usage.ModelIDs,
 			UserID:      scope.UserID,
 			MemberCount: scope.MemberCount,
 			Constraint:  c,
@@ -162,7 +190,7 @@ func (e *rollingWindowEvaluator) Acquire(ctx context.Context, scope planScope, c
 		if share.TokenAllowance != nil && share.UserTokens >= *share.TokenAllowance {
 			return nil, &planDenial{
 				Message: fmt.Sprintf("fair-share quota exceeded [%s]: %d / %d tokens used in the last %s (%s)",
-					c.Label, share.UserTokens, *share.TokenAllowance, formatDuration(dur),
+					name, share.UserTokens, *share.TokenAllowance, formatDuration(dur),
 					shareBasis(share, share.TokenMode, scope.MemberCount)),
 			}, nil
 		}
@@ -170,7 +198,7 @@ func (e *rollingWindowEvaluator) Acquire(ctx context.Context, scope planScope, c
 		if share.ValueAllowance != nil && share.UserValue >= *share.ValueAllowance {
 			return nil, &planDenial{
 				Message: fmt.Sprintf("fair-share quota exceeded [%s]: value budget of %s / %s reached in the last %s (%s)",
-					c.Label, formatMicrocents(share.UserValue, scope.Currency), formatMicrocents(*share.ValueAllowance, scope.Currency),
+					name, formatMicrocents(share.UserValue, scope.Currency), formatMicrocents(*share.ValueAllowance, scope.Currency),
 					formatDuration(dur), shareBasis(share, share.ValueMode, scope.MemberCount)),
 			}, nil
 		}

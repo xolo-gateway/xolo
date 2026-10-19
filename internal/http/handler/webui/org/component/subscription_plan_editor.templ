@@ -4,16 +4,20 @@ import (
 	"fmt"
 	"math"
 	"net/url"
+	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/xolo-gateway/xolo/internal/core/model"
 	common "github.com/xolo-gateway/xolo/internal/http/handler/webui/common/component"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/button"
+	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/checkbox"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/collapsible"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/form"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/icon"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/input"
+	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/textarea"
 )
 
 // ── Subscription Plan Editor ──────────────────────────────────────────────────
@@ -33,6 +37,8 @@ import (
 //   - plan_c{i}_pace_slack           (percent 0-100, empty = allocator default)
 //   - plan_c{i}_happy_hour_start     (percent 1-100, empty = allocator default; 100 disables)
 //   - plan_c{i}_happy_hour_max_lead  (duration, e.g. "1h", "2d"; empty = allocator default)
+//   - plan_c{i}_scope                ("model" when checked: each upstream model metered on its own)
+//   - plan_c{i}_model_budgets        (one "model = budget" override per line, see parsePlanModelBudgets)
 // submitted, when not nil, is the form as it was posted: the page is being
 // rendered back with an error, and every field shows what the operator typed —
 // the rejected value included — rather than what is stored.
@@ -112,6 +118,15 @@ templ planConstraintRow(idx int, c model.PlanConstraint, readonly bool, submitte
 	{{ paceSlackName := "plan_c" + idxKey + "_pace_slack" }}
 	{{ happyStartName := "plan_c" + idxKey + "_happy_hour_start" }}
 	{{ happyLeadName := "plan_c" + idxKey + "_happy_hour_max_lead" }}
+	{{ scopeName := "plan_c" + idxKey + "_scope" }}
+	{{ modelBudgetsName := "plan_c" + idxKey + "_model_budgets" }}
+	// An unchecked box is absent from the posted form, so a form rendered back
+	// reads the box from the submission alone, never from the stored plan.
+	{{ perModel := c.Scope == model.PlanScopeModel }}
+	if submitted != nil {
+		{{ perModel = submitted.Get(scopeName) == string(model.PlanScopeModel) }}
+	}
+	{{ modelBudgetsStr := submittedOr(submitted, modelBudgetsName, formatModelBudgets(c.ModelBudgets)) }}
 	// Duration value: empty string when zero (template row or unset).
 	{{ durStr := "" }}
 	if c.Duration > 0 {
@@ -290,6 +305,43 @@ templ planConstraintRow(idx int, c model.PlanConstraint, readonly bool, submitte
 					})
 				</div>
 			</div>
+			// ── Per-model metering ─────────────────────────────────────────
+			<div class="space-y-3 rounded-md border bg-background p-3">
+				@form.Label() {
+					<span class="flex items-center gap-2">
+						@checkbox.Checkbox(checkbox.Props{
+							ID:         "plan_c" + idxKey + "_scope",
+							Name:       scopeName,
+							Value:      string(model.PlanScopeModel),
+							Checked:    perModel,
+							Disabled:   readonly,
+							Attributes: templ.Attributes{"data-xolo-name": "plan_c{i}_scope", "data-xolo-id": "plan_c{i}_scope"},
+						})
+						Décompter par modèle
+					</span>
+				}
+				@form.Description() {
+					Chaque modèle du fournisseur dispose alors de sa propre fenêtre et des budgets ci-dessus, comme sur les forfaits qui limitent chaque modèle séparément (OpenCode Go). Les modèles publiés sous plusieurs noms mais pointant vers le même modèle amont sont décomptés ensemble.
+				}
+				<div class="space-y-1">
+					@form.Label() {
+						Budgets propres à certains modèles (optionnel)
+					}
+					@form.Description() {
+						Un modèle amont par ligne, sous la forme <code>modèle = budget</code> : <code>kimi-k3 = 3</code>, <code>deepseek-v4.1-flash = 16, 50000000 tokens</code>, <code>longcat-2.5-preview-free = illimité</code>. Un budget listé ici remplace ceux de la contrainte pour ce modèle.
+					}
+					@textarea.Textarea(textarea.Props{
+						ID:          "plan_c" + idxKey + "_model_budgets",
+						Name:        modelBudgetsName,
+						Value:       modelBudgetsStr,
+						Rows:        4,
+						Placeholder: "kimi-k3 = 3",
+						Disabled:    readonly,
+						Class:       "font-mono text-xs",
+						Attributes:  templ.Attributes{"data-xolo-name": "plan_c{i}_model_budgets", "data-xolo-id": "plan_c{i}_model_budgets"},
+					})
+				</div>
+			</div>
 			// ── Fair-share tuning ──────────────────────────────────────────
 			// Left empty these keep the defaults; they are here because a plan whose
 			// shape differs from the usual one (a handful of heavy users, a weekly
@@ -420,6 +472,32 @@ func submittedOr(submitted url.Values, name, stored string) string {
 		return stored
 	}
 	return submitted.Get(name)
+}
+
+// formatModelBudgets renders per-model overrides in the one-per-line syntax
+// the form parses back, sorted by model so that re-saving is idempotent.
+func formatModelBudgets(budgets map[string]model.PlanBudget) string {
+	names := make([]string, 0, len(budgets))
+	for name := range budgets {
+		names = append(names, name)
+	}
+	slices.Sort(names)
+	var sb strings.Builder
+	for _, name := range names {
+		b := budgets[name]
+		parts := make([]string, 0, 2)
+		if b.ValueBudget != nil {
+			parts = append(parts, formatBudgetField(*b.ValueBudget))
+		}
+		if b.TokenBudget != nil {
+			parts = append(parts, fmt.Sprintf("%d tokens", *b.TokenBudget))
+		}
+		if len(parts) == 0 {
+			parts = append(parts, "illimité")
+		}
+		sb.WriteString(name + " = " + strings.Join(parts, ", ") + "\n")
+	}
+	return sb.String()
 }
 
 // formatRatioField renders a stored fraction as the percentage the form edits,

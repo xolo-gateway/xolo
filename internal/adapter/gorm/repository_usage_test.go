@@ -312,7 +312,7 @@ func scenarioUsageStorePlanUsage(t *testing.T, store *xologorm.Store) {
 	f := seedUsage(t, store)
 	since := time.Now().Add(-time.Hour)
 
-	tokens, providerValue, err := store.SumPlanUsageSince(ctx, f.orgID, f.providerID, since)
+	tokens, providerValue, err := store.SumPlanUsageSince(ctx, model.PlanUsageScope{OrgID: f.orgID, ProviderID: f.providerID}, since)
 	if err != nil {
 		t.Fatalf("SumPlanUsageSince: %v", err)
 	}
@@ -323,7 +323,7 @@ func scenarioUsageStorePlanUsage(t *testing.T, store *xologorm.Store) {
 		t.Errorf("expected a provider value of 750, got %d", providerValue)
 	}
 
-	userTokens, userValue, err := store.SumUserPlanUsageSince(ctx, f.userB, f.orgID, f.providerID, since)
+	userTokens, userValue, err := store.SumUserPlanUsageSince(ctx, f.userB, model.PlanUsageScope{OrgID: f.orgID, ProviderID: f.providerID}, since)
 	if err != nil {
 		t.Fatalf("SumUserPlanUsageSince: %v", err)
 	}
@@ -331,7 +331,7 @@ func scenarioUsageStorePlanUsage(t *testing.T, store *xologorm.Store) {
 		t.Errorf("expected no subscription usage for user B, got tokens=%d value=%d", userTokens, userValue)
 	}
 
-	earliest, err := store.EarliestPlanUsageSince(ctx, f.orgID, f.providerID, since)
+	earliest, err := store.EarliestPlanUsageSince(ctx, model.PlanUsageScope{OrgID: f.orgID, ProviderID: f.providerID}, since)
 	if err != nil {
 		t.Fatalf("EarliestPlanUsageSince: %v", err)
 	}
@@ -340,7 +340,7 @@ func scenarioUsageStorePlanUsage(t *testing.T, store *xologorm.Store) {
 	}
 
 	// No subscription usage in the window: a zero time, not an error.
-	earliest, err = store.EarliestPlanUsageSince(ctx, f.orgID, f.providerID, time.Now().Add(time.Hour))
+	earliest, err = store.EarliestPlanUsageSince(ctx, model.PlanUsageScope{OrgID: f.orgID, ProviderID: f.providerID}, time.Now().Add(time.Hour))
 	if err != nil {
 		t.Fatalf("EarliestPlanUsageSince (future): %v", err)
 	}
@@ -395,7 +395,7 @@ func scenarioUsageStoreCountActivePlanUsers(t *testing.T, store *xologorm.Store)
 		}
 	}
 
-	count, err := store.CountActivePlanUsersSince(ctx, f.orgID, f.providerID, time.Now().Add(-time.Hour), "")
+	count, err := store.CountActivePlanUsersSince(ctx, model.PlanUsageScope{OrgID: f.orgID, ProviderID: f.providerID}, time.Now().Add(-time.Hour), "")
 	if err != nil {
 		t.Fatalf("CountActivePlanUsersSince: %v", err)
 	}
@@ -405,7 +405,7 @@ func scenarioUsageStoreCountActivePlanUsers(t *testing.T, store *xologorm.Store)
 
 	// Excluding a user leaves the others: callers allocating for a user add them
 	// back themselves, which is exact whether or not they have consumed yet.
-	count, err = store.CountActivePlanUsersSince(ctx, f.orgID, f.providerID, time.Now().Add(-time.Hour), f.userA)
+	count, err = store.CountActivePlanUsersSince(ctx, model.PlanUsageScope{OrgID: f.orgID, ProviderID: f.providerID}, time.Now().Add(-time.Hour), f.userA)
 	if err != nil {
 		t.Fatalf("CountActivePlanUsersSince (excluding userA): %v", err)
 	}
@@ -414,7 +414,7 @@ func scenarioUsageStoreCountActivePlanUsers(t *testing.T, store *xologorm.Store)
 	}
 
 	// Excluding a user who never consumed changes nothing.
-	count, err = store.CountActivePlanUsersSince(ctx, f.orgID, f.providerID, time.Now().Add(-time.Hour), model.NewUserID())
+	count, err = store.CountActivePlanUsersSince(ctx, model.PlanUsageScope{OrgID: f.orgID, ProviderID: f.providerID}, time.Now().Add(-time.Hour), model.NewUserID())
 	if err != nil {
 		t.Fatalf("CountActivePlanUsersSince (excluding a stranger): %v", err)
 	}
@@ -431,7 +431,7 @@ func scenarioUsageStoreCountActivePlanUsers(t *testing.T, store *xologorm.Store)
 		{f.userB, true},
 		{model.NewUserID(), false},
 	} {
-		present, err := store.HasPlanUsageSince(ctx, tc.user, f.orgID, f.providerID, time.Now().Add(-time.Hour))
+		present, err := store.HasPlanUsageSince(ctx, tc.user, model.PlanUsageScope{OrgID: f.orgID, ProviderID: f.providerID}, time.Now().Add(-time.Hour))
 		if err != nil {
 			t.Fatalf("HasPlanUsageSince(%s): %v", tc.user, err)
 		}
@@ -440,12 +440,12 @@ func scenarioUsageStoreCountActivePlanUsers(t *testing.T, store *xologorm.Store)
 		}
 	}
 	// Another provider's usage does not make the user present on this one.
-	if present, err := store.HasPlanUsageSince(ctx, f.userA, f.orgID, f.otherProvID, time.Now().Add(-time.Hour)); err != nil || present {
+	if present, err := store.HasPlanUsageSince(ctx, f.userA, model.PlanUsageScope{OrgID: f.orgID, ProviderID: f.otherProvID}, time.Now().Add(-time.Hour)); err != nil || present {
 		t.Errorf("HasPlanUsageSince on the other provider = (%v, %v), want (false, nil)", present, err)
 	}
 
 	// Outside the window nobody is active.
-	count, err = store.CountActivePlanUsersSince(ctx, f.orgID, f.providerID, time.Now().Add(time.Hour), "")
+	count, err = store.CountActivePlanUsersSince(ctx, model.PlanUsageScope{OrgID: f.orgID, ProviderID: f.providerID}, time.Now().Add(time.Hour), "")
 	if err != nil {
 		t.Fatalf("CountActivePlanUsersSince (future): %v", err)
 	}

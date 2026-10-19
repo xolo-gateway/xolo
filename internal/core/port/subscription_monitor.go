@@ -8,5 +8,8 @@ import "github.com/xolo-gateway/xolo/internal/core/model"
 type SubscriptionMonitor interface {
 	CurrentInFlight(orgID model.OrgID, providerID model.ProviderID) int
 	CurrentUserInFlight(orgID model.OrgID, providerID model.ProviderID, userID model.UserID) int
-	IsExhausted(orgID model.OrgID, providerID model.ProviderID, label string) bool
+	// IsExhausted reports whether a constraint is in cooldown after an upstream
+	// exhaustion. upstreamModel names the model of a per-model constraint and
+	// is empty for a provider-wide one.
+	IsExhausted(orgID model.OrgID, providerID model.ProviderID, label, upstreamModel string) bool
 }

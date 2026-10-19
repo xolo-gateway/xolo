@@ -3,9 +3,12 @@ package proxy
 import (
 	"context"
 	"log/slog"
+	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
+	"github.com/bornholm/genai/llm"
 	genaiProxy "github.com/bornholm/genai/proxy"
 	"github.com/xolo-gateway/xolo/internal/core/model"
 	"github.com/xolo-gateway/xolo/internal/core/port"
@@ -57,11 +60,8 @@ func (e *XoloSubscriptionEnforcer) PreRequest(ctx context.Context, req *genaiPro
 		return nil, nil
 	}
 
-	p, err := e.resolveProvider(ctx, req)
-	if err != nil || p == nil {
-		return nil, nil
-	}
-	if p.BillingMode() != model.BillingModeSubscription {
+	m, p := e.resolveTarget(ctx, req)
+	if p == nil || p.BillingMode() != model.BillingModeSubscription {
 		return nil, nil
 	}
 
@@ -91,12 +91,19 @@ func (e *XoloSubscriptionEnforcer) PreRequest(ctx context.Context, req *genaiPro
 		MemberCount: memberCount,
 		Currency:    p.Currency(),
 	}
+	if m != nil && plan.HasPerModelConstraint() {
+		scope.UpstreamModel = m.RealModel()
+		scope.ModelIDs = e.upstreamModelIDs(ctx, m)
+	}
 
 	// Check cooldowns first (fast path, no DB).
 	for _, c := range plan.Constraints {
-		if e.state.IsExhausted(orgID, p.ID(), c.Label) {
+		if c.PerModel() && scope.UpstreamModel == "" {
+			continue
+		}
+		if e.state.IsExhausted(orgID, p.ID(), c.Label, cooldownModel(c, scope.UpstreamModel)) {
 			return &genaiProxy.HookResult{Response: planExhaustedResponse(
-				"plan quota in cooldown [" + c.Label + "]: upstream provider reported exhaustion",
+				"plan quota in cooldown [" + scope.constraintName(c) + "]: upstream provider reported exhaustion",
 			)}, nil
 		}
 	}
@@ -104,6 +111,14 @@ func (e *XoloSubscriptionEnforcer) PreRequest(ctx context.Context, req *genaiPro
 	// Acquire each constraint in order; release all on denial.
 	reservations := make([]planReservation, 0, len(plan.Constraints))
 	for _, c := range plan.Constraints {
+		if c.PerModel() {
+			// Without a resolved model there is nothing to meter a per-model
+			// constraint against; the provider-wide ones still apply.
+			if scope.UpstreamModel == "" {
+				continue
+			}
+			c = c.ForModel(scope.UpstreamModel)
+		}
 		ev, ok := e.evaluators[c.Kind]
 		if !ok {
 			continue
@@ -129,10 +144,10 @@ func (e *XoloSubscriptionEnforcer) PreRequest(ctx context.Context, req *genaiPro
 func (e *XoloSubscriptionEnforcer) PostResponse(ctx context.Context, req *genaiProxy.ProxyRequest, res *genaiProxy.ProxyResponse) (*genaiProxy.HookResult, error) {
 	e.releaseReservations(ctx, req)
 
-	// If upstream returned 429/throttle, mark the plan as exhausted for a short cooldown
-	// so we don't hammer the provider before the window resets.
-	if res != nil && res.StatusCode == 429 {
-		e.markExhaustedFromResponse(ctx, req, res)
+	// A 429 the proxy answers with is either one of ours, or an upstream one a
+	// relay passed through as is.
+	if res != nil && res.StatusCode == http.StatusTooManyRequests && !isOwnResponse(res) {
+		e.markExhausted(ctx, req, res.Headers)
 	}
 
 	return nil, nil
@@ -141,6 +156,14 @@ func (e *XoloSubscriptionEnforcer) PostResponse(ctx context.Context, req *genaiP
 // OnError implements genaiProxy.ErrorHook.
 func (e *XoloSubscriptionEnforcer) OnError(ctx context.Context, req *genaiProxy.ProxyRequest, err error) (*genaiProxy.HookResult, error) {
 	e.releaseReservations(ctx, req)
+
+	// An upstream 429 reaches the hooks as an error: mark the plan as exhausted
+	// for a cooldown so the provider is not hammered before its window resets.
+	var httpErr *llm.HTTPError
+	if errors.As(err, &httpErr) && httpErr.StatusCode == http.StatusTooManyRequests {
+		e.markExhausted(ctx, req, httpErr.Header)
+	}
+
 	return nil, nil
 }
 
@@ -150,57 +173,128 @@ func (e *XoloSubscriptionEnforcer) releaseReservations(ctx context.Context, req 
 	delete(req.Metadata, metaPlanReservations)
 }
 
-func (e *XoloSubscriptionEnforcer) markExhaustedFromResponse(ctx context.Context, req *genaiProxy.ProxyRequest, res *genaiProxy.ProxyResponse) {
+// defaultExhaustionCooldown is how long a constraint stays exhausted after an
+// upstream 429 that does not say when to come back.
+const defaultExhaustionCooldown = 5 * time.Minute
+
+// markExhausted puts the plan in cooldown after an upstream 429, for as long as
+// its Retry-After asks, or defaultExhaustionCooldown.
+//
+// When the plan meters models separately the 429 is attributed to the
+// requested model: only that model's per-model constraints go into cooldown,
+// so exhausting one model does not lock the others out. Otherwise every
+// constraint of the plan does, the provider being the only thing the 429 can
+// be pinned on.
+func (e *XoloSubscriptionEnforcer) markExhausted(ctx context.Context, req *genaiProxy.ProxyRequest, header http.Header) {
 	orgID := OrgIDFromMeta(req.Metadata)
-	p, err := e.resolveProvider(ctx, req)
-	if err != nil || p == nil || p.BillingMode() != model.BillingModeSubscription {
+	m, p := e.resolveTarget(ctx, req)
+	if p == nil || p.BillingMode() != model.BillingModeSubscription {
 		return
 	}
 	plan := p.SubscriptionPlan()
 	if plan == nil {
 		return
 	}
-	// Detect whether the 429 looks like an upstream plan exhaustion
-	// (not our own plan_exhausted code, which we generate ourselves).
-	if isOwnResponse(res) {
+
+	now := time.Now()
+	cooldown, ok := retryAfter(header, now)
+	if !ok {
+		cooldown = defaultExhaustionCooldown
+	}
+	until := now.Add(cooldown)
+
+	perModel := plan.HasPerModelConstraint()
+	if perModel && m == nil {
 		return
 	}
-	// Default cooldown: 5 minutes. Could be refined from Retry-After header in the future.
-	cooldown := 5 * time.Minute
 	for _, c := range plan.Constraints {
+		upstreamModel := ""
+		if perModel {
+			if !c.PerModel() {
+				continue
+			}
+			upstreamModel = m.RealModel()
+		}
 		slog.WarnContext(ctx, "subscription enforcer: upstream 429 received, marking plan constraint as exhausted",
 			slog.String("provider", string(p.ID())),
 			slog.String("org", string(orgID)),
 			slog.String("constraint", c.Label),
+			slog.String("upstream_model", upstreamModel),
 			slog.Duration("cooldown", cooldown),
 		)
-		e.state.MarkExhausted(orgID, p.ID(), c.Label, time.Now().Add(cooldown))
+		e.state.MarkExhausted(orgID, p.ID(), c.Label, upstreamModel, until)
 	}
 }
 
-func (e *XoloSubscriptionEnforcer) resolveProvider(ctx context.Context, req *genaiProxy.ProxyRequest) (model.Provider, error) {
-	modelID := ModelIDFromMeta(req.Metadata)
-	if modelID != "" {
-		m, err := e.providerStore.GetLLMModelByID(ctx, modelID)
-		if err != nil {
+// retryAfter reads a Retry-After header, in seconds or as an HTTP date.
+func retryAfter(header http.Header, now time.Time) (time.Duration, bool) {
+	value := strings.TrimSpace(header.Get("Retry-After"))
+	if value == "" {
+		return 0, false
+	}
+	if secs, err := strconv.ParseInt(value, 10, 64); err == nil {
+		if secs <= 0 {
+			return 0, false
+		}
+		return time.Duration(secs) * time.Second, true
+	}
+	if at, err := http.ParseTime(value); err == nil && at.After(now) {
+		return at.Sub(now), true
+	}
+	return 0, false
+}
+
+// cooldownModel is the upstream model a constraint's cooldown is keyed on:
+// the requested one for a per-model constraint, none for a provider-wide one.
+func cooldownModel(c model.PlanConstraint, upstreamModel string) string {
+	if c.PerModel() {
+		return upstreamModel
+	}
+	return ""
+}
+
+// upstreamModelIDs lists the models of the provider that target the same
+// upstream model as m: the provider meters them as one, whatever proxy name
+// they are published under. On a store error it falls back to m alone, which
+// undercounts only when the model has aliases.
+func (e *XoloSubscriptionEnforcer) upstreamModelIDs(ctx context.Context, m model.LLMModel) []model.LLMModelID {
+	models, err := e.providerStore.ListLLMModels(ctx, m.OrgID())
+	if err != nil {
+		slog.WarnContext(ctx, "subscription enforcer: could not list models, metering the requested model alone",
+			slog.Any("error", err), slog.String("model", string(m.ID())))
+		return []model.LLMModelID{m.ID()}
+	}
+	return model.UpstreamModelIDs(models, m)
+}
+
+// resolveTarget returns the model a request targets and its provider, or nils
+// when either cannot be resolved.
+func (e *XoloSubscriptionEnforcer) resolveTarget(ctx context.Context, req *genaiProxy.ProxyRequest) (model.LLMModel, model.Provider) {
+	var (
+		m   model.LLMModel
+		err error
+	)
+	if modelID := ModelIDFromMeta(req.Metadata); modelID != "" {
+		m, err = e.providerStore.GetLLMModelByID(ctx, modelID)
+	} else {
+		orgID := OrgIDFromMeta(req.Metadata)
+		if orgID == "" {
 			return nil, nil
 		}
-		return e.providerStore.GetProviderByID(ctx, m.ProviderID())
+		_, proxyName, parseErr := parseQualifiedModelName(req.Model)
+		if parseErr != nil {
+			return nil, nil
+		}
+		m, err = e.providerStore.GetLLMModelByProxyName(ctx, orgID, proxyName)
 	}
-
-	orgID := OrgIDFromMeta(req.Metadata)
-	if orgID == "" {
+	if err != nil || m == nil {
 		return nil, nil
 	}
-	_, proxyName, err := parseQualifiedModelName(req.Model)
+	p, err := e.providerStore.GetProviderByID(ctx, m.ProviderID())
 	if err != nil {
 		return nil, nil
 	}
-	m, err := e.providerStore.GetLLMModelByProxyName(ctx, orgID, proxyName)
-	if err != nil {
-		return nil, nil
-	}
-	return e.providerStore.GetProviderByID(ctx, m.ProviderID())
+	return m, p
 }
 
 func releaseAll(ctx context.Context, reservations []planReservation) {

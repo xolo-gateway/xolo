@@ -65,14 +65,25 @@ templ subscriptionProviderCard(pu SubscriptionProviderUsage) {
 
 templ rollingWindowConstraintRow(cu SubscriptionConstraintUsage) {
 	<div class="space-y-2">
-		<div class="flex items-center gap-2">
+		<div class="flex flex-wrap items-center gap-2">
 			<span class="text-sm font-medium">{ cu.Constraint.Label }</span>
+			if cu.UpstreamModel != "" {
+				<code class="text-xs">{ cu.UpstreamModel }</code>
+			} else if cu.Constraint.PerModel() {
+				@common.Badge(common.ToneNeutral, "Par modèle")
+			}
 			if cu.Anchored {
 				@common.Badge(common.ToneNeutral, "Fenêtre fixe")
 			} else {
 				@common.Badge(common.ToneNeutral, "Fenêtre glissante")
 			}
+			if cu.Exhausted {
+				@common.Badge(common.ToneWarning, "Épuisé chez le fournisseur")
+			}
 		</div>
+		if cu.Constraint.PerModel() && cu.UpstreamModel == "" {
+			<p class="text-xs text-muted-foreground">Chaque modèle est décompté séparément ; aucun n'a été consommé dans la fenêtre en cours.</p>
+		}
 		// The allocation basis. A share computed on the active users moves between
 		// two visits, so the figures it was computed from are shown rather than left
 		// for the reader to guess.

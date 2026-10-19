@@ -19,22 +19,22 @@ type stubPlanUsageReader struct {
 	sumErr           error
 }
 
-func (s *stubPlanUsageReader) SumPlanUsageSince(context.Context, model.OrgID, model.ProviderID, time.Time) (int64, int64, error) {
+func (s *stubPlanUsageReader) SumPlanUsageSince(context.Context, model.PlanUsageScope, time.Time) (int64, int64, error) {
 	if s.sumErr != nil {
 		return 0, 0, s.sumErr
 	}
 	return s.planTokens, 0, nil
 }
 
-func (s *stubPlanUsageReader) SumUserPlanUsageSince(context.Context, model.UserID, model.OrgID, model.ProviderID, time.Time) (int64, int64, error) {
+func (s *stubPlanUsageReader) SumUserPlanUsageSince(context.Context, model.UserID, model.PlanUsageScope, time.Time) (int64, int64, error) {
 	return s.userTokens, 0, nil
 }
 
-func (s *stubPlanUsageReader) CountActivePlanUsersSince(context.Context, model.OrgID, model.ProviderID, time.Time, model.UserID) (int64, error) {
+func (s *stubPlanUsageReader) CountActivePlanUsersSince(context.Context, model.PlanUsageScope, time.Time, model.UserID) (int64, error) {
 	return s.otherActiveUsers, nil
 }
 
-func (s *stubPlanUsageReader) HasPlanUsageSince(context.Context, model.UserID, model.OrgID, model.ProviderID, time.Time) (bool, error) {
+func (s *stubPlanUsageReader) HasPlanUsageSince(context.Context, model.UserID, model.PlanUsageScope, time.Time) (bool, error) {
 	return false, nil
 }
 
@@ -54,7 +54,7 @@ func TestApplyFairShare_ReplacesTheDenominatorAndReportsTheBasis(t *testing.T) {
 	c := planConstraint(1000)
 	cu := orgcomponent.SubscriptionConstraintUsage{Constraint: fairShareConstraint(c, 20)}
 
-	if !applyFairShare(context.Background(), service.NewFairShareService(reader), &cu, c, "org-1", "prov-1", "user-1", 20, time.Now(), nil) {
+	if !applyFairShare(context.Background(), service.NewFairShareService(reader), &cu, c, model.PlanUsageScope{OrgID: "org-1", ProviderID: "prov-1"}, "user-1", 20, time.Now(), nil) {
 		t.Fatal("applyFairShare reported failure, want success")
 	}
 
@@ -85,7 +85,7 @@ func TestApplyFairShare_KeepsTheStaticShareWhenTheAllocationFails(t *testing.T) 
 	c := planConstraint(1000)
 	cu := orgcomponent.SubscriptionConstraintUsage{Constraint: fairShareConstraint(c, 20)}
 
-	if applyFairShare(context.Background(), service.NewFairShareService(reader), &cu, c, "org-1", "prov-1", "user-1", 20, time.Now(), nil) {
+	if applyFairShare(context.Background(), service.NewFairShareService(reader), &cu, c, model.PlanUsageScope{OrgID: "org-1", ProviderID: "prov-1"}, "user-1", 20, time.Now(), nil) {
 		t.Fatal("applyFairShare reported success, want failure")
 	}
 	if cu.Constraint.TokenBudget == nil || *cu.Constraint.TokenBudget != 50 {
@@ -117,7 +117,7 @@ func TestApplyFairShare_SkippedWithoutTheBasisToAllocateOn(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			cu := orgcomponent.SubscriptionConstraintUsage{Constraint: tc.constraint}
-			if applyFairShare(context.Background(), tc.service, &cu, tc.constraint, "org-1", "prov-1", tc.userID, tc.memberCount, time.Now(), nil) {
+			if applyFairShare(context.Background(), tc.service, &cu, tc.constraint, model.PlanUsageScope{OrgID: "org-1", ProviderID: "prov-1"}, tc.userID, tc.memberCount, time.Now(), nil) {
 				t.Error("applyFairShare reported success, want it skipped")
 			}
 			if cu.ActiveUsers != 0 || cu.TokenMode != "" {
@@ -135,7 +135,7 @@ func TestApplyFairShare_UsesThePreReadPlanTotals(t *testing.T) {
 	cu := orgcomponent.SubscriptionConstraintUsage{Constraint: c}
 
 	ok := applyFairShare(context.Background(), service.NewFairShareService(reader), &cu, c,
-		"org-1", "prov-1", "user-1", 20, time.Now(), &service.PlanUsage{Tokens: 300})
+		model.PlanUsageScope{OrgID: "org-1", ProviderID: "prov-1"}, "user-1", 20, time.Now(), &service.PlanUsage{Tokens: 300})
 	if !ok {
 		t.Fatal("applyFairShare reported failure, want success")
 	}
@@ -152,7 +152,7 @@ type countingReader struct {
 	planSums int
 }
 
-func (c *countingReader) SumPlanUsageSince(ctx context.Context, orgID model.OrgID, providerID model.ProviderID, since time.Time) (int64, int64, error) {
+func (c *countingReader) SumPlanUsageSince(ctx context.Context, scope model.PlanUsageScope, since time.Time) (int64, int64, error) {
 	c.planSums++
-	return c.stubPlanUsageReader.SumPlanUsageSince(ctx, orgID, providerID, since)
+	return c.stubPlanUsageReader.SumPlanUsageSince(ctx, scope, since)
 }

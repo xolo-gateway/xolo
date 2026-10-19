@@ -566,62 +566,33 @@ func (h *Handler) buildDashboardSubscriptionUsage(ctx context.Context, orgID mod
 			PerUser:     true,
 		}
 
+		providerScope := model.PlanUsageScope{OrgID: orgID, ProviderID: p.ID()}
+		var models []model.LLMModel
+		if plan.HasPerModelConstraint() {
+			if models, err = h.providerStore.ListLLMModels(ctx, orgID); err != nil {
+				slog.WarnContext(ctx, "could not list models for per-model plan usage", slogx.Error(err))
+			}
+		}
+
 		for _, c := range plan.Constraints {
+			if c.PerModel() {
+				pu.Constraints = append(pu.Constraints, h.perModelDashboardUsage(ctx, c, providerScope, models, userID, memberCount, now)...)
+				continue
+			}
+
 			// Fall back to the static share; rolling windows below replace it with
 			// the allowance the enforcer actually grants right now.
 			cu := orgcomponent.SubscriptionConstraintUsage{Constraint: fairShareConstraint(c, memberCount)}
 
 			switch c.Kind {
 			case model.ConstraintRollingWindow:
-				dur := c.Duration.Duration()
-				if dur > 0 {
-					since := c.CurrentWindowStart(now)
-					cu.WindowStart = since
-					cu.Anchored = c.IsAnchored()
-					cu.ResetAt = c.NextResetAt(now)
-					// Read the plan-wide totals once and hand them to the allocator,
-					// as the proxy hot path does: this page is rendered on every visit
-					// and a weekly window is the most expensive of them. Not read at
-					// all when the allocation will not apply — the aggregation would
-					// be paid for nothing.
-					var planUsage *service.PlanUsage
-					planUsageFailed := false
-					if fairShareApplies(h.fairShare, c, userID, memberCount) {
-						if planTokens, planValue, sumErr := h.usageStore.SumPlanUsageSince(ctx, orgID, p.ID(), since); sumErr != nil {
-							slog.WarnContext(ctx, "could not sum org plan usage", slogx.Error(sumErr))
-							planUsageFailed = true
-						} else {
-							planUsage = &service.PlanUsage{Tokens: planTokens, Value: planValue}
-						}
-					}
-					// Show the same denominators the enforcer decides against, so a
-					// varying allowance stays readable instead of looking arbitrary.
-					// The allocation reads this user's totals on the way, so they are
-					// taken from it rather than summed a second time.
-					// When the plan-wide sum already failed, the allocator would only
-					// run the same aggregation against the same struggling store.
-					if planUsageFailed || !applyFairShare(ctx, h.fairShare, &cu, c, orgID, p.ID(), userID, memberCount, now, planUsage) {
-						tokens, value, sumErr := h.usageStore.SumUserPlanUsageSince(ctx, userID, orgID, p.ID(), since)
-						if sumErr != nil {
-							slog.WarnContext(ctx, "could not sum user plan usage", slogx.Error(sumErr))
-						} else {
-							cu.TokensUsed = tokens
-							cu.ValueUsed = value
-						}
-					}
-					// Window free-up hint is a window-level property → org-wide oldest record.
-					if oldest, oldestErr := h.usageStore.EarliestPlanUsageSince(ctx, orgID, p.ID(), since); oldestErr != nil {
-						slog.WarnContext(ctx, "could not get earliest plan usage", slogx.Error(oldestErr))
-					} else {
-						cu.OldestUsage = oldest
-					}
-				}
+				h.fillDashboardRollingWindowUsage(ctx, &cu, c, providerScope, userID, memberCount, now)
 
 			case model.ConstraintConcurrency:
 				if h.subscriptionMonitor != nil {
 					cu.InFlight = h.subscriptionMonitor.CurrentUserInFlight(orgID, p.ID(), userID)
 					if c.MaxConcurrent != nil {
-						cu.Exhausted = h.subscriptionMonitor.IsExhausted(orgID, p.ID(), c.Label)
+						cu.Exhausted = h.subscriptionMonitor.IsExhausted(orgID, p.ID(), c.Label, "")
 					}
 				}
 			}
@@ -632,6 +603,105 @@ func (h *Handler) buildDashboardSubscriptionUsage(ctx context.Context, orgID mod
 		result = append(result, pu)
 	}
 
+	return result
+}
+
+// fillDashboardRollingWindowUsage fills the viewer's gauge of a rolling-window
+// constraint on a plan scope: the whole provider, or one upstream model.
+func (h *Handler) fillDashboardRollingWindowUsage(
+	ctx context.Context,
+	cu *orgcomponent.SubscriptionConstraintUsage,
+	c model.PlanConstraint,
+	scope model.PlanUsageScope,
+	userID model.UserID,
+	memberCount int64,
+	now time.Time,
+) {
+	if c.Duration.Duration() <= 0 {
+		return
+	}
+	since := c.CurrentWindowStart(now)
+	cu.WindowStart = since
+	cu.Anchored = c.IsAnchored()
+	cu.ResetAt = c.NextResetAt(now)
+	// Read the plan-wide totals once and hand them to the allocator, as the
+	// proxy hot path does: this page is rendered on every visit and a weekly
+	// window is the most expensive of them. Not read at all when the
+	// allocation will not apply — the aggregation would be paid for nothing.
+	var planUsage *service.PlanUsage
+	planUsageFailed := false
+	if fairShareApplies(h.fairShare, c, userID, memberCount) {
+		if planTokens, planValue, sumErr := h.usageStore.SumPlanUsageSince(ctx, scope, since); sumErr != nil {
+			slog.WarnContext(ctx, "could not sum org plan usage", slogx.Error(sumErr))
+			planUsageFailed = true
+		} else {
+			planUsage = &service.PlanUsage{Tokens: planTokens, Value: planValue}
+		}
+	}
+	// Show the same denominators the enforcer decides against, so a varying
+	// allowance stays readable instead of looking arbitrary. The allocation
+	// reads this user's totals on the way, so they are taken from it rather
+	// than summed a second time. When the plan-wide sum already failed, the
+	// allocator would only run the same aggregation against the same
+	// struggling store.
+	if planUsageFailed || !applyFairShare(ctx, h.fairShare, cu, c, scope, userID, memberCount, now, planUsage) {
+		tokens, value, sumErr := h.usageStore.SumUserPlanUsageSince(ctx, userID, scope, since)
+		if sumErr != nil {
+			slog.WarnContext(ctx, "could not sum user plan usage", slogx.Error(sumErr))
+		} else {
+			cu.TokensUsed = tokens
+			cu.ValueUsed = value
+		}
+	}
+	// Window free-up hint is a window-level property → org-wide oldest record.
+	if oldest, oldestErr := h.usageStore.EarliestPlanUsageSince(ctx, scope, since); oldestErr != nil {
+		slog.WarnContext(ctx, "could not get earliest plan usage", slogx.Error(oldestErr))
+	} else {
+		cu.OldestUsage = oldest
+	}
+}
+
+// perModelDashboardUsage expands a per-model constraint into one gauge per
+// upstream model the viewer consumed in the current window, each with the
+// viewer's share of that model's budget. When the viewer used none, a single
+// row says so.
+func (h *Handler) perModelDashboardUsage(
+	ctx context.Context,
+	c model.PlanConstraint,
+	providerScope model.PlanUsageScope,
+	models []model.LLMModel,
+	userID model.UserID,
+	memberCount int64,
+	now time.Time,
+) []orgcomponent.SubscriptionConstraintUsage {
+	idle := orgcomponent.SubscriptionConstraintUsage{Constraint: c, Anchored: c.IsAnchored(), ResetAt: c.NextResetAt(now)}
+	if c.Duration.Duration() <= 0 || userID == "" {
+		return []orgcomponent.SubscriptionConstraintUsage{idle}
+	}
+
+	byModel, err := h.usageStore.SumPlanUsageByModelSince(ctx, providerScope, userID, c.CurrentWindowStart(now))
+	if err != nil {
+		slog.WarnContext(ctx, "could not sum per-model plan usage", slogx.Error(err))
+		return []orgcomponent.SubscriptionConstraintUsage{idle}
+	}
+
+	upstream := service.GroupPlanUsageByUpstreamModel(models, providerScope.ProviderID, byModel)
+	if len(upstream) == 0 {
+		return []orgcomponent.SubscriptionConstraintUsage{idle}
+	}
+
+	result := make([]orgcomponent.SubscriptionConstraintUsage, 0, len(upstream))
+	for _, um := range upstream {
+		mc := c.ForModel(um.UpstreamModel)
+		cu := orgcomponent.SubscriptionConstraintUsage{Constraint: fairShareConstraint(mc, memberCount), UpstreamModel: um.UpstreamModel}
+		scope := providerScope
+		scope.ModelIDs = um.ModelIDs
+		h.fillDashboardRollingWindowUsage(ctx, &cu, mc, scope, userID, memberCount, now)
+		if h.subscriptionMonitor != nil {
+			cu.Exhausted = h.subscriptionMonitor.IsExhausted(providerScope.OrgID, providerScope.ProviderID, c.Label, um.UpstreamModel)
+		}
+		result = append(result, cu)
+	}
 	return result
 }
 
@@ -653,8 +723,7 @@ func applyFairShare(
 	fairShare *service.FairShareService,
 	cu *orgcomponent.SubscriptionConstraintUsage,
 	c model.PlanConstraint,
-	orgID model.OrgID,
-	providerID model.ProviderID,
+	scope model.PlanUsageScope,
 	userID model.UserID,
 	memberCount int64,
 	now time.Time,
@@ -665,8 +734,9 @@ func applyFairShare(
 	}
 
 	share, err := fairShare.Resolve(ctx, service.FairShareRequest{
-		OrgID:       orgID,
-		ProviderID:  providerID,
+		OrgID:       scope.OrgID,
+		ProviderID:  scope.ProviderID,
+		ModelIDs:    scope.ModelIDs,
 		UserID:      userID,
 		MemberCount: int(memberCount),
 		Constraint:  c,

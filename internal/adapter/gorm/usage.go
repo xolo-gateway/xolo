@@ -29,15 +29,20 @@ type UsageRecord struct {
 	// It does not serve the caller's own totals — user_id sits after the
 	// created_at range, so an equality on it cannot be used as a prefix; that
 	// query stays on idx_usage_user_org_created.
-	CreatedAt     time.Time `gorm:"index:idx_usage_org_created,priority:2;index:idx_usage_user_org_created,priority:3;index:idx_usage_org_payg_cost,priority:3;index:idx_usage_org_prov_plan,priority:4;index:idx_usage_org_prov_user,priority:5"`
-	UserID        string    `gorm:"index;index:idx_usage_user_org_created,priority:1;index:idx_usage_org_payg_cost,priority:4;index:idx_usage_org_prov_plan,priority:5;index:idx_usage_org_prov_user,priority:4"`
+	//
+	// idx_usage_org_prov_model_plan serves the same plan-wide reads for a
+	// per-model constraint, which narrows them to the models targeting one
+	// upstream model: model_id comes before the created_at range so the IN
+	// list bounds the index.
+	CreatedAt     time.Time `gorm:"index:idx_usage_org_created,priority:2;index:idx_usage_user_org_created,priority:3;index:idx_usage_org_payg_cost,priority:3;index:idx_usage_org_prov_plan,priority:4;index:idx_usage_org_prov_user,priority:5;index:idx_usage_org_prov_model_plan,priority:5"`
+	UserID        string    `gorm:"index;index:idx_usage_user_org_created,priority:1;index:idx_usage_org_payg_cost,priority:4;index:idx_usage_org_prov_plan,priority:5;index:idx_usage_org_prov_user,priority:4;index:idx_usage_org_prov_model_plan,priority:6"`
 	ApplicationID string    `gorm:"index"`
 	// TeamID is the team the request was attributed to, empty when charged to
 	// the organization alone.
 	TeamID            string `gorm:"index"`
-	OrgID             string `gorm:"index;not null;index:idx_usage_org_created,priority:1;index:idx_usage_user_org_created,priority:2;index:idx_usage_org_payg_cost,priority:1;index:idx_usage_org_prov_plan,priority:1;index:idx_usage_org_prov_user,priority:1"`
-	ProviderID        string `gorm:"index;not null;index:idx_usage_org_prov_plan,priority:2;index:idx_usage_org_prov_user,priority:2"`
-	ModelID           string `gorm:"index;not null"`
+	OrgID             string `gorm:"index;not null;index:idx_usage_org_created,priority:1;index:idx_usage_user_org_created,priority:2;index:idx_usage_org_payg_cost,priority:1;index:idx_usage_org_prov_plan,priority:1;index:idx_usage_org_prov_user,priority:1;index:idx_usage_org_prov_model_plan,priority:1"`
+	ProviderID        string `gorm:"index;not null;index:idx_usage_org_prov_plan,priority:2;index:idx_usage_org_prov_user,priority:2;index:idx_usage_org_prov_model_plan,priority:2"`
+	ModelID           string `gorm:"index;not null;index:idx_usage_org_prov_model_plan,priority:3"`
 	ProxyModelName    string `gorm:"not null"`
 	ResolvedModelName string `gorm:""`      // actual model used when virtual model was resolved
 	AuthTokenID       string `gorm:"index"` // empty = web session
@@ -48,7 +53,7 @@ type UsageRecord struct {
 	Cost              int64  `gorm:"index:idx_usage_org_payg_cost,priority:6"` // microcents, frozen at recording time (converted to org currency)
 	Currency          string `gorm:"index:idx_usage_org_payg_cost,priority:5"` // frozen from provider
 	CostSource        string // "provider" or "computed", see model.CostSource
-	PlanCovered       int    `gorm:"index;default:0;index:idx_usage_org_payg_cost,priority:2;index:idx_usage_org_prov_plan,priority:3;index:idx_usage_org_prov_user,priority:3"` // 1 if served by a subscription provider
+	PlanCovered       int    `gorm:"index;default:0;index:idx_usage_org_payg_cost,priority:2;index:idx_usage_org_prov_plan,priority:3;index:idx_usage_org_prov_user,priority:3;index:idx_usage_org_prov_model_plan,priority:4"` // 1 if served by a subscription provider
 	ProviderCost      int64  // equivalent PAYG cost in provider currency (microcents), for plan value budgets
 	// Status is "ok", "interrupted", "client_gone", "write_failed" or
 	// "truncated", see model.UsageStatus for what each one means and
