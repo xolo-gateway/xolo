@@ -603,3 +603,39 @@ func TestIsKnownProviderType(t *testing.T) {
 		}
 	}
 }
+
+func TestParseModelAPIFromForm(t *testing.T) {
+	t.Run("empty keeps the provider's", func(t *testing.T) {
+		apiType, baseURL, err := parseModelAPIFromForm(makeRequest(map[string]string{}))
+		if err != nil || apiType != "" || baseURL != "" {
+			t.Errorf("got (%q, %q, %v), want empty and no error", apiType, baseURL, err)
+		}
+	})
+
+	t.Run("a known type and an absolute URL are kept", func(t *testing.T) {
+		apiType, baseURL, err := parseModelAPIFromForm(makeRequest(map[string]string{
+			"api_type":     "anthropic",
+			"api_base_url": "  https://opencode.ai/inference/go/anthropic/v1 ",
+		}))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if apiType != "anthropic" || baseURL != "https://opencode.ai/inference/go/anthropic/v1" {
+			t.Errorf("got (%q, %q)", apiType, baseURL)
+		}
+	})
+
+	for name, fields := range map[string]map[string]string{
+		"unknown type":     {"api_type": "google"},
+		"relative URL":     {"api_base_url": "/v1"},
+		"URL without host": {"api_base_url": "https://"},
+		"non-http scheme":  {"api_base_url": "ftp://example.com"},
+		"unparseable URL":  {"api_base_url": "http://[::1"},
+	} {
+		t.Run(name+" is refused", func(t *testing.T) {
+			if _, _, err := parseModelAPIFromForm(makeRequest(fields)); err == nil {
+				t.Errorf("expected an error for %v", fields)
+			}
+		})
+	}
+}

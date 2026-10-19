@@ -266,6 +266,24 @@ Chaque fournisseur peut exposer un ou plusieurs modèles.
 | **Params actifs (Md)** | Nombre de paramètres du modèle en milliards |
 | **Débit min/max**      | Vitesse de génération estimée (tokens/s)    |
 
+#### Accès à l'API
+
+| Champ           | Description                                                                         |
+| --------------- | ----------------------------------------------------------------------------------- |
+| **Type d'API**  | Type de connexion du modèle. Par défaut, celui du fournisseur                       |
+| **URL de base** | URL de l'endpoint API du modèle. Vide, Xolo utilise l'URL de base du fournisseur    |
+
+Ces deux champs servent aux fournisseurs qui exposent leurs modèles par plusieurs API. OpenCode Go en est un exemple : la plupart de ses modèles passent par l'API OpenAI, mais Qwen, MiniMax et Claude passent par l'API Messages d'Anthropic, sur une autre URL. Déclarez le fournisseur en `openai` avec l'URL `https://opencode.ai/inference/go/openai/v1`, puis réglez ces modèles ainsi :
+
+| Champ           | Valeur                                         |
+| --------------- | ---------------------------------------------- |
+| **Type d'API**  | `anthropic`                                    |
+| **URL de base** | `https://opencode.ai/inference/go/anthropic/v1` |
+
+Le reste du fournisseur s'applique au modèle sans changement : clé API, devise, plan d'abonnement, retry et rate limit. Ce que la page dit du type `anthropic` (`max_tokens`, `extra_body`, relais en streaming) vaut pour un tel modèle comme pour un fournisseur de ce type.
+
+Xolo ne parle pas encore l'API Responses d'OpenAI ni l'API de Google. Les modèles qu'OpenCode Go ne sert que par ces API restent hors de portée pour l'instant. Le catalogue models.dev indique l'API de chaque modèle.
+
 > **Astuce** : Cliquez sur **Pré-remplir depuis models.dev** pour importer automatiquement les informations d'un modèle depuis le catalogue.
 
 ### Activer ou désactiver un modèle

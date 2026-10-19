@@ -144,11 +144,11 @@ func (r *OrgModelRouter) ResolveModel(ctx context.Context, req *genaiProxy.Proxy
 		if !llmModel.Capabilities().Embeddings {
 			return nil, "", errors.Errorf("model '%s' does not support embeddings", req.Model)
 		}
-		// The capability can be ticked on a model whose provider type has
-		// no embeddings client (anthropic): say so instead of letting genai
+		// The capability can be ticked on a model whose API has no
+		// embeddings client (anthropic): say so instead of letting genai
 		// fail with a generic error.
-		if provider.NewEmbeddingsProviderOptions(provider.Name(p.Type())) == nil {
-			return nil, "", errors.Errorf("model '%s' cannot serve embeddings: provider type '%s' has no embeddings client", req.Model, p.Type())
+		if apiType := model.ModelAPIType(llmModel, p); provider.NewEmbeddingsProviderOptions(provider.Name(apiType)) == nil {
+			return nil, "", errors.Errorf("model '%s' cannot serve embeddings: API type '%s' has no embeddings client", req.Model, apiType)
 		}
 	}
 
@@ -198,18 +198,22 @@ func (r *OrgModelRouter) clientForProvider(ctx context.Context, llmModel model.L
 		return nil, errors.New("provider configuration error")
 	}
 
-	providerName := provider.Name(p.Type())
+	// The model may be served through another API, or at another URL, than
+	// its provider's (see LLMModel.APIType).
+	apiType := model.ModelAPIType(llmModel, p)
+	baseURL := model.ModelBaseURL(llmModel, p)
+	providerName := provider.Name(apiType)
 	providerOpts := []provider.OptionFunc{
-		withDynamicChatCompletion(providerName, p.BaseURL(), decryptedKey, llmModel.RealModel(), defaultMaxTokensFor(llmModel)),
+		withDynamicChatCompletion(providerName, baseURL, decryptedKey, llmModel.RealModel(), defaultMaxTokensFor(llmModel)),
 	}
 	if llmModel.Capabilities().Embeddings {
 		// A provider without an embeddings client (anthropic) must not lose
 		// its chat completions to a capability ticked on the model.
 		if provider.NewEmbeddingsProviderOptions(providerName) == nil {
-			slog.WarnContext(ctx, "model declares the embeddings capability but its provider type has no embeddings client",
-				slog.String("model", string(llmModel.ID())), slog.String("providerType", p.Type()))
+			slog.WarnContext(ctx, "model declares the embeddings capability but its API type has no embeddings client",
+				slog.String("model", string(llmModel.ID())), slog.String("apiType", apiType))
 		} else {
-			providerOpts = append(providerOpts, withDynamicEmbeddings(providerName, p.BaseURL(), decryptedKey, llmModel.RealModel()))
+			providerOpts = append(providerOpts, withDynamicEmbeddings(providerName, baseURL, decryptedKey, llmModel.RealModel()))
 		}
 	}
 

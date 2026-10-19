@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"math"
 	"net/http"
+	"net/url"
 	"reflect"
 	"strconv"
 	"strings"
@@ -811,6 +812,23 @@ func parseCostField(v string) int64 {
 	return int64(f * 1_000)
 }
 
+// parseModelAPIFromForm reads the API type and base URL a model overrides its
+// provider's with. Both are optional: empty keeps the provider's.
+func parseModelAPIFromForm(r *http.Request) (apiType, baseURL string, err error) {
+	apiType = strings.TrimSpace(r.FormValue("api_type"))
+	if apiType != "" && !model.IsKnownProviderType(apiType) {
+		return "", "", errors.Errorf("type d'API inconnu : %s. Choisissez un type de la liste.", apiType)
+	}
+	baseURL = strings.TrimSpace(r.FormValue("api_base_url"))
+	if baseURL != "" {
+		u, parseErr := url.Parse(baseURL)
+		if parseErr != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+			return "", "", errors.Errorf("l'URL de base doit être une URL http ou https absolue : %s", baseURL)
+		}
+	}
+	return apiType, baseURL, nil
+}
+
 // parseExtraBodyFromForm reads the key/value rows emitted by the ExtraBodyEditor
 // component (extra_body_count + extra_body_k{i}_key / _value) into a map.
 // Rows with an empty key are skipped. Values are typed by inference (see
@@ -948,6 +966,14 @@ func (h *Handler) createModel(w http.ResponseWriter, r *http.Request) {
 	}
 	m.SetExtraBody(extraBody)
 
+	apiType, apiBaseURL, err := parseModelAPIFromForm(r)
+	if err != nil {
+		h.renderModelFormError(w, r, ctx, user, orgSlug, org, p, nil, true, "Accès à l'API : "+err.Error())
+		return
+	}
+	m.SetAPIType(apiType)
+	m.SetBaseURL(apiBaseURL)
+
 	if err := h.providerStore.CreateLLMModel(ctx, m); err != nil {
 		slog.ErrorContext(ctx, "could not create model", slogx.Error(err))
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
@@ -1060,6 +1086,12 @@ func (h *Handler) updateModel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	apiType, apiBaseURL, err := parseModelAPIFromForm(r)
+	if err != nil {
+		h.renderModelFormError(w, r, ctx, user, orgSlug, org, p, existing, false, "Accès à l'API : "+err.Error())
+		return
+	}
+
 	updated := &updatedLLMModelAdapter{
 		id:                          existing.ID(),
 		providerID:                  existing.ProviderID(),
@@ -1087,6 +1119,8 @@ func (h *Handler) updateModel(w http.ResponseWriter, r *http.Request) {
 		updatedAt:        time.Now(),
 		tokenLimitConfig: tokenLimitConfig,
 		extraBody:        extraBody,
+		apiType:          apiType,
+		baseURL:          apiBaseURL,
 	}
 
 	if err := h.providerStore.SaveLLMModel(ctx, updated); err != nil {

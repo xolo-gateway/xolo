@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strconv"
 
+	"github.com/xolo-gateway/xolo/internal/core/model"
 	"github.com/xolo-gateway/xolo/internal/core/rbac"
 	common "github.com/xolo-gateway/xolo/internal/http/handler/webui/common/component"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/alert"
@@ -339,6 +340,55 @@ templ ModelForm(vmodel ModelFormVModel) {
 								</div>
 							</div>
 						}
+					}
+				}
+				<!-- Card Accès à l'API -->
+				@common.Section() {
+					@common.SectionHeader() {
+						@icon.Plug(icon.Props{Class: "size-4 text-muted-foreground"})
+						@common.SectionTitle() {
+							Accès à l'API
+						}
+					}
+					@common.SectionBody(common.SectionBodyProps{Class: "space-y-4"}) {
+						{{ providerDefault := "Celle du fournisseur (" + vmodel.Provider.Type() + ")" }}
+						{{ apiType := modelAPIType(vmodel.Model) }}
+						<div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+							<div class="space-y-2">
+								@form.Label(form.LabelProps{}) {
+									Type d'API
+								}
+								@selectbox.SelectBox(selectbox.Props{ID: "api_type"}) {
+									@selectbox.Trigger(selectbox.TriggerProps{Name: "api_type", Disabled: readonly}) {
+										@selectbox.Value(selectbox.ValueProps{Placeholder: providerDefault})
+									}
+									@selectbox.Content(selectbox.ContentProps{NoSearch: true}) {
+										@selectbox.Group() {
+											@selectbox.Item(selectbox.ItemProps{Value: "", Selected: apiType == ""}) {
+												{ providerDefault }
+											}
+											for _, t := range model.ProviderTypes() {
+												@selectbox.Item(selectbox.ItemProps{Value: t, Selected: apiType == t}) {
+													{ t }
+												}
+											}
+										}
+									}
+								}
+								@form.Description() {
+									À changer quand le fournisseur sert ce modèle par une autre API que la sienne. OpenCode Go, par exemple, sert certains modèles en <code>openai</code> et d'autres en <code>anthropic</code>.
+								}
+							</div>
+							<div class="space-y-2">
+								@form.Label(form.LabelProps{}) {
+									URL de base
+								}
+								@input.Input(input.Props{Name: "api_base_url", Value: modelBaseURL(vmodel.Model), Placeholder: vmodel.Provider.BaseURL(), Class: "font-mono", Disabled: readonly})
+								@form.Description() {
+									Laisser vide pour garder celle du fournisseur.
+								}
+							</div>
+						</div>
 					}
 				}
 				<!-- Card Corps additionnel (extra_body) -->

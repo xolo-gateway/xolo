@@ -65,6 +65,8 @@ type updatedLLMModelAdapter struct {
 	updatedAt                 time.Time
 	tokenLimitConfig          *model.TokenLimitConfig
 	extraBody                 map[string]any
+	apiType                   string
+	baseURL                   string
 }
 
 func (m *updatedLLMModelAdapter) ID() model.LLMModelID         { return m.id }
@@ -96,6 +98,8 @@ func (m *updatedLLMModelAdapter) TokenLimitConfig() *model.TokenLimitConfig {
 	return m.tokenLimitConfig
 }
 func (m *updatedLLMModelAdapter) ExtraBody() map[string]any { return m.extraBody }
+func (m *updatedLLMModelAdapter) APIType() string           { return m.apiType }
+func (m *updatedLLMModelAdapter) BaseURL() string           { return m.baseURL }
 func (m *updatedLLMModelAdapter) IsVirtual() bool           { return false }
 
 var _ model.LLMModel = &updatedLLMModelAdapter{}

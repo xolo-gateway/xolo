@@ -587,3 +587,21 @@ func daysInMonth(t time.Time) int {
 func isLeapYear(year int) bool {
 	return year%4 == 0 && (year%100 != 0 || year%400 == 0)
 }
+
+// modelAPIType is the API type a model overrides its provider's with, empty
+// for a new model or one keeping the provider's.
+func modelAPIType(m model.LLMModel) string {
+	if m == nil {
+		return ""
+	}
+	return m.APIType()
+}
+
+// modelBaseURL is the base URL a model overrides its provider's with, empty
+// for a new model or one keeping the provider's.
+func modelBaseURL(m model.LLMModel) string {
+	if m == nil {
+		return ""
+	}
+	return m.BaseURL()
+}

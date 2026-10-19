@@ -53,6 +53,14 @@ type LLMModel interface {
 	// targeting this model (e.g. provider-specific flags like "reasoning_split").
 	// Returns nil when none are configured.
 	ExtraBody() map[string]any
+	// APIType is the provider type whose API serves this model, one of
+	// ProviderTypes(), or empty for the provider's own type. It lets a
+	// provider serve some models through another API than its default, as
+	// OpenCode Go does with OpenAI chat completions and Anthropic Messages.
+	APIType() string
+	// BaseURL replaces the provider's base URL for this model, or is empty to
+	// keep it.
+	BaseURL() string
 	// IsVirtual returns true if this is a virtual model (not associated with a provider).
 	IsVirtual() bool
 }
@@ -78,6 +86,8 @@ type BaseLLMModel struct {
 	updatedAt                 time.Time
 	tokenLimitConfig          *TokenLimitConfig
 	extraBody                 map[string]any
+	apiType                   string
+	baseURL                   string
 }
 
 func (m *BaseLLMModel) ID() LLMModelID                      { return m.id }
@@ -102,6 +112,8 @@ func (m *BaseLLMModel) CreatedAt() time.Time                { return m.createdAt
 func (m *BaseLLMModel) UpdatedAt() time.Time                { return m.updatedAt }
 func (m *BaseLLMModel) TokenLimitConfig() *TokenLimitConfig { return m.tokenLimitConfig }
 func (m *BaseLLMModel) ExtraBody() map[string]any           { return m.extraBody }
+func (m *BaseLLMModel) APIType() string                     { return m.apiType }
+func (m *BaseLLMModel) BaseURL() string                     { return m.baseURL }
 
 func (m *BaseLLMModel) ActiveParams() int64       { return m.activeParams }
 func (m *BaseLLMModel) TokensPerSecLow() float64  { return m.tokensPerSecLow }
@@ -114,6 +126,8 @@ func (m *BaseLLMModel) SetOutputWindow(v int64)                 { m.outputWindow
 func (m *BaseLLMModel) SetCapabilities(c ModelCapabilities)     { m.capabilities = c }
 func (m *BaseLLMModel) SetTokenLimitConfig(c *TokenLimitConfig) { m.tokenLimitConfig = c }
 func (m *BaseLLMModel) SetExtraBody(v map[string]any)           { m.extraBody = v }
+func (m *BaseLLMModel) SetAPIType(v string)                     { m.apiType = v }
+func (m *BaseLLMModel) SetBaseURL(v string)                     { m.baseURL = v }
 func (m *BaseLLMModel) SetActiveParams(v int64)                 { m.activeParams = v }
 func (m *BaseLLMModel) SetTokensPerSecLow(v float64)            { m.tokensPerSecLow = v }
 func (m *BaseLLMModel) SetTokensPerSecHigh(v float64)           { m.tokensPerSecHigh = v }
@@ -134,4 +148,22 @@ func NewLLMModel(providerID ProviderID, orgID OrgID, proxyName, realModel, descr
 		createdAt:                 time.Now(),
 		updatedAt:                 time.Now(),
 	}
+}
+
+// ModelAPIType returns the provider type whose API serves m: its own
+// override, or the type of its provider p.
+func ModelAPIType(m LLMModel, p Provider) string {
+	if t := m.APIType(); t != "" {
+		return t
+	}
+	return p.Type()
+}
+
+// ModelBaseURL returns the base URL m is reached at: its own override, or the
+// base URL of its provider p.
+func ModelBaseURL(m LLMModel, p Provider) string {
+	if u := m.BaseURL(); u != "" {
+		return u
+	}
+	return p.BaseURL()
 }

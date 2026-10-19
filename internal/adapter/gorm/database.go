@@ -658,7 +658,24 @@ func schemaMigrations(artifact *RecoveryArtifact) []*gormigrate.Migration {
 				return errors.WithStack(tx.Migrator().DropIndex(&UsageRecord{}, "idx_usage_org_prov_model_plan"))
 			},
 		},
+		{
+			// Add api_type and base_url to llm_models: a model can be served
+			// through another API, or at another URL, than its provider's.
+			ID: modelAPIOverrideMigrationID,
+			Migrate: func(tx *gorm.DB) error {
+				return errors.WithStack(tx.AutoMigrate(&LLMModel{}))
+			},
+			Rollback: func(tx *gorm.DB) error {
+				if err := tx.Migrator().DropColumn(&LLMModel{}, "api_type"); err != nil {
+					return errors.WithStack(err)
+				}
+				return errors.WithStack(tx.Migrator().DropColumn(&LLMModel{}, "base_url"))
+			},
+		},
 	}
 }
 
-const planModelUsageIndexMigrationID = "202610190001"
+const (
+	planModelUsageIndexMigrationID = "202610190001"
+	modelAPIOverrideMigrationID    = "202610210001"
+)

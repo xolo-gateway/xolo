@@ -39,6 +39,8 @@ func (s *stubLLMModel) CreatedAt() time.Time                      { return time.
 func (s *stubLLMModel) UpdatedAt() time.Time                      { return time.Time{} }
 func (s *stubLLMModel) TokenLimitConfig() *model.TokenLimitConfig { return nil }
 func (s *stubLLMModel) ExtraBody() map[string]any                 { return nil }
+func (s *stubLLMModel) APIType() string                           { return "" }
+func (s *stubLLMModel) BaseURL() string                           { return "" }
 
 var _ model.LLMModel = (*stubLLMModel)(nil)
 

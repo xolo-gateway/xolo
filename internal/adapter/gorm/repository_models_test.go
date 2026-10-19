@@ -117,6 +117,8 @@ func scenarioProviderStoreLLMModels(t *testing.T, store *xologorm.Store) {
 	llm.SetContextWindow(128000)
 	llm.SetCapabilities(model.ModelCapabilities{Tools: true, Vision: true})
 	llm.SetExtraBody(map[string]any{"reasoning_effort": "low"})
+	llm.SetAPIType("anthropic")
+	llm.SetBaseURL("https://opencode.ai/inference/go/anthropic/v1")
 	if err := store.CreateLLMModel(ctx, llm); err != nil {
 		t.Fatalf("CreateLLMModel: %v", err)
 	}
@@ -136,6 +138,9 @@ func scenarioProviderStoreLLMModels(t *testing.T, store *xologorm.Store) {
 	}
 	if got := loaded.ExtraBody(); got["reasoning_effort"] != "low" {
 		t.Errorf("expected extra body to round-trip, got %+v", got)
+	}
+	if loaded.APIType() != "anthropic" || loaded.BaseURL() != "https://opencode.ai/inference/go/anthropic/v1" {
+		t.Errorf("expected the API override to round-trip, got type=%q url=%q", loaded.APIType(), loaded.BaseURL())
 	}
 	// CachedPromptCostPer1KTokens falls back to the prompt cost when unset.
 	if loaded.CachedPromptCostPer1KTokens() != 150 {

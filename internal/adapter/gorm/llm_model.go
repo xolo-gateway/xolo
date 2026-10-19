@@ -32,6 +32,10 @@ type LLMModel struct {
 	CapEmbeddings             int                                `gorm:"default:0"`
 	TokenLimitConfig          JSONColumn[model.TokenLimitConfig] `gorm:"type:text"`
 	ExtraBody                 JSONColumn[map[string]any]         `gorm:"type:text"`
+	// APIType and BaseURL override the provider's type and base URL for this
+	// model; empty keeps the provider's.
+	APIType string `gorm:"not null;default:''"`
+	BaseURL string `gorm:"not null;default:''"`
 }
 
 type wrappedLLMModel struct {
@@ -76,6 +80,8 @@ func (w *wrappedLLMModel) ExtraBody() map[string]any {
 	}
 	return *w.m.ExtraBody.Val
 }
+func (w *wrappedLLMModel) APIType() string { return w.m.APIType }
+func (w *wrappedLLMModel) BaseURL() string { return w.m.BaseURL }
 func (w *wrappedLLMModel) IsVirtual() bool                           { return w.m.ProviderID == "" }
 
 var _ model.LLMModel = &wrappedLLMModel{}
@@ -109,5 +115,7 @@ func fromLLMModel(m model.LLMModel) *LLMModel {
 		CapEmbeddings:             boolToInt(caps.Embeddings),
 		TokenLimitConfig:          JSONColumn[model.TokenLimitConfig]{Val: m.TokenLimitConfig()},
 		ExtraBody:                 JSONColumn[map[string]any]{Val: extraBody},
+		APIType:                   m.APIType(),
+		BaseURL:                   m.BaseURL(),
 	}
 }
