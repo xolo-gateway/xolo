@@ -355,6 +355,65 @@ func TestFairShareService_ActiveUserCountIsSharedByThePlanAndKeyedByWindow(t *te
 	}
 }
 
+// perModelCountReader reports the active users of each upstream model, keyed
+// by the scope it is asked about.
+type perModelCountReader struct {
+	fakePlanUsageReader
+	activeByScope map[string]int64
+	counts        atomic.Int64
+}
+
+func (f *perModelCountReader) CountActivePlanUsersSince(_ context.Context, scope model.PlanUsageScope, _ time.Time, _ model.UserID) (int64, error) {
+	f.counts.Add(1)
+	return f.activeByScope[scope.Key()], nil
+}
+
+func TestFairShareService_PerModelScopeSharesThatModelOnly(t *testing.T) {
+	// A per-model constraint shares each upstream model among its own active
+	// users: the users of another model do not narrow the share, and the
+	// aliases of one upstream model count as one plan whatever their order.
+	kimi := model.PlanUsageScope{OrgID: "org-1", ProviderID: "prov-1", ModelIDs: []model.LLMModelID{"kimi", "kimi-alias"}}
+	glm := model.PlanUsageScope{OrgID: "org-1", ProviderID: "prov-1", ModelIDs: []model.LLMModelID{"glm"}}
+	reader := &perModelCountReader{
+		fakePlanUsageReader: fakePlanUsageReader{planTokens: 300, userTokens: 100},
+		activeByScope:       map[string]int64{kimi.Key(): 2, glm.Key(): 0},
+	}
+	svc := service.NewFairShareService(reader)
+
+	onKimi := request(tokenAndValueConstraint(1000, 10_000))
+	onKimi.ModelIDs = []model.LLMModelID{"kimi-alias", "kimi"}
+	gotKimi, err := svc.Resolve(context.Background(), onKimi)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if gotKimi.ActiveUsers != 3 {
+		t.Errorf("kimi active users = %d, want its 2 users plus the caller", gotKimi.ActiveUsers)
+	}
+
+	onGLM := onKimi
+	onGLM.ModelIDs = glm.ModelIDs
+	gotGLM, err := svc.Resolve(context.Background(), onGLM)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if gotGLM.ActiveUsers != 1 {
+		t.Errorf("glm active users = %d, want the caller alone", gotGLM.ActiveUsers)
+	}
+	if *gotGLM.TokenAllowance <= *gotKimi.TokenAllowance {
+		t.Errorf("glm allowance = %d, want more than kimi's %d with no one else on it",
+			*gotGLM.TokenAllowance, *gotKimi.TokenAllowance)
+	}
+
+	sameKimi := onKimi
+	sameKimi.ModelIDs = []model.LLMModelID{"kimi", "kimi-alias"}
+	if _, err := svc.Resolve(context.Background(), sameKimi); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if reader.counts.Load() != 2 {
+		t.Errorf("count read %d times, want one per upstream model", reader.counts.Load())
+	}
+}
+
 func TestFairShareService_CallerAlreadyCountedIsNotAddedTwice(t *testing.T) {
 	// The plan-wide count already includes a user who consumed in the window;
 	// adding them back would overstate the competition and narrow every share.

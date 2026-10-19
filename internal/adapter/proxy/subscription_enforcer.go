@@ -10,12 +10,12 @@ import (
 
 	"github.com/bornholm/genai/llm"
 	genaiProxy "github.com/bornholm/genai/proxy"
+	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/xolo-gateway/xolo/internal/core/model"
 	"github.com/xolo-gateway/xolo/internal/core/port"
 	"github.com/xolo-gateway/xolo/internal/core/service"
 	"github.com/xolo-gateway/xolo/internal/metrics"
-	"github.com/pkg/errors"
-	"github.com/prometheus/client_golang/prometheus"
 )
 
 const metaPlanReservations = "xolo.plan.reservations"
@@ -95,7 +95,7 @@ func (e *XoloSubscriptionEnforcer) PreRequest(ctx context.Context, req *genaiPro
 		MemberCount: memberCount,
 		Currency:    p.Currency(),
 	}
-	if m != nil && plan.HasPerModelConstraint() {
+	if plan.HasPerModelConstraint() {
 		scope.UpstreamModel = m.RealModel()
 		scope.ModelIDs = e.upstreamModelIDs(ctx, m)
 	}
@@ -116,7 +116,7 @@ func (e *XoloSubscriptionEnforcer) PreRequest(ctx context.Context, req *genaiPro
 	reservations := make([]planReservation, 0, len(plan.Constraints))
 	for _, c := range plan.Constraints {
 		if c.PerModel() {
-			// Without a resolved model there is nothing to meter a per-model
+			// A model with no upstream name has nothing to meter a per-model
 			// constraint against; the provider-wide ones still apply.
 			if scope.UpstreamModel == "" {
 				continue
@@ -186,9 +186,11 @@ const defaultExhaustionCooldown = 5 * time.Minute
 //
 // When the plan meters models separately the 429 is attributed to the
 // requested model: only that model's per-model constraints go into cooldown,
-// so exhausting one model does not lock the others out. Otherwise every
-// constraint of the plan does, the provider being the only thing the 429 can
-// be pinned on.
+// so exhausting one model does not lock the others out. The provider-wide
+// constraints of such a plan stay open: a 429 there cannot be told apart from
+// one model's exhaustion, and closing them would lock every model out for it.
+// Otherwise every constraint of the plan does, the provider being the only
+// thing the 429 can be pinned on.
 func (e *XoloSubscriptionEnforcer) markExhausted(ctx context.Context, req *genaiProxy.ProxyRequest, header http.Header) {
 	orgID := OrgIDFromMeta(req.Metadata)
 	m, p := e.resolveTarget(ctx, req)
@@ -208,9 +210,6 @@ func (e *XoloSubscriptionEnforcer) markExhausted(ctx context.Context, req *genai
 	until := now.Add(cooldown)
 
 	perModel := plan.HasPerModelConstraint()
-	if perModel && m == nil {
-		return
-	}
 	for _, c := range plan.Constraints {
 		upstreamModel := ""
 		if perModel {
