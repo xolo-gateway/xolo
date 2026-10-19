@@ -54,6 +54,32 @@ type ModelsPageVModel struct {
 	Success  string
 }
 
+// ModelImportVModel is the page listing the models a provider serves, to
+// import some of them at once.
+type ModelImportVModel struct {
+	common.AppLayoutVModel
+	Org        model.Organization
+	Provider   model.Provider
+	Candidates []ModelImportCandidate
+	// Prefix is prepended to each imported ID to form its proxy name.
+	Prefix string
+	Error  string
+	// Imported and Skipped report the last import when it left models out.
+	Imported int
+	Skipped  []string
+}
+
+// ModelImportCandidate is one model as the provider lists it.
+type ModelImportCandidate struct {
+	ID            string
+	DisplayName   string
+	ContextWindow int64
+	OutputWindow  int64
+	// DeclaredAs is the proxy name of the provider's model already serving
+	// this ID, or empty.
+	DeclaredAs string
+}
+
 type ModelFormVModel struct {
 	common.AppLayoutVModel
 	Org      model.Organization

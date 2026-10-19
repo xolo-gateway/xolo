@@ -25,6 +25,15 @@ templ ModelsPage(vmodel ModelsPageVModel) {
 			}
 			if common.HasPermission(ctx, vmodel.Org.ID(), rbac.PermProvidersWrite) {
 				@button.Button(button.Props{
+					Href:    common.BaseURLString(ctx, common.WithPath("/orgs/", vmodel.Org.Slug(), "/admin/providers/", string(vmodel.Provider.ID()), "/models/import")),
+					Variant: button.VariantOutline,
+					Size:    button.SizeSm,
+					Class:   "gap-1.5",
+				}) {
+					@icon.Import(icon.Props{Class: "size-3.5"})
+					Importer depuis le fournisseur
+				}
+				@button.Button(button.Props{
 					Size:  button.SizeSm,
 					Class: "gap-1.5",
 					Href:  common.BaseURLString(ctx, common.WithPath("/orgs/", vmodel.Org.Slug(), "/admin/providers/", string(vmodel.Provider.ID()), "/models/new")),

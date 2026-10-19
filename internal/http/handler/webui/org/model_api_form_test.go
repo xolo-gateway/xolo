@@ -38,8 +38,17 @@ func (s *modelFormStore) GetProviderByID(_ context.Context, id model.ProviderID)
 	return s.provider, nil
 }
 
-func (s *modelFormStore) GetLLMModelByProxyName(context.Context, model.OrgID, string) (model.LLMModel, error) {
+func (s *modelFormStore) GetLLMModelByProxyName(_ context.Context, _ model.OrgID, name string) (model.LLMModel, error) {
+	for _, m := range s.created {
+		if m.ProxyName() == name {
+			return m, nil
+		}
+	}
 	return nil, port.ErrNotFound
+}
+
+func (s *modelFormStore) ListLLMModels(context.Context, model.OrgID) ([]model.LLMModel, error) {
+	return s.created, nil
 }
 
 func (s *modelFormStore) CreateLLMModel(_ context.Context, m model.LLMModel) error {

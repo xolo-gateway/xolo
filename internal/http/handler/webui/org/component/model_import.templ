@@ -1,0 +1,141 @@
+package component
+
+import (
+	"strconv"
+
+	common "github.com/xolo-gateway/xolo/internal/http/handler/webui/common/component"
+	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/alert"
+	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/button"
+	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/checkbox"
+	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/form"
+	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/icon"
+	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/input"
+	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/label"
+	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/table"
+)
+
+// ── Model Import ──────────────────────────────────────────────────────────────
+templ ModelImportPage(vmodel ModelImportVModel) {
+	{{ modelsURL := common.BaseURLString(ctx, common.WithPath("/orgs/", vmodel.Org.Slug(), "/admin/providers/", string(vmodel.Provider.ID()), "/models")) }}
+	@common.AppLayout(vmodel.AppLayoutVModel, common.WithTitle("Importer des modèles — "+vmodel.Provider.Name())) {
+		@common.PageHeader(common.PageHeaderProps{
+			Title:    "Importer des modèles",
+			Subtitle: "Modèles que le fournisseur " + vmodel.Provider.Name() + " liste sur son API.",
+		}) {
+			@button.Button(button.Props{Href: modelsURL, Variant: button.VariantOutline, Size: button.SizeSm}) {
+				Retour aux modèles
+			}
+		}
+		<div class="space-y-4">
+			if vmodel.Error != "" {
+				@alert.Alert(alert.Props{Variant: alert.VariantDestructive}) {
+					{ vmodel.Error }
+				}
+			}
+			if len(vmodel.Skipped) > 0 {
+				@alert.Alert() {
+					<p class="font-medium">
+						{ Pluralize(vmodel.Imported, "modèle importé", "modèles importés") }, { Pluralize(len(vmodel.Skipped), "modèle laissé de côté", "modèles laissés de côté") } :
+					</p>
+					<ul class="mt-1 list-disc pl-5 text-sm">
+						for _, reason := range vmodel.Skipped {
+							<li>{ reason }</li>
+						}
+					</ul>
+				}
+			}
+			if len(vmodel.Candidates) > 0 {
+				<form method="POST" action={ templ.SafeURL(modelsURL + "/import") } class="space-y-4">
+					@common.Section() {
+						@common.SectionBody(common.SectionBodyProps{Class: "space-y-2"}) {
+							@form.Label(form.LabelProps{For: "proxy_prefix"}) {
+								Préfixe du nom proxy
+							}
+							@form.Description() {
+								Facultatif. Chaque modèle importé est appelé <code>{ vmodel.Org.Slug() }/&lt;préfixe&gt;&lt;identifiant&gt;</code>. Un préfixe comme <code>opencode-</code> évite les conflits avec les modèles d'autres fournisseurs.
+							}
+							@input.Input(input.Props{ID: "proxy_prefix", Name: "proxy_prefix", Value: vmodel.Prefix, Class: "font-mono max-w-sm"})
+							@form.Description() {
+								Les modèles sont créés avec un coût à zéro, le type d'API et l'URL du fournisseur. Ajustez-les ensuite dans leur formulaire, par exemple pour un modèle servi par une autre API.
+							}
+						}
+					}
+					@common.Section() {
+						@common.SectionHeader() {
+							@common.SectionTitle() {
+								{ Pluralize(len(vmodel.Candidates), "modèle listé", "modèles listés") }
+							}
+						}
+						<div class="overflow-x-auto">
+							@table.Table() {
+								@table.Header() {
+									@table.Head(table.HeadProps{Class: "w-8"}) {
+										@checkbox.Checkbox(checkbox.Props{Group: "import-models", GroupParent: true, Attributes: templ.Attributes{"aria-label": "Tout cocher"}})
+									}
+									@table.Head() {
+										Identifiant
+									}
+									@table.Head() {
+										Nom
+									}
+									@table.Head(table.HeadProps{Class: "text-right"}) {
+										Contexte
+									}
+									@table.Head(table.HeadProps{Class: "text-right"}) {
+										Sortie
+									}
+									@table.Head() {
+										État
+									}
+								}
+								@table.Body() {
+									for i, c := range vmodel.Candidates {
+										{{ id := "import-model-" + strconv.Itoa(i) }}
+										@table.Row() {
+											@table.Cell() {
+												if c.DeclaredAs == "" {
+													@checkbox.Checkbox(checkbox.Props{ID: id, Name: "models", Value: c.ID, Group: "import-models"})
+												} else {
+													@checkbox.Checkbox(checkbox.Props{ID: id, Disabled: true})
+												}
+											}
+											@table.Cell(table.CellProps{}) {
+												@label.Label(label.Props{For: id, Class: "font-mono text-xs font-normal"}) {
+													{ c.ID }
+												}
+											}
+											@table.Cell(table.CellProps{Class: "text-muted-foreground"}) {
+												{ c.DisplayName }
+											}
+											@table.Cell(table.CellProps{Class: "text-right tnum text-muted-foreground"}) {
+												{ formatTokenWindow(c.ContextWindow) }
+											}
+											@table.Cell(table.CellProps{Class: "text-right tnum text-muted-foreground"}) {
+												{ formatTokenWindow(c.OutputWindow) }
+											}
+											@table.Cell() {
+												if c.DeclaredAs != "" {
+													@common.Badge(common.ToneNeutral, "déjà déclaré : "+c.DeclaredAs)
+												}
+											}
+										}
+									}
+								}
+							}
+						</div>
+					}
+					@button.Button(button.Props{Type: button.TypeSubmit, Size: button.SizeSm, Class: "gap-1.5"}) {
+						@icon.Import(icon.Props{Class: "size-3.5"})
+						Importer la sélection
+					}
+				</form>
+			} else if vmodel.Error == "" {
+				@common.EmptyState(common.EmptyStateProps{
+					Icon:        icon.BrainCircuit,
+					Title:       "Aucun modèle listé",
+					Description: "Le fournisseur n'a renvoyé aucun modèle.",
+				})
+			}
+		</div>
+	}
+}

@@ -6,7 +6,6 @@ import (
 	"log/slog"
 	"math"
 	"net/http"
-	"reflect"
 	"strconv"
 	"strings"
 	"time"
@@ -405,16 +404,10 @@ func unknownProviderTypeMessage(providerType string) string {
 
 func testProviderConnection(ctx context.Context, providerType, baseURL, apiKey string) (bool, error) {
 	name := provider.Name(providerType)
-	opts := provider.NewChatCompletionProviderOptions(name)
+	// dummy model — just validates credentials
+	opts := newProviderOptions(provider.NewChatCompletionProviderOptions, name, baseURL, apiKey, "gpt-3.5-turbo")
 	if opts == nil {
 		return false, errors.Errorf("unknown provider %q", providerType)
-	}
-	v := reflect.ValueOf(opts).Elem()
-	if common := v.FieldByName("CommonOptions"); common.IsValid() {
-		common.FieldByName("BaseURL").SetString(baseURL)
-		common.FieldByName("APIKey").SetString(apiKey)
-		// dummy model — just validates credentials
-		common.FieldByName("Model").SetString("gpt-3.5-turbo")
 	}
 	client, err := provider.Create(ctx, func(o *provider.Options) error {
 		o.ChatCompletion = &provider.ResolvedClientOptions{
