@@ -126,7 +126,11 @@ budget tokens de la contrainte pour `kimi-k3`.
 
 Deux modèles Xolo qui pointent vers le même modèle amont, par exemple deux noms
 publiés avec des réglages différents, sont décomptés ensemble, comme le fait le
-fournisseur. La répartition entre utilisateurs s'applique modèle par modèle : un
+fournisseur. Xolo garde ce regroupement 30 secondes : un modèle créé ou modifié
+compte avec ses homonymes après ce délai. Si la liste des modèles ne peut pas
+être lue, la requête est décomptée sur le seul modèle demandé, et le compteur
+`xolo_plan_model_grouping_failures_total` s'incrémente. La répartition entre
+utilisateurs s'applique modèle par modèle : un
 utilisateur actif sur un modèle n'entame pas la part des autres modèles.
 
 Un plan peut mêler les deux portées : une fenêtre décomptée par modèle et une

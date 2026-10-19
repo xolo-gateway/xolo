@@ -13,7 +13,9 @@ import (
 	"github.com/xolo-gateway/xolo/internal/core/model"
 	"github.com/xolo-gateway/xolo/internal/core/port"
 	"github.com/xolo-gateway/xolo/internal/core/service"
+	"github.com/xolo-gateway/xolo/internal/metrics"
 	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 const metaPlanReservations = "xolo.plan.reservations"
@@ -28,6 +30,7 @@ type XoloSubscriptionEnforcer struct {
 	orgStore      port.OrgStore
 	state         *SubscriptionStateDetailed
 	evaluators    map[model.PlanConstraintKind]constraintEvaluator
+	upstream      *upstreamModelCache
 }
 
 func NewXoloSubscriptionEnforcer(
@@ -45,6 +48,7 @@ func NewXoloSubscriptionEnforcer(
 			model.ConstraintRollingWindow: newRollingWindowEvaluator(usageStore, fairShare),
 			model.ConstraintConcurrency:   &concurrencyEvaluator{state: state},
 		},
+		upstream: newUpstreamModelCache(upstreamModelsCacheTTL),
 	}
 }
 
@@ -255,16 +259,24 @@ func cooldownModel(c model.PlanConstraint, upstreamModel string) string {
 
 // upstreamModelIDs lists the models of the provider that target the same
 // upstream model as m: the provider meters them as one, whatever proxy name
-// they are published under. On a store error it falls back to m alone, which
-// undercounts only when the model has aliases.
+// they are published under. The grouping is cached for upstreamModelsCacheTTL.
+// On a store error it falls back to m alone, uncached, which undercounts only
+// when the model has aliases; PlanModelGroupingFailures counts those requests.
 func (e *XoloSubscriptionEnforcer) upstreamModelIDs(ctx context.Context, m model.LLMModel) []model.LLMModelID {
+	now := time.Now()
+	if ids, ok := e.upstream.get(m.ID(), now); ok {
+		return ids
+	}
 	models, err := e.providerStore.ListLLMModels(ctx, m.OrgID())
 	if err != nil {
+		metrics.PlanModelGroupingFailures.With(prometheus.Labels{metrics.LabelOrg: string(m.OrgID())}).Inc()
 		slog.WarnContext(ctx, "subscription enforcer: could not list models, metering the requested model alone",
 			slog.Any("error", err), slog.String("model", string(m.ID())))
 		return []model.LLMModelID{m.ID()}
 	}
-	return model.UpstreamModelIDs(models, m)
+	ids := model.UpstreamModelIDs(models, m)
+	e.upstream.put(m.ID(), ids, now)
+	return ids
 }
 
 // resolveTarget returns the model a request targets and its provider, or nils

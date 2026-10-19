@@ -5,6 +5,7 @@ import (
 	stderrors "errors"
 	"net/http"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -21,8 +22,10 @@ import (
 type enforcerProviderStore struct {
 	port.ProviderStore
 
-	provider model.Provider
-	models   []model.LLMModel
+	provider  model.Provider
+	models    []model.LLMModel
+	listCalls int
+	listErr   error
 }
 
 func (s *enforcerProviderStore) GetProviderByID(_ context.Context, id model.ProviderID) (model.Provider, error) {
@@ -42,6 +45,10 @@ func (s *enforcerProviderStore) GetLLMModelByID(_ context.Context, id model.LLMM
 }
 
 func (s *enforcerProviderStore) ListLLMModels(context.Context, model.OrgID) ([]model.LLMModel, error) {
+	s.listCalls++
+	if s.listErr != nil {
+		return nil, s.listErr
+	}
 	return s.models, nil
 }
 
@@ -77,12 +84,13 @@ func (s *scopedUsageStore) SumPlanUsageSince(_ context.Context, scope model.Plan
 }
 
 type enforcerFixture struct {
-	enforcer *XoloSubscriptionEnforcer
-	state    *SubscriptionStateDetailed
-	usage    *scopedUsageStore
-	kimi     model.LLMModel
-	kimiFast model.LLMModel // same upstream model as kimi, another proxy name
-	glm      model.LLMModel
+	enforcer  *XoloSubscriptionEnforcer
+	state     *SubscriptionStateDetailed
+	usage     *scopedUsageStore
+	providers *enforcerProviderStore
+	kimi      model.LLMModel
+	kimiFast  model.LLMModel // same upstream model as kimi, another proxy name
+	glm       model.LLMModel
 }
 
 func newEnforcerFixture(t *testing.T, constraints ...model.PlanConstraint) *enforcerFixture {
@@ -99,8 +107,8 @@ func newEnforcerFixture(t *testing.T, constraints ...model.PlanConstraint) *enfo
 		kimiFast: model.NewLLMModel(p.ID(), "org-1", "kimi-fast", "kimi-k3", "", 0, 0),
 		glm:      model.NewLLMModel(p.ID(), "org-1", "glm", "glm-5.3-flash", "", 0, 0),
 	}
-	providers := &enforcerProviderStore{provider: p, models: []model.LLMModel{f.kimi, f.kimiFast, f.glm}}
-	f.enforcer = NewXoloSubscriptionEnforcer(providers, f.usage, service.NewFairShareService(f.usage), f.state, &enforcerOrgStore{})
+	f.providers = &enforcerProviderStore{provider: p, models: []model.LLMModel{f.kimi, f.kimiFast, f.glm}}
+	f.enforcer = NewXoloSubscriptionEnforcer(f.providers, f.usage, service.NewFairShareService(f.usage), f.state, &enforcerOrgStore{})
 	return f
 }
 
@@ -230,6 +238,68 @@ func TestSubscriptionEnforcer_Upstream429CoolsDownAProviderWidePlan(t *testing.T
 
 	if msg := f.denial(t, f.glm); !strings.Contains(msg, "cooldown") {
 		t.Errorf("glm message = %q, want a cooldown: the plan meters the provider as a whole", msg)
+	}
+}
+
+func TestSubscriptionEnforcer_Upstream429WithoutRetryAfterUsesTheDefaultCooldown(t *testing.T) {
+	f := newEnforcerFixture(t, perModelConstraint("5h", 3_000_000, nil))
+
+	before := time.Now()
+	upstream := &llm.HTTPError{StatusCode: http.StatusTooManyRequests}
+	if _, err := f.enforcer.OnError(context.Background(), f.request(f.kimi), upstream); err != nil {
+		t.Fatalf("OnError: %v", err)
+	}
+
+	until, ok := f.state.exhaustedUntil[constraintKey{scopeKey{"org-1", f.kimi.ProviderID()}, "5h", "kimi-k3"}]
+	if !ok {
+		t.Fatal("no cooldown recorded for kimi-k3")
+	}
+	if got := until.Sub(before); got < defaultExhaustionCooldown || got > defaultExhaustionCooldown+time.Minute {
+		t.Errorf("cooldown = %v, want about %v", got, defaultExhaustionCooldown)
+	}
+}
+
+func TestSubscriptionEnforcer_UpstreamGroupingIsCached(t *testing.T) {
+	f := newEnforcerFixture(t, perModelConstraint("5h", 3_000_000, nil))
+
+	for range 3 {
+		f.denial(t, f.kimi)
+	}
+	if f.providers.listCalls != 1 {
+		t.Errorf("ListLLMModels called %d times, want 1: the grouping is reused within its TTL", f.providers.listCalls)
+	}
+}
+
+func TestSubscriptionEnforcer_GroupingFailureMetersTheRequestedModelAlone(t *testing.T) {
+	f := newEnforcerFixture(t, perModelConstraint("5h", 3_000_000, nil))
+	f.providers.listErr = errors.New("store down")
+	f.usage.value[f.kimi.ID()] = 1_000_000
+	f.usage.value[f.kimiFast.ID()] = 2_000_000 // invisible without the grouping
+
+	if msg := f.denial(t, f.kimi); msg != "" {
+		t.Errorf("kimi denied (%q), want it metered on its own usage only", msg)
+	}
+
+	// The failure is not cached: the next request lists the models again.
+	f.providers.listErr = nil
+	if msg := f.denial(t, f.kimi); msg == "" {
+		t.Error("kimi granted, want denied once the grouping is readable again")
+	}
+}
+
+func TestSubscriptionState_SweepsExpiredCooldowns(t *testing.T) {
+	s := NewSubscriptionState()
+	past := time.Now().Add(-time.Minute)
+	for i := range minPurgeAt {
+		s.MarkExhausted("org", "prov", "5h", strconv.Itoa(i), past)
+	}
+	s.MarkExhausted("org", "prov", "5h", "live", time.Now().Add(time.Hour))
+
+	if len(s.exhaustedUntil) != 1 {
+		t.Errorf("%d cooldowns kept, want only the live one", len(s.exhaustedUntil))
+	}
+	if !s.IsExhausted("org", "prov", "5h", "live") {
+		t.Error("the live cooldown was swept")
 	}
 }
 

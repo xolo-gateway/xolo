@@ -6,12 +6,13 @@ import (
 )
 
 const (
-	NameProxyRequestDuration    = "proxy_request_duration_seconds"
-	NameProxyErrors             = "proxy_errors_total"
-	NameFairShareDegradedShares = "fair_share_degraded_shares_total"
-	NameStreamInterrupted       = "proxy_stream_interrupted_total"
-	LabelModel                  = "model"
-	LabelCause                  = "cause"
+	NameProxyRequestDuration      = "proxy_request_duration_seconds"
+	NameProxyErrors               = "proxy_errors_total"
+	NameFairShareDegradedShares   = "fair_share_degraded_shares_total"
+	NamePlanModelGroupingFailures = "plan_model_grouping_failures_total"
+	NameStreamInterrupted         = "proxy_stream_interrupted_total"
+	LabelModel                    = "model"
+	LabelCause                    = "cause"
 )
 
 var ProxyRequestDuration = promauto.NewHistogramVec(
@@ -41,6 +42,19 @@ var FairShareDegradedShares = promauto.NewCounterVec(
 	prometheus.CounterOpts{
 		Name:      NameFairShareDegradedShares,
 		Help:      "Total number of subscription plan shares computed on a degraded active-user count",
+		Namespace: Namespace,
+	},
+	[]string{LabelOrg},
+)
+
+// PlanModelGroupingFailures counts the requests to a per-model subscription
+// plan for which the models sharing the requested upstream model could not be
+// listed. The request is then metered on the requested model alone, which
+// undercounts an upstream model published under several proxy names.
+var PlanModelGroupingFailures = promauto.NewCounterVec(
+	prometheus.CounterOpts{
+		Name:      NamePlanModelGroupingFailures,
+		Help:      "Total number of per-model plan checks metered on the requested model alone because the model list could not be read",
 		Namespace: Namespace,
 	},
 	[]string{LabelOrg},

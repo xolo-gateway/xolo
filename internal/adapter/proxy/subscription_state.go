@@ -40,13 +40,17 @@ type SubscriptionStateDetailed struct {
 	inFlight       map[scopeKey]int
 	userInFlight   map[userScopeKey]int
 	exhaustedUntil map[constraintKey]time.Time
+	// exhaustedPurgeAt is the size past which MarkExhausted sweeps expired
+	// cooldowns.
+	exhaustedPurgeAt int
 }
 
 func NewSubscriptionState() *SubscriptionStateDetailed {
 	return &SubscriptionStateDetailed{
-		inFlight:       make(map[scopeKey]int),
-		userInFlight:   make(map[userScopeKey]int),
-		exhaustedUntil: make(map[constraintKey]time.Time),
+		inFlight:         make(map[scopeKey]int),
+		userInFlight:     make(map[userScopeKey]int),
+		exhaustedUntil:   make(map[constraintKey]time.Time),
+		exhaustedPurgeAt: minPurgeAt,
 	}
 }
 
@@ -108,6 +112,19 @@ func (s *SubscriptionStateDetailed) CurrentUserInFlight(orgID model.OrgID, provi
 func (s *SubscriptionStateDetailed) MarkExhausted(orgID model.OrgID, providerID model.ProviderID, label, upstreamModel string, until time.Time) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	// An expired cooldown is otherwise only dropped when its key is checked
+	// again, and per-model cooldowns of models nobody requests any more never
+	// are. Sweeping once the map outgrows its last sweep keeps the cost
+	// amortised over the insertions.
+	if len(s.exhaustedUntil) >= s.exhaustedPurgeAt {
+		now := time.Now()
+		for k, u := range s.exhaustedUntil {
+			if now.After(u) {
+				delete(s.exhaustedUntil, k)
+			}
+		}
+		s.exhaustedPurgeAt = max(2*len(s.exhaustedUntil), minPurgeAt)
+	}
 	s.exhaustedUntil[constraintKey{scopeKey{orgID, providerID}, label, upstreamModel}] = until
 }
 
