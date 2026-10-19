@@ -21,6 +21,7 @@ type modelFormStore struct {
 	org      model.Organization
 	provider model.Provider
 	created  []model.LLMModel
+	saved    []model.LLMModel
 }
 
 func (s *modelFormStore) GetOrgBySlug(_ context.Context, _ model.TenantID, slug string) (model.Organization, error) {
@@ -92,6 +93,8 @@ func TestCreateModel_InvalidAPIOverrideRendersTheForm(t *testing.T) {
 		"unknown type":     {"api_type": {"google"}},
 		"relative URL":     {"api_base_url": {"example.com/v1"}},
 		"URL with secrets": {"api_base_url": {"https://user:secret@example.com/v1"}},
+		"URL with a query": {"api_base_url": {"https://example.com/v1?token=abc"}},
+		"URL with a hash":  {"api_base_url": {"https://example.com/v1#frag"}},
 	} {
 		t.Run(name, func(t *testing.T) {
 			fields.Set("proxy_name", "qwen")
@@ -107,5 +110,89 @@ func TestCreateModel_InvalidAPIOverrideRendersTheForm(t *testing.T) {
 				t.Errorf("created %d models, want none", len(s.created))
 			}
 		})
+	}
+}
+
+func (s *modelFormStore) GetLLMModelByID(_ context.Context, id model.LLMModelID) (model.LLMModel, error) {
+	for _, m := range s.created {
+		if m.ID() == id {
+			return m, nil
+		}
+	}
+	return nil, port.ErrNotFound
+}
+
+func (s *modelFormStore) SaveLLMModel(_ context.Context, m model.LLMModel) error {
+	s.saved = append(s.saved, m)
+	return nil
+}
+
+func postUpdateModel(t *testing.T, existing *model.BaseLLMModel, fields url.Values) (*httptest.ResponseRecorder, *modelFormStore) {
+	t.Helper()
+	tenant := model.NewTenant("a", "A", "")
+	org := model.NewOrganization(tenant.ID(), "acme", "Acme", "")
+	provider := model.NewProvider(org.ID(), "OpenCode Go", "openai", "https://opencode.ai/inference/go/openai/v1", "ciphertext", "USD")
+	m := model.NewLLMModel(provider.ID(), org.ID(), existing.ProxyName(), existing.RealModel(), "", 0, 0)
+	m.SetAPIType(existing.APIType())
+	m.SetBaseURL(existing.BaseURL())
+	s := &modelFormStore{org: org, provider: provider, created: []model.LLMModel{m}}
+	h := &Handler{orgStore: s, providerStore: s}
+
+	req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(fields.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	ctx := httpCtx.SetBaseURL(httpCtx.SetTenant(req.Context(), tenant), "http://xolo.test")
+	ctx = httpCtx.SetUser(ctx, model.NewUser(tenant.ID(), "test", "admin", "admin@example.test", "Admin", true, model.PlatformRoleAdmin))
+	req = req.WithContext(ctx)
+	req.SetPathValue("orgSlug", org.Slug())
+	req.SetPathValue("providerID", string(provider.ID()))
+	req.SetPathValue("modelID", string(m.ID()))
+
+	rr := httptest.NewRecorder()
+	h.updateModel(rr, req)
+	return rr, s
+}
+
+func TestUpdateModel_SetsAndClearsTheAPIOverride(t *testing.T) {
+	plain := model.NewLLMModel("", "", "qwen", "qwen3.8-max", "", 0, 0)
+	rr, s := postUpdateModel(t, plain, url.Values{
+		"proxy_name":   {"qwen"},
+		"real_model":   {"qwen3.8-max"},
+		"api_type":     {"anthropic"},
+		"api_base_url": {"https://opencode.ai/inference/go/anthropic/v1"},
+	})
+	if rr.Code != http.StatusSeeOther {
+		t.Fatalf("status = %d, want a redirect: %s", rr.Code, rr.Body.String())
+	}
+	if len(s.saved) != 1 || s.saved[0].APIType() != "anthropic" || s.saved[0].BaseURL() != "https://opencode.ai/inference/go/anthropic/v1" {
+		t.Fatalf("saved %+v, want the override", s.saved)
+	}
+
+	overridden := model.NewLLMModel("", "", "qwen", "qwen3.8-max", "", 0, 0)
+	overridden.SetAPIType("anthropic")
+	overridden.SetBaseURL("https://opencode.ai/inference/go/anthropic/v1")
+	rr, s = postUpdateModel(t, overridden, url.Values{"proxy_name": {"qwen"}, "real_model": {"qwen3.8-max"}})
+	if rr.Code != http.StatusSeeOther {
+		t.Fatalf("status = %d, want a redirect", rr.Code)
+	}
+	if len(s.saved) != 1 || s.saved[0].APIType() != "" || s.saved[0].BaseURL() != "" {
+		t.Errorf("empty fields must clear the override back to the provider's")
+	}
+}
+
+func TestUpdateModel_InvalidAPIOverrideRendersTheModel(t *testing.T) {
+	existing := model.NewLLMModel("", "", "qwen", "qwen3.8-max", "", 0, 0)
+	rr, s := postUpdateModel(t, existing, url.Values{
+		"proxy_name":   {"qwen"},
+		"real_model":   {"qwen3.8-max"},
+		"api_base_url": {"ftp://example.com"},
+	})
+	if rr.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("status = %d, want 422", rr.Code)
+	}
+	if !strings.Contains(rr.Body.String(), "Accès à l") || !strings.Contains(rr.Body.String(), "qwen") {
+		t.Errorf("the form must show the error and the existing model")
+	}
+	if len(s.saved) != 0 {
+		t.Errorf("saved %d models, want none", len(s.saved))
 	}
 }

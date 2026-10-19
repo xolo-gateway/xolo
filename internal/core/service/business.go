@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"math"
-	"net/url"
 	"slices"
 	"strings"
 	"time"
@@ -567,11 +566,8 @@ func validateProvider(v model.ProviderSettings) error {
 		(v.BillingMode != model.BillingModePayg && v.BillingMode != model.BillingModeSubscription) {
 		return errors.WithStack(port.ErrInvalid)
 	}
-	if v.BaseURL != "" {
-		u, err := url.Parse(v.BaseURL)
-		if err != nil || u.Host == "" || (u.Scheme != "https" && u.Scheme != "http") || u.User != nil || u.RawQuery != "" || u.Fragment != "" {
-			return errors.Wrap(port.ErrInvalid, "invalid base_url")
-		}
+	if v.BaseURL != "" && !model.IsValidBaseURL(v.BaseURL) {
+		return errors.Wrap(port.ErrInvalid, "invalid base_url")
 	}
 	if v.APIKey != nil && (*v.APIKey == "" || len(*v.APIKey) > maxProviderKeyLength) {
 		return errors.Wrap(port.ErrInvalid, "invalid api_key")

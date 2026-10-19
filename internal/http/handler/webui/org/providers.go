@@ -6,7 +6,6 @@ import (
 	"log/slog"
 	"math"
 	"net/http"
-	"net/url"
 	"reflect"
 	"strconv"
 	"strings"
@@ -820,16 +819,8 @@ func parseModelAPIFromForm(r *http.Request) (apiType, baseURL string, err error)
 		return "", "", errors.Errorf("type d'API inconnu : %s. Choisissez un type de la liste.", apiType)
 	}
 	baseURL = strings.TrimSpace(r.FormValue("api_base_url"))
-	if baseURL != "" {
-		u, parseErr := url.Parse(baseURL)
-		if parseErr != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
-			return "", "", errors.Errorf("l'URL de base doit être une URL http ou https absolue : %s", baseURL)
-		}
-		// The URL is stored in clear, unlike the provider's API key: it must
-		// not carry credentials.
-		if u.User != nil {
-			return "", "", errors.New("l'URL de base ne doit pas contenir d'identifiants ; la clé API du fournisseur s'applique au modèle")
-		}
+	if baseURL != "" && !model.IsValidBaseURL(baseURL) {
+		return "", "", errors.Errorf("l'URL de base doit être une URL http ou https absolue, sans identifiants, paramètres ni fragment : %s", baseURL)
 	}
 	return apiType, baseURL, nil
 }
