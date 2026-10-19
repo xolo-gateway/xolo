@@ -1,6 +1,8 @@
 package proxy
 
 import (
+	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"sync"
@@ -17,13 +19,18 @@ import (
 // pathRecorder is an upstream that refuses every request with a 400, which
 // no SDK retries, and keeps the paths it was asked for.
 type pathRecorder struct {
-	mu    sync.Mutex
-	paths []string
+	mu     sync.Mutex
+	paths  []string
+	bodies []map[string]any
 }
 
 func (r *pathRecorder) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+	raw, _ := io.ReadAll(req.Body)
+	var body map[string]any
+	_ = json.Unmarshal(raw, &body)
 	r.mu.Lock()
 	r.paths = append(r.paths, req.URL.Path)
+	r.bodies = append(r.bodies, body)
 	r.mu.Unlock()
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusBadRequest)
@@ -64,6 +71,7 @@ func TestOrgModelRouterServesAModelThroughItsOwnAPIType(t *testing.T) {
 	useProviderAt(t, w, srv.URL+"/v1")
 	claude := model.NewLLMModel(w.provider.ID(), w.org.ID(), "claude", "claude-real", "", 1000, 1000)
 	claude.SetAPIType("anthropic")
+	claude.SetOutputWindow(8192)
 	w.models["claude"] = claude
 	router := NewOrgModelRouter(teamsProviderStore{w: w}, teamsOrgStore{w: w}, teamsTestSecretKey)
 
@@ -72,6 +80,10 @@ func TestOrgModelRouterServesAModelThroughItsOwnAPIType(t *testing.T) {
 
 	require.Equal(t, []string{"/v1/chat/completions", "/v1/messages"}, upstream.recorded(),
 		"the openai provider serves gpt through chat completions and claude through Anthropic Messages")
+	upstream.mu.Lock()
+	defer upstream.mu.Unlock()
+	require.EqualValues(t, 8192, upstream.bodies[1]["max_tokens"],
+		"an anthropic model under an openai provider gets the anthropic max_tokens default")
 }
 
 func TestOrgModelRouterReachesAModelAtItsOwnBaseURL(t *testing.T) {

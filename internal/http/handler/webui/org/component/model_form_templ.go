@@ -1989,7 +1989,7 @@ func ModelForm(vmodel ModelFormVModel) templ.Component {
 							}()
 						}
 						ctx = templ.InitializeContext(ctx)
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 94, "À changer quand le fournisseur sert ce modèle par une autre API que la sienne. OpenCode Go, par exemple, sert certains modèles en <code>openai</code> et d'autres en <code>anthropic</code>.")
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 94, "À changer quand le fournisseur sert ce modèle par une autre API que la sienne. OpenCode Go, par exemple, sert certains modèles en <code>openai</code> et d'autres en <code>anthropic</code>. Le type <code>anthropic</code> ne sert pas d'embeddings.")
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}

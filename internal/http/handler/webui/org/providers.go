@@ -825,6 +825,11 @@ func parseModelAPIFromForm(r *http.Request) (apiType, baseURL string, err error)
 		if parseErr != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
 			return "", "", errors.Errorf("l'URL de base doit être une URL http ou https absolue : %s", baseURL)
 		}
+		// The URL is stored in clear, unlike the provider's API key: it must
+		// not carry credentials.
+		if u.User != nil {
+			return "", "", errors.New("l'URL de base ne doit pas contenir d'identifiants ; la clé API du fournisseur s'applique au modèle")
+		}
 	}
 	return apiType, baseURL, nil
 }
@@ -1150,12 +1155,21 @@ func (h *Handler) renderModelFormError(w http.ResponseWriter, r *http.Request, c
 				{Label: org.Name(), Href: "/orgs/" + orgSlug + "/usage"},
 				{Label: "Fournisseurs", Href: "/orgs/" + orgSlug + "/admin/providers"},
 				{Label: p.Name(), Href: "/orgs/" + orgSlug + "/admin/providers/" + string(p.ID()) + "/models"},
-				{Label: m.ProxyName(), Href: ""},
+				modelCrumb(m),
 			},
 		},
 	}
 	w.WriteHeader(http.StatusUnprocessableEntity)
 	templ.Handler(component.ModelForm(vmodel)).ServeHTTP(w, r)
+}
+
+// modelCrumb is the last breadcrumb of the model form: the model's proxy name,
+// or a plain label on a creation that failed, where nothing was stored.
+func modelCrumb(m model.LLMModel) common.BreadcrumbItem {
+	if m == nil {
+		return common.BreadcrumbItem{Label: "Nouveau modèle", Href: ""}
+	}
+	return common.BreadcrumbItem{Label: m.ProxyName(), Href: ""}
 }
 
 // providerCrumb is the last breadcrumb of the provider form: the provider's
