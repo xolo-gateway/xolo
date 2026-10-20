@@ -1,6 +1,7 @@
 package org
 
 import (
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -162,6 +163,61 @@ func TestImportModels_RequiresASelection(t *testing.T) {
 
 	rr := httptest.NewRecorder()
 	h.importModels(rr, importRequest(t, s, tenant, http.MethodPost, url.Values{}))
+
+	if rr.Code != http.StatusUnprocessableEntity || len(s.created) != 0 {
+		t.Fatalf("status = %d, created %d", rr.Code, len(s.created))
+	}
+}
+
+// A partial import reports on the list it already holds: asking the
+// provider again could fail and hide the models just created.
+func TestImportModels_ReportsWithoutAskingTheProviderAgain(t *testing.T) {
+	calls := 0
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		if calls > 1 {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(goModels))
+	}))
+	t.Cleanup(upstream.Close)
+	h, s, tenant := importFixture(t, upstream.URL+"/v1", "sk-go", [2]string{"glm-5.3", "elsewhere"})
+
+	rr := httptest.NewRecorder()
+	h.importModels(rr, importRequest(t, s, tenant, http.MethodPost, url.Values{"models": {"glm-5.3", "qwen3.8-max"}}))
+
+	if rr.Code != http.StatusOK || calls != 1 {
+		t.Fatalf("status = %d after %d calls to the provider, want 200 after 1", rr.Code, calls)
+	}
+	body := rr.Body.String()
+	for _, want := range []string{"1 modèle importé", "s&#39;appelle déjà « glm-5.3 »", "déjà déclaré : qwen3.8-max"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("missing %q in the report", want)
+		}
+	}
+}
+
+func TestImportModels_ReportsAFailedCreation(t *testing.T) {
+	upstream := openAIModelList(t, goModels)
+	h, s, tenant := importFixture(t, upstream.URL+"/v1", "sk-go")
+	s.createErr = errors.New("database is locked")
+
+	rr := httptest.NewRecorder()
+	h.importModels(rr, importRequest(t, s, tenant, http.MethodPost, url.Values{"models": {"glm-5.3"}}))
+
+	if rr.Code != http.StatusOK || !strings.Contains(rr.Body.String(), "glm-5.3 : l&#39;enregistrement a échoué") {
+		t.Fatalf("status = %d, the failure must be reported: %s", rr.Code, rr.Body.String())
+	}
+}
+
+func TestImportModels_RefusesAPrefixWithASlash(t *testing.T) {
+	upstream := openAIModelList(t, goModels)
+	h, s, tenant := importFixture(t, upstream.URL+"/v1", "sk-go")
+
+	rr := httptest.NewRecorder()
+	h.importModels(rr, importRequest(t, s, tenant, http.MethodPost, url.Values{"proxy_prefix": {"team/"}, "models": {"glm-5.3"}}))
 
 	if rr.Code != http.StatusUnprocessableEntity || len(s.created) != 0 {
 		t.Fatalf("status = %d, created %d", rr.Code, len(s.created))

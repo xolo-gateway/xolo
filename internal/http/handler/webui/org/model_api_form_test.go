@@ -22,6 +22,8 @@ type modelFormStore struct {
 	provider model.Provider
 	created  []model.LLMModel
 	saved    []model.LLMModel
+	// createErr, when set, fails every CreateLLMModel.
+	createErr error
 }
 
 func (s *modelFormStore) GetOrgBySlug(_ context.Context, _ model.TenantID, slug string) (model.Organization, error) {
@@ -52,6 +54,9 @@ func (s *modelFormStore) ListLLMModels(context.Context, model.OrgID) ([]model.LL
 }
 
 func (s *modelFormStore) CreateLLMModel(_ context.Context, m model.LLMModel) error {
+	if s.createErr != nil {
+		return s.createErr
+	}
 	s.created = append(s.created, m)
 	return nil
 }

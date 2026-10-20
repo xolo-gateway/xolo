@@ -100,10 +100,29 @@ func importCandidates(discovered []llm.ModelInfo, existing []model.LLMModel, p m
 	return candidates
 }
 
-// listProviderCandidates discovers the provider's models and marks those
-// already declared. A discovery failure is returned as a message for the
+// providerCatalog is what an import works from: the models the provider
+// serves, marked with those already declared, and the proxy names taken in
+// the organization, disabled models included, as the unique index on
+// (org_id, proxy_name) counts them.
+type providerCatalog struct {
+	candidates []component.ModelImportCandidate
+	taken      map[string]bool
+}
+
+// declare records that the candidate id is now declared under proxyName.
+func (c *providerCatalog) declare(id, proxyName string) {
+	c.taken[proxyName] = true
+	for i := range c.candidates {
+		if c.candidates[i].ID == id {
+			c.candidates[i].DeclaredAs = proxyName
+		}
+	}
+}
+
+// loadProviderCatalog discovers the provider's models and reads the models
+// of the organization. A discovery failure is returned as a message for the
 // page, a store failure as an error.
-func (h *Handler) listProviderCandidates(ctx context.Context, org model.Organization, p model.Provider) ([]component.ModelImportCandidate, string, error) {
+func (h *Handler) loadProviderCatalog(ctx context.Context, org model.Organization, p model.Provider) (*providerCatalog, string, error) {
 	apiKey, err := crypto.Decrypt(h.secretKey, p.APIKey())
 	if err != nil {
 		return nil, "", errors.Wrap(err, "could not decrypt provider API key")
@@ -121,7 +140,14 @@ func (h *Handler) listProviderCandidates(ctx context.Context, org model.Organiza
 		return nil, "", errors.WithStack(err)
 	}
 
-	return importCandidates(discovered, existing, p), "", nil
+	catalog := &providerCatalog{
+		candidates: importCandidates(discovered, existing, p),
+		taken:      make(map[string]bool, len(existing)),
+	}
+	for _, m := range existing {
+		catalog.taken[m.ProxyName()] = true
+	}
+	return catalog, "", nil
 }
 
 func (h *Handler) getImportModelsPage(w http.ResponseWriter, r *http.Request) {
@@ -134,7 +160,7 @@ func (h *Handler) getImportModelsPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	candidates, discoveryErr, err := h.listProviderCandidates(ctx, org, p)
+	catalog, discoveryErr, err := h.loadProviderCatalog(ctx, org, p)
 	if err != nil {
 		slog.ErrorContext(ctx, "could not prepare model import", slogx.Error(err))
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
@@ -142,10 +168,11 @@ func (h *Handler) getImportModelsPage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	vmodel := h.modelImportVModel(ctx, org, p)
-	vmodel.Candidates = candidates
 	vmodel.Error = discoveryErr
 	if discoveryErr != "" {
 		w.WriteHeader(http.StatusBadGateway)
+	} else {
+		vmodel.Candidates = catalog.candidates
 	}
 	templ.Handler(component.ModelImportPage(vmodel)).ServeHTTP(w, r)
 }
@@ -170,7 +197,7 @@ func (h *Handler) importModels(w http.ResponseWriter, r *http.Request) {
 	// The list is fetched again rather than trusted from the form: only
 	// models the provider serves right now are imported, with the limits it
 	// reports.
-	candidates, discoveryErr, err := h.listProviderCandidates(ctx, org, p)
+	catalog, discoveryErr, err := h.loadProviderCatalog(ctx, org, p)
 	if err != nil {
 		slog.ErrorContext(ctx, "could not prepare model import", slogx.Error(err))
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
@@ -178,7 +205,6 @@ func (h *Handler) importModels(w http.ResponseWriter, r *http.Request) {
 	}
 
 	vmodel := h.modelImportVModel(ctx, org, p)
-	vmodel.Candidates = candidates
 	vmodel.Prefix = prefix
 	if discoveryErr != "" {
 		vmodel.Error = discoveryErr
@@ -186,21 +212,23 @@ func (h *Handler) importModels(w http.ResponseWriter, r *http.Request) {
 		templ.Handler(component.ModelImportPage(vmodel)).ServeHTTP(w, r)
 		return
 	}
-	if len(selected) == 0 {
+	vmodel.Candidates = catalog.candidates
+	switch {
+	case strings.Contains(prefix, "/"):
+		// A slash would read as an organization or team segment of the name.
+		vmodel.Error = "Le préfixe ne peut pas contenir « / »."
+	case len(selected) == 0:
 		vmodel.Error = "Cochez au moins un modèle à importer."
+	}
+	if vmodel.Error != "" {
 		w.WriteHeader(http.StatusUnprocessableEntity)
 		templ.Handler(component.ModelImportPage(vmodel)).ServeHTTP(w, r)
 		return
 	}
 
-	byID := make(map[string]component.ModelImportCandidate, len(candidates))
-	for _, c := range candidates {
-		byID[c.ID] = c
-	}
-
 	imported := 0
 	for _, id := range selected {
-		skip, err := h.importModel(ctx, org, p, byID, id, prefix)
+		skip, err := h.importModel(ctx, org, p, catalog, id, prefix)
 		if err != nil {
 			slog.ErrorContext(ctx, "could not import model", slog.String("model", id), slogx.Error(err))
 			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
@@ -218,23 +246,25 @@ func (h *Handler) importModels(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Some models were left out: show why, on a list refreshed with the
-	// ones just created.
+	// Some models were left out: show why, on the list updated with the ones
+	// just created, without asking the provider again.
 	vmodel.Imported = imported
-	vmodel.Candidates, _, err = h.listProviderCandidates(ctx, org, p)
-	if err != nil {
-		slog.ErrorContext(ctx, "could not refresh model import", slogx.Error(err))
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-		return
-	}
+	vmodel.Candidates = catalog.candidates
 	templ.Handler(component.ModelImportPage(vmodel)).ServeHTTP(w, r)
 }
 
-// importModel creates the model id under the given proxy prefix. It returns
-// why the model was left out, or an empty string once created.
-func (h *Handler) importModel(ctx context.Context, org model.Organization, p model.Provider, candidates map[string]component.ModelImportCandidate, id, prefix string) (string, error) {
-	c, ok := candidates[id]
-	if !ok {
+// importModel creates the model id under the given proxy prefix and records
+// it in the catalog. It returns why the model was left out, or an empty
+// string once created. A model the store fails to create is left out too, so
+// that the report says which models of the selection did get through.
+func (h *Handler) importModel(ctx context.Context, org model.Organization, p model.Provider, catalog *providerCatalog, id, prefix string) (string, error) {
+	var c *component.ModelImportCandidate
+	for i := range catalog.candidates {
+		if catalog.candidates[i].ID == id {
+			c = &catalog.candidates[i]
+		}
+	}
+	if c == nil {
 		return id + " : le fournisseur ne le liste plus.", nil
 	}
 	if c.DeclaredAs != "" {
@@ -242,7 +272,7 @@ func (h *Handler) importModel(ctx context.Context, org model.Organization, p mod
 	}
 
 	proxyName := prefix + id
-	if conflicting, err := h.providerStore.GetLLMModelByProxyName(ctx, org.ID(), proxyName); err == nil && conflicting != nil {
+	if catalog.taken[proxyName] {
 		return id + " : un modèle s'appelle déjà « " + proxyName + " » dans cette organisation.", nil
 	}
 	msg, err := h.teamNameConflict(ctx, org.ID(), proxyName)
@@ -259,8 +289,10 @@ func (h *Handler) importModel(ctx context.Context, org model.Organization, p mod
 	m.SetContextWindow(c.ContextWindow)
 	m.SetOutputWindow(c.OutputWindow)
 	if err := h.providerStore.CreateLLMModel(ctx, m); err != nil {
-		return "", errors.WithStack(err)
+		slog.ErrorContext(ctx, "could not create imported model", slog.String("model", id), slogx.Error(err))
+		return id + " : l'enregistrement a échoué, réessayez.", nil
 	}
+	catalog.declare(id, proxyName)
 	return "", nil
 }
 
