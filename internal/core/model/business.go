@@ -88,6 +88,8 @@ type ProviderSettings struct {
 	SubscriptionPlan *SubscriptionPlan `json:"subscription_plan"`
 	RetryConfig      *RetryConfig      `json:"retry_config"`
 	RateLimitConfig  *RateLimitConfig  `json:"rate_limit_config"`
+	// RequestHeaders is optional: an absent value is none.
+	RequestHeaders *ProviderRequestHeaders `json:"request_headers"`
 	// APIKey replaces the stored key; nil keeps it. Never returned.
 	APIKey *string `json:"api_key,omitempty"`
 }

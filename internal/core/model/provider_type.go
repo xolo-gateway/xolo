@@ -5,7 +5,7 @@ package model
 // the packages that resolve providers at runtime (the proxy router and the
 // provider web handler), which a test in each of them enforces.
 func ProviderTypes() []string {
-	return []string{"openai", "anthropic", "mistral", "openrouter"}
+	return []string{"openai", "openai-responses", "anthropic", "gemini", "mistral", "openrouter"}
 }
 
 // IsKnownProviderType reports whether t is one of ProviderTypes.

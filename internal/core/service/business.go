@@ -296,6 +296,7 @@ func (s *ProvisioningService) PutProvider(ctx context.Context, tenantID model.Te
 		provider.SetSubscriptionPlan(v.SubscriptionPlan)
 		provider.SetRetryConfig(v.RetryConfig)
 		provider.SetRateLimitConfig(v.RateLimitConfig)
+		provider.SetRequestHeaders(v.RequestHeaders)
 		if target.exists {
 			return errors.WithStack(tx.tx.SaveProvider(ctx, provider))
 		}
@@ -577,6 +578,9 @@ func validateProvider(v model.ProviderSettings) error {
 	}
 	if c := v.RateLimitConfig; c != nil && c.Enabled && (c.Interval <= 0 || c.MaxBurst < 1) {
 		return errors.Wrap(port.ErrInvalid, "invalid rate_limit_config")
+	}
+	if !v.RequestHeaders.Valid() {
+		return errors.Wrap(port.ErrInvalid, "invalid request_headers")
 	}
 	if plan := v.SubscriptionPlan; plan != nil {
 		if !validCommonText(plan.Label, 0, maxBusinessNameLength) || len(plan.Constraints) > 100 {

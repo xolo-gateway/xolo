@@ -71,8 +71,36 @@ func formatCostField(v int64) string {
 	return fmt.Sprintf("%.6f", float64(v)/1_000)
 }
 
-// ExtraBodyRow is a single key/value entry of a model's ExtraBody, rendered as a
-// row in the extra-body editor.
+// providerHeaderRows flattens a provider's fixed request headers into rows
+// sorted by name, for pre-filling the editor.
+func providerHeaderRows(p model.Provider) []ExtraBodyRow {
+	if p == nil || p.RequestHeaders() == nil {
+		return nil
+	}
+	headers := p.RequestHeaders().Headers
+	names := make([]string, 0, len(headers))
+	for name := range headers {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	rows := make([]ExtraBodyRow, 0, len(names))
+	for _, name := range names {
+		rows = append(rows, ExtraBodyRow{Key: name, Value: headers[name]})
+	}
+	return rows
+}
+
+// providerSessionHeader returns the session header a provider sends, or an
+// empty string.
+func providerSessionHeader(p model.Provider) string {
+	if p == nil || p.RequestHeaders() == nil {
+		return ""
+	}
+	return p.RequestHeaders().SessionHeader
+}
+
+// ExtraBodyRow is a single key/value entry of a KeyValueEditor: a field of a
+// model's ExtraBody, or a header of a provider.
 type ExtraBodyRow struct {
 	Key   string
 	Value string

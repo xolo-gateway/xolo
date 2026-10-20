@@ -569,7 +569,7 @@ only where shown.
 | `application` | `{"name","description","active","role_ids":[…]}`, plus an optional `"team_id"` (empty for no team) |
 | `quota` | `{"scope","scope_id","currency","daily_budget","monthly_budget","yearly_budget"}`, budgets in microcents or `null`, plus an optional `"cascade"` (`free` by default, `capped` or `split`) |
 | `alert` | `{"name","description","scope","owner_id","query","aggregation","window_seconds","comparator","threshold","for_seconds","enabled"}` |
-| `provider` | `{"name","type","base_url","active","currency","cloud_tier","billing_mode","subscription_plan","retry_config","rate_limit_config"}`, the last three `null` or objects, plus the write-only `"api_key"` |
+| `provider` | `{"name","type","base_url","active","currency","cloud_tier","billing_mode","subscription_plan","retry_config","rate_limit_config"}`, the last three `null` or objects, plus the write-only `"api_key"` and the optional `"request_headers"`: `null` or `{"headers":{"Name":"value"},"session_header":"x-opencode-session"}`, the headers a gateway requires (credential and framing headers are refused) |
 
 - **Keys.** A new resource is created under a canonical UUID chosen by the
   client. A resource created from the web UI keeps its local identifier, which

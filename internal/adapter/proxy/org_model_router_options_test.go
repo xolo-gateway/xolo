@@ -29,7 +29,7 @@ func maxTokensOf(t *testing.T, specific any) (int64, bool) {
 // must be left untouched.
 func TestWithDynamicChatCompletion_MaxTokens(t *testing.T) {
 	t.Run("anthropic gets the output window", func(t *testing.T) {
-		opts, err := provider.NewOptions(withDynamicChatCompletion("anthropic", "https://api.anthropic.com", "k", "claude-sonnet-5", 64000))
+		opts, err := provider.NewOptions(withDynamicChatCompletion("anthropic", "https://api.anthropic.com", "k", "claude-sonnet-5", 64000, nil))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -46,7 +46,7 @@ func TestWithDynamicChatCompletion_MaxTokens(t *testing.T) {
 	})
 
 	t.Run("unset output window keeps the provider default", func(t *testing.T) {
-		opts, err := provider.NewOptions(withDynamicChatCompletion("anthropic", "", "k", "m", 0))
+		opts, err := provider.NewOptions(withDynamicChatCompletion("anthropic", "", "k", "m", 0, nil))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -58,7 +58,7 @@ func TestWithDynamicChatCompletion_MaxTokens(t *testing.T) {
 
 	t.Run("other providers are unaffected", func(t *testing.T) {
 		for _, name := range []provider.Name{"openai", "mistral", "openrouter"} {
-			opts, err := provider.NewOptions(withDynamicChatCompletion(name, "https://example.invalid/v1", "k", "m", 64000))
+			opts, err := provider.NewOptions(withDynamicChatCompletion(name, "https://example.invalid/v1", "k", "m", 64000, nil))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -70,6 +70,33 @@ func TestWithDynamicChatCompletion_MaxTokens(t *testing.T) {
 			}
 		}
 	})
+}
+
+// A gateway such as OpenCode Go refuses requests without the headers its
+// provider configures: they must reach the genai options of both clients,
+// as a copy the stored provider does not share.
+func TestDynamicOptions_CarryTheProviderHeaders(t *testing.T) {
+	headers := &model.ProviderRequestHeaders{
+		Headers:       map[string]string{"User-Agent": "xolo/test"},
+		SessionHeader: "x-opencode-session",
+	}
+	opts, err := provider.NewOptions(
+		withDynamicChatCompletion("openai", "https://example.invalid/v1", "k", "m", 0, headers),
+		withDynamicEmbeddings("openai", "https://example.invalid/v1", "k", "m", headers),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, specific := range map[string]any{"chat": opts.ChatCompletion.Specific, "embeddings": opts.Embeddings.Specific} {
+		common := reflect.ValueOf(specific).Elem().FieldByName("CommonOptions").Interface().(provider.CommonOptions)
+		if common.Headers["User-Agent"] != "xolo/test" || common.SessionHeader != "x-opencode-session" || common.APIKey != "k" {
+			t.Errorf("%s: common options not populated: %+v", name, common)
+		}
+		common.Headers["User-Agent"] = "changed"
+		if headers.Headers["User-Agent"] != "xolo/test" {
+			t.Fatalf("%s: the options share the provider's header map", name)
+		}
+	}
 }
 
 func TestEmbeddingsRegistry_AnthropicHasNone(t *testing.T) {

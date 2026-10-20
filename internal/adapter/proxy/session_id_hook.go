@@ -5,24 +5,27 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 
-	genaiProxy "github.com/bornholm/genai/proxy"
 	"github.com/bornholm/genai/llm"
+	genaiProxy "github.com/bornholm/genai/proxy"
 )
 
-// SessionIDHook is a PreRequestHook (priority 1) that injects a session ID
-// into ChatOptions for sticky routing at the upstream provider (e.g. OpenRouter).
+// SessionIDHook is a PreRequestHook (priority 1) that gives every request a
+// session ID, which the genai proxy passes upstream: for sticky routing
+// (OpenRouter), as the prompt cache key (Responses API), or in the session
+// header a provider configures (OpenCode Go refuses a request without one).
 //
-// Priority: if the client already sent an x-session-id header, it is forwarded
-// as-is. Otherwise a stable opaque value is derived from userID + orgID via
-// SHA-256 so that all requests from the same user/org land on the same cache node.
+// The session the client sent (x-session-id, or the header of Claude Code,
+// Codex or OpenCode, read by the genai proxy) is kept as is. Otherwise an
+// opaque value is derived by SHA-256 from the caller (user, organization,
+// token) and the first user message: it stays the same over the turns of a
+// conversation and differs from one conversation to the next.
 type SessionIDHook struct{}
 
 func (h *SessionIDHook) Name() string  { return "xolo.session-id" }
 func (h *SessionIDHook) Priority() int { return 1 }
 
 func (h *SessionIDHook) PreRequest(ctx context.Context, req *genaiProxy.ProxyRequest) (*genaiProxy.HookResult, error) {
-	if clientSession := req.Headers.Get("x-session-id"); clientSession != "" {
-		req.ChatOptions = append(req.ChatOptions, llm.WithSessionID(clientSession))
+	if req.SessionID != "" {
 		return nil, nil
 	}
 
@@ -32,11 +35,29 @@ func (h *SessionIDHook) PreRequest(ctx context.Context, req *genaiProxy.ProxyReq
 	if userID == "" || orgID == "" {
 		return nil, nil
 	}
+	tokenID := AuthTokenIDFromMeta(req.Metadata)
 
-	raw := sha256.Sum256([]byte(userID + ":" + orgID))
-	sessionID := hex.EncodeToString(raw[:])[:24]
-	req.ChatOptions = append(req.ChatOptions, llm.WithSessionID(sessionID))
+	hash := sha256.New()
+	for _, part := range []string{userID, orgID, tokenID, firstUserMessage(req.ChatOptions)} {
+		hash.Write([]byte(part))
+		hash.Write([]byte{0})
+	}
+	req.SessionID = hex.EncodeToString(hash.Sum(nil))[:24]
 	return nil, nil
+}
+
+// firstUserMessage returns the text of the first user message of a chat
+// request, which the following turns repeat, or an empty string.
+func firstUserMessage(funcs []llm.ChatCompletionOptionFunc) string {
+	if len(funcs) == 0 {
+		return ""
+	}
+	for _, m := range llm.NewChatCompletionOptions(funcs...).Messages {
+		if m.Role() == llm.RoleUser {
+			return m.Content()
+		}
+	}
+	return ""
 }
 
 var _ genaiProxy.PreRequestHook = &SessionIDHook{}

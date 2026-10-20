@@ -30,6 +30,8 @@ type Provider interface {
 	RateLimitConfig() *RateLimitConfig
 	BillingMode() BillingMode
 	SubscriptionPlan() *SubscriptionPlan
+	// RequestHeaders is nil when the provider needs no extra header.
+	RequestHeaders() *ProviderRequestHeaders
 }
 
 type BaseProvider struct {
@@ -48,6 +50,7 @@ type BaseProvider struct {
 	rateLimitConfig  *RateLimitConfig
 	billingMode      BillingMode
 	subscriptionPlan *SubscriptionPlan
+	requestHeaders   *ProviderRequestHeaders
 }
 
 func (p *BaseProvider) ID() ProviderID                      { return p.id }
@@ -65,6 +68,9 @@ func (p *BaseProvider) RetryConfig() *RetryConfig           { return p.retryConf
 func (p *BaseProvider) RateLimitConfig() *RateLimitConfig   { return p.rateLimitConfig }
 func (p *BaseProvider) BillingMode() BillingMode            { return p.billingMode }
 func (p *BaseProvider) SubscriptionPlan() *SubscriptionPlan { return p.subscriptionPlan }
+func (p *BaseProvider) RequestHeaders() *ProviderRequestHeaders {
+	return p.requestHeaders
+}
 
 // SetID gives the provider an identifier chosen by the provisioning client.
 func (p *BaseProvider) SetID(id ProviderID) { p.id = id }
@@ -77,6 +83,15 @@ func (p *BaseProvider) SetRateLimitConfig(c *RateLimitConfig)             { p.ra
 func (p *BaseProvider) SetCloudTier(t int)                                { p.cloudTier = t }
 func (p *BaseProvider) SetBillingMode(m BillingMode)                      { p.billingMode = m }
 func (p *BaseProvider) SetSubscriptionPlan(plan *SubscriptionPlan)        { p.subscriptionPlan = plan }
+
+// SetRequestHeaders sets the headers sent to the provider; an empty
+// configuration is stored as none.
+func (p *BaseProvider) SetRequestHeaders(h *ProviderRequestHeaders) {
+	if h.Empty() {
+		h = nil
+	}
+	p.requestHeaders = h
+}
 
 var _ Provider = &BaseProvider{}
 

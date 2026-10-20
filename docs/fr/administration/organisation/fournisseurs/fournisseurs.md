@@ -26,7 +26,7 @@ Un fournisseur est une connexion vers un service LLM externe (OpenAI, Mistral, O
    | Champ                       | Description                                                                                           |
    | --------------------------- | ----------------------------------------------------------------------------------------------------- |
    | **Nom**                     | Nom affiché du fournisseur                                                                            |
-   | **Type**                    | Type de connexion : `openai`, `anthropic`, `mistral`, `openrouter`                                    |
+   | **Type**                    | Type de connexion : `openai`, `openai-responses`, `anthropic`, `gemini`, `mistral`, `openrouter`      |
    | **URL de base**             | URL de l'endpoint API (ex: `https://api.openai.com/v1`)                                               |
    | **Clé API**                 | Clé d'authentification auprès du fournisseur                                                          |
    | **Devise**                  | Devise pour la tarification (USD, EUR, etc.)                                                          |
@@ -216,6 +216,15 @@ Protection contre les surextensions :
 - **Intervalle minimum** : temps minimal entre deux requêtes
 - **Capacité de burst** : nombre max de requêtes simultanées autorisées
 
+## En-têtes de requête
+
+Certaines passerelles exigent des en-têtes que les SDK n'envoient pas. La section **En-têtes de requête** du fournisseur, sur sa page de modification, les configure :
+
+- **En-tête de session** : nom de l'en-tête qui porte l'identifiant de la conversation. Xolo y place l'identifiant envoyé par le client : `X-Session-Id`, ou l'en-tête de Claude Code, de Codex ou d'OpenCode. À défaut, il calcule une empreinte de l'appelant (utilisateur, organisation, jeton) et du premier message de la conversation : elle reste la même d'un tour à l'autre et change d'une conversation à l'autre. Vide, aucun en-tête de session n'est envoyé.
+- **En-têtes fixes** : ajoutés à chaque requête, ils remplacent ceux du client HTTP, `User-Agent` compris. Ce ne sont pas des secrets : seule la clé API est chiffrée. Les en-têtes d'authentification (`Authorization`, `X-Api-Key`, `X-Goog-Api-Key`) et de transport (`Host`, `Content-Type`, `Content-Length`…) sont refusés.
+
+Ces en-têtes valent pour tous les modèles du fournisseur, quel que soit leur type d'API.
+
 ## Gestion des modèles
 
 Chaque fournisseur peut exposer un ou plusieurs modèles.
@@ -284,7 +293,14 @@ Ces deux champs servent aux fournisseurs qui exposent leurs modèles par plusieu
 
 Le reste du fournisseur s'applique au modèle sans changement : clé API, devise, plan d'abonnement, retry et rate limit. Ce que la page dit du type `anthropic` (`max_tokens`, `extra_body`, relais en streaming) vaut pour un tel modèle comme pour un fournisseur de ce type.
 
-Xolo ne parle pas encore l'API Responses d'OpenAI ni l'API de Google. Les modèles qu'OpenCode Go ne sert que par ces API restent hors de portée pour l'instant. Le catalogue models.dev indique l'API de chaque modèle.
+Les modèles qu'OpenCode Go ne sert que par l'API Responses d'OpenAI (GPT, Grok) prennent le type `openai-responses`, sur l'URL du fournisseur. Ceux qu'il sert par l'API de Google (Gemini) prennent le type `gemini` :
+
+| Champ           | Valeur                                          |
+| --------------- | ----------------------------------------------- |
+| **Type d'API**  | `gemini`                                        |
+| **URL de base** | `https://opencode.ai/inference/go/google/v1beta` |
+
+OpenCode Go refuse toute requête sans en-tête `x-opencode-session` et demande aux clients de s'identifier par leur `User-Agent`. Dans la section **En-têtes de requête** du fournisseur, renseignez `x-opencode-session` comme **En-tête de session** et ajoutez un en-tête fixe `User-Agent`, par exemple `xolo/1.0`. Les modèles marqués `contributor`, comme Gemini, exigent en plus d'accepter l'entraînement sur les requêtes dans les réglages de confidentialité du compte OpenCode.
 
 > **Astuce** : Cliquez sur **Pré-remplir depuis models.dev** pour importer automatiquement les informations d'un modèle depuis le catalogue.
 

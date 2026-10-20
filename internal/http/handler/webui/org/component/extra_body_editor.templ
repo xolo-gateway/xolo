@@ -7,81 +7,89 @@ import (
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/input"
 )
 
-// ── Extra Body Editor ─────────────────────────────────────────────────────────
+// ── Key/Value Editor ──────────────────────────────────────────────────────────
 
-// ExtraBodyEditor renders an editable key/value list for a model's extra_body.
-// Each entry is injected verbatim into the outgoing request body. Values are
-// typed by inference on submission (see parseExtraBodyFromForm): "true"/"false"
-// become booleans, numeric strings become numbers, everything else stays a
-// string.
+// KeyValueEditorProps names the fields and texts of a KeyValueEditor.
+type KeyValueEditorProps struct {
+	// Name prefixes the form fields (see KeyValueEditor).
+	Name string
+	// ID prefixes the element IDs; it must be unique in the page.
+	ID               string
+	KeyPlaceholder   string
+	ValuePlaceholder string
+	AddLabel         string
+	RemoveTitle      string
+}
+
+// KeyValueEditor renders an editable list of key/value rows.
 //
-// Form fields emitted:
-//   - extra_body_count            (hidden, JS-managed)
-//   - extra_body_k{i}_key
-//   - extra_body_k{i}_value
-templ ExtraBodyEditor(rows []ExtraBodyRow, readonly bool) {
+// Form fields emitted, for Name "n":
+//   - n_count            (hidden, JS-managed)
+//   - n_k{i}_key
+//   - n_k{i}_value
+templ KeyValueEditor(props KeyValueEditorProps, rows []ExtraBodyRow, readonly bool) {
 	<div class="space-y-3">
 		<div
-			id="extra-body-rows"
+			id={ props.ID + "-rows" }
 			class="space-y-2"
 			data-xolo-rows
-			data-rows-template="extra-body-tpl"
-			data-rows-count="extra-body-count"
+			data-rows-template={ props.ID + "-tpl" }
+			data-rows-count={ props.ID + "-count" }
 		>
 			for i, row := range rows {
-				@extraBodyRow(i, row, readonly)
+				@keyValueRow(props, i, row, readonly)
 			}
 		</div>
 		// Hidden input : porte le nombre de lignes, tenu à jour par le module de
 		// lignes répétables d'assets/js/xolo.js. Il transporte une valeur, ce n'est
 		// pas un contrôle — templui n'a pas d'équivalent et n'en a pas besoin.
-		<input type="hidden" id="extra-body-count" name="extra_body_count" value={ fmt.Sprintf("%d", len(rows)) }/>
+		<input type="hidden" id={ props.ID + "-count" } name={ props.Name + "_count" } value={ fmt.Sprintf("%d", len(rows)) }/>
 		if !readonly {
 			@button.Button(button.Props{
 				Type:       "button",
 				Variant:    button.VariantOutline,
 				Class:      "w-full",
-				Attributes: templ.Attributes{"data-xolo-row-add": "extra-body-rows"},
+				Attributes: templ.Attributes{"data-xolo-row-add": props.ID + "-rows"},
 			}) {
-				+ Ajouter un champ
+				{ props.AddLabel }
 			}
 		}
 	</div>
-	// Modèle cloné à l'ajout d'une ligne. extraBodyRow avec idx -1 émet des noms
-	// à trou (extra_body_k{i}_key, …) que la renumérotation réécrit.
+	// Modèle cloné à l'ajout d'une ligne. keyValueRow avec idx -1 émet des noms
+	// à trou (n_k{i}_key, …) que la renumérotation réécrit.
 	if !readonly {
-		<template id="extra-body-tpl">
-			@extraBodyRow(-1, ExtraBodyRow{}, false)
+		<template id={ props.ID + "-tpl" }>
+			@keyValueRow(props, -1, ExtraBodyRow{}, false)
 		</template>
 	}
 }
 
-// extraBodyRow renders one key/value entry.
+// keyValueRow renders one key/value entry.
 // idx = -1 → template row; names use placeholder "{i}" replaced by JS.
-templ extraBodyRow(idx int, row ExtraBodyRow, readonly bool) {
+templ keyValueRow(props KeyValueEditorProps, idx int, row ExtraBodyRow, readonly bool) {
 	{{ idxKey := fmt.Sprintf("%d", idx) }}
 	if idx == -1 {
 		{{ idxKey = "{i}" }}
 	}
-	{{ keyName := "extra_body_k" + idxKey + "_key" }}
-	{{ valName := "extra_body_k" + idxKey + "_value" }}
+	{{ keyName := props.Name + "_k" + idxKey + "_key" }}
+	{{ valName := props.Name + "_k" + idxKey + "_value" }}
 	<div data-xolo-row class="flex items-start gap-2">
 		<div class="flex-1">
 			@input.Input(input.Props{
 				Name:        keyName,
 				Value:       row.Key,
-				Placeholder: "clé (ex : reasoning_split)",
+				Placeholder: props.KeyPlaceholder,
 				Disabled:    readonly,
-				Attributes:  templ.Attributes{"data-xolo-name": "extra_body_k{i}_key"},
+				Attributes:  templ.Attributes{"data-xolo-name": props.Name + "_k{i}_key"},
 			})
 		</div>
 		<div class="flex-1">
 			@input.Input(input.Props{
 				Name:        valName,
 				Value:       row.Value,
-				Placeholder: "valeur (ex : true, 40, auto)",
+				Placeholder: props.ValuePlaceholder,
 				Disabled:    readonly,
-				Attributes:  templ.Attributes{"data-xolo-name": "extra_body_k{i}_value"},
+				Attributes:  templ.Attributes{"data-xolo-name": props.Name + "_k{i}_value"},
 			})
 		</div>
 		if !readonly {
@@ -91,11 +99,45 @@ templ extraBodyRow(idx int, row ExtraBodyRow, readonly bool) {
 				Size:    button.SizeIcon,
 				Attributes: templ.Attributes{
 					"data-xolo-row-remove": "",
-					"title":                "Supprimer ce champ",
+					"title":                props.RemoveTitle,
 				},
 			}) {
 				✕
 			}
 		}
 	</div>
+}
+
+// ── Extra Body Editor ─────────────────────────────────────────────────────────
+
+// ExtraBodyEditor renders an editable key/value list for a model's extra_body.
+// Each entry is injected verbatim into the outgoing request body. Values are
+// typed by inference on submission (see parseExtraBodyFromForm): "true"/"false"
+// become booleans, numeric strings become numbers, everything else stays a
+// string. Its form fields are prefixed with extra_body.
+templ ExtraBodyEditor(rows []ExtraBodyRow, readonly bool) {
+	@KeyValueEditor(KeyValueEditorProps{
+		Name:             "extra_body",
+		ID:               "extra-body",
+		KeyPlaceholder:   "clé (ex : reasoning_split)",
+		ValuePlaceholder: "valeur (ex : true, 40, auto)",
+		AddLabel:         "+ Ajouter un champ",
+		RemoveTitle:      "Supprimer ce champ",
+	}, rows, readonly)
+}
+
+// ── Provider Headers Editor ───────────────────────────────────────────────────
+
+// ProviderHeadersEditor renders the headers sent with every request to a
+// provider. Its form fields are prefixed with request_header (see
+// parseRequestHeadersFromForm).
+templ ProviderHeadersEditor(rows []ExtraBodyRow, readonly bool) {
+	@KeyValueEditor(KeyValueEditorProps{
+		Name:             "request_header",
+		ID:               "request-header",
+		KeyPlaceholder:   "nom (ex : User-Agent)",
+		ValuePlaceholder: "valeur (ex : xolo/1.0)",
+		AddLabel:         "+ Ajouter un en-tête",
+		RemoveTitle:      "Supprimer cet en-tête",
+	}, rows, readonly)
 }

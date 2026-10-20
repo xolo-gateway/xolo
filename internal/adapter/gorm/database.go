@@ -672,10 +672,22 @@ func schemaMigrations(artifact *RecoveryArtifact) []*gormigrate.Migration {
 				return errors.WithStack(tx.Migrator().DropColumn(&LLMModel{}, "base_url"))
 			},
 		},
+		{
+			// Add request_headers to providers: headers a gateway requires,
+			// such as the session header of OpenCode Go.
+			ID: providerRequestHeadersMigrationID,
+			Migrate: func(tx *gorm.DB) error {
+				return errors.WithStack(tx.AutoMigrate(&Provider{}))
+			},
+			Rollback: func(tx *gorm.DB) error {
+				return errors.WithStack(tx.Migrator().DropColumn(&Provider{}, "request_headers"))
+			},
+		},
 	}
 }
 
 const (
-	planModelUsageIndexMigrationID = "202610190001"
-	modelAPIOverrideMigrationID    = "202610210001"
+	planModelUsageIndexMigrationID    = "202610190001"
+	modelAPIOverrideMigrationID       = "202610210001"
+	providerRequestHeadersMigrationID = "202610220001"
 )

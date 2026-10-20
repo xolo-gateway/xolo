@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"maps"
 	"reflect"
 	"sync"
 	"time"
@@ -24,9 +25,11 @@ import (
 	"github.com/pkg/errors"
 
 	_ "github.com/bornholm/genai/llm/provider/anthropic"
+	_ "github.com/bornholm/genai/llm/provider/gemini"
 	_ "github.com/bornholm/genai/llm/provider/mistral"
 	_ "github.com/bornholm/genai/llm/provider/openai"
 	_ "github.com/bornholm/genai/llm/provider/openrouter"
+	_ "github.com/bornholm/genai/llm/provider/responses"
 )
 
 // OrgModelRouter resolves the requested model name to an LLM client.
@@ -204,7 +207,7 @@ func (r *OrgModelRouter) clientForProvider(ctx context.Context, llmModel model.L
 	baseURL := model.ModelBaseURL(llmModel, p)
 	providerName := provider.Name(apiType)
 	providerOpts := []provider.OptionFunc{
-		withDynamicChatCompletion(providerName, baseURL, decryptedKey, llmModel.RealModel(), defaultMaxTokensFor(llmModel)),
+		withDynamicChatCompletion(providerName, baseURL, decryptedKey, llmModel.RealModel(), defaultMaxTokensFor(llmModel), p.RequestHeaders()),
 	}
 	if llmModel.Capabilities().Embeddings {
 		// A provider without an embeddings client (anthropic) must not lose
@@ -213,7 +216,7 @@ func (r *OrgModelRouter) clientForProvider(ctx context.Context, llmModel model.L
 			slog.WarnContext(ctx, "model declares the embeddings capability but its API type has no embeddings client",
 				slog.String("model", string(llmModel.ID())), slog.String("apiType", apiType))
 		} else {
-			providerOpts = append(providerOpts, withDynamicEmbeddings(providerName, baseURL, decryptedKey, llmModel.RealModel()))
+			providerOpts = append(providerOpts, withDynamicEmbeddings(providerName, baseURL, decryptedKey, llmModel.RealModel(), p.RequestHeaders()))
 		}
 	}
 
@@ -389,18 +392,14 @@ var _ genaiProxy.ModelResolverHook = &OrgModelRouter{}
 var _ genaiProxy.ModelListerHook = &OrgModelRouter{}
 
 // withDynamicEmbeddings crée une OptionFunc d'embeddings pour un provider identifié à runtime.
-func withDynamicEmbeddings(name provider.Name, baseURL, apiKey, model string) provider.OptionFunc {
+func withDynamicEmbeddings(name provider.Name, baseURL, apiKey, model string, headers *model.ProviderRequestHeaders) provider.OptionFunc {
 	return func(o *provider.Options) error {
 		opts := provider.NewEmbeddingsProviderOptions(name)
 		if opts == nil {
 			return errors.Errorf("unknown embeddings provider %q", name)
 		}
 		v := reflect.ValueOf(opts).Elem()
-		if common := v.FieldByName("CommonOptions"); common.IsValid() {
-			common.FieldByName("BaseURL").SetString(baseURL)
-			common.FieldByName("APIKey").SetString(apiKey)
-			common.FieldByName("Model").SetString(model)
-		}
+		setCommonOptions(v, baseURL, apiKey, model, headers)
 		o.Embeddings = &provider.ResolvedClientOptions{
 			Provider: name,
 			Specific: opts,
@@ -445,18 +444,14 @@ func defaultMaxTokensFor(m model.LLMModel) int64 {
 // maxTokensProviders (anthropic, dont l'API exige max_tokens) : c'est la
 // fenêtre de sortie du modèle, à défaut de quoi le provider applique son
 // propre défaut. Le champ est lu comme un défaut, jamais comme un plafond.
-func withDynamicChatCompletion(name provider.Name, baseURL, apiKey, model string, maxTokens int64) provider.OptionFunc {
+func withDynamicChatCompletion(name provider.Name, baseURL, apiKey, model string, maxTokens int64, headers *model.ProviderRequestHeaders) provider.OptionFunc {
 	return func(o *provider.Options) error {
 		opts := provider.NewChatCompletionProviderOptions(name)
 		if opts == nil {
 			return errors.Errorf("unknown provider %q", name)
 		}
 		v := reflect.ValueOf(opts).Elem()
-		if common := v.FieldByName("CommonOptions"); common.IsValid() {
-			common.FieldByName("BaseURL").SetString(baseURL)
-			common.FieldByName("APIKey").SetString(apiKey)
-			common.FieldByName("Model").SetString(model)
-		}
+		setCommonOptions(v, baseURL, apiKey, model, headers)
 		if maxTokensProviders[name] && maxTokens > 0 {
 			if field := v.FieldByName("MaxTokens"); field.IsValid() && field.CanSet() && field.Kind() == reflect.Int64 {
 				field.SetInt(maxTokens)
@@ -467,5 +462,26 @@ func withDynamicChatCompletion(name provider.Name, baseURL, apiKey, model string
 			Specific: opts,
 		}
 		return nil
+	}
+}
+
+// setCommonOptions fills the provider.CommonOptions embedded in the options
+// v of a provider: its endpoint, key and model, and the headers the provider
+// configures (see model.ProviderRequestHeaders).
+func setCommonOptions(v reflect.Value, baseURL, apiKey, modelName string, headers *model.ProviderRequestHeaders) {
+	field := v.FieldByName("CommonOptions")
+	if !field.IsValid() {
+		return
+	}
+	common, ok := field.Addr().Interface().(*provider.CommonOptions)
+	if !ok {
+		return
+	}
+	common.BaseURL = baseURL
+	common.APIKey = apiKey
+	common.Model = modelName
+	if headers != nil {
+		common.Headers = maps.Clone(headers.Headers)
+		common.SessionHeader = headers.SessionHeader
 	}
 }

@@ -50,7 +50,20 @@ func TestBusinessEndpoints(t *testing.T) {
 	assertStatus(t, rec, http.StatusOK)
 	require.Equal(t, etag, rec.Header().Get("ETag"))
 
+	// The headers a gateway requires are optional, and read back.
+	body = providerBody("OpenCode Go")
+	body["request_headers"] = map[string]any{"headers": map[string]any{"User-Agent": "xolo/1.0"}, "session_header": "x-opencode-session"}
+	rec = call(t, env.handler, http.MethodPut, providers+"/"+key, body)
+	assertStatus(t, rec, http.StatusOK)
+	rec = call(t, env.handler, http.MethodGet, providers+"/"+key, nil)
+	assertStatus(t, rec, http.StatusOK)
+	require.Equal(t, map[string]any{"headers": map[string]any{"User-Agent": "xolo/1.0"}, "session_header": "x-opencode-session"},
+		decodeBody(t, rec)["request_headers"])
+
 	for name, mutate := range map[string]func(map[string]any){
+		"reserved header": func(b map[string]any) {
+			b["request_headers"] = map[string]any{"headers": map[string]any{"Authorization": "Bearer x"}}
+		},
 		"missing field":      func(b map[string]any) { delete(b, "retry_config") },
 		"null name":          func(b map[string]any) { b["name"] = nil },
 		"unknown field":      func(b map[string]any) { b["secret"] = "x" },

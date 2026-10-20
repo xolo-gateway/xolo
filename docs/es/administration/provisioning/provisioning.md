@@ -585,7 +585,7 @@ obligatorio, `null` solo donde se indica.
 | `application` | `{"name","description","active","role_ids":[…]}`, más un `"team_id"` opcional (vacío para ningún equipo) |
 | `quota` | `{"scope","scope_id","currency","daily_budget","monthly_budget","yearly_budget"}`, presupuestos en microcéntimos o `null`, más un `"cascade"` opcional (`free` por defecto, `capped` o `split`) |
 | `alert` | `{"name","description","scope","owner_id","query","aggregation","window_seconds","comparator","threshold","for_seconds","enabled"}` |
-| `provider` | `{"name","type","base_url","active","currency","cloud_tier","billing_mode","subscription_plan","retry_config","rate_limit_config"}`, los tres últimos `null` u objetos, más `"api_key"` de solo escritura |
+| `provider` | `{"name","type","base_url","active","currency","cloud_tier","billing_mode","subscription_plan","retry_config","rate_limit_config"}`, los tres últimos `null` u objetos, más `"api_key"` de solo escritura y `"request_headers"` opcional: `null` o `{"headers":{"Nombre":"valor"},"session_header":"x-opencode-session"}`, las cabeceras que exige una pasarela (se rechazan las de autenticación y de transporte) |
 
 - **Claves.** Un recurso nuevo se crea con un UUID canónico elegido por el
   cliente. Un recurso creado desde la interfaz web conserva su identificador

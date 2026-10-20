@@ -33,7 +33,7 @@ func businessSnapshot(db *gorm.DB, key mutationKey, row map[string]any) error {
 		}
 		delete(row, "api_key")
 		row["api_key_fingerprint"] = fingerprint
-		for _, column := range []string{"subscription_plan", "retry_config", "rate_limit_config"} {
+		for _, column := range []string{"subscription_plan", "retry_config", "rate_limit_config", "request_headers"} {
 			raw, _ := row[column].(string)
 			if raw == "" || raw == "null" {
 				row[column] = nil
@@ -157,7 +157,7 @@ var businessRepresentationFields = map[string][]string{
 	model.FamilyQuota:        {"scope", "scope_id", "currency", "daily_budget", "monthly_budget", "yearly_budget", "cascade"},
 	model.FamilyTeamSettings: {"description", "share_quota_equally", "model_grants", "middleware_ids", "member_roles"},
 	model.FamilyAlert:        {"name", "description", "scope", "owner_id", "query", "aggregation", "window_seconds", "comparator", "threshold", "for_seconds", "enabled"},
-	model.FamilyProvider:     {"name", "type", "base_url", "active", "currency", "cloud_tier", "billing_mode", "subscription_plan", "retry_config", "rate_limit_config"},
+	model.FamilyProvider:     {"name", "type", "base_url", "active", "currency", "cloud_tier", "billing_mode", "subscription_plan", "retry_config", "rate_limit_config", "request_headers"},
 }
 
 func businessRepresentation(family string, row snapshotRow) map[string]any {

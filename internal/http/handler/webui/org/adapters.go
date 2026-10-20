@@ -23,6 +23,7 @@ type updatedProviderAdapter struct {
 	rateLimitConfig  *model.RateLimitConfig
 	billingMode      model.BillingMode
 	subscriptionPlan *model.SubscriptionPlan
+	requestHeaders   *model.ProviderRequestHeaders
 }
 
 func (p *updatedProviderAdapter) ID() model.ProviderID                      { return p.id }
@@ -40,6 +41,9 @@ func (p *updatedProviderAdapter) RetryConfig() *model.RetryConfig           { re
 func (p *updatedProviderAdapter) RateLimitConfig() *model.RateLimitConfig   { return p.rateLimitConfig }
 func (p *updatedProviderAdapter) BillingMode() model.BillingMode            { return p.billingMode }
 func (p *updatedProviderAdapter) SubscriptionPlan() *model.SubscriptionPlan { return p.subscriptionPlan }
+func (p *updatedProviderAdapter) RequestHeaders() *model.ProviderRequestHeaders {
+	return p.requestHeaders
+}
 
 var _ model.Provider = &updatedProviderAdapter{}
 

@@ -65,7 +65,7 @@ var mutationColumns = map[string]string{
 	// out: the evaluator rewrites it on every tick, outside the recorder.
 	"alert": "id, org_id, owner_id, scope, name, description, query, aggregation, window_seconds, comparator, threshold, for_seconds, enabled",
 	// api_key is replaced by its fingerprint before leaving the snapshot.
-	"provider": "id, org_id, name, type, base_url, api_key, active, currency, cloud_tier, billing_mode, subscription_plan, retry_config, rate_limit_config",
+	"provider": "id, org_id, name, type, base_url, api_key, active, currency, cloud_tier, billing_mode, subscription_plan, retry_config, rate_limit_config, request_headers",
 }
 
 // mutationRecorder keeps the state of every resource a transaction touches,

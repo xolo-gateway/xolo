@@ -36,8 +36,8 @@ var businessRoutes = []businessRoute{
 	{family: model.FamilyAlert, required: []string{"name", "description", "scope", "owner_id", "query", "aggregation", "window_seconds", "comparator", "threshold", "for_seconds", "enabled"}},
 	{family: model.FamilyProvider,
 		required: []string{"name", "type", "base_url", "active", "currency", "cloud_tier", "billing_mode", "subscription_plan", "retry_config", "rate_limit_config"},
-		nullable: []string{"subscription_plan", "retry_config", "rate_limit_config"},
-		optional: []string{"api_key"}},
+		nullable: []string{"subscription_plan", "retry_config", "rate_limit_config", "request_headers"},
+		optional: []string{"api_key", "request_headers"}},
 }
 
 // businessCollections names the collection of each business family.

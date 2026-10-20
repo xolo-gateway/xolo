@@ -23,9 +23,11 @@ import (
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/org/component"
 
 	_ "github.com/bornholm/genai/llm/provider/anthropic"
+	_ "github.com/bornholm/genai/llm/provider/gemini"
 	_ "github.com/bornholm/genai/llm/provider/mistral"
 	_ "github.com/bornholm/genai/llm/provider/openai"
 	_ "github.com/bornholm/genai/llm/provider/openrouter"
+	_ "github.com/bornholm/genai/llm/provider/responses"
 )
 
 func (h *Handler) getProvidersPage(w http.ResponseWriter, r *http.Request) {
@@ -303,6 +305,13 @@ func (h *Handler) updateProvider(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	requestHeaders, err := parseRequestHeadersFromForm(r)
+	if err != nil {
+		h.renderProviderFormError(w, r, ctx, user, orgSlug, org, formProvider, false,
+			"En-têtes de requête : "+err.Error()+".")
+		return
+	}
+
 	if providerType := r.FormValue("provider_type"); !model.IsKnownProviderType(providerType) {
 		h.renderProviderFormError(w, r, ctx, user, orgSlug, org, formProvider, false, unknownProviderTypeMessage(providerType))
 		return
@@ -325,6 +334,7 @@ func (h *Handler) updateProvider(w http.ResponseWriter, r *http.Request) {
 		rateLimitConfig:  rateLimitConfig,
 		billingMode:      billingMode,
 		subscriptionPlan: subscriptionPlan,
+		requestHeaders:   requestHeaders,
 	}
 
 	if err := h.providerStore.SaveProvider(ctx, updated); err != nil {
@@ -823,26 +833,58 @@ func parseModelAPIFromForm(r *http.Request) (apiType, baseURL string, err error)
 // Rows with an empty key are skipped. Values are typed by inference (see
 // coerceExtraBodyValue). Returns (nil, nil) when no usable row is present.
 func parseExtraBodyFromForm(r *http.Request) (map[string]any, error) {
-	count, _ := strconv.Atoi(r.FormValue("extra_body_count"))
-	if count <= 0 {
-		return nil, nil
+	rows, err := parseKeyValueRowsFromForm(r, "extra_body")
+	if err != nil || len(rows) == 0 {
+		return nil, err
 	}
-	extra := make(map[string]any, count)
-	for i := range count {
-		prefix := fmt.Sprintf("extra_body_k%d_", i)
+	extra := make(map[string]any, len(rows))
+	for key, value := range rows {
+		extra[key] = coerceExtraBodyValue(value)
+	}
+	return extra, nil
+}
+
+// parseKeyValueRowsFromForm reads the rows a KeyValueEditor named name emits
+// (name_count + name_k{i}_key / _value). Rows with an empty key are skipped,
+// a key given twice is an error.
+func parseKeyValueRowsFromForm(r *http.Request, name string) (map[string]string, error) {
+	count, _ := strconv.Atoi(r.FormValue(name + "_count"))
+	rows := make(map[string]string, max(count, 0))
+	for i := range max(count, 0) {
+		prefix := fmt.Sprintf("%s_k%d_", name, i)
 		key := strings.TrimSpace(r.FormValue(prefix + "key"))
 		if key == "" {
 			continue
 		}
-		if _, exists := extra[key]; exists {
+		if _, exists := rows[key]; exists {
 			return nil, errors.Errorf("clé « %s » en double", key)
 		}
-		extra[key] = coerceExtraBodyValue(r.FormValue(prefix + "value"))
+		rows[key] = r.FormValue(prefix + "value")
 	}
-	if len(extra) == 0 {
+	return rows, nil
+}
+
+// parseRequestHeadersFromForm reads the session header and the fixed headers
+// of a provider. It returns nil when neither is set.
+func parseRequestHeadersFromForm(r *http.Request) (*model.ProviderRequestHeaders, error) {
+	rows, err := parseKeyValueRowsFromForm(r, "request_header")
+	if err != nil {
+		return nil, err
+	}
+	headers := &model.ProviderRequestHeaders{SessionHeader: strings.TrimSpace(r.FormValue("session_header"))}
+	for name, value := range rows {
+		if headers.Headers == nil {
+			headers.Headers = map[string]string{}
+		}
+		headers.Headers[name] = strings.TrimSpace(value)
+	}
+	if headers.Empty() {
 		return nil, nil
 	}
-	return extra, nil
+	if !headers.Valid() {
+		return nil, errors.New("un nom ou une valeur d'en-tête est invalide, ou l'en-tête est réservé (authentification, transport)")
+	}
+	return headers, nil
 }
 
 // coerceExtraBodyValue infers a typed value from the textual form input:
