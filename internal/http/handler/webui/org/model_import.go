@@ -2,6 +2,7 @@ package org
 
 import (
 	"context"
+	"io"
 	"log/slog"
 	"net/http"
 	"reflect"
@@ -59,6 +60,7 @@ func discoverProviderModels(ctx context.Context, providerType, baseURL, apiKey s
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
+	defer closeClient(client)
 
 	discovery, ok := client.(llm.DiscoveryClient)
 	if !ok {
@@ -132,7 +134,9 @@ func (h *Handler) loadProviderCatalog(ctx context.Context, org model.Organizatio
 	if err != nil {
 		slog.WarnContext(ctx, "could not list provider models",
 			slog.String("provider", string(p.ID())), slogx.Error(err))
-		return nil, "Le fournisseur n'a pas pu lister ses modèles : " + err.Error(), nil
+		// The message helps fix a wrong URL or key. It never shows the key,
+		// should an upstream echo it.
+		return nil, "Le fournisseur n'a pas pu lister ses modèles : " + strings.ReplaceAll(err.Error(), apiKey, "[clé masquée]"), nil
 	}
 
 	existing, err := h.providerStore.ListLLMModels(ctx, org.ID())
@@ -290,6 +294,11 @@ func (h *Handler) importModel(ctx context.Context, org model.Organization, p mod
 	m.SetOutputWindow(c.OutputWindow)
 	if err := h.providerStore.CreateLLMModel(ctx, m); err != nil {
 		slog.ErrorContext(ctx, "could not create imported model", slog.String("model", id), slogx.Error(err))
+		// Another admin may have taken the name since the catalog was read:
+		// retrying would then fail the same way.
+		if existing, lookupErr := h.providerStore.GetLLMModelByProxyName(ctx, org.ID(), proxyName); lookupErr == nil && existing != nil {
+			return id + " : un modèle s'appelle déjà « " + proxyName + " » dans cette organisation.", nil
+		}
 		return id + " : l'enregistrement a échoué, réessayez.", nil
 	}
 	catalog.declare(id, proxyName)
@@ -315,5 +324,13 @@ func (h *Handler) modelImportVModel(ctx context.Context, org model.Organization,
 				{Label: "Importer", Href: ""},
 			},
 		},
+	}
+}
+
+// closeClient releases a client built for a single call: a plugin client
+// holds a process.
+func closeClient(client any) {
+	if c, ok := client.(io.Closer); ok {
+		_ = c.Close()
 	}
 }

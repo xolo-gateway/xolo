@@ -199,6 +199,34 @@ func TestImportModels_ReportsWithoutAskingTheProviderAgain(t *testing.T) {
 	}
 }
 
+// The limits a provider reports are what the import saves typing: they must
+// reach the created model.
+func TestImportModels_FillsTheReportedWindows(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v1/models" {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"data":[{"id":"z-ai/glm-5.3","name":"Z.ai: GLM 5.3","context_length":1000000,
+			"top_provider":{"context_length":1000000,"max_completion_tokens":131072,"is_moderated":false}}]}`))
+	}))
+	t.Cleanup(upstream.Close)
+	h, s, tenant := importFixture(t, upstream.URL+"/api/v1", "sk-or")
+	openrouter := model.NewProvider(s.org.ID(), "OpenRouter", "openrouter", upstream.URL+"/api/v1", s.provider.APIKey(), "USD")
+	s.provider = openrouter
+
+	rr := httptest.NewRecorder()
+	h.importModels(rr, importRequest(t, s, tenant, http.MethodPost, url.Values{"models": {"z-ai/glm-5.3"}}))
+
+	if rr.Code != http.StatusSeeOther || len(s.created) != 1 {
+		t.Fatalf("status = %d, created %d: %s", rr.Code, len(s.created), rr.Body.String())
+	}
+	if m := s.created[0]; m.ContextWindow() != 1000000 || m.OutputWindow() != 131072 || m.Description() != "Z.ai: GLM 5.3" {
+		t.Errorf("model = ctx %d, out %d, description %q", m.ContextWindow(), m.OutputWindow(), m.Description())
+	}
+}
+
 func TestImportModels_ReportsAFailedCreation(t *testing.T) {
 	upstream := openAIModelList(t, goModels)
 	h, s, tenant := importFixture(t, upstream.URL+"/v1", "sk-go")

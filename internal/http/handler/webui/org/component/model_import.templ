@@ -56,7 +56,7 @@ templ ModelImportPage(vmodel ModelImportVModel) {
 							}
 							@input.Input(input.Props{ID: "proxy_prefix", Name: "proxy_prefix", Value: vmodel.Prefix, Class: "font-mono max-w-sm"})
 							@form.Description() {
-								Les modèles sont créés avec un coût à zéro, le type d'API et l'URL du fournisseur. Ajustez-les ensuite dans leur formulaire, par exemple pour un modèle servi par une autre API.
+								Les modèles sont créés actifs, avec un coût à zéro, le type d'API et l'URL du fournisseur. Ils sont appelables aussitôt, sans être valorisés ni limités par les quotas tant que leurs coûts ne sont pas saisis. Ajustez-les ensuite dans leur formulaire, par exemple pour un modèle servi par une autre API.
 							}
 						}
 					}

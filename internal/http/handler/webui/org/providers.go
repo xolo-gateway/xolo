@@ -419,7 +419,7 @@ func testProviderConnection(ctx context.Context, providerType, baseURL, apiKey s
 	if err != nil {
 		return false, errors.WithStack(err)
 	}
-	_ = client
+	closeClient(client)
 	return true, nil
 }
 

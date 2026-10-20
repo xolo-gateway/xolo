@@ -333,7 +333,7 @@ func ModelImportPage(vmodel ModelImportVModel) templ.Component {
 								}()
 							}
 							ctx = templ.InitializeContext(ctx)
-							templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 17, "Les modèles sont créés avec un coût à zéro, le type d'API et l'URL du fournisseur. Ajustez-les ensuite dans leur formulaire, par exemple pour un modèle servi par une autre API.")
+							templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 17, "Les modèles sont créés actifs, avec un coût à zéro, le type d'API et l'URL du fournisseur. Ils sont appelables aussitôt, sans être valorisés ni limités par les quotas tant que leurs coûts ne sont pas saisis. Ajustez-les ensuite dans leur formulaire, par exemple pour un modèle servi par une autre API.")
 							if templ_7745c5c3_Err != nil {
 								return templ_7745c5c3_Err
 							}
