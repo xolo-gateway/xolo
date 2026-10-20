@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"maps"
 	"reflect"
 	"sync"
 	"time"
@@ -15,6 +14,7 @@ import (
 	llmretry "github.com/bornholm/genai/llm/retry"
 	"github.com/bornholm/genai/llm/tokenlimit"
 	genaiProxy "github.com/bornholm/genai/proxy"
+	xologenai "github.com/xolo-gateway/xolo/internal/adapter/genai"
 	"github.com/xolo-gateway/xolo/internal/core/model"
 	"github.com/xolo-gateway/xolo/internal/core/port"
 	"github.com/xolo-gateway/xolo/internal/core/rbac"
@@ -398,8 +398,7 @@ func withDynamicEmbeddings(name provider.Name, baseURL, apiKey, model string, he
 		if opts == nil {
 			return errors.Errorf("unknown embeddings provider %q", name)
 		}
-		v := reflect.ValueOf(opts).Elem()
-		setCommonOptions(v, baseURL, apiKey, model, headers)
+		xologenai.SetCommonOptions(opts, baseURL, apiKey, model, headers)
 		o.Embeddings = &provider.ResolvedClientOptions{
 			Provider: name,
 			Specific: opts,
@@ -450,8 +449,8 @@ func withDynamicChatCompletion(name provider.Name, baseURL, apiKey, model string
 		if opts == nil {
 			return errors.Errorf("unknown provider %q", name)
 		}
+		xologenai.SetCommonOptions(opts, baseURL, apiKey, model, headers)
 		v := reflect.ValueOf(opts).Elem()
-		setCommonOptions(v, baseURL, apiKey, model, headers)
 		if maxTokensProviders[name] && maxTokens > 0 {
 			if field := v.FieldByName("MaxTokens"); field.IsValid() && field.CanSet() && field.Kind() == reflect.Int64 {
 				field.SetInt(maxTokens)
@@ -462,26 +461,5 @@ func withDynamicChatCompletion(name provider.Name, baseURL, apiKey, model string
 			Specific: opts,
 		}
 		return nil
-	}
-}
-
-// setCommonOptions fills the provider.CommonOptions embedded in the options
-// v of a provider: its endpoint, key and model, and the headers the provider
-// configures (see model.ProviderRequestHeaders).
-func setCommonOptions(v reflect.Value, baseURL, apiKey, modelName string, headers *model.ProviderRequestHeaders) {
-	field := v.FieldByName("CommonOptions")
-	if !field.IsValid() {
-		return
-	}
-	common, ok := field.Addr().Interface().(*provider.CommonOptions)
-	if !ok {
-		return
-	}
-	common.BaseURL = baseURL
-	common.APIKey = apiKey
-	common.Model = modelName
-	if headers != nil {
-		common.Headers = maps.Clone(headers.Headers)
-		common.SessionHeader = headers.SessionHeader
 	}
 }

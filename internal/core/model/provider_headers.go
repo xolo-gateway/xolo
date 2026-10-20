@@ -26,11 +26,12 @@ const (
 	maxProviderHeaderValue = 1000
 )
 
-// reservedProviderHeaders cannot be configured: they carry the provider's
-// credentials or frame the request.
+// reservedProviderHeaders cannot be configured: they carry credentials,
+// frame the request, or claim where it comes from.
 var reservedProviderHeaders = []string{
-	"Authorization", "X-Api-Key", "X-Goog-Api-Key", "Proxy-Authorization",
+	"Authorization", "X-Api-Key", "X-Goog-Api-Key", "Proxy-Authorization", "Cookie",
 	"Host", "Content-Length", "Content-Type", "Transfer-Encoding", "Connection",
+	"Forwarded", "X-Forwarded-For", "X-Forwarded-Host", "X-Forwarded-Proto", "X-Real-Ip",
 }
 
 // Empty reports whether h configures nothing.
@@ -39,7 +40,7 @@ func (h *ProviderRequestHeaders) Empty() bool {
 }
 
 // Valid reports whether every name is a header name that may be
-// configured and every value a valid header value, within bounds.
+// configured and every value a valid, non-empty header value, within bounds.
 func (h *ProviderRequestHeaders) Valid() bool {
 	if h == nil {
 		return true
@@ -48,7 +49,7 @@ func (h *ProviderRequestHeaders) Valid() bool {
 		return false
 	}
 	for name, value := range h.Headers {
-		if !validProviderHeaderName(name) || len(value) > maxProviderHeaderValue || !httpguts.ValidHeaderFieldValue(value) {
+		if !validProviderHeaderName(name) || value == "" || len(value) > maxProviderHeaderValue || !httpguts.ValidHeaderFieldValue(value) {
 			return false
 		}
 	}

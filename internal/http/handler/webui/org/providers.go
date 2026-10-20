@@ -153,6 +153,12 @@ func (h *Handler) createProvider(w http.ResponseWriter, r *http.Request) {
 		h.renderProviderFormError(w, r, ctx, user, orgSlug, org, p, true, "La clé API est obligatoire.")
 		return
 	}
+	requestHeaders, err := parseRequestHeadersFromForm(r)
+	if err != nil {
+		h.renderProviderFormError(w, r, ctx, user, orgSlug, org, p, true, "En-têtes de requête : "+err.Error()+".")
+		return
+	}
+	p.SetRequestHeaders(requestHeaders)
 	// The creation form does not render the plan editor (see provider_form.templ,
 	// which shows it under !IsNew only), so no plan field is ever posted here:
 	// a subscription provider is created without a plan and gets one on edit.
@@ -392,7 +398,7 @@ func (h *Handler) testProvider(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, err = testProviderConnection(ctx, p.Type(), p.BaseURL(), decryptedKey)
+	_, err = testProviderConnection(ctx, p.Type(), p.BaseURL(), decryptedKey, p.RequestHeaders())
 	if err != nil {
 		w.WriteHeader(http.StatusBadGateway)
 		w.Write([]byte(`<span class="text-destructive">Connection failed: ` + err.Error() + `</span>`))
@@ -412,10 +418,10 @@ func unknownProviderTypeMessage(providerType string) string {
 	return "Type de fournisseur inconnu : " + providerType + ". Choisissez un type de la liste."
 }
 
-func testProviderConnection(ctx context.Context, providerType, baseURL, apiKey string) (bool, error) {
+func testProviderConnection(ctx context.Context, providerType, baseURL, apiKey string, headers *model.ProviderRequestHeaders) (bool, error) {
 	name := provider.Name(providerType)
 	// dummy model — just validates credentials
-	opts := newProviderOptions(provider.NewChatCompletionProviderOptions, name, baseURL, apiKey, "gpt-3.5-turbo")
+	opts := newProviderOptions(provider.NewChatCompletionProviderOptions, name, baseURL, apiKey, "gpt-3.5-turbo", headers)
 	if opts == nil {
 		return false, errors.Errorf("unknown provider %q", providerType)
 	}

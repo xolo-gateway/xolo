@@ -5,7 +5,6 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
-	"reflect"
 	"slices"
 	"sort"
 	"strings"
@@ -16,6 +15,7 @@ import (
 	"github.com/bornholm/genai/llm/provider"
 	"github.com/bornholm/go-x/slogx"
 	"github.com/pkg/errors"
+	xologenai "github.com/xolo-gateway/xolo/internal/adapter/genai"
 	"github.com/xolo-gateway/xolo/internal/core/model"
 	"github.com/xolo-gateway/xolo/internal/crypto"
 	httpCtx "github.com/xolo-gateway/xolo/internal/http/context"
@@ -29,27 +29,22 @@ const modelDiscoveryTimeout = 30 * time.Second
 
 // newProviderOptions returns the options of the given provider type for one
 // capability, filled with the connection settings shared by every provider
-// (CommonOptions). It returns nil when the type has no client for that
-// capability.
-func newProviderOptions(newOptions func(provider.Name) any, name provider.Name, baseURL, apiKey, modelName string) any {
+// (CommonOptions), headers included. It returns nil when the type has no
+// client for that capability.
+func newProviderOptions(newOptions func(provider.Name) any, name provider.Name, baseURL, apiKey, modelName string, headers *model.ProviderRequestHeaders) any {
 	opts := newOptions(name)
 	if opts == nil {
 		return nil
 	}
-	v := reflect.ValueOf(opts).Elem()
-	if common := v.FieldByName("CommonOptions"); common.IsValid() {
-		common.FieldByName("BaseURL").SetString(baseURL)
-		common.FieldByName("APIKey").SetString(apiKey)
-		common.FieldByName("Model").SetString(modelName)
-	}
+	xologenai.SetCommonOptions(opts, baseURL, apiKey, modelName, headers)
 	return opts
 }
 
 // discoverProviderModels lists the models the provider serves, through its
 // own API type and base URL, sorted by ID.
-func discoverProviderModels(ctx context.Context, providerType, baseURL, apiKey string) ([]llm.ModelInfo, error) {
+func discoverProviderModels(ctx context.Context, providerType, baseURL, apiKey string, headers *model.ProviderRequestHeaders) ([]llm.ModelInfo, error) {
 	name := provider.Name(providerType)
-	opts := newProviderOptions(provider.NewDiscoveryProviderOptions, name, baseURL, apiKey, "")
+	opts := newProviderOptions(provider.NewDiscoveryProviderOptions, name, baseURL, apiKey, "", headers)
 	if opts == nil {
 		return nil, errors.Errorf("le type de fournisseur %q ne sait pas lister ses modèles", providerType)
 	}
@@ -137,7 +132,7 @@ func (h *Handler) loadProviderCatalog(ctx context.Context, org model.Organizatio
 		return nil, "", errors.Wrap(err, "could not decrypt provider API key")
 	}
 
-	discovered, err := discoverProviderModels(ctx, p.Type(), p.BaseURL(), apiKey)
+	discovered, err := discoverProviderModels(ctx, p.Type(), p.BaseURL(), apiKey, p.RequestHeaders())
 	if err != nil {
 		slog.WarnContext(ctx, "could not list provider models",
 			slog.String("provider", string(p.ID())), slogx.Error(err))

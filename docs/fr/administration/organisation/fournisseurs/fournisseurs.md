@@ -218,10 +218,10 @@ Protection contre les surextensions :
 
 ## En-têtes de requête
 
-Certaines passerelles exigent des en-têtes que les SDK n'envoient pas. La section **En-têtes de requête** du fournisseur, sur sa page de modification, les configure :
+Certaines passerelles exigent des en-têtes que les SDK n'envoient pas. La section **En-têtes de requête** du formulaire du fournisseur, à la création comme à la modification, les configure :
 
 - **En-tête de session** : nom de l'en-tête qui porte l'identifiant de la conversation. Xolo y place l'identifiant envoyé par le client : `X-Session-Id`, ou l'en-tête de Claude Code, de Codex ou d'OpenCode. À défaut, il calcule une empreinte de l'appelant (utilisateur, organisation, jeton) et du premier message de la conversation : elle reste la même d'un tour à l'autre et change d'une conversation à l'autre. Vide, aucun en-tête de session n'est envoyé.
-- **En-têtes fixes** : ajoutés à chaque requête, ils remplacent ceux du client HTTP, `User-Agent` compris. Ce ne sont pas des secrets : seule la clé API est chiffrée. Les en-têtes d'authentification (`Authorization`, `X-Api-Key`, `X-Goog-Api-Key`) et de transport (`Host`, `Content-Type`, `Content-Length`…) sont refusés.
+- **En-têtes fixes** : ajoutés à chaque requête, ils remplacent ceux du client HTTP, `User-Agent` compris. Ce ne sont pas des secrets : seule la clé API est chiffrée. Une valeur vide est refusée, comme les en-têtes d'authentification (`Authorization`, `X-Api-Key`, `X-Goog-Api-Key`, `Cookie`), de transport (`Host`, `Content-Type`, `Content-Length`…) et de transfert (`Forwarded`, `X-Forwarded-For`…).
 
 Ces en-têtes valent pour tous les modèles du fournisseur, quel que soit leur type d'API.
 

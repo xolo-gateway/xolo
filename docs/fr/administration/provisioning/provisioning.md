@@ -601,7 +601,7 @@ Les représentations sont en snake_case et complètes : chaque champ est requis,
 | `application` | `{"name","description","active","role_ids":[…]}`, plus `"team_id"` facultatif (vide pour aucune équipe) |
 | `quota` | `{"scope","scope_id","currency","daily_budget","monthly_budget","yearly_budget"}`, budgets en microcents ou `null`, plus `"cascade"` facultatif (`free` par défaut, `capped` ou `split`) |
 | `alert` | `{"name","description","scope","owner_id","query","aggregation","window_seconds","comparator","threshold","for_seconds","enabled"}` |
-| `provider` | `{"name","type","base_url","active","currency","cloud_tier","billing_mode","subscription_plan","retry_config","rate_limit_config"}`, les trois derniers `null` ou objets, plus `"api_key"` en écriture seule et `"request_headers"` facultatif : `null` ou `{"headers":{"Nom":"valeur"},"session_header":"x-opencode-session"}`, les en-têtes qu'exige une passerelle (les en-têtes d'authentification et de transport sont refusés) |
+| `provider` | `{"name","type","base_url","active","currency","cloud_tier","billing_mode","subscription_plan","retry_config","rate_limit_config"}`, les trois derniers `null` ou objets, plus `"api_key"` en écriture seule et `"request_headers"` facultatif : `null` ou `{"headers":{"Nom":"valeur"},"session_header":"x-opencode-session"}`, les en-têtes qu'exige une passerelle (les valeurs vides et les en-têtes d'authentification, de cookies, de transport et de transfert sont refusés) |
 
 - **Clés.** Une nouvelle ressource est créée sous un UUID canonique choisi par
   le client. Une ressource créée depuis l'interface web garde son identifiant

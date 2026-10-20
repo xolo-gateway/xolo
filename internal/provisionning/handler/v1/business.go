@@ -34,6 +34,8 @@ var businessRoutes = []businessRoute{
 		nullable: []string{"daily_budget", "monthly_budget", "yearly_budget"},
 		optional: []string{"cascade"}},
 	{family: model.FamilyAlert, required: []string{"name", "description", "scope", "owner_id", "query", "aggregation", "window_seconds", "comparator", "threshold", "for_seconds", "enabled"}},
+	// request_headers is both optional, so that a client written before it
+	// keeps working, and nullable: absent and null both mean none.
 	{family: model.FamilyProvider,
 		required: []string{"name", "type", "base_url", "active", "currency", "cloud_tier", "billing_mode", "subscription_plan", "retry_config", "rate_limit_config"},
 		nullable: []string{"subscription_plan", "retry_config", "rate_limit_config", "request_headers"},

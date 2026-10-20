@@ -51,6 +51,9 @@ func (a *PipelineHookAdapter) Complete(ctx context.Context, req plugin.ModelComp
 	if req.JSONResponse {
 		opts = append(opts, llm.WithResponseFormat(llm.ResponseFormatJSON))
 	}
+	// The call runs outside the proxy, which gives a request its session: a
+	// gateway such as OpenCode Go refuses a request without one.
+	opts = append(opts, llm.WithSessionID(conversationSessionID(string(req.UserID), string(req.OrgID), "", opts)))
 
 	resp, err := client.ChatCompletion(ctx, opts...)
 	if err != nil {

@@ -35,15 +35,19 @@ func (h *SessionIDHook) PreRequest(ctx context.Context, req *genaiProxy.ProxyReq
 	if userID == "" || orgID == "" {
 		return nil, nil
 	}
-	tokenID := AuthTokenIDFromMeta(req.Metadata)
+	req.SessionID = conversationSessionID(userID, orgID, AuthTokenIDFromMeta(req.Metadata), req.ChatOptions)
+	return nil, nil
+}
 
+// conversationSessionID derives an opaque session ID from the caller and the
+// first user message of the conversation, which the following turns repeat.
+func conversationSessionID(userID, orgID, tokenID string, funcs []llm.ChatCompletionOptionFunc) string {
 	hash := sha256.New()
-	for _, part := range []string{userID, orgID, tokenID, firstUserMessage(req.ChatOptions)} {
+	for _, part := range []string{userID, orgID, tokenID, firstUserMessage(funcs)} {
 		hash.Write([]byte(part))
 		hash.Write([]byte{0})
 	}
-	req.SessionID = hex.EncodeToString(hash.Sum(nil))[:24]
-	return nil, nil
+	return hex.EncodeToString(hash.Sum(nil))[:24]
 }
 
 // firstUserMessage returns the text of the first user message of a chat

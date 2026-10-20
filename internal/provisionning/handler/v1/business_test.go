@@ -59,6 +59,12 @@ func TestBusinessEndpoints(t *testing.T) {
 	assertStatus(t, rec, http.StatusOK)
 	require.Equal(t, map[string]any{"headers": map[string]any{"User-Agent": "xolo/1.0"}, "session_header": "x-opencode-session"},
 		decodeBody(t, rec)["request_headers"])
+	body["request_headers"] = nil
+	rec = call(t, env.handler, http.MethodPut, providers+"/"+key, body)
+	assertStatus(t, rec, http.StatusOK)
+	rec = call(t, env.handler, http.MethodGet, providers+"/"+key, nil)
+	assertStatus(t, rec, http.StatusOK)
+	require.Nil(t, decodeBody(t, rec)["request_headers"], "an explicit null clears the headers")
 
 	for name, mutate := range map[string]func(map[string]any){
 		"reserved header": func(b map[string]any) {

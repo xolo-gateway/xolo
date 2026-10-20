@@ -216,8 +216,10 @@ templ ProviderForm(vmodel ProviderFormVModel) {
 				}
 				if !vmodel.IsNew && vmodel.Provider != nil {
 					@providerResilienceSection(vmodel, readonly)
-					@providerHeadersSection(vmodel, readonly)
 				}
+				// Shown on creation too: a gateway that requires a session
+				// header (OpenCode Go) refuses every request until it is set.
+				@providerHeadersSection(vmodel, readonly)
 				if writable {
 					<div class="mt-3.5 flex flex-wrap items-center gap-2">
 						@button.Button(button.Props{Type: button.TypeSubmit}) {
@@ -428,7 +430,7 @@ templ providerHeadersSection(vmodel ProviderFormVModel, readonly bool) {
 					}
 					@ProviderHeadersEditor(providerHeaderRows(vmodel.Provider), readonly)
 					@form.Description() {
-						Ajoutés à chaque requête, ils remplacent ceux du client HTTP (<code>User-Agent</code> compris). Pas de secret ici : seule la clé API est chiffrée. Les en-têtes d'authentification et de transport sont refusés.
+						Ajoutés à chaque requête, ils remplacent ceux du client HTTP (<code>User-Agent</code> compris). Pas de secret ici : seule la clé API est chiffrée. Les en-têtes d'authentification, de cookies, de transport et de transfert (<code>X-Forwarded-For</code>…) sont refusés.
 					}
 				</div>
 			}

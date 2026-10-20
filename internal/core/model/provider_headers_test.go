@@ -24,6 +24,9 @@ func TestProviderRequestHeaders_Valid(t *testing.T) {
 		"value too long":   {&ProviderRequestHeaders{Headers: map[string]string{"X-A": strings.Repeat("v", maxProviderHeaderValue+1)}}, false},
 		"too many headers": {&ProviderRequestHeaders{Headers: many}, false},
 		"invalid session":  {&ProviderRequestHeaders{SessionHeader: "x session"}, false},
+		"empty value":      {&ProviderRequestHeaders{Headers: map[string]string{"User-Agent": ""}}, false},
+		"cookie":           {&ProviderRequestHeaders{Headers: map[string]string{"cookie": "s=1"}}, false},
+		"forwarding":       {&ProviderRequestHeaders{Headers: map[string]string{"X-Forwarded-For": "10.0.0.1"}}, false},
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
