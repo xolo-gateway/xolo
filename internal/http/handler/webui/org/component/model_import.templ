@@ -29,23 +29,38 @@ templ ModelImportPage(vmodel ModelImportVModel) {
 		<div class="space-y-4">
 			if vmodel.Error != "" {
 				@alert.Alert(alert.Props{Variant: alert.VariantDestructive}) {
-					{ vmodel.Error }
+					@alert.Description() {
+						{ vmodel.Error }
+					}
 				}
 			}
 			if len(vmodel.Skipped) > 0 {
 				@alert.Alert() {
-					<p class="font-medium">
-						{ Pluralize(vmodel.Imported, "modèle importé", "modèles importés") }, { Pluralize(len(vmodel.Skipped), "modèle laissé de côté", "modèles laissés de côté") } :
-					</p>
-					<ul class="mt-1 list-disc pl-5 text-sm">
-						for _, reason := range vmodel.Skipped {
-							<li>{ reason }</li>
-						}
-					</ul>
+					@alert.Description() {
+						<p class="font-medium">
+							{ Pluralize(vmodel.Imported, "modèle importé", "modèles importés") }, { Pluralize(len(vmodel.Skipped), "modèle laissé de côté", "modèles laissés de côté") } :
+						</p>
+						<ul class="mt-1 list-disc pl-5 text-sm">
+							for _, reason := range vmodel.Skipped {
+								<li>{ reason }</li>
+							}
+						</ul>
+					}
 				}
 			}
 			if len(vmodel.Candidates) > 0 {
-				<form method="POST" action={ templ.SafeURL(modelsURL + "/import") } class="space-y-4">
+				{{ importURL := common.BaseURLString(ctx, common.WithPath("/orgs/", vmodel.Org.Slug(), "/admin/providers/", string(vmodel.Provider.ID()), "/models/import")) }}
+				<form method="POST" action={ templ.SafeURL(importURL) } class="space-y-4">
+					<!-- Une ligne par modèle du tableau, vide pour un modèle déjà
+					déclaré : l'aperçu des noms proxy retrouve chaque ligne par
+					son rang. -->
+					for _, c := range vmodel.Candidates {
+						if c.DeclaredAs == "" {
+							<input type="hidden" name="candidate" value={ c.ID }/>
+						} else {
+							<input type="hidden" name="candidate" value=""/>
+						}
+					}
 					@common.Section() {
 						@common.SectionBody(common.SectionBodyProps{Class: "space-y-2"}) {
 							@form.Label(form.LabelProps{For: "proxy_prefix"}) {
@@ -54,7 +69,19 @@ templ ModelImportPage(vmodel ModelImportVModel) {
 							@form.Description() {
 								Facultatif. Chaque modèle importé est appelé <code>{ vmodel.Org.Slug() }/&lt;préfixe&gt;&lt;identifiant&gt;</code>. Un préfixe comme <code>opencode-</code> évite les conflits avec les modèles d'autres fournisseurs.
 							}
-							@input.Input(input.Props{ID: "proxy_prefix", Name: "proxy_prefix", Value: vmodel.Prefix, Class: "font-mono max-w-sm"})
+							@input.Input(input.Props{
+								ID:    "proxy_prefix",
+								Name:  "proxy_prefix",
+								Value: vmodel.Prefix,
+								Class: "font-mono max-w-sm",
+								Attributes: templ.Attributes{
+									"hx-post":      importURL + "/preview",
+									"hx-trigger":   "input changed delay:250ms",
+									"hx-include":   "closest form",
+									"hx-swap":      "none",
+									"autocomplete": "off",
+								},
+							})
 							@form.Description() {
 								Les modèles sont créés désactivés, avec un coût à zéro, le type d'API et l'URL du fournisseur. Saisissez leurs coûts dans leur formulaire avant de les activer : un modèle sans coût n'est ni valorisé ni limité par les quotas. Réglez-y aussi le type d'API d'un modèle servi par une autre API.
 							}
@@ -78,6 +105,9 @@ templ ModelImportPage(vmodel ModelImportVModel) {
 									@table.Head() {
 										Nom
 									}
+									@table.Head() {
+										Nom proxy
+									}
 									@table.Head(table.HeadProps{Class: "text-right"}) {
 										Contexte
 									}
@@ -94,7 +124,7 @@ templ ModelImportPage(vmodel ModelImportVModel) {
 										@table.Row() {
 											@table.Cell() {
 												if c.DeclaredAs == "" {
-													@checkbox.Checkbox(checkbox.Props{ID: id, Name: "models", Value: c.ID, Group: "import-models"})
+													@checkbox.Checkbox(checkbox.Props{ID: id, Name: "models", Value: c.ID, Group: "import-models", Checked: c.Checked})
 												} else {
 													@checkbox.Checkbox(checkbox.Props{ID: id, Disabled: true})
 												}
@@ -106,6 +136,11 @@ templ ModelImportPage(vmodel ModelImportVModel) {
 											}
 											@table.Cell(table.CellProps{Class: "text-muted-foreground"}) {
 												{ c.DisplayName }
+											}
+											@table.Cell() {
+												if c.DeclaredAs == "" {
+													@modelImportProxyName(i, c, false)
+												}
 											}
 											@table.Cell(table.CellProps{Class: "text-right tnum text-muted-foreground"}) {
 												{ formatTokenWindow(c.ContextWindow) }
@@ -138,4 +173,25 @@ templ ModelImportPage(vmodel ModelImportVModel) {
 			}
 		</div>
 	}
+}
+
+// ModelImportProxyNames is the answer to a preview of the proxy names: one
+// out-of-band swap per row whose model is not yet declared.
+templ ModelImportProxyNames(candidates []ModelImportCandidate) {
+	for i, c := range candidates {
+		if c.DeclaredAs == "" {
+			@modelImportProxyName(i, c, true)
+		}
+	}
+}
+
+// modelImportProxyName is the proxy name a row would be imported under, and
+// why it cannot be, if so.
+templ modelImportProxyName(i int, c ModelImportCandidate, oob bool) {
+	<div id={ "import-name-" + strconv.Itoa(i) } class="space-y-0.5" if oob { hx-swap-oob="true" }>
+		<span class="font-mono text-xs">{ c.ProxyName }</span>
+		if c.Conflict != "" {
+			<p class="max-w-xs text-xs text-destructive">{ c.Conflict }</p>
+		}
+	</div>
 }

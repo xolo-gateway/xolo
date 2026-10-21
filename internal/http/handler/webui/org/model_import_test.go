@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -133,6 +134,9 @@ func TestImportModels_CreatesTheSelectionWithThePrefix(t *testing.T) {
 		if m.Enabled() {
 			t.Errorf("%s must start disabled until its costs are filled", m.RealModel())
 		}
+		if m.ContextWindow() != 0 || m.OutputWindow() != 0 {
+			t.Errorf("%s: windows the provider does not report must stay empty, got ctx %d, out %d", m.RealModel(), m.ContextWindow(), m.OutputWindow())
+		}
 	}
 }
 
@@ -243,6 +247,72 @@ func TestImportModels_ReportsAFailedCreation(t *testing.T) {
 	}
 }
 
+// A name taken by a model of another real model must show on the page, not
+// only once the import refuses it.
+func TestImportModelsPage_ShowsTheProxyNameAndItsConflict(t *testing.T) {
+	upstream := openAIModelList(t, goModels)
+	h, s, tenant := importFixture(t, upstream.URL+"/v1", "sk-go", [2]string{"glm-5.3", "other-model"})
+
+	rr := httptest.NewRecorder()
+	h.getImportModelsPage(rr, importRequest(t, s, tenant, http.MethodGet, nil))
+
+	body := rr.Body.String()
+	if rr.Code != http.StatusOK || !strings.Contains(body, `<span class="font-mono text-xs">qwen3.8-max</span>`) {
+		t.Fatalf("status = %d, the proxy name of qwen3.8-max must show: %s", rr.Code, body)
+	}
+	if !strings.Contains(body, "Un modèle s&#39;appelle déjà « glm-5.3 »") {
+		t.Errorf("the conflict on glm-5.3 must show before the import")
+	}
+}
+
+func TestPreviewImportNames_SwapsTheNamesOfTheRows(t *testing.T) {
+	h, s, tenant := importFixture(t, "http://unused.test/v1", "sk-go", [2]string{"go-glm-5.3", "other-model"})
+
+	rr := httptest.NewRecorder()
+	h.previewImportNames(rr, importRequest(t, s, tenant, http.MethodPost, url.Values{
+		"proxy_prefix": {"go-"},
+		"candidate":    {"", "glm-5.3", "qwen3.8-max"},
+	}))
+
+	body := rr.Body.String()
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d: %s", rr.Code, body)
+	}
+	for _, want := range []string{`id="import-name-1"`, `id="import-name-2"`, `hx-swap-oob="true"`, ">go-qwen3.8-max<", "Un modèle s&#39;appelle déjà « go-glm-5.3 »"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("missing %q in the preview: %s", want, body)
+		}
+	}
+	if strings.Contains(body, `id="import-name-0"`) {
+		t.Errorf("a declared row has no name to preview")
+	}
+}
+
+// The form's own mistake is reported even when the provider fails too.
+func TestImportModels_ValidatesTheFormFirst(t *testing.T) {
+	upstream := openAIModelList(t, goModels)
+	h, s, tenant := importFixture(t, upstream.URL+"/v1", "sk-wrong")
+
+	rr := httptest.NewRecorder()
+	h.importModels(rr, importRequest(t, s, tenant, http.MethodPost, url.Values{"proxy_prefix": {"team/"}, "models": {"glm-5.3"}}))
+
+	if rr.Code != http.StatusUnprocessableEntity || !strings.Contains(rr.Body.String(), "Le préfixe ne peut pas contenir") {
+		t.Fatalf("status = %d, the prefix must be refused: %s", rr.Code, rr.Body.String())
+	}
+}
+
+func TestImportModels_IgnoresARepeatedModel(t *testing.T) {
+	upstream := openAIModelList(t, goModels)
+	h, s, tenant := importFixture(t, upstream.URL+"/v1", "sk-go")
+
+	rr := httptest.NewRecorder()
+	h.importModels(rr, importRequest(t, s, tenant, http.MethodPost, url.Values{"models": {"glm-5.3", "glm-5.3"}}))
+
+	if rr.Code != http.StatusSeeOther || len(s.created) != 1 {
+		t.Fatalf("status = %d, created %d: %s", rr.Code, len(s.created), rr.Body.String())
+	}
+}
+
 func TestImportModels_RefusesAPrefixWithASlash(t *testing.T) {
 	upstream := openAIModelList(t, goModels)
 	h, s, tenant := importFixture(t, upstream.URL+"/v1", "sk-go")
@@ -252,5 +322,19 @@ func TestImportModels_RefusesAPrefixWithASlash(t *testing.T) {
 
 	if rr.Code != http.StatusUnprocessableEntity || len(s.created) != 0 {
 		t.Fatalf("status = %d, created %d", rr.Code, len(s.created))
+	}
+	// The selection survives the refusal.
+	checked := regexp.MustCompile(`\schecked(\s|/|$)`)
+	for _, tag := range strings.Split(rr.Body.String(), "<input")[1:] {
+		tag, _, _ = strings.Cut(tag, ">")
+		if !strings.Contains(tag, `name="models"`) {
+			continue
+		}
+		if strings.Contains(tag, `value="glm-5.3"`) && !checked.MatchString(tag) {
+			t.Errorf("glm-5.3 must stay checked: %s", tag)
+		}
+		if strings.Contains(tag, `value="qwen3.8-max"`) && checked.MatchString(tag) {
+			t.Errorf("qwen3.8-max was not selected: %s", tag)
+		}
 	}
 }

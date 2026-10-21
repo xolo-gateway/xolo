@@ -185,6 +185,7 @@ func NewHandler(
 	h.mux.Handle("POST /{orgSlug}/admin/providers/{providerID}/models", assertPerm(rbac.PermProvidersWrite)(http.HandlerFunc(h.createModel)))
 	h.mux.Handle("GET /{orgSlug}/admin/providers/{providerID}/models/import", assertPerm(rbac.PermProvidersWrite)(http.HandlerFunc(h.getImportModelsPage)))
 	h.mux.Handle("POST /{orgSlug}/admin/providers/{providerID}/models/import", assertPerm(rbac.PermProvidersWrite)(http.HandlerFunc(h.importModels)))
+	h.mux.Handle("POST /{orgSlug}/admin/providers/{providerID}/models/import/preview", assertPerm(rbac.PermProvidersWrite)(http.HandlerFunc(h.previewImportNames)))
 	h.mux.Handle("GET /{orgSlug}/admin/providers/{providerID}/models/{modelID}/edit", assertPerm(rbac.PermProvidersRead)(http.HandlerFunc(h.getEditModelPage)))
 	h.mux.Handle("POST /{orgSlug}/admin/providers/{providerID}/models/{modelID}/edit", assertPerm(rbac.PermProvidersWrite)(http.HandlerFunc(h.updateModel)))
 	h.mux.Handle("DELETE /{orgSlug}/admin/providers/{providerID}/models/{modelID}", assertPerm(rbac.PermProvidersWrite)(http.HandlerFunc(h.deleteModel)))

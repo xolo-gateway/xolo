@@ -78,6 +78,12 @@ type ModelImportCandidate struct {
 	// DeclaredAs is the proxy name of the provider's model already serving
 	// this ID, or empty.
 	DeclaredAs string
+	// ProxyName is the name the import would give it with the current prefix,
+	// and Conflict why that name cannot be used, or empty.
+	ProxyName string
+	Conflict  string
+	// Checked keeps the admin's selection when the page is shown again.
+	Checked bool
 }
 
 type ModelFormVModel struct {
