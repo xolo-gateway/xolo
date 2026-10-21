@@ -916,6 +916,14 @@ func (h *Handler) createModel(w http.ResponseWriter, r *http.Request) {
 			"Un modèle avec le nom proxy « "+proxyName+" » existe déjà dans cette organisation.")
 		return
 	}
+	if msg, err := h.virtualModelConflict(ctx, org.ID(), proxyName); err != nil {
+		slog.ErrorContext(ctx, "could not check virtual model names", slogx.Error(err))
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	} else if msg != "" {
+		h.renderModelFormError(w, r, ctx, user, orgSlug, org, p, nil, true, msg)
+		return
+	}
 	if msg, err := h.teamNameConflict(ctx, org.ID(), proxyName); err != nil {
 		slog.ErrorContext(ctx, "could not check team slugs", slogx.Error(err))
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
@@ -1036,6 +1044,14 @@ func (h *Handler) updateModel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if proxyName != existing.ProxyName() {
+		if msg, err := h.virtualModelConflict(ctx, org.ID(), proxyName); err != nil {
+			slog.ErrorContext(ctx, "could not check virtual model names", slogx.Error(err))
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		} else if msg != "" {
+			h.renderModelFormError(w, r, ctx, user, orgSlug, org, p, existing, false, msg)
+			return
+		}
 		if msg, err := h.teamNameConflict(ctx, org.ID(), proxyName); err != nil {
 			slog.ErrorContext(ctx, "could not check team slugs", slogx.Error(err))
 			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)

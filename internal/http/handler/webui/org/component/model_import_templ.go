@@ -382,10 +382,12 @@ func ModelImportPage(vmodel ModelImportVModel) templ.Component {
 							Value: vmodel.Prefix,
 							Class: "font-mono max-w-sm",
 							Attributes: templ.Attributes{
-								"hx-post":      importURL + "/preview",
-								"hx-trigger":   "input changed delay:250ms",
-								"hx-include":   "closest form",
-								"hx-swap":      "none",
+								"hx-post":    importURL + "/preview",
+								"hx-trigger": "input changed delay:250ms",
+								"hx-include": "closest form",
+								"hx-swap":    "none",
+								// A slow answer must not overwrite the names of a later prefix.
+								"hx-sync":      "this:replace",
 								"autocomplete": "off",
 							},
 						}).Render(ctx, templ_7745c5c3_Buffer)
@@ -477,7 +479,7 @@ func ModelImportPage(vmodel ModelImportVModel) templ.Component {
 							var templ_7745c5c3_Var24 string
 							templ_7745c5c3_Var24, templ_7745c5c3_Err = templ.JoinStringErrs(Pluralize(len(vmodel.Candidates), "modèle listé", "modèles listés"))
 							if templ_7745c5c3_Err != nil {
-								return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/model_import.templ`, Line: 94, Col: 81}
+								return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/model_import.templ`, Line: 96, Col: 81}
 							}
 							_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var24))
 							if templ_7745c5c3_Err != nil {
@@ -797,7 +799,7 @@ func ModelImportPage(vmodel ModelImportVModel) templ.Component {
 											var templ_7745c5c3_Var39 string
 											templ_7745c5c3_Var39, templ_7745c5c3_Err = templ.JoinStringErrs(c.ID)
 											if templ_7745c5c3_Err != nil {
-												return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/model_import.templ`, Line: 135, Col: 19}
+												return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/model_import.templ`, Line: 137, Col: 19}
 											}
 											_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var39))
 											if templ_7745c5c3_Err != nil {
@@ -834,7 +836,7 @@ func ModelImportPage(vmodel ModelImportVModel) templ.Component {
 										var templ_7745c5c3_Var41 string
 										templ_7745c5c3_Var41, templ_7745c5c3_Err = templ.JoinStringErrs(c.DisplayName)
 										if templ_7745c5c3_Err != nil {
-											return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/model_import.templ`, Line: 139, Col: 27}
+											return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/model_import.templ`, Line: 141, Col: 27}
 										}
 										_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var41))
 										if templ_7745c5c3_Err != nil {
@@ -893,7 +895,7 @@ func ModelImportPage(vmodel ModelImportVModel) templ.Component {
 										var templ_7745c5c3_Var44 string
 										templ_7745c5c3_Var44, templ_7745c5c3_Err = templ.JoinStringErrs(formatTokenWindow(c.ContextWindow))
 										if templ_7745c5c3_Err != nil {
-											return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/model_import.templ`, Line: 147, Col: 48}
+											return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/model_import.templ`, Line: 149, Col: 48}
 										}
 										_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var44))
 										if templ_7745c5c3_Err != nil {
@@ -924,7 +926,7 @@ func ModelImportPage(vmodel ModelImportVModel) templ.Component {
 										var templ_7745c5c3_Var46 string
 										templ_7745c5c3_Var46, templ_7745c5c3_Err = templ.JoinStringErrs(formatTokenWindow(c.OutputWindow))
 										if templ_7745c5c3_Err != nil {
-											return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/model_import.templ`, Line: 150, Col: 47}
+											return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/model_import.templ`, Line: 152, Col: 47}
 										}
 										_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var46))
 										if templ_7745c5c3_Err != nil {
@@ -1127,7 +1129,7 @@ func modelImportPrefixError(message string, oob bool) templ.Component {
 		var templ_7745c5c3_Var51 string
 		templ_7745c5c3_Var51, templ_7745c5c3_Err = templ.JoinStringErrs(message)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/model_import.templ`, Line: 194, Col: 114}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/model_import.templ`, Line: 196, Col: 114}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var51))
 		if templ_7745c5c3_Err != nil {
@@ -1171,7 +1173,7 @@ func modelImportProxyName(i int, c ModelImportCandidate, oob bool) templ.Compone
 		var templ_7745c5c3_Var53 string
 		templ_7745c5c3_Var53, templ_7745c5c3_Err = templ.JoinStringErrs("import-name-" + strconv.Itoa(i))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/model_import.templ`, Line: 200, Col: 43}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/model_import.templ`, Line: 202, Col: 43}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var53))
 		if templ_7745c5c3_Err != nil {
@@ -1194,7 +1196,7 @@ func modelImportProxyName(i int, c ModelImportCandidate, oob bool) templ.Compone
 		var templ_7745c5c3_Var54 string
 		templ_7745c5c3_Var54, templ_7745c5c3_Err = templ.JoinStringErrs(c.ProxyName)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/model_import.templ`, Line: 201, Col: 47}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/model_import.templ`, Line: 203, Col: 47}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var54))
 		if templ_7745c5c3_Err != nil {
@@ -1212,7 +1214,7 @@ func modelImportProxyName(i int, c ModelImportCandidate, oob bool) templ.Compone
 			var templ_7745c5c3_Var55 string
 			templ_7745c5c3_Var55, templ_7745c5c3_Err = templ.JoinStringErrs(c.Conflict)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/model_import.templ`, Line: 203, Col: 60}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/model_import.templ`, Line: 205, Col: 60}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var55))
 			if templ_7745c5c3_Err != nil {

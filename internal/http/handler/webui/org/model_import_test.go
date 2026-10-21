@@ -414,3 +414,113 @@ func TestImportModels_RefusesAPrefixWithASlash(t *testing.T) {
 		}
 	}
 }
+
+// namedVirtualModels serves the organization's virtual models by name.
+type namedVirtualModels struct {
+	port.VirtualModelStore
+	models []model.VirtualModel
+}
+
+func (v *namedVirtualModels) ListVirtualModels(context.Context, model.OrgID) ([]model.VirtualModel, error) {
+	return v.models, nil
+}
+
+func (v *namedVirtualModels) GetVirtualModelByName(_ context.Context, _ model.OrgID, name string) (model.VirtualModel, error) {
+	for _, vm := range v.models {
+		if vm.Name() == name {
+			return vm, nil
+		}
+	}
+	return nil, port.ErrNotFound
+}
+
+// The proxy serves a virtual model before a provider model of the same name:
+// an import under that name would never be served.
+func TestImportModels_LeavesOutTheNameOfAVirtualModel(t *testing.T) {
+	upstream := openAIModelList(t, goModels)
+	h, s, tenant := importFixture(t, upstream.URL+"/v1", "sk-go")
+	h.virtualModelStore = &namedVirtualModels{models: []model.VirtualModel{model.NewVirtualModel(s.org.ID(), "go-glm-5.3", "")}}
+
+	rr := httptest.NewRecorder()
+	h.getImportModelsPage(rr, importRequest(t, s, tenant, http.MethodGet, nil))
+	if strings.Contains(rr.Body.String(), "Un modèle virtuel s&#39;appelle déjà") {
+		t.Fatalf("without a prefix, glm-5.3 does not clash with go-glm-5.3")
+	}
+
+	rr = httptest.NewRecorder()
+	h.importModels(rr, importRequest(t, s, tenant, http.MethodPost, url.Values{
+		"proxy_prefix": {"go-"},
+		"models":       {"glm-5.3", "qwen3.8-max"},
+	}))
+
+	if rr.Code != http.StatusOK || !strings.Contains(rr.Body.String(), "glm-5.3 : Un modèle virtuel s&#39;appelle déjà « go-glm-5.3 »") {
+		t.Fatalf("status = %d, the virtual model's name must be reported: %s", rr.Code, rr.Body.String())
+	}
+	if len(s.created) != 1 || s.created[0].ProxyName() != "go-qwen3.8-max" {
+		t.Errorf("only go-qwen3.8-max must be created, got %d models", len(s.created))
+	}
+}
+
+// listFailingStore lists the models a given number of times, then fails.
+type listFailingStore struct {
+	*modelFormStore
+	lists int
+}
+
+func (s *listFailingStore) ListLLMModels(ctx context.Context, orgID model.OrgID) ([]model.LLMModel, error) {
+	if s.lists == 0 {
+		return nil, errors.New("database is locked")
+	}
+	s.lists--
+	return s.modelFormStore.ListLLMModels(ctx, orgID)
+}
+
+// When the read that would explain a failed creation fails too, the cause is
+// unknown: the report must not promise that a retry works.
+func TestImportModels_ReportsAnUnexplainedFailedCreation(t *testing.T) {
+	upstream := openAIModelList(t, goModels)
+	h, s, tenant := importFixture(t, upstream.URL+"/v1", "sk-go")
+	s.createErr = errors.New("UNIQUE constraint failed")
+	// The catalog reads the models once, the explanation would read them again.
+	h.providerStore = &listFailingStore{modelFormStore: s, lists: 1}
+
+	rr := httptest.NewRecorder()
+	h.importModels(rr, importRequest(t, s, tenant, http.MethodPost, url.Values{"models": {"glm-5.3"}}))
+
+	body := rr.Body.String()
+	if rr.Code != http.StatusOK || !strings.Contains(body, "Xolo n&#39;a pas pu vérifier si le nom « glm-5.3 » est déjà pris") {
+		t.Fatalf("status = %d, the unknown cause must be reported: %s", rr.Code, body)
+	}
+	if strings.Contains(body, "réessayez") {
+		t.Errorf("a retry must not be promised when the cause is unknown")
+	}
+}
+
+func TestCreateModel_RefusesTheNameOfAVirtualModel(t *testing.T) {
+	rr, s := postCreateModel(t, url.Values{"proxy_name": {"assistant"}, "real_model": {"glm-5.3"}}, func(h *Handler) {
+		org := h.orgStore.(*modelFormStore).org
+		h.virtualModelStore = &namedVirtualModels{models: []model.VirtualModel{model.NewVirtualModel(org.ID(), "assistant", "")}}
+	})
+
+	if rr.Code != http.StatusUnprocessableEntity || !strings.Contains(rr.Body.String(), "Un modèle virtuel s&#39;appelle déjà « assistant »") {
+		t.Fatalf("status = %d, the virtual model's name must be refused: %s", rr.Code, rr.Body.String())
+	}
+	if len(s.created) != 0 {
+		t.Errorf("created %d models, want none", len(s.created))
+	}
+}
+
+func TestUpdateModel_RefusesTheNameOfAVirtualModel(t *testing.T) {
+	plain := model.NewLLMModel("", "", "qwen", "qwen3.8-max", "", 0, 0)
+	rr, s := postUpdateModel(t, plain, url.Values{"proxy_name": {"assistant"}, "real_model": {"qwen3.8-max"}}, func(h *Handler) {
+		org := h.orgStore.(*modelFormStore).org
+		h.virtualModelStore = &namedVirtualModels{models: []model.VirtualModel{model.NewVirtualModel(org.ID(), "assistant", "")}}
+	})
+
+	if rr.Code != http.StatusUnprocessableEntity || !strings.Contains(rr.Body.String(), "Un modèle virtuel s&#39;appelle déjà « assistant »") {
+		t.Fatalf("status = %d, the virtual model's name must be refused: %s", rr.Code, rr.Body.String())
+	}
+	if len(s.saved) != 0 {
+		t.Errorf("saved %d models, want none", len(s.saved))
+	}
+}

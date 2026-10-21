@@ -61,7 +61,7 @@ func (s *modelFormStore) CreateLLMModel(_ context.Context, m model.LLMModel) err
 	return nil
 }
 
-func postCreateModel(t *testing.T, fields url.Values) (*httptest.ResponseRecorder, *modelFormStore) {
+func postCreateModel(t *testing.T, fields url.Values, configure ...func(*Handler)) (*httptest.ResponseRecorder, *modelFormStore) {
 	t.Helper()
 	tenant := model.NewTenant("a", "A", "")
 	org := model.NewOrganization(tenant.ID(), "acme", "Acme", "")
@@ -70,6 +70,9 @@ func postCreateModel(t *testing.T, fields url.Values) (*httptest.ResponseRecorde
 		provider: model.NewProvider(org.ID(), "OpenCode Go", "openai", "https://opencode.ai/inference/go/openai/v1", "ciphertext", "USD"),
 	}
 	h := &Handler{orgStore: s, providerStore: s}
+	for _, c := range configure {
+		c(h)
+	}
 
 	req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(fields.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -141,7 +144,7 @@ func (s *modelFormStore) SaveLLMModel(_ context.Context, m model.LLMModel) error
 	return nil
 }
 
-func postUpdateModel(t *testing.T, existing *model.BaseLLMModel, fields url.Values) (*httptest.ResponseRecorder, *modelFormStore) {
+func postUpdateModel(t *testing.T, existing *model.BaseLLMModel, fields url.Values, configure ...func(*Handler)) (*httptest.ResponseRecorder, *modelFormStore) {
 	t.Helper()
 	tenant := model.NewTenant("a", "A", "")
 	org := model.NewOrganization(tenant.ID(), "acme", "Acme", "")
@@ -151,6 +154,9 @@ func postUpdateModel(t *testing.T, existing *model.BaseLLMModel, fields url.Valu
 	m.SetBaseURL(existing.BaseURL())
 	s := &modelFormStore{org: org, provider: provider, created: []model.LLMModel{m}}
 	h := &Handler{orgStore: s, providerStore: s}
+	for _, c := range configure {
+		c(h)
+	}
 
 	req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(fields.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")

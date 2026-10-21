@@ -111,20 +111,16 @@ func importCandidates(discovered []llm.ModelInfo, existing []model.LLMModel, p m
 }
 
 // providerCatalog is what an import works from: the models the provider
-// serves, marked with those already declared, and the proxy names taken in
-// the organization, disabled models included, as the unique index on
-// (org_id, proxy_name) counts them.
+// serves, marked with those already declared, and the names the
+// organization has already given.
 type providerCatalog struct {
 	candidates []component.ModelImportCandidate
-	taken      map[string]bool
-	// teamSlugs are the slugs of the organization's teams, which a proxy
-	// name must not start with.
-	teamSlugs map[string]bool
+	names      *orgModelNames
 }
 
 // declare records that the candidate id is now declared under proxyName.
 func (c *providerCatalog) declare(id, proxyName string) {
-	c.taken[proxyName] = true
+	c.names.models[proxyName] = true
 	for i := range c.candidates {
 		if c.candidates[i].ID == id {
 			c.candidates[i].DeclaredAs = proxyName
@@ -158,17 +154,44 @@ func (h *Handler) loadProviderCatalog(ctx context.Context, org model.Organizatio
 	if err != nil {
 		return nil, "", errors.WithStack(err)
 	}
-	teamSlugs, err := h.orgTeamSlugs(ctx, org.ID())
+	names, err := h.orgModelNames(ctx, org.ID(), existing)
 	if err != nil {
 		return nil, "", errors.WithStack(err)
 	}
 
 	catalog := &providerCatalog{
 		candidates: importCandidates(discovered, existing, p),
-		taken:      takenProxyNames(existing),
-		teamSlugs:  teamSlugs,
+		names:      names,
 	}
 	return catalog, "", nil
+}
+
+// orgModelNames are the names a new model of the organization cannot take.
+// They are read once per request, as a provider may list hundreds of models.
+type orgModelNames struct {
+	// models are the proxy names of its models, disabled ones included, as
+	// the unique index on (org_id, proxy_name) counts them.
+	models map[string]bool
+	// virtual are the names of its virtual models. The proxy resolves those
+	// first, so a model under one of them would never be served.
+	virtual map[string]bool
+	// teamSlugs are the slugs of its teams, which a proxy name must not
+	// start with.
+	teamSlugs map[string]bool
+}
+
+// orgModelNames reads the names the organization has given, existing being
+// its models.
+func (h *Handler) orgModelNames(ctx context.Context, orgID model.OrgID, existing []model.LLMModel) (*orgModelNames, error) {
+	virtual, err := h.orgVirtualModelNames(ctx, orgID)
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+	teamSlugs, err := h.orgTeamSlugs(ctx, orgID)
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+	return &orgModelNames{models: takenProxyNames(existing), virtual: virtual, teamSlugs: teamSlugs}, nil
 }
 
 func takenProxyNames(existing []model.LLMModel) map[string]bool {
@@ -179,16 +202,18 @@ func takenProxyNames(existing []model.LLMModel) map[string]bool {
 	return taken
 }
 
-// proxyNameConflict explains why proxyName cannot name a new model of the
-// organization, given the proxy names taken and the slugs of its teams. It is
-// empty when the name is free. The checks are those of the model form, made
-// on sets read once, as a provider may list hundreds of models.
-func proxyNameConflict(taken, teamSlugs map[string]bool, proxyName string) string {
-	if taken[proxyName] {
+// conflict explains why proxyName cannot name a new model of the
+// organization. It is empty when the name is free. The checks are those of
+// the model form, made on sets read once.
+func (n *orgModelNames) conflict(proxyName string) string {
+	if n.models[proxyName] {
 		return "Un modèle s'appelle déjà « " + proxyName + " » dans cette organisation."
 	}
+	if n.virtual[proxyName] {
+		return virtualModelConflictMessage(proxyName)
+	}
 	// Mirrors service.CheckModelLocalName.
-	if segment, _, found := strings.Cut(proxyName, "/"); found && teamSlugs[segment] {
+	if segment, _, found := strings.Cut(proxyName, "/"); found && n.teamSlugs[segment] {
 		return teamNameConflictMessage(proxyName)
 	}
 	return ""
@@ -197,7 +222,7 @@ func proxyNameConflict(taken, teamSlugs map[string]bool, proxyName string) strin
 // nameCandidates gives each candidate not yet declared the proxy name it
 // would be imported under with prefix, and why that name cannot be used, so
 // that the page shows a conflict before the import refuses it.
-func nameCandidates(candidates []component.ModelImportCandidate, taken, teamSlugs map[string]bool, prefix string) {
+func nameCandidates(candidates []component.ModelImportCandidate, names *orgModelNames, prefix string) {
 	for i := range candidates {
 		c := &candidates[i]
 		if c.DeclaredAs != "" {
@@ -205,7 +230,7 @@ func nameCandidates(candidates []component.ModelImportCandidate, taken, teamSlug
 			continue
 		}
 		c.ProxyName = prefix + c.ID
-		c.Conflict = proxyNameConflict(taken, teamSlugs, c.ProxyName)
+		c.Conflict = names.conflict(c.ProxyName)
 	}
 }
 
@@ -268,7 +293,7 @@ func (h *Handler) getImportModelsPage(w http.ResponseWriter, r *http.Request) {
 		templ.Handler(component.ModelImportPage(vmodel)).ServeHTTP(w, r)
 		return
 	}
-	nameCandidates(catalog.candidates, catalog.taken, catalog.teamSlugs, "")
+	nameCandidates(catalog.candidates, catalog.names, "")
 	vmodel.Candidates = catalog.candidates
 	templ.Handler(component.ModelImportPage(vmodel)).ServeHTTP(w, r)
 }
@@ -309,14 +334,14 @@ func (h *Handler) previewImportNames(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
-	teamSlugs, err := h.orgTeamSlugs(ctx, org.ID())
+	names, err := h.orgModelNames(ctx, org.ID(), existing)
 	if err != nil {
 		slog.ErrorContext(ctx, "could not preview import names", slogx.Error(err))
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
 	prefix := strings.TrimSpace(r.FormValue("proxy_prefix"))
-	nameCandidates(candidates, takenProxyNames(existing), teamSlugs, prefix)
+	nameCandidates(candidates, names, prefix)
 	// The preview applies the import's own rule on the prefix, so that it
 	// never announces names the import would refuse.
 	templ.Handler(component.ModelImportProxyNames(candidates, prefixError(prefix))).ServeHTTP(w, r)
@@ -365,7 +390,7 @@ func (h *Handler) importModels(w http.ResponseWriter, r *http.Request) {
 		// page answers like a failed discovery, with the form's message only.
 		vmodel.Error = formErr
 		if discoveryErr == "" {
-			nameCandidates(catalog.candidates, catalog.taken, catalog.teamSlugs, prefix)
+			nameCandidates(catalog.candidates, catalog.names, prefix)
 			vmodel.Candidates = catalog.candidates
 		}
 		w.WriteHeader(http.StatusUnprocessableEntity)
@@ -401,7 +426,7 @@ func (h *Handler) importModels(w http.ResponseWriter, r *http.Request) {
 
 	// Some models were left out: show why, on the list updated with the ones
 	// just created, without asking the provider again.
-	nameCandidates(catalog.candidates, catalog.taken, catalog.teamSlugs, prefix)
+	nameCandidates(catalog.candidates, catalog.names, prefix)
 	vmodel.Imported = imported
 	vmodel.Candidates = catalog.candidates
 	templ.Handler(component.ModelImportPage(vmodel)).ServeHTTP(w, r)
@@ -427,7 +452,7 @@ func (h *Handler) importModel(ctx context.Context, org model.Organization, p mod
 	}
 
 	proxyName := prefix + id
-	if conflict := proxyNameConflict(catalog.taken, catalog.teamSlugs, proxyName); conflict != "" {
+	if conflict := catalog.names.conflict(proxyName); conflict != "" {
 		return id + " : " + conflict, nil
 	}
 
@@ -443,7 +468,13 @@ func (h *Handler) importModel(ctx context.Context, org model.Organization, p mod
 		// Another admin may have taken the name since the catalog was read:
 		// retrying would then fail the same way. The models are listed rather
 		// than looked up by name, as that lookup skips disabled ones.
-		if existing, lookupErr := h.providerStore.ListLLMModels(ctx, org.ID()); lookupErr == nil && takenProxyNames(existing)[proxyName] {
+		existing, lookupErr := h.providerStore.ListLLMModels(ctx, org.ID())
+		if lookupErr != nil {
+			// The cause stays unknown: a retry is not promised to succeed.
+			slog.ErrorContext(ctx, "could not check imported model name", slog.String("model", id), slogx.Error(lookupErr))
+			return id + " : l'enregistrement a échoué, et Xolo n'a pas pu vérifier si le nom « " + proxyName + " » est déjà pris.", nil
+		}
+		if takenProxyNames(existing)[proxyName] {
 			return id + " : Un modèle s'appelle déjà « " + proxyName + " » dans cette organisation.", nil
 		}
 		return id + " : l'enregistrement a échoué, réessayez.", nil

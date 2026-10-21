@@ -79,6 +79,8 @@ templ ModelImportPage(vmodel ModelImportVModel) {
 									"hx-trigger":   "input changed delay:250ms",
 									"hx-include":   "closest form",
 									"hx-swap":      "none",
+									// A slow answer must not overwrite the names of a later prefix.
+									"hx-sync":      "this:replace",
 									"autocomplete": "off",
 								},
 							})

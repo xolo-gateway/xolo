@@ -1,6 +1,7 @@
 package org
 
 import (
+	"context"
 	"log/slog"
 	"net/http"
 	"time"
@@ -403,4 +404,46 @@ func (h *Handler) getPipelineEditorPage(w http.ResponseWriter, r *http.Request) 
 	}
 
 	templ.Handler(component.PipelineEditorPage(vmodel)).ServeHTTP(w, r)
+}
+
+// virtualModelConflict explains why name, the proxy name of a model of the
+// organization, is already a virtual model's. It is empty when no virtual
+// model has it.
+func (h *Handler) virtualModelConflict(ctx context.Context, orgID model.OrgID, name string) (string, error) {
+	if h.virtualModelStore == nil {
+		return "", nil
+	}
+	_, err := h.virtualModelStore.GetVirtualModelByName(ctx, orgID, name)
+	switch {
+	case err == nil:
+		return virtualModelConflictMessage(name), nil
+	case errors.Is(err, port.ErrNotFound):
+		return "", nil
+	default:
+		return "", errors.WithStack(err)
+	}
+}
+
+// virtualModelConflictMessage explains that a virtual model of the
+// organization is already named name.
+func virtualModelConflictMessage(name string) string {
+	return "Un modèle virtuel s'appelle déjà « " + name + " » dans cette organisation : " +
+		"il serait servi à la place de ce modèle. Choisissez un autre nom."
+}
+
+// orgVirtualModelNames returns the names of the organization's virtual
+// models, for checking many model names against them with a single query.
+func (h *Handler) orgVirtualModelNames(ctx context.Context, orgID model.OrgID) (map[string]bool, error) {
+	names := map[string]bool{}
+	if h.virtualModelStore == nil {
+		return names, nil
+	}
+	vms, err := h.virtualModelStore.ListVirtualModels(ctx, orgID)
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+	for _, vm := range vms {
+		names[vm.Name()] = true
+	}
+	return names, nil
 }
