@@ -13,7 +13,11 @@ import (
 // options of a provider (a pointer to its Options struct): its endpoint, key
 // and model, and the headers the provider configures (see
 // model.ProviderRequestHeaders). The headers are copied, never shared with
-// the stored provider. Options without CommonOptions are left untouched.
+// the stored provider.
+//
+// Options without CommonOptions are left untouched, on purpose: a plugin
+// provider's (plugin.Options) carry none, as it reads its settings from its
+// own environment. Failing there would break every plugin provider.
 func SetCommonOptions(opts any, baseURL, apiKey, modelName string, headers *model.ProviderRequestHeaders) {
 	field := reflect.ValueOf(opts).Elem().FieldByName("CommonOptions")
 	if !field.IsValid() {
