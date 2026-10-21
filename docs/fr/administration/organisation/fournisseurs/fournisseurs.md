@@ -296,6 +296,7 @@ Le champ **Préfixe du nom proxy** est facultatif et ne peut pas contenir de `/`
 
 Les modèles importés :
 
+- sont créés désactivés : saisissez leurs coûts avant de les activer, un modèle sans coût n'étant ni valorisé ni limité par les quotas ;
 - ont un coût à zéro, la liste du fournisseur ne donnant pas de prix ;
 - reprennent la fenêtre de contexte et la sortie maximale quand le fournisseur les indique (Anthropic, OpenRouter) ;
 - utilisent le type d'API et l'URL du fournisseur. Un modèle servi par une autre API, comme Qwen chez OpenCode Go, se règle ensuite dans son formulaire (voir [Accès à l'API](#acces-a-lapi)).

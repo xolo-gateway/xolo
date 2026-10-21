@@ -121,6 +121,7 @@ func (m *BaseLLMModel) TokensPerSecHigh() float64 { return m.tokensPerSecHigh }
 func (m *BaseLLMModel) IsVirtual() bool           { return m.providerID == "" }
 
 func (m *BaseLLMModel) SetCachedPromptCostPer1KTokens(v int64)  { m.cachedPromptCostPer1KTokens = v }
+func (m *BaseLLMModel) SetEnabled(v bool)                       { m.enabled = v }
 func (m *BaseLLMModel) SetContextWindow(v int64)                { m.contextWindow = v }
 func (m *BaseLLMModel) SetOutputWindow(v int64)                 { m.outputWindow = v }
 func (m *BaseLLMModel) SetCapabilities(c ModelCapabilities)     { m.capabilities = c }

@@ -288,8 +288,10 @@ func (h *Handler) importModel(ctx context.Context, org model.Organization, p mod
 	}
 
 	// Costs stay at zero: the provider's list carries no price, and a price
-	// guessed elsewhere would be billed as if it were known.
+	// guessed elsewhere would be billed as if it were known. The model starts
+	// disabled, so that it is not served unpriced before an admin fills it.
 	m := model.NewLLMModel(p.ID(), org.ID(), proxyName, id, c.DisplayName, 0, 0)
+	m.SetEnabled(false)
 	m.SetContextWindow(c.ContextWindow)
 	m.SetOutputWindow(c.OutputWindow)
 	if err := h.providerStore.CreateLLMModel(ctx, m); err != nil {

@@ -130,6 +130,9 @@ func TestImportModels_CreatesTheSelectionWithThePrefix(t *testing.T) {
 		if m.PromptCostPer1KTokens() != 0 || m.CompletionCostPer1KTokens() != 0 || m.APIType() != "" || m.BaseURL() != "" {
 			t.Errorf("%s must start at zero cost on the provider's API", m.RealModel())
 		}
+		if m.Enabled() {
+			t.Errorf("%s must start disabled until its costs are filled", m.RealModel())
+		}
 	}
 }
 
