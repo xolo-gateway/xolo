@@ -1043,9 +1043,32 @@ func (h *Handler) teamNameConflict(ctx context.Context, orgID model.OrgID, name 
 	}
 	err := service.CheckModelLocalName(ctx, h.teamStore, orgID, name)
 	if errors.Is(err, port.ErrTeamNameConflict) {
-		segment, _, _ := strings.Cut(name, "/")
-		return "Le nom « " + name + " » commence par l'identifiant de l'équipe « " + segment + " » : " +
-			"un client l'appelant serait débité sur cette équipe. Choisissez un autre nom.", nil
+		return teamNameConflictMessage(name), nil
 	}
 	return "", err
+}
+
+// teamNameConflictMessage explains that name starts with the slug of a team
+// of the organization.
+func teamNameConflictMessage(name string) string {
+	segment, _, _ := strings.Cut(name, "/")
+	return "Le nom « " + name + " » commence par l'identifiant de l'équipe « " + segment + " » : " +
+		"un client l'appelant serait débité sur cette équipe. Choisissez un autre nom."
+}
+
+// orgTeamSlugs returns the slugs of the organization's teams, for checking
+// many model names against them with a single query.
+func (h *Handler) orgTeamSlugs(ctx context.Context, orgID model.OrgID) (map[string]bool, error) {
+	slugs := map[string]bool{}
+	if h.teamStore == nil {
+		return slugs, nil
+	}
+	teams, err := h.teamStore.ListOrgTeams(ctx, orgID)
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+	for _, t := range teams {
+		slugs[t.Slug()] = true
+	}
+	return slugs, nil
 }

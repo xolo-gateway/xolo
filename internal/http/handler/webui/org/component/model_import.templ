@@ -82,6 +82,7 @@ templ ModelImportPage(vmodel ModelImportVModel) {
 									"autocomplete": "off",
 								},
 							})
+							@modelImportPrefixError("", false)
 							@form.Description() {
 								Les modèles sont créés désactivés, avec un coût à zéro, le type d'API et l'URL du fournisseur. Saisissez leurs coûts dans leur formulaire avant de les activer : un modèle sans coût n'est ni valorisé ni limité par les quotas. Réglez-y aussi le type d'API d'un modèle servi par une autre API.
 							}
@@ -176,13 +177,21 @@ templ ModelImportPage(vmodel ModelImportVModel) {
 }
 
 // ModelImportProxyNames is the answer to a preview of the proxy names: one
-// out-of-band swap per row whose model is not yet declared.
-templ ModelImportProxyNames(candidates []ModelImportCandidate) {
+// out-of-band swap per row whose model is not yet declared, and one for the
+// message on the prefix.
+templ ModelImportProxyNames(candidates []ModelImportCandidate, prefixError string) {
+	@modelImportPrefixError(prefixError, true)
 	for i, c := range candidates {
 		if c.DeclaredAs == "" {
 			@modelImportProxyName(i, c, true)
 		}
 	}
+}
+
+// modelImportPrefixError is what is wrong with the prefix being typed, if
+// anything.
+templ modelImportPrefixError(message string, oob bool) {
+	<p id="import-prefix-error" class="text-xs text-destructive empty:hidden" if oob { hx-swap-oob="true" }>{ message }</p>
 }
 
 // modelImportProxyName is the proxy name a row would be imported under, and

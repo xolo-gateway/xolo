@@ -1,6 +1,7 @@
 package org
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -10,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/xolo-gateway/xolo/internal/core/model"
+	"github.com/xolo-gateway/xolo/internal/core/port"
 	"github.com/xolo-gateway/xolo/internal/crypto"
 	httpCtx "github.com/xolo-gateway/xolo/internal/http/context"
 )
@@ -298,6 +300,80 @@ func TestImportModels_ValidatesTheFormFirst(t *testing.T) {
 
 	if rr.Code != http.StatusUnprocessableEntity || !strings.Contains(rr.Body.String(), "Le préfixe ne peut pas contenir") {
 		t.Fatalf("status = %d, the prefix must be refused: %s", rr.Code, rr.Body.String())
+	}
+	// Without a list from the provider, there is no table to show again.
+	if strings.Contains(rr.Body.String(), `name="models"`) {
+		t.Errorf("no table can be shown without the provider's list")
+	}
+}
+
+// countingTeams serves the organization's teams and counts the reads.
+type countingTeams struct {
+	port.TeamStore
+	teams []model.Team
+	lists int
+}
+
+func (c *countingTeams) ListOrgTeams(context.Context, model.OrgID) ([]model.Team, error) {
+	c.lists++
+	return c.teams, nil
+}
+
+// A provider such as OpenRouter lists hundreds of names holding a "/": the
+// team slugs are read once, not once per model.
+func TestImportModelsPage_ReadsTheTeamsOnce(t *testing.T) {
+	upstream := openAIModelList(t, `{"object":"list","data":[
+		{"id":"z-ai/glm-5.3","object":"model","created":0,"owned_by":"zai"},
+		{"id":"z-ai/glm-5.2","object":"model","created":0,"owned_by":"zai"},
+		{"id":"qwen/qwen3.8-max","object":"model","created":0,"owned_by":"qwen"}
+	]}`)
+	h, s, tenant := importFixture(t, upstream.URL+"/v1", "sk-go")
+	teams := &countingTeams{teams: []model.Team{model.NewTeam(s.org.ID(), "z-ai", "Z", "")}}
+	h.SetTeams(teams)
+
+	rr := httptest.NewRecorder()
+	h.getImportModelsPage(rr, importRequest(t, s, tenant, http.MethodGet, nil))
+
+	if rr.Code != http.StatusOK || teams.lists != 1 {
+		t.Fatalf("status = %d after %d reads of the teams, want 200 after 1", rr.Code, teams.lists)
+	}
+	body := rr.Body.String()
+	if strings.Count(body, "commence par l&#39;identifiant de l&#39;équipe « z-ai »") != 2 {
+		t.Errorf("both z-ai models must show the team conflict: %s", body)
+	}
+	if strings.Contains(body, "l&#39;équipe « qwen »") {
+		t.Errorf("qwen is no team of the organization")
+	}
+}
+
+func TestPreviewImportNames_RefusesTheSamePrefixAsTheImport(t *testing.T) {
+	h, s, tenant := importFixture(t, "http://unused.test/v1", "sk-go")
+
+	rr := httptest.NewRecorder()
+	h.previewImportNames(rr, importRequest(t, s, tenant, http.MethodPost, url.Values{
+		"proxy_prefix": {"team/"},
+		"candidate":    {"glm-5.3"},
+	}))
+
+	body := rr.Body.String()
+	if !strings.Contains(body, `id="import-prefix-error"`) || !strings.Contains(body, "Le préfixe ne peut pas contenir") {
+		t.Errorf("the preview must refuse the prefix like the import: %s", body)
+	}
+}
+
+func TestImportModelsPage_ShowsAModelListedTwiceOnce(t *testing.T) {
+	upstream := openAIModelList(t, `{"object":"list","data":[
+		{"id":"glm-5.3","object":"model","created":0,"owned_by":"zai"},
+		{"id":"qwen3.8-max","object":"model","created":0,"owned_by":"qwen"},
+		{"id":"glm-5.3","object":"model","created":0,"owned_by":"zai"}
+	]}`)
+	h, s, tenant := importFixture(t, upstream.URL+"/v1", "sk-go")
+
+	rr := httptest.NewRecorder()
+	h.getImportModelsPage(rr, importRequest(t, s, tenant, http.MethodGet, nil))
+
+	if n := strings.Count(rr.Body.String(), `id="import-name-`); rr.Code != http.StatusOK || n != 2 {
+		t.Fatalf("status = %d, %d rows, want 2", rr.Code, n)
 	}
 }
 

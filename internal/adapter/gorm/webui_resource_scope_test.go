@@ -170,6 +170,10 @@ func TestWebUIResourceIsolation(t *testing.T) {
 		providerServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			networkCalls.Add(1)
 			w.Header().Set("Content-Type", "application/json")
+			if strings.HasSuffix(r.URL.Path, "/models") {
+				fmt.Fprint(w, `{"object":"list","data":[{"id":"PRIVATE-UPSTREAM","object":"model","created":0,"owned_by":"test"}]}`)
+				return
+			}
 			fmt.Fprint(w, `{"choices":[{"message":{"role":"assistant","content":"ok"}}]}`)
 		}))
 		defer providerServer.Close()
@@ -192,6 +196,9 @@ func TestWebUIResourceIsolation(t *testing.T) {
 			{"models list", "provider", "GET", "providers/{providerID}/models", "", 200, ""},
 			{"model new", "provider", "GET", "providers/{providerID}/models/new", "", 200, ""},
 			{"model create", "provider", "POST", "providers/{providerID}/models", "proxy_name=changed-{providerID}&real_model=changed&enabled=on", 303, model.EventTypeModelCreated},
+			{"model import page", "provider", "GET", "providers/{providerID}/models/import", "", 200, ""},
+			{"model import", "provider", "POST", "providers/{providerID}/models/import", "proxy_prefix=imported-{providerID}-&models=PRIVATE-UPSTREAM", 303, model.EventTypeModelCreated},
+			{"model import preview", "provider", "POST", "providers/{providerID}/models/import/preview", "proxy_prefix=preview-&candidate=PRIVATE-UPSTREAM", 200, ""},
 			{"model edit", "model", "GET", "providers/{providerID}/models/{modelID}/edit", "", 200, ""},
 			{"model update", "model", "POST", "providers/{providerID}/models/{modelID}/edit", "proxy_name=changed-{providerID}&real_model=changed&enabled=on", 303, model.EventTypeModelUpdated},
 			{"model delete", "model", "DELETE", "providers/{providerID}/models/{modelID}", "", 303, model.EventTypeModelDeleted},
@@ -340,6 +347,10 @@ func TestWebUIResourceIsolation(t *testing.T) {
 										wantText = "PRIVATE-MEMBER"
 									case "provider test":
 										wantText = "Connection successful"
+									case "model import page":
+										wantText = "PRIVATE-UPSTREAM"
+									case "model import preview":
+										wantText = "preview-PRIVATE-UPSTREAM"
 									}
 									if wantText == "" || !strings.Contains(rr.Body.String(), wantText) {
 										t.Fatalf("authorized response does not contain %q", wantText)
@@ -380,6 +391,21 @@ func assertScopeHTTPSuccess(t *testing.T, store *xologorm.Store, f scopeHTTPFixt
 		}
 		if operation == "model update" && m.ID() != f.llm.ID() {
 			t.Fatal("wrong model updated")
+		}
+	case "model import":
+		// Imported models start disabled, which GetLLMModelByProxyName skips.
+		models, err := store.ListLLMModels(ctx, f.org.ID())
+		if err != nil {
+			t.Fatal(err)
+		}
+		found := false
+		for _, m := range models {
+			if m.ProxyName() == "imported-"+string(f.provider.ID())+"-PRIVATE-UPSTREAM" {
+				found = m.OrgID() == f.org.ID() && m.ProviderID() == f.provider.ID()
+			}
+		}
+		if !found {
+			t.Fatal("imported model is missing from the validated provider and org")
 		}
 	case "model delete":
 		if _, err := store.GetLLMModelByID(ctx, f.llm.ID()); !errors.Is(err, port.ErrNotFound) {
