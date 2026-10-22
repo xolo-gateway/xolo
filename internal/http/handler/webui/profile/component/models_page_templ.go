@@ -778,7 +778,7 @@ func modelCard(mu ModelUsage) templ.Component {
 					}
 				}
 				if mu.Model.Kind() != model.ModelKindCompletion {
-					templ_7745c5c3_Err = common.Badge(common.ToneInfo, string(mu.Model.Kind())).Render(ctx, templ_7745c5c3_Buffer)
+					templ_7745c5c3_Err = common.Badge(common.ToneInfo, common.ModelKindLabel(mu.Model.Kind())).Render(ctx, templ_7745c5c3_Buffer)
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}

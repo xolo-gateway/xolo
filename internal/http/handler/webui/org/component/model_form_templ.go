@@ -561,9 +561,9 @@ func ModelForm(vmodel ModelFormVModel) templ.Component {
 										}
 										ctx = templ.InitializeContext(ctx)
 										var templ_7745c5c3_Var25 string
-										templ_7745c5c3_Var25, templ_7745c5c3_Err = templ.JoinStringErrs(ModelKindLabel(k))
+										templ_7745c5c3_Var25, templ_7745c5c3_Err = templ.JoinStringErrs(common.ModelKindLabel(k))
 										if templ_7745c5c3_Err != nil {
-											return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/model_form.templ`, Line: 133, Col: 33}
+											return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/model_form.templ`, Line: 133, Col: 40}
 										}
 										_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var25))
 										if templ_7745c5c3_Err != nil {

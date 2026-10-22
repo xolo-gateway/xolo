@@ -406,8 +406,10 @@ func modelCard(t modelTraits) openRouterModel {
 		contextLength = &cl
 	}
 
+	// The token limit wraps the completion client only: on a model of
+	// another kind it limits nothing, so the card announces none.
 	var perLimits *perRequestLimits
-	if t.promptLimit > 0 || t.completionLimit > 0 {
+	if kind == model.ModelKindCompletion && (t.promptLimit > 0 || t.completionLimit > 0) {
 		perLimits = &perRequestLimits{
 			PromptTokens:     int(t.promptLimit),
 			CompletionTokens: int(t.completionLimit),

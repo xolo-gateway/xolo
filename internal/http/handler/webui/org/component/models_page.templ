@@ -173,7 +173,7 @@ templ ModelsPage(vmodel ModelsPageVModel) {
 templ modelCapabilities(kind model.ModelKind, caps model.ModelCapabilities) {
 	<div class="flex flex-wrap gap-1">
 		if kind != model.ModelKindCompletion {
-			@common.Badge(common.ToneInfo, string(kind))
+			@common.Badge(common.ToneInfo, common.ModelKindLabel(kind))
 		}
 		if caps.Tools {
 			@common.Badge(common.ToneNeutral, "outils")

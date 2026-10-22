@@ -130,7 +130,7 @@ templ ModelForm(vmodel ModelFormVModel) {
 											@selectbox.Group() {
 												for _, k := range model.ModelKinds() {
 													@selectbox.Item(selectbox.ItemProps{Value: string(k), Selected: kind == k}) {
-														{ ModelKindLabel(k) }
+														{ common.ModelKindLabel(k) }
 													}
 												}
 											}

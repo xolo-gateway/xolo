@@ -54,6 +54,9 @@ func TestCreateModel_RefusesAKindTheAPIDoesNotServe(t *testing.T) {
 		"decision through openai":     {"kind": {"decision"}},
 		"completion through typesafe": {"kind": {"completion"}, "api_type": {"typesafe"}},
 		"unknown kind":                {"kind": {"rerank"}},
+		// A typesafe provider preselected decision, and the override serves
+		// two kinds: the server will not pick one for the admin.
+		"preselected decision through openai": {"kind": {"decision"}, "kind_default": {"decision"}, "api_type": {"openai"}},
 	} {
 		t.Run(name, func(t *testing.T) {
 			fields.Set("proxy_name", "m")

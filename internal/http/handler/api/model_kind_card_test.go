@@ -14,8 +14,12 @@ func TestModelCard_DecisionModel(t *testing.T) {
 	chat := realModel(org, "gpt", 128_000, model.ModelCapabilities{Tools: true}, 3000, 15000)
 	jev := realModel(org, "jev", 0, model.ModelCapabilities{}, 1000, 4000)
 	jev.SetKind(model.ModelKindDecision)
+	jev.SetTokenLimitConfig(&model.TokenLimitConfig{MaxTokens: 4000})
 
 	cards := callModels(t, org, []model.LLMModel{chat, jev}, nil, "")
+	if cards["acme/jev"].PerRequestLimits != nil {
+		t.Errorf("the token limit wraps completions only, the decision card must announce none")
+	}
 
 	decision, conversation := cards["acme/jev"], cards["acme/gpt"]
 	if decision.Xolo.Kind != model.ModelKindDecision || conversation.Xolo.Kind != model.ModelKindCompletion {

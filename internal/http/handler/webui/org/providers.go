@@ -845,10 +845,13 @@ func parseModelAPIFromForm(r *http.Request) (apiType, baseURL string, err error)
 // parseModelKindFromForm reads the kind of a model served through apiType,
 // its API type override, or its provider's when empty. A missing kind keeps
 // current, the kind of the model updated, or for a new model (current empty)
-// takes the default kind of that API; so does the kind the new model form
-// preselected from the provider's type (kind_default) when the override
-// serves no such model. Otherwise the kind must be one that API serves: a
-// model of another kind could never be called.
+// takes the default kind of that API. The kind the new model form preselected
+// from the provider's type (kind_default) gives way to the only kind the
+// override serves, when it serves no such model: the form could not know it,
+// and there is nothing left to choose. Otherwise the kind must be one that
+// API serves, a model of another kind could never be called: the server
+// cannot tell a preselected kind from a chosen one, so it refuses rather than
+// pick among several.
 func parseModelKindFromForm(r *http.Request, p model.Provider, apiType string, current model.ModelKind) (model.ModelKind, error) {
 	served := apiType
 	if served == "" {
@@ -862,13 +865,15 @@ func parseModelKindFromForm(r *http.Request, p model.Provider, apiType string, c
 		kind = current
 	}
 	if preselected := model.ModelKind(r.FormValue("kind_default")); kind == preselected && !model.ProviderTypeServes(served, kind) {
-		return model.DefaultProviderTypeKind(served), nil
+		if only := model.ProviderTypeKinds(served); len(only) == 1 {
+			return only[0], nil
+		}
 	}
 	if !model.IsKnownModelKind(kind) {
 		return "", errors.Errorf("nature inconnue : %s. Choisissez une nature de la liste.", kind)
 	}
 	if !model.ProviderTypeServes(served, kind) {
-		return "", errors.Errorf("le type d'API %s ne sert pas de modèle de nature « %s ».", served, component.ModelKindLabel(kind))
+		return "", errors.Errorf("le type d'API %s ne sert pas de modèle de nature « %s ».", served, common.ModelKindLabel(kind))
 	}
 	return kind, nil
 }

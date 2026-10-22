@@ -1045,7 +1045,7 @@ func modelCapabilities(kind model.ModelKind, caps model.ModelCapabilities) templ
 			return templ_7745c5c3_Err
 		}
 		if kind != model.ModelKindCompletion {
-			templ_7745c5c3_Err = common.Badge(common.ToneInfo, string(kind)).Render(ctx, templ_7745c5c3_Buffer)
+			templ_7745c5c3_Err = common.Badge(common.ToneInfo, common.ModelKindLabel(kind)).Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}

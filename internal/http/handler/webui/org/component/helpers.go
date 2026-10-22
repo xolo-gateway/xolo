@@ -642,15 +642,3 @@ func modelKind(m model.LLMModel, p model.Provider) model.ModelKind {
 	}
 	return model.DefaultProviderTypeKind(p.Type())
 }
-
-// ModelKindLabel names a model kind in the interface.
-func ModelKindLabel(k model.ModelKind) string {
-	switch k {
-	case model.ModelKindDecision:
-		return "Décision"
-	case model.ModelKindEmbeddings:
-		return "Embeddings"
-	default:
-		return "Complétion"
-	}
-}

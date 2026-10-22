@@ -269,7 +269,7 @@ templ modelCard(mu ModelUsage) {
 						@common.Badge(common.ToneInfo, "virtuel")
 					}
 					if mu.Model.Kind() != model.ModelKindCompletion {
-						@common.Badge(common.ToneInfo, string(mu.Model.Kind()))
+						@common.Badge(common.ToneInfo, common.ModelKindLabel(mu.Model.Kind()))
 					}
 					if mu.Provider != nil && mu.Provider.BillingMode() == model.BillingModeSubscription {
 						@common.Badge(common.ToneNeutral, "abonnement")
