@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/bornholm/genai/llm"
 	"github.com/xolo-gateway/xolo/internal/pipeline"
@@ -361,5 +362,87 @@ func TestToolLoopClient_InspectorAllowsCleanToolResult(t *testing.T) {
 	}
 	if resp.Message().Content() != "final answer" {
 		t.Errorf("got %q", resp.Message().Content())
+	}
+}
+
+// leavingClient streams a long final turn and cancels the caller's context
+// just before closing it, so the turn is fully buffered when the caller is
+// already gone.
+type leavingClient struct {
+	scriptedClient
+	cancel context.CancelFunc
+	parts  int
+}
+
+func (c *leavingClient) ChatCompletionStream(_ context.Context, _ ...llm.ChatCompletionOptionFunc) (<-chan llm.StreamChunk, error) {
+	ch := make(chan llm.StreamChunk, c.parts)
+	for range c.parts {
+		ch <- llm.NewStreamChunk(llm.NewStreamDelta(llm.RoleAssistant, "x"))
+	}
+	c.cancel()
+	close(ch)
+	return ch, nil
+}
+
+func drainWithin(t *testing.T, ch <-chan llm.StreamChunk) int {
+	t.Helper()
+	deadline := time.After(2 * time.Second)
+	received := 0
+	for {
+		select {
+		case _, ok := <-ch:
+			if !ok {
+				return received
+			}
+			received++
+		case <-deadline:
+			t.Fatal("the stream was not closed once the caller left")
+		}
+	}
+}
+
+// Replaying the final turn to a caller that left must stop instead of
+// blocking forever on a channel nobody reads.
+func TestToolLoopClient_ChatCompletionStream_StopsReplayWhenCallerLeaves(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	inner := &leavingClient{cancel: cancel, parts: 32}
+	c := pipeline.NewToolLoopClient(inner, []llm.Tool{newEchoTool("search")}, 0, 0, nil)
+
+	ch, err := c.ChatCompletionStream(ctx, llm.WithMessages(llm.NewMessage(llm.RoleUser, "hi")))
+	if err != nil {
+		t.Fatalf("ChatCompletionStream: %v", err)
+	}
+
+	if received := drainWithin(t, ch); received != 0 {
+		t.Errorf("received %d chunks after the caller left, want none", received)
+	}
+}
+
+// A caller that leaves during a tool round must not cost another model turn.
+func TestToolLoopClient_ChatCompletionStream_NoNewTurnWhenCallerLeaves(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	tc := llm.NewToolCall("call-1", "search", `{}`)
+	inner := &scriptedClient{responses: []*scriptedResponse{
+		{toolCalls: []llm.ToolCall{tc}},
+		{content: "final streamed answer"},
+	}}
+	leaving := llm.NewFuncTool("search", "search", nil, func(context.Context, map[string]any) (llm.ToolResult, error) {
+		cancel()
+		return llm.NewToolResult("result"), nil
+	})
+	c := pipeline.NewToolLoopClient(inner, []llm.Tool{leaving}, 0, 0, nil)
+
+	ch, err := c.ChatCompletionStream(ctx, llm.WithMessages(llm.NewMessage(llm.RoleUser, "hi")))
+	if err != nil {
+		t.Fatalf("ChatCompletionStream: %v", err)
+	}
+
+	if received := drainWithin(t, ch); received != 0 {
+		t.Errorf("received %d chunks after the caller left, want none", received)
+	}
+	if len(inner.calls) != 1 {
+		t.Errorf("the model was called %d times, want 1", len(inner.calls))
 	}
 }

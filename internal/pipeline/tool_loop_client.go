@@ -173,10 +173,31 @@ func (c *ToolLoopClient) ChatCompletionStream(ctx context.Context, funcs ...llm.
 
 	outCh := make(chan llm.StreamChunk, 8)
 
+	// emit gives up once the caller is gone, instead of blocking this
+	// goroutine on a channel nobody reads anymore. The context is checked
+	// first: a select would otherwise pick at random between a free slot in
+	// the buffer and the cancellation.
+	emit := func(chunk llm.StreamChunk) bool {
+		if ctx.Err() != nil {
+			return false
+		}
+		select {
+		case outCh <- chunk:
+			return true
+		case <-ctx.Done():
+			return false
+		}
+	}
+
 	go func() {
 		defer close(outCh)
 
 		for i := 0; i < c.maxIterations; i++ {
+			// A caller gone during a tool round needs no further turn.
+			if ctx.Err() != nil {
+				return
+			}
+
 			forceFinal := i >= c.maxConsecutiveToolCalls
 
 			callFuncs := append(append([]llm.ChatCompletionOptionFunc{}, funcs...), llm.WithMessages(messages...), llm.WithTools(tools...))
@@ -188,7 +209,7 @@ func (c *ToolLoopClient) ChatCompletionStream(ctx context.Context, funcs ...llm.
 
 			sourceCh, err := c.inner.ChatCompletionStream(ctx, callFuncs...)
 			if err != nil {
-				outCh <- llm.NewErrorStreamChunk(err)
+				emit(llm.NewErrorStreamChunk(err))
 				return
 			}
 
@@ -196,7 +217,9 @@ func (c *ToolLoopClient) ChatCompletionStream(ctx context.Context, funcs ...llm.
 
 			if forceFinal || len(toolCalls) == 0 || !c.allKnown(toolCalls) {
 				for _, ch := range chunks {
-					outCh <- ch
+					if !emit(ch) {
+						return
+					}
 				}
 				return
 			}
@@ -206,7 +229,7 @@ func (c *ToolLoopClient) ChatCompletionStream(ctx context.Context, funcs ...llm.
 			for _, tc := range toolCalls {
 				toolMsg := executeToolCallResilient(ctx, tc, c.tools)
 				if blocked, reason := c.inspectToolResult(ctx, tc.Name(), toolMsg.Content()); blocked {
-					outCh <- llm.NewErrorStreamChunk(&RejectionError{Reason: reason})
+					emit(llm.NewErrorStreamChunk(&RejectionError{Reason: reason}))
 					blockedInLoop = true
 					break
 				}
@@ -217,7 +240,7 @@ func (c *ToolLoopClient) ChatCompletionStream(ctx context.Context, funcs ...llm.
 			}
 		}
 
-		outCh <- llm.NewErrorStreamChunk(errTooManyToolIterations)
+		emit(llm.NewErrorStreamChunk(errTooManyToolIterations))
 	}()
 
 	return outCh, nil
