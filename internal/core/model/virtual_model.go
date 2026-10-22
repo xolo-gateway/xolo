@@ -50,6 +50,9 @@ func (m *BaseVirtualModel) CatalogOverrides() *CatalogOverrides { return m.overr
 func (m *BaseVirtualModel) CreatedAt() time.Time                { return m.createdAt }
 func (m *BaseVirtualModel) UpdatedAt() time.Time                { return m.updatedAt }
 
+// SetID replaces the generated ID by one chosen by a provisioning client.
+func (m *BaseVirtualModel) SetID(v VirtualModelID) { m.id = v }
+
 func (m *BaseVirtualModel) SetName(v string)                        { m.name = v }
 func (m *BaseVirtualModel) SetDescription(v string)                 { m.description = v }
 func (m *BaseVirtualModel) SetGraph(v *PipelineGraph)               { m.graph = v }

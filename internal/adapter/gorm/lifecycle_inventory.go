@@ -62,8 +62,8 @@ var lifecycleTables = []lifecycleTable{
 	{table: "invite_tokens", org: "r.org_id"},
 	{table: "providers", org: "r.org_id", family: model.FamilyProvider, secret: []string{"api_key"}},
 	{table: "llm_models", org: "r.org_id"},
-	{table: "virtual_models", org: "r.org_id"},
-	{table: "middlewares", org: "r.org_id"},
+	{table: "virtual_models", org: "r.org_id", family: model.FamilyVirtualModel},
+	{table: "middlewares", org: "r.org_id", family: model.FamilyMiddleware},
 	{table: "event_settings", org: "r.org_id", key: []string{"org_id"}},
 	// A personal secret is scoped "~:<user id>" instead of an organization.
 	{table: "plugin_node_secrets", org: "CASE WHEN r.org_id NOT LIKE '~:%' THEN r.org_id END", member: "CASE WHEN r.org_id LIKE '~:%' THEN substr(r.org_id, 3) END", secret: []string{"value_encrypted"}},

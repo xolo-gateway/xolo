@@ -78,7 +78,19 @@ type ProvisioningBusinessStore interface {
 	GetProviderByID(ctx context.Context, id model.ProviderID) (model.Provider, error)
 	GetLLMModelByID(ctx context.Context, id model.LLMModelID) (model.LLMModel, error)
 	GetVirtualModelByID(ctx context.Context, id model.VirtualModelID) (model.VirtualModel, error)
+	ListVirtualModels(ctx context.Context, orgID model.OrgID) ([]model.VirtualModel, error)
+	CreateVirtualModel(ctx context.Context, vm model.VirtualModel) error
+	SaveVirtualModel(ctx context.Context, vm model.VirtualModel) error
+	DeleteVirtualModel(ctx context.Context, id model.VirtualModelID) error
 	GetMiddlewareByID(ctx context.Context, id model.MiddlewareID) (model.Middleware, error)
+	ListMiddlewares(ctx context.Context, orgID model.OrgID) ([]model.Middleware, error)
+	CreateMiddleware(ctx context.Context, mw model.Middleware) error
+	SaveMiddleware(ctx context.Context, mw model.Middleware) error
+	DeleteMiddleware(ctx context.Context, id model.MiddlewareID) error
+	// The secrets of the plugin nodes of the pipelines above, encrypted by
+	// the caller. ListSecretKeys never returns a value.
+	SecretStore
+	ListSecretKeys(ctx context.Context, scopeID, pluginName, nodeID string) ([]string, error)
 	CreateTeam(ctx context.Context, team model.Team) error
 	SaveTeam(ctx context.Context, team model.Team) error
 	GetTeamByID(ctx context.Context, id model.TeamID) (model.Team, error)

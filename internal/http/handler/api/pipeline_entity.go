@@ -80,6 +80,17 @@ func (h *Handler) serveGetEntity(w http.ResponseWriter, r *http.Request, res pip
 	writeJSON(w, http.StatusOK, toEntityResponse(e))
 }
 
+// rejectLocked answers 403 when err is a write refused because the resource
+// is locked — reserved to the control plane by the ownership policy, or
+// frozen by its deletion — and reports whether it did.
+func rejectLocked(w http.ResponseWriter, err error) bool {
+	if errors.Is(err, port.ErrOwnershipDenied) || errors.Is(err, port.ErrResourceDeleted) {
+		http.Error(w, err.Error(), http.StatusForbidden)
+		return true
+	}
+	return false
+}
+
 // serveUpdateEntity updates the entity's description and/or graph after a
 // write-permission check, then prunes secrets tied to removed nodes.
 func (h *Handler) serveUpdateEntity(w http.ResponseWriter, r *http.Request, res pipelineResource, id string) {
@@ -122,6 +133,9 @@ func (h *Handler) serveUpdateEntity(w http.ResponseWriter, r *http.Request, res 
 	e.SetUpdatedAt(time.Now())
 
 	if err := res.save(ctx, e); err != nil {
+		if rejectLocked(w, err) {
+			return
+		}
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}

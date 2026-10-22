@@ -84,6 +84,10 @@ func businessSnapshot(db *gorm.DB, key mutationKey, row map[string]any) error {
 			}
 		}
 		row["member_roles"] = members
+	case "virtual_model", "middleware":
+		if err := pipelineSnapshot(db, row); err != nil {
+			return err
+		}
 	case "alert":
 		// Rows created before personal alerts carry no scope.
 		if scope, _ := row["scope"].(string); scope == "" {
@@ -125,6 +129,74 @@ func businessSnapshot(db *gorm.DB, key mutationKey, row map[string]any) error {
 	return nil
 }
 
+// pipelineSnapshot decodes the graph, overrides and targets of a virtual
+// model or a middleware. The secrets of its plugin nodes never leave the
+// database: the snapshot keeps a fingerprint of their ciphertexts, so that
+// the audit records a change of secret without the secret, and the
+// representation leaves it out.
+func pipelineSnapshot(db *gorm.DB, row map[string]any) error {
+	var graph *model.PipelineGraph
+	if raw, _ := row["graph_json"].(string); raw != "" && raw != "{}" {
+		graph = &model.PipelineGraph{}
+		if err := json.Unmarshal([]byte(raw), graph); err != nil {
+			return err
+		}
+	}
+	delete(row, "graph_json")
+	row["graph"] = model.PipelineGraphSettingsOf(graph)
+	if raw, ok := row["overrides_json"].(string); ok {
+		delete(row, "overrides_json")
+		row["catalog_overrides"] = decodeCatalogOverrides(raw)
+	}
+	if raw, ok := row["targets_json"].(string); ok {
+		delete(row, "targets_json")
+		var targets []model.ModelRef
+		if raw != "" {
+			if err := json.Unmarshal([]byte(raw), &targets); err != nil {
+				return err
+			}
+		}
+		row["targets"] = model.NormalizeModelRefs(targets)
+	}
+	orgID, _ := row["org_id"].(string)
+	fingerprint, err := pipelineSecretsFingerprint(db, orgID, graph)
+	if err != nil {
+		return err
+	}
+	row["secrets_fingerprint"] = fingerprint
+	return nil
+}
+
+// pipelineSecretsFingerprint hashes the secrets of the plugin nodes of graph,
+// empty when they hold none.
+func pipelineSecretsFingerprint(db *gorm.DB, orgID string, graph *model.PipelineGraph) (string, error) {
+	placements := model.PluginPlacements(graph)
+	if len(placements) == 0 || orgID == "" {
+		return "", nil
+	}
+	if migratingSchema(db) && !db.Migrator().HasTable(&PluginNodeSecret{}) {
+		return "", nil
+	}
+	var secrets []PluginNodeSecret
+	if err := db.Select("plugin_name, node_id, key, value_encrypted").Where("org_id = ?", orgID).
+		Order("plugin_name, node_id, key").Find(&secrets).Error; err != nil {
+		return "", err
+	}
+	hash := sha256.New()
+	held := false
+	for _, secret := range secrets {
+		if !slices.Contains(placements, model.PluginPlacement{Plugin: secret.PluginName, Node: secret.NodeID}) {
+			continue
+		}
+		held = true
+		fmt.Fprintf(hash, "%s\x00%s\x00%s\x00%s\x00", secret.PluginName, secret.NodeID, secret.Key, secret.ValueEncrypted)
+	}
+	if !held {
+		return "", nil
+	}
+	return hex.EncodeToString(hash.Sum(nil)[:8]), nil
+}
+
 // businessFamilyOf designates the family of a business resource snapshot.
 // Builtin roles are created with their organization and never change: they
 // are not part of the contract.
@@ -145,6 +217,10 @@ func businessFamilyOf(key mutationKey, row snapshotRow) (string, bool) {
 		return model.FamilyProvider, true
 	case "team_settings":
 		return model.FamilyTeamSettings, true
+	case "virtual_model":
+		return model.FamilyVirtualModel, true
+	case "middleware":
+		return model.FamilyMiddleware, true
 	}
 	return "", false
 }
@@ -158,6 +234,8 @@ var businessRepresentationFields = map[string][]string{
 	model.FamilyTeamSettings: {"description", "share_quota_equally", "model_grants", "middleware_ids", "member_roles"},
 	model.FamilyAlert:        {"name", "description", "scope", "owner_id", "query", "aggregation", "window_seconds", "comparator", "threshold", "for_seconds", "enabled"},
 	model.FamilyProvider:     {"name", "type", "base_url", "active", "currency", "cloud_tier", "billing_mode", "subscription_plan", "retry_config", "rate_limit_config", "request_headers"},
+	model.FamilyVirtualModel: {"name", "description", "catalog_overrides", "graph"},
+	model.FamilyMiddleware:   {"name", "description", "enabled", "priority", "applies_to_all", "targets", "graph"},
 }
 
 func businessRepresentation(family string, row snapshotRow) map[string]any {

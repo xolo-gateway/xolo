@@ -40,6 +40,8 @@ var businessRoutes = []businessRoute{
 		required: []string{"name", "type", "base_url", "active", "currency", "cloud_tier", "billing_mode", "subscription_plan", "retry_config", "rate_limit_config"},
 		nullable: []string{"subscription_plan", "retry_config", "rate_limit_config", "request_headers"},
 		optional: []string{"api_key", "request_headers"}},
+	{family: model.FamilyVirtualModel, required: []string{"name", "description", "catalog_overrides", "graph"}, nullable: []string{"catalog_overrides"}},
+	{family: model.FamilyMiddleware, required: []string{"name", "description", "enabled", "priority", "applies_to_all", "targets", "graph"}},
 }
 
 // businessCollections names the collection of each business family.
@@ -50,6 +52,8 @@ var businessCollections = map[string]string{
 	model.FamilyQuota:        "quotas",
 	model.FamilyAlert:        "alerts",
 	model.FamilyProvider:     "providers",
+	model.FamilyVirtualModel: "virtual-models",
+	model.FamilyMiddleware:   "middlewares",
 }
 
 // mountBusiness serves the business resources with the reads, conditions,
@@ -70,6 +74,9 @@ func (h *Handler) mountBusiness() {
 		h.mux.HandleFunc("PUT "+collection+"/{resourceID}", h.handleBusinessPut(route))
 		if !route.noDelete {
 			h.mux.HandleFunc("DELETE "+collection+"/{resourceID}", h.handleBusinessDelete(route))
+		}
+		if route.family == model.FamilyVirtualModel || route.family == model.FamilyMiddleware {
+			h.mountPipelineNodes(route.family, collection+"/{resourceID}/nodes")
 		}
 	}
 	h.mux.HandleFunc("POST "+org+"/roles", h.handleCreateRole)
@@ -219,6 +226,18 @@ func (h *Handler) putBusiness(ctx context.Context, scope model.CommonScope, key 
 			return model.CommonItem{}, err
 		}
 		return h.provisioning.PutAlert(ctx, tenantID, orgID, key, condition, v)
+	case model.FamilyVirtualModel:
+		var v model.VirtualModelSettings
+		if err := decode(&v); err != nil {
+			return model.CommonItem{}, err
+		}
+		return h.provisioning.PutVirtualModel(ctx, tenantID, orgID, key, condition, v)
+	case model.FamilyMiddleware:
+		var v model.MiddlewareSettings
+		if err := decode(&v); err != nil {
+			return model.CommonItem{}, err
+		}
+		return h.provisioning.PutMiddleware(ctx, tenantID, orgID, key, condition, v)
 	default:
 		var v model.ProviderSettings
 		if err := decode(&v); err != nil {

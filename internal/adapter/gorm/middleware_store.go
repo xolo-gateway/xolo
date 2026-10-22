@@ -11,7 +11,7 @@ import (
 )
 
 func (s *Store) CreateMiddleware(ctx context.Context, mw model.Middleware) error {
-	return s.withRetry(ctx, true, func(ctx context.Context, db *gorm.DB) error {
+	return s.recorded(ctx, tracking("middleware", string(mw.ID())), func(ctx context.Context, db *gorm.DB) error {
 		if err := db.Create(fromMiddleware(mw)).Error; err != nil {
 			// gorm.ErrDuplicatedKey is only produced when
 			// db.Config.TranslateError is true, which we do not set;
@@ -72,7 +72,7 @@ func (s *Store) queryMiddlewares(ctx context.Context, scope func(*gorm.DB) *gorm
 }
 
 func (s *Store) SaveMiddleware(ctx context.Context, mw model.Middleware) error {
-	return s.withRetry(ctx, true, func(ctx context.Context, db *gorm.DB) error {
+	return s.recorded(ctx, tracking("middleware", string(mw.ID())), func(ctx context.Context, db *gorm.DB) error {
 		return errors.WithStack(db.Clauses(clause.OnConflict{
 			Columns:   []clause.Column{{Name: "id"}},
 			UpdateAll: true,
@@ -81,7 +81,7 @@ func (s *Store) SaveMiddleware(ctx context.Context, mw model.Middleware) error {
 }
 
 func (s *Store) DeleteMiddleware(ctx context.Context, id model.MiddlewareID) error {
-	return s.withRetry(ctx, true, func(ctx context.Context, db *gorm.DB) error {
+	return s.recorded(ctx, tracking("middleware", string(id)), func(ctx context.Context, db *gorm.DB) error {
 		result := db.Delete(&Middleware{}, "id = ?", string(id))
 		if result.Error != nil {
 			return errors.WithStack(result.Error)

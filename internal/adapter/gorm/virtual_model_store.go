@@ -11,7 +11,7 @@ import (
 )
 
 func (s *Store) CreateVirtualModel(ctx context.Context, vm model.VirtualModel) error {
-	return s.withRetry(ctx, true, func(ctx context.Context, db *gorm.DB) error {
+	return s.recorded(ctx, tracking("virtual_model", string(vm.ID())), func(ctx context.Context, db *gorm.DB) error {
 		if err := db.Create(fromVirtualModel(vm)).Error; err != nil {
 			// gorm.ErrDuplicatedKey is only produced when
 			// db.Config.TranslateError is true, which we do not set;
@@ -77,7 +77,7 @@ func (s *Store) ListVirtualModels(ctx context.Context, orgID model.OrgID) ([]mod
 }
 
 func (s *Store) SaveVirtualModel(ctx context.Context, vm model.VirtualModel) error {
-	return s.withRetry(ctx, true, func(ctx context.Context, db *gorm.DB) error {
+	return s.recorded(ctx, tracking("virtual_model", string(vm.ID())), func(ctx context.Context, db *gorm.DB) error {
 		// The ON CONFLICT (id) clause does not match a collision on the
 		// idx_org_name unique index, so a rename racing another
 		// concurrent rename raises the driver's unique-constraint error.
@@ -101,7 +101,7 @@ func (s *Store) SaveVirtualModel(ctx context.Context, vm model.VirtualModel) err
 }
 
 func (s *Store) DeleteVirtualModel(ctx context.Context, id model.VirtualModelID) error {
-	return s.withRetry(ctx, true, func(ctx context.Context, db *gorm.DB) error {
+	return s.recorded(ctx, tracking("virtual_model", string(id)), func(ctx context.Context, db *gorm.DB) error {
 		result := db.Delete(&VirtualModel{}, "id = ?", string(id))
 		if result.Error != nil {
 			return errors.WithStack(result.Error)

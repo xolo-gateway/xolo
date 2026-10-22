@@ -2,6 +2,7 @@ package gorm_test
 
 import (
 	"encoding/json"
+	"fmt"
 	"slices"
 	"strings"
 	"testing"
@@ -39,10 +40,43 @@ func alertSettings(owner model.UserID, threshold float64) model.AlertSettings {
 
 func ptrTo[T any](v T) *T { return &v }
 
+// pipelineGraph is a complete pipeline: a generator, a plugin node holding a
+// threshold, a model and a sink.
+func pipelineGraph(threshold float64) model.PipelineGraphSettings {
+	return model.PipelineGraphSettings{
+		Nodes: []model.PipelineNodeSettings{
+			{ID: "gen", Type: model.NodeTypeGenerator, Data: json.RawMessage(`{}`)},
+			{ID: "guard", Type: model.NodeTypePlugin, Position: model.NodePosition{X: 200}, Data: json.RawMessage(fmt.Sprintf(`{"pluginName":"guard","config":{"threshold":%v}}`, threshold))},
+			{ID: "model", Type: model.NodeTypeModel, Data: json.RawMessage(`{"passthrough":true}`)},
+			{ID: "sink", Type: model.NodeTypeSink, Data: json.RawMessage(`{}`)},
+		},
+		Edges: []model.PipelineEdgeSettings{
+			{ID: "gen-guard", Source: "gen", SourcePort: "request", Target: "guard", TargetPort: "request"},
+			{ID: "guard-model", Source: "guard", SourcePort: "request", Target: "model", TargetPort: "request"},
+			{ID: "model-sink", Source: "model", SourcePort: "response", Target: "sink", TargetPort: "response"},
+		},
+	}
+}
+
+func virtualModelSettings(name string, threshold float64) model.VirtualModelSettings {
+	return model.VirtualModelSettings{Name: name, Description: "", Graph: pipelineGraph(threshold)}
+}
+
+// middlewareSettings wraps the given model with a pipeline whose plugin node
+// does not collide with the one of the fixture virtual model.
+func middlewareSettings(target model.LLMModelID) model.MiddlewareSettings {
+	graph := pipelineGraph(0.5)
+	graph.Nodes[1].ID = "mw-guard"
+	graph.Edges[0].Target, graph.Edges[1].Source = "mw-guard", "mw-guard"
+	return model.MiddlewareSettings{Name: "Guard", Enabled: true, Priority: 1,
+		Targets: []model.ModelRef{{Kind: model.ModelRefKindLLM, ID: string(target)}}, Graph: graph}
+}
+
 // businessFixture provisions one resource of each business family in the
 // organization of fixture.
 type businessFixture struct {
 	provider, role, team, app, quota, alert string
+	virtualModel, middleware                string
 	llm                                     model.LLMModelID
 	user                                    model.UserID
 }
@@ -50,12 +84,17 @@ type businessFixture struct {
 func newBusinessFixture(t *testing.T, store *xologorm.Store, svc *service.ProvisioningService, fixture ownershipFixture) businessFixture {
 	t.Helper()
 	ctx := t.Context()
-	f := businessFixture{provider: uuid.NewString(), role: uuid.NewString(), team: uuid.NewString(), app: uuid.NewString(), quota: uuid.NewString(), alert: uuid.NewString(), user: fixture.user}
+	f := businessFixture{provider: uuid.NewString(), role: uuid.NewString(), team: uuid.NewString(), app: uuid.NewString(), quota: uuid.NewString(), alert: uuid.NewString(),
+		virtualModel: uuid.NewString(), middleware: uuid.NewString(), user: fixture.user}
 	_, err := svc.PutProvider(ctx, testTenantID, fixture.org, f.provider, noCondition, providerSettings("OpenAI", ptrTo("sk-first-secret")))
 	require.NoError(t, err)
 	llm := model.NewLLMModel(model.ProviderID(f.provider), fixture.org, "gpt-"+uuid.NewString()[:8], "gpt-4o", "", 0, 0)
 	require.NoError(t, store.CreateLLMModel(ctx, llm))
 	f.llm = llm.ID()
+	_, err = svc.PutVirtualModel(ctx, testTenantID, fixture.org, f.virtualModel, noCondition, virtualModelSettings("router", 0.5))
+	require.NoError(t, err)
+	_, err = svc.PutMiddleware(ctx, testTenantID, fixture.org, f.middleware, noCondition, middlewareSettings(f.llm))
+	require.NoError(t, err)
 	_, err = svc.PutCustomRole(ctx, testTenantID, fixture.org, f.role, noCondition, model.CustomRoleSettings{
 		Name: "Analyst", Permissions: []string{string(rbac.PermUsageRead)},
 	})
@@ -106,6 +145,7 @@ func businessScopes(fixture ownershipFixture, f businessFixture) map[string]mode
 	return map[string]model.CommonScope{
 		f.provider: org(model.FamilyProvider), f.role: org(model.FamilyCustomRole), f.team: org(model.FamilyTeamSettings), f.app: org(model.FamilyApplication),
 		f.alert: org(model.FamilyAlert), f.quota: {Family: model.FamilyQuota, TenantID: string(testTenantID)},
+		f.virtualModel: org(model.FamilyVirtualModel), f.middleware: org(model.FamilyMiddleware),
 	}
 }
 
@@ -123,13 +163,14 @@ func TestBusinessRoundTrip(t *testing.T) {
 
 		events, _ := feedSince(t, store, cursor)
 		require.Equal(t, []string{
-			"provider.created.v1", "custom_role.created.v1", "team.created.v1", "team_settings.created.v1", "team_membership.created.v1",
-			"team_settings.updated.v1", "application.created.v1", "quota.created.v1", "alert.created.v1",
+			"provider.created.v1", "virtual_model.created.v1", "middleware.created.v1", "custom_role.created.v1", "team.created.v1", "team_settings.created.v1",
+			"team_membership.created.v1", "team_settings.updated.v1", "application.created.v1", "quota.created.v1", "alert.created.v1",
 		}, eventTypes(events))
-		require.Equal(t, model.CommonKey{TenantID: string(testTenantID), OrganizationID: string(fixture.org), TeamID: f.team}, events[2].Data.Key)
-		require.Equal(t, model.CommonKey{TenantID: string(testTenantID), OrganizationID: string(fixture.org), TeamID: f.team, MemberID: string(f.user)}, events[4].Data.Key)
-		require.Equal(t, f.app, events[6].Data.Key.ResourceID)
-		require.Equal(t, string(fixture.org), events[6].Data.Key.OrganizationID)
+		require.Equal(t, model.CommonKey{TenantID: string(testTenantID), OrganizationID: string(fixture.org), ResourceID: f.virtualModel}, events[1].Data.Key)
+		require.Equal(t, model.CommonKey{TenantID: string(testTenantID), OrganizationID: string(fixture.org), TeamID: f.team}, events[4].Data.Key)
+		require.Equal(t, model.CommonKey{TenantID: string(testTenantID), OrganizationID: string(fixture.org), TeamID: f.team, MemberID: string(f.user)}, events[6].Data.Key)
+		require.Equal(t, f.app, events[8].Data.Key.ResourceID)
+		require.Equal(t, string(fixture.org), events[8].Data.Key.OrganizationID)
 
 		items := map[string]model.CommonItem{}
 		for key, scope := range businessScopes(fixture, f) {
@@ -197,6 +238,17 @@ func newBusinessReplay(t *testing.T, svc *service.ProvisioningService, fixture o
 	out[f.quota], err = svc.PutQuota(ctx, testTenantID, f.quota, noCondition, model.QuotaSettings{Scope: model.QuotaScopeApplication, ScopeID: f.app, Currency: "EUR", MonthlyBudget: ptrTo(int64(1000))})
 	require.NoError(t, err)
 	out[f.alert], err = svc.PutAlert(ctx, testTenantID, fixture.org, f.alert, noCondition, alertSettings(fixture.user, 3))
+	require.NoError(t, err)
+	// The order of nodes, edges and targets carries no meaning.
+	vm := virtualModelSettings("router", 0.5)
+	slices.Reverse(vm.Graph.Nodes)
+	slices.Reverse(vm.Graph.Edges)
+	vm.Graph.Nodes[0].Data = json.RawMessage(`{ }`)
+	out[f.virtualModel], err = svc.PutVirtualModel(ctx, testTenantID, fixture.org, f.virtualModel, noCondition, vm)
+	require.NoError(t, err)
+	mw := middlewareSettings(f.llm)
+	mw.Targets = append(mw.Targets, mw.Targets...)
+	out[f.middleware], err = svc.PutMiddleware(ctx, testTenantID, fixture.org, f.middleware, noCondition, mw)
 	require.NoError(t, err)
 	return out
 }

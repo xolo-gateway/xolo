@@ -13,6 +13,7 @@ import (
 	"github.com/xolo-gateway/xolo/internal/core/rbac"
 	"github.com/xolo-gateway/xolo/internal/core/secretcleanup"
 	httpCtx "github.com/xolo-gateway/xolo/internal/http/context"
+	webcommon "github.com/xolo-gateway/xolo/internal/http/handler/webui/common"
 	common "github.com/xolo-gateway/xolo/internal/http/handler/webui/common/component"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/org/component"
 )
@@ -192,6 +193,9 @@ func (h *Handler) createVirtualModel(w http.ResponseWriter, r *http.Request) {
 	vm.SetCatalogOverrides(overrides)
 
 	if err := h.virtualModelStore.CreateVirtualModel(ctx, vm); err != nil {
+		if webcommon.RejectLocked(w, r, err) {
+			return
+		}
 		if errors.Is(err, port.ErrAlreadyExists) {
 			// Mirror of updateVirtualModel: a concurrent create slipped past
 			// the pre-check and the idx_org_name unique index caught it.
@@ -323,6 +327,9 @@ func (h *Handler) updateVirtualModel(w http.ResponseWriter, r *http.Request) {
 	v.SetUpdatedAt(time.Now())
 
 	if err := h.virtualModelStore.SaveVirtualModel(ctx, vm); err != nil {
+		if webcommon.RejectLocked(w, r, err) {
+			return
+		}
 		if errors.Is(err, port.ErrAlreadyExists) {
 			// A concurrent rename slipped past the pre-check and the
 			// idx_org_name unique index caught it. Surface the same
@@ -350,6 +357,9 @@ func (h *Handler) deleteVirtualModel(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.virtualModelStore.DeleteVirtualModel(ctx, model.VirtualModelID(modelID)); err != nil {
+		if webcommon.RejectLocked(w, r, err) {
+			return
+		}
 		if errors.Is(err, port.ErrNotFound) {
 			http.NotFound(w, r)
 			return

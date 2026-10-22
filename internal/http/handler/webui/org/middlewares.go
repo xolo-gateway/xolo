@@ -14,6 +14,7 @@ import (
 	"github.com/xolo-gateway/xolo/internal/core/rbac"
 	"github.com/xolo-gateway/xolo/internal/core/secretcleanup"
 	httpCtx "github.com/xolo-gateway/xolo/internal/http/context"
+	webcommon "github.com/xolo-gateway/xolo/internal/http/handler/webui/common"
 	common "github.com/xolo-gateway/xolo/internal/http/handler/webui/common/component"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/org/component"
 )
@@ -115,6 +116,9 @@ func (h *Handler) createMiddleware(w http.ResponseWriter, r *http.Request) {
 
 	mw := model.NewMiddleware(org.ID(), name, description)
 	if err := h.middlewareStore.CreateMiddleware(ctx, mw); err != nil {
+		if webcommon.RejectLocked(w, r, err) {
+			return
+		}
 		if errors.Is(err, port.ErrAlreadyExists) {
 			http.Redirect(w, r, "/orgs/"+orgSlug+"/admin/middlewares?error=exists", http.StatusSeeOther)
 			return
@@ -227,6 +231,9 @@ func (h *Handler) updateMiddleware(w http.ResponseWriter, r *http.Request) {
 	m.SetTargets(targets)
 
 	if err := h.middlewareStore.SaveMiddleware(ctx, mw); err != nil {
+		if webcommon.RejectLocked(w, r, err) {
+			return
+		}
 		slog.ErrorContext(ctx, "could not save middleware", slog.Any("error", err))
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
@@ -266,6 +273,9 @@ func (h *Handler) toggleMiddleware(w http.ResponseWriter, r *http.Request) {
 	m.SetEnabled(r.FormValue("enabled") != "")
 
 	if err := h.middlewareStore.SaveMiddleware(ctx, mw); err != nil {
+		if webcommon.RejectLocked(w, r, err) {
+			return
+		}
 		slog.ErrorContext(ctx, "could not save middleware", slog.Any("error", err))
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
@@ -286,6 +296,9 @@ func (h *Handler) deleteMiddleware(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.middlewareStore.DeleteMiddleware(ctx, model.MiddlewareID(middlewareID)); err != nil {
+		if webcommon.RejectLocked(w, r, err) {
+			return
+		}
 		if errors.Is(err, port.ErrNotFound) {
 			http.NotFound(w, r)
 			return

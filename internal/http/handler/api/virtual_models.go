@@ -142,6 +142,9 @@ func (h *Handler) handleCreateVirtualModel(w http.ResponseWriter, r *http.Reques
 	}
 
 	if err := h.virtualModelStore.CreateVirtualModel(ctx, vm); err != nil {
+		if rejectLocked(w, err) {
+			return
+		}
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
@@ -186,6 +189,9 @@ func (h *Handler) handleDeleteVirtualModel(w http.ResponseWriter, r *http.Reques
 	}
 
 	if err := h.virtualModelStore.DeleteVirtualModel(ctx, vmID); err != nil {
+		if rejectLocked(w, err) {
+			return
+		}
 		if errors.Is(err, port.ErrNotFound) {
 			http.Error(w, "virtual model not found", http.StatusNotFound)
 			return
@@ -488,6 +494,9 @@ func (h *Handler) handleImportVirtualModel(w http.ResponseWriter, r *http.Reques
 		err := h.virtualModelStore.CreateVirtualModel(ctx, vm)
 		if err == nil {
 			break
+		}
+		if rejectLocked(w, err) {
+			return
 		}
 		if errors.Is(err, port.ErrAlreadyExists) {
 			if attempt == 10 {

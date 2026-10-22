@@ -18,9 +18,13 @@ func (h *Handler) WithTeams(teams port.TeamStore) *Handler {
 	return h
 }
 
-// rejectGraph answers the request and returns true when graph names a model
-// qualified with a team.
+// rejectGraph answers the request and returns true when graph is malformed,
+// as the provisioning API sees it, or names a model qualified with a team.
 func (h *Handler) rejectGraph(w http.ResponseWriter, r *http.Request, graph *model.PipelineGraph) bool {
+	if err := service.ValidatePipelineGraph(graph); err != nil {
+		writeError(w, http.StatusUnprocessableEntity, err.Error())
+		return true
+	}
 	if h.teamStore == nil || graph == nil {
 		return false
 	}

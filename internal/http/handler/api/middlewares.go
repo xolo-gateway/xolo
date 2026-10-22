@@ -107,6 +107,9 @@ func (h *Handler) handleCreateMiddleware(w http.ResponseWriter, r *http.Request)
 
 	mw := model.NewMiddleware(org.ID(), req.Name, req.Description)
 	if err := h.middlewareStore.CreateMiddleware(ctx, mw); err != nil {
+		if rejectLocked(w, err) {
+			return
+		}
 		if errors.Is(err, port.ErrAlreadyExists) {
 			http.Error(w, "a middleware with this name already exists", http.StatusConflict)
 			return
@@ -166,6 +169,9 @@ func (h *Handler) handleUpdateMiddlewareSettings(w http.ResponseWriter, r *http.
 
 	applyMiddlewareSettings(m, req)
 	if err := h.middlewareStore.SaveMiddleware(ctx, mw); err != nil {
+		if rejectLocked(w, err) {
+			return
+		}
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
@@ -231,6 +237,9 @@ func (h *Handler) handleDeleteMiddleware(w http.ResponseWriter, r *http.Request)
 	}
 
 	if err := h.middlewareStore.DeleteMiddleware(ctx, mwID); err != nil {
+		if rejectLocked(w, err) {
+			return
+		}
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}

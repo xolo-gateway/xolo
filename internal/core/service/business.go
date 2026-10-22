@@ -14,6 +14,7 @@ import (
 	"github.com/xolo-gateway/xolo/internal/core/model"
 	"github.com/xolo-gateway/xolo/internal/core/port"
 	"github.com/xolo-gateway/xolo/internal/core/rbac"
+	"github.com/xolo-gateway/xolo/internal/core/secretcleanup"
 	"github.com/xolo-gateway/xolo/internal/crypto"
 )
 
@@ -343,6 +344,20 @@ func (s *ProvisioningService) DeleteBusiness(ctx context.Context, scope model.Co
 			err = tx.tx.DeleteAlert(ctx, model.AlertID(key))
 		case model.FamilyProvider:
 			err = tx.tx.DeleteProvider(ctx, model.ProviderID(key))
+		case model.FamilyVirtualModel, model.FamilyMiddleware:
+			// The secrets of its plugin nodes go with the pipeline.
+			var entity model.PipelineEntity
+			if entity, err = tx.pipelineEntity(ctx, scope.Family, key); err != nil {
+				return errors.WithStack(err)
+			}
+			if scope.Family == model.FamilyMiddleware {
+				err = tx.tx.DeleteMiddleware(ctx, model.MiddlewareID(key))
+			} else {
+				err = tx.tx.DeleteVirtualModel(ctx, model.VirtualModelID(key))
+			}
+			if err == nil {
+				err = secretcleanup.PruneRemovedNodes(ctx, tx.tx, scope.OrganizationID, entity.Graph(), nil)
+			}
 		}
 		return errors.WithStack(err)
 	})

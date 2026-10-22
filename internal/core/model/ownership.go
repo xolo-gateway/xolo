@@ -40,6 +40,8 @@ var OwnershipFamilies = []string{
 	FamilyQuota,
 	FamilyAlert,
 	FamilyProvider,
+	FamilyVirtualModel,
+	FamilyMiddleware,
 }
 
 // OwnershipPolicy assigns a write authority to each family. It is fixed at

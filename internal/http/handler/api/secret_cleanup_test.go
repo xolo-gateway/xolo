@@ -144,13 +144,23 @@ func TestPipelineHTTPSecretCleanup(t *testing.T) {
 						case "save-failure":
 							require.Equal(t, http.StatusInternalServerError, rec.Code)
 							require.Empty(t, store.pruned)
+						case "malformed":
+							// A plugin node naming no plugin is refused before
+							// anything is saved or pruned.
+							if method == http.MethodPut {
+								require.Equal(t, http.StatusUnprocessableEntity, rec.Code, rec.Body.String())
+								require.Empty(t, store.effects)
+								break
+							}
+							require.Equal(t, http.StatusNoContent, rec.Code, rec.Body.String())
+							require.Equal(t, [][3]string{{scope, "old", "node"}}, store.pruned)
 						default:
 							want := http.StatusOK
 							if method == http.MethodDelete {
 								want = http.StatusNoContent
 							}
 							require.Equal(t, want, rec.Code, rec.Body.String())
-							if method == http.MethodPut && (scenario == "malformed" || scenario == "same-plugin") {
+							if method == http.MethodPut && scenario == "same-plugin" {
 								require.Empty(t, store.pruned)
 							} else {
 								require.Equal(t, [][3]string{{scope, "old", "node"}}, store.pruned)

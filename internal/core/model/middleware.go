@@ -71,6 +71,9 @@ func (m *BaseMiddleware) Graph() *PipelineGraph { return m.graph }
 func (m *BaseMiddleware) CreatedAt() time.Time  { return m.createdAt }
 func (m *BaseMiddleware) UpdatedAt() time.Time  { return m.updatedAt }
 
+// SetID replaces the generated ID by one chosen by a provisioning client.
+func (m *BaseMiddleware) SetID(v MiddlewareID) { m.id = v }
+
 func (m *BaseMiddleware) SetName(v string)          { m.name = v }
 func (m *BaseMiddleware) SetDescription(v string)   { m.description = v }
 func (m *BaseMiddleware) SetEnabled(v bool)         { m.enabled = v }

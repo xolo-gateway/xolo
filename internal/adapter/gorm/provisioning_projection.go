@@ -70,14 +70,16 @@ var projectionFamilies = map[string]int{
 	model.FamilyTeam:                   5,
 	model.FamilyTeamMembership:         6,
 	// Business resources come after the common families, providers first.
-	model.FamilyProvider:   7,
-	model.FamilyCustomRole: 8,
+	model.FamilyProvider:     7,
+	model.FamilyCustomRole:   8,
+	model.FamilyVirtualModel: 9,
+	model.FamilyMiddleware:   10,
 	// Team grants designate models and middlewares, team members hold roles,
 	// applications are bound to teams and quotas cap teams.
-	model.FamilyTeamSettings: 9,
-	model.FamilyApplication:  10,
-	model.FamilyQuota:        11,
-	model.FamilyAlert:        12,
+	model.FamilyTeamSettings: 11,
+	model.FamilyApplication:  12,
+	model.FamilyQuota:        13,
+	model.FamilyAlert:        14,
 }
 
 type projectionID struct{ family, tenantID, orgID, key string }

@@ -46,6 +46,17 @@ const (
 	NodeTypePlugin PipelineNodeType = "plugin"
 )
 
+// Known tells whether t is a node type the engine runs.
+func (t PipelineNodeType) Known() bool {
+	switch t {
+	case NodeTypeGenerator, NodeTypeSink, NodeTypeModel, NodeTypeValue, NodeTypeModelRef,
+		NodeTypeCompare, NodeTypeSelect, NodeTypeMath, NodeTypeSample, NodeTypeContext,
+		NodeTypeTrace, NodeTypeNote, NodeTypeModelFallback, NodeTypeBlock, NodeTypePlugin:
+		return true
+	}
+	return false
+}
+
 // PipelineGraph is the dataflow graph stored inside a VirtualModel.
 type PipelineGraph struct {
 	Nodes []PipelineNode `json:"nodes"`

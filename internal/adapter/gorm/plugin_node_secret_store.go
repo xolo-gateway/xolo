@@ -75,4 +75,21 @@ func (s *Store) DeleteAllForNode(ctx context.Context, scopeID, pluginName, nodeI
 	})
 }
 
+// ListSecretKeys returns the keys of the secrets set on a node, sorted,
+// never their values.
+func (s *Store) ListSecretKeys(ctx context.Context, scopeID, pluginName, nodeID string) ([]string, error) {
+	if err := port.ValidateSecretScope(scopeID, pluginName, nodeID); err != nil {
+		return nil, err
+	}
+	keys := []string{}
+	err := s.read(ctx, func(ctx context.Context, db *gorm.DB) error {
+		return errors.WithStack(db.Model(&PluginNodeSecret{}).Where("org_id = ? AND plugin_name = ? AND node_id = ?", scopeID, pluginName, nodeID).
+			Order("key").Pluck("key", &keys).Error)
+	})
+	if err != nil {
+		return nil, err
+	}
+	return keys, nil
+}
+
 var _ port.SecretStore = &Store{}

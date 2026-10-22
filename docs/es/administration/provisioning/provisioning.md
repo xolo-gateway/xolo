@@ -338,8 +338,8 @@ sin representación ni datos personales:
 - `type` es `<resource_type>.created.v1`, `.updated.v1` o `.deleted.v1`, donde
   `resource_type` es `tenant`, `tenant_domain`, `organization`, `member`,
   `organization_membership`, `team`, `team_membership` o una de las familias
-  de negocio `provider`, `custom_role`, `team_settings`, `application`, `quota`
-  y `alert`. La clave de un equipo es `{"tenant_id","organization_id","team_id"}`,
+  de negocio `provider`, `custom_role`, `virtual_model`, `middleware`,
+  `team_settings`, `application`, `quota` y `alert`. La clave de un equipo es `{"tenant_id","organization_id","team_id"}`,
   la de una pertenencia añade `member_id`. Una eliminación no lleva `etag`.
 - **Un evento por recurso y por commit.** Una operación sin cambios o una
   transacción revertida no publica nada. Dentro de un commit, las eliminaciones
@@ -560,7 +560,7 @@ se rechazan.
 
 ## Recursos de negocio
 
-Seis familias propias de Xolo siguen el mismo contrato que las familias
+Ocho familias propias de Xolo siguen el mismo contrato que las familias
 comunes: lectura unitaria con `ETag`, listas paginadas, `PUT` condicionales y
 eventos. El manifiesto anuncia `business_resources`.
 
@@ -571,6 +571,9 @@ eventos. El manifiesto anuncia `business_resources`.
 | `GET`, `GET`, `PUT`, `DELETE` | `/v1/xolo/tenants/{tenantID}/organizations/{orgID}/applications[/{key}]` |
 | `GET`, `GET`, `PUT`, `DELETE` | `/v1/xolo/tenants/{tenantID}/organizations/{orgID}/alerts[/{key}]` |
 | `GET`, `GET`, `PUT`, `DELETE` | `/v1/xolo/tenants/{tenantID}/organizations/{orgID}/providers[/{key}]` |
+| `GET`, `GET`, `PUT`, `DELETE` | `/v1/xolo/tenants/{tenantID}/organizations/{orgID}/virtual-models[/{key}]` |
+| `GET`, `GET`, `PUT`, `DELETE` | `/v1/xolo/tenants/{tenantID}/organizations/{orgID}/middlewares[/{key}]` |
+| `GET`, `GET`, `PUT` | `…/virtual-models/{key}/nodes[/{nodeID}]`, `…/middlewares/{key}/nodes[/{nodeID}]`, ver [Modelos virtuales y middlewares](#modelos-virtuales-y-middlewares) |
 | `GET`, `GET`, `PUT`, `DELETE` | `/v1/xolo/tenants/{tenantID}/quotas[/{key}]` |
 | `POST` | `/v1/xolo/tenants/{tenantID}/organizations/{orgID}/roles` — crea un rol personalizado con una clave elegida por el servidor; responde `201` con `{key, representation, etag}` |
 | `GET` | `/v1/xolo/tenants/{tenantID}/organizations/{orgID}/roles/builtin` — los roles integrados, `{"items":[{"id","builtin_kind","name"}]}`, para `PUT …/members/{membershipID}/roles` |
@@ -585,6 +588,8 @@ obligatorio, `null` solo donde se indica.
 | `application` | `{"name","description","active","role_ids":[…]}`, más un `"team_id"` opcional (vacío para ningún equipo) |
 | `quota` | `{"scope","scope_id","currency","daily_budget","monthly_budget","yearly_budget"}`, presupuestos en microcéntimos o `null`, más un `"cascade"` opcional (`free` por defecto, `capped` o `split`) |
 | `alert` | `{"name","description","scope","owner_id","query","aggregation","window_seconds","comparator","threshold","for_seconds","enabled"}` |
+| `virtual_model` | `{"name","description","catalog_overrides","graph"}`, `catalog_overrides` a `null` o `{"contextWindow","maxOutputTokens","capabilities"}`, como en la interfaz web |
+| `middleware` | `{"name","description","enabled","priority","applies_to_all","targets":[{"kind","id"}],"graph"}` |
 | `provider` | `{"name","type","base_url","active","currency","cloud_tier","billing_mode","subscription_plan","retry_config","rate_limit_config"}`, los tres últimos `null` u objetos, más `"api_key"` de solo escritura y `"request_headers"` opcional: `null` o `{"headers":{"Nombre":"valor"},"session_header":"x-opencode-session"}`, las cabeceras que exige una pasarela (se rechazan los valores vacíos y las cabeceras de autenticación, de cookies, de transporte y de reenvío) |
 
 - **Claves.** Un recurso nuevo se crea con un UUID canónico elegido por el
@@ -666,6 +671,78 @@ aplicación desactivada hasta que caducan sus entradas
 (`XOLO_STORAGE_DATABASE_CACHE_USERS_TTL`): una escritura mediante este
 listener solo vacía la caché de su propio proceso.
 
+### Modelos virtuales y middlewares
+
+Los modelos virtuales y los middlewares llevan un grafo de pipeline, que se
+escribe entero con su `PUT` o nodo a nodo:
+
+| Método | Ruta |
+|---|---|
+| `GET` | `…/virtual-models/{key}/nodes`, `…/middlewares/{key}/nodes` — `{"items":[{"id","type","data","secret_keys":[…]}]}`, ordenados por identificador |
+| `GET` | `…/virtual-models/{key}/nodes/{nodeID}`, `…/middlewares/{key}/nodes/{nodeID}` — un nodo |
+| `PUT` | `…/virtual-models/{key}/nodes/{nodeID}`, `…/middlewares/{key}/nodes/{nodeID}` — `{"data":{…},"secrets":{"nombre":"valor"}}`, `secrets` opcional |
+
+- **Grafo.** `graph` es `{"nodes":[{"id","type","position":{"x","y"},"data"}],"edges":[{"id","source","source_port","target","target_port"}]}`.
+  `type` es uno de `generator`, `sink`, `model`, `value`, `model_ref`,
+  `compare`, `select`, `math`, `sample`, `context`, `trace`, `note`,
+  `model_fallback`, `block` y `plugin`. `data` es la configuración del tipo,
+  tal como la escribe el editor web, en camelCase: `{"pluginName":"…","config":{…}}`
+  para un nodo plugin, `{"proxyName":"…"}` o `{"passthrough":true}` para un
+  nodo modelo. `position` solo sirve al editor y vale el origen por defecto.
+  Nodos y aristas se ordenan por identificador y un `data` ausente se lee
+  `{}`: una repetición en otro orden no cambia nada. Un grafo sin nodos es un
+  pipeline sin configurar.
+- **La validación**, la misma que la de la interfaz web, responde `422`: como
+  mucho 500 nodos y 2000 aristas; identificadores de nodos y aristas no
+  vacíos, únicos, sin espacios alrededor, de 200 caracteres como mucho; un
+  tipo conocido; un `data` que sea un objeto JSON; un nodo plugin que nombre
+  su plugin; aristas entre nodos existentes; ninguna referencia de modelo
+  calificada con un equipo. No se exigen un generador ni una salida conectada
+  mientras se construye el grafo: el motor rechaza un pipeline incompleto al
+  ejecutarlo. Los nombres de plugins no se contrastan con los plugins cargados
+  por la instancia.
+- **Los nombres** son únicos por organización y familia (`409 conflict`); un
+  nombre de modelo virtual cuyo primer segmento antes de `/` es el slug de un
+  equipo se rechaza (`409`).
+- **Nodos plugin.** Sus secretos se guardan por organización, plugin e
+  identificador de nodo: dos pipelines de una organización no pueden llevar
+  un nodo plugin con el mismo plugin y el mismo identificador
+  (`409 conflict`). Un `PUT` que quita un nodo plugin, o cambia su plugin,
+  elimina sus secretos; eliminar el pipeline los elimina todos.
+- **Los destinos** de un middleware son `{"kind":"llm"|"virtual","id"}`,
+  modelos o modelos virtuales de la organización (`404 parent_not_found`),
+  ordenados y sin duplicados; se conservan, pero se ignoran, cuando
+  `applies_to_all` está activo.
+- **Un nodo no tiene revisión propia.** Las rutas de nodos devuelven el `ETag`
+  del pipeline, y un `PUT` de nodo se condiciona a él: una modificación de
+  nodo y una reescritura concurrente del grafo, por esta API o por la interfaz
+  web, chocan con `412` en lugar de sobrescribirse.
+- **Un `PUT` de nodo solo reemplaza `data`.** El tipo, las aristas y la
+  posición se escriben por el pipeline. Un nodo ausente responde
+  `404 not_found`, un cambio de plugin `409 conflict`. Los nodos se crean y
+  se quitan con el `PUT` del pipeline.
+- **Los secretos de nodo son de solo escritura**, como la clave de un
+  provider: un valor fija la clave, `null` la elimina, una clave omitida se
+  conserva. Solo un nodo plugin lleva secretos (`422` si no); como mucho 50
+  por nodo, nombres de 200 caracteres como mucho, valores de 16384 bytes como
+  mucho. Se cifran con `XOLO_SECRET_KEY` en el almacén que el plugin lee con
+  `GetSecret`, y nunca se devuelven: las lecturas listan sus nombres en
+  `secret_keys`, lo que indica a un cliente qué falta rellenar en otra
+  instancia. Un cambio de secreto por sí solo no cambia ningún `ETag` ni
+  publica ningún evento; la auditoría registra una huella de los cifrados. Un
+  valor igual al guardado no escribe nada.
+- **Eventos.** Los nodos no son un tipo de recurso del flujo: una
+  modificación de nodo publica `virtual_model.updated.v1` o
+  `middleware.updated.v1` con el nuevo `ETag` del pipeline, un evento por
+  commit sea cual sea el número de nodos modificados. Un consumidor vuelve a
+  leer el pipeline, o sus nodos, para saber qué cambió.
+- La migración `202610220003` proyecta los modelos virtuales y middlewares
+  existentes sin publicar ningún evento; como las anteriores, exige detener
+  todos los servidores.
+- Límites conocidos: eliminar un modelo virtual o un middleware, aquí como en
+  la interfaz web, deja en su sitio los grants y vinculaciones de equipo que
+  lo designan; los modelos virtuales personales quedan fuera de esta API.
+
 ## Autoridad de escritura, adopción y desvinculación
 
 Cada familia del contrato común, así como las suscripciones webhook, tiene una
@@ -674,7 +751,7 @@ invitaciones), el plano de control (este listener) o ambos.
 
 | Variable | Por defecto | Descripción |
 |---|---|---|
-| `XOLO_OWNERSHIP` | — | Pares `familia=autoridad` separados por comas. Familias: `tenant`, `tenant_domain`, `organization`, `member`, `organization_membership`, `team`, `team_membership`, `subscription`, y las familias de negocio `provider`, `custom_role`, `application`, `quota`, `alert`; `team` gobierna también los ajustes de equipo. Autoridades: `shared`, `local`, `control_plane`. Las familias omitidas valen `shared`; una familia o autoridad desconocida impide el arranque |
+| `XOLO_OWNERSHIP` | — | Pares `familia=autoridad` separados por comas. Familias: `tenant`, `tenant_domain`, `organization`, `member`, `organization_membership`, `team`, `team_membership`, `subscription`, y las familias de negocio `provider`, `custom_role`, `virtual_model`, `middleware`, `application`, `quota`, `alert`; `team` gobierna también los ajustes de equipo. Autoridades: `shared`, `local`, `control_plane`. Las familias omitidas valen `shared`; una familia o autoridad desconocida impide el arranque |
 
 ```dotenv
 XOLO_OWNERSHIP=tenant=control_plane,tenant_domain=control_plane,organization=control_plane,member=control_plane,organization_membership=control_plane,subscription=control_plane
@@ -1150,6 +1227,6 @@ En producción, utilice una autoridad de certificación gestionada (Vault, cert-
 
 ## Fuera del alcance actual
 
-- Los modelos LLM, modelos virtuales, middlewares, tokens de aplicación y parámetros de eventos: siguen gestionándose desde la interfaz web.
+- Los modelos LLM, modelos virtuales personales, tokens de aplicación y parámetros de eventos: siguen gestionándose desde la interfaz web.
 - Los alcances por certificado: cualquier URI autorizado administra la instancia completa.
 - Todavía no se genera ninguna especificación OpenAPI.

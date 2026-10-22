@@ -103,7 +103,8 @@ func validateCommonScope(scope model.CommonScope, key string) error {
 		if scope.TenantID == "" || scope.OrganizationID != "" {
 			return errors.WithStack(port.ErrInvalid)
 		}
-	case model.FamilyOrganizationMembership, model.FamilyTeam, model.FamilyCustomRole, model.FamilyTeamSettings, model.FamilyApplication, model.FamilyAlert, model.FamilyProvider:
+	case model.FamilyOrganizationMembership, model.FamilyTeam, model.FamilyCustomRole, model.FamilyTeamSettings, model.FamilyApplication, model.FamilyAlert, model.FamilyProvider,
+		model.FamilyVirtualModel, model.FamilyMiddleware:
 		if scope.TenantID == "" || scope.OrganizationID == "" {
 			return errors.WithStack(port.ErrInvalid)
 		}

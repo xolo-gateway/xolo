@@ -33,6 +33,11 @@ const (
 	FamilyQuota       = "quota"
 	FamilyAlert       = "alert"
 	FamilyProvider    = "provider"
+	// FamilyVirtualModel and FamilyMiddleware hold a pipeline graph: a
+	// virtual model is exposed as a model of its own, a middleware wraps the
+	// models it targets.
+	FamilyVirtualModel = "virtual_model"
+	FamilyMiddleware   = "middleware"
 	// FamilyTeamSettings holds what a team carries beyond the common contract:
 	// description, budget sharing, model grants, middlewares and the roles of
 	// its members on the team scope. It exists exactly when its team does.
@@ -43,9 +48,10 @@ const (
 var CommonFamilies = []string{FamilyTenant, FamilyTenantDomain, FamilyOrganization, FamilyMember, FamilyOrganizationMembership, FamilyTeam, FamilyTeamMembership}
 
 // BusinessFamilies lists the business families, parents first: team grants
-// designate the models of providers, team members hold roles, applications
-// are bound to teams, quotas cap applications and teams.
-var BusinessFamilies = []string{FamilyProvider, FamilyCustomRole, FamilyTeamSettings, FamilyApplication, FamilyQuota, FamilyAlert}
+// designate the models of providers and virtual models, and the middlewares,
+// team members hold roles, applications are bound to teams, quotas cap
+// applications and teams.
+var BusinessFamilies = []string{FamilyProvider, FamilyCustomRole, FamilyVirtualModel, FamilyMiddleware, FamilyTeamSettings, FamilyApplication, FamilyQuota, FamilyAlert}
 
 // IsBusinessFamily tells whether family is a business family.
 func IsBusinessFamily(family string) bool { return slices.Contains(BusinessFamilies, family) }

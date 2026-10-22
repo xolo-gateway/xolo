@@ -1,3 +1,22 @@
+# Unreleased — virtual models and middlewares in the provisioning API
+
+The provisioning API manages virtual models and middlewares as two business
+families, `virtual_model` and `middleware`, under
+`/v1/xolo/tenants/{tenantID}/organizations/{orgID}/virtual-models` and
+`…/middlewares`, with ETags, conditional `PUT`s, events and write authority.
+Their pipeline graph is written as a whole, or node by node through
+`…/{key}/nodes/{nodeID}`, conditioned by the ETag of the pipeline. The secrets
+of a plugin node are write-only: reads list their names only. Web UI writes
+publish their events as well, and the web UI now refuses a graph with
+duplicate IDs, an unknown node type, a plugin node naming no plugin or an edge
+to a missing node (`422`). Migration `202610220003` projects the existing
+virtual models and middlewares; it requires every server to be stopped.
+
+Details:
+[English](docs/en/administration/provisioning/provisioning.md#virtual-models-and-middlewares),
+[Français](docs/fr/administration/provisioning/provisioning.md#modeles-virtuels-et-middlewares),
+[Español](docs/es/administration/provisioning/provisioning.md#modelos-virtuales-y-middlewares).
+
 # Unreleased — model catalogue declarations
 
 Each model of `GET /api/v1/models` now carries a `xolo` object:
