@@ -262,7 +262,7 @@ func launchServer(bin, logPath string, config []string) (func(), error) {
 		// On Linux the plugins die with the server whatever it does: only
 		// its log tells whether it stopped them itself.
 		if graceful {
-			if logs, err := os.ReadFile(logPath); err == nil && !bytes.Contains(logs, []byte(`msg="plugins stopped"`)) {
+			if logs, err := os.ReadFile(logPath); err == nil && !bytes.Contains(logs, []byte("plugins stopped")) {
 				reportStopFailure("%s: the server exited without stopping its plugins", logPath)
 			}
 		}
