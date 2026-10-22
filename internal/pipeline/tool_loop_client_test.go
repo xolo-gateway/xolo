@@ -446,3 +446,26 @@ func TestToolLoopClient_ChatCompletionStream_NoNewTurnWhenCallerLeaves(t *testin
 		t.Errorf("the model was called %d times, want 1", len(inner.calls))
 	}
 }
+
+func TestToolLoopClient_ChatCompletion_NoNewTurnWhenCallerLeaves(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	tc := llm.NewToolCall("call-1", "search", `{}`)
+	inner := &scriptedClient{responses: []*scriptedResponse{
+		{toolCalls: []llm.ToolCall{tc}},
+		{content: "final answer"},
+	}}
+	leaving := llm.NewFuncTool("search", "search", nil, func(context.Context, map[string]any) (llm.ToolResult, error) {
+		cancel()
+		return llm.NewToolResult("result"), nil
+	})
+	c := pipeline.NewToolLoopClient(inner, []llm.Tool{leaving}, 0, 0, nil)
+
+	_, err := c.ChatCompletion(ctx, llm.WithMessages(llm.NewMessage(llm.RoleUser, "hi")))
+	if !errors.Is(err, context.Canceled) {
+		t.Errorf("err = %v, want context.Canceled", err)
+	}
+	if len(inner.calls) != 1 {
+		t.Errorf("the model was called %d times, want 1", len(inner.calls))
+	}
+}

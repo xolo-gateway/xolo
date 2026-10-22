@@ -105,6 +105,11 @@ func (c *ToolLoopClient) ChatCompletion(ctx context.Context, funcs ...llm.ChatCo
 	tools := mergeTools(opts.Tools, c.tools)
 
 	for i := 0; i < c.maxIterations; i++ {
+		// A caller gone during a tool round needs no further turn.
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+
 		forceFinal := i >= c.maxConsecutiveToolCalls
 
 		callFuncs := append(append([]llm.ChatCompletionOptionFunc{}, funcs...), llm.WithMessages(messages...), llm.WithTools(tools...))
@@ -262,6 +267,10 @@ var _ llm.Client = (*ToolLoopClient)(nil)
 // bufferStreamTurn drains sourceCh, accumulating tool call deltas (by index)
 // into complete ToolCall values, and returns every chunk seen alongside the
 // assembled tool calls (empty if the turn carried none).
+//
+// It reads the turn to its end even once the caller is gone: the inner
+// client streams under the same context, so it closes sourceCh promptly, and
+// leaving early would park its goroutine on a send nobody reads.
 func bufferStreamTurn(sourceCh <-chan llm.StreamChunk) ([]llm.StreamChunk, []llm.ToolCall) {
 	var chunks []llm.StreamChunk
 	assembled := map[int]*assembledToolCall{}
