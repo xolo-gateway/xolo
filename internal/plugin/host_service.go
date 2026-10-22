@@ -2,6 +2,7 @@ package plugin
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"strings"
 	"sync"
@@ -122,6 +123,11 @@ func (s *XoloHostService) ChatCompletion(ctx context.Context, req *proto.HostCha
 	res, err := s.completer.Complete(ctx, mreq)
 	if err != nil {
 		slog.WarnContext(ctx, "host service: chat completion failed", slog.String("model", req.Model), slog.Any("error", err))
+		// A model of another kind is the plugin's configuration mistake: a
+		// retry would fail the same way.
+		if errors.Is(err, model.ErrNotAConversationModel) {
+			return nil, status.Errorf(codes.InvalidArgument, "chat completion: %v", err)
+		}
 		return nil, status.Errorf(codes.Internal, "chat completion: %v", err)
 	}
 	return &proto.HostChatCompletionResponse{

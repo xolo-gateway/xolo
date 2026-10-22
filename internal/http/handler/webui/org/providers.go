@@ -843,19 +843,23 @@ func parseModelAPIFromForm(r *http.Request) (apiType, baseURL string, err error)
 }
 
 // parseModelKindFromForm reads the kind of a model served through apiType,
-// its API type override, or its provider's when empty. A missing kind takes
-// the first one that API serves, and so does the kind the new model form
+// its API type override, or its provider's when empty. A missing kind keeps
+// current, the kind of the model updated, or for a new model (current empty)
+// takes the default kind of that API; so does the kind the new model form
 // preselected from the provider's type (kind_default) when the override
 // serves no such model. Otherwise the kind must be one that API serves: a
 // model of another kind could never be called.
-func parseModelKindFromForm(r *http.Request, p model.Provider, apiType string) (model.ModelKind, error) {
+func parseModelKindFromForm(r *http.Request, p model.Provider, apiType string, current model.ModelKind) (model.ModelKind, error) {
 	served := apiType
 	if served == "" {
 		served = p.Type()
 	}
 	kind := model.ModelKind(strings.TrimSpace(r.FormValue("kind")))
 	if kind == "" {
-		return model.DefaultProviderTypeKind(served), nil
+		if current == "" {
+			return model.DefaultProviderTypeKind(served), nil
+		}
+		kind = current
 	}
 	if preselected := model.ModelKind(r.FormValue("kind_default")); kind == preselected && !model.ProviderTypeServes(served, kind) {
 		return model.DefaultProviderTypeKind(served), nil
@@ -1053,7 +1057,7 @@ func (h *Handler) createModel(w http.ResponseWriter, r *http.Request) {
 	m.SetAPIType(apiType)
 	m.SetBaseURL(apiBaseURL)
 
-	kind, err := parseModelKindFromForm(r, p, apiType)
+	kind, err := parseModelKindFromForm(r, p, apiType, "")
 	if err != nil {
 		h.renderModelFormError(w, r, ctx, user, orgSlug, org, p, nil, true, "Nature : "+err.Error())
 		return
@@ -1186,7 +1190,7 @@ func (h *Handler) updateModel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	kind, err := parseModelKindFromForm(r, p, apiType)
+	kind, err := parseModelKindFromForm(r, p, apiType, existing.Kind())
 	if err != nil {
 		h.renderModelFormError(w, r, ctx, user, orgSlug, org, p, existing, false, "Nature : "+err.Error())
 		return

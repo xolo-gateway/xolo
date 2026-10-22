@@ -1,6 +1,7 @@
 package model
 
 import (
+	"errors"
 	"time"
 
 	"github.com/rs/xid"
@@ -50,6 +51,11 @@ func KindOrDefault(k ModelKind) ModelKind {
 	}
 	return k
 }
+
+// ErrNotAConversationModel is the refusal of a pipeline or plugin calling a
+// model whose kind holds no conversation: a configuration mistake, not an
+// outage.
+var ErrNotAConversationModel = errors.New("the model holds no conversation")
 
 // IsKnownModelKind reports whether k is one of ModelKinds.
 func IsKnownModelKind(k ModelKind) bool {

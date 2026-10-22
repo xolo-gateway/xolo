@@ -225,7 +225,7 @@ func (r *OrgModelRouter) clientForProvider(ctx context.Context, llmModel model.L
 	}
 	if llmModel.Kind() == model.ModelKindEmbeddings {
 		if provider.NewEmbeddingsProviderOptions(providerName) == nil {
-			return nil, errors.Errorf("model '%s' cannot serve embeddings: API type '%s' has no embeddings client", llmModel.ProxyName(), apiType)
+			return nil, genaiProxy.NewBadRequestError(fmt.Sprintf("model '%s' cannot serve embeddings: API type '%s' has no embeddings client", llmModel.ProxyName(), apiType))
 		}
 		providerOpts = []provider.OptionFunc{
 			withDynamicEmbeddings(providerName, baseURL, decryptedKey, llmModel.RealModel(), p.RequestHeaders()),

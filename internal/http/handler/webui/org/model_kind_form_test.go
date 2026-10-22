@@ -84,6 +84,21 @@ func TestUpdateModel_KeepsTheKind(t *testing.T) {
 	}
 }
 
+// An update posting no kind, a script's or a form whose select script did not
+// run, keeps the model's: an embeddings model must not become a completion
+// one, the default of its API.
+func TestUpdateModel_WithoutKindKeepsTheModels(t *testing.T) {
+	existing := model.NewLLMModel("", "", "vectors", "text-embedding-3-small", "", 0, 0)
+	existing.SetKind(model.ModelKindEmbeddings)
+	rr, s := postUpdateModel(t, existing, url.Values{"proxy_name": {"vectors"}, "real_model": {"text-embedding-3-small"}})
+	if rr.Code != http.StatusSeeOther {
+		t.Fatalf("status = %d: %s", rr.Code, rr.Body.String())
+	}
+	if kind := s.saved[0].Kind(); kind != model.ModelKindEmbeddings {
+		t.Errorf("kind = %q, want embeddings", kind)
+	}
+}
+
 func TestModelForm_OffersTheKind(t *testing.T) {
 	rr, _ := postCreateModel(t, url.Values{"proxy_name": {"m"}, "real_model": {"m-real"}, "kind": {"decision"}})
 	body := rr.Body.String()

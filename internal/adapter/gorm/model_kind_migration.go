@@ -48,14 +48,19 @@ func migrateModelKind(tx *gorm.DB) error {
 
 // rollbackModelKind restores cap_embeddings from the embeddings kind, then
 // drops kind. A decision model comes back as a completion model, the only
-// kind there was.
+// kind there was. The models of a frozen scope are skipped, as on the way up:
+// the freeze triggers refuse the write.
 func rollbackModelKind(tx *gorm.DB) error {
 	if !tx.Migrator().HasColumn("llm_models", "cap_embeddings") {
 		if err := tx.Exec("ALTER TABLE llm_models ADD COLUMN cap_embeddings integer DEFAULT 0").Error; err != nil {
 			return errors.WithStack(err)
 		}
 	}
-	if err := tx.Table("llm_models").Where("kind = ?", string(model.ModelKindEmbeddings)).Update("cap_embeddings", 1).Error; err != nil {
+	update := tx.Table("llm_models").Where("kind = ?", string(model.ModelKindEmbeddings))
+	if tx.Migrator().HasTable("resource_deletions") {
+		update = update.Where(notFrozen("llm_models", "llm_models"))
+	}
+	if err := update.Update("cap_embeddings", 1).Error; err != nil {
 		return errors.WithStack(err)
 	}
 	return errors.WithStack(tx.Migrator().DropColumn(&LLMModel{}, "kind"))

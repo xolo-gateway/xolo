@@ -152,6 +152,7 @@ func postUpdateModel(t *testing.T, existing *model.BaseLLMModel, fields url.Valu
 	m := model.NewLLMModel(provider.ID(), org.ID(), existing.ProxyName(), existing.RealModel(), "", 0, 0)
 	m.SetAPIType(existing.APIType())
 	m.SetBaseURL(existing.BaseURL())
+	m.SetKind(existing.Kind())
 	s := &modelFormStore{org: org, provider: provider, created: []model.LLMModel{m}}
 	h := &Handler{orgStore: s, providerStore: s}
 	for _, c := range configure {

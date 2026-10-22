@@ -92,6 +92,8 @@ func (e *conversationKindError) Error() string {
 	return fmt.Sprintf("model '%s' is a %s model and cannot serve a conversation", e.name, e.kind)
 }
 
+func (e *conversationKindError) Unwrap() error { return model.ErrNotAConversationModel }
+
 // kindRefusal answers a request a model of another kind would have to take,
 // with a 400 in the error format of the pipeline responses.
 func kindRefusal(message, code string) *genaiProxy.HookResult {
