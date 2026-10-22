@@ -3,6 +3,7 @@ package model
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"slices"
 	"strings"
 )
@@ -85,17 +86,18 @@ func PipelineGraphSettingsOf(graph *PipelineGraph) PipelineGraphSettings {
 	return out.Normalize()
 }
 
-// Normalize sorts nodes and edges by ID and replaces a missing node
-// configuration by an empty object: the order of a graph carries no meaning,
-// so a replay in another order is a no-op.
+// Normalize sorts nodes and edges by ID, replaces a missing node
+// configuration by an empty object and canonicalizes the others: neither the
+// order of a graph nor the formatting of a configuration carries meaning, so
+// a replay in another order or another formatting is a no-op.
 func (g PipelineGraphSettings) Normalize() PipelineGraphSettings {
 	nodes := slices.Clone(g.Nodes)
 	if nodes == nil {
 		nodes = []PipelineNodeSettings{}
 	}
 	for i := range nodes {
-		if trimmed := bytes.TrimSpace(nodes[i].Data); len(trimmed) == 0 || bytes.Equal(trimmed, []byte("null")) {
-			nodes[i].Data = json.RawMessage("{}")
+		if canonical, err := CanonicalJSON(nodes[i].Data); err == nil {
+			nodes[i].Data = canonical
 		}
 	}
 	slices.SortStableFunc(nodes, func(a, b PipelineNodeSettings) int { return strings.Compare(a.ID, b.ID) })
@@ -162,4 +164,23 @@ func NormalizeModelRefs(refs []ModelRef) []ModelRef {
 	}
 	slices.SortFunc(out, compare)
 	return slices.CompactFunc(out, func(a, b ModelRef) bool { return compare(a, b) == 0 })
+}
+
+// CanonicalJSON re-encodes raw with sorted object keys, without
+// insignificant spaces and with numbers as written; missing or null reads
+// as an empty object.
+func CanonicalJSON(raw json.RawMessage) (json.RawMessage, error) {
+	if trimmed := bytes.TrimSpace(raw); len(trimmed) == 0 || bytes.Equal(trimmed, []byte("null")) {
+		return json.RawMessage("{}"), nil
+	}
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.UseNumber()
+	var v any
+	if err := decoder.Decode(&v); err != nil {
+		return nil, err
+	}
+	if decoder.More() {
+		return nil, errors.New("trailing data after JSON value")
+	}
+	return json.Marshal(v)
 }

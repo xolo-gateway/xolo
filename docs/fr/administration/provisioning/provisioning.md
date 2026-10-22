@@ -707,8 +707,9 @@ en entier par leur `PUT` ou nœud par nœud :
   telle que l'éditeur web l'écrit, en camelCase : `{"pluginName":"…","config":{…}}`
   pour un nœud plugin, `{"proxyName":"…"}` ou `{"passthrough":true}` pour un
   nœud modèle. `position` ne sert qu'à l'éditeur et vaut l'origine par défaut.
-  Nœuds et arêtes sont triés par identifiant et un `data` absent se lit `{}` :
-  un rejeu dans un autre ordre est un no-op. Un graphe sans nœud est un
+  Nœuds et arêtes sont triés par identifiant, un `data` absent se lit `{}` et
+  les clés de `data` sont triées (nombres gardés tels qu'écrits) : un rejeu
+  dans un autre ordre ou une autre mise en forme est un no-op. Un graphe sans nœud est un
   pipeline non configuré.
 - **La validation**, la même que celle de l'interface web, répond `422` : au
   plus 500 nœuds et 2000 arêtes ; des identifiants de nœuds et d'arêtes non

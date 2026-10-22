@@ -140,6 +140,29 @@ func TestPipelineNodeSecrets(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, audits, auditCount(t, db))
 
+		// Nor does a configuration in another formatting: a change of
+		// secret alone moves no ETag and publishes nothing.
+		reordered := json.RawMessage(`{ "config": {"threshold": 0.5}, "pluginName": "guard" }`)
+		published = eventCount(t, db)
+		_, rotated, err := svc.PutPipelineNode(ctx, scope, key, "guard", noCondition, model.PipelineNodeUpdate{Data: reordered, Secrets: map[string]*string{"token": ptrTo("s3cr3t-value"), "extra": ptrTo("x")}})
+		require.NoError(t, err)
+		require.Equal(t, created.ETag, rotated)
+		require.Equal(t, published, eventCount(t, db))
+		_, _, err = svc.PutPipelineNode(ctx, scope, key, "guard", noCondition, model.PipelineNodeUpdate{Data: data, Secrets: map[string]*string{"extra": nil}})
+		require.NoError(t, err)
+
+		// And a replay of the pipeline in another formatting is a no-op.
+		replay := virtualModelSettings("router", 0.5)
+		for i := range replay.Graph.Nodes {
+			if replay.Graph.Nodes[i].ID == "guard" {
+				replay.Graph.Nodes[i].Data = reordered
+			}
+		}
+		again, err := svc.PutVirtualModel(ctx, testTenantID, fixture.org, key, noCondition, replay)
+		require.NoError(t, err)
+		require.Equal(t, created.ETag, again.ETag)
+		require.Equal(t, published, eventCount(t, db))
+
 		// Another pipeline can not hold the same plugin node: they would
 		// share its secrets.
 		_, err = svc.PutVirtualModel(ctx, testTenantID, fixture.org, uuid.NewString(), noCondition, virtualModelSettings("copy", 0.5))

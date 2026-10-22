@@ -373,7 +373,11 @@ func (s *ProvisioningService) PutPipelineNode(ctx context.Context, scope model.C
 			return errors.Wrapf(port.ErrOwnershipDenied, "%s", scope.Family)
 		}
 		if changed || len(writes) > 0 {
-			graph.Nodes[index] = next
+			// A configuration equal to the stored one keeps its bytes: a
+			// change of secret alone must leave the representation as is.
+			if changed {
+				graph.Nodes[index] = next
+			}
 			if changed {
 				if err := ValidatePipelineGraph(graph); err != nil {
 					return err
@@ -470,28 +474,13 @@ func (tx *ProvisioningService) nodeSecretWrites(ctx context.Context, scopeID str
 // jsonDiffers compares two JSON values regardless of formatting and key
 // order; a missing value is an empty object.
 func jsonDiffers(a, b json.RawMessage) (bool, error) {
-	decode := func(raw json.RawMessage) (any, error) {
-		if trimmed := bytes.TrimSpace(raw); len(trimmed) == 0 || bytes.Equal(trimmed, []byte("null")) {
-			return map[string]any{}, nil
-		}
-		var v any
-		return v, errors.WithStack(json.Unmarshal(raw, &v))
-	}
-	va, err := decode(a)
-	if err != nil {
-		return false, err
-	}
-	vb, err := decode(b)
-	if err != nil {
-		return false, err
-	}
-	ea, err := json.Marshal(va)
+	ca, err := model.CanonicalJSON(a)
 	if err != nil {
 		return false, errors.WithStack(err)
 	}
-	eb, err := json.Marshal(vb)
+	cb, err := model.CanonicalJSON(b)
 	if err != nil {
 		return false, errors.WithStack(err)
 	}
-	return !bytes.Equal(ea, eb), nil
+	return !bytes.Equal(ca, cb), nil
 }
