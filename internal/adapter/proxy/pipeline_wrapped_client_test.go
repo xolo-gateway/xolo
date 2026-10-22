@@ -279,3 +279,123 @@ func TestPipelineWrappedClient_ChatCompletionStream_Unmodified(t *testing.T) {
 		t.Errorf("content = %q, want %q", got, want)
 	}
 }
+
+// hangingClient emits one chunk, then holds the stream open until the caller
+// cancels, closing it with the error a provider reports in that case.
+type hangingClient struct{ multiChunkClient }
+
+func (c *hangingClient) ChatCompletionStream(ctx context.Context, _ ...llm.ChatCompletionOptionFunc) (<-chan llm.StreamChunk, error) {
+	ch := make(chan llm.StreamChunk, 2)
+	go func() {
+		defer close(ch)
+		ch <- llm.NewStreamChunk(llm.NewStreamDelta(llm.RoleAssistant, "Bonjour [PERSON_1]"))
+		<-ctx.Done()
+		ch <- llm.NewErrorStreamChunk(ctx.Err())
+	}()
+	return ch, nil
+}
+
+// recordingExecutor may rewrite the response and records the context and the
+// error flag its backward pass received. Backward waits for release when set.
+type recordingExecutor struct {
+	release chan struct{}
+	done    chan struct{}
+	ctxErr  error
+	hadErr  bool
+}
+
+func (e *recordingExecutor) Forward(_ context.Context, _ model.PipelineNode, _ map[string]interface{}, _ pipeline.ExecutionContext) (*pipeline.ForwardResult, error) {
+	return &pipeline.ForwardResult{}, nil
+}
+
+func (e *recordingExecutor) Backward(ctx context.Context, in pipeline.BackwardInput) (*pipeline.BackwardResult, error) {
+	if e.release != nil {
+		<-e.release
+	}
+	e.ctxErr = ctx.Err()
+	e.hadErr = in.HadError
+	close(e.done)
+	return &pipeline.BackwardResult{ModifiedResponseContent: in.ResponseContent + "!"}, nil
+}
+
+func newRecordingEngine(exec *recordingExecutor) *pipeline.Engine {
+	registry := pipeline.NewRegistry()
+	registry.Register("rewrite", exec)
+	return pipeline.NewEngine(registry)
+}
+
+// A caller that goes away while the response is buffered must not leave the
+// backward pass with a canceled context: the pseudonymizer's PostResponse
+// would fail on it.
+func TestPipelineWrappedClient_ChatCompletionStream_BufferedCancelRunsBackward(t *testing.T) {
+	exec := &recordingExecutor{done: make(chan struct{})}
+	wrapped := NewPipelineWrappedClient(&hangingClient{}, newRecordingEngine(exec), newTestForwardExecution(), pipeline.ExecutionContext{})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	ch, err := wrapped.ChatCompletionStream(ctx)
+	if err != nil {
+		t.Fatalf("ChatCompletionStream() error = %v", err)
+	}
+	cancel()
+
+	select {
+	case <-exec.done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("the backward pass did not run")
+	}
+	if exec.ctxErr != nil {
+		t.Errorf("backward pass context error = %v, want none", exec.ctxErr)
+	}
+	if !exec.hadErr {
+		t.Error("the backward pass must be told the response is partial")
+	}
+
+	select {
+	case _, ok := <-ch:
+		for ok {
+			_, ok = <-ch
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("the stream was not closed")
+	}
+}
+
+// Once the caller is gone, re-emitting the buffered chunks must stop instead
+// of blocking forever on a channel nobody reads.
+func TestPipelineWrappedClient_ChatCompletionStream_BufferedEmitStopsWhenCallerLeaves(t *testing.T) {
+	parts := make([]string, 32)
+	for i := range parts {
+		parts[i] = "x"
+	}
+	exec := &recordingExecutor{release: make(chan struct{}), done: make(chan struct{})}
+	wrapped := NewPipelineWrappedClient(&multiChunkClient{parts: parts}, newRecordingEngine(exec), newTestForwardExecution(), pipeline.ExecutionContext{})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	ch, err := wrapped.ChatCompletionStream(ctx)
+	if err != nil {
+		t.Fatalf("ChatCompletionStream() error = %v", err)
+	}
+	cancel()
+	close(exec.release)
+	<-exec.done
+	// Nobody reads while the chunks are re-emitted: only what fits in the
+	// channel's buffer may be waiting there, the rest must be dropped.
+	time.Sleep(50 * time.Millisecond)
+
+	deadline := time.After(2 * time.Second)
+	received := 0
+	for {
+		select {
+		case _, ok := <-ch:
+			if !ok {
+				if received >= len(parts) {
+					t.Errorf("received %d chunks after the caller left, want only the buffered ones", received)
+				}
+				return
+			}
+			received++
+		case <-deadline:
+			t.Fatal("the stream was not closed once the caller left")
+		}
+	}
+}

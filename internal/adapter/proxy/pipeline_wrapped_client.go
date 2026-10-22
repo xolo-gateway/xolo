@@ -102,6 +102,16 @@ func (c *PipelineWrappedClient) ChatCompletionStream(ctx context.Context, funcs 
 		}
 
 		content := buf.String()
+
+		// The caller went away while the answer was being buffered: nothing
+		// will read it. The backward pass still runs, on a context that
+		// outlives the request, so nodes that record state see the partial
+		// response, as on the passthrough path.
+		if ctx.Err() != nil {
+			c.runBackward(context.WithoutCancel(ctx), content, lastTokens, true)
+			return
+		}
+
 		outcome, backErr := c.engine.RunBackwardWithToolCalls(ctx, c.forwardExec, content, calls.json(), lastTokens, false)
 		modified := content
 		rewrittenCalls := []llm.ToolCallDelta(nil)
@@ -112,9 +122,22 @@ func (c *PipelineWrappedClient) ChatCompletionStream(ctx context.Context, funcs 
 			rewrittenCalls = calls.rewritten(ctx, outcome.ToolCallsJSON)
 		}
 
+		// emit gives up once the caller is gone, instead of blocking this
+		// goroutine on a channel nobody reads anymore.
+		emit := func(chunk llm.StreamChunk) bool {
+			select {
+			case outCh <- chunk:
+				return true
+			case <-ctx.Done():
+				return false
+			}
+		}
+
 		if modified == content && rewrittenCalls == nil {
 			for _, ch := range chunks {
-				outCh <- ch
+				if !emit(ch) {
+					return
+				}
 			}
 			return
 		}
@@ -131,12 +154,16 @@ func (c *PipelineWrappedClient) ChatCompletionStream(ctx context.Context, funcs 
 		for _, ch := range chunks {
 			d := ch.Delta()
 			if d == nil {
-				outCh <- ch
+				if !emit(ch) {
+					return
+				}
 				continue
 			}
 			hasToolCalls := rewrittenCalls != nil && len(d.ToolCalls()) > 0
 			if d.Content() == "" && !hasToolCalls {
-				outCh <- ch
+				if !emit(ch) {
+					return
+				}
 				continue
 			}
 
@@ -156,7 +183,9 @@ func (c *PipelineWrappedClient) ChatCompletionStream(ctx context.Context, funcs 
 					toolCallsEmitted = true
 				}
 			}
-			outCh <- &contentOverrideChunk{StreamChunk: ch, delta: override}
+			if !emit(&contentOverrideChunk{StreamChunk: ch, delta: override}) {
+				return
+			}
 		}
 	}()
 
