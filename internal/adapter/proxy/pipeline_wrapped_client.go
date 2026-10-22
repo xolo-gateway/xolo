@@ -4,10 +4,24 @@ import (
 	"bytes"
 	"context"
 	"log/slog"
+	"time"
 
 	"github.com/bornholm/genai/llm"
 	"github.com/xolo-gateway/xolo/internal/pipeline"
 )
+
+// backwardTimeout bounds the backward pass of a stream. It runs detached from
+// the request, so the caller leaving cannot cut it short: a node that hangs
+// would otherwise hold the stream's goroutine forever. A pass cut by the
+// timeout fails like any other, and the response goes out unmodified.
+const backwardTimeout = 30 * time.Second
+
+// detachedBackwardContext returns the context a stream's backward pass runs
+// on: it keeps ctx's values, outlives the caller and ends after
+// backwardTimeout.
+func detachedBackwardContext(ctx context.Context) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.WithoutCancel(ctx), backwardTimeout)
+}
 
 // PipelineWrappedClient wraps an llm.Client to run the pipeline's backward pass
 // (post-response processing) after each LLM call.
@@ -107,7 +121,8 @@ func (c *PipelineWrappedClient) ChatCompletionStream(ctx context.Context, funcs 
 		// caller leaving mid-pass would otherwise fail the nodes' PostResponse
 		// with "context canceled", and nodes that record state would miss the
 		// response.
-		backCtx := context.WithoutCancel(ctx)
+		backCtx, cancelBack := detachedBackwardContext(ctx)
+		defer cancelBack()
 
 		// The caller went away while the answer was being buffered: nothing
 		// will read it. The backward pass still runs so nodes that record
@@ -230,7 +245,7 @@ func (c *PipelineWrappedClient) streamPassthrough(ctx context.Context, sourceCh 
 				// The caller is gone. Still run the backward pass below so
 				// nodes that record state (usage, quotas…) see the partial
 				// response instead of nothing.
-				c.runBackward(context.WithoutCancel(ctx), buf.String(), lastTokens, true)
+				c.runBackwardDetached(ctx, buf.String(), lastTokens, true)
 				return
 			}
 		}
@@ -246,7 +261,7 @@ func (c *PipelineWrappedClient) streamPassthrough(ctx context.Context, sourceCh 
 		//
 		// The caller may leave right after the last chunk: the backward pass
 		// outlives it, as on the other paths.
-		c.runBackward(context.WithoutCancel(ctx), buf.String(), lastTokens, false)
+		c.runBackwardDetached(ctx, buf.String(), lastTokens, false)
 	}()
 
 	return outCh
@@ -267,6 +282,14 @@ func (c *PipelineWrappedClient) runBackward(ctx context.Context, content string,
 	if _, err := c.engine.RunBackward(ctx, c.forwardExec, content, tokens, hadError); err != nil {
 		slog.WarnContext(ctx, "pipeline backward pass failed", slog.Any("error", err))
 	}
+}
+
+// runBackwardDetached runs the backward pass of a stream on a context
+// detached from the caller, see detachedBackwardContext.
+func (c *PipelineWrappedClient) runBackwardDetached(ctx context.Context, content string, tokens *pipeline.TokensUsed, hadError bool) {
+	backCtx, cancel := detachedBackwardContext(ctx)
+	defer cancel()
+	c.runBackward(backCtx, content, tokens, hadError)
 }
 
 func extractResponseTokens(resp llm.ChatCompletionResponse) *pipeline.TokensUsed {

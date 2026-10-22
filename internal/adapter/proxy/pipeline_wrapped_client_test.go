@@ -304,6 +304,8 @@ type recordingExecutor struct {
 	done    chan struct{}
 	ctxErr  error
 	hadErr  bool
+	// bounded tells whether the backward pass had a deadline.
+	bounded bool
 }
 
 func (e *recordingExecutor) Forward(_ context.Context, _ model.PipelineNode, _ map[string]interface{}, _ pipeline.ExecutionContext) (*pipeline.ForwardResult, error) {
@@ -318,6 +320,7 @@ func (e *recordingExecutor) Backward(ctx context.Context, in pipeline.BackwardIn
 		<-e.release
 	}
 	e.ctxErr = ctx.Err()
+	_, e.bounded = ctx.Deadline()
 	e.hadErr = in.HadError
 	close(e.done)
 	return &pipeline.BackwardResult{ModifiedResponseContent: in.ResponseContent + "!"}, nil
@@ -350,6 +353,9 @@ func TestPipelineWrappedClient_ChatCompletionStream_BufferedCancelRunsBackward(t
 	}
 	if exec.ctxErr != nil {
 		t.Errorf("backward pass context error = %v, want none", exec.ctxErr)
+	}
+	if !exec.bounded {
+		t.Error("the backward pass has no deadline: a hanging node would hold the goroutine forever")
 	}
 	if !exec.hadErr {
 		t.Error("the backward pass must be told the response is partial")
@@ -392,6 +398,9 @@ func TestPipelineWrappedClient_ChatCompletionStream_BufferedEmitStopsWhenCallerL
 	}
 	if exec.ctxErr != nil {
 		t.Errorf("the backward pass saw a canceled context (%v): PostResponse would fail on it", exec.ctxErr)
+	}
+	if !exec.bounded {
+		t.Error("the backward pass has no deadline: a hanging node would hold the goroutine forever")
 	}
 
 	deadline := time.After(2 * time.Second)
@@ -449,5 +458,8 @@ func TestPipelineWrappedClient_ChatCompletionStream_PassthroughBackwardOutlivesC
 	}
 	if exec.ctxErr != nil {
 		t.Errorf("the backward pass saw a canceled context (%v): PostResponse would fail on it", exec.ctxErr)
+	}
+	if !exec.bounded {
+		t.Error("the backward pass has no deadline: a hanging node would hold the goroutine forever")
 	}
 }
