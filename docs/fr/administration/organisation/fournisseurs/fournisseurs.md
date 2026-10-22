@@ -292,7 +292,7 @@ Un modèle ne répond qu'aux routes de sa nature. Appelé sur une autre route, i
 | **Embeddings** | `/embeddings`                             | `openai`, `openai-responses`, `mistral`, `openrouter`          |
 | **Décision**   | `/decisions`                              | `typesafe`, `openrouter`                                       |
 
-Le formulaire refuse une nature que le type d'API du modèle ne sert pas. Un nouveau modèle prend par défaut la première nature de son type : décision pour `typesafe`, complétion pour les autres.
+Le formulaire refuse une nature que le type d'API du modèle ne sert pas. Un nouveau modèle est par défaut un modèle de complétion, sauf sur `typesafe`, qui ne sert que la décision.
 
 Les modèles virtuels et les middlewares ne servent pour l'instant que la complétion. Un middleware « appliqué à tous les modèles » ne couvre que les modèles de complétion. Une requête d'embeddings ou de décision n'en traverse donc aucun, et son contenu n'est ni pseudonymisé ni filtré. Les sélecteurs de modèles des pipelines ne proposent que des modèles de complétion, et les plugins ne reçoivent que ceux-là dans leur liste de modèles. Un pipeline qui désigne malgré tout un modèle d'une autre nature répond `400` (code `model_kind_mismatch`) en nommant ce modèle.
 

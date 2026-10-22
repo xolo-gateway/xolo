@@ -855,10 +855,10 @@ func parseModelKindFromForm(r *http.Request, p model.Provider, apiType string) (
 	}
 	kind := model.ModelKind(strings.TrimSpace(r.FormValue("kind")))
 	if kind == "" {
-		return model.ProviderTypeKinds(served)[0], nil
+		return model.DefaultProviderTypeKind(served), nil
 	}
 	if preselected := model.ModelKind(r.FormValue("kind_default")); kind == preselected && !model.ProviderTypeServes(served, kind) {
-		return model.ProviderTypeKinds(served)[0], nil
+		return model.DefaultProviderTypeKind(served), nil
 	}
 	if !model.IsKnownModelKind(kind) {
 		return "", errors.Errorf("nature inconnue : %s. Choisissez une nature de la liste.", kind)

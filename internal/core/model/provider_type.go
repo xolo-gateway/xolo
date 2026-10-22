@@ -21,7 +21,8 @@ func IsKnownProviderType(t string) bool {
 // providerTypeKinds lists the kinds of model the API of a provider type
 // serves, for the types that serve more than completion, or something else: a
 // test of the proxy router checks it against the genai provider registry.
-// Every type missing here serves completion only.
+// Every type missing here serves completion only. The first kind of a type is
+// the one its new models take, see DefaultProviderTypeKind.
 var providerTypeKinds = map[string][]ModelKind{
 	"openai":           {ModelKindCompletion, ModelKindEmbeddings},
 	"openai-responses": {ModelKindCompletion, ModelKindEmbeddings},
@@ -37,6 +38,13 @@ func ProviderTypeKinds(t string) []ModelKind {
 		return kinds
 	}
 	return []ModelKind{ModelKindCompletion}
+}
+
+// DefaultProviderTypeKind is the kind a new model served through the API of
+// the provider type t takes when none is chosen: completion, but for a type
+// that serves no completion.
+func DefaultProviderTypeKind(t string) ModelKind {
+	return ProviderTypeKinds(t)[0]
 }
 
 // ProviderTypeServes reports whether the API of the provider type t serves

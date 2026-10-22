@@ -55,10 +55,10 @@ func checkRequestKind(req *genaiProxy.ProxyRequest, m model.LLMModel) error {
 func (r *OrgModelRouter) decisionClient(ctx context.Context, m model.LLMModel, p model.Provider, name provider.Name, baseURL, apiKey string) (llm.Client, error) {
 	opts := provider.NewDecisionProviderOptions(name)
 	if opts == nil {
-		// A misconfiguration rather than the client's mistake, but the
-		// client still learns why: genai answers a plain error as an opaque
-		// 500.
-		return nil, genaiProxy.NewInternalError(fmt.Sprintf("model '%s' cannot answer decisions: API type '%s' has no decision client", m.ProxyName(), name))
+		// The same refusal as an embeddings model on an API without that
+		// client: a 400 that says why, where genai would answer a plain
+		// error with an opaque 500.
+		return nil, genaiProxy.NewBadRequestError(fmt.Sprintf("model '%s' cannot answer decisions: API type '%s' has no decision client", m.ProxyName(), name))
 	}
 	xologenai.SetCommonOptions(opts, baseURL, apiKey, m.RealModel(), p.RequestHeaders())
 

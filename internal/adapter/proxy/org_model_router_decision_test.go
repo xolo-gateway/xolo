@@ -167,6 +167,22 @@ func TestOrgModelRouterKeepsDecisionModelsOutOfPipelines(t *testing.T) {
 	require.ErrorContains(t, err, "decision model")
 }
 
+// A decision model on an API with no decision client, after its provider
+// changed type, answers a 400 that says why, as an embeddings model does.
+func TestOrgModelRouterRefusesADecisionModelOnAnAPIThatCannotDecide(t *testing.T) {
+	w := decisionWorld(t, "http://127.0.0.1:9/v1")
+	key, err := crypto.Encrypt(teamsTestSecretKey, "key")
+	require.NoError(t, err)
+	w.provider = model.NewProvider(w.org.ID(), "OpenAI", "openai", "http://127.0.0.1:9/v1", key, "USD")
+	router := NewOrgModelRouter(teamsProviderStore{w: w}, teamsOrgStore{w: w}, teamsTestSecretKey)
+
+	_, _, err = router.ResolveModel(w.ctx([]string{string(rbac.PermModelUseOrg)}, nil, nil), decisionRequest(w, "acme/jev"))
+	var apiErr *genaiProxy.APIError
+	require.True(t, errors.As(err, &apiErr), "the refusal must reach the client, got %v", err)
+	require.Equal(t, http.StatusBadRequest, apiErr.StatusCode)
+	require.Contains(t, apiErr.Message, "has no decision client")
+}
+
 // A virtual model whose graph names a decision model is misconfigured: the
 // chat it is asked answers a 400 naming the model, not a server error.
 func TestPipelineNamingADecisionModelAnswersABadRequest(t *testing.T) {

@@ -640,7 +640,7 @@ func modelKind(m model.LLMModel, p model.Provider) model.ModelKind {
 	if m != nil {
 		return m.Kind()
 	}
-	return model.ProviderTypeKinds(p.Type())[0]
+	return model.DefaultProviderTypeKind(p.Type())
 }
 
 // ModelKindLabel names a model kind in the interface.
