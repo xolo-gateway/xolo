@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/bornholm/genai/llm"
@@ -467,5 +468,98 @@ func TestToolLoopClient_ChatCompletion_NoNewTurnWhenCallerLeaves(t *testing.T) {
 	}
 	if len(inner.calls) != 1 {
 		t.Errorf("the model was called %d times, want 1", len(inner.calls))
+	}
+}
+
+// A caller that leaves while the replay is parked on a full output channel
+// must release the goroutine: no chunk beyond the buffered ones is sent.
+func TestToolLoopClient_ChatCompletionStream_ParkedReplayStopsWhenCallerLeaves(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		inner := &leavingClient{cancel: func() {}, parts: 32}
+		c := pipeline.NewToolLoopClient(inner, []llm.Tool{newEchoTool("search")}, 0, 0, nil)
+
+		ch, err := c.ChatCompletionStream(ctx, llm.WithMessages(llm.NewMessage(llm.RoleUser, "hi")))
+		if err != nil {
+			t.Fatalf("ChatCompletionStream: %v", err)
+		}
+
+		// The replay fills the output buffer, then parks on the next send.
+		synctest.Wait()
+		buffered := len(ch)
+		if buffered == 0 || buffered != cap(ch) {
+			t.Fatalf("buffered %d chunks of %d, want a full buffer", buffered, cap(ch))
+		}
+
+		cancel()
+		synctest.Wait()
+
+		received := 0
+		for range ch {
+			received++
+		}
+		if received != buffered {
+			t.Errorf("received %d chunks, want only the %d buffered before the caller left", received, buffered)
+		}
+	})
+}
+
+// twoToolRound asks for two tool calls in a single turn; the first one
+// cancels the caller's context, the second one records whether it ran.
+func twoToolRound(cancel context.CancelFunc) (*scriptedClient, []llm.Tool, *bool) {
+	inner := &scriptedClient{responses: []*scriptedResponse{
+		{toolCalls: []llm.ToolCall{
+			llm.NewToolCall("call-1", "leave", `{}`),
+			llm.NewToolCall("call-2", "search", `{}`),
+		}},
+		{content: "final answer"},
+	}}
+	secondRan := false
+	tools := []llm.Tool{
+		llm.NewFuncTool("leave", "leave", nil, func(context.Context, map[string]any) (llm.ToolResult, error) {
+			cancel()
+			return llm.NewToolResult("left"), nil
+		}),
+		llm.NewFuncTool("search", "search", nil, func(context.Context, map[string]any) (llm.ToolResult, error) {
+			secondRan = true
+			return llm.NewToolResult("result"), nil
+		}),
+	}
+	return inner, tools, &secondRan
+}
+
+// A caller that leaves during a tool round must not cost the remaining tools.
+func TestToolLoopClient_ChatCompletionStream_NoFurtherToolWhenCallerLeaves(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	inner, tools, secondRan := twoToolRound(cancel)
+	c := pipeline.NewToolLoopClient(inner, tools, 0, 0, nil)
+
+	ch, err := c.ChatCompletionStream(ctx, llm.WithMessages(llm.NewMessage(llm.RoleUser, "hi")))
+	if err != nil {
+		t.Fatalf("ChatCompletionStream: %v", err)
+	}
+
+	if received := drainWithin(t, ch); received != 0 {
+		t.Errorf("received %d chunks after the caller left, want none", received)
+	}
+	if *secondRan {
+		t.Error("the second tool ran after the caller left")
+	}
+}
+
+func TestToolLoopClient_ChatCompletion_NoFurtherToolWhenCallerLeaves(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	inner, tools, secondRan := twoToolRound(cancel)
+	c := pipeline.NewToolLoopClient(inner, tools, 0, 0, nil)
+
+	_, err := c.ChatCompletion(ctx, llm.WithMessages(llm.NewMessage(llm.RoleUser, "hi")))
+	if !errors.Is(err, context.Canceled) {
+		t.Errorf("err = %v, want context.Canceled", err)
+	}
+	if *secondRan {
+		t.Error("the second tool ran after the caller left")
 	}
 }
