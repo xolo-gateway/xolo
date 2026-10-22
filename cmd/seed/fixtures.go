@@ -687,7 +687,7 @@ func (s *seeder) seedModels(ctx context.Context) error {
 				Enabled:               1,
 				PromptCostPer1KTokens: 20,
 				ContextWindow:         8_191,
-				CapEmbeddings:         1,
+				Kind:                  string(model.ModelKindEmbeddings),
 			},
 		},
 		{

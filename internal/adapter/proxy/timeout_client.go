@@ -88,6 +88,24 @@ func (c *timeoutClient) SupportsMessagesRelay() bool {
 	return llm.SupportsMessagesRelay(c.inner)
 }
 
+// Decision implements llm.DecisionClient under a deadline on the whole call,
+// like a plain completion.
+func (c *timeoutClient) Decision(ctx context.Context, state any, questions llm.Questions, funcs ...llm.DecisionOptionFunc) (llm.DecisionResponse, error) {
+	callCtx, cancel := context.WithTimeoutCause(ctx, c.timeout, errUpstreamTimeout)
+	defer cancel()
+
+	res, err := llm.Decide(callCtx, c.inner, state, questions, funcs...)
+	if err != nil {
+		return nil, c.translate(callCtx, err)
+	}
+	return res, nil
+}
+
+// SupportsDecision reports on the wrapped client, see llm.SupportsDecision.
+func (c *timeoutClient) SupportsDecision() bool {
+	return llm.SupportsDecision(c.inner)
+}
+
 // watch opens a stream under the watchdog described on timeoutClient.
 func (c *timeoutClient) watch(ctx context.Context, open func(context.Context) (<-chan llm.StreamChunk, error)) (<-chan llm.StreamChunk, error) {
 	callCtx, cancel := context.WithCancelCause(ctx)

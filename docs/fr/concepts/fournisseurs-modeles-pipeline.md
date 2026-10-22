@@ -9,7 +9,8 @@ Un **fournisseur** est une connexion vers un service LLM externe (OpenAI, Mistra
 Un fournisseur expose un ou plusieurs **modèles**. Chaque modèle est décrit par :
 
 - son identité (nom proxy exposé aux utilisateurs, nom réel côté fournisseur, taille de contexte) ;
-- ses capacités (outils, vision, raisonnement, audio, embeddings) ;
+- sa nature, qui fixe les routes auxquelles il répond : complétion (`/chat/completions`, `/messages`), embeddings (`/embeddings`) ou décision (`/decisions`) ;
+- ses capacités (outils, vision, raisonnement, audio) ;
 - sa tarification (coût par million de tokens, en prompt, en cache, en complétion) ;
 - ses caractéristiques physiques (paramètres actifs, débit min/max) utilisées pour l'estimation énergétique.
 

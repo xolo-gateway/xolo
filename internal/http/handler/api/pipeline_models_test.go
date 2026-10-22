@@ -27,6 +27,12 @@ func TestPersonalPipelineModelsFollowTheChargedTeam(t *testing.T) {
 	granted := model.NewLLMModel(model.NewProviderID(), orgA.ID(), "gpt-4o", "openai/gpt-4o", "", 100, 200)
 	ungranted := model.NewLLMModel(model.NewProviderID(), orgA.ID(), "mistral", "mistral/large", "", 100, 200)
 	other := model.NewLLMModel(model.NewProviderID(), orgB.ID(), "claude", "anthropic/claude", "", 100, 200)
+	// A pipeline holds a conversation: the models of another kind are never
+	// offered, however usable.
+	jev := model.NewLLMModel(model.NewProviderID(), orgB.ID(), "jev", "jev-latest", "", 100, 200)
+	jev.SetKind(model.ModelKindDecision)
+	vectors := model.NewLLMModel(model.NewProviderID(), orgB.ID(), "vectors", "text-embedding-3-small", "", 100, 0)
+	vectors.SetKind(model.ModelKindEmbeddings)
 	team := model.NewTeam(orgA.ID(), "research", "Research", "")
 	user := model.NewUser(testTenantID, "oidc", "human-1", "alice@example.com", "Alice", true, "user")
 
@@ -73,7 +79,7 @@ func TestPersonalPipelineModelsFollowTheChargedTeam(t *testing.T) {
 			providerStore := &fakeProviderStoreForPicker{fakeProviderStoreForModels{
 				enabledModels: map[string][]model.LLMModel{
 					string(orgA.ID()): {granted, ungranted},
-					string(orgB.ID()): {other},
+					string(orgB.ID()): {other, jev, vectors},
 				},
 			}}
 			h := api.NewHandler(providerStore, orgStore,

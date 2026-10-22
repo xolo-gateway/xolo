@@ -68,12 +68,6 @@ templ CatalogOverridesFields(o *model.CatalogOverrides) {
 						Audio 
 					}
 				}
-				@form.ItemFlex() {
-					@switchcomp.Switch(switchcomp.Props{ID: "catalog_cap_embeddings", Name: "catalog_cap_embeddings", Checked: caps.Embeddings})
-					@form.Label(form.LabelProps{For: "catalog_cap_embeddings"}) {
-						Embeddings 
-					}
-				}
 			</div>
 		</div>
 	</div>

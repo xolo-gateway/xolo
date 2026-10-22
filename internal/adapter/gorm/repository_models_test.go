@@ -101,6 +101,55 @@ func TestProviderStore_LLMModels(t *testing.T) {
 	eachBackend(t, scenarioProviderStoreLLMModels)
 }
 
+func TestProviderStore_LLMModelKind(t *testing.T) {
+	eachBackend(t, scenarioProviderStoreLLMModelKind)
+}
+
+func scenarioProviderStoreLLMModelKind(t *testing.T, store *xologorm.Store) {
+	ctx := context.Background()
+
+	org := model.NewOrganization(testTenantID, "acme", "Acme", "")
+	if err := store.CreateOrg(ctx, org); err != nil {
+		t.Fatalf("CreateOrg: %v", err)
+	}
+	provider := model.NewProvider(org.ID(), "TypeSafe", "typesafe", "", "key", "USD")
+	if err := store.CreateProvider(ctx, provider); err != nil {
+		t.Fatalf("CreateProvider: %v", err)
+	}
+
+	chat := model.NewLLMModel(provider.ID(), org.ID(), "chat", "gpt-4o", "", 0, 0)
+	jev := model.NewLLMModel(provider.ID(), org.ID(), "jev", "jev-latest", "", 0, 0)
+	jev.SetKind(model.ModelKindDecision)
+	for _, m := range []model.LLMModel{chat, jev} {
+		if err := store.CreateLLMModel(ctx, m); err != nil {
+			t.Fatalf("CreateLLMModel: %v", err)
+		}
+	}
+
+	for m, want := range map[model.LLMModel]model.ModelKind{chat: model.ModelKindCompletion, jev: model.ModelKindDecision} {
+		loaded, err := store.GetLLMModelByID(ctx, m.ID())
+		if err != nil {
+			t.Fatalf("GetLLMModelByID: %v", err)
+		}
+		if loaded.Kind() != want {
+			t.Errorf("%s: kind = %q, want %q", m.ProxyName(), loaded.Kind(), want)
+		}
+	}
+
+	// A save writes the kind back: an update must not turn the model into a
+	// chat one.
+	loaded, err := store.GetLLMModelByID(ctx, jev.ID())
+	if err != nil {
+		t.Fatalf("GetLLMModelByID: %v", err)
+	}
+	if err := store.SaveLLMModel(ctx, loaded); err != nil {
+		t.Fatalf("SaveLLMModel: %v", err)
+	}
+	if reloaded, err := store.GetLLMModelByID(ctx, jev.ID()); err != nil || reloaded.Kind() != model.ModelKindDecision {
+		t.Errorf("kind after save = %v (err %v), want decision", reloaded.Kind(), err)
+	}
+}
+
 func scenarioProviderStoreLLMModels(t *testing.T, store *xologorm.Store) {
 	ctx := context.Background()
 

@@ -29,13 +29,15 @@ type LLMModel struct {
 	CapVision                 int                                `gorm:"default:0"`
 	CapReasoning              int                                `gorm:"default:0"`
 	CapAudio                  int                                `gorm:"default:0"`
-	CapEmbeddings             int                                `gorm:"default:0"`
 	TokenLimitConfig          JSONColumn[model.TokenLimitConfig] `gorm:"type:text"`
 	ExtraBody                 JSONColumn[map[string]any]         `gorm:"type:text"`
 	// APIType and BaseURL override the provider's type and base URL for this
 	// model; empty keeps the provider's.
 	APIType string `gorm:"not null;default:''"`
 	BaseURL string `gorm:"not null;default:''"`
+	// Kind is what the model is called for. The models stored before kinds
+	// existed hold the default, completion.
+	Kind string `gorm:"not null;default:'completion'"`
 }
 
 type wrappedLLMModel struct {
@@ -48,6 +50,7 @@ func (w *wrappedLLMModel) OrgID() model.OrgID               { return model.OrgID
 func (w *wrappedLLMModel) ProxyName() string                { return w.m.ProxyName }
 func (w *wrappedLLMModel) RealModel() string                { return w.m.RealModel }
 func (w *wrappedLLMModel) Description() string              { return w.m.Description }
+func (w *wrappedLLMModel) Kind() model.ModelKind            { return model.KindOrDefault(model.ModelKind(w.m.Kind)) }
 func (w *wrappedLLMModel) Enabled() bool                    { return w.m.Enabled != 0 }
 func (w *wrappedLLMModel) PromptCostPer1KTokens() int64 { return w.m.PromptCostPer1KTokens }
 func (w *wrappedLLMModel) CachedPromptCostPer1KTokens() int64 {
@@ -68,7 +71,6 @@ func (w *wrappedLLMModel) Capabilities() model.ModelCapabilities {
 		Vision:     w.m.CapVision != 0,
 		Reasoning:  w.m.CapReasoning != 0,
 		Audio:      w.m.CapAudio != 0,
-		Embeddings: w.m.CapEmbeddings != 0,
 	}
 }
 func (w *wrappedLLMModel) CreatedAt() time.Time                      { return w.m.CreatedAt }
@@ -112,10 +114,10 @@ func fromLLMModel(m model.LLMModel) *LLMModel {
 		CapVision:                 boolToInt(caps.Vision),
 		CapReasoning:              boolToInt(caps.Reasoning),
 		CapAudio:                  boolToInt(caps.Audio),
-		CapEmbeddings:             boolToInt(caps.Embeddings),
 		TokenLimitConfig:          JSONColumn[model.TokenLimitConfig]{Val: m.TokenLimitConfig()},
 		ExtraBody:                 JSONColumn[map[string]any]{Val: extraBody},
 		APIType:                   m.APIType(),
 		BaseURL:                   m.BaseURL(),
+		Kind:                      string(m.Kind()),
 	}
 }

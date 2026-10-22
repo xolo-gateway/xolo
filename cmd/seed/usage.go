@@ -196,7 +196,7 @@ func (s *seeder) tokenCounts(m llmModel, scale float64) (prompt, cached, complet
 	prompt = int(float64(400+s.rand.Intn(3600)) * scale)
 
 	// Embedding models never produce completion tokens.
-	if m.entity.CapEmbeddings != 0 {
+	if m.entity.Kind == string(model.ModelKindEmbeddings) {
 		return prompt, 0, 0
 	}
 

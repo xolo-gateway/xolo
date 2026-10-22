@@ -70,9 +70,7 @@ func systemCacheControl(t *testing.T, raw string) map[string]any {
 
 func TestCacheControl_ReachesAnthropicUpstream(t *testing.T) {
 	const system = "Tu es un assistant e2e qui répond en une phrase."
-	// The direct model: no middleware in the way, and the embeddings
-	// capability ticked, which must not break chat completions on a
-	// provider type without an embeddings client.
+	// The direct model: no middleware in the way.
 	res, sent := messagesWithCachedSystem(t, modelClaudeDirect, system, "Bonjour.")
 
 	if !strings.Contains(res.Content, "Bonjour.") {

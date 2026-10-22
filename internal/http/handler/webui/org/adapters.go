@@ -55,6 +55,7 @@ type updatedLLMModelAdapter struct {
 	proxyName                 string
 	realModel                 string
 	description               string
+	kind                      model.ModelKind
 	enabled                   bool
 	promptCostPer1KTokens       int64
 	cachedPromptCostPer1KTokens int64
@@ -79,6 +80,7 @@ func (m *updatedLLMModelAdapter) OrgID() model.OrgID           { return m.orgID 
 func (m *updatedLLMModelAdapter) ProxyName() string            { return m.proxyName }
 func (m *updatedLLMModelAdapter) RealModel() string            { return m.realModel }
 func (m *updatedLLMModelAdapter) Description() string          { return m.description }
+func (m *updatedLLMModelAdapter) Kind() model.ModelKind        { return model.KindOrDefault(m.kind) }
 func (m *updatedLLMModelAdapter) Enabled() bool                { return m.enabled }
 func (m *updatedLLMModelAdapter) PromptCostPer1KTokens() int64 { return m.promptCostPer1KTokens }
 func (m *updatedLLMModelAdapter) CachedPromptCostPer1KTokens() int64 {

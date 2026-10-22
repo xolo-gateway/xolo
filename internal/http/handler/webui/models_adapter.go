@@ -19,6 +19,7 @@ func (v *virtualModelAsLLMModel) OrgID() model.OrgID               { return v.vm
 func (v *virtualModelAsLLMModel) ProxyName() string                { return v.vm.Name() }
 func (v *virtualModelAsLLMModel) RealModel() string                { return "" }
 func (v *virtualModelAsLLMModel) Description() string              { return v.vm.Description() }
+func (v *virtualModelAsLLMModel) Kind() model.ModelKind            { return model.ModelKindCompletion }
 func (v *virtualModelAsLLMModel) Enabled() bool                    { return true }
 func (v *virtualModelAsLLMModel) PromptCostPer1KTokens() int64       { return 0 }
 func (v *virtualModelAsLLMModel) CachedPromptCostPer1KTokens() int64 { return 0 }

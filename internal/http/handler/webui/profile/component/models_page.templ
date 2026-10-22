@@ -268,8 +268,8 @@ templ modelCard(mu ModelUsage) {
 					if mu.Model.IsVirtual() {
 						@common.Badge(common.ToneInfo, "virtuel")
 					}
-					if mu.Model.Capabilities().Embeddings {
-						@common.Badge(common.ToneNeutral, "embeddings")
+					if mu.Model.Kind() != model.ModelKindCompletion {
+						@common.Badge(common.ToneInfo, string(mu.Model.Kind()))
 					}
 					if mu.Provider != nil && mu.Provider.BillingMode() == model.BillingModeSubscription {
 						@common.Badge(common.ToneNeutral, "abonnement")
@@ -383,7 +383,8 @@ func openCodeConfigExample(baseURL string, modelUsages []ModelUsage) string {
 
 	models := make(map[string]model.OpenCodeModelEntry)
 	for _, mu := range modelUsages {
-		if mu.Model.Capabilities().Embeddings {
+		// A coding agent only holds conversations.
+		if mu.Model.Kind() != model.ModelKindCompletion {
 			continue
 		}
 		for _, name := range ModelNames(mu) {

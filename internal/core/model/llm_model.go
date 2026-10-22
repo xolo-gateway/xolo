@@ -18,7 +18,47 @@ type ModelCapabilities struct {
 	Vision     bool // image inputs
 	Reasoning  bool // extended chain-of-thought / reasoning tokens
 	Audio      bool // audio inputs or outputs
-	Embeddings bool // vector embeddings (/v1/embeddings endpoint)
+}
+
+// ModelKind is what a model is called for: each kind answers its own API
+// routes, and a model refuses the routes of another kind. Virtual models and
+// middlewares serve completion models only, for now.
+type ModelKind string
+
+const (
+	// ModelKindCompletion answers chat completions and Anthropic Messages.
+	// It is the kind of every model declared before kinds existed, but the
+	// ones that had the former embeddings capability.
+	ModelKindCompletion ModelKind = "completion"
+	// ModelKindEmbeddings answers embeddings: vectors of the inputs.
+	ModelKindEmbeddings ModelKind = "embeddings"
+	// ModelKindDecision answers decisions: typed questions about a state,
+	// answered with calibrated probabilities (TypeSafe's Jev models).
+	ModelKindDecision ModelKind = "decision"
+)
+
+// ModelKinds lists the kinds a model can have.
+func ModelKinds() []ModelKind {
+	return []ModelKind{ModelKindCompletion, ModelKindEmbeddings, ModelKindDecision}
+}
+
+// KindOrDefault returns k, or ModelKindCompletion when k is empty, as it is for
+// the models stored before kinds existed.
+func KindOrDefault(k ModelKind) ModelKind {
+	if k == "" {
+		return ModelKindCompletion
+	}
+	return k
+}
+
+// IsKnownModelKind reports whether k is one of ModelKinds.
+func IsKnownModelKind(k ModelKind) bool {
+	for _, known := range ModelKinds() {
+		if k == known {
+			return true
+		}
+	}
+	return false
 }
 
 // LLMModel is a proxy route: what users call it → what the provider sees.
@@ -30,6 +70,8 @@ type LLMModel interface {
 	ProxyName() string // name the client sends in the API request
 	RealModel() string // name forwarded to the upstream provider
 	Description() string
+	// Kind is what the model is called for, ModelKindCompletion when unset.
+	Kind() ModelKind
 	Enabled() bool
 	// Costs in microcents per 1K tokens (1 microcent = $0.000001)
 	PromptCostPer1KTokens() int64
@@ -72,6 +114,7 @@ type BaseLLMModel struct {
 	proxyName                    string
 	realModel                    string
 	description                  string
+	kind                         ModelKind
 	enabled                      bool
 	promptCostPer1KTokens        int64
 	cachedPromptCostPer1KTokens  int64
@@ -96,6 +139,7 @@ func (m *BaseLLMModel) OrgID() OrgID                        { return m.orgID }
 func (m *BaseLLMModel) ProxyName() string                   { return m.proxyName }
 func (m *BaseLLMModel) RealModel() string                   { return m.realModel }
 func (m *BaseLLMModel) Description() string                 { return m.description }
+func (m *BaseLLMModel) Kind() ModelKind                     { return KindOrDefault(m.kind) }
 func (m *BaseLLMModel) Enabled() bool                       { return m.enabled }
 func (m *BaseLLMModel) PromptCostPer1KTokens() int64 { return m.promptCostPer1KTokens }
 func (m *BaseLLMModel) CachedPromptCostPer1KTokens() int64 {
@@ -122,6 +166,7 @@ func (m *BaseLLMModel) IsVirtual() bool           { return m.providerID == "" }
 
 func (m *BaseLLMModel) SetCachedPromptCostPer1KTokens(v int64)  { m.cachedPromptCostPer1KTokens = v }
 func (m *BaseLLMModel) SetEnabled(v bool)                       { m.enabled = v }
+func (m *BaseLLMModel) SetKind(v ModelKind)                     { m.kind = v }
 func (m *BaseLLMModel) SetContextWindow(v int64)                { m.contextWindow = v }
 func (m *BaseLLMModel) SetOutputWindow(v int64)                 { m.outputWindow = v }
 func (m *BaseLLMModel) SetCapabilities(c ModelCapabilities)     { m.capabilities = c }

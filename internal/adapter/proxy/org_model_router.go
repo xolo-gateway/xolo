@@ -142,14 +142,16 @@ func (r *OrgModelRouter) ResolveModel(ctx context.Context, req *genaiProxy.Proxy
 		return nil, "", errors.WithStack(err)
 	}
 
-	// Verify capability for embedding requests
+	// A model answers the routes of its kind only. The refusal is the
+	// client's mistake, so it says which route the model answers.
+	if err := checkRequestKind(req, llmModel); err != nil {
+		return nil, "", err
+	}
+
 	if req.Type == genaiProxy.RequestTypeEmbedding {
-		if !llmModel.Capabilities().Embeddings {
-			return nil, "", errors.Errorf("model '%s' does not support embeddings", req.Model)
-		}
-		// The capability can be ticked on a model whose API has no
-		// embeddings client (anthropic): say so instead of letting genai
-		// fail with a generic error.
+		// A model migrated from the former embeddings capability may sit on
+		// an API with no embeddings client (anthropic): say so instead of
+		// letting genai fail with a generic error.
 		if apiType := model.ModelAPIType(llmModel, p); provider.NewEmbeddingsProviderOptions(provider.Name(apiType)) == nil {
 			return nil, "", errors.Errorf("model '%s' cannot serve embeddings: API type '%s' has no embeddings client", req.Model, apiType)
 		}
@@ -206,17 +208,27 @@ func (r *OrgModelRouter) clientForProvider(ctx context.Context, llmModel model.L
 	apiType := model.ModelAPIType(llmModel, p)
 	baseURL := model.ModelBaseURL(llmModel, p)
 	providerName := provider.Name(apiType)
+
+	if llmModel.Kind() == model.ModelKindDecision {
+		client, err := r.decisionClient(ctx, llmModel, p, providerName, baseURL, decryptedKey)
+		if err != nil {
+			return nil, errors.WithStack(err)
+		}
+		r.clients.Add(llmModel.ID(), &cachedClient{client: client, fingerprint: fingerprint})
+		return client, nil
+	}
+
+	// A model answers the routes of its kind only, so its client holds the
+	// one capability it is called for.
 	providerOpts := []provider.OptionFunc{
 		withDynamicChatCompletion(providerName, baseURL, decryptedKey, llmModel.RealModel(), defaultMaxTokensFor(llmModel), p.RequestHeaders()),
 	}
-	if llmModel.Capabilities().Embeddings {
-		// A provider without an embeddings client (anthropic) must not lose
-		// its chat completions to a capability ticked on the model.
+	if llmModel.Kind() == model.ModelKindEmbeddings {
 		if provider.NewEmbeddingsProviderOptions(providerName) == nil {
-			slog.WarnContext(ctx, "model declares the embeddings capability but its API type has no embeddings client",
-				slog.String("model", string(llmModel.ID())), slog.String("apiType", apiType))
-		} else {
-			providerOpts = append(providerOpts, withDynamicEmbeddings(providerName, baseURL, decryptedKey, llmModel.RealModel(), p.RequestHeaders()))
+			return nil, errors.Errorf("model '%s' cannot serve embeddings: API type '%s' has no embeddings client", llmModel.ProxyName(), apiType)
+		}
+		providerOpts = []provider.OptionFunc{
+			withDynamicEmbeddings(providerName, baseURL, decryptedKey, llmModel.RealModel(), p.RequestHeaders()),
 		}
 	}
 
@@ -349,6 +361,11 @@ func (r *OrgModelRouter) ResolveRealModel(ctx context.Context, orgID model.OrgID
 			return nil, "", "", errors.Errorf("model '%s' not available in organization", proxyName)
 		}
 		return nil, "", "", errors.WithStack(err)
+	}
+	// Pipelines and plugins hold conversations: a model of another kind has
+	// no chat client to give them.
+	if llmModel.Kind() != model.ModelKindCompletion {
+		return nil, "", "", errors.Errorf("model '%s' is a %s model and cannot serve a conversation", proxyName, llmModel.Kind())
 	}
 
 	client, err := r.clientForModel(ctx, llmModel)

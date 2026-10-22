@@ -26,7 +26,7 @@ Un fournisseur est une connexion vers un service LLM externe (OpenAI, Mistral, O
    | Champ                       | Description                                                                                           |
    | --------------------------- | ----------------------------------------------------------------------------------------------------- |
    | **Nom**                     | Nom affiché du fournisseur                                                                            |
-   | **Type**                    | Type de connexion : `openai`, `openai-responses`, `anthropic`, `gemini`, `mistral`, `openrouter`      |
+   | **Type**                    | Type de connexion : `openai`, `openai-responses`, `anthropic`, `gemini`, `mistral`, `openrouter`, `typesafe` |
    | **URL de base**             | URL de l'endpoint API (ex: `https://api.openai.com/v1`)                                               |
    | **Clé API**                 | Clé d'authentification auprès du fournisseur                                                          |
    | **Devise**                  | Devise pour la tarification (USD, EUR, etc.)                                                          |
@@ -76,6 +76,37 @@ La requête repasse par la traduction dans ces cas :
 - requête sans `"stream": true` ;
 - modèle virtuel dont le nœud terminal combine plusieurs modèles, comme un repli entre modèles ;
 - modèle avec une **limite de tokens** : le limiteur de tokens ne sait pas compter une réponse relayée.
+
+## Modèles de décision : TypeSafe
+
+Un modèle de décision ne génère pas de texte. Il évalue un **état** (un texte, un objet JSON) au regard de **questions typées** et renvoie des probabilités calibrées :
+
+- `noul` : une question fermée, dont la réponse est la probabilité du oui ;
+- `choice` : un choix parmi les options que la question définit, avec la probabilité de chacune ;
+- `score` : une position sur une échelle ordonnée de 2 à 10 niveaux.
+
+Les modèles Jev de TypeSafe sont de ce genre. Déclarez-les avec le type `typesafe` et l'URL `https://api.typesafe.ai/v1`, ou par OpenRouter (type `openrouter`, modèle réel `~typesafe/jev-latest`), puis créez le modèle avec la nature **Décision**.
+
+Les clients l'appellent sur `POST /api/v1/decisions`, au format de TypeSafe et du endpoint de décisions d'OpenRouter : un client de l'un ou l'autre n'a qu'à changer d'URL de base.
+
+```json
+{
+  "model": "{org-slug}/jev",
+  "state": "Mes virements échouent depuis trois jours.",
+  "questions": {
+    "is_urgent": { "type": "noul", "instructions": "Ce ticket est-il urgent ?" },
+    "team": {
+      "type": "choice",
+      "instructions": "Quelle équipe doit le traiter ?",
+      "criteria": { "paiements": null, "recherche": "Recherche et catalogue" }
+    }
+  }
+}
+```
+
+La réponse porte une réponse par question, sous le même identifiant, et l'usage en tokens (`input_tokens`, `output_tokens`). Xolo facture une décision comme une complétion : les tokens d'entrée au coût du prompt, ceux de sortie au coût de complétion, ou le coût que rapporte OpenRouter. Les quotas, l'abonnement, la limitation de débit et les nouvelles tentatives du fournisseur s'y appliquent aussi.
+
+Ni modèle virtuel ni middleware ne s'appliquent à une décision (voir [Nature du modèle](#nature-du-modele)).
 
 ## Tester la connexion
 
@@ -247,8 +278,25 @@ Chaque fournisseur peut exposer un ou plusieurs modèles.
 | **Nom proxy**   | Nom visible par les utilisateurs (format : `{org-slug}/{nom-proxy}`) |
 | **Modèle réel** | Nom exact du modèle chez le fournisseur                              |
 | **Description** | Description optionnelle                                              |
+| **Nature**      | Ce que le modèle sert : complétion, embeddings ou décision           |
 | **Contexte**    | Taille de la fenêtre de contexte en tokens                           |
 | **Sortie**      | Taille max de la réponse en tokens                                   |
+
+#### Nature du modèle
+
+Un modèle ne répond qu'aux routes de sa nature. Appelé sur une autre route, il répond `400` en indiquant la bonne.
+
+| Nature         | Routes                                    | Types d'API qui la servent                                     |
+| -------------- | ----------------------------------------- | -------------------------------------------------------------- |
+| **Complétion** | `/chat/completions`, `/messages`          | tous sauf `typesafe`                                           |
+| **Embeddings** | `/embeddings`                             | `openai`, `openai-responses`, `mistral`, `openrouter`          |
+| **Décision**   | `/decisions`                              | `typesafe`, `openrouter`                                       |
+
+Le formulaire refuse une nature que le type d'API du modèle ne sert pas. Un nouveau modèle prend par défaut la première nature de son type : décision pour `typesafe`, complétion pour les autres.
+
+Les modèles virtuels et les middlewares ne servent pour l'instant que la complétion. Un middleware « appliqué à tous les modèles » ne couvre que les modèles de complétion. Une requête d'embeddings ou de décision n'en traverse donc aucun, et son contenu n'est ni pseudonymisé ni filtré. Les sélecteurs de modèles des pipelines ne proposent que des modèles de complétion.
+
+Jusqu'à cette version, les embeddings étaient une capacité cochée sur un modèle de complétion. La mise à jour donne la nature embeddings à chaque modèle qui l'avait, puis retire la capacité. Un tel modèle ne répond plus à `/chat/completions`. S'il servait aussi la complétion, déclarez-le une seconde fois, sous un autre nom proxy, avec la nature complétion.
 
 #### Champs de capacités
 
@@ -258,7 +306,6 @@ Chaque fournisseur peut exposer un ou plusieurs modèles.
 | **Vision**       | Le modèle peut analyser des images          |
 | **Raisonnement** | Le modèle utilise du chain-of-thought       |
 | **Audio**        | Le modèle supporte l'audio                  |
-| **Embeddings**   | Le modèle peut produire des embeddings      |
 
 #### Champs de tarification
 

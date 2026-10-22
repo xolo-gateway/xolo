@@ -132,7 +132,7 @@ templ ModelsPage(vmodel ModelsPageVModel) {
 										{ formatTokenWindow(m.OutputWindow()) }
 									}
 									@table.Cell() {
-										@modelCapabilities(m.Capabilities())
+										@modelCapabilities(m.Kind(), m.Capabilities())
 									}
 									@table.Cell() {
 										if m.Enabled() {
@@ -168,9 +168,13 @@ templ ModelsPage(vmodel ModelsPageVModel) {
 
 // modelCapabilities renders the capability pills of a model. Nothing is drawn
 // when none is declared: a row of "non" pills would weigh more than the absence
-// it describes.
-templ modelCapabilities(caps model.ModelCapabilities) {
+// it describes. A model of another kind than completion says so first: it
+// answers no conversation.
+templ modelCapabilities(kind model.ModelKind, caps model.ModelCapabilities) {
 	<div class="flex flex-wrap gap-1">
+		if kind != model.ModelKindCompletion {
+			@common.Badge(common.ToneInfo, string(kind))
+		}
 		if caps.Tools {
 			@common.Badge(common.ToneNeutral, "outils")
 		}
@@ -182,9 +186,6 @@ templ modelCapabilities(caps model.ModelCapabilities) {
 		}
 		if caps.Audio {
 			@common.Badge(common.ToneNeutral, "audio")
-		}
-		if caps.Embeddings {
-			@common.Badge(common.ToneNeutral, "embeddings")
 		}
 	</div>
 }

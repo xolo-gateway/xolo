@@ -45,9 +45,8 @@ const (
 
 	// A provider of type anthropic, pointed at the fake Messages endpoint,
 	// with two models: one wrapped by a pseudonymizer middleware, one
-	// reached directly. The direct one ticks the embeddings capability
-	// (which the provider type cannot serve) and declares no cached-prompt
-	// tariff, so the guard and the tariff fallback are exercised.
+	// reached directly. The direct one declares no cached-prompt tariff, so
+	// the tariff fallback is exercised.
 	providerAcmeAnthropic = "prov-acme-anthropic"
 	modelClaude           = "acme/e2e-claude"
 	modelClaudeID         = "mdl-e2e-claude"
@@ -55,6 +54,13 @@ const (
 	modelClaudeDirect     = "acme/e2e-claude-direct"
 	modelClaudeDirectID   = "mdl-e2e-claude-direct"
 	realModelClaudeDirect = "e2e-claude-direct"
+
+	// A provider of type typesafe, pointed at the fake evaluation endpoint,
+	// with one decision model.
+	providerAcmeTypeSafe = "prov-acme-typesafe"
+	modelJev             = "acme/e2e-jev"
+	modelJevID           = "mdl-e2e-jev"
+	realModelJev         = "jev-latest"
 )
 
 // Virtual models created by the harness, one per scenario family.
@@ -194,6 +200,9 @@ func prepareDatabase(dsn, providerURL string) error {
 	if err := createAnthropicProvider(db, providerURL); err != nil {
 		return err
 	}
+	if err := createTypeSafeProvider(db, providerURL); err != nil {
+		return err
+	}
 	if err := createModels(db); err != nil {
 		return err
 	}
@@ -260,9 +269,8 @@ func createAnthropicProvider(db *gorm.DB, providerURL string) error {
 			ID: modelClaudeDirectID, CreatedAt: now, UpdatedAt: now,
 			ProviderID: providerAcmeAnthropic, OrgID: orgAcme,
 			ProxyName: realModelClaudeDirect, RealModel: realModelClaudeDirect,
-			Description:           "Modèle de test e2e sans middleware, capacité embeddings cochée, sans tarif de cache.",
+			Description:           "Modèle de test e2e sans middleware, sans tarif de cache.",
 			Enabled:               1,
-			CapEmbeddings:         1,
 			PromptCostPer1KTokens: 100, CompletionCostPer1KTokens: 500,
 			ContextWindow: 200_000, OutputWindow: 8_192, ActiveParams: 8_000_000_000,
 			TokensPerSecLow: 50, TokensPerSecHigh: 100,
@@ -272,6 +280,44 @@ func createAnthropicProvider(db *gorm.DB, providerURL string) error {
 		if err := db.Create(m).Error; err != nil {
 			return fmt.Errorf("create model %s: %w", m.ProxyName, err)
 		}
+	}
+	return nil
+}
+
+// createTypeSafeProvider clones the seeded OpenAI provider, like
+// createAnthropicProvider, into a provider of type typesafe aimed at the
+// fake, with one decision model.
+func createTypeSafeProvider(db *gorm.DB, providerURL string) error {
+	var source gormadapter.Provider
+	if err := db.Where("id = ?", providerAcmeOpenAI).First(&source).Error; err != nil {
+		return fmt.Errorf("load seeded provider: %w", err)
+	}
+
+	now := time.Now()
+	p := source
+	p.ID = providerAcmeTypeSafe
+	p.Name = "TypeSafe (e2e)"
+	p.Type = "typesafe"
+	p.BaseURL = providerURL
+	p.CreatedAt, p.UpdatedAt = now, now
+	p.LLMModels = nil
+	p.RetryConfig = gormadapter.JSONColumn[model.RetryConfig]{}
+	p.RateLimitConfig = gormadapter.JSONColumn[model.RateLimitConfig]{}
+	if err := db.Create(&p).Error; err != nil {
+		return fmt.Errorf("create typesafe provider: %w", err)
+	}
+
+	m := &gormadapter.LLMModel{
+		ID: modelJevID, CreatedAt: now, UpdatedAt: now,
+		ProviderID: providerAcmeTypeSafe, OrgID: orgAcme,
+		ProxyName: "e2e-jev", RealModel: realModelJev,
+		Description:           "Modèle de décision e2e servi par le faux endpoint TypeSafe.",
+		Enabled:               1,
+		Kind:                  string(model.ModelKindDecision),
+		PromptCostPer1KTokens: 100, CompletionCostPer1KTokens: 400,
+	}
+	if err := db.Create(m).Error; err != nil {
+		return fmt.Errorf("create model %s: %w", m.ProxyName, err)
 	}
 	return nil
 }

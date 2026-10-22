@@ -683,6 +683,13 @@ func schemaMigrations(artifact *RecoveryArtifact) []*gormigrate.Migration {
 				return errors.WithStack(tx.Migrator().DropColumn(&Provider{}, "request_headers"))
 			},
 		},
+		{
+			// Add kind to llm_models, and turn the embeddings capability into
+			// the embeddings kind, see migrateModelKind.
+			ID:       modelKindMigrationID,
+			Migrate:  migrateModelKind,
+			Rollback: rollbackModelKind,
+		},
 	}
 }
 
@@ -690,4 +697,5 @@ const (
 	planModelUsageIndexMigrationID    = "202610190001"
 	modelAPIOverrideMigrationID       = "202610210001"
 	providerRequestHeadersMigrationID = "202610220001"
+	modelKindMigrationID              = "202610220002"
 )

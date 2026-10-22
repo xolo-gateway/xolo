@@ -32,7 +32,6 @@ func ParseCatalogOverrides(r *http.Request) (*model.CatalogOverrides, error) {
 			Vision:     r.FormValue("catalog_cap_vision") == "on",
 			Reasoning:  r.FormValue("catalog_cap_reasoning") == "on",
 			Audio:      r.FormValue("catalog_cap_audio") == "on",
-			Embeddings: r.FormValue("catalog_cap_embeddings") == "on",
 		}
 	}
 	if o.IsZero() {

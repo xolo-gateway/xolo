@@ -350,6 +350,10 @@ func (h *Handler) middlewareTargetOptions(ctx context.Context, org model.Organiz
 
 	if models, err := h.providerStore.ListEnabledLLMModels(ctx, org.ID()); err == nil {
 		for _, m := range models {
+			// A middleware serves completion models only, for now.
+			if m.Kind() != model.ModelKindCompletion {
+				continue
+			}
 			opts = append(opts, component.MiddlewareTargetOption{
 				Kind:  string(model.ModelRefKindLLM),
 				ID:    string(m.ID()),

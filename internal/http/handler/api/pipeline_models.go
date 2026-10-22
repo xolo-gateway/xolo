@@ -158,6 +158,11 @@ func (h *Handler) orgModelOptionsWhere(r *http.Request, org model.Organization, 
 		if usable != nil && !usable(string(m.ID()), rbac.ModelKindLLM) {
 			continue
 		}
+		// A pipeline holds a conversation: it can only call a completion
+		// model.
+		if m.Kind() != model.ModelKindCompletion {
+			continue
+		}
 		group, ok := providerNames[m.ProviderID()]
 		if !ok {
 			group = org.Name()

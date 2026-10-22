@@ -310,8 +310,44 @@ func newFakeProvider() *fakeProvider {
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /v1/chat/completions", p.handleChat)
 	mux.HandleFunc("POST /v1/messages", p.handleMessages)
+	mux.HandleFunc("POST /v1/systemone", p.handleDecision)
 	p.srv = httptest.NewServer(mux)
 	return p
+}
+
+// handleDecision answers the TypeSafe evaluation endpoint: every question
+// gets a yes/no answer of 0.75, whatever its type, and the usage is fixed so
+// the billing can be asserted downstream. The request is recorded with its
+// model and raw body.
+func (p *fakeProvider) handleDecision(w http.ResponseWriter, r *http.Request) {
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	var req struct {
+		Model     string                     `json:"model"`
+		Questions map[string]json.RawMessage `json:"questions"`
+	}
+	if err := json.Unmarshal(body, &req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	p.mu.Lock()
+	p.requests = append(p.requests, chatRequest{Model: req.Model, Raw: string(body), Header: r.Header.Clone()})
+	p.mu.Unlock()
+
+	answers := map[string]any{}
+	for id := range req.Questions {
+		answers[id] = map[string]any{"type": "noul", "noul": 0.75}
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"model":   req.Model + "-2026-09",
+		"answers": answers,
+		"usage":   map[string]any{"input_tokens": 200, "output_tokens": 2},
+	})
 }
 
 func (p *fakeProvider) baseURL() string { return p.srv.URL + "/v1" }

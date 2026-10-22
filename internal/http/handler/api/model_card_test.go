@@ -52,7 +52,8 @@ type cardEntry struct {
 		CompletionTokens int `json:"completion_tokens"`
 	} `json:"per_request_limits"`
 	Architecture struct {
-		InputModalities []string `json:"input_modalities"`
+		InputModalities  []string `json:"input_modalities"`
+		OutputModalities []string `json:"output_modalities"`
 	} `json:"architecture"`
 	Pricing struct {
 		Prompt     float64 `json:"prompt"`
@@ -60,8 +61,9 @@ type cardEntry struct {
 	} `json:"pricing"`
 	SupportedParameters []string `json:"supported_parameters"`
 	Xolo                struct {
-		CapabilitiesDeclared bool   `json:"capabilities_declared"`
-		Currency             string `json:"currency"`
+		CapabilitiesDeclared bool            `json:"capabilities_declared"`
+		Currency             string          `json:"currency"`
+		Kind                 model.ModelKind `json:"kind"`
 	} `json:"xolo"`
 }
 

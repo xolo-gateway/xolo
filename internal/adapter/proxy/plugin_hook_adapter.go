@@ -168,6 +168,12 @@ func (a *PipelineHookAdapter) PreRequest(ctx context.Context, req *genaiProxy.Pr
 		return forbidden, nil
 	}
 
+	// A virtual model serves the models of one kind, completion for every
+	// virtual model so far.
+	if requestKind(req.Type) != model.ModelKindCompletion {
+		return kindRefusal("Virtual model \""+req.Model+"\" serves completions only.", "virtual_model_kind_mismatch"), nil
+	}
+
 	if vm.Graph() == nil {
 		slog.WarnContext(ctx, "pipeline: virtual model has no pipeline configured — returning error",
 			slog.String("model", req.Model))
@@ -303,6 +309,12 @@ func (a *PipelineHookAdapter) applyMiddlewares(ctx context.Context, req *genaiPr
 	if a.middlewareStore == nil {
 		return false, nil
 	}
+	// A middleware serves the models of one kind, completion for every
+	// middleware so far, "applies to all" included: a request of another
+	// kind has none to run.
+	if requestKind(req.Type) != model.ModelKindCompletion {
+		return false, nil
+	}
 
 	// The team scope already stripped the team segment.
 	name, ok := model.ParseModelName(req.Model, nil)
@@ -329,6 +341,11 @@ func (a *PipelineHookAdapter) applyMiddlewares(ctx context.Context, req *genaiPr
 		ref = model.ModelRef{Kind: model.ModelRefKindVirtual, ID: string(vm.ID())}
 		targetVM = vm
 	} else if llmModel, llmErr := a.providerStore.GetLLMModelByProxyName(ctx, org.ID(), localName); llmErr == nil && llmModel != nil {
+		// A model asked on the route of another kind is refused by the
+		// router, after its access check: a middleware has nothing to run.
+		if llmModel.Kind() != requestKind(req.Type) {
+			return false, nil
+		}
 		ref = model.ModelRef{Kind: model.ModelRefKindLLM, ID: string(llmModel.ID())}
 	} else {
 		// Unknown model — let the standard path emit the appropriate error.
@@ -891,6 +908,11 @@ func buildProtoModels(ctx context.Context, ps port.ProviderStore, orgID model.Or
 		if reachable != nil && !reachable(m.ProxyName(), string(m.ID()), rbac.ModelKindLLM) {
 			continue
 		}
+		// A plugin calls models through the host's chat completion, which a
+		// decision model cannot answer.
+		if m.Kind() == model.ModelKindDecision {
+			continue
+		}
 		caps := m.Capabilities()
 		out = append(out, &proto.ModelInfo{
 			ProxyName:            m.ProxyName(),
@@ -900,7 +922,7 @@ func buildProtoModels(ctx context.Context, ps port.ProviderStore, orgID model.Or
 			ContextLength:        m.ContextWindow(),
 			SupportsVision:       caps.Vision,
 			SupportsReasoning:    caps.Reasoning,
-			SupportsEmbeddings:   caps.Embeddings,
+			SupportsEmbeddings:   m.Kind() == model.ModelKindEmbeddings,
 			ActiveParamsBillions: float32(m.ActiveParams()) / 1e9,
 		})
 	}

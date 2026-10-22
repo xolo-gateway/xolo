@@ -28,6 +28,7 @@ import (
 	_ "github.com/bornholm/genai/llm/provider/openai"
 	_ "github.com/bornholm/genai/llm/provider/openrouter"
 	_ "github.com/bornholm/genai/llm/provider/responses"
+	_ "github.com/bornholm/genai/llm/provider/typesafe"
 )
 
 func (h *Handler) getProvidersPage(w http.ResponseWriter, r *http.Request) {
@@ -422,14 +423,21 @@ func testProviderConnection(ctx context.Context, providerType, baseURL, apiKey s
 	name := provider.Name(providerType)
 	// dummy model — just validates credentials
 	opts := newProviderOptions(provider.NewChatCompletionProviderOptions, name, baseURL, apiKey, "gpt-3.5-turbo", headers)
+	setClient := func(o *provider.Options, resolved *provider.ResolvedClientOptions) { o.ChatCompletion = resolved }
+	if opts == nil {
+		// A type without chat, such as typesafe, is checked through the
+		// client of the models it serves.
+		opts = newProviderOptions(provider.NewDecisionProviderOptions, name, baseURL, apiKey, "", headers)
+		setClient = func(o *provider.Options, resolved *provider.ResolvedClientOptions) { o.Decision = resolved }
+	}
 	if opts == nil {
 		return false, errors.Errorf("unknown provider %q", providerType)
 	}
 	client, err := provider.Create(ctx, func(o *provider.Options) error {
-		o.ChatCompletion = &provider.ResolvedClientOptions{
+		setClient(o, &provider.ResolvedClientOptions{
 			Provider: name,
 			Specific: opts,
-		}
+		})
 		return nil
 	})
 	if err != nil {
@@ -834,6 +842,28 @@ func parseModelAPIFromForm(r *http.Request) (apiType, baseURL string, err error)
 	return apiType, baseURL, nil
 }
 
+// parseModelKindFromForm reads the kind of a model served through apiType,
+// its API type override, or its provider's when empty. A missing kind takes
+// the first one that API serves. The kind must be one that API serves: a
+// model of another kind could never be called.
+func parseModelKindFromForm(r *http.Request, p model.Provider, apiType string) (model.ModelKind, error) {
+	served := apiType
+	if served == "" {
+		served = p.Type()
+	}
+	kind := model.ModelKind(strings.TrimSpace(r.FormValue("kind")))
+	if kind == "" {
+		return model.ProviderTypeKinds(served)[0], nil
+	}
+	if !model.IsKnownModelKind(kind) {
+		return "", errors.Errorf("nature inconnue : %s. Choisissez une nature de la liste.", kind)
+	}
+	if !model.ProviderTypeServes(served, kind) {
+		return "", errors.Errorf("le type d'API %s ne sert pas de modèle de nature « %s ».", served, component.ModelKindLabel(kind))
+	}
+	return kind, nil
+}
+
 // parseExtraBodyFromForm reads the key/value rows emitted by the ExtraBodyEditor
 // component (extra_body_count + extra_body_k{i}_key / _value) into a map.
 // Rows with an empty key are skipped. Values are typed by inference (see
@@ -1000,7 +1030,6 @@ func (h *Handler) createModel(w http.ResponseWriter, r *http.Request) {
 		Vision:     r.FormValue("cap_vision") == "on",
 		Reasoning:  r.FormValue("cap_reasoning") == "on",
 		Audio:      r.FormValue("cap_audio") == "on",
-		Embeddings: r.FormValue("cap_embeddings") == "on",
 	})
 
 	extraBody, err := parseExtraBodyFromForm(r)
@@ -1018,6 +1047,13 @@ func (h *Handler) createModel(w http.ResponseWriter, r *http.Request) {
 	}
 	m.SetAPIType(apiType)
 	m.SetBaseURL(apiBaseURL)
+
+	kind, err := parseModelKindFromForm(r, p, apiType)
+	if err != nil {
+		h.renderModelFormError(w, r, ctx, user, orgSlug, org, p, nil, true, "Nature : "+err.Error())
+		return
+	}
+	m.SetKind(kind)
 
 	if err := h.providerStore.CreateLLMModel(ctx, m); err != nil {
 		slog.ErrorContext(ctx, "could not create model", slogx.Error(err))
@@ -1145,6 +1181,12 @@ func (h *Handler) updateModel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	kind, err := parseModelKindFromForm(r, p, apiType)
+	if err != nil {
+		h.renderModelFormError(w, r, ctx, user, orgSlug, org, p, existing, false, "Nature : "+err.Error())
+		return
+	}
+
 	updated := &updatedLLMModelAdapter{
 		id:                          existing.ID(),
 		providerID:                  existing.ProviderID(),
@@ -1152,6 +1194,7 @@ func (h *Handler) updateModel(w http.ResponseWriter, r *http.Request) {
 		proxyName:                   proxyName,
 		realModel:                   r.FormValue("real_model"),
 		description:                 r.FormValue("description"),
+		kind:                        kind,
 		enabled:                     r.FormValue("enabled") == "on",
 		promptCostPer1KTokens:       parseCostField(r.FormValue("prompt_cost")),
 		cachedPromptCostPer1KTokens: parseCostField(r.FormValue("cached_prompt_cost")),
@@ -1166,7 +1209,6 @@ func (h *Handler) updateModel(w http.ResponseWriter, r *http.Request) {
 			Vision:     r.FormValue("cap_vision") == "on",
 			Reasoning:  r.FormValue("cap_reasoning") == "on",
 			Audio:      r.FormValue("cap_audio") == "on",
-			Embeddings: r.FormValue("cap_embeddings") == "on",
 		},
 		createdAt:        existing.CreatedAt(),
 		updatedAt:        time.Now(),

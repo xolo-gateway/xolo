@@ -872,7 +872,7 @@ func ModelsPage(vmodel ModelsPageVModel) templ.Component {
 											}()
 										}
 										ctx = templ.InitializeContext(ctx)
-										templ_7745c5c3_Err = modelCapabilities(m.Capabilities()).Render(ctx, templ_7745c5c3_Buffer)
+										templ_7745c5c3_Err = modelCapabilities(m.Kind(), m.Capabilities()).Render(ctx, templ_7745c5c3_Buffer)
 										if templ_7745c5c3_Err != nil {
 											return templ_7745c5c3_Err
 										}
@@ -1017,8 +1017,9 @@ func ModelsPage(vmodel ModelsPageVModel) templ.Component {
 
 // modelCapabilities renders the capability pills of a model. Nothing is drawn
 // when none is declared: a row of "non" pills would weigh more than the absence
-// it describes.
-func modelCapabilities(caps model.ModelCapabilities) templ.Component {
+// it describes. A model of another kind than completion says so first: it
+// answers no conversation.
+func modelCapabilities(kind model.ModelKind, caps model.ModelCapabilities) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
@@ -1043,6 +1044,12 @@ func modelCapabilities(caps model.ModelCapabilities) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
+		if kind != model.ModelKindCompletion {
+			templ_7745c5c3_Err = common.Badge(common.ToneInfo, string(kind)).Render(ctx, templ_7745c5c3_Buffer)
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+		}
 		if caps.Tools {
 			templ_7745c5c3_Err = common.Badge(common.ToneNeutral, "outils").Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
@@ -1063,12 +1070,6 @@ func modelCapabilities(caps model.ModelCapabilities) templ.Component {
 		}
 		if caps.Audio {
 			templ_7745c5c3_Err = common.Badge(common.ToneNeutral, "audio").Render(ctx, templ_7745c5c3_Buffer)
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-		}
-		if caps.Embeddings {
-			templ_7745c5c3_Err = common.Badge(common.ToneNeutral, "embeddings").Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}

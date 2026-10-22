@@ -24,11 +24,14 @@ workflow GitHub `check` l'exécute à chaque push et pull request.
 3. démarre le fournisseur factice (`httptest`), qui expose
    `POST /v1/chat/completions` (format OpenAI) et `POST /v1/messages` (format
    Anthropic, flux SSE flushé événement par événement) et répond
-   `Bien reçu : <dernier message utilisateur>` ;
+   `Bien reçu : <dernier message utilisateur>`, ainsi que `POST /v1/systemone`
+   (format TypeSafe), qui répond 0,75 à chaque question ;
    chaque requête reçue est conservée pour les assertions ;
 4. pointe le fournisseur `prov-acme-openai` de la base sur ce faux serveur,
    y ajoute un fournisseur de type `anthropic` (`prov-acme-anthropic`, modèles
-   `acme/e2e-claude` et `acme/e2e-claude-direct`) et les middlewares sous test ;
+   `acme/e2e-claude` et `acme/e2e-claude-direct`), un fournisseur de type
+   `typesafe` (`prov-acme-typesafe`, modèle de décision `acme/e2e-jev`) et les
+   middlewares sous test ;
 5. lance le serveur sur un port libre, avec la clé secrète du seed, et attend
    qu'il réponde sur `/api/v1/models`.
 
@@ -72,7 +75,7 @@ En cas d'échec de la mise en place, le journal du serveur est imprimé.
 
 | Test | Modèle | Attendu |
 |---|---|---|
-| `TestCacheControl_ReachesAnthropicUpstream` | `acme/e2e-claude-direct` | le bloc `system` annoté `cache_control` arrive tel quel sur `/v1/messages`, dans le champ `system` de premier niveau ; la capacité embeddings cochée sur le modèle ne casse pas la complétion |
+| `TestCacheControl_ReachesAnthropicUpstream` | `acme/e2e-claude-direct` | le bloc `system` annoté `cache_control` arrive tel quel sur `/v1/messages`, dans le champ `system` de premier niveau |
 | `TestCacheControl_NotEmittedOnOpenAIUpstream` | `acme/e2e-fast` | témoin : la même requête vers un fournisseur `openai` ne porte aucun `cache_control` |
 | `TestCacheControl_SurvivesARewritingNode` | `acme/e2e-claude` | le pseudonymizer réécrit le message utilisateur sans perdre le point de cache |
 | `TestCacheControl_CachedTokensAreRecorded` | `acme/e2e-claude` | l'enregistrement d'usage porte les tokens lus dans le cache et les facture au tarif « prompt en cache » ; les écritures de cache sont comptées au tarif plein |
@@ -80,6 +83,13 @@ En cas d'échec de la mise en place, le journal du serveur est imprimé.
 | `TestCacheControl_OutputWindowIsTheDefaultMaxTokens` | `acme/e2e-claude-direct` | sans `max_tokens` client, c'est la fenêtre de sortie du modèle (plafonnée à 16 384) qui part à l'amont |
 | `TestCacheControl_StreamingRoundTrip` | `acme/e2e-claude-direct` | la route OpenAI en streaming traverse le provider Messages ; le faux amont flushe chaque événement SSE, les deltas reconstituent la réponse et les compteurs de cache sont enregistrés comme en non streamé |
 | `TestCacheControl_MissingCachedTariffFallsBackToFullRate` | `acme/e2e-claude-direct` | sans tarif de cache, les tokens en cache sont facturés au tarif plein, jamais gratuits |
+
+### Décisions (`decisions_test.go`)
+
+| Test | Modèle | Attendu |
+|---|---|---|
+| `TestDecisions_ServedAndBilled` | `acme/e2e-jev` | `POST /api/v1/decisions` atteint `/v1/systemone` avec le modèle réel et l'état, sans le jeton Xolo ; le client reçoit les réponses et l'usage ; l'usage enregistré facture les tokens d'entrée et de sortie, alors que le middleware global du seed couvre l'organisation |
+| `TestDecisions_EachModelToItsRoute` | `acme/e2e-fast`, `acme/e2e-jev` | une décision vers un modèle de complétion et une complétion vers un modèle de décision sont refusées (400) en nommant la bonne route, sans appel amont |
 
 ### Sessions OIDC (`oidc_session_test.go`)
 

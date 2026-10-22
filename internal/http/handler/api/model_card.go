@@ -19,6 +19,9 @@ type modelTraits struct {
 	promptLimit     int64
 	completionLimit int64
 	caps            model.ModelCapabilities
+	// kind is the model's kind, empty for chat, which a virtual model always
+	// is.
+	kind model.ModelKind
 	// Costs in microcents per 1K tokens of currency. An empty currency means
 	// the price is unknown, whatever the costs.
 	promptCost     int64
@@ -36,6 +39,7 @@ func traitsOfLLMModel(m model.LLMModel, currency string) modelTraits {
 	t := modelTraits{
 		contextLength:  m.ContextWindow(),
 		caps:           m.Capabilities(),
+		kind:           m.Kind(),
 		promptCost:     m.PromptCostPer1KTokens(),
 		completionCost: m.CompletionCostPer1KTokens(),
 		currency:       currency,
@@ -77,7 +81,6 @@ func combineTraits(candidates []modelTraits) modelTraits {
 			Vision:     out.caps.Vision && c.caps.Vision,
 			Reasoning:  out.caps.Reasoning && c.caps.Reasoning,
 			Audio:      out.caps.Audio && c.caps.Audio,
-			Embeddings: out.caps.Embeddings && c.caps.Embeddings,
 		}
 		out.promptCost = max(out.promptCost, c.promptCost)
 		out.completionCost = max(out.completionCost, c.completionCost)

@@ -378,7 +378,6 @@
       setChecked("cap_vision", !!catalog.cap_vision);
       setChecked("cap_reasoning", !!catalog.cap_reasoning);
       setChecked("cap_audio", !!catalog.cap_audio);
-      setChecked("cap_embeddings", !!catalog.cap_embeddings);
 
       if (catalog.name) {
         var proxyName = form.querySelector("[name=proxy_name]");

@@ -112,7 +112,7 @@ func TestOrgModelRouterRefusesEmbeddingsOnAnAPITypeWithoutThem(t *testing.T) {
 	w := newTeamsWorld(t)
 	claude := model.NewLLMModel(w.provider.ID(), w.org.ID(), "claude", "claude-real", "", 1000, 1000)
 	claude.SetAPIType("anthropic")
-	claude.SetCapabilities(model.ModelCapabilities{Embeddings: true})
+	claude.SetKind(model.ModelKindEmbeddings)
 	w.models["claude"] = claude
 	router := NewOrgModelRouter(teamsProviderStore{w: w}, teamsOrgStore{w: w}, teamsTestSecretKey)
 

@@ -28,6 +28,7 @@ func (s *stubLLMModel) OrgID() model.OrgID                        { return "" }
 func (s *stubLLMModel) ProxyName() string                         { return "" }
 func (s *stubLLMModel) RealModel() string                         { return "" }
 func (s *stubLLMModel) Description() string                       { return "" }
+func (s *stubLLMModel) Kind() model.ModelKind                     { return model.ModelKindCompletion }
 func (s *stubLLMModel) Enabled() bool                             { return true }
 func (s *stubLLMModel) ContextWindow() int64                      { return 0 }
 func (s *stubLLMModel) OutputWindow() int64                       { return 0 }
