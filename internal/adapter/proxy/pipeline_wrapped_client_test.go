@@ -390,6 +390,9 @@ func TestPipelineWrappedClient_ChatCompletionStream_BufferedEmitStopsWhenCallerL
 	if exec.hadErr {
 		t.Fatal("the source was fully read before the caller left: the backward pass must not see an error")
 	}
+	if exec.ctxErr != nil {
+		t.Errorf("the backward pass saw a canceled context (%v): PostResponse would fail on it", exec.ctxErr)
+	}
 
 	deadline := time.After(2 * time.Second)
 	received := 0
@@ -406,5 +409,45 @@ func TestPipelineWrappedClient_ChatCompletionStream_BufferedEmitStopsWhenCallerL
 		case <-deadline:
 			t.Fatal("the stream was not closed once the caller left")
 		}
+	}
+}
+
+// passiveRecordingExecutor records like recordingExecutor but declares it
+// never rewrites the response, so the stream takes the passthrough path.
+type passiveRecordingExecutor struct {
+	*recordingExecutor
+}
+
+func (e passiveRecordingExecutor) ModifiesResponse(context.Context, model.PipelineNode) bool {
+	return false
+}
+
+// A caller that leaves once the whole answer was relayed, while the backward
+// pass runs, must not cancel it.
+func TestPipelineWrappedClient_ChatCompletionStream_PassthroughBackwardOutlivesCaller(t *testing.T) {
+	exec := &recordingExecutor{entered: make(chan struct{}), release: make(chan struct{}), done: make(chan struct{})}
+	registry := pipeline.NewRegistry()
+	registry.Register("rewrite", passiveRecordingExecutor{exec})
+	wrapped := NewPipelineWrappedClient(&multiChunkClient{parts: []string{"a", "b", "c"}}, pipeline.NewEngine(registry), newTestForwardExecution(), pipeline.ExecutionContext{})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	ch, err := wrapped.ChatCompletionStream(ctx)
+	if err != nil {
+		t.Fatalf("ChatCompletionStream() error = %v", err)
+	}
+	go func() {
+		for range ch {
+		}
+	}()
+
+	<-exec.entered
+	cancel()
+	close(exec.release)
+	<-exec.done
+	if exec.hadErr {
+		t.Error("the answer was fully relayed: the backward pass must not see an error")
+	}
+	if exec.ctxErr != nil {
+		t.Errorf("the backward pass saw a canceled context (%v): PostResponse would fail on it", exec.ctxErr)
 	}
 }

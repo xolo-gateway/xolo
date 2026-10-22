@@ -103,16 +103,21 @@ func (c *PipelineWrappedClient) ChatCompletionStream(ctx context.Context, funcs 
 
 		content := buf.String()
 
+		// The backward pass runs on a context that outlives the request: a
+		// caller leaving mid-pass would otherwise fail the nodes' PostResponse
+		// with "context canceled", and nodes that record state would miss the
+		// response.
+		backCtx := context.WithoutCancel(ctx)
+
 		// The caller went away while the answer was being buffered: nothing
-		// will read it. The backward pass still runs, on a context that
-		// outlives the request, so nodes that record state see the partial
-		// response, as on the passthrough path.
+		// will read it. The backward pass still runs so nodes that record
+		// state see the partial response, as on the passthrough path.
 		if ctx.Err() != nil {
-			c.runBackward(context.WithoutCancel(ctx), content, lastTokens, true)
+			c.runBackward(backCtx, content, lastTokens, true)
 			return
 		}
 
-		outcome, backErr := c.engine.RunBackwardWithToolCalls(ctx, c.forwardExec, content, calls.json(), lastTokens, false)
+		outcome, backErr := c.engine.RunBackwardWithToolCalls(backCtx, c.forwardExec, content, calls.json(), lastTokens, false)
 		modified := content
 		rewrittenCalls := []llm.ToolCallDelta(nil)
 		if backErr != nil {
@@ -238,7 +243,10 @@ func (c *PipelineWrappedClient) streamPassthrough(ctx context.Context, sourceCh 
 		// rewrite is ignored on this path anyway, but a node that only observes
 		// them — audit, metrics — sees them on the two other paths and not on
 		// this one. Worth revisiting the day such a node exists.
-		c.runBackward(ctx, buf.String(), lastTokens, false)
+		//
+		// The caller may leave right after the last chunk: the backward pass
+		// outlives it, as on the other paths.
+		c.runBackward(context.WithoutCancel(ctx), buf.String(), lastTokens, false)
 	}()
 
 	return outCh
