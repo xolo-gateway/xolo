@@ -222,6 +222,7 @@ func launchServer(bin, logPath string, config []string) (func(), error) {
 	cmd.Stdout = logFile
 	cmd.Stderr = logFile
 	cmd.Env = append(os.Environ(), config...)
+	isolateServer(cmd)
 	if err := cmd.Start(); err != nil {
 		logFile.Close()
 		return nil, fmt.Errorf("start server: %w", err)
@@ -237,6 +238,7 @@ func launchServer(bin, logPath string, config []string) (func(), error) {
 			_ = cmd.Process.Kill()
 			<-done
 		}
+		stopServerGroup(cmd)
 		logFile.Close()
 	}, nil
 }
