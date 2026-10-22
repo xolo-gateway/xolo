@@ -53,10 +53,18 @@ func main() {
 		cancel()
 	}()
 
+	// os.Exit skips deferred calls: every exit from here on goes through this
+	// helper so the plugin subprocesses, started while setting up the HTTP
+	// server, do not outlive the server.
+	exit := func(code int) {
+		setup.ShutdownPluginManager()
+		os.Exit(code)
+	}
+
 	httpServer, err := setup.NewHTTPServerFromConfig(ctx, conf)
 	if err != nil {
 		slog.ErrorContext(ctx, "could not setup http server", slog.Any("error", errors.WithStack(err)))
-		os.Exit(1)
+		exit(1)
 	}
 
 	servers := []namedServer{
@@ -67,7 +75,7 @@ func main() {
 	provisionningAPIServer, err := setup.NewProvisionningAPIServerFromConfig(ctx, conf)
 	if err != nil {
 		slog.ErrorContext(ctx, "could not setup provisionning api server", slog.Any("error", errors.WithStack(err)))
-		os.Exit(1)
+		exit(1)
 	}
 	if provisionningAPIServer != nil {
 		servers = append(servers, namedServer{name: "provisionning-api", address: conf.ProvisionningAPI.Address, run: provisionningAPIServer.Run})
@@ -77,15 +85,17 @@ func main() {
 	webhookWorker, err := setup.NewWebhookWorkerFromConfig(ctx, conf)
 	if err != nil {
 		slog.ErrorContext(ctx, "could not setup webhook worker", slog.Any("error", errors.WithStack(err)))
-		os.Exit(1)
+		exit(1)
 	}
 	if webhookWorker != nil {
 		servers = append(servers, namedServer{name: "webhooks", run: webhookWorker.Run})
 	}
 
 	if err := run(ctx, cancel, servers); err != nil {
-		os.Exit(1)
+		exit(1)
 	}
+
+	setup.ShutdownPluginManager()
 }
 
 type namedServer struct {

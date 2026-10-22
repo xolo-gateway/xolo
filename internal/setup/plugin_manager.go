@@ -45,3 +45,12 @@ func getPluginManagerFromConfig(ctx context.Context, conf *config.Config) (*plug
 	})
 	return pluginManagerVal, pluginManagerErr
 }
+
+// ShutdownPluginManager stops the plugin subprocesses, if the manager was
+// started. The server calls it on its way out: the plugins are not children
+// the kernel reaps with it, they outlive the server and keep running.
+func ShutdownPluginManager() {
+	if pluginManagerVal != nil {
+		pluginManagerVal.Shutdown()
+	}
+}
