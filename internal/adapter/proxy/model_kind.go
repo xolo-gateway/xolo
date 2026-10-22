@@ -38,13 +38,14 @@ var kindRoutes = map[model.ModelKind]string{
 
 // checkRequestKind refuses a request a model of another kind would have to
 // answer: a chat completion sent to a decision model, say. The refusal is a
-// 400, the client having picked the wrong model or route, and names the
-// route the model answers.
+// 400, the client having picked the wrong model or route, and names both the
+// route called and the one the model answers.
 func checkRequestKind(req *genaiProxy.ProxyRequest, m model.LLMModel) error {
-	if m.Kind() == requestKind(req.Type) {
+	asked := requestKind(req.Type)
+	if m.Kind() == asked {
 		return nil
 	}
-	return genaiProxy.NewBadRequestError(fmt.Sprintf("model '%s' is a %s model: call it on %s", req.Model, m.Kind(), kindRoutes[m.Kind()]))
+	return genaiProxy.NewBadRequestError(fmt.Sprintf("model '%s' is a %s model: it does not answer %s, call it on %s", req.Model, m.Kind(), kindRoutes[asked], kindRoutes[m.Kind()]))
 }
 
 // decisionClient builds the client of a decision model. It carries no chat
@@ -54,7 +55,10 @@ func checkRequestKind(req *genaiProxy.ProxyRequest, m model.LLMModel) error {
 func (r *OrgModelRouter) decisionClient(ctx context.Context, m model.LLMModel, p model.Provider, name provider.Name, baseURL, apiKey string) (llm.Client, error) {
 	opts := provider.NewDecisionProviderOptions(name)
 	if opts == nil {
-		return nil, errors.Errorf("model '%s' cannot answer decisions: API type '%s' has no decision client", m.ProxyName(), name)
+		// A misconfiguration rather than the client's mistake, but the
+		// client still learns why: genai answers a plain error as an opaque
+		// 500.
+		return nil, genaiProxy.NewInternalError(fmt.Sprintf("model '%s' cannot answer decisions: API type '%s' has no decision client", m.ProxyName(), name))
 	}
 	xologenai.SetCommonOptions(opts, baseURL, apiKey, m.RealModel(), p.RequestHeaders())
 
@@ -74,6 +78,18 @@ func (r *OrgModelRouter) decisionClient(ctx context.Context, m model.LLMModel, p
 		client = llmretry.NewClient(client, cfg.Delay, cfg.MaxAttempts)
 	}
 	return newTimeoutClient(client, r.upstreamTimeout), nil
+}
+
+// conversationKindError is the refusal of a pipeline or plugin naming a model
+// that holds no conversation: a configuration mistake the pipeline answers
+// with a 400, not a server error.
+type conversationKindError struct {
+	name string
+	kind model.ModelKind
+}
+
+func (e *conversationKindError) Error() string {
+	return fmt.Sprintf("model '%s' is a %s model and cannot serve a conversation", e.name, e.kind)
 }
 
 // kindRefusal answers a request a model of another kind would have to take,

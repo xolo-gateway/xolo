@@ -19,8 +19,8 @@ type modelTraits struct {
 	promptLimit     int64
 	completionLimit int64
 	caps            model.ModelCapabilities
-	// kind is the model's kind, empty for chat, which a virtual model always
-	// is.
+	// kind is the model's kind. A virtual model's card is always a
+	// completion card, whatever its candidates are: combineTraits sets it.
 	kind model.ModelKind
 	// Costs in microcents per 1K tokens of currency. An empty currency means
 	// the price is unknown, whatever the costs.
@@ -61,7 +61,8 @@ func traitsOfLLMModel(m model.LLMModel, currency string) modelTraits {
 // unknown context window makes the window unknown, since no figure would be
 // safe. A candidate without a request limit has none to lower the others.
 // Prices in different currencies, or an unknown one, leave the price unknown;
-// one undeclared candidate leaves the capabilities undeclared.
+// one undeclared candidate leaves the capabilities undeclared. The card is a
+// completion card: a virtual model serves completions only.
 func combineTraits(candidates []modelTraits) modelTraits {
 	var out modelTraits
 	for i, c := range candidates {
@@ -92,6 +93,7 @@ func combineTraits(candidates []modelTraits) modelTraits {
 	if out.currency == "" {
 		out.promptCost, out.completionCost = 0, 0
 	}
+	out.kind = model.ModelKindCompletion
 	return out
 }
 

@@ -185,9 +185,9 @@ func (s *XoloHostService) ListModels(ctx context.Context, req *proto.ListModelsF
 	}
 	protoModels := make([]*proto.ModelInfo, 0, len(models))
 	for _, m := range models {
-		// A plugin calls models through ChatCompletion, which a decision
-		// model cannot answer.
-		if m.Kind() == model.ModelKindDecision {
+		// A plugin calls models through ChatCompletion, which only a
+		// completion model answers.
+		if m.Kind() != model.ModelKindCompletion {
 			continue
 		}
 		caps := m.Capabilities()
@@ -202,7 +202,6 @@ func (s *XoloHostService) ListModels(ctx context.Context, req *proto.ListModelsF
 			ContextLength:              m.ContextWindow(),
 			SupportsVision:             caps.Vision,
 			SupportsReasoning:          caps.Reasoning,
-			SupportsEmbeddings:         m.Kind() == model.ModelKindEmbeddings,
 			ActiveParamsBillions:       float32(m.ActiveParams()) / 1e9,
 		})
 	}

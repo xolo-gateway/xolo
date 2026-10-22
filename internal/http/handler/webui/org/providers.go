@@ -844,7 +844,9 @@ func parseModelAPIFromForm(r *http.Request) (apiType, baseURL string, err error)
 
 // parseModelKindFromForm reads the kind of a model served through apiType,
 // its API type override, or its provider's when empty. A missing kind takes
-// the first one that API serves. The kind must be one that API serves: a
+// the first one that API serves, and so does the kind the new model form
+// preselected from the provider's type (kind_default) when the override
+// serves no such model. Otherwise the kind must be one that API serves: a
 // model of another kind could never be called.
 func parseModelKindFromForm(r *http.Request, p model.Provider, apiType string) (model.ModelKind, error) {
 	served := apiType
@@ -853,6 +855,9 @@ func parseModelKindFromForm(r *http.Request, p model.Provider, apiType string) (
 	}
 	kind := model.ModelKind(strings.TrimSpace(r.FormValue("kind")))
 	if kind == "" {
+		return model.ProviderTypeKinds(served)[0], nil
+	}
+	if preselected := model.ModelKind(r.FormValue("kind_default")); kind == preselected && !model.ProviderTypeServes(served, kind) {
 		return model.ProviderTypeKinds(served)[0], nil
 	}
 	if !model.IsKnownModelKind(kind) {

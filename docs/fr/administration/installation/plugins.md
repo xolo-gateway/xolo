@@ -434,7 +434,7 @@ Available models are described by `ModelInfo`:
 | `ContextLength`             | `int64`  | Maximum context window (tokens) |
 | `SupportsVision`            | `bool`   | Accepts image inputs            |
 | `SupportsReasoning`         | `bool`   | Extended reasoning capability   |
-| `SupportsEmbeddings`        | `bool`   | An embeddings model, which answers no chat completion. Decision models are not listed |
+| `SupportsEmbeddings`        | `bool`   | Always false: only completion models are listed, embeddings and decision models answer no chat completion |
 | `ActiveParamsBillions`      | `float32`| Active parameters in billions   |
 
 ## Configuration Schemas

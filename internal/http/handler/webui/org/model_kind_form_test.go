@@ -27,6 +27,16 @@ func TestCreateModel_DefaultsToTheKindTheAPIServes(t *testing.T) {
 	if kind := s.created[0].Kind(); kind != model.ModelKindDecision {
 		t.Errorf("kind = %q, want decision: typesafe serves nothing else", kind)
 	}
+
+	// The form preselected completion from the openai provider, and the
+	// admin switched the API type to typesafe without touching the kind.
+	rr, s = postCreateModel(t, url.Values{"proxy_name": {"jev"}, "real_model": {"jev-latest"}, "api_type": {"typesafe"}, "kind": {"completion"}, "kind_default": {"completion"}})
+	if rr.Code != http.StatusSeeOther {
+		t.Fatalf("status = %d: %s", rr.Code, rr.Body.String())
+	}
+	if kind := s.created[0].Kind(); kind != model.ModelKindDecision {
+		t.Errorf("kind = %q, want decision: the preselected kind follows the API type", kind)
+	}
 }
 
 func TestCreateModel_StoresADecisionModel(t *testing.T) {

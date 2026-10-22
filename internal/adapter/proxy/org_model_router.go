@@ -149,11 +149,11 @@ func (r *OrgModelRouter) ResolveModel(ctx context.Context, req *genaiProxy.Proxy
 	}
 
 	if req.Type == genaiProxy.RequestTypeEmbedding {
-		// A model migrated from the former embeddings capability may sit on
-		// an API with no embeddings client (anthropic): say so instead of
-		// letting genai fail with a generic error.
+		// An embeddings model whose provider changed type may sit on an API
+		// with no embeddings client (anthropic): say so to the client
+		// instead of letting genai fail with a generic error.
 		if apiType := model.ModelAPIType(llmModel, p); provider.NewEmbeddingsProviderOptions(provider.Name(apiType)) == nil {
-			return nil, "", errors.Errorf("model '%s' cannot serve embeddings: API type '%s' has no embeddings client", req.Model, apiType)
+			return nil, "", genaiProxy.NewBadRequestError(fmt.Sprintf("model '%s' cannot serve embeddings: API type '%s' has no embeddings client", req.Model, apiType))
 		}
 	}
 
@@ -365,7 +365,7 @@ func (r *OrgModelRouter) ResolveRealModel(ctx context.Context, orgID model.OrgID
 	// Pipelines and plugins hold conversations: a model of another kind has
 	// no chat client to give them.
 	if llmModel.Kind() != model.ModelKindCompletion {
-		return nil, "", "", errors.Errorf("model '%s' is a %s model and cannot serve a conversation", proxyName, llmModel.Kind())
+		return nil, "", "", errors.WithStack(&conversationKindError{name: proxyName, kind: llmModel.Kind()})
 	}
 
 	client, err := r.clientForModel(ctx, llmModel)

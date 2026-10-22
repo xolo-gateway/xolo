@@ -35,3 +35,21 @@ func TestModelCard_DecisionModel(t *testing.T) {
 		t.Errorf("a client asking for text models must not get the decision model, got %d models", len(listed))
 	}
 }
+
+// A virtual model serves completions only: its card is a completion card even
+// when the model its graph names has another kind.
+func TestVirtualModelCard_IsACompletionCard(t *testing.T) {
+	org := model.NewOrganization(testTenantID, "acme", "ACME", "")
+	vectors := realModel(org, "vectors", 8_000, model.ModelCapabilities{}, 100, 0)
+	vectors.SetKind(model.ModelKindEmbeddings)
+	vm := vmWithGraph(org, "auto", modelNodeGraph(t, "vectors"))
+
+	got := callModels(t, org, []model.LLMModel{vectors}, []model.VirtualModel{vm}, "")["acme/auto"]
+
+	if got.Xolo.Kind != model.ModelKindCompletion {
+		t.Errorf("kind = %q, want completion", got.Xolo.Kind)
+	}
+	if !slices.Equal(got.Architecture.OutputModalities, []string{"text"}) {
+		t.Errorf("output modalities = %v, want [text]", got.Architecture.OutputModalities)
+	}
+}

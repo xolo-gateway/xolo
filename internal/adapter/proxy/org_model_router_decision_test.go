@@ -166,3 +166,25 @@ func TestOrgModelRouterKeepsDecisionModelsOutOfPipelines(t *testing.T) {
 	_, _, _, err := router.ResolveRealModel(w.ctx([]string{string(rbac.PermModelUseOrg)}, nil, nil), w.org.ID(), "jev")
 	require.ErrorContains(t, err, "decision model")
 }
+
+// A virtual model whose graph names a decision model is misconfigured: the
+// chat it is asked answers a 400 naming the model, not a server error.
+func TestPipelineNamingADecisionModelAnswersABadRequest(t *testing.T) {
+	w := decisionWorld(t, "http://127.0.0.1:9/v1")
+	vm := model.NewVirtualModel(w.org.ID(), "assistant", "")
+	vm.SetGraph(pipelinetest.NewGraph().Generator("in").ModelWithProxy("m", "jev").Sink("out").
+		Edge("in", "request", "m", "request").Edge("m", "response", "out", "response").Build())
+	w.vms.Add(vm)
+	support := w.addTeam("support", "assistant", "jev")
+	ctx := w.ctx(nil, []model.Team{support}, nil)
+
+	req := w.request("acme/support/assistant")
+	result, err := w.hook().PreRequest(ctx, req)
+	require.NoError(t, err)
+	require.Nil(t, result)
+	result, err = w.adapter().PreRequest(ctx, req)
+	require.NoError(t, err)
+	require.NotNil(t, result, "the pipeline must refuse the request")
+	require.Equal(t, "model_kind_mismatch", errorCode(t, result))
+	require.Equal(t, http.StatusBadRequest, result.Response.StatusCode)
+}

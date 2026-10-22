@@ -116,6 +116,12 @@ templ ModelForm(vmodel ModelFormVModel) {
 										Nature
 									}
 									{{ kind := modelKind(vmodel.Model, vmodel.Provider) }}
+									if vmodel.Model == nil {
+										// The kind preselected from the provider's type: the
+										// server re-defaults it when the API type override
+										// serves another.
+										<input type="hidden" name="kind_default" value={ string(kind) }/>
+									}
 									@selectbox.SelectBox(selectbox.Props{ID: "kind"}) {
 										@selectbox.Trigger(selectbox.TriggerProps{Name: "kind", Disabled: readonly}) {
 											@selectbox.Value(selectbox.ValueProps{})

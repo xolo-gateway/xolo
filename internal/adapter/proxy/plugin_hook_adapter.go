@@ -219,6 +219,13 @@ func (a *PipelineHookAdapter) finishForwardExecution(ctx context.Context, req *g
 				},
 			}
 		}
+		var kindErr *conversationKindError
+		if errors.As(runErr, &kindErr) {
+			slog.WarnContext(ctx, "pipeline: a node named a model that holds no conversation",
+				slog.String("model", req.Model),
+				slog.String("reached", kindErr.name))
+			return kindRefusal("Pipeline for \""+req.Model+"\" reached "+kindErr.Error()+".", "model_kind_mismatch")
+		}
 		var rejErr *pipeline.RejectionError
 		if errors.As(runErr, &rejErr) {
 			slog.InfoContext(ctx, "pipeline: request rejected by node",
@@ -341,9 +348,9 @@ func (a *PipelineHookAdapter) applyMiddlewares(ctx context.Context, req *genaiPr
 		ref = model.ModelRef{Kind: model.ModelRefKindVirtual, ID: string(vm.ID())}
 		targetVM = vm
 	} else if llmModel, llmErr := a.providerStore.GetLLMModelByProxyName(ctx, org.ID(), localName); llmErr == nil && llmModel != nil {
-		// A model asked on the route of another kind is refused by the
-		// router, after its access check: a middleware has nothing to run.
-		if llmModel.Kind() != requestKind(req.Type) {
+		// A middleware serves completion models only: on another model the
+		// router refuses the completion, after its access check.
+		if llmModel.Kind() != model.ModelKindCompletion {
 			return false, nil
 		}
 		ref = model.ModelRef{Kind: model.ModelRefKindLLM, ID: string(llmModel.ID())}
@@ -908,9 +915,9 @@ func buildProtoModels(ctx context.Context, ps port.ProviderStore, orgID model.Or
 		if reachable != nil && !reachable(m.ProxyName(), string(m.ID()), rbac.ModelKindLLM) {
 			continue
 		}
-		// A plugin calls models through the host's chat completion, which a
-		// decision model cannot answer.
-		if m.Kind() == model.ModelKindDecision {
+		// A plugin calls models through the host's chat completion, which
+		// only a completion model answers.
+		if m.Kind() != model.ModelKindCompletion {
 			continue
 		}
 		caps := m.Capabilities()
@@ -922,7 +929,6 @@ func buildProtoModels(ctx context.Context, ps port.ProviderStore, orgID model.Or
 			ContextLength:        m.ContextWindow(),
 			SupportsVision:       caps.Vision,
 			SupportsReasoning:    caps.Reasoning,
-			SupportsEmbeddings:   m.Kind() == model.ModelKindEmbeddings,
 			ActiveParamsBillions: float32(m.ActiveParams()) / 1e9,
 		})
 	}
