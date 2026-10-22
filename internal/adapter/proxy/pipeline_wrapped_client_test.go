@@ -296,8 +296,10 @@ func (c *hangingClient) ChatCompletionStream(ctx context.Context, _ ...llm.ChatC
 }
 
 // recordingExecutor may rewrite the response and records the context and the
-// error flag its backward pass received. Backward waits for release when set.
+// error flag its backward pass received. When set, entered is closed as
+// Backward starts, and Backward then waits for release.
 type recordingExecutor struct {
+	entered chan struct{}
 	release chan struct{}
 	done    chan struct{}
 	ctxErr  error
@@ -309,6 +311,9 @@ func (e *recordingExecutor) Forward(_ context.Context, _ model.PipelineNode, _ m
 }
 
 func (e *recordingExecutor) Backward(ctx context.Context, in pipeline.BackwardInput) (*pipeline.BackwardResult, error) {
+	if e.entered != nil {
+		close(e.entered)
+	}
 	if e.release != nil {
 		<-e.release
 	}
@@ -361,13 +366,15 @@ func TestPipelineWrappedClient_ChatCompletionStream_BufferedCancelRunsBackward(t
 }
 
 // Once the caller is gone, re-emitting the buffered chunks must stop instead
-// of blocking forever on a channel nobody reads.
+// of blocking forever on a channel nobody reads. The caller leaves while the
+// backward pass runs, so the source was fully buffered with a live context and
+// only the re-emission can notice the cancellation.
 func TestPipelineWrappedClient_ChatCompletionStream_BufferedEmitStopsWhenCallerLeaves(t *testing.T) {
 	parts := make([]string, 32)
 	for i := range parts {
 		parts[i] = "x"
 	}
-	exec := &recordingExecutor{release: make(chan struct{}), done: make(chan struct{})}
+	exec := &recordingExecutor{entered: make(chan struct{}), release: make(chan struct{}), done: make(chan struct{})}
 	wrapped := NewPipelineWrappedClient(&multiChunkClient{parts: parts}, newRecordingEngine(exec), newTestForwardExecution(), pipeline.ExecutionContext{})
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -375,12 +382,14 @@ func TestPipelineWrappedClient_ChatCompletionStream_BufferedEmitStopsWhenCallerL
 	if err != nil {
 		t.Fatalf("ChatCompletionStream() error = %v", err)
 	}
+
+	<-exec.entered
 	cancel()
 	close(exec.release)
 	<-exec.done
-	// Nobody reads while the chunks are re-emitted: only what fits in the
-	// channel's buffer may be waiting there, the rest must be dropped.
-	time.Sleep(50 * time.Millisecond)
+	if exec.hadErr {
+		t.Fatal("the source was fully read before the caller left: the backward pass must not see an error")
+	}
 
 	deadline := time.After(2 * time.Second)
 	received := 0
@@ -388,8 +397,8 @@ func TestPipelineWrappedClient_ChatCompletionStream_BufferedEmitStopsWhenCallerL
 		select {
 		case _, ok := <-ch:
 			if !ok {
-				if received >= len(parts) {
-					t.Errorf("received %d chunks after the caller left, want only the buffered ones", received)
+				if received != 0 {
+					t.Errorf("received %d chunks after the caller left, want none", received)
 				}
 				return
 			}

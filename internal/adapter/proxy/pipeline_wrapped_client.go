@@ -123,8 +123,13 @@ func (c *PipelineWrappedClient) ChatCompletionStream(ctx context.Context, funcs 
 		}
 
 		// emit gives up once the caller is gone, instead of blocking this
-		// goroutine on a channel nobody reads anymore.
+		// goroutine on a channel nobody reads anymore. The context is checked
+		// first: a select would otherwise pick at random between a free slot
+		// in the buffer and the cancellation.
 		emit := func(chunk llm.StreamChunk) bool {
+			if ctx.Err() != nil {
+				return false
+			}
 			select {
 			case outCh <- chunk:
 				return true
