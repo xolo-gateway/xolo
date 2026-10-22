@@ -45,13 +45,15 @@ func (c *PipelineWrappedClient) relayRestoring(ctx context.Context, source <-cha
 
 		// The backward pass runs once per response, whatever happens, and on a
 		// context of its own: a client that hung up must not cost the nodes
-		// recording the exchange their record.
-		backCtx := context.WithoutCancel(ctx)
+		// recording the exchange their record. That context is bounded from
+		// the moment the pass starts, see detachedBackwardContext.
 		var held heldBlocks
 		var lastTokens *pipeline.TokensUsed
 		ran := false
 		flush := func(hadError bool) []llm.StreamChunk {
 			ran = true
+			backCtx, cancel := detachedBackwardContext(ctx)
+			defer cancel()
 			return c.restore(backCtx, &held, lastTokens, hadError)
 		}
 		send := func(chunk llm.StreamChunk) bool {

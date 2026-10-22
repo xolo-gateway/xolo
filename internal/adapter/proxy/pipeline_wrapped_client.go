@@ -10,15 +10,16 @@ import (
 	"github.com/xolo-gateway/xolo/internal/pipeline"
 )
 
-// backwardTimeout bounds the backward pass of a stream. It runs detached from
+// backwardTimeout bounds the backward pass of a response. It runs detached from
 // the request, so the caller leaving cannot cut it short: a node that hangs
-// would otherwise hold the stream's goroutine forever. A pass cut by the
+// would otherwise hold the request's goroutine forever. A pass cut by the
 // timeout fails like any other, and the response goes out unmodified.
 const backwardTimeout = 30 * time.Second
 
-// detachedBackwardContext returns the context a stream's backward pass runs
-// on: it keeps ctx's values, outlives the caller and ends after
-// backwardTimeout.
+// detachedBackwardContext returns the context a backward pass runs on: it
+// keeps ctx's values, outlives the caller and ends after backwardTimeout.
+// Create it when the pass starts, not before: the timeout bounds the pass,
+// not the response it follows.
 func detachedBackwardContext(ctx context.Context) (context.Context, context.CancelFunc) {
 	return context.WithTimeout(context.WithoutCancel(ctx), backwardTimeout)
 }
@@ -42,11 +43,13 @@ func NewPipelineWrappedClient(
 	return &PipelineWrappedClient{inner: inner, engine: engine, forwardExec: forwardExec, ec: ec}
 }
 
-// ChatCompletion calls the inner client and runs the backward pass on the result.
+// ChatCompletion calls the inner client and runs the backward pass on the
+// result, on a context the caller leaving cannot cancel, as on the streaming
+// paths.
 func (c *PipelineWrappedClient) ChatCompletion(ctx context.Context, funcs ...llm.ChatCompletionOptionFunc) (llm.ChatCompletionResponse, error) {
 	resp, err := c.inner.ChatCompletion(ctx, funcs...)
 	if err != nil {
-		c.runBackward(ctx, "", nil, true)
+		c.runBackwardDetached(ctx, "", nil, true)
 		return resp, err
 	}
 
@@ -56,7 +59,9 @@ func (c *PipelineWrappedClient) ChatCompletion(ctx context.Context, funcs ...llm
 	}
 	tokens := extractResponseTokens(resp)
 
-	outcome, backErr := c.engine.RunBackwardWithToolCalls(ctx, c.forwardExec, content, encodeToolCalls(resp.ToolCalls()), tokens, false)
+	backCtx, cancelBack := detachedBackwardContext(ctx)
+	defer cancelBack()
+	outcome, backErr := c.engine.RunBackwardWithToolCalls(backCtx, c.forwardExec, content, encodeToolCalls(resp.ToolCalls()), tokens, false)
 	if backErr != nil {
 		slog.WarnContext(ctx, "pipeline backward pass failed", slog.Any("error", backErr))
 		return resp, nil
@@ -284,8 +289,8 @@ func (c *PipelineWrappedClient) runBackward(ctx context.Context, content string,
 	}
 }
 
-// runBackwardDetached runs the backward pass of a stream on a context
-// detached from the caller, see detachedBackwardContext.
+// runBackwardDetached runs the backward pass on a context detached from the
+// caller, see detachedBackwardContext.
 func (c *PipelineWrappedClient) runBackwardDetached(ctx context.Context, content string, tokens *pipeline.TokensUsed, hadError bool) {
 	backCtx, cancel := detachedBackwardContext(ctx)
 	defer cancel()

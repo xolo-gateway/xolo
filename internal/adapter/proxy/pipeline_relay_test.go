@@ -158,12 +158,16 @@ type countingRewriter struct {
 	mu       sync.Mutex
 	passes   int
 	hadError bool
+	ctxErr   error
+	bounded  bool
 }
 
 func (e *countingRewriter) Backward(ctx context.Context, in pipeline.BackwardInput) (*pipeline.BackwardResult, error) {
 	e.mu.Lock()
 	e.passes++
 	e.hadError = in.HadError
+	e.ctxErr = ctx.Err()
+	_, e.bounded = ctx.Deadline()
 	e.mu.Unlock()
 	return e.rewriteExecutor.Backward(ctx, in)
 }
@@ -336,5 +340,13 @@ func TestPipelineWrappedClient_RelayMessages_BackwardPassRunsWhenTheClientLeaves
 	}
 	if rewriter.count() != 1 {
 		t.Errorf("backward passes = %d, want 1", rewriter.count())
+	}
+	rewriter.mu.Lock()
+	defer rewriter.mu.Unlock()
+	if rewriter.ctxErr != nil {
+		t.Errorf("the backward pass saw a canceled context (%v): PostResponse would fail on it", rewriter.ctxErr)
+	}
+	if !rewriter.bounded {
+		t.Error("the backward pass has no deadline: a hanging node would hold the relay forever")
 	}
 }

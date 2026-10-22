@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"sync"
 	"testing"
@@ -295,6 +296,11 @@ func (c *hangingClient) ChatCompletionStream(ctx context.Context, _ ...llm.ChatC
 	return ch, nil
 }
 
+func (c *hangingClient) ChatCompletion(ctx context.Context, _ ...llm.ChatCompletionOptionFunc) (llm.ChatCompletionResponse, error) {
+	<-ctx.Done()
+	return nil, ctx.Err()
+}
+
 // recordingExecutor may rewrite the response and records the context and the
 // error flag its backward pass received. When set, entered is closed as
 // Backward starts, and Backward then waits for release.
@@ -462,4 +468,60 @@ func TestPipelineWrappedClient_ChatCompletionStream_PassthroughBackwardOutlivesC
 	if !exec.bounded {
 		t.Error("the backward pass has no deadline: a hanging node would hold the goroutine forever")
 	}
+}
+
+func assertDetachedBackward(t *testing.T, exec *recordingExecutor) {
+	t.Helper()
+	if exec.ctxErr != nil {
+		t.Errorf("the backward pass saw a canceled context (%v): PostResponse would fail on it", exec.ctxErr)
+	}
+	if !exec.bounded {
+		t.Error("the backward pass has no deadline: a hanging node would hold the goroutine forever")
+	}
+}
+
+// A caller that leaves while the provider answers must not cancel the
+// backward pass that follows the failed call.
+func TestPipelineWrappedClient_ChatCompletion_BackwardOutlivesCallerOnError(t *testing.T) {
+	exec := &recordingExecutor{done: make(chan struct{})}
+	wrapped := NewPipelineWrappedClient(&hangingClient{}, newRecordingEngine(exec), newTestForwardExecution(), pipeline.ExecutionContext{})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	errCh := make(chan error, 1)
+	go func() {
+		_, err := wrapped.ChatCompletion(ctx)
+		errCh <- err
+	}()
+	cancel()
+
+	select {
+	case <-exec.done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("the backward pass never ran after the caller left")
+	}
+	if !exec.hadErr {
+		t.Error("the call failed: the backward pass must be told so")
+	}
+	assertDetachedBackward(t, exec)
+	if err := <-errCh; !errors.Is(err, context.Canceled) {
+		t.Errorf("ChatCompletion() error = %v, want context.Canceled", err)
+	}
+}
+
+// A caller that leaves while the backward pass runs must not cancel it.
+func TestPipelineWrappedClient_ChatCompletion_BackwardOutlivesCaller(t *testing.T) {
+	exec := &recordingExecutor{entered: make(chan struct{}), release: make(chan struct{}), done: make(chan struct{})}
+	wrapped := NewPipelineWrappedClient(&toolCallClient{}, newRecordingEngine(exec), newTestForwardExecution(), pipeline.ExecutionContext{})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() { _, _ = wrapped.ChatCompletion(ctx) }()
+
+	<-exec.entered
+	cancel()
+	close(exec.release)
+	<-exec.done
+	if exec.hadErr {
+		t.Error("the call succeeded: the backward pass must not see an error")
+	}
+	assertDetachedBackward(t, exec)
 }
