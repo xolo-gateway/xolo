@@ -707,7 +707,8 @@ their `PUT` or node by node:
   list their names in `secret_keys`, which tells a client what remains to fill
   in on another instance. A change of secret alone changes no `ETag` and
   publishes no event; the audit records a fingerprint of the ciphertexts. A
-  value equal to the stored one writes nothing.
+  value equal to the stored one writes nothing. It still obeys the write
+  authority of the family (`XOLO_OWNERSHIP`, `403`).
 - **Events.** Nodes are not a resource type of the feed: a node edit
   publishes `virtual_model.updated.v1` or `middleware.updated.v1` with the new
   `ETag` of the pipeline, one event per commit however many nodes changed. A

@@ -748,7 +748,8 @@ en entier par leur `PUT` ou nœud par nœud :
   `secret_keys`, ce qui indique à un client ce qui reste à renseigner sur une
   autre instance. Un changement de secret seul ne change aucun `ETag` et ne
   publie aucun événement ; l'audit enregistre une empreinte des chiffrés. Une
-  valeur égale à celle enregistrée n'écrit rien.
+  valeur égale à celle enregistrée n'écrit rien. Il reste soumis à l'autorité
+  d'écriture de la famille (`XOLO_OWNERSHIP`, `403`).
 - **Événements.** Les nœuds ne sont pas un type de ressource du flux : une
   modification de nœud publie `virtual_model.updated.v1` ou
   `middleware.updated.v1` avec le nouvel `ETag` du pipeline, un événement par

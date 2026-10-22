@@ -10,6 +10,7 @@ import (
 	xologorm "github.com/xolo-gateway/xolo/internal/adapter/gorm"
 	"github.com/xolo-gateway/xolo/internal/core/model"
 	"github.com/xolo-gateway/xolo/internal/core/port"
+	"github.com/xolo-gateway/xolo/internal/core/service"
 	"github.com/xolo-gateway/xolo/internal/crypto"
 	gormpkg "gorm.io/gorm"
 )
@@ -143,6 +144,20 @@ func TestPipelineNodeSecrets(t *testing.T) {
 		// share its secrets.
 		_, err = svc.PutVirtualModel(ctx, testTenantID, fixture.org, uuid.NewString(), noCondition, virtualModelSettings("copy", 0.5))
 		require.ErrorIs(t, err, port.ErrAlreadyExists)
+		// Even a middleware under the same key as the virtual model.
+		_, err = svc.PutMiddleware(ctx, testTenantID, fixture.org, key, noCondition, model.MiddlewareSettings{Name: "same key", AppliesToAll: true, Graph: pipelineGraph(0.5)})
+		require.ErrorIs(t, err, port.ErrAlreadyExists)
+
+		// A change of secret alone obeys the write authority of the family,
+		// though it changes no projection.
+		owned := service.NewProvisioningService(store, store, store, store,
+			service.WithProvisioningTransaction(store), service.WithProvisioningReader(store),
+			service.WithMultiTenant(true), service.WithSecretKey(businessSecretKey),
+			service.WithOwnershipPolicy(model.OwnershipPolicy{model.FamilyVirtualModel: model.OwnerControlPlane}))
+		_, _, err = owned.PutPipelineNode(ctx, scope, key, "guard", noCondition, model.PipelineNodeUpdate{Data: data, Secrets: map[string]*string{"token": ptrTo("rotated")}})
+		require.ErrorIs(t, err, port.ErrOwnershipDenied)
+		_, _, err = owned.PutPipelineNode(ctx, scope, key, "guard", noCondition, model.PipelineNodeUpdate{Data: data, Secrets: map[string]*string{"token": ptrTo("s3cr3t-value")}})
+		require.NoError(t, err, "a replay writes nothing")
 
 		// Removing the node removes its secrets.
 		without := virtualModelSettings("router", 0.5)

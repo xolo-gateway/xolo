@@ -199,7 +199,9 @@ func (tx *ProvisioningService) checkPipeline(ctx context.Context, tenantID model
 	}
 	others := make([]pipeline, 0, len(vms)+len(mws))
 	for _, vm := range vms {
-		if string(vm.ID()) == key {
+		// A virtual model and a middleware may share a client-chosen key:
+		// only the pipeline under write is skipped.
+		if family == model.FamilyVirtualModel && string(vm.ID()) == key {
 			continue
 		}
 		if family == model.FamilyVirtualModel && vm.Name() == name {
@@ -208,7 +210,7 @@ func (tx *ProvisioningService) checkPipeline(ctx context.Context, tenantID model
 		others = append(others, pipeline{vm.Name(), vm.Graph()})
 	}
 	for _, mw := range mws {
-		if string(mw.ID()) == key {
+		if family == model.FamilyMiddleware && string(mw.ID()) == key {
 			continue
 		}
 		if family == model.FamilyMiddleware && mw.Name() == name {
@@ -365,6 +367,11 @@ func (s *ProvisioningService) PutPipelineNode(ctx context.Context, scope model.C
 		if err != nil {
 			return err
 		}
+		// A change of secret alone changes no projection, so the store does
+		// not check the write authority of the family: it is checked here.
+		if len(writes) > 0 && !tx.OwnershipPolicy().Allows(scope.Family, model.WriteAuthority(ctx)) {
+			return errors.Wrapf(port.ErrOwnershipDenied, "%s", scope.Family)
+		}
 		if changed || len(writes) > 0 {
 			graph.Nodes[index] = next
 			if changed {
@@ -478,7 +485,13 @@ func jsonDiffers(a, b json.RawMessage) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	ea, _ := json.Marshal(va)
-	eb, _ := json.Marshal(vb)
+	ea, err := json.Marshal(va)
+	if err != nil {
+		return false, errors.WithStack(err)
+	}
+	eb, err := json.Marshal(vb)
+	if err != nil {
+		return false, errors.WithStack(err)
+	}
 	return !bytes.Equal(ea, eb), nil
 }

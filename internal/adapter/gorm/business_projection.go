@@ -177,8 +177,14 @@ func pipelineSecretsFingerprint(db *gorm.DB, orgID string, graph *model.Pipeline
 	if migratingSchema(db) && !db.Migrator().HasTable(&PluginNodeSecret{}) {
 		return "", nil
 	}
+	plugins := make([]string, 0, len(placements))
+	for _, p := range placements {
+		if !slices.Contains(plugins, p.Plugin) {
+			plugins = append(plugins, p.Plugin)
+		}
+	}
 	var secrets []PluginNodeSecret
-	if err := db.Select("plugin_name, node_id, key, value_encrypted").Where("org_id = ?", orgID).
+	if err := db.Select("plugin_name, node_id, key, value_encrypted").Where("org_id = ? AND plugin_name IN ?", orgID, plugins).
 		Order("plugin_name, node_id, key").Find(&secrets).Error; err != nil {
 		return "", err
 	}

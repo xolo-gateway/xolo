@@ -730,7 +730,8 @@ escribe entero con su `PUT` o nodo a nodo:
   `secret_keys`, lo que indica a un cliente qué falta rellenar en otra
   instancia. Un cambio de secreto por sí solo no cambia ningún `ETag` ni
   publica ningún evento; la auditoría registra una huella de los cifrados. Un
-  valor igual al guardado no escribe nada.
+  valor igual al guardado no escribe nada. Sigue sometido a la autoridad de
+  escritura de la familia (`XOLO_OWNERSHIP`, `403`).
 - **Eventos.** Los nodos no son un tipo de recurso del flujo: una
   modificación de nodo publica `virtual_model.updated.v1` o
   `middleware.updated.v1` con el nuevo `ETag` del pipeline, un evento por
