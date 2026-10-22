@@ -13,6 +13,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -72,8 +73,24 @@ var env struct {
 	pluginsDir string
 }
 
+// stopFailures collects what stopping a server found wrong. stop has no
+// *testing.T (TestMain stops the main server), so TestMain fails the run.
+var stopFailures struct {
+	sync.Mutex
+	messages []string
+}
+
+func reportStopFailure(format string, args ...any) {
+	stopFailures.Lock()
+	defer stopFailures.Unlock()
+	stopFailures.messages = append(stopFailures.messages, fmt.Sprintf(format, args...))
+}
+
 func TestMain(m *testing.M) {
 	code, err := run(m)
+	if len(stopFailures.messages) > 0 {
+		err = errors.Join(err, fmt.Errorf("stopping servers:\n%s", strings.Join(stopFailures.messages, "\n")))
+	}
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "e2e: %v\n", err)
 		if env.logPath != "" {
@@ -232,14 +249,26 @@ func launchServer(bin, logPath string, config []string) (func(), error) {
 		_ = cmd.Process.Signal(os.Interrupt)
 		done := make(chan struct{})
 		go func() { _ = cmd.Wait(); close(done) }()
+		graceful := true
 		select {
 		case <-done:
 		case <-time.After(15 * time.Second):
+			graceful = false
 			_ = cmd.Process.Kill()
 			<-done
 		}
-		stopServerGroup(cmd)
 		logFile.Close()
+
+		// On Linux the plugins die with the server whatever it does: only
+		// its log tells whether it stopped them itself.
+		if graceful {
+			if logs, err := os.ReadFile(logPath); err == nil && !bytes.Contains(logs, []byte(`msg="plugins stopped"`)) {
+				reportStopFailure("%s: the server exited without stopping its plugins", logPath)
+			}
+		}
+		if stopServerGroup(cmd) {
+			reportStopFailure("%s: plugins outlived the server", logPath)
+		}
 	}, nil
 }
 

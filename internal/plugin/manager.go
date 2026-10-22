@@ -225,6 +225,7 @@ func (m *Manager) Shutdown() {
 	for _, e := range m.plugins {
 		e.gopClient.Kill()
 	}
+	slog.Info("plugins stopped", slog.Int("count", len(m.plugins)))
 	m.plugins = nil
 }
 

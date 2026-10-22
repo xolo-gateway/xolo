@@ -1,4 +1,4 @@
-//go:build e2e && !linux
+//go:build e2e && unix && !linux
 
 package e2e
 
