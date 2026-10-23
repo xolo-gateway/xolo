@@ -690,8 +690,9 @@ escribe entero con su `PUT` o nodo a nodo:
   para un nodo plugin, `{"proxyName":"…"}` o `{"passthrough":true}` para un
   nodo modelo. `position` solo sirve al editor y vale el origen por defecto.
   Nodos y aristas se ordenan por identificador, un `data` ausente se lee
-  `{}` y las claves de `data` se ordenan (números tal como se escribieron):
-  una repetición en otro orden o con otro formato no cambia nada. Un grafo sin nodos es un
+  `{}` y las claves de `data` se ordenan (números tal como se escribieron,
+  `100` y `1E2` difieren): una repetición en otro orden o con otro formato no
+  cambia nada. Un grafo sin nodos es un
   pipeline sin configurar.
 - **La validación**, la misma que la de la interfaz web, responde `422`: como
   mucho 500 nodos y 2000 aristas; identificadores de nodos y aristas no

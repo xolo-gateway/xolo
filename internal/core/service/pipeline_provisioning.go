@@ -271,15 +271,42 @@ func (s *ProvisioningService) ReadPipelineNodes(ctx context.Context, scope model
 			return errors.WithStack(err)
 		}
 		etag = item.ETag
-		nodes, err = tx.pipelineNodes(ctx, scope, item)
+		nodes, err = tx.pipelineNodes(ctx, scope, item, "")
 		return err
 	})
 	return nodes, etag, err
 }
 
-// pipelineNodes extracts the nodes of a pipeline projection, with the keys
-// of the secrets of its plugin nodes.
-func (tx *ProvisioningService) pipelineNodes(ctx context.Context, scope model.CommonScope, item model.CommonItem) ([]model.PipelineNodeItem, error) {
+// ReadPipelineNode returns one node of a virtual model or a middleware, with
+// the ETag of the pipeline. Only the secrets of that node are listed.
+func (s *ProvisioningService) ReadPipelineNode(ctx context.Context, scope model.CommonScope, key, nodeID string) (model.PipelineNodeItem, string, error) {
+	if !isPipelineFamily(scope.Family) {
+		return model.PipelineNodeItem{}, "", errors.WithStack(port.ErrInvalid)
+	}
+	var nodes []model.PipelineNodeItem
+	var etag string
+	err := s.transaction(ctx, func(tx *ProvisioningService) error {
+		item, err := tx.tx.ReadProjection(ctx, scope, key)
+		if err != nil {
+			return errors.WithStack(err)
+		}
+		etag = item.ETag
+		nodes, err = tx.pipelineNodes(ctx, scope, item, nodeID)
+		return err
+	})
+	if err != nil {
+		return model.PipelineNodeItem{}, "", err
+	}
+	if len(nodes) == 0 {
+		return model.PipelineNodeItem{}, "", errors.Wrapf(port.ErrNotFound, "node %q not found", nodeID)
+	}
+	return nodes[0], etag, nil
+}
+
+// pipelineNodes extracts the nodes of a pipeline projection, or the one
+// named nodeID when it is set, with the keys of the secrets of its plugin
+// nodes.
+func (tx *ProvisioningService) pipelineNodes(ctx context.Context, scope model.CommonScope, item model.CommonItem, nodeID string) ([]model.PipelineNodeItem, error) {
 	var rep struct {
 		Graph model.PipelineGraphSettings `json:"graph"`
 	}
@@ -288,6 +315,9 @@ func (tx *ProvisioningService) pipelineNodes(ctx context.Context, scope model.Co
 	}
 	nodes := make([]model.PipelineNodeItem, 0, len(rep.Graph.Nodes))
 	for _, n := range rep.Graph.Nodes {
+		if nodeID != "" && n.ID != nodeID {
+			continue
+		}
 		node := model.PipelineNodeItem{ID: n.ID, Type: n.Type, Data: n.Data, SecretKeys: []string{}}
 		if p := model.PluginPlacements(&model.PipelineGraph{Nodes: []model.PipelineNode{{ID: n.ID, Type: n.Type, Data: n.Data}}}); len(p) == 1 {
 			keys, err := tx.tx.ListSecretKeys(ctx, scope.OrganizationID, p[0].Plugin, p[0].Node)

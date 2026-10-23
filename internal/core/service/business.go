@@ -355,6 +355,8 @@ func (s *ProvisioningService) DeleteBusiness(ctx context.Context, scope model.Co
 			} else {
 				err = tx.tx.DeleteVirtualModel(ctx, model.VirtualModelID(key))
 			}
+			// The secrets go with the pipeline: the deletion, recorded
+			// above, carries the write authority check for both.
 			if err == nil {
 				err = secretcleanup.PruneRemovedNodes(ctx, tx.tx, scope.OrganizationID, entity.Graph(), nil)
 			}

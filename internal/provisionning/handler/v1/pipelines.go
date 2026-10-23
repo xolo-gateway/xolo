@@ -48,19 +48,13 @@ func (h *Handler) handlePipelineNode(family string) http.HandlerFunc {
 		if !ok {
 			return
 		}
-		nodes, etag, err := h.provisioning.ReadPipelineNodes(r.Context(), scope, key)
+		node, etag, err := h.provisioning.ReadPipelineNode(r.Context(), scope, key, nodeID)
 		if err != nil {
 			writeServiceError(r.Context(), w, err, "could not read node")
 			return
 		}
-		for _, node := range nodes {
-			if node.ID == nodeID {
-				w.Header().Set("ETag", etag)
-				writeJSON(w, http.StatusOK, node)
-				return
-			}
-		}
-		writeError(w, http.StatusNotFound, codeNotFound, "node not found")
+		w.Header().Set("ETag", etag)
+		writeJSON(w, http.StatusOK, node)
 	}
 }
 

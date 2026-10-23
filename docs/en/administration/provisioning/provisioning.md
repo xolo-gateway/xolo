@@ -666,8 +666,8 @@ their `PUT` or node by node:
   for a plugin node, `{"proxyName":"…"}` or `{"passthrough":true}` for a model
   node. `position` only serves the editor and defaults to the origin. Nodes and
   edges are sorted by ID, a missing `data` reads `{}` and the keys of `data`
-  are sorted (numbers kept as written): a replay in another order or another
-  formatting is a no-op. A graph without nodes is an unconfigured pipeline.
+  are sorted (numbers kept as written, `100` and `1E2` differ): a replay in
+  another order or another formatting is a no-op. A graph without nodes is an unconfigured pipeline.
 - **Validation**, the same as the web UI's, answers `422`: at most 500 nodes
   and 2000 edges; node and edge IDs non-empty, unique, without surrounding
   spaces, at most 200 characters; a known type; a `data` that is a JSON object;

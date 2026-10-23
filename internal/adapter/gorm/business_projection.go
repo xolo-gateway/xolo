@@ -144,7 +144,9 @@ func pipelineSnapshot(db *gorm.DB, row map[string]any) error {
 	}
 	delete(row, "graph_json")
 	row["graph"] = model.PipelineGraphSettingsOf(graph)
-	if raw, ok := row["overrides_json"].(string); ok {
+	// Present on virtual models only; NULL reads as no override.
+	if value, present := row["overrides_json"]; present {
+		raw, _ := value.(string)
 		delete(row, "overrides_json")
 		row["catalog_overrides"] = decodeCatalogOverrides(raw)
 	}
