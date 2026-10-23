@@ -23,6 +23,10 @@ type ExecutionContext struct {
 	// empty when it is charged to the organization alone.
 	TeamID   string
 	TeamSlug string
+	// SessionID names the conversation the request belongs to, as the proxy
+	// read it from the client's session header. It is what a node keys its
+	// per-conversation state on (see SessionKey): empty for a standalone call.
+	SessionID string
 	// RequestedModel is the model name as the client sent it, team segment
 	// included.
 	RequestedModel string
@@ -60,6 +64,12 @@ type ExecutionContext struct {
 	// early can register an inspector that the tool loop, built later on the
 	// resolved client, will consult. May be nil (no inspection).
 	ToolInspectors *ToolInspectorSet
+
+	// ConversationTools collects what the nodes of this execution want injected
+	// into the conversation before the model is called: tools resolved up
+	// front, and the values a node read at PreRequest time. Shared by pointer,
+	// like ToolInspectors. May be nil (nothing to inject).
+	ConversationTools *ConversationTools
 
 	// TargetModelName is the model name originally requested by the caller. It
 	// is resolved by "passthrough" model nodes (used in Middleware pipelines),

@@ -78,12 +78,18 @@ func newTestMCPServer(t *testing.T, wantAuth string) *httptest.Server {
 		}
 		handler.ServeHTTP(w, r)
 	})
-	return httptest.NewServer(mux)
+	srv := httptest.NewServer(mux)
+	t.Cleanup(func() {
+		// The plugin under test keeps its MCP session open; the hanging
+		// notification stream would make Close wait forever.
+		srv.CloseClientConnections()
+		srv.Close()
+	})
+	return srv
 }
 
 func TestPlugin_ListToolsAndCallTool_UsesStoredSecret(t *testing.T) {
 	srv := newTestMCPServer(t, "Bearer s3cr3t")
-	defer srv.Close()
 
 	hc := newFakeHostClient()
 	if err := hc.SetSecret(context.Background(), "org-1", "mcp-bridge", "node-1", secretKeyAuthValue, "Bearer s3cr3t"); err != nil {
@@ -91,6 +97,7 @@ func TestPlugin_ListToolsAndCallTool_UsesStoredSecret(t *testing.T) {
 	}
 
 	p := &Plugin{}
+	t.Cleanup(p.Close)
 	p.SetHostClient(hc)
 
 	reqCtx := &proto.RequestContext{
@@ -126,7 +133,6 @@ func TestPlugin_ListToolsAndCallTool_UsesStoredSecret(t *testing.T) {
 
 func TestPlugin_ListTools_WrongSecret_Fails(t *testing.T) {
 	srv := newTestMCPServer(t, "Bearer s3cr3t")
-	defer srv.Close()
 
 	hc := newFakeHostClient()
 	if err := hc.SetSecret(context.Background(), "org-1", "mcp-bridge", "node-1", secretKeyAuthValue, "Bearer wrong"); err != nil {
@@ -134,6 +140,7 @@ func TestPlugin_ListTools_WrongSecret_Fails(t *testing.T) {
 	}
 
 	p := &Plugin{}
+	t.Cleanup(p.Close)
 	p.SetHostClient(hc)
 
 	reqCtx := &proto.RequestContext{

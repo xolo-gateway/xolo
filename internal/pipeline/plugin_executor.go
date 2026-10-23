@@ -52,6 +52,7 @@ func (e *PluginExecutor) Forward(ctx context.Context, node model.PipelineNode, i
 		NodeId:        node.ID,
 		TeamId:        ec.TeamID,
 		TeamSlug:      ec.TeamSlug,
+		SessionId:     ec.SessionID,
 	}
 
 	inputsJSON := InputsJSON(inputs)
@@ -87,6 +88,11 @@ func (e *PluginExecutor) Forward(ctx context.Context, node model.PipelineNode, i
 // resolved a real llm.Client. The plugin controls maxConsecutiveToolCalls
 // via its own ListTools response, since that setting is exposed through the
 // plugin's own configuration UI rather than a generic node-level field.
+//
+// The conversation tools the plugin declares are registered on the execution
+// context instead of being added to this node's tools: the tool loop of the
+// graph resolves them before the model's first call, whichever tool provider
+// of the graph holds the loop.
 func (e *PluginExecutor) forwardToolProvider(
 	ctx context.Context,
 	client proto.XoloPluginClient,
@@ -101,8 +107,16 @@ func (e *PluginExecutor) forwardToolProvider(
 	}
 
 	tools := make([]llm.Tool, 0, len(out.Tools))
+	byName := make(map[string]llm.Tool, len(out.Tools))
 	for _, td := range out.Tools {
-		tools = append(tools, newGRPCTool(client, reqCtx, td))
+		tool := newGRPCTool(client, reqCtx, td)
+		tools = append(tools, tool)
+		byName[td.Name] = tool
+	}
+
+	if ec.ConversationTools != nil {
+		registerConversationTools(ec.ConversationTools.Tools, out.ConversationTools, byName)
+		registerConversationValues(ec.ConversationTools, out.ConversationValues)
 	}
 
 	maxConsecutiveToolCalls := int(out.MaxConsecutiveToolCalls)
@@ -111,9 +125,62 @@ func (e *PluginExecutor) forwardToolProvider(
 		OutputValues: inputs,
 		Tools:        tools,
 		ClientDecorator: func(inner llm.Client) llm.Client {
-			return NewToolLoopClient(inner, tools, 0, maxConsecutiveToolCalls, ec.ToolInspectors)
+			loop := NewToolLoopClient(inner, tools, 0, maxConsecutiveToolCalls, ec.ToolInspectors)
+			return loop.WithConversationTools(ec.ConversationTools, ec)
 		},
 	}, nil
+}
+
+// registerConversationTools turns the plugin's protocol declarations into the
+// host's ConversationTool values. A declaration naming a tool the plugin did not
+// list is skipped: there is nothing to call, and failing the whole node would
+// make a plugin's configuration mistake break every request instead of dropping
+// the prefetch it asked for.
+func registerConversationTools(set *ConversationToolSet, declared []*proto.ToolConversation, tools map[string]llm.Tool) {
+	if set == nil {
+		return
+	}
+	for _, tc := range declared {
+		td := tc.GetTool()
+		tool, ok := tools[td.GetName()]
+		if !ok {
+			continue
+		}
+		set.Register(ConversationTool{
+			Tool:           tool,
+			Trigger:        conversationTrigger(tc.GetTrigger()),
+			Arguments:      tc.GetArgumentsJson(),
+			ResultTemplate: tc.GetResultTemplate(),
+			Label:          tc.GetLabel(),
+		})
+	}
+}
+
+// conversationTrigger maps the protocol's trigger onto the host's. An unknown
+// trigger is treated as "always": a value the host does not know is either a
+// newer protocol it cannot honour or a mistake, and neither justifies silently
+// dropping what the plugin asked to inject.
+func conversationTrigger(t proto.ToolConversation_Trigger) ToolTrigger {
+	switch t {
+	case proto.ToolConversation_ALWAYS:
+		return ToolTriggerAlways
+	default:
+		return ToolTriggerAlways
+	}
+}
+
+// registerConversationValues adds the context the plugin read while listing to
+// what will be injected before the model's first call.
+func registerConversationValues(dst *ConversationTools, values []*proto.ConversationValue) {
+	if dst == nil {
+		return
+	}
+	for _, v := range values {
+		dst.Values = append(dst.Values, ConversationValue{
+			Label:   v.GetLabel(),
+			Content: v.GetContent(),
+		})
+	}
 }
 
 // newGRPCTool wraps a single plugin-advertised tool as an llm.Tool whose

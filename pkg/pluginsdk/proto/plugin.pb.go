@@ -96,6 +96,56 @@ func (PluginDescriptor_Capability) EnumDescriptor() ([]byte, []int) {
 	return file_pkg_pluginsdk_proto_plugin_proto_rawDescGZIP(), []int{21, 0}
 }
 
+type ToolConversation_Trigger int32
+
+const (
+	// TRIGGER_UNSPECIFIED is not a valid trigger: a conversation tool always
+	// says when it runs.
+	ToolConversation_TRIGGER_UNSPECIFIED ToolConversation_Trigger = 0
+	// ALWAYS runs the tool once, before the first model call, on every
+	// request whose last user message the arguments can be mapped from.
+	ToolConversation_ALWAYS ToolConversation_Trigger = 1
+)
+
+// Enum value maps for ToolConversation_Trigger.
+var (
+	ToolConversation_Trigger_name = map[int32]string{
+		0: "TRIGGER_UNSPECIFIED",
+		1: "ALWAYS",
+	}
+	ToolConversation_Trigger_value = map[string]int32{
+		"TRIGGER_UNSPECIFIED": 0,
+		"ALWAYS":              1,
+	}
+)
+
+func (x ToolConversation_Trigger) Enum() *ToolConversation_Trigger {
+	p := new(ToolConversation_Trigger)
+	*p = x
+	return p
+}
+
+func (x ToolConversation_Trigger) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (ToolConversation_Trigger) Descriptor() protoreflect.EnumDescriptor {
+	return file_pkg_pluginsdk_proto_plugin_proto_enumTypes[1].Descriptor()
+}
+
+func (ToolConversation_Trigger) Type() protoreflect.EnumType {
+	return &file_pkg_pluginsdk_proto_plugin_proto_enumTypes[1]
+}
+
+func (x ToolConversation_Trigger) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use ToolConversation_Trigger.Descriptor instead.
+func (ToolConversation_Trigger) EnumDescriptor() ([]byte, []int) {
+	return file_pkg_pluginsdk_proto_plugin_proto_rawDescGZIP(), []int{38, 0}
+}
+
 type EmitEventRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	PluginName    string                 `protobuf:"bytes,1,opt,name=plugin_name,json=pluginName,proto3" json:"plugin_name,omitempty"`
@@ -1365,8 +1415,13 @@ type RequestContext struct {
 	// team_id is the team the request is attributed to, empty when it is
 	// charged to the organization alone. team_slug is its slug, the team
 	// segment of qualified model names ("<org>/<team>/<model>").
-	TeamId        string `protobuf:"bytes,9,opt,name=team_id,json=teamId,proto3" json:"team_id,omitempty"`
-	TeamSlug      string `protobuf:"bytes,10,opt,name=team_slug,json=teamSlug,proto3" json:"team_slug,omitempty"`
+	TeamId   string `protobuf:"bytes,9,opt,name=team_id,json=teamId,proto3" json:"team_id,omitempty"`
+	TeamSlug string `protobuf:"bytes,10,opt,name=team_slug,json=teamSlug,proto3" json:"team_slug,omitempty"`
+	// session_id names the conversation the request belongs to, when the
+	// client sent one. Plugins use it to keep per-conversation state (an MCP
+	// session, say) across the requests of one conversation, and empty for
+	// none.
+	SessionId     string `protobuf:"bytes,11,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1467,6 +1522,13 @@ func (x *RequestContext) GetTeamId() string {
 func (x *RequestContext) GetTeamSlug() string {
 	if x != nil {
 		return x.TeamSlug
+	}
+	return ""
+}
+
+func (x *RequestContext) GetSessionId() string {
+	if x != nil {
+		return x.SessionId
 	}
 	return ""
 }
@@ -2474,8 +2536,17 @@ type ListToolsOutput struct {
 	// on the next LLM call, so the model answers with whatever results it
 	// already has instead of looping further. <= 0 means "use host default".
 	MaxConsecutiveToolCalls int32 `protobuf:"varint,2,opt,name=max_consecutive_tool_calls,json=maxConsecutiveToolCalls,proto3" json:"max_consecutive_tool_calls,omitempty"`
-	unknownFields           protoimpl.UnknownFields
-	sizeCache               protoimpl.SizeCache
+	// conversation_tools are resolved by the host before the model's first
+	// call, their result injected into the request, instead of being offered
+	// to the model as callable tools. A plugin declares one when the model
+	// should not have to decide on every request whether to call it.
+	ConversationTools []*ToolConversation `protobuf:"bytes,3,rep,name=conversation_tools,json=conversationTools,proto3" json:"conversation_tools,omitempty"`
+	// conversation_values are pieces of context the plugin read while listing
+	// (an MCP resource, say) and wants injected before the model's first call,
+	// next to the conversation tools' results.
+	ConversationValues []*ConversationValue `protobuf:"bytes,4,rep,name=conversation_values,json=conversationValues,proto3" json:"conversation_values,omitempty"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
 }
 
 func (x *ListToolsOutput) Reset() {
@@ -2522,6 +2593,164 @@ func (x *ListToolsOutput) GetMaxConsecutiveToolCalls() int32 {
 	return 0
 }
 
+func (x *ListToolsOutput) GetConversationTools() []*ToolConversation {
+	if x != nil {
+		return x.ConversationTools
+	}
+	return nil
+}
+
+func (x *ListToolsOutput) GetConversationValues() []*ConversationValue {
+	if x != nil {
+		return x.ConversationValues
+	}
+	return nil
+}
+
+// ConversationValue is a piece of context a plugin resolved before the model
+// is called, injected into the conversation.
+type ConversationValue struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// label opens the block. Plain text.
+	Label string `protobuf:"bytes,1,opt,name=label,proto3" json:"label,omitempty"`
+	// content is the value itself, as text.
+	Content       string `protobuf:"bytes,2,opt,name=content,proto3" json:"content,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ConversationValue) Reset() {
+	*x = ConversationValue{}
+	mi := &file_pkg_pluginsdk_proto_plugin_proto_msgTypes[37]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ConversationValue) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ConversationValue) ProtoMessage() {}
+
+func (x *ConversationValue) ProtoReflect() protoreflect.Message {
+	mi := &file_pkg_pluginsdk_proto_plugin_proto_msgTypes[37]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ConversationValue.ProtoReflect.Descriptor instead.
+func (*ConversationValue) Descriptor() ([]byte, []int) {
+	return file_pkg_pluginsdk_proto_plugin_proto_rawDescGZIP(), []int{37}
+}
+
+func (x *ConversationValue) GetLabel() string {
+	if x != nil {
+		return x.Label
+	}
+	return ""
+}
+
+func (x *ConversationValue) GetContent() string {
+	if x != nil {
+		return x.Content
+	}
+	return ""
+}
+
+// ToolConversation is a tool a plugin wants resolved inside the conversation,
+// before the model is called.
+type ToolConversation struct {
+	state   protoimpl.MessageState   `protogen:"open.v1"`
+	Trigger ToolConversation_Trigger `protobuf:"varint,1,opt,name=trigger,proto3,enum=xolo.plugin.v1.ToolConversation_Trigger" json:"trigger,omitempty"`
+	// tool is the tool to resolve, normally also listed in tools. Its
+	// description is what the model reads on the injected result, so it says
+	// what the data is, in the language of the users.
+	Tool *ToolDescriptor `protobuf:"bytes,2,opt,name=tool,proto3" json:"tool,omitempty"`
+	// arguments_json is the JSON object the tool is called with, before
+	// templating. A string value holding a {{...}} placeholder is filled from
+	// the request.
+	ArgumentsJson string `protobuf:"bytes,3,opt,name=arguments_json,json=argumentsJson,proto3" json:"arguments_json,omitempty"`
+	// result_template, when non-empty, wraps the tool result before it is
+	// injected: every "{{result}}" occurrence is replaced by the result text.
+	ResultTemplate string `protobuf:"bytes,4,opt,name=result_template,json=resultTemplate,proto3" json:"result_template,omitempty"`
+	// label, when non-empty, opens the injected block. Plain text, not a
+	// template.
+	Label         string `protobuf:"bytes,5,opt,name=label,proto3" json:"label,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ToolConversation) Reset() {
+	*x = ToolConversation{}
+	mi := &file_pkg_pluginsdk_proto_plugin_proto_msgTypes[38]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ToolConversation) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ToolConversation) ProtoMessage() {}
+
+func (x *ToolConversation) ProtoReflect() protoreflect.Message {
+	mi := &file_pkg_pluginsdk_proto_plugin_proto_msgTypes[38]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ToolConversation.ProtoReflect.Descriptor instead.
+func (*ToolConversation) Descriptor() ([]byte, []int) {
+	return file_pkg_pluginsdk_proto_plugin_proto_rawDescGZIP(), []int{38}
+}
+
+func (x *ToolConversation) GetTrigger() ToolConversation_Trigger {
+	if x != nil {
+		return x.Trigger
+	}
+	return ToolConversation_TRIGGER_UNSPECIFIED
+}
+
+func (x *ToolConversation) GetTool() *ToolDescriptor {
+	if x != nil {
+		return x.Tool
+	}
+	return nil
+}
+
+func (x *ToolConversation) GetArgumentsJson() string {
+	if x != nil {
+		return x.ArgumentsJson
+	}
+	return ""
+}
+
+func (x *ToolConversation) GetResultTemplate() string {
+	if x != nil {
+		return x.ResultTemplate
+	}
+	return ""
+}
+
+func (x *ToolConversation) GetLabel() string {
+	if x != nil {
+		return x.Label
+	}
+	return ""
+}
+
 type CallToolInput struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Ctx           *RequestContext        `protobuf:"bytes,1,opt,name=ctx,proto3" json:"ctx,omitempty"`
@@ -2533,7 +2762,7 @@ type CallToolInput struct {
 
 func (x *CallToolInput) Reset() {
 	*x = CallToolInput{}
-	mi := &file_pkg_pluginsdk_proto_plugin_proto_msgTypes[37]
+	mi := &file_pkg_pluginsdk_proto_plugin_proto_msgTypes[39]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2545,7 +2774,7 @@ func (x *CallToolInput) String() string {
 func (*CallToolInput) ProtoMessage() {}
 
 func (x *CallToolInput) ProtoReflect() protoreflect.Message {
-	mi := &file_pkg_pluginsdk_proto_plugin_proto_msgTypes[37]
+	mi := &file_pkg_pluginsdk_proto_plugin_proto_msgTypes[39]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2558,7 +2787,7 @@ func (x *CallToolInput) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CallToolInput.ProtoReflect.Descriptor instead.
 func (*CallToolInput) Descriptor() ([]byte, []int) {
-	return file_pkg_pluginsdk_proto_plugin_proto_rawDescGZIP(), []int{37}
+	return file_pkg_pluginsdk_proto_plugin_proto_rawDescGZIP(), []int{39}
 }
 
 func (x *CallToolInput) GetCtx() *RequestContext {
@@ -2592,7 +2821,7 @@ type CallToolOutput struct {
 
 func (x *CallToolOutput) Reset() {
 	*x = CallToolOutput{}
-	mi := &file_pkg_pluginsdk_proto_plugin_proto_msgTypes[38]
+	mi := &file_pkg_pluginsdk_proto_plugin_proto_msgTypes[40]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2604,7 +2833,7 @@ func (x *CallToolOutput) String() string {
 func (*CallToolOutput) ProtoMessage() {}
 
 func (x *CallToolOutput) ProtoReflect() protoreflect.Message {
-	mi := &file_pkg_pluginsdk_proto_plugin_proto_msgTypes[38]
+	mi := &file_pkg_pluginsdk_proto_plugin_proto_msgTypes[40]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2617,7 +2846,7 @@ func (x *CallToolOutput) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CallToolOutput.ProtoReflect.Descriptor instead.
 func (*CallToolOutput) Descriptor() ([]byte, []int) {
-	return file_pkg_pluginsdk_proto_plugin_proto_rawDescGZIP(), []int{38}
+	return file_pkg_pluginsdk_proto_plugin_proto_rawDescGZIP(), []int{40}
 }
 
 func (x *CallToolOutput) GetResultText() string {
@@ -2650,7 +2879,7 @@ type InspectToolResultInput struct {
 
 func (x *InspectToolResultInput) Reset() {
 	*x = InspectToolResultInput{}
-	mi := &file_pkg_pluginsdk_proto_plugin_proto_msgTypes[39]
+	mi := &file_pkg_pluginsdk_proto_plugin_proto_msgTypes[41]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2662,7 +2891,7 @@ func (x *InspectToolResultInput) String() string {
 func (*InspectToolResultInput) ProtoMessage() {}
 
 func (x *InspectToolResultInput) ProtoReflect() protoreflect.Message {
-	mi := &file_pkg_pluginsdk_proto_plugin_proto_msgTypes[39]
+	mi := &file_pkg_pluginsdk_proto_plugin_proto_msgTypes[41]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2675,7 +2904,7 @@ func (x *InspectToolResultInput) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InspectToolResultInput.ProtoReflect.Descriptor instead.
 func (*InspectToolResultInput) Descriptor() ([]byte, []int) {
-	return file_pkg_pluginsdk_proto_plugin_proto_rawDescGZIP(), []int{39}
+	return file_pkg_pluginsdk_proto_plugin_proto_rawDescGZIP(), []int{41}
 }
 
 func (x *InspectToolResultInput) GetCtx() *RequestContext {
@@ -2714,7 +2943,7 @@ type InspectToolResultOutput struct {
 
 func (x *InspectToolResultOutput) Reset() {
 	*x = InspectToolResultOutput{}
-	mi := &file_pkg_pluginsdk_proto_plugin_proto_msgTypes[40]
+	mi := &file_pkg_pluginsdk_proto_plugin_proto_msgTypes[42]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2726,7 +2955,7 @@ func (x *InspectToolResultOutput) String() string {
 func (*InspectToolResultOutput) ProtoMessage() {}
 
 func (x *InspectToolResultOutput) ProtoReflect() protoreflect.Message {
-	mi := &file_pkg_pluginsdk_proto_plugin_proto_msgTypes[40]
+	mi := &file_pkg_pluginsdk_proto_plugin_proto_msgTypes[42]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2739,7 +2968,7 @@ func (x *InspectToolResultOutput) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InspectToolResultOutput.ProtoReflect.Descriptor instead.
 func (*InspectToolResultOutput) Descriptor() ([]byte, []int) {
-	return file_pkg_pluginsdk_proto_plugin_proto_rawDescGZIP(), []int{40}
+	return file_pkg_pluginsdk_proto_plugin_proto_rawDescGZIP(), []int{42}
 }
 
 func (x *InspectToolResultOutput) GetBlocked() bool {
@@ -2871,7 +3100,7 @@ const file_pkg_pluginsdk_proto_plugin_proto_rawDesc = "" +
 	"\rRESOLVE_MODEL\x10\x03\x12\x0f\n" +
 	"\vLIST_MODELS\x10\x04\x12\x11\n" +
 	"\rTOOL_PROVIDER\x10\x05\x12\x19\n" +
-	"\x15TOOL_RESULT_INSPECTOR\x10\x06\"\xc0\x02\n" +
+	"\x15TOOL_RESULT_INSPECTOR\x10\x06\"\xdf\x02\n" +
 	"\x0eRequestContext\x12\x15\n" +
 	"\x06org_id\x18\x01 \x01(\tR\x05orgId\x12\x17\n" +
 	"\auser_id\x18\x02 \x01(\tR\x06userId\x12\x19\n" +
@@ -2884,7 +3113,9 @@ const file_pkg_pluginsdk_proto_plugin_proto_rawDesc = "" +
 	"\x0fsecret_scope_id\x18\b \x01(\tR\rsecretScopeId\x12\x17\n" +
 	"\ateam_id\x18\t \x01(\tR\x06teamId\x12\x1b\n" +
 	"\tteam_slug\x18\n" +
-	" \x01(\tR\bteamSlug\"\xb3\x04\n" +
+	" \x01(\tR\bteamSlug\x12\x1d\n" +
+	"\n" +
+	"session_id\x18\v \x01(\tR\tsessionId\"\xb3\x04\n" +
 	"\tModelInfo\x12\x1d\n" +
 	"\n" +
 	"proxy_name\x18\x01 \x01(\tR\tproxyName\x12\x1d\n" +
@@ -2968,10 +3199,25 @@ const file_pkg_pluginsdk_proto_plugin_proto_rawDesc = "" +
 	"\vdescription\x18\x02 \x01(\tR\vdescription\x12*\n" +
 	"\x11input_schema_json\x18\x03 \x01(\tR\x0finputSchemaJson\"B\n" +
 	"\x0eListToolsInput\x120\n" +
-	"\x03ctx\x18\x01 \x01(\v2\x1e.xolo.plugin.v1.RequestContextR\x03ctx\"\x84\x01\n" +
+	"\x03ctx\x18\x01 \x01(\v2\x1e.xolo.plugin.v1.RequestContextR\x03ctx\"\xa9\x02\n" +
 	"\x0fListToolsOutput\x124\n" +
 	"\x05tools\x18\x01 \x03(\v2\x1e.xolo.plugin.v1.ToolDescriptorR\x05tools\x12;\n" +
-	"\x1amax_consecutive_tool_calls\x18\x02 \x01(\x05R\x17maxConsecutiveToolCalls\"|\n" +
+	"\x1amax_consecutive_tool_calls\x18\x02 \x01(\x05R\x17maxConsecutiveToolCalls\x12O\n" +
+	"\x12conversation_tools\x18\x03 \x03(\v2 .xolo.plugin.v1.ToolConversationR\x11conversationTools\x12R\n" +
+	"\x13conversation_values\x18\x04 \x03(\v2!.xolo.plugin.v1.ConversationValueR\x12conversationValues\"C\n" +
+	"\x11ConversationValue\x12\x14\n" +
+	"\x05label\x18\x01 \x01(\tR\x05label\x12\x18\n" +
+	"\acontent\x18\x02 \x01(\tR\acontent\"\xa0\x02\n" +
+	"\x10ToolConversation\x12B\n" +
+	"\atrigger\x18\x01 \x01(\x0e2(.xolo.plugin.v1.ToolConversation.TriggerR\atrigger\x122\n" +
+	"\x04tool\x18\x02 \x01(\v2\x1e.xolo.plugin.v1.ToolDescriptorR\x04tool\x12%\n" +
+	"\x0earguments_json\x18\x03 \x01(\tR\rargumentsJson\x12'\n" +
+	"\x0fresult_template\x18\x04 \x01(\tR\x0eresultTemplate\x12\x14\n" +
+	"\x05label\x18\x05 \x01(\tR\x05label\".\n" +
+	"\aTrigger\x12\x17\n" +
+	"\x13TRIGGER_UNSPECIFIED\x10\x00\x12\n" +
+	"\n" +
+	"\x06ALWAYS\x10\x01\"|\n" +
 	"\rCallToolInput\x120\n" +
 	"\x03ctx\x18\x01 \x01(\v2\x1e.xolo.plugin.v1.RequestContextR\x03ctx\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12%\n" +
@@ -3026,112 +3272,119 @@ func file_pkg_pluginsdk_proto_plugin_proto_rawDescGZIP() []byte {
 	return file_pkg_pluginsdk_proto_plugin_proto_rawDescData
 }
 
-var file_pkg_pluginsdk_proto_plugin_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_pkg_pluginsdk_proto_plugin_proto_msgTypes = make([]protoimpl.MessageInfo, 42)
+var file_pkg_pluginsdk_proto_plugin_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
+var file_pkg_pluginsdk_proto_plugin_proto_msgTypes = make([]protoimpl.MessageInfo, 44)
 var file_pkg_pluginsdk_proto_plugin_proto_goTypes = []any{
 	(PluginDescriptor_Capability)(0),   // 0: xolo.plugin.v1.PluginDescriptor.Capability
-	(*EmitEventRequest)(nil),           // 1: xolo.plugin.v1.EmitEventRequest
-	(*EmitEventResponse)(nil),          // 2: xolo.plugin.v1.EmitEventResponse
-	(*ListModelsForOrgRequest)(nil),    // 3: xolo.plugin.v1.ListModelsForOrgRequest
-	(*ListModelsForOrgResponse)(nil),   // 4: xolo.plugin.v1.ListModelsForOrgResponse
-	(*ChatMessage)(nil),                // 5: xolo.plugin.v1.ChatMessage
-	(*HostChatCompletionRequest)(nil),  // 6: xolo.plugin.v1.HostChatCompletionRequest
-	(*HostChatCompletionResponse)(nil), // 7: xolo.plugin.v1.HostChatCompletionResponse
-	(*InitializeRequest)(nil),          // 8: xolo.plugin.v1.InitializeRequest
-	(*InitializeResponse)(nil),         // 9: xolo.plugin.v1.InitializeResponse
-	(*GetConfigRequest)(nil),           // 10: xolo.plugin.v1.GetConfigRequest
-	(*GetConfigResponse)(nil),          // 11: xolo.plugin.v1.GetConfigResponse
-	(*SaveConfigRequest)(nil),          // 12: xolo.plugin.v1.SaveConfigRequest
-	(*SaveConfigResponse)(nil),         // 13: xolo.plugin.v1.SaveConfigResponse
-	(*GetSecretRequest)(nil),           // 14: xolo.plugin.v1.GetSecretRequest
-	(*GetSecretResponse)(nil),          // 15: xolo.plugin.v1.GetSecretResponse
-	(*SetSecretRequest)(nil),           // 16: xolo.plugin.v1.SetSecretRequest
-	(*SetSecretResponse)(nil),          // 17: xolo.plugin.v1.SetSecretResponse
-	(*DeleteSecretRequest)(nil),        // 18: xolo.plugin.v1.DeleteSecretRequest
-	(*DeleteSecretResponse)(nil),       // 19: xolo.plugin.v1.DeleteSecretResponse
-	(*DescribeRequest)(nil),            // 20: xolo.plugin.v1.DescribeRequest
-	(*PortDescriptor)(nil),             // 21: xolo.plugin.v1.PortDescriptor
-	(*PluginDescriptor)(nil),           // 22: xolo.plugin.v1.PluginDescriptor
-	(*RequestContext)(nil),             // 23: xolo.plugin.v1.RequestContext
-	(*ModelInfo)(nil),                  // 24: xolo.plugin.v1.ModelInfo
-	(*QuotaInfo)(nil),                  // 25: xolo.plugin.v1.QuotaInfo
-	(*VirtualModelInfo)(nil),           // 26: xolo.plugin.v1.VirtualModelInfo
-	(*PreRequestInput)(nil),            // 27: xolo.plugin.v1.PreRequestInput
-	(*PreRequestOutput)(nil),           // 28: xolo.plugin.v1.PreRequestOutput
-	(*PostResponseInput)(nil),          // 29: xolo.plugin.v1.PostResponseInput
-	(*PostResponseOutput)(nil),         // 30: xolo.plugin.v1.PostResponseOutput
-	(*ResolveModelInput)(nil),          // 31: xolo.plugin.v1.ResolveModelInput
-	(*ResolveModelOutput)(nil),         // 32: xolo.plugin.v1.ResolveModelOutput
-	(*ListModelsInput)(nil),            // 33: xolo.plugin.v1.ListModelsInput
-	(*ListModelsOutput)(nil),           // 34: xolo.plugin.v1.ListModelsOutput
-	(*ToolDescriptor)(nil),             // 35: xolo.plugin.v1.ToolDescriptor
-	(*ListToolsInput)(nil),             // 36: xolo.plugin.v1.ListToolsInput
-	(*ListToolsOutput)(nil),            // 37: xolo.plugin.v1.ListToolsOutput
-	(*CallToolInput)(nil),              // 38: xolo.plugin.v1.CallToolInput
-	(*CallToolOutput)(nil),             // 39: xolo.plugin.v1.CallToolOutput
-	(*InspectToolResultInput)(nil),     // 40: xolo.plugin.v1.InspectToolResultInput
-	(*InspectToolResultOutput)(nil),    // 41: xolo.plugin.v1.InspectToolResultOutput
-	nil,                                // 42: xolo.plugin.v1.EmitEventRequest.AttributesEntry
+	(ToolConversation_Trigger)(0),      // 1: xolo.plugin.v1.ToolConversation.Trigger
+	(*EmitEventRequest)(nil),           // 2: xolo.plugin.v1.EmitEventRequest
+	(*EmitEventResponse)(nil),          // 3: xolo.plugin.v1.EmitEventResponse
+	(*ListModelsForOrgRequest)(nil),    // 4: xolo.plugin.v1.ListModelsForOrgRequest
+	(*ListModelsForOrgResponse)(nil),   // 5: xolo.plugin.v1.ListModelsForOrgResponse
+	(*ChatMessage)(nil),                // 6: xolo.plugin.v1.ChatMessage
+	(*HostChatCompletionRequest)(nil),  // 7: xolo.plugin.v1.HostChatCompletionRequest
+	(*HostChatCompletionResponse)(nil), // 8: xolo.plugin.v1.HostChatCompletionResponse
+	(*InitializeRequest)(nil),          // 9: xolo.plugin.v1.InitializeRequest
+	(*InitializeResponse)(nil),         // 10: xolo.plugin.v1.InitializeResponse
+	(*GetConfigRequest)(nil),           // 11: xolo.plugin.v1.GetConfigRequest
+	(*GetConfigResponse)(nil),          // 12: xolo.plugin.v1.GetConfigResponse
+	(*SaveConfigRequest)(nil),          // 13: xolo.plugin.v1.SaveConfigRequest
+	(*SaveConfigResponse)(nil),         // 14: xolo.plugin.v1.SaveConfigResponse
+	(*GetSecretRequest)(nil),           // 15: xolo.plugin.v1.GetSecretRequest
+	(*GetSecretResponse)(nil),          // 16: xolo.plugin.v1.GetSecretResponse
+	(*SetSecretRequest)(nil),           // 17: xolo.plugin.v1.SetSecretRequest
+	(*SetSecretResponse)(nil),          // 18: xolo.plugin.v1.SetSecretResponse
+	(*DeleteSecretRequest)(nil),        // 19: xolo.plugin.v1.DeleteSecretRequest
+	(*DeleteSecretResponse)(nil),       // 20: xolo.plugin.v1.DeleteSecretResponse
+	(*DescribeRequest)(nil),            // 21: xolo.plugin.v1.DescribeRequest
+	(*PortDescriptor)(nil),             // 22: xolo.plugin.v1.PortDescriptor
+	(*PluginDescriptor)(nil),           // 23: xolo.plugin.v1.PluginDescriptor
+	(*RequestContext)(nil),             // 24: xolo.plugin.v1.RequestContext
+	(*ModelInfo)(nil),                  // 25: xolo.plugin.v1.ModelInfo
+	(*QuotaInfo)(nil),                  // 26: xolo.plugin.v1.QuotaInfo
+	(*VirtualModelInfo)(nil),           // 27: xolo.plugin.v1.VirtualModelInfo
+	(*PreRequestInput)(nil),            // 28: xolo.plugin.v1.PreRequestInput
+	(*PreRequestOutput)(nil),           // 29: xolo.plugin.v1.PreRequestOutput
+	(*PostResponseInput)(nil),          // 30: xolo.plugin.v1.PostResponseInput
+	(*PostResponseOutput)(nil),         // 31: xolo.plugin.v1.PostResponseOutput
+	(*ResolveModelInput)(nil),          // 32: xolo.plugin.v1.ResolveModelInput
+	(*ResolveModelOutput)(nil),         // 33: xolo.plugin.v1.ResolveModelOutput
+	(*ListModelsInput)(nil),            // 34: xolo.plugin.v1.ListModelsInput
+	(*ListModelsOutput)(nil),           // 35: xolo.plugin.v1.ListModelsOutput
+	(*ToolDescriptor)(nil),             // 36: xolo.plugin.v1.ToolDescriptor
+	(*ListToolsInput)(nil),             // 37: xolo.plugin.v1.ListToolsInput
+	(*ListToolsOutput)(nil),            // 38: xolo.plugin.v1.ListToolsOutput
+	(*ConversationValue)(nil),          // 39: xolo.plugin.v1.ConversationValue
+	(*ToolConversation)(nil),           // 40: xolo.plugin.v1.ToolConversation
+	(*CallToolInput)(nil),              // 41: xolo.plugin.v1.CallToolInput
+	(*CallToolOutput)(nil),             // 42: xolo.plugin.v1.CallToolOutput
+	(*InspectToolResultInput)(nil),     // 43: xolo.plugin.v1.InspectToolResultInput
+	(*InspectToolResultOutput)(nil),    // 44: xolo.plugin.v1.InspectToolResultOutput
+	nil,                                // 45: xolo.plugin.v1.EmitEventRequest.AttributesEntry
 }
 var file_pkg_pluginsdk_proto_plugin_proto_depIdxs = []int32{
-	42, // 0: xolo.plugin.v1.EmitEventRequest.attributes:type_name -> xolo.plugin.v1.EmitEventRequest.AttributesEntry
-	24, // 1: xolo.plugin.v1.ListModelsForOrgResponse.models:type_name -> xolo.plugin.v1.ModelInfo
-	5,  // 2: xolo.plugin.v1.HostChatCompletionRequest.messages:type_name -> xolo.plugin.v1.ChatMessage
+	45, // 0: xolo.plugin.v1.EmitEventRequest.attributes:type_name -> xolo.plugin.v1.EmitEventRequest.AttributesEntry
+	25, // 1: xolo.plugin.v1.ListModelsForOrgResponse.models:type_name -> xolo.plugin.v1.ModelInfo
+	6,  // 2: xolo.plugin.v1.HostChatCompletionRequest.messages:type_name -> xolo.plugin.v1.ChatMessage
 	0,  // 3: xolo.plugin.v1.PluginDescriptor.capabilities:type_name -> xolo.plugin.v1.PluginDescriptor.Capability
-	21, // 4: xolo.plugin.v1.PluginDescriptor.input_ports:type_name -> xolo.plugin.v1.PortDescriptor
-	21, // 5: xolo.plugin.v1.PluginDescriptor.output_ports:type_name -> xolo.plugin.v1.PortDescriptor
-	23, // 6: xolo.plugin.v1.PreRequestInput.ctx:type_name -> xolo.plugin.v1.RequestContext
-	25, // 7: xolo.plugin.v1.PreRequestInput.quota:type_name -> xolo.plugin.v1.QuotaInfo
-	23, // 8: xolo.plugin.v1.PostResponseInput.ctx:type_name -> xolo.plugin.v1.RequestContext
-	23, // 9: xolo.plugin.v1.ResolveModelInput.ctx:type_name -> xolo.plugin.v1.RequestContext
-	24, // 10: xolo.plugin.v1.ResolveModelInput.available_models:type_name -> xolo.plugin.v1.ModelInfo
-	26, // 11: xolo.plugin.v1.ResolveModelInput.virtual_models:type_name -> xolo.plugin.v1.VirtualModelInfo
-	25, // 12: xolo.plugin.v1.ResolveModelInput.quota:type_name -> xolo.plugin.v1.QuotaInfo
-	23, // 13: xolo.plugin.v1.ListModelsInput.ctx:type_name -> xolo.plugin.v1.RequestContext
-	24, // 14: xolo.plugin.v1.ListModelsInput.available_models:type_name -> xolo.plugin.v1.ModelInfo
-	23, // 15: xolo.plugin.v1.ListToolsInput.ctx:type_name -> xolo.plugin.v1.RequestContext
-	35, // 16: xolo.plugin.v1.ListToolsOutput.tools:type_name -> xolo.plugin.v1.ToolDescriptor
-	23, // 17: xolo.plugin.v1.CallToolInput.ctx:type_name -> xolo.plugin.v1.RequestContext
-	23, // 18: xolo.plugin.v1.InspectToolResultInput.ctx:type_name -> xolo.plugin.v1.RequestContext
-	20, // 19: xolo.plugin.v1.XoloPlugin.Describe:input_type -> xolo.plugin.v1.DescribeRequest
-	8,  // 20: xolo.plugin.v1.XoloPlugin.Initialize:input_type -> xolo.plugin.v1.InitializeRequest
-	27, // 21: xolo.plugin.v1.XoloPlugin.PreRequest:input_type -> xolo.plugin.v1.PreRequestInput
-	29, // 22: xolo.plugin.v1.XoloPlugin.PostResponse:input_type -> xolo.plugin.v1.PostResponseInput
-	31, // 23: xolo.plugin.v1.XoloPlugin.ResolveModel:input_type -> xolo.plugin.v1.ResolveModelInput
-	33, // 24: xolo.plugin.v1.XoloPlugin.ListModels:input_type -> xolo.plugin.v1.ListModelsInput
-	36, // 25: xolo.plugin.v1.XoloPlugin.ListTools:input_type -> xolo.plugin.v1.ListToolsInput
-	38, // 26: xolo.plugin.v1.XoloPlugin.CallTool:input_type -> xolo.plugin.v1.CallToolInput
-	40, // 27: xolo.plugin.v1.XoloPlugin.InspectToolResult:input_type -> xolo.plugin.v1.InspectToolResultInput
-	10, // 28: xolo.plugin.v1.XoloHostService.GetConfig:input_type -> xolo.plugin.v1.GetConfigRequest
-	12, // 29: xolo.plugin.v1.XoloHostService.SaveConfig:input_type -> xolo.plugin.v1.SaveConfigRequest
-	3,  // 30: xolo.plugin.v1.XoloHostService.ListModels:input_type -> xolo.plugin.v1.ListModelsForOrgRequest
-	14, // 31: xolo.plugin.v1.XoloHostService.GetSecret:input_type -> xolo.plugin.v1.GetSecretRequest
-	16, // 32: xolo.plugin.v1.XoloHostService.SetSecret:input_type -> xolo.plugin.v1.SetSecretRequest
-	18, // 33: xolo.plugin.v1.XoloHostService.DeleteSecret:input_type -> xolo.plugin.v1.DeleteSecretRequest
-	1,  // 34: xolo.plugin.v1.XoloHostService.EmitEvent:input_type -> xolo.plugin.v1.EmitEventRequest
-	6,  // 35: xolo.plugin.v1.XoloHostService.ChatCompletion:input_type -> xolo.plugin.v1.HostChatCompletionRequest
-	22, // 36: xolo.plugin.v1.XoloPlugin.Describe:output_type -> xolo.plugin.v1.PluginDescriptor
-	9,  // 37: xolo.plugin.v1.XoloPlugin.Initialize:output_type -> xolo.plugin.v1.InitializeResponse
-	28, // 38: xolo.plugin.v1.XoloPlugin.PreRequest:output_type -> xolo.plugin.v1.PreRequestOutput
-	30, // 39: xolo.plugin.v1.XoloPlugin.PostResponse:output_type -> xolo.plugin.v1.PostResponseOutput
-	32, // 40: xolo.plugin.v1.XoloPlugin.ResolveModel:output_type -> xolo.plugin.v1.ResolveModelOutput
-	34, // 41: xolo.plugin.v1.XoloPlugin.ListModels:output_type -> xolo.plugin.v1.ListModelsOutput
-	37, // 42: xolo.plugin.v1.XoloPlugin.ListTools:output_type -> xolo.plugin.v1.ListToolsOutput
-	39, // 43: xolo.plugin.v1.XoloPlugin.CallTool:output_type -> xolo.plugin.v1.CallToolOutput
-	41, // 44: xolo.plugin.v1.XoloPlugin.InspectToolResult:output_type -> xolo.plugin.v1.InspectToolResultOutput
-	11, // 45: xolo.plugin.v1.XoloHostService.GetConfig:output_type -> xolo.plugin.v1.GetConfigResponse
-	13, // 46: xolo.plugin.v1.XoloHostService.SaveConfig:output_type -> xolo.plugin.v1.SaveConfigResponse
-	4,  // 47: xolo.plugin.v1.XoloHostService.ListModels:output_type -> xolo.plugin.v1.ListModelsForOrgResponse
-	15, // 48: xolo.plugin.v1.XoloHostService.GetSecret:output_type -> xolo.plugin.v1.GetSecretResponse
-	17, // 49: xolo.plugin.v1.XoloHostService.SetSecret:output_type -> xolo.plugin.v1.SetSecretResponse
-	19, // 50: xolo.plugin.v1.XoloHostService.DeleteSecret:output_type -> xolo.plugin.v1.DeleteSecretResponse
-	2,  // 51: xolo.plugin.v1.XoloHostService.EmitEvent:output_type -> xolo.plugin.v1.EmitEventResponse
-	7,  // 52: xolo.plugin.v1.XoloHostService.ChatCompletion:output_type -> xolo.plugin.v1.HostChatCompletionResponse
-	36, // [36:53] is the sub-list for method output_type
-	19, // [19:36] is the sub-list for method input_type
-	19, // [19:19] is the sub-list for extension type_name
-	19, // [19:19] is the sub-list for extension extendee
-	0,  // [0:19] is the sub-list for field type_name
+	22, // 4: xolo.plugin.v1.PluginDescriptor.input_ports:type_name -> xolo.plugin.v1.PortDescriptor
+	22, // 5: xolo.plugin.v1.PluginDescriptor.output_ports:type_name -> xolo.plugin.v1.PortDescriptor
+	24, // 6: xolo.plugin.v1.PreRequestInput.ctx:type_name -> xolo.plugin.v1.RequestContext
+	26, // 7: xolo.plugin.v1.PreRequestInput.quota:type_name -> xolo.plugin.v1.QuotaInfo
+	24, // 8: xolo.plugin.v1.PostResponseInput.ctx:type_name -> xolo.plugin.v1.RequestContext
+	24, // 9: xolo.plugin.v1.ResolveModelInput.ctx:type_name -> xolo.plugin.v1.RequestContext
+	25, // 10: xolo.plugin.v1.ResolveModelInput.available_models:type_name -> xolo.plugin.v1.ModelInfo
+	27, // 11: xolo.plugin.v1.ResolveModelInput.virtual_models:type_name -> xolo.plugin.v1.VirtualModelInfo
+	26, // 12: xolo.plugin.v1.ResolveModelInput.quota:type_name -> xolo.plugin.v1.QuotaInfo
+	24, // 13: xolo.plugin.v1.ListModelsInput.ctx:type_name -> xolo.plugin.v1.RequestContext
+	25, // 14: xolo.plugin.v1.ListModelsInput.available_models:type_name -> xolo.plugin.v1.ModelInfo
+	24, // 15: xolo.plugin.v1.ListToolsInput.ctx:type_name -> xolo.plugin.v1.RequestContext
+	36, // 16: xolo.plugin.v1.ListToolsOutput.tools:type_name -> xolo.plugin.v1.ToolDescriptor
+	40, // 17: xolo.plugin.v1.ListToolsOutput.conversation_tools:type_name -> xolo.plugin.v1.ToolConversation
+	39, // 18: xolo.plugin.v1.ListToolsOutput.conversation_values:type_name -> xolo.plugin.v1.ConversationValue
+	1,  // 19: xolo.plugin.v1.ToolConversation.trigger:type_name -> xolo.plugin.v1.ToolConversation.Trigger
+	36, // 20: xolo.plugin.v1.ToolConversation.tool:type_name -> xolo.plugin.v1.ToolDescriptor
+	24, // 21: xolo.plugin.v1.CallToolInput.ctx:type_name -> xolo.plugin.v1.RequestContext
+	24, // 22: xolo.plugin.v1.InspectToolResultInput.ctx:type_name -> xolo.plugin.v1.RequestContext
+	21, // 23: xolo.plugin.v1.XoloPlugin.Describe:input_type -> xolo.plugin.v1.DescribeRequest
+	9,  // 24: xolo.plugin.v1.XoloPlugin.Initialize:input_type -> xolo.plugin.v1.InitializeRequest
+	28, // 25: xolo.plugin.v1.XoloPlugin.PreRequest:input_type -> xolo.plugin.v1.PreRequestInput
+	30, // 26: xolo.plugin.v1.XoloPlugin.PostResponse:input_type -> xolo.plugin.v1.PostResponseInput
+	32, // 27: xolo.plugin.v1.XoloPlugin.ResolveModel:input_type -> xolo.plugin.v1.ResolveModelInput
+	34, // 28: xolo.plugin.v1.XoloPlugin.ListModels:input_type -> xolo.plugin.v1.ListModelsInput
+	37, // 29: xolo.plugin.v1.XoloPlugin.ListTools:input_type -> xolo.plugin.v1.ListToolsInput
+	41, // 30: xolo.plugin.v1.XoloPlugin.CallTool:input_type -> xolo.plugin.v1.CallToolInput
+	43, // 31: xolo.plugin.v1.XoloPlugin.InspectToolResult:input_type -> xolo.plugin.v1.InspectToolResultInput
+	11, // 32: xolo.plugin.v1.XoloHostService.GetConfig:input_type -> xolo.plugin.v1.GetConfigRequest
+	13, // 33: xolo.plugin.v1.XoloHostService.SaveConfig:input_type -> xolo.plugin.v1.SaveConfigRequest
+	4,  // 34: xolo.plugin.v1.XoloHostService.ListModels:input_type -> xolo.plugin.v1.ListModelsForOrgRequest
+	15, // 35: xolo.plugin.v1.XoloHostService.GetSecret:input_type -> xolo.plugin.v1.GetSecretRequest
+	17, // 36: xolo.plugin.v1.XoloHostService.SetSecret:input_type -> xolo.plugin.v1.SetSecretRequest
+	19, // 37: xolo.plugin.v1.XoloHostService.DeleteSecret:input_type -> xolo.plugin.v1.DeleteSecretRequest
+	2,  // 38: xolo.plugin.v1.XoloHostService.EmitEvent:input_type -> xolo.plugin.v1.EmitEventRequest
+	7,  // 39: xolo.plugin.v1.XoloHostService.ChatCompletion:input_type -> xolo.plugin.v1.HostChatCompletionRequest
+	23, // 40: xolo.plugin.v1.XoloPlugin.Describe:output_type -> xolo.plugin.v1.PluginDescriptor
+	10, // 41: xolo.plugin.v1.XoloPlugin.Initialize:output_type -> xolo.plugin.v1.InitializeResponse
+	29, // 42: xolo.plugin.v1.XoloPlugin.PreRequest:output_type -> xolo.plugin.v1.PreRequestOutput
+	31, // 43: xolo.plugin.v1.XoloPlugin.PostResponse:output_type -> xolo.plugin.v1.PostResponseOutput
+	33, // 44: xolo.plugin.v1.XoloPlugin.ResolveModel:output_type -> xolo.plugin.v1.ResolveModelOutput
+	35, // 45: xolo.plugin.v1.XoloPlugin.ListModels:output_type -> xolo.plugin.v1.ListModelsOutput
+	38, // 46: xolo.plugin.v1.XoloPlugin.ListTools:output_type -> xolo.plugin.v1.ListToolsOutput
+	42, // 47: xolo.plugin.v1.XoloPlugin.CallTool:output_type -> xolo.plugin.v1.CallToolOutput
+	44, // 48: xolo.plugin.v1.XoloPlugin.InspectToolResult:output_type -> xolo.plugin.v1.InspectToolResultOutput
+	12, // 49: xolo.plugin.v1.XoloHostService.GetConfig:output_type -> xolo.plugin.v1.GetConfigResponse
+	14, // 50: xolo.plugin.v1.XoloHostService.SaveConfig:output_type -> xolo.plugin.v1.SaveConfigResponse
+	5,  // 51: xolo.plugin.v1.XoloHostService.ListModels:output_type -> xolo.plugin.v1.ListModelsForOrgResponse
+	16, // 52: xolo.plugin.v1.XoloHostService.GetSecret:output_type -> xolo.plugin.v1.GetSecretResponse
+	18, // 53: xolo.plugin.v1.XoloHostService.SetSecret:output_type -> xolo.plugin.v1.SetSecretResponse
+	20, // 54: xolo.plugin.v1.XoloHostService.DeleteSecret:output_type -> xolo.plugin.v1.DeleteSecretResponse
+	3,  // 55: xolo.plugin.v1.XoloHostService.EmitEvent:output_type -> xolo.plugin.v1.EmitEventResponse
+	8,  // 56: xolo.plugin.v1.XoloHostService.ChatCompletion:output_type -> xolo.plugin.v1.HostChatCompletionResponse
+	40, // [40:57] is the sub-list for method output_type
+	23, // [23:40] is the sub-list for method input_type
+	23, // [23:23] is the sub-list for extension type_name
+	23, // [23:23] is the sub-list for extension extendee
+	0,  // [0:23] is the sub-list for field type_name
 }
 
 func init() { file_pkg_pluginsdk_proto_plugin_proto_init() }
@@ -3144,8 +3397,8 @@ func file_pkg_pluginsdk_proto_plugin_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_pkg_pluginsdk_proto_plugin_proto_rawDesc), len(file_pkg_pluginsdk_proto_plugin_proto_rawDesc)),
-			NumEnums:      1,
-			NumMessages:   42,
+			NumEnums:      2,
+			NumMessages:   44,
 			NumExtensions: 0,
 			NumServices:   2,
 		},

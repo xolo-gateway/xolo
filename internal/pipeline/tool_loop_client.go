@@ -36,6 +36,12 @@ type ToolLoopClient struct {
 	maxIterations           int
 	maxConsecutiveToolCalls int
 	inspectors              *ToolInspectorSet
+	// ec carries the caller identity and the conversation's key, which the
+	// placeholders of a conversation tool's arguments are filled from.
+	ec ExecutionContext
+	// conversation holds the tools to resolve before the first model call and
+	// the values to inject with them. Nil injects nothing.
+	conversation *ConversationTools
 }
 
 // NewToolLoopClient creates a ToolLoopClient. maxIterations <= 0 falls back
@@ -55,6 +61,15 @@ func NewToolLoopClient(inner llm.Client, tools []llm.Tool, maxIterations int, ma
 		maxConsecutiveToolCalls: maxConsecutiveToolCalls,
 		inspectors:              inspectors,
 	}
+}
+
+// WithConversationTools makes the loop resolve these tools once, before the
+// first model call, and inject their results (plus the resolved values) into
+// the conversation. ec supplies the identity the arguments are mapped from.
+func (c *ToolLoopClient) WithConversationTools(conversation *ConversationTools, ec ExecutionContext) *ToolLoopClient {
+	c.conversation = conversation
+	c.ec = ec
+	return c
 }
 
 func (c *ToolLoopClient) toolByName(name string) llm.Tool {
@@ -105,6 +120,14 @@ func (c *ToolLoopClient) ChatCompletion(ctx context.Context, funcs ...llm.ChatCo
 	opts := llm.NewChatCompletionOptions(funcs...)
 	messages := opts.Messages
 	tools := mergeTools(opts.Tools, c.tools)
+
+	prefetched, err := c.prefetchConversationTools(ctx, messages)
+	if err != nil {
+		return nil, err
+	}
+	if prefetched != "" {
+		messages = append(messages, llm.NewMessage(llm.RoleUser, prefetched))
+	}
 
 	for i := 0; i < c.maxIterations; i++ {
 		// A caller gone during a tool round needs no further turn.
@@ -187,6 +210,17 @@ func (c *ToolLoopClient) ChatCompletionStream(ctx context.Context, funcs ...llm.
 	tools := mergeTools(opts.Tools, c.tools)
 
 	outCh := make(chan llm.StreamChunk, 8)
+
+	// The prefetched context is resolved here rather than in the goroutine
+	// below: its failure is the request's, and a caller reading a stream has
+	// to be told before any chunk is sent.
+	prefetched, err := c.prefetchConversationTools(ctx, messages)
+	if err != nil {
+		return nil, err
+	}
+	if prefetched != "" {
+		messages = append(messages, llm.NewMessage(llm.RoleUser, prefetched))
+	}
 
 	// emit gives up once the caller is gone, instead of blocking this
 	// goroutine on a channel nobody reads anymore. The context is checked

@@ -493,22 +493,24 @@ func (a *PipelineHookAdapter) buildMiddlewareEC(ctx context.Context, req *genaiP
 	orgID := org.ID()
 	teamID, teamSlug := TeamIDFromMeta(req.Metadata), TeamSlugFromMeta(req.Metadata)
 	return pipeline.ExecutionContext{
-		OrgID:           string(orgID),
-		OrgSlug:         org.Slug(),
-		SecretScopeID:   string(orgID),
-		UserID:          userID,
-		DisplayName:     displayName,
-		TokenID:         AuthTokenIDFromMeta(req.Metadata),
-		TeamID:          string(teamID),
-		TeamSlug:        teamSlug,
-		RequestedModel:  RequestedModelFromMeta(req.Metadata),
-		Access:          newRequestModelAccess(org, string(teamID), teamSlug, a.orgStore, a.providerStore, a.virtualModelStore),
-		MessagesJSON:    extractMessagesJSON(req.Body),
-		BodyJSON:        string(req.Body),
-		QuotaInfo:       a.quotaInfoFunc(model.UserID(userID), ApplicationIDFromMeta(req.Metadata), orgID, teamID),
-		VisitedVMs:      map[model.VirtualModelID]struct{}{},
-		PersonalVMStore: a.personalVMStore,
-		ToolInspectors:  pipeline.NewToolInspectorSet(),
+		OrgID:             string(orgID),
+		OrgSlug:           org.Slug(),
+		SecretScopeID:     string(orgID),
+		UserID:            userID,
+		DisplayName:       displayName,
+		TokenID:           AuthTokenIDFromMeta(req.Metadata),
+		TeamID:            string(teamID),
+		TeamSlug:          teamSlug,
+		RequestedModel:    RequestedModelFromMeta(req.Metadata),
+		Access:            newRequestModelAccess(org, string(teamID), teamSlug, a.orgStore, a.providerStore, a.virtualModelStore),
+		MessagesJSON:      extractMessagesJSON(req.Body),
+		BodyJSON:          string(req.Body),
+		QuotaInfo:         a.quotaInfoFunc(model.UserID(userID), ApplicationIDFromMeta(req.Metadata), orgID, teamID),
+		VisitedVMs:        map[model.VirtualModelID]struct{}{},
+		PersonalVMStore:   a.personalVMStore,
+		ToolInspectors:    pipeline.NewToolInspectorSet(),
+		ConversationTools: pipeline.NewConversationTools(),
+		SessionID:         req.SessionID,
 		// Every model node in a middleware chain is a passthrough: it wraps the
 		// requested model, never a fixed one.
 		ForcePassthrough: true,
@@ -766,6 +768,11 @@ func (a *PipelineHookAdapter) buildEC(ctx context.Context, req *genaiProxy.Proxy
 		VisitedVMs:      map[model.VirtualModelID]struct{}{vm.ID(): {}},
 		PersonalVMStore: a.personalVMStore,
 		ToolInspectors:  pipeline.NewToolInspectorSet(),
+		// A node registering a conversation tool (an MCP server called before
+		// the model, say) needs somewhere to put it, and the conversation key
+		// its per-conversation state is scoped to.
+		ConversationTools: pipeline.NewConversationTools(),
+		SessionID:         req.SessionID,
 	}
 	if org == nil {
 		return ec, nil

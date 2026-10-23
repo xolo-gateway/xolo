@@ -16,7 +16,7 @@ const PluginName = "xolo_plugin"
 // host as an incompatible API version, whereas a different cookie would make
 // an outdated plugin exit as if it had been run by hand.
 var HandshakeConfig = plugin.HandshakeConfig{
-	ProtocolVersion:  2,
+	ProtocolVersion:  3,
 	MagicCookieKey:   "XOLO_PLUGIN",
 	MagicCookieValue: "xolo-plugin-v1",
 }

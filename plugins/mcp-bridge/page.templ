@@ -8,6 +8,7 @@ import (
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/card"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/input"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/label"
+	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/textarea"
 )
 
 // page renders the mcp-bridge plugin configuration UI.
@@ -97,6 +98,70 @@ templ page(pd uiPageData) {
 									Value:       strings.Join(pd.Config.ToolFilter, ", "),
 									Placeholder: "vide = tous les tools exposés",
 								})
+							</div>
+							<div class="space-y-1">
+								@label.Label(label.Props{For: "resources"}) { Ressources MCP injectées (URI ou nom, une par ligne) }
+								@textarea.Textarea(textarea.Props{
+									ID:          "resources",
+									Name:        "resources",
+									Value:       strings.Join(pd.Config.Resources, "\n"),
+									Rows:        3,
+									Placeholder: "file:///contexte/procedure.md",
+								})
+								<p class="text-xs text-muted-foreground">
+									Lues à chaque requête et injectées avant le premier appel au modèle.
+									Le modèle n'a pas à décider de les consulter.
+								</p>
+							</div>
+							<div class="space-y-1">
+								@label.Label(label.Props{For: "prefetch_tool"}) { Tool pré-appelé }
+								@input.Input(input.Props{
+									ID:          "prefetch_tool",
+									Name:        "prefetch_tool",
+									Value:       pd.Config.PrefetchTool,
+									Placeholder: "vide = le modèle décide seul",
+								})
+								<p class="text-xs text-muted-foreground">
+									Appelé une fois avant le premier appel au modèle, à chaque requête ;
+									le résultat est injecté dans la conversation. Doit faire partie des tools autorisés.
+								</p>
+							</div>
+							<div class="space-y-1">
+								@label.Label(label.Props{For: "prefetch_arguments"}) { Arguments du tool pré-appelé (JSON) }
+								@textarea.Textarea(textarea.Props{
+									ID:          "prefetch_arguments",
+									Name:        "prefetch_arguments",
+									Value:       pd.Config.PrefetchArguments,
+									Rows:        3,
+									Placeholder: `{"query": "{{last_user_message}}"}`,
+								})
+								<p class="text-xs text-muted-foreground">
+									Valeurs disponibles : &#123;&#123;last_user_message&#125;&#125;, &#123;&#123;user_id&#125;&#125;,
+									&#123;&#123;org_id&#125;&#125;, &#123;&#123;display_name&#125;&#125;, &#123;&#123;session_id&#125;&#125;.
+									Vide = <code>{}</code>.
+								</p>
+							</div>
+							<div class="space-y-1">
+								@label.Label(label.Props{For: "prefetch_label"}) { Titre du bloc injecté }
+								@input.Input(input.Props{
+									ID:          "prefetch_label",
+									Name:        "prefetch_label",
+									Value:       pd.Config.PrefetchLabel,
+									Placeholder: "vide = pas de titre",
+								})
+							</div>
+							<div class="space-y-1">
+								@label.Label(label.Props{For: "prefetch_result_template"}) { Gabarit du résultat pré-appelé }
+								@textarea.Textarea(textarea.Props{
+									ID:          "prefetch_result_template",
+									Name:        "prefetch_result_template",
+									Value:       pd.Config.PrefetchResultTemplate,
+									Rows:        3,
+									Placeholder: "vide = résultat brut",
+								})
+								<p class="text-xs text-muted-foreground">
+									Chaque &#123;&#123;result&#125;&#125; est remplacé par le texte du résultat.
+								</p>
 							</div>
 							<div class="space-y-1">
 								@label.Label(label.Props{For: "timeout_seconds"}) { Timeout (secondes) }

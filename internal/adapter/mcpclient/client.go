@@ -60,6 +60,9 @@ func (rt *authRoundTripper) RoundTrip(req *http.Request) (*http.Response, error)
 const DefaultTimeout = 120 * time.Second
 
 // Connect opens a Streamable HTTP session against the configured MCP server.
+//
+// Each call opens its own session: a caller resolving several calls of one
+// conversation wants a Connector instead.
 func Connect(ctx context.Context, cfg Config) (*mcp.ClientSession, error) {
 	timeout := cfg.Timeout
 	if timeout <= 0 {

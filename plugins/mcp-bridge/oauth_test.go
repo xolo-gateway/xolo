@@ -194,6 +194,9 @@ func newOAuthPlugin(t *testing.T) (*Plugin, http.Handler, *fakeHostClient) {
 	t.Helper()
 	hc := newFakeHostClient()
 	p := &Plugin{}
+	// The plugin keeps an MCP session per conversation open between requests:
+	// it has to close them, or the fake server's teardown waits on the stream.
+	t.Cleanup(p.Close)
 	p.SetHostClient(hc)
 	p.oauthClient().host = func(context.Context) (pluginsdk.HostClient, string) { return hc, "mcp-bridge" }
 	return p, newUIHandler(p.oauthClient()), hc
