@@ -120,6 +120,11 @@ func handleSaveConfig(w http.ResponseWriter, r *http.Request) {
 		ToolFilter:              splitNonEmpty(r.FormValue("tool_filter")),
 		TimeoutSeconds:          timeoutSeconds,
 		MaxConsecutiveToolCalls: maxConsecutiveToolCalls,
+		Resources:               splitLines(r.FormValue("resources")),
+		PrefetchTool:            strings.TrimSpace(r.FormValue("prefetch_tool")),
+		PrefetchArguments:       strings.TrimSpace(r.FormValue("prefetch_arguments")),
+		PrefetchResultTemplate:  r.FormValue("prefetch_result_template"),
+		PrefetchLabel:           strings.TrimSpace(r.FormValue("prefetch_label")),
 	}
 
 	if cfg.AuthMode != AuthModeOAuth {
@@ -176,6 +181,19 @@ func splitNonEmpty(s string) []string {
 		part = strings.TrimSpace(part)
 		if part != "" {
 			out = append(out, part)
+		}
+	}
+	return out
+}
+
+// splitLines splits a textarea into its non-empty lines: the resources list is
+// one URI per line, since a URI may contain the comma the tool filter splits on.
+func splitLines(s string) []string {
+	var out []string
+	for line := range strings.SplitSeq(s, "\n") {
+		line = strings.TrimSpace(line)
+		if line != "" {
+			out = append(out, line)
 		}
 	}
 	return out

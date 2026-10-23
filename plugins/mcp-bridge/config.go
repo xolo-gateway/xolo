@@ -38,6 +38,32 @@ const configSchemaJSON = `{
       "title": "Tools autorisés (vide = tous)",
       "items": { "type": "string" }
     },
+    "resources": {
+      "type": "array",
+      "title": "Ressources MCP injectées",
+      "description": "URI ou nom des ressources du serveur à lire et à injecter avant le premier appel au modèle.",
+      "items": { "type": "string" }
+    },
+    "prefetchTool": {
+      "type": "string",
+      "title": "Tool pré-appelé",
+      "description": "Nom d'un tool du serveur, appelé une fois avant le premier appel au modèle, à chaque requête. Son résultat est injecté dans la conversation."
+    },
+    "prefetchArguments": {
+      "type": "string",
+      "title": "Arguments du tool pré-appelé (JSON)",
+      "description": "Objet JSON. Les valeurs peuvent utiliser {{last_user_message}}, {{user_id}}, {{org_id}}, {{display_name}} ou {{session_id}}. Défaut : {}."
+    },
+    "prefetchResultTemplate": {
+      "type": "string",
+      "title": "Gabarit du résultat pré-appelé",
+      "description": "Encadre le résultat du tool : chaque {{result}} est remplacé par le texte du résultat. Vide = résultat brut."
+    },
+    "prefetchLabel": {
+      "type": "string",
+      "title": "Titre du bloc injecté",
+      "description": "Ouvre le bloc du résultat pré-appelé. Vide = pas de titre."
+    },
     "timeoutSeconds": {
       "type": "number",
       "title": "Timeout (secondes)"
@@ -62,6 +88,21 @@ type Config struct {
 	ToolFilter              []string `json:"toolFilter,omitempty"`
 	TimeoutSeconds          int      `json:"timeoutSeconds,omitempty"`
 	MaxConsecutiveToolCalls int      `json:"maxConsecutiveToolCalls,omitempty"`
+	// Resources are the MCP resources injected before the model's first call,
+	// each named by URI or by resource name.
+	Resources []string `json:"resources,omitempty"`
+	// PrefetchTool is the tool called once, before the model's first call, on
+	// every request. Empty disables the prefetch: the model then has to decide
+	// on its own whether to call it.
+	PrefetchTool string `json:"prefetchTool,omitempty"`
+	// PrefetchArguments is the JSON object the prefetched tool is called with,
+	// placeholders included. Empty means "{}".
+	PrefetchArguments string `json:"prefetchArguments,omitempty"`
+	// PrefetchResultTemplate wraps the prefetched result; each "{{result}}" is
+	// replaced by the result text.
+	PrefetchResultTemplate string `json:"prefetchResultTemplate,omitempty"`
+	// PrefetchLabel titles the injected block.
+	PrefetchLabel string `json:"prefetchLabel,omitempty"`
 }
 
 // parseConfig désérialise configJSON en Config.

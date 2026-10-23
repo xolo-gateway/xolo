@@ -179,6 +179,11 @@ message RequestContext {
   // segment of qualified model names ("<org>/<team>/<model>").
   string team_id = 9;
   string team_slug = 10;
+  // session_id names the conversation the request belongs to, when the
+  // client sent one. Plugins use it to keep per-conversation state (an MCP
+  // session, say) across the requests of one conversation, and empty for
+  // none.
+  string session_id = 11;
 }
 
 message ModelInfo {
@@ -326,6 +331,52 @@ message ListToolsOutput {
   // on the next LLM call, so the model answers with whatever results it
   // already has instead of looping further. <= 0 means "use host default".
   int32 max_consecutive_tool_calls = 2;
+  // conversation_tools are resolved by the host before the model's first
+  // call, their result injected into the request, instead of being offered
+  // to the model as callable tools. A plugin declares one when the model
+  // should not have to decide on every request whether to call it.
+  repeated ToolConversation conversation_tools = 3;
+  // conversation_values are pieces of context the plugin read while listing
+  // (an MCP resource, say) and wants injected before the model's first call,
+  // next to the conversation tools' results.
+  repeated ConversationValue conversation_values = 4;
+}
+
+// ConversationValue is a piece of context a plugin resolved before the model
+// is called, injected into the conversation.
+message ConversationValue {
+  // label opens the block. Plain text.
+  string label = 1;
+  // content is the value itself, as text.
+  string content = 2;
+}
+
+// ToolConversation is a tool a plugin wants resolved inside the conversation,
+// before the model is called.
+message ToolConversation {
+  enum Trigger {
+    // TRIGGER_UNSPECIFIED is not a valid trigger: a conversation tool always
+    // says when it runs.
+    TRIGGER_UNSPECIFIED = 0;
+    // ALWAYS runs the tool once, before the first model call, on every
+    // request whose last user message the arguments can be mapped from.
+    ALWAYS = 1;
+  }
+  Trigger trigger = 1;
+  // tool is the tool to resolve, normally also listed in tools. Its
+  // description is what the model reads on the injected result, so it says
+  // what the data is, in the language of the users.
+  ToolDescriptor tool = 2;
+  // arguments_json is the JSON object the tool is called with, before
+  // templating. A string value holding a {{...}} placeholder is filled from
+  // the request.
+  string arguments_json = 3;
+  // result_template, when non-empty, wraps the tool result before it is
+  // injected: every "{{result}}" occurrence is replaced by the result text.
+  string result_template = 4;
+  // label, when non-empty, opens the injected block. Plain text, not a
+  // template.
+  string label = 5;
 }
 
 message CallToolInput {
