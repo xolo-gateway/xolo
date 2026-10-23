@@ -13,8 +13,9 @@ import (
 // backwardTimeout bounds the backward pass of a response. It runs detached from
 // the request, so the caller leaving cannot cut it short: a node that hangs
 // would otherwise hold the request's goroutine forever. A pass cut by the
-// timeout fails like any other, and the response goes out unmodified.
-const backwardTimeout = 30 * time.Second
+// timeout fails like any other, and the response goes out unmodified. A
+// variable only so tests can shorten it.
+var backwardTimeout = 30 * time.Second
 
 // detachedBackwardContext returns the context a backward pass runs on: it
 // keeps ctx's values, outlives the caller and ends after backwardTimeout.
@@ -133,7 +134,9 @@ func (c *PipelineWrappedClient) ChatCompletionStream(ctx context.Context, funcs 
 		// will read it. The backward pass still runs so nodes that record
 		// state see the partial response, as on the passthrough path.
 		if ctx.Err() != nil {
-			c.runBackward(backCtx, content, lastTokens, true)
+			if _, err := c.engine.RunBackwardWithToolCalls(backCtx, c.forwardExec, content, calls.json(), lastTokens, true); err != nil {
+				slog.WarnContext(ctx, "pipeline backward pass (stream) failed", slog.Any("error", err))
+			}
 			return
 		}
 

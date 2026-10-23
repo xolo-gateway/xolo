@@ -237,7 +237,16 @@ func (e *Engine) RunBackwardWithToolCalls(
 		if err != nil {
 			// Non-fatal: the response is still worth sending, just without
 			// whatever this node was going to change.
-			slog.WarnContext(ctx, "pipeline: backward pass failed for a node, keeping the response as it stands",
+			msg := "pipeline: backward pass failed for a node, keeping the response as it stands"
+			// A pass cut by its deadline is told apart: the node's rewrite,
+			// the pseudonymizer's restored values for instance, is then
+			// missing from the response, and only this line says why. The
+			// node's own error does not tell, a plugin reports the deadline as
+			// a gRPC status, so the context is checked instead.
+			if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+				msg = "pipeline: backward pass timed out for a node, keeping the response as it stands"
+			}
+			slog.WarnContext(ctx, msg,
 				slog.String("node", en.Node.ID),
 				slog.String("type", string(en.Node.Type)),
 				slog.Any("error", err),

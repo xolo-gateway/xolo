@@ -1,8 +1,10 @@
 package proxy
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"log/slog"
 	"strings"
 	"sync"
 	"testing"
@@ -282,14 +284,22 @@ func TestPipelineWrappedClient_ChatCompletionStream_Unmodified(t *testing.T) {
 }
 
 // hangingClient emits one chunk, then holds the stream open until the caller
-// cancels, closing it with the error a provider reports in that case.
-type hangingClient struct{ multiChunkClient }
+// cancels, closing it with the error a provider reports in that case. The
+// chunk is first, or a text one when first is nil.
+type hangingClient struct {
+	multiChunkClient
+	first llm.StreamChunk
+}
 
 func (c *hangingClient) ChatCompletionStream(ctx context.Context, _ ...llm.ChatCompletionOptionFunc) (<-chan llm.StreamChunk, error) {
 	ch := make(chan llm.StreamChunk, 2)
 	go func() {
 		defer close(ch)
-		ch <- llm.NewStreamChunk(llm.NewStreamDelta(llm.RoleAssistant, "Bonjour [PERSON_1]"))
+		first := c.first
+		if first == nil {
+			first = llm.NewStreamChunk(llm.NewStreamDelta(llm.RoleAssistant, "Bonjour [PERSON_1]"))
+		}
+		ch <- first
 		<-ctx.Done()
 		ch <- llm.NewErrorStreamChunk(ctx.Err())
 	}()
@@ -305,11 +315,12 @@ func (c *hangingClient) ChatCompletion(ctx context.Context, _ ...llm.ChatComplet
 // error flag its backward pass received. When set, entered is closed as
 // Backward starts, and Backward then waits for release.
 type recordingExecutor struct {
-	entered chan struct{}
-	release chan struct{}
-	done    chan struct{}
-	ctxErr  error
-	hadErr  bool
+	entered   chan struct{}
+	release   chan struct{}
+	done      chan struct{}
+	ctxErr    error
+	hadErr    bool
+	toolCalls string
 	// bounded tells whether the backward pass had a deadline.
 	bounded bool
 }
@@ -328,6 +339,7 @@ func (e *recordingExecutor) Backward(ctx context.Context, in pipeline.BackwardIn
 	e.ctxErr = ctx.Err()
 	_, e.bounded = ctx.Deadline()
 	e.hadErr = in.HadError
+	e.toolCalls = in.ToolCallsJSON
 	close(e.done)
 	return &pipeline.BackwardResult{ModifiedResponseContent: in.ResponseContent + "!"}, nil
 }
@@ -524,4 +536,72 @@ func TestPipelineWrappedClient_ChatCompletion_BackwardOutlivesCaller(t *testing.
 		t.Error("the call succeeded: the backward pass must not see an error")
 	}
 	assertDetachedBackward(t, exec)
+}
+
+// A caller gone before the rewrite still leaves the nodes the tool calls the
+// model emitted, as the rewriting path does.
+func TestPipelineWrappedClient_ChatCompletionStream_BufferedCancelKeepsToolCalls(t *testing.T) {
+	exec := &recordingExecutor{done: make(chan struct{})}
+	first := llm.NewStreamChunk(llm.NewStreamDelta(llm.RoleAssistant, "", llm.NewToolCallDelta(0, "call_1", "Read", `{"path":"/home/PERSON_1"}`)))
+	wrapped := NewPipelineWrappedClient(&hangingClient{first: first}, newRecordingEngine(exec), newTestForwardExecution(), pipeline.ExecutionContext{})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	if _, err := wrapped.ChatCompletionStream(ctx); err != nil {
+		t.Fatalf("ChatCompletionStream() error = %v", err)
+	}
+	cancel()
+
+	select {
+	case <-exec.done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("the backward pass never ran after the caller left")
+	}
+	if !strings.Contains(exec.toolCalls, "call_1") {
+		t.Errorf("backward pass tool calls = %q, want the streamed call", exec.toolCalls)
+	}
+}
+
+// stallingExecutor may rewrite the response but only returns once its
+// context is done, as a plugin that hangs.
+type stallingExecutor struct{ recordingExecutor }
+
+func (e *stallingExecutor) Backward(ctx context.Context, _ pipeline.BackwardInput) (*pipeline.BackwardResult, error) {
+	<-ctx.Done()
+	return nil, ctx.Err()
+}
+
+// A node that hangs is cut by the timeout: the answer goes out as the model
+// wrote it, and the log says the pass timed out.
+func TestPipelineWrappedClient_ChatCompletionStream_BackwardTimeout(t *testing.T) {
+	previous := backwardTimeout
+	backwardTimeout = 20 * time.Millisecond
+	t.Cleanup(func() { backwardTimeout = previous })
+
+	var logs bytes.Buffer
+	previousLogger := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, nil)))
+	t.Cleanup(func() { slog.SetDefault(previousLogger) })
+
+	registry := pipeline.NewRegistry()
+	registry.Register("rewrite", &stallingExecutor{})
+	wrapped := NewPipelineWrappedClient(&multiChunkClient{parts: []string{"Bonjour ", "[PERSON_1]"}}, pipeline.NewEngine(registry), newTestForwardExecution(), pipeline.ExecutionContext{})
+
+	ch, err := wrapped.ChatCompletionStream(context.Background())
+	if err != nil {
+		t.Fatalf("ChatCompletionStream() error = %v", err)
+	}
+
+	done := make(chan string, 1)
+	go func() { done <- collectContent(t, ch) }()
+	select {
+	case content := <-done:
+		if content != "Bonjour [PERSON_1]" {
+			t.Errorf("content = %q, want the answer as the model wrote it", content)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("the stream was not closed once the backward pass timed out")
+	}
+	if !strings.Contains(logs.String(), "backward pass timed out") {
+		t.Errorf("logs = %q, want the timeout told apart", logs.String())
+	}
 }
