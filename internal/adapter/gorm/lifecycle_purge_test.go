@@ -325,6 +325,7 @@ func TestPurgeMember(t *testing.T) {
 		_, err = svc.PutAlert(ctx, testTenantID, fixture.org, shared, noCondition, sharedSettings)
 		require.NoError(t, err)
 		require.NoError(t, base.RecordEvent(ctx, model.NewEvent("test", "llm.request.failed", model.WithEventOrg(fixture.org), model.WithEventUser(fixture.user))))
+		require.NoError(t, base.CreatePersonalVirtualModel(ctx, model.NewPersonalVirtualModel(fixture.user, "router", "")))
 		// An operation of the member, audited.
 		acting := model.WithActor(ctx, model.Actor{UserID: fixture.user, RequestID: "req-member"})
 		_, err = svc.PutOrganization(acting, testTenantID, model.NewOrgID(), service.CommonResource{Slug: "made-by-member", Name: "Made", Status: model.StatusActive})
@@ -349,9 +350,11 @@ func TestPurgeMember(t *testing.T) {
 		require.NotZero(t, countRows(t, db, "mutation_audits", "request_id = ?", "req-member"), "the operations stay audited")
 		require.Equal(t, others, countRows(t, db, "mutation_audits", "tenant_id <> ?", string(testTenantID)))
 		require.True(t, exists(t, db, "organizations", string(fixture.org)))
+		require.Zero(t, countRows(t, db, "personal_virtual_models", "user_id = ?", user))
+		require.Zero(t, countRows(t, db, "provisioning_projections", "family = ?", model.FamilyPersonalVirtualModel))
 
 		events, _ := feedSince(t, store, cursor)
-		require.ElementsMatch(t, []string{"member.deleted.v1", "organization_membership.deleted.v1", "alert.deleted.v1", "alert.updated.v1"}, eventTypes(events))
+		require.ElementsMatch(t, []string{"member.deleted.v1", "organization_membership.deleted.v1", "personal_virtual_model.deleted.v1", "alert.deleted.v1", "alert.updated.v1"}, eventTypes(events))
 	})
 }
 

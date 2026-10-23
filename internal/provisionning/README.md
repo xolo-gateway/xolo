@@ -349,7 +349,8 @@ carry no representation and no personal data:
   `resource_type` one of `tenant`, `tenant_domain`, `organization`, `member`,
   `organization_membership`, `team`, `team_membership` and the business
   families `provider`, `llm_model`, `custom_role`, `virtual_model`,
-  `middleware`, `team_settings`, `application`, `quota` and `alert`. A team key is `{"tenant_id","organization_id","team_id"}`, a
+  `middleware`, `personal_virtual_model`, `team_settings`, `application`,
+  `quota` and `alert`. A team key is `{"tenant_id","organization_id","team_id"}`, a
   team membership key adds `member_id`. A deletion carries no `etag`.
 - **One event per resource and per commit.** A no-op or a rolled back
   transaction publishes nothing. Within a commit, deletions come first, from
@@ -563,10 +564,11 @@ one: the same person signing in on two tenants owns two distinct accounts.
 
 ## Business resources
 
-Nine families specific to Xolo follow the same contract as the common
+Ten families specific to Xolo follow the same contract as the common
 families: unit reads with an `ETag`, paginated lists, conditional `PUT`s and
-events. `llm_model` is read-only: no `PUT` nor `DELETE` (`405`), see
-[LLM models](#llm-models). The manifest announces `business_resources`.
+events. `llm_model` and `personal_virtual_model` are read-only: no `PUT` nor
+`DELETE` (`405`), see [LLM models](#llm-models) and
+[Personal models](#personal-models). The manifest announces `business_resources`.
 
 | Method | Route |
 |---|---|
@@ -576,6 +578,7 @@ events. `llm_model` is read-only: no `PUT` nor `DELETE` (`405`), see
 | `GET`, `GET`, `PUT`, `DELETE` | `/v1/xolo/tenants/{tenantID}/organizations/{orgID}/alerts[/{key}]` |
 | `GET`, `GET`, `PUT`, `DELETE` | `/v1/xolo/tenants/{tenantID}/organizations/{orgID}/providers[/{key}]` |
 | `GET`, `GET` | `/v1/xolo/tenants/{tenantID}/organizations/{orgID}/llm-models[/{key}]` |
+| `GET`, `GET` | `/v1/xolo/tenants/{tenantID}/members/{memberID}/personal-models[/{key}]` |
 | `GET`, `GET`, `PUT`, `DELETE` | `/v1/xolo/tenants/{tenantID}/organizations/{orgID}/virtual-models[/{key}]` |
 | `GET`, `GET`, `PUT`, `DELETE` | `/v1/xolo/tenants/{tenantID}/organizations/{orgID}/middlewares[/{key}]` |
 | `GET`, `GET`, `PUT` | `…/virtual-models/{key}/nodes[/{nodeID}]`, `…/middlewares/{key}/nodes[/{nodeID}]`, see [Virtual models and middlewares](#virtual-models-and-middlewares) |
@@ -596,6 +599,7 @@ only where shown.
 | `virtual_model` | `{"name","description","catalog_overrides","graph"}`, `catalog_overrides` `null` or `{"contextWindow","maxOutputTokens","capabilities"}`, as in the web UI |
 | `middleware` | `{"name","description","enabled","priority","applies_to_all","targets":[{"kind","id"}],"graph"}` |
 | `llm_model` | `{"provider_id","proxy_name","kind","enabled"}`, read-only |
+| `personal_virtual_model` | `{"name","description","team_id","catalog_overrides","graph"}`, read-only, under a member |
 | `provider` | `{"name","type","base_url","active","currency","cloud_tier","billing_mode","subscription_plan","retry_config","rate_limit_config"}`, the last three `null` or objects, plus the write-only `"api_key"` and the optional `"request_headers"`: `null` or `{"headers":{"Name":"value"},"session_header":"x-opencode-session"}`, the headers a gateway requires (empty values and credential, cookie, framing and forwarding headers are refused) |
 
 - **Keys.** A new resource is created under a canonical UUID chosen by the
@@ -724,9 +728,9 @@ their `PUT` or node by node:
 - Known limits: deleting a virtual model or a middleware, here as in the web
   UI, leaves the team grants and attachments that designate it (#164); the
   web UI import keeps the node IDs of a bundle and does not check plugin
-  placements (#165); personal virtual models stay out of this API. A `graph`
-  that does not decode answers `400` here as on the internal API, a graph
-  that decodes but is refused answers `422` on both.
+  placements (#165). A `graph` that does not decode answers `400` here as on
+  the internal API, a graph that decodes but is refused answers `422` on
+  both.
 
 ### LLM models
 
@@ -762,6 +766,38 @@ control plane needs to resolve the `llm` targets of a middleware and the
   not part of `XOLO_OWNERSHIP`, and only the local instance writes it.
 - Migration `202610230001` projects the existing models without publishing
   any event; like the previous ones, it requires every server to be stopped.
+
+### Personal models
+
+The virtual models a member builds for themself, named `~/<name>`, are the
+read-only family `personal_virtual_model`. They hang from the member, not
+from an organization, and stay managed from the profile.
+
+| Method | Route |
+|---|---|
+| `GET` | `/v1/xolo/tenants/{tenantID}/members/{memberID}/personal-models` — paginated like the other collections |
+| `GET` | `/v1/xolo/tenants/{tenantID}/members/{memberID}/personal-models/{key}` — one model, with its `ETag` |
+
+```json
+{"name":"router","description":"","team_id":"…","catalog_overrides":null,"graph":{"nodes":[…],"edges":[…]}}
+```
+
+- The key of an item and of an event is
+  `{"tenant_id","member_id","resource_id"}`.
+- `team_id` is the team the requests are charged to, as picked by the member,
+  empty when they picked none; it may designate a team since deleted, which
+  refuses the requests until the member picks another one. `graph` is the
+  pipeline as for a virtual model, without the secrets of its plugin nodes,
+  which are neither returned nor listed.
+- **Name resolution.** The gateway resolves `~/<name>` against the models of
+  the member the request authenticates; `name` is that `<name>`.
+- Creating, changing or deleting a personal model publishes
+  `personal_virtual_model.created.v1`, `.updated.v1` or `.deleted.v1`;
+  deleting or purging a member publishes the deletion of its models. A
+  change of the secrets of its nodes alone publishes nothing.
+- `PUT` and `DELETE` answer `405`. The family has no write authority: it is
+  not part of `XOLO_OWNERSHIP`, and only the local instance writes it.
+- Migration `202610230001` projects the existing personal models too.
 
 ## Write authority, adoption and detachment
 
@@ -1225,7 +1261,7 @@ In production, use a managed certificate authority (Vault, cert-manager, interna
 
 ## Out of scope for now
 
-- Writing LLM models, which are read-only here; personal virtual models,
+- Writing LLM models and personal virtual models, which are read-only here;
   application tokens and event settings. They all already have a
   `port.*Store`: exposing them means adding a handler file and its DTOs, with
   no architectural change.

@@ -8,13 +8,19 @@ import (
 
 const llmModelProjectionsMigrationID = "202610230001"
 
-// migrateLLMModelProjections projects the existing models of providers,
-// which became a read-only business family. Like the other backfills, it
-// emits no event: consumers read the existing state through an inventory.
+// migrateLLMModelProjections projects the existing models of providers and
+// personal virtual models, which became read-only business families. Like
+// the other backfills, it emits no event: consumers read the existing state
+// through an inventory.
 func migrateLLMModelProjections(tx *gorm.DB) error {
-	slog.WarnContext(tx.Statement.Context, "migration "+llmModelProjectionsMigrationID+" requires ALL old servers to be stopped: an old server writes models without publishing, so their projections, ETags and events would silently diverge")
-	if !tx.Migrator().HasTable(resourceTables["llm_model"]) {
-		return nil
+	slog.WarnContext(tx.Statement.Context, "migration "+llmModelProjectionsMigrationID+" requires ALL old servers to be stopped: an old server writes models and personal virtual models without publishing, so their projections, ETags and events would silently diverge")
+	for _, kind := range []string{"llm_model", "personal_virtual_model"} {
+		if !tx.Migrator().HasTable(resourceTables[kind]) {
+			continue
+		}
+		if err := backfillProjections(tx, kind); err != nil {
+			return err
+		}
 	}
-	return backfillProjections(tx, "llm_model")
+	return nil
 }

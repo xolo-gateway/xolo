@@ -452,6 +452,11 @@ func TestBusinessCascades(t *testing.T) {
 			deleted[event.Type] = true
 		}
 		for _, family := range model.BusinessFamilies {
+			// A personal model hangs from its member, who outlives the
+			// organization.
+			if family == model.FamilyPersonalVirtualModel {
+				continue
+			}
 			require.True(t, deleted[model.CommonEventType(family, model.CommonEventDeleted)], family)
 		}
 	})

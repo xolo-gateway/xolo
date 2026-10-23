@@ -339,7 +339,8 @@ sin representación ni datos personales:
   `resource_type` es `tenant`, `tenant_domain`, `organization`, `member`,
   `organization_membership`, `team`, `team_membership` o una de las familias
   de negocio `provider`, `llm_model`, `custom_role`, `virtual_model`,
-  `middleware`, `team_settings`, `application`, `quota` y `alert`. La clave de un equipo es `{"tenant_id","organization_id","team_id"}`,
+  `middleware`, `personal_virtual_model`, `team_settings`, `application`,
+  `quota` y `alert`. La clave de un equipo es `{"tenant_id","organization_id","team_id"}`,
   la de una pertenencia añade `member_id`. Una eliminación no lleva `etag`.
 - **Un evento por recurso y por commit.** Una operación sin cambios o una
   transacción revertida no publica nada. Dentro de un commit, las eliminaciones
@@ -560,10 +561,11 @@ se rechazan.
 
 ## Recursos de negocio
 
-Nueve familias propias de Xolo siguen el mismo contrato que las familias
+Diez familias propias de Xolo siguen el mismo contrato que las familias
 comunes: lectura unitaria con `ETag`, listas paginadas, `PUT` condicionales y
-eventos. `llm_model` es de solo lectura: ni `PUT` ni `DELETE` (`405`), véase
-[Modelos LLM](#modelos-llm). El manifiesto anuncia `business_resources`.
+eventos. `llm_model` y `personal_virtual_model` son de solo lectura: ni `PUT`
+ni `DELETE` (`405`), véase [Modelos LLM](#modelos-llm) y
+[Modelos personales](#modelos-personales). El manifiesto anuncia `business_resources`.
 
 | Método | Ruta |
 |---|---|
@@ -573,6 +575,7 @@ eventos. `llm_model` es de solo lectura: ni `PUT` ni `DELETE` (`405`), véase
 | `GET`, `GET`, `PUT`, `DELETE` | `/v1/xolo/tenants/{tenantID}/organizations/{orgID}/alerts[/{key}]` |
 | `GET`, `GET`, `PUT`, `DELETE` | `/v1/xolo/tenants/{tenantID}/organizations/{orgID}/providers[/{key}]` |
 | `GET`, `GET` | `/v1/xolo/tenants/{tenantID}/organizations/{orgID}/llm-models[/{key}]` |
+| `GET`, `GET` | `/v1/xolo/tenants/{tenantID}/members/{memberID}/personal-models[/{key}]` |
 | `GET`, `GET`, `PUT`, `DELETE` | `/v1/xolo/tenants/{tenantID}/organizations/{orgID}/virtual-models[/{key}]` |
 | `GET`, `GET`, `PUT`, `DELETE` | `/v1/xolo/tenants/{tenantID}/organizations/{orgID}/middlewares[/{key}]` |
 | `GET`, `GET`, `PUT` | `…/virtual-models/{key}/nodes[/{nodeID}]`, `…/middlewares/{key}/nodes[/{nodeID}]`, ver [Modelos virtuales y middlewares](#modelos-virtuales-y-middlewares) |
@@ -593,6 +596,7 @@ obligatorio, `null` solo donde se indica.
 | `virtual_model` | `{"name","description","catalog_overrides","graph"}`, `catalog_overrides` a `null` o `{"contextWindow","maxOutputTokens","capabilities"}`, como en la interfaz web |
 | `middleware` | `{"name","description","enabled","priority","applies_to_all","targets":[{"kind","id"}],"graph"}` |
 | `llm_model` | `{"provider_id","proxy_name","kind","enabled"}`, de solo lectura |
+| `personal_virtual_model` | `{"name","description","team_id","catalog_overrides","graph"}`, de solo lectura, bajo un miembro |
 | `provider` | `{"name","type","base_url","active","currency","cloud_tier","billing_mode","subscription_plan","retry_config","rate_limit_config"}`, los tres últimos `null` u objetos, más `"api_key"` de solo escritura y `"request_headers"` opcional: `null` o `{"headers":{"Nombre":"valor"},"session_header":"x-opencode-session"}`, las cabeceras que exige una pasarela (se rechazan los valores vacíos y las cabeceras de autenticación, de cookies, de transporte y de reenvío) |
 
 - **Claves.** Un recurso nuevo se crea con un UUID canónico elegido por el
@@ -748,7 +752,7 @@ escribe entero con su `PUT` o nodo a nodo:
   todos los servidores.
 - Límites conocidos: eliminar un modelo virtual o un middleware, aquí como en
   la interfaz web, deja en su sitio los grants y vinculaciones de equipo que
-  lo designan; los modelos virtuales personales quedan fuera de esta API.
+  lo designan.
 
 ### Modelos LLM
 
@@ -787,6 +791,40 @@ clave.
   escribe.
 - La migración `202610230001` proyecta los modelos existentes sin publicar
   ningún evento; como las anteriores, exige detener todos los servidores.
+
+### Modelos personales
+
+Los modelos virtuales que un miembro construye para sí mismo, llamados
+`~/<nombre>`, forman la familia `personal_virtual_model`, de solo lectura.
+Dependen del miembro, no de una organización, y se gestionan desde el perfil.
+
+| Método | Ruta |
+|---|---|
+| `GET` | `/v1/xolo/tenants/{tenantID}/members/{memberID}/personal-models` — paginada como las demás colecciones |
+| `GET` | `/v1/xolo/tenants/{tenantID}/members/{memberID}/personal-models/{key}` — un modelo, con su `ETag` |
+
+```json
+{"name":"router","description":"","team_id":"…","catalog_overrides":null,"graph":{"nodes":[…],"edges":[…]}}
+```
+
+- La clave de un elemento y de un evento es
+  `{"tenant_id","member_id","resource_id"}`.
+- `team_id` es el equipo al que se imputan las solicitudes, elegido por el
+  miembro, vacío si no eligió ninguno; puede designar un equipo eliminado
+  desde entonces, lo que rechaza las solicitudes hasta que el miembro elija
+  otro. `graph` es el pipeline, como para un modelo virtual, sin los secretos
+  de sus nodos plugin, que no se devuelven ni se enumeran.
+- **Resolución de nombres.** La pasarela resuelve `~/<nombre>` entre los
+  modelos del miembro que autentica la solicitud; `name` es ese `<nombre>`.
+- Crear, modificar o eliminar un modelo personal publica
+  `personal_virtual_model.created.v1`, `.updated.v1` o `.deleted.v1`;
+  eliminar o purgar un miembro publica la eliminación de sus modelos. Un
+  cambio solo de los secretos de sus nodos no publica nada.
+- `PUT` y `DELETE` responden `405`. La familia no tiene autoridad de
+  escritura: no forma parte de `XOLO_OWNERSHIP`, y solo la instancia local la
+  escribe.
+- La migración `202610230001` proyecta también los modelos personales
+  existentes.
 
 ## Autoridad de escritura, adopción y desvinculación
 
@@ -1272,6 +1310,6 @@ En producción, utilice una autoridad de certificación gestionada (Vault, cert-
 
 ## Fuera del alcance actual
 
-- La escritura de los modelos LLM, de solo lectura aquí; los modelos virtuales personales, tokens de aplicación y parámetros de eventos: siguen gestionándose desde la interfaz web.
+- La escritura de los modelos LLM y de los modelos virtuales personales, de solo lectura aquí; los tokens de aplicación y parámetros de eventos: siguen gestionándose desde la interfaz web.
 - Los alcances por certificado: cualquier URI autorizado administra la instancia completa.
 - Todavía no se genera ninguna especificación OpenAPI.

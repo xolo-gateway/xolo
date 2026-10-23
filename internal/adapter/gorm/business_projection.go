@@ -84,7 +84,7 @@ func businessSnapshot(db *gorm.DB, key mutationKey, row map[string]any) error {
 			}
 		}
 		row["member_roles"] = members
-	case "virtual_model", "middleware":
+	case "virtual_model", "middleware", "personal_virtual_model":
 		if err := pipelineSnapshot(db, row); err != nil {
 			return err
 		}
@@ -161,6 +161,10 @@ func pipelineSnapshot(db *gorm.DB, row map[string]any) error {
 		row["targets"] = model.NormalizeModelRefs(targets)
 	}
 	orgID, _ := row["org_id"].(string)
+	if userID, _ := row["user_id"].(string); userID != "" {
+		// The secrets of a personal model are scoped to its member.
+		orgID = "~:" + userID
+	}
 	fingerprint, err := pipelineSecretsFingerprint(db, orgID, graph)
 	if err != nil {
 		return err
@@ -234,6 +238,8 @@ func businessFamilyOf(key mutationKey, row snapshotRow) (string, bool) {
 		return model.FamilyVirtualModel, true
 	case "middleware":
 		return model.FamilyMiddleware, true
+	case "personal_virtual_model":
+		return model.FamilyPersonalVirtualModel, true
 	}
 	return "", false
 }
@@ -241,15 +247,16 @@ func businessFamilyOf(key mutationKey, row snapshotRow) (string, bool) {
 // businessRepresentationFields lists the fields of each business family, as
 // named by the model settings: a PUT body and its projection are comparable.
 var businessRepresentationFields = map[string][]string{
-	model.FamilyCustomRole:   {"name", "description", "permissions"},
-	model.FamilyApplication:  {"name", "description", "active", "role_ids", "team_id"},
-	model.FamilyQuota:        {"scope", "scope_id", "currency", "daily_budget", "monthly_budget", "yearly_budget", "cascade"},
-	model.FamilyTeamSettings: {"description", "share_quota_equally", "model_grants", "middleware_ids", "member_roles"},
-	model.FamilyAlert:        {"name", "description", "scope", "owner_id", "query", "aggregation", "window_seconds", "comparator", "threshold", "for_seconds", "enabled"},
-	model.FamilyProvider:     {"name", "type", "base_url", "active", "currency", "cloud_tier", "billing_mode", "subscription_plan", "retry_config", "rate_limit_config", "request_headers"},
-	model.FamilyLLMModel:     {"provider_id", "proxy_name", "kind", "enabled"},
-	model.FamilyVirtualModel: {"name", "description", "catalog_overrides", "graph"},
-	model.FamilyMiddleware:   {"name", "description", "enabled", "priority", "applies_to_all", "targets", "graph"},
+	model.FamilyCustomRole:           {"name", "description", "permissions"},
+	model.FamilyApplication:          {"name", "description", "active", "role_ids", "team_id"},
+	model.FamilyQuota:                {"scope", "scope_id", "currency", "daily_budget", "monthly_budget", "yearly_budget", "cascade"},
+	model.FamilyTeamSettings:         {"description", "share_quota_equally", "model_grants", "middleware_ids", "member_roles"},
+	model.FamilyAlert:                {"name", "description", "scope", "owner_id", "query", "aggregation", "window_seconds", "comparator", "threshold", "for_seconds", "enabled"},
+	model.FamilyProvider:             {"name", "type", "base_url", "active", "currency", "cloud_tier", "billing_mode", "subscription_plan", "retry_config", "rate_limit_config", "request_headers"},
+	model.FamilyLLMModel:             {"provider_id", "proxy_name", "kind", "enabled"},
+	model.FamilyVirtualModel:         {"name", "description", "catalog_overrides", "graph"},
+	model.FamilyMiddleware:           {"name", "description", "enabled", "priority", "applies_to_all", "targets", "graph"},
+	model.FamilyPersonalVirtualModel: {"name", "description", "team_id", "catalog_overrides", "graph"},
 }
 
 func businessRepresentation(family string, row snapshotRow) map[string]any {
@@ -298,8 +305,9 @@ func businessRepresentation(family string, row snapshotRow) map[string]any {
 		}
 		rep["member_roles"] = members
 	}
-	if family == model.FamilyApplication {
-		// Applications created before teams carry no team.
+	if family == model.FamilyApplication || family == model.FamilyPersonalVirtualModel {
+		// Applications created before teams carry no team, a personal model
+		// whose owner picked none neither.
 		if team, _ := rep["team_id"].(string); team == "" {
 			rep["team_id"] = ""
 		}

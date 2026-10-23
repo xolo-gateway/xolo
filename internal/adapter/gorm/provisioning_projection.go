@@ -76,12 +76,14 @@ var projectionFamilies = map[string]int{
 	model.FamilyCustomRole:   9,
 	model.FamilyVirtualModel: 10,
 	model.FamilyMiddleware:   11,
+	// A personal model hangs from its member and is charged to a team.
+	model.FamilyPersonalVirtualModel: 12,
 	// Team grants designate models and middlewares, team members hold roles,
 	// applications are bound to teams and quotas cap teams.
-	model.FamilyTeamSettings: 12,
-	model.FamilyApplication:  13,
-	model.FamilyQuota:        14,
-	model.FamilyAlert:        15,
+	model.FamilyTeamSettings: 13,
+	model.FamilyApplication:  14,
+	model.FamilyQuota:        15,
+	model.FamilyAlert:        16,
 }
 
 type projectionID struct{ family, tenantID, orgID, key string }
@@ -115,6 +117,8 @@ func (id projectionID) reference() model.CommonKey {
 	case model.FamilyTeamMembership:
 		ref.OrganizationID = id.orgID
 		ref.TeamID, ref.MemberID, _ = strings.Cut(id.key, ":")
+	case model.FamilyPersonalVirtualModel:
+		ref.MemberID, ref.ResourceID, _ = strings.Cut(id.key, ":")
 	default:
 		if model.IsBusinessFamily(id.family) {
 			ref.OrganizationID, ref.ResourceID = id.orgID, id.key
@@ -125,6 +129,10 @@ func (id projectionID) reference() model.CommonKey {
 
 // teamMembershipKey is the projection key of a team membership.
 func teamMembershipKey(teamID, userID string) string { return teamID + ":" + userID }
+
+// personalModelKey is the projection key of a personal virtual model: the
+// models of a member are one key range.
+func personalModelKey(userID, modelID string) string { return userID + ":" + modelID }
 
 type snapshotRow map[string]any
 
@@ -171,6 +179,9 @@ func projectionIdentity(key mutationKey, row snapshotRow) (projectionID, bool) {
 		orgID := row.str("org_id")
 		if family == model.FamilyQuota {
 			orgID = ""
+		}
+		if family == model.FamilyPersonalVirtualModel {
+			return projectionID{family, row.str("tenant_id"), "", personalModelKey(row.str("user_id"), key.id)}, true
 		}
 		return projectionID{family, row.str("tenant_id"), orgID, key.id}, true
 	}

@@ -221,9 +221,11 @@ func projectionScope(d ResourceDeletion) (string, []any) {
 			append([]any{d.TenantID, d.ResourceID, model.FamilyOrganization, d.ResourceID, model.FamilyQuota}, quotaArgs...)
 	}
 	alerts, alertArgs := lifecycleTableOf("alerts").scopePredicate(d)
-	args := []any{d.TenantID, model.FamilyMember, model.FamilyOrganizationMembership, d.ResourceID, model.FamilyQuota}
+	args := []any{d.TenantID, model.FamilyMember, model.FamilyOrganizationMembership, d.ResourceID,
+		model.FamilyPersonalVirtualModel, personalModelKey(d.ResourceID, "%"), model.FamilyQuota}
 	args = append(append(append(args, quotaArgs...), model.FamilyAlert), alertArgs...)
 	return "tenant_id = ? AND ((family IN (?, ?) AND resource_key = ?)" +
+		" OR (family = ? AND resource_key LIKE ?)" +
 		" OR (family = ? AND resource_key IN (SELECT r.id FROM quota r WHERE " + quotas + "))" +
 		" OR (family = ? AND resource_key IN (SELECT r.id FROM alerts r WHERE " + alerts + ")))", args
 }

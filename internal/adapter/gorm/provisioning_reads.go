@@ -94,6 +94,11 @@ func validateCommonScope(scope model.CommonScope, key string) error {
 			return errors.WithStack(port.ErrInvalid)
 		}
 	}
+	if scope.MemberID != "" {
+		if _, err := model.ParseUserID(scope.MemberID); err != nil || scope.Family != model.FamilyPersonalVirtualModel {
+			return errors.WithStack(port.ErrInvalid)
+		}
+	}
 	switch scope.Family {
 	case model.FamilyTenant:
 		if scope.TenantID != "" || scope.OrganizationID != "" {
@@ -114,6 +119,10 @@ func validateCommonScope(scope model.CommonScope, key string) error {
 		}
 	case model.FamilyQuota:
 		if scope.TenantID == "" || scope.OrganizationID != "" {
+			return errors.WithStack(port.ErrInvalid)
+		}
+	case model.FamilyPersonalVirtualModel:
+		if scope.TenantID == "" || scope.OrganizationID != "" || scope.MemberID == "" {
 			return errors.WithStack(port.ErrInvalid)
 		}
 	default:
@@ -174,12 +183,21 @@ func commonParents(db *gorm.DB, scope model.CommonScope) error {
 			return errors.WithStack(port.ErrParentNotFound)
 		}
 	}
+	if scope.MemberID != "" {
+		if err := db.Table("users").Where("id = ? AND tenant_id = ?", scope.MemberID, scope.TenantID).Count(&n).Error; err != nil {
+			return errors.WithStack(err)
+		}
+		if n != 1 {
+			return errors.WithStack(port.ErrParentNotFound)
+		}
+	}
 	return nil
 }
 
 // scopeQuery filters projections on the whole scope, tenant included: a
 // collection never reaches into another tenant. The members of a team are
-// the key range of its team id.
+// the key range of its team id, the personal models of a member that of its
+// user id.
 func scopeQuery(db *gorm.DB, scope model.CommonScope) *gorm.DB {
 	q := db.Model(&ProvisioningProjection{}).Where("family = ? AND org_id = ?", scope.Family, scope.OrganizationID)
 	if scope.Family != model.FamilyTenant {
@@ -188,6 +206,9 @@ func scopeQuery(db *gorm.DB, scope model.CommonScope) *gorm.DB {
 	if scope.Family == model.FamilyTeamMembership {
 		q = q.Where("resource_key LIKE ?", scope.TeamID+":%")
 	}
+	if scope.Family == model.FamilyPersonalVirtualModel {
+		q = q.Where("resource_key LIKE ?", scope.MemberID+":%")
+	}
 	return q
 }
 
@@ -195,6 +216,9 @@ func scopeQuery(db *gorm.DB, scope model.CommonScope) *gorm.DB {
 func projectionKey(scope model.CommonScope, key string) string {
 	if scope.Family == model.FamilyTeamMembership {
 		return teamMembershipKey(scope.TeamID, key)
+	}
+	if scope.Family == model.FamilyPersonalVirtualModel {
+		return personalModelKey(scope.MemberID, key)
 	}
 	return key
 }

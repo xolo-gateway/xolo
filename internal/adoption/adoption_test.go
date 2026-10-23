@@ -149,10 +149,12 @@ func TestVerifyBusinessFamilies(t *testing.T) {
 	inventory := validInventory()
 	provider := Record{Family: model.FamilyProvider, Key: model.CommonKey{TenantID: tenantID, OrganizationID: orgID, ResourceID: "44444444-4444-4444-8444-444444444444"}, Representation: json.RawMessage(`{"name":"OpenAI","active":true}`), ETag: `W/"6"`}
 	quota := Record{Family: model.FamilyQuota, Key: model.CommonKey{TenantID: tenantID, ResourceID: string(model.NewQuotaID())}, Representation: json.RawMessage(`{"scope":"org"}`), ETag: `W/"7"`}
-	inventory.items = append(inventory.items, provider, quota)
+	personal := Record{Family: model.FamilyPersonalVirtualModel, Key: model.CommonKey{TenantID: tenantID, MemberID: memberID, ResourceID: string(model.NewPersonalVirtualModelID())}, Representation: json.RawMessage(`{"name":"router"}`), ETag: `W/"8"`}
+	inventory.items = append(inventory.items, provider, personal, quota)
 	summary, err := Verify(bytes.NewReader(export(t, inventory)))
 	require.NoError(t, err)
 	require.Equal(t, 1, summary.Families[model.FamilyQuota])
+	require.Equal(t, 1, summary.Families[model.FamilyPersonalVirtualModel])
 
 	// An export made before the business families stays valid.
 	legacy := validInventory().items
@@ -164,9 +166,11 @@ func TestVerifyBusinessFamilies(t *testing.T) {
 	require.ErrorIs(t, err, ErrInvalidExport, "the common families are required")
 
 	for name, record := range map[string]Record{
-		"foreign organization":        {Family: model.FamilyProvider, Key: model.CommonKey{TenantID: tenantID, OrganizationID: "55555555-5555-4555-8555-555555555555", ResourceID: "44444444-4444-4444-8444-444444444444"}, Representation: json.RawMessage(`{}`), ETag: `W/"8"`},
-		"quota under an organization": {Family: model.FamilyQuota, Key: model.CommonKey{TenantID: tenantID, OrganizationID: orgID, ResourceID: string(model.NewQuotaID())}, Representation: json.RawMessage(`{}`), ETag: `W/"8"`},
-		"missing resource key":        {Family: model.FamilyAlert, Key: model.CommonKey{TenantID: tenantID, OrganizationID: orgID}, Representation: json.RawMessage(`{}`), ETag: `W/"8"`},
+		"foreign organization":                {Family: model.FamilyProvider, Key: model.CommonKey{TenantID: tenantID, OrganizationID: "55555555-5555-4555-8555-555555555555", ResourceID: "44444444-4444-4444-8444-444444444444"}, Representation: json.RawMessage(`{}`), ETag: `W/"8"`},
+		"quota under an organization":         {Family: model.FamilyQuota, Key: model.CommonKey{TenantID: tenantID, OrganizationID: orgID, ResourceID: string(model.NewQuotaID())}, Representation: json.RawMessage(`{}`), ETag: `W/"8"`},
+		"missing resource key":                {Family: model.FamilyAlert, Key: model.CommonKey{TenantID: tenantID, OrganizationID: orgID}, Representation: json.RawMessage(`{}`), ETag: `W/"8"`},
+		"personal model of an organization":   {Family: model.FamilyPersonalVirtualModel, Key: model.CommonKey{TenantID: tenantID, OrganizationID: orgID, MemberID: memberID, ResourceID: string(model.NewPersonalVirtualModelID())}, Representation: json.RawMessage(`{}`), ETag: `W/"8"`},
+		"personal model of an unknown member": {Family: model.FamilyPersonalVirtualModel, Key: model.CommonKey{TenantID: tenantID, MemberID: "55555555-5555-4555-8555-555555555555", ResourceID: string(model.NewPersonalVirtualModelID())}, Representation: json.RawMessage(`{}`), ETag: `W/"8"`},
 	} {
 		inventory := validInventory()
 		inventory.items = append(inventory.items, record)

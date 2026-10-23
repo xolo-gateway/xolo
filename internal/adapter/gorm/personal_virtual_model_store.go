@@ -11,7 +11,7 @@ import (
 )
 
 func (s *Store) CreatePersonalVirtualModel(ctx context.Context, vm model.PersonalVirtualModel) error {
-	return s.withRetry(ctx, true, func(ctx context.Context, db *gorm.DB) error {
+	return s.recorded(ctx, tracking("personal_virtual_model", string(vm.ID())), func(ctx context.Context, db *gorm.DB) error {
 		if err := db.Create(fromPersonalVirtualModel(vm)).Error; err != nil {
 			// See CreateVirtualModel: gorm.ErrDuplicatedKey is never
 			// produced here because TranslateError is off; use the
@@ -76,7 +76,7 @@ func (s *Store) ListPersonalVirtualModels(ctx context.Context, userID model.User
 }
 
 func (s *Store) SavePersonalVirtualModel(ctx context.Context, vm model.PersonalVirtualModel) error {
-	return s.withRetry(ctx, true, func(ctx context.Context, db *gorm.DB) error {
+	return s.recorded(ctx, tracking("personal_virtual_model", string(vm.ID())), func(ctx context.Context, db *gorm.DB) error {
 		// The ON CONFLICT (id) clause does not match a collision on the
 		// idx_pvm_user_name unique index, so a rename racing another
 		// concurrent rename raises the driver's unique-constraint error.
@@ -100,7 +100,7 @@ func (s *Store) SavePersonalVirtualModel(ctx context.Context, vm model.PersonalV
 }
 
 func (s *Store) DeletePersonalVirtualModel(ctx context.Context, id model.PersonalVirtualModelID) error {
-	return s.withRetry(ctx, true, func(ctx context.Context, db *gorm.DB) error {
+	return s.recorded(ctx, tracking("personal_virtual_model", string(id)), func(ctx context.Context, db *gorm.DB) error {
 		result := db.Delete(&PersonalVirtualModel{}, "id = ?", string(id))
 		if result.Error != nil {
 			return errors.WithStack(result.Error)

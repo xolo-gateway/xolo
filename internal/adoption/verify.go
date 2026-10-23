@@ -275,9 +275,20 @@ func (s *inventoryState) add(r Record) error {
 }
 
 // addBusiness checks the key of a business record: its own key, and the
-// organization it hangs from, except a quota, which hangs from its tenant.
+// organization it hangs from, except a quota, which hangs from its tenant,
+// and a personal model, which hangs from its member.
 func (s *inventoryState) addBusiness(r Record) error {
 	k := r.Key
+	if r.Family == model.FamilyPersonalVirtualModel {
+		// A personal model hangs from its member.
+		if _, _, err := model.ParseBusinessKey(k.ResourceID); err != nil || k.OrganizationID != "" || k.Hostname != "" || k.TeamID != "" {
+			return errors.New("invalid resource key")
+		}
+		if s.members[k.MemberID] != k.TenantID {
+			return errors.New("missing member parent")
+		}
+		return nil
+	}
 	if _, _, err := model.ParseBusinessKey(k.ResourceID); err != nil || k.MemberID != "" || k.Hostname != "" || k.TeamID != "" {
 		return errors.New("invalid resource key")
 	}

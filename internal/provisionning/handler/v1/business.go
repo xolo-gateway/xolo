@@ -47,24 +47,26 @@ var businessRoutes = []businessRoute{
 	{family: model.FamilyLLMModel, readOnly: true},
 	{family: model.FamilyVirtualModel, required: []string{"name", "description", "catalog_overrides", "graph"}, nullable: []string{"catalog_overrides"}},
 	{family: model.FamilyMiddleware, required: []string{"name", "description", "enabled", "priority", "applies_to_all", "targets", "graph"}},
+	{family: model.FamilyPersonalVirtualModel, readOnly: true},
 }
 
 // businessCollections names the collection of each business family.
 var businessCollections = map[string]string{
-	model.FamilyCustomRole:   "roles",
-	model.FamilyTeamSettings: "team-settings",
-	model.FamilyApplication:  "applications",
-	model.FamilyQuota:        "quotas",
-	model.FamilyAlert:        "alerts",
-	model.FamilyProvider:     "providers",
-	model.FamilyLLMModel:     "llm-models",
-	model.FamilyVirtualModel: "virtual-models",
-	model.FamilyMiddleware:   "middlewares",
+	model.FamilyCustomRole:           "roles",
+	model.FamilyTeamSettings:         "team-settings",
+	model.FamilyApplication:          "applications",
+	model.FamilyQuota:                "quotas",
+	model.FamilyAlert:                "alerts",
+	model.FamilyProvider:             "providers",
+	model.FamilyLLMModel:             "llm-models",
+	model.FamilyVirtualModel:         "virtual-models",
+	model.FamilyMiddleware:           "middlewares",
+	model.FamilyPersonalVirtualModel: "personal-models",
 }
 
 // mountBusiness serves the business resources with the reads, conditions,
 // deletions and events of the common contract. Quotas hang from the tenant,
-// the others from an organization.
+// personal models from a member, the others from an organization.
 func (h *Handler) mountBusiness() {
 	const (
 		tenant = "/v1/xolo/tenants/{tenantID}"
@@ -72,8 +74,11 @@ func (h *Handler) mountBusiness() {
 	)
 	for _, route := range businessRoutes {
 		collection := org + "/" + businessCollections[route.family]
-		if route.family == model.FamilyQuota {
+		switch route.family {
+		case model.FamilyQuota:
 			collection = tenant + "/" + businessCollections[route.family]
+		case model.FamilyPersonalVirtualModel:
+			collection = tenant + "/members/{memberID}/" + businessCollections[route.family]
 		}
 		h.mux.HandleFunc("GET "+collection, h.handleBusinessList(route))
 		h.mux.HandleFunc("GET "+collection+"/{resourceID}", h.handleBusinessGet(route))
@@ -100,6 +105,15 @@ func businessScope(w http.ResponseWriter, r *http.Request, family string) (model
 		return model.CommonScope{}, false
 	}
 	scope := model.CommonScope{Family: family, TenantID: string(tenantID)}
+	if family == model.FamilyPersonalVirtualModel {
+		memberID, err := model.ParseUserID(r.PathValue("memberID"))
+		if err != nil {
+			writeInvalidID(w)
+			return model.CommonScope{}, false
+		}
+		scope.MemberID = string(memberID)
+		return scope, true
+	}
 	if family != model.FamilyQuota {
 		orgID, err := model.ParseOrgID(r.PathValue("orgID"))
 		if err != nil {

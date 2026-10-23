@@ -43,6 +43,11 @@ const (
 	// models it targets.
 	FamilyVirtualModel = "virtual_model"
 	FamilyMiddleware   = "middleware"
+	// FamilyPersonalVirtualModel designates the virtual models a member
+	// builds for themself, named "~/<name>". It hangs from the member, not
+	// from an organization, and is read-only like FamilyLLMModel: members
+	// manage them from their profile.
+	FamilyPersonalVirtualModel = "personal_virtual_model"
 	// FamilyTeamSettings holds what a team carries beyond the common contract:
 	// description, budget sharing, model grants, middlewares and the roles of
 	// its members on the team scope. It exists exactly when its team does.
@@ -56,14 +61,16 @@ var CommonFamilies = []string{FamilyTenant, FamilyTenantDomain, FamilyOrganizati
 // belong to providers, middlewares target models and virtual models, team
 // grants designate them and the middlewares, team members hold roles,
 // applications are bound to teams, quotas cap applications and teams.
-var BusinessFamilies = []string{FamilyProvider, FamilyLLMModel, FamilyCustomRole, FamilyVirtualModel, FamilyMiddleware, FamilyTeamSettings, FamilyApplication, FamilyQuota, FamilyAlert}
+var BusinessFamilies = []string{FamilyProvider, FamilyLLMModel, FamilyCustomRole, FamilyVirtualModel, FamilyMiddleware, FamilyPersonalVirtualModel, FamilyTeamSettings, FamilyApplication, FamilyQuota, FamilyAlert}
 
 // IsBusinessFamily tells whether family is a business family.
 func IsBusinessFamily(family string) bool { return slices.Contains(BusinessFamilies, family) }
 
 // IsReadOnlyFamily tells whether the API only reads family: its resources
 // are written locally, and published like the others.
-func IsReadOnlyFamily(family string) bool { return family == FamilyLLMModel }
+func IsReadOnlyFamily(family string) bool {
+	return family == FamilyLLMModel || family == FamilyPersonalVirtualModel
+}
 
 // CommonKey identifies a resource independently of its mutable representation.
 type CommonKey struct {
@@ -83,6 +90,8 @@ type CommonScope struct {
 	OrganizationID string `json:"o,omitempty"`
 	// TeamID is the parent of a team membership collection.
 	TeamID string `json:"m,omitempty"`
+	// MemberID is the parent of a personal virtual model collection.
+	MemberID string `json:"u,omitempty"`
 }
 
 // CommonItem is the projection of one resource.

@@ -37,7 +37,7 @@ var resourceTables = map[string]string{
 	// The quota table keeps the singular name GORM gave it.
 	"application": "applications", "quota": "quota", "alert": "alerts", "provider": "providers", "llm_model": "llm_models",
 	"team": "teams", "team_settings": "teams", "team_member": "team_members",
-	"virtual_model": "virtual_models", "middleware": "middlewares",
+	"virtual_model": "virtual_models", "middleware": "middlewares", "personal_virtual_model": "personal_virtual_models",
 }
 
 // resourceKeys names the key column of the resources not keyed by id.
@@ -73,6 +73,8 @@ var mutationColumns = map[string]string{
 	// The secrets of their plugin nodes are replaced by a fingerprint.
 	"virtual_model": "id, org_id, name, description, graph_json, overrides_json",
 	"middleware":    "id, org_id, name, description, enabled, priority, applies_to_all, targets_json, graph_json",
+	// The secrets of its plugin nodes, scoped to the member, are left out.
+	"personal_virtual_model": "id, user_id, name, description, team_id, graph_json, overrides_json",
 }
 
 // mutationRecorder keeps the state of every resource a transaction touches,
@@ -199,6 +201,13 @@ func mutationSnapshot(db *gorm.DB, key mutationKey) ([]byte, error) {
 		key.kind == "virtual_model" || key.kind == "middleware" || key.kind == "llm_model" {
 		var tenantID string
 		if err := db.Table("organizations").Where("id = ?", row["org_id"]).Pluck("tenant_id", &tenantID).Error; err != nil {
+			return nil, err
+		}
+		row["tenant_id"] = tenantID
+	}
+	if key.kind == "personal_virtual_model" {
+		var tenantID string
+		if err := db.Table("users").Where("id = ?", row["user_id"]).Pluck("tenant_id", &tenantID).Error; err != nil {
 			return nil, err
 		}
 		row["tenant_id"] = tenantID
@@ -413,6 +422,9 @@ func (r *mutationRecorder) trackDependents(kind, id string) error {
 			return err
 		}
 		if err := trackIDs("alert", "owner_id"); err != nil {
+			return err
+		}
+		if err := trackIDs("personal_virtual_model", "user_id"); err != nil {
 			return err
 		}
 		return r.trackQuota(model.QuotaScopeUser, id)
