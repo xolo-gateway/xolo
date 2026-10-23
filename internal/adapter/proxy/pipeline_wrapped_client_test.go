@@ -465,7 +465,7 @@ func (c *lingeringClient) ChatCompletionStream(ctx context.Context, _ ...llm.Cha
 			ch <- llm.NewStreamChunk(llm.NewStreamDelta(llm.RoleAssistant, p))
 		}
 		if c.complete {
-			ch <- llm.NewCompleteStreamChunk(llm.NewChatCompletionUsage(0, 0, 0))
+			ch <- llm.NewCompleteStreamChunk(llm.NewChatCompletionUsage(3, 7, 10))
 		}
 		<-ctx.Done()
 	}()
@@ -508,9 +508,13 @@ func TestPipelineWrappedClient_ChatCompletionStream_CallerLeavesHadError(t *test
 				<-ch
 			}
 			cancel()
+			received := make(chan []llm.StreamChunk, 1)
 			go func() {
-				for range ch {
+				var chunks []llm.StreamChunk
+				for chunk := range ch {
+					chunks = append(chunks, chunk)
 				}
+				received <- chunks
 			}()
 
 			select {
@@ -520,6 +524,27 @@ func TestPipelineWrappedClient_ChatCompletionStream_CallerLeavesHadError(t *test
 			}
 			if exec.hadErr != tc.hadErr {
 				t.Errorf("backward pass hadError = %v, want %v", exec.hadErr, tc.hadErr)
+			}
+			if tc.passthrough {
+				return
+			}
+			// The proxy runs its post-response hooks, which record usage,
+			// only once it got a chunk: a stream closed empty would run its
+			// error hooks alone.
+			var chunks []llm.StreamChunk
+			select {
+			case chunks = <-received:
+			case <-time.After(2 * time.Second):
+				t.Fatal("the stream was not closed")
+			}
+			if len(chunks) != 1 || chunks[0].Error() != nil {
+				t.Fatalf("got %d chunks, want the one carrying the usage", len(chunks))
+			}
+			if chunks[0].IsComplete() != tc.complete {
+				t.Errorf("chunk complete = %v, want %v", chunks[0].IsComplete(), tc.complete)
+			}
+			if tc.complete && (chunks[0].Usage() == nil || chunks[0].Usage().TotalTokens() != 10) {
+				t.Errorf("the chunk does not carry the usage the provider reported")
 			}
 		})
 	}
@@ -691,7 +716,11 @@ func TestPipelineWrappedClient_ChatCompletionStream_BackwardTimeout(t *testing.T
 
 	registry := pipeline.NewRegistry()
 	registry.Register("rewrite", &stallingExecutor{})
-	wrapped := NewPipelineWrappedClient(&multiChunkClient{parts: []string{"Bonjour ", "[PERSON_1]"}}, pipeline.NewEngine(registry), newTestForwardExecution(), pipeline.ExecutionContext{}).
+	exec := &pipeline.ForwardExecution{ExecutedNodes: []pipeline.ExecutedNode{
+		{Node: model.PipelineNode{ID: "first", Type: "rewrite"}},
+		{Node: model.PipelineNode{ID: "last", Type: "rewrite"}},
+	}}
+	wrapped := NewPipelineWrappedClient(&multiChunkClient{parts: []string{"Bonjour ", "[PERSON_1]"}}, pipeline.NewEngine(registry), exec, pipeline.ExecutionContext{}).
 		WithBackwardTimeout(20 * time.Millisecond)
 
 	ch, err := wrapped.ChatCompletionStream(context.Background())
@@ -711,5 +740,13 @@ func TestPipelineWrappedClient_ChatCompletionStream_BackwardTimeout(t *testing.T
 	}
 	if !strings.Contains(logs.String(), "backward pass timed out") {
 		t.Errorf("logs = %q, want the timeout told apart", logs.String())
+	}
+	// The node the deadline cut is named once; the other one is skipped
+	// instead of failing on an expired context and being logged as cut too.
+	if n := strings.Count(logs.String(), "backward pass timed out for a node"); n != 1 {
+		t.Errorf("logs = %q, want one node reported as cut, got %d", logs.String(), n)
+	}
+	if !strings.Contains(logs.String(), "skipping the remaining nodes") {
+		t.Errorf("logs = %q, want the remaining nodes reported as skipped", logs.String())
 	}
 }

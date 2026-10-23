@@ -220,6 +220,16 @@ func (e *Engine) RunBackwardWithToolCalls(
 	// Iterate in reverse order.
 	for i := len(exec.ExecutedNodes) - 1; i >= 0; i-- {
 		en := exec.ExecutedNodes[i]
+		// Once the pass is out of time no node can complete on its context:
+		// the remaining ones are skipped, and said so once, instead of each
+		// failing and being logged as the node the deadline cut.
+		if err := ctx.Err(); err != nil {
+			slog.WarnContext(ctx, "pipeline: backward pass out of time, skipping the remaining nodes",
+				slog.Int("skipped", i+1),
+				slog.Any("error", err),
+			)
+			break
+		}
 		ex, ok := e.registry.Get(en.Node.Type)
 		if !ok {
 			continue

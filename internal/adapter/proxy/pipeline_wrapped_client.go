@@ -119,6 +119,7 @@ func (c *PipelineWrappedClient) ChatCompletionStream(ctx context.Context, funcs 
 		var lastTokens *pipeline.TokensUsed
 		calls := &streamedToolCalls{}
 		complete := false
+		var usage llm.ChatCompletionUsage
 
 		for chunk := range sourceCh {
 			chunks = append(chunks, chunk)
@@ -128,6 +129,7 @@ func (c *PipelineWrappedClient) ChatCompletionStream(ctx context.Context, funcs 
 				calls.collect(d.ToolCalls())
 			}
 			if u := chunk.Usage(); u != nil {
+				usage = u
 				lastTokens = &pipeline.TokensUsed{
 					Prompt:     u.PromptTokens(),
 					Completion: u.CompletionTokens(),
@@ -151,6 +153,16 @@ func (c *PipelineWrappedClient) ChatCompletionStream(ctx context.Context, funcs 
 		if ctx.Err() != nil {
 			if _, err := c.engine.RunBackwardWithToolCalls(backCtx, c.forwardExec, content, calls.json(), lastTokens, !complete); err != nil {
 				slog.WarnContext(ctx, "pipeline backward pass (stream) failed", slog.Any("error", err))
+			}
+			// The proxy still needs one chunk: on a stream closed empty it
+			// runs its error hooks only, and the usage the provider billed
+			// would never be recorded. One chunk carrying that usage lands in
+			// the empty buffer without blocking; the proxy then finds the
+			// caller gone and runs its post-response hooks with it.
+			if complete {
+				outCh <- llm.NewCompleteStreamChunk(usage)
+			} else {
+				outCh <- llm.NewStreamChunkWithUsage(llm.NewStreamDelta(llm.RoleAssistant, ""), usage)
 			}
 			return
 		}
