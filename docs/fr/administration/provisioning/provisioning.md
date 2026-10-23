@@ -349,8 +349,8 @@ sans représentation ni donnée personnelle :
 - `type` vaut `<resource_type>.created.v1`, `.updated.v1` ou `.deleted.v1`, où
   `resource_type` est `tenant`, `tenant_domain`, `organization`, `member`,
   `organization_membership`, `team`, `team_membership` ou l'une des familles
-  métier `provider`, `custom_role`, `virtual_model`, `middleware`,
-  `team_settings`, `application`, `quota` et `alert`. La clé d'une équipe est `{"tenant_id","organization_id","team_id"}`,
+  métier `provider`, `llm_model`, `custom_role`, `virtual_model`,
+  `middleware`, `team_settings`, `application`, `quota` et `alert`. La clé d'une équipe est `{"tenant_id","organization_id","team_id"}`,
   celle d'une appartenance y ajoute `member_id`. Une suppression ne porte pas
   d'`etag`.
 - **Un événement par ressource et par commit.** Un no-op ou une transaction
@@ -576,9 +576,11 @@ sont refusés.
 
 ## Ressources métier
 
-Huit familles propres à Xolo suivent le même contrat que les familles
+Neuf familles propres à Xolo suivent le même contrat que les familles
 communes : lecture unitaire avec `ETag`, listes paginées, `PUT` conditionnels
-et événements. Le manifeste annonce `business_resources`.
+et événements. `llm_model` est en lecture seule : ni `PUT` ni `DELETE`
+(`405`), voir [Modèles LLM](#modeles-llm). Le manifeste annonce
+`business_resources`.
 
 | Méthode | Route |
 |---|---|
@@ -587,6 +589,7 @@ et événements. Le manifeste annonce `business_resources`.
 | `GET`, `GET`, `PUT`, `DELETE` | `/v1/xolo/tenants/{tenantID}/organizations/{orgID}/applications[/{key}]` |
 | `GET`, `GET`, `PUT`, `DELETE` | `/v1/xolo/tenants/{tenantID}/organizations/{orgID}/alerts[/{key}]` |
 | `GET`, `GET`, `PUT`, `DELETE` | `/v1/xolo/tenants/{tenantID}/organizations/{orgID}/providers[/{key}]` |
+| `GET`, `GET` | `/v1/xolo/tenants/{tenantID}/organizations/{orgID}/llm-models[/{key}]` |
 | `GET`, `GET`, `PUT`, `DELETE` | `/v1/xolo/tenants/{tenantID}/organizations/{orgID}/virtual-models[/{key}]` |
 | `GET`, `GET`, `PUT`, `DELETE` | `/v1/xolo/tenants/{tenantID}/organizations/{orgID}/middlewares[/{key}]` |
 | `GET`, `GET`, `PUT` | `…/virtual-models/{key}/nodes[/{nodeID}]`, `…/middlewares/{key}/nodes[/{nodeID}]`, voir [Modèles virtuels et middlewares](#modeles-virtuels-et-middlewares) |
@@ -606,6 +609,7 @@ Les représentations sont en snake_case et complètes : chaque champ est requis,
 | `alert` | `{"name","description","scope","owner_id","query","aggregation","window_seconds","comparator","threshold","for_seconds","enabled"}` |
 | `virtual_model` | `{"name","description","catalog_overrides","graph"}`, `catalog_overrides` à `null` ou `{"contextWindow","maxOutputTokens","capabilities"}`, comme dans l'interface web |
 | `middleware` | `{"name","description","enabled","priority","applies_to_all","targets":[{"kind","id"}],"graph"}` |
+| `llm_model` | `{"provider_id","proxy_name","kind","enabled"}`, en lecture seule |
 | `provider` | `{"name","type","base_url","active","currency","cloud_tier","billing_mode","subscription_plan","retry_config","rate_limit_config"}`, les trois derniers `null` ou objets, plus `"api_key"` en écriture seule et `"request_headers"` facultatif : `null` ou `{"headers":{"Nom":"valeur"},"session_header":"x-opencode-session"}`, les en-têtes qu'exige une passerelle (les valeurs vides et les en-têtes d'authentification, de cookies, de transport et de transfert sont refusés) |
 
 - **Clés.** Une nouvelle ressource est créée sous un UUID canonique choisi par
@@ -732,7 +736,8 @@ en entier par leur `PUT` ou nœud par nœud :
 - **Les cibles** d'un middleware sont des `{"kind":"llm"|"virtual","id"}`,
   modèles ou modèles virtuels de l'organisation (`404 parent_not_found`),
   triées et dédoublonnées ; elles sont conservées, mais ignorées, quand
-  `applies_to_all` est vrai.
+  `applies_to_all` est vrai. Un ID `llm` est la clé d'un
+  [modèle LLM](#modeles-llm).
 - **Un nœud n'a pas de révision propre.** Les routes de nœuds renvoient
   l'`ETag` du pipeline, et un `PUT` de nœud se conditionne sur lui : une
   modification de nœud et une réécriture concurrente du graphe, par cette API
@@ -764,6 +769,45 @@ en entier par leur `PUT` ou nœud par nœud :
   dans l'interface web, laisse en place les grants et rattachements d'équipe
   qui le désignent ; les modèles virtuels personnels restent hors de cette API.
 
+### Modèles LLM
+
+Les modèles des fournisseurs d'une organisation forment la famille
+`llm_model`, en lecture seule : ils se gèrent depuis l'interface web, et
+l'API expose ce dont un plan de contrôle a besoin pour résoudre les cibles
+`llm` d'un middleware et les `model_grants` d'une équipe, dont le `model_id`
+est leur clé.
+
+| Méthode | Route |
+|---|---|
+| `GET` | `/v1/xolo/tenants/{tenantID}/organizations/{orgID}/llm-models` — paginée comme les autres collections |
+| `GET` | `/v1/xolo/tenants/{tenantID}/organizations/{orgID}/llm-models/{key}` — un modèle, avec son `ETag` |
+
+```json
+{"provider_id":"…","proxy_name":"meta/llama","kind":"completion","enabled":true}
+```
+
+- `kind` vaut `completion`, `embeddings` ou `decision`. Les modèles
+  désactivés sont listés, avec `enabled` à `false` : une cible ou un grant
+  peut en désigner un, et la passerelle n'en sert aucun.
+- **Résolution des noms.** `proxy_name` est le nom du modèle dans son
+  organisation, sans le slug de l'organisation ni segment d'équipe. La
+  passerelle résout un nom demandé `<org>/<team>/<model>` en retirant le
+  segment d'équipe, quand c'est le slug d'une équipe de l'organisation, puis
+  `<org>/<model>` en retirant le slug de l'organisation ; le reste, qui peut
+  lui-même contenir `/`, est comparé au `proxy_name` des modèles activés.
+- Ni le modèle amont, ni l'URL de base, ni le corps additionnel, ni la
+  tarification, ni le catalogue ne sont exposés : les modifier ne change
+  aucun `ETag` et ne publie aucun événement. Créer, renommer, activer,
+  désactiver ou supprimer un modèle publie `llm_model.created.v1`,
+  `.updated.v1` ou `.deleted.v1` ; supprimer un fournisseur publie la
+  suppression de ses modèles avant la sienne.
+- `PUT` et `DELETE` répondent `405`. La famille n'a pas d'autorité
+  d'écriture : elle ne fait pas partie de `XOLO_OWNERSHIP`, et seule
+  l'instance locale l'écrit.
+- La migration `202610230001` projette les modèles existants sans publier
+  d'événement ; comme les précédentes, elle exige l'arrêt de tous les
+  serveurs.
+
 ## Autorité d'écriture, adoption et détachement
 
 Chaque famille du contrat commun, ainsi que les abonnements webhook, a une
@@ -792,7 +836,7 @@ projection que l'écriture modifie, cascades comprises : supprimer un tenant
 dont les membres relèvent d'une autre autorité est refusé en bloc, sans rien
 supprimer ni publier. Les champs hors contrat restent locaux quelle que soit la
 politique : rôles de plateforme, devise et partage de quota d'une organisation,
-modèles, modèles virtuels, middlewares et jetons d'application. Les comptes d'application et les jetons d'API restent utilisables,
+modèles LLM et jetons d'application. Les comptes d'application et les jetons d'API restent utilisables,
 et les lectures gardent leurs permissions. `GET /v1/xolo/ownership` renvoie la
 politique effective, et le manifeste annonce `ownership`.
 
@@ -1257,6 +1301,6 @@ En production, utilisez une autorité de certification gérée (Vault, cert-mana
 
 ## Hors périmètre actuel
 
-- Les modèles LLM, modèles virtuels personnels, jetons d'application et paramètres d'événements : ils restent gérés par l'interface web.
+- L'écriture des modèles LLM, en lecture seule ici ; les modèles virtuels personnels, jetons d'application et paramètres d'événements : ils restent gérés par l'interface web.
 - Les portées par certificat : tout URI autorisé administre l'instance entière.
 - Aucune spécification OpenAPI n'est générée à ce jour.

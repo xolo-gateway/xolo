@@ -128,10 +128,14 @@ updates the public projection and appends to the event feed in the same
 transaction (`internal/adapter/gorm/provisioning_projection.go`). A new write
 path on those tables must do the same, or projections, ETags and `/v1/events`
 diverge.
-The business families (custom roles, applications, quotas, alerts, providers)
-go through it too; their runtime writes (alert evaluation state, quota usage,
-models, tokens) deliberately do not, and their columns stay out of
-`mutationColumns`: never put a secret or a hot-path write there.
+The business families (custom roles, team settings, applications, quotas,
+alerts, providers, LLM models, virtual models, middlewares) go through it too;
+their runtime writes (alert evaluation state, quota usage, tokens)
+deliberately do not, and their columns stay out of `mutationColumns`: never
+put a secret or a hot-path write there. LLM models are a read-only family
+(`model.IsReadOnlyFamily`): written by the web UI only, published like the
+others, outside `XOLO_OWNERSHIP`; only the columns that designate a model
+(provider, proxy name, kind, enabled) are projected.
 Write authority (`XOLO_OWNERSHIP`, `shared` by default) is checked in
 `publishProjections`, on every projection a transaction changes, before the
 feed lock (`internal/adapter/gorm/ownership.go`). A writer whose effect has no

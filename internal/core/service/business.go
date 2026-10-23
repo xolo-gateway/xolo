@@ -310,7 +310,7 @@ func (s *ProvisioningService) PutProvider(ctx context.Context, tenantID model.Te
 // deleting a missing resource changes nothing. A builtin role is never
 // deleted. The spend recorded on the scope of a quota is kept.
 func (s *ProvisioningService) DeleteBusiness(ctx context.Context, scope model.CommonScope, key string, condition model.MatchCondition) error {
-	if !model.IsBusinessFamily(scope.Family) {
+	if !model.IsBusinessFamily(scope.Family) || model.IsReadOnlyFamily(scope.Family) {
 		return errors.WithStack(port.ErrInvalid)
 	}
 	if _, _, err := model.ParseBusinessKey(key); err != nil {

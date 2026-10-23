@@ -33,6 +33,11 @@ const (
 	FamilyQuota       = "quota"
 	FamilyAlert       = "alert"
 	FamilyProvider    = "provider"
+	// FamilyLLMModel designates the models of a provider. It is read-only:
+	// models are managed from the web UI, the API only exposes the identifier
+	// that middleware targets and team grants designate, and the name a
+	// client sends.
+	FamilyLLMModel = "llm_model"
 	// FamilyVirtualModel and FamilyMiddleware hold a pipeline graph: a
 	// virtual model is exposed as a model of its own, a middleware wraps the
 	// models it targets.
@@ -47,14 +52,18 @@ const (
 // CommonFamilies lists the families of the common contract, parents first.
 var CommonFamilies = []string{FamilyTenant, FamilyTenantDomain, FamilyOrganization, FamilyMember, FamilyOrganizationMembership, FamilyTeam, FamilyTeamMembership}
 
-// BusinessFamilies lists the business families, parents first: team grants
-// designate the models of providers and virtual models, and the middlewares,
-// team members hold roles, applications are bound to teams, quotas cap
-// applications and teams.
-var BusinessFamilies = []string{FamilyProvider, FamilyCustomRole, FamilyVirtualModel, FamilyMiddleware, FamilyTeamSettings, FamilyApplication, FamilyQuota, FamilyAlert}
+// BusinessFamilies lists the business families, parents first: models
+// belong to providers, middlewares target models and virtual models, team
+// grants designate them and the middlewares, team members hold roles,
+// applications are bound to teams, quotas cap applications and teams.
+var BusinessFamilies = []string{FamilyProvider, FamilyLLMModel, FamilyCustomRole, FamilyVirtualModel, FamilyMiddleware, FamilyTeamSettings, FamilyApplication, FamilyQuota, FamilyAlert}
 
 // IsBusinessFamily tells whether family is a business family.
 func IsBusinessFamily(family string) bool { return slices.Contains(BusinessFamilies, family) }
+
+// IsReadOnlyFamily tells whether the API only reads family: its resources
+// are written locally, and published like the others.
+func IsReadOnlyFamily(family string) bool { return family == FamilyLLMModel }
 
 // CommonKey identifies a resource independently of its mutable representation.
 type CommonKey struct {

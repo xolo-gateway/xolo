@@ -61,9 +61,10 @@ func (s *Store) SaveProvider(ctx context.Context, p model.Provider) error {
 	})
 }
 
-// DeleteProvider implements port.ProviderStore.
+// DeleteProvider implements port.ProviderStore. Its models are removed with
+// it, by the foreign key, and their deletion published.
 func (s *Store) DeleteProvider(ctx context.Context, id model.ProviderID) error {
-	return s.recorded(ctx, tracking("provider", string(id)), func(ctx context.Context, db *gorm.DB) error {
+	return s.recorded(ctx, trackingTree("provider", string(id)), func(ctx context.Context, db *gorm.DB) error {
 		result := db.Delete(&Provider{}, "id = ?", string(id))
 		if result.Error != nil {
 			return errors.WithStack(result.Error)
@@ -77,7 +78,7 @@ func (s *Store) DeleteProvider(ctx context.Context, id model.ProviderID) error {
 
 // CreateLLMModel implements port.ProviderStore.
 func (s *Store) CreateLLMModel(ctx context.Context, m model.LLMModel) error {
-	return s.withRetry(ctx, true, func(ctx context.Context, db *gorm.DB) error {
+	return s.recorded(ctx, tracking("llm_model", string(m.ID())), func(ctx context.Context, db *gorm.DB) error {
 		return errors.WithStack(db.Create(fromLLMModel(m)).Error)
 	})
 }
@@ -154,7 +155,7 @@ func (s *Store) ListEnabledLLMModels(ctx context.Context, orgID model.OrgID) ([]
 
 // SaveLLMModel implements port.ProviderStore.
 func (s *Store) SaveLLMModel(ctx context.Context, m model.LLMModel) error {
-	return s.withRetry(ctx, true, func(ctx context.Context, db *gorm.DB) error {
+	return s.recorded(ctx, tracking("llm_model", string(m.ID())), func(ctx context.Context, db *gorm.DB) error {
 		return errors.WithStack(db.Clauses(clause.OnConflict{
 			Columns:   []clause.Column{{Name: "id"}},
 			UpdateAll: true,
@@ -164,7 +165,7 @@ func (s *Store) SaveLLMModel(ctx context.Context, m model.LLMModel) error {
 
 // DeleteLLMModel implements port.ProviderStore.
 func (s *Store) DeleteLLMModel(ctx context.Context, id model.LLMModelID) error {
-	return s.withRetry(ctx, true, func(ctx context.Context, db *gorm.DB) error {
+	return s.recorded(ctx, tracking("llm_model", string(id)), func(ctx context.Context, db *gorm.DB) error {
 		result := db.Delete(&LLMModel{}, "id = ?", string(id))
 		if result.Error != nil {
 			return errors.WithStack(result.Error)

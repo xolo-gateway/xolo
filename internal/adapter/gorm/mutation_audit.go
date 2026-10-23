@@ -35,7 +35,7 @@ type mutationKey struct{ kind, id string }
 var resourceTables = map[string]string{
 	"tenant": "tenants", "organization": "organizations", "user": "users", "membership": "memberships", "role": "roles", "domain": "domains",
 	// The quota table keeps the singular name GORM gave it.
-	"application": "applications", "quota": "quota", "alert": "alerts", "provider": "providers",
+	"application": "applications", "quota": "quota", "alert": "alerts", "provider": "providers", "llm_model": "llm_models",
 	"team": "teams", "team_settings": "teams", "team_member": "team_members",
 	"virtual_model": "virtual_models", "middleware": "middlewares",
 }
@@ -67,6 +67,9 @@ var mutationColumns = map[string]string{
 	"alert": "id, org_id, owner_id, scope, name, description, query, aggregation, window_seconds, comparator, threshold, for_seconds, enabled",
 	// api_key is replaced by its fingerprint before leaving the snapshot.
 	"provider": "id, org_id, name, type, base_url, api_key, active, currency, cloud_tier, billing_mode, subscription_plan, retry_config, rate_limit_config, request_headers",
+	// Only what designates a model: its routing (real model, base URL, extra
+	// body), pricing and catalog are configuration the API does not expose.
+	"llm_model": "id, org_id, provider_id, proxy_name, kind, enabled",
 	// The secrets of their plugin nodes are replaced by a fingerprint.
 	"virtual_model": "id, org_id, name, description, graph_json, overrides_json",
 	"middleware":    "id, org_id, name, description, enabled, priority, applies_to_all, targets_json, graph_json",
@@ -193,7 +196,7 @@ func mutationSnapshot(db *gorm.DB, key mutationKey) ([]byte, error) {
 		return nil, err
 	}
 	if key.kind == "membership" || key.kind == "role" || key.kind == "application" || key.kind == "alert" || key.kind == "provider" || key.kind == "team" || key.kind == "team_settings" ||
-		key.kind == "virtual_model" || key.kind == "middleware" {
+		key.kind == "virtual_model" || key.kind == "middleware" || key.kind == "llm_model" {
 		var tenantID string
 		if err := db.Table("organizations").Where("id = ?", row["org_id"]).Pluck("tenant_id", &tenantID).Error; err != nil {
 			return nil, err
@@ -359,7 +362,7 @@ func (r *mutationRecorder) trackDependents(kind, id string) error {
 		if err := trackIDs("role", "org_id"); err != nil {
 			return err
 		}
-		for _, resource := range []string{"application", "alert", "provider", "team", "virtual_model", "middleware"} {
+		for _, resource := range []string{"application", "alert", "provider", "llm_model", "team", "virtual_model", "middleware"} {
 			if err := trackIDs(resource, "org_id"); err != nil {
 				return err
 			}
@@ -415,6 +418,9 @@ func (r *mutationRecorder) trackDependents(kind, id string) error {
 		return r.trackQuota(model.QuotaScopeUser, id)
 	case "application":
 		return r.trackQuota(model.QuotaScopeApplication, id)
+	case "provider":
+		// Its models are removed with it.
+		return trackIDs("llm_model", "provider_id")
 	case "role":
 		var apps []string
 		if err := r.db.Table("application_roles").Where("role_id = ?", id).Order("application_id").Pluck("application_id", &apps).Error; err != nil {

@@ -145,7 +145,7 @@ func businessScopes(fixture ownershipFixture, f businessFixture) map[string]mode
 	return map[string]model.CommonScope{
 		f.provider: org(model.FamilyProvider), f.role: org(model.FamilyCustomRole), f.team: org(model.FamilyTeamSettings), f.app: org(model.FamilyApplication),
 		f.alert: org(model.FamilyAlert), f.quota: {Family: model.FamilyQuota, TenantID: string(testTenantID)},
-		f.virtualModel: org(model.FamilyVirtualModel), f.middleware: org(model.FamilyMiddleware),
+		f.virtualModel: org(model.FamilyVirtualModel), f.middleware: org(model.FamilyMiddleware), string(f.llm): org(model.FamilyLLMModel),
 	}
 }
 
@@ -163,14 +163,15 @@ func TestBusinessRoundTrip(t *testing.T) {
 
 		events, _ := feedSince(t, store, cursor)
 		require.Equal(t, []string{
-			"provider.created.v1", "virtual_model.created.v1", "middleware.created.v1", "custom_role.created.v1", "team.created.v1", "team_settings.created.v1",
+			"provider.created.v1", "llm_model.created.v1", "virtual_model.created.v1", "middleware.created.v1", "custom_role.created.v1", "team.created.v1", "team_settings.created.v1",
 			"team_membership.created.v1", "team_settings.updated.v1", "application.created.v1", "quota.created.v1", "alert.created.v1",
 		}, eventTypes(events))
-		require.Equal(t, model.CommonKey{TenantID: string(testTenantID), OrganizationID: string(fixture.org), ResourceID: f.virtualModel}, events[1].Data.Key)
-		require.Equal(t, model.CommonKey{TenantID: string(testTenantID), OrganizationID: string(fixture.org), TeamID: f.team}, events[4].Data.Key)
-		require.Equal(t, model.CommonKey{TenantID: string(testTenantID), OrganizationID: string(fixture.org), TeamID: f.team, MemberID: string(f.user)}, events[6].Data.Key)
-		require.Equal(t, f.app, events[8].Data.Key.ResourceID)
-		require.Equal(t, string(fixture.org), events[8].Data.Key.OrganizationID)
+		require.Equal(t, model.CommonKey{TenantID: string(testTenantID), OrganizationID: string(fixture.org), ResourceID: string(f.llm)}, events[1].Data.Key)
+		require.Equal(t, model.CommonKey{TenantID: string(testTenantID), OrganizationID: string(fixture.org), ResourceID: f.virtualModel}, events[2].Data.Key)
+		require.Equal(t, model.CommonKey{TenantID: string(testTenantID), OrganizationID: string(fixture.org), TeamID: f.team}, events[5].Data.Key)
+		require.Equal(t, model.CommonKey{TenantID: string(testTenantID), OrganizationID: string(fixture.org), TeamID: f.team, MemberID: string(f.user)}, events[7].Data.Key)
+		require.Equal(t, f.app, events[9].Data.Key.ResourceID)
+		require.Equal(t, string(fixture.org), events[9].Data.Key.OrganizationID)
 
 		items := map[string]model.CommonItem{}
 		for key, scope := range businessScopes(fixture, f) {

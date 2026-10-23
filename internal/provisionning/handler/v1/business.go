@@ -23,6 +23,9 @@ type businessRoute struct {
 	// noDelete marks a family whose resource lives and dies with another:
 	// the settings of a team are removed with the team.
 	noDelete bool
+	// readOnly marks a family the API only reads: its resources are
+	// managed locally.
+	readOnly bool
 }
 
 var businessRoutes = []businessRoute{
@@ -40,6 +43,7 @@ var businessRoutes = []businessRoute{
 		required: []string{"name", "type", "base_url", "active", "currency", "cloud_tier", "billing_mode", "subscription_plan", "retry_config", "rate_limit_config"},
 		nullable: []string{"subscription_plan", "retry_config", "rate_limit_config", "request_headers"},
 		optional: []string{"api_key", "request_headers"}},
+	{family: model.FamilyLLMModel, readOnly: true},
 	{family: model.FamilyVirtualModel, required: []string{"name", "description", "catalog_overrides", "graph"}, nullable: []string{"catalog_overrides"}},
 	{family: model.FamilyMiddleware, required: []string{"name", "description", "enabled", "priority", "applies_to_all", "targets", "graph"}},
 }
@@ -52,6 +56,7 @@ var businessCollections = map[string]string{
 	model.FamilyQuota:        "quotas",
 	model.FamilyAlert:        "alerts",
 	model.FamilyProvider:     "providers",
+	model.FamilyLLMModel:     "llm-models",
 	model.FamilyVirtualModel: "virtual-models",
 	model.FamilyMiddleware:   "middlewares",
 }
@@ -71,6 +76,9 @@ func (h *Handler) mountBusiness() {
 		}
 		h.mux.HandleFunc("GET "+collection, h.handleBusinessList(route))
 		h.mux.HandleFunc("GET "+collection+"/{resourceID}", h.handleBusinessGet(route))
+		if route.readOnly {
+			continue
+		}
 		h.mux.HandleFunc("PUT "+collection+"/{resourceID}", h.handleBusinessPut(route))
 		if !route.noDelete {
 			h.mux.HandleFunc("DELETE "+collection+"/{resourceID}", h.handleBusinessDelete(route))

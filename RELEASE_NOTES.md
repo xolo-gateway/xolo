@@ -1,3 +1,22 @@
+# Unreleased — LLM models in the provisioning API
+
+The provisioning API exposes the models of the providers of an organization as
+the read-only business family `llm_model`, under
+`/v1/xolo/tenants/{tenantID}/organizations/{orgID}/llm-models`, with ETags and
+events: `{"provider_id","proxy_name","kind","enabled"}`, disabled models
+included. Their key is the ID a middleware target `{"kind":"llm","id"}` or a
+team model grant designates, and `proxy_name` the name the gateway resolves,
+without the organization slug nor a team segment. Models stay managed from the
+web UI, whose writes now publish `llm_model.created.v1`, `.updated.v1` and
+`.deleted.v1`; deleting a provider publishes the deletion of its models.
+Migration `202610230001` projects the existing models; it requires every
+server to be stopped.
+
+Details:
+[English](docs/en/administration/provisioning/provisioning.md#llm-models),
+[Français](docs/fr/administration/provisioning/provisioning.md#modeles-llm),
+[Español](docs/es/administration/provisioning/provisioning.md#modelos-llm).
+
 # Unreleased — virtual models and middlewares in the provisioning API
 
 The provisioning API manages virtual models and middlewares as two business

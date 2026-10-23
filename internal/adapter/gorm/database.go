@@ -697,6 +697,13 @@ func schemaMigrations(artifact *RecoveryArtifact) []*gormigrate.Migration {
 				return errors.New("pipeline projections migration cannot be rolled back: consumers rely on their revisions")
 			},
 		},
+		{
+			ID:      llmModelProjectionsMigrationID,
+			Migrate: migrateLLMModelProjections,
+			Rollback: func(*gorm.DB) error {
+				return errors.New("model projections migration cannot be rolled back: consumers rely on their revisions")
+			},
+		},
 	}
 }
 

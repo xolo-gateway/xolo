@@ -221,6 +221,13 @@ func businessFamilyOf(key mutationKey, row snapshotRow) (string, bool) {
 		return model.FamilyAlert, true
 	case "provider":
 		return model.FamilyProvider, true
+	case "llm_model":
+		// A model without provider is a former virtual model: virtual models
+		// have their own family.
+		if provider, _ := row["provider_id"].(string); provider == "" {
+			return "", false
+		}
+		return model.FamilyLLMModel, true
 	case "team_settings":
 		return model.FamilyTeamSettings, true
 	case "virtual_model":
@@ -240,6 +247,7 @@ var businessRepresentationFields = map[string][]string{
 	model.FamilyTeamSettings: {"description", "share_quota_equally", "model_grants", "middleware_ids", "member_roles"},
 	model.FamilyAlert:        {"name", "description", "scope", "owner_id", "query", "aggregation", "window_seconds", "comparator", "threshold", "for_seconds", "enabled"},
 	model.FamilyProvider:     {"name", "type", "base_url", "active", "currency", "cloud_tier", "billing_mode", "subscription_plan", "retry_config", "rate_limit_config", "request_headers"},
+	model.FamilyLLMModel:     {"provider_id", "proxy_name", "kind", "enabled"},
 	model.FamilyVirtualModel: {"name", "description", "catalog_overrides", "graph"},
 	model.FamilyMiddleware:   {"name", "description", "enabled", "priority", "applies_to_all", "targets", "graph"},
 }
@@ -295,6 +303,11 @@ func businessRepresentation(family string, row snapshotRow) map[string]any {
 		if team, _ := rep["team_id"].(string); team == "" {
 			rep["team_id"] = ""
 		}
+	}
+	if family == model.FamilyLLMModel {
+		// Models stored before kinds existed are completion models.
+		kind, _ := rep["kind"].(string)
+		rep["kind"] = string(model.KindOrDefault(model.ModelKind(kind)))
 	}
 	if family == model.FamilyQuota {
 		// Quotas set before cascades existed are free.
