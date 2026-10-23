@@ -177,27 +177,25 @@ func pipelineSecretsFingerprint(db *gorm.DB, orgID string, graph *model.Pipeline
 	if migratingSchema(db) && !db.Migrator().HasTable(&PluginNodeSecret{}) {
 		return "", nil
 	}
-	plugins := make([]string, 0, len(placements))
+	// Only the secrets of the placements of graph are read: the cost of a
+	// snapshot follows the graph, not the secrets of the organization.
+	matches := make([]string, 0, len(placements))
+	args := make([]any, 0, 1+2*len(placements))
+	args = append(args, orgID)
 	for _, p := range placements {
-		if !slices.Contains(plugins, p.Plugin) {
-			plugins = append(plugins, p.Plugin)
-		}
+		matches = append(matches, "(plugin_name = ? AND node_id = ?)")
+		args = append(args, p.Plugin, p.Node)
 	}
 	var secrets []PluginNodeSecret
-	if err := db.Select("plugin_name, node_id, key, value_encrypted").Where("org_id = ? AND plugin_name IN ?", orgID, plugins).
+	if err := db.Select("plugin_name, node_id, key, value_encrypted").Where("org_id = ? AND ("+strings.Join(matches, " OR ")+")", args...).
 		Order("plugin_name, node_id, key").Find(&secrets).Error; err != nil {
 		return "", err
 	}
 	hash := sha256.New()
-	held := false
 	for _, secret := range secrets {
-		if !slices.Contains(placements, model.PluginPlacement{Plugin: secret.PluginName, Node: secret.NodeID}) {
-			continue
-		}
-		held = true
 		fmt.Fprintf(hash, "%s\x00%s\x00%s\x00%s\x00", secret.PluginName, secret.NodeID, secret.Key, secret.ValueEncrypted)
 	}
-	if !held {
+	if len(secrets) == 0 {
 		return "", nil
 	}
 	return hex.EncodeToString(hash.Sum(nil)[:8]), nil

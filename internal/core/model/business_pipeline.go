@@ -96,6 +96,8 @@ func (g PipelineGraphSettings) Normalize() PipelineGraphSettings {
 		nodes = []PipelineNodeSettings{}
 	}
 	for i := range nodes {
+		// A configuration that is no JSON keeps its bytes: refusing it is
+		// the job of the validation of the graph, which every write runs.
 		if canonical, err := CanonicalJSON(nodes[i].Data); err == nil {
 			nodes[i].Data = canonical
 		}

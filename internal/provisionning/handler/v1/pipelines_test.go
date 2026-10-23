@@ -6,6 +6,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
+	"github.com/xolo-gateway/xolo/internal/core/model"
 	"github.com/xolo-gateway/xolo/internal/core/service"
 )
 
@@ -103,4 +104,32 @@ func TestPipelineEndpoints(t *testing.T) {
 	assertStatus(t, rec, http.StatusNoContent)
 	rec = call(t, env.handler, http.MethodGet, models+"/"+key+"/nodes", nil)
 	assertStatus(t, rec, http.StatusNotFound)
+}
+
+// TestPipelineNodesMiddleware serves the nodes of a middleware, refuses a
+// change of secret alone to an authority that does not own the family and
+// answers 400 to a graph that does not decode.
+func TestPipelineNodesMiddleware(t *testing.T) {
+	env := newEnv(t, service.WithSecretKey(testSecretKey),
+		service.WithOwnershipPolicy(model.OwnershipPolicy{model.FamilyMiddleware: model.OwnerControlPlane}))
+	orgID, _ := createOrganization(t, env.handler, env.tenantID, "acme", false)
+	middlewares := env.xoloBase + "/organizations/" + orgID + "/middlewares"
+	key := uuid.NewString()
+	body := virtualModelBody(0.5)
+	delete(body, "catalog_overrides")
+	body["name"], body["enabled"], body["priority"], body["applies_to_all"], body["targets"] = "Guard", true, 0, true, []any{}
+
+	rec := call(t, env.handler, http.MethodPut, middlewares+"/"+key, body)
+	assertStatus(t, rec, http.StatusOK)
+	rec = call(t, env.handler, http.MethodGet, middlewares+"/"+key+"/nodes/guard", nil)
+	assertStatus(t, rec, http.StatusOK)
+	require.Equal(t, "plugin", decodeBody(t, rec)["type"])
+
+	update := map[string]any{"data": map[string]any{"pluginName": "guard", "config": map[string]any{"threshold": 0.5}}, "secrets": map[string]any{"token": "s3cr3t-value"}}
+	rec = call(t, env.handler, http.MethodPut, middlewares+"/"+key+"/nodes/guard", update)
+	assertStatus(t, rec, http.StatusForbidden)
+	require.Equal(t, "ownership_denied", decodeBody(t, rec)["error"].(map[string]any)["code"], rec.Body.String())
+
+	body["graph"] = "not a graph"
+	assertStatus(t, call(t, env.handler, http.MethodPut, middlewares+"/"+uuid.NewString(), body), http.StatusBadRequest)
 }

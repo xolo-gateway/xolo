@@ -350,6 +350,10 @@ func (s *ProvisioningService) PutPipelineNode(ctx context.Context, scope model.C
 		if err := ValidatePipelineNode(next); err != nil {
 			return err
 		}
+		// The placement of a node is invariant here, which spares the
+		// placement rule of checkPipeline: its type never changes and a
+		// change of plugin is refused. Widening PipelineNodeUpdate to the
+		// type or the plugin requires checking placements again.
 		placement := model.PluginPlacements(&model.PipelineGraph{Nodes: []model.PipelineNode{current}})
 		if current.Type == model.NodeTypePlugin {
 			after := model.PluginPlacements(&model.PipelineGraph{Nodes: []model.PipelineNode{next}})

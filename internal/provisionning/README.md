@@ -718,8 +718,11 @@ their `PUT` or node by node:
   middlewares without publishing any event; like the previous ones, it
   requires every server to be stopped.
 - Known limits: deleting a virtual model or a middleware, here as in the web
-  UI, leaves the team grants and attachments that designate it; personal
-  virtual models stay out of this API.
+  UI, leaves the team grants and attachments that designate it (#164); the
+  web UI import keeps the node IDs of a bundle and does not check plugin
+  placements (#165); personal virtual models stay out of this API. A `graph`
+  that does not decode answers `400` here as on the internal API, a graph
+  that decodes but is refused answers `422` on both.
 
 ## Write authority, adoption and detachment
 
