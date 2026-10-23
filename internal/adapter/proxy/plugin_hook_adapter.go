@@ -36,6 +36,7 @@ type PipelineHookAdapter struct {
 	middlewareStore   port.MiddlewareStore
 	teamStore         TeamReader
 	quotaInfo         *QuotaInfoResolver
+	backwardTimeout   time.Duration
 }
 
 // TeamReader reads the teams of an organization, to know which middlewares
@@ -82,6 +83,13 @@ func (a *PipelineHookAdapter) PostResponse(ctx context.Context, req *genaiProxy.
 		req.Metadata[MetaResolvedModel] = realModel
 	}
 	return nil, nil
+}
+
+// WithBackwardTimeout bounds the backward pass of each response, see
+// DefaultBackwardTimeout. Zero leaves it unbounded.
+func (a *PipelineHookAdapter) WithBackwardTimeout(timeout time.Duration) *PipelineHookAdapter {
+	a.backwardTimeout = timeout
+	return a
 }
 
 // WithQuotaInfo enables the resolution of the requesting user's remaining
@@ -132,6 +140,7 @@ func NewPipelineHookAdapter(
 		orgStore:          orgStore,
 		providerStore:     providerStore,
 		middlewareStore:   middlewareStore,
+		backwardTimeout:   DefaultBackwardTimeout,
 	}
 }
 
@@ -539,7 +548,7 @@ func (a *PipelineHookAdapter) ResolveModel(ctx context.Context, req *genaiProxy.
 	req.Metadata[MetaOriginalModel] = req.Model
 	req.Metadata[MetaResolvedModel] = forwardExec.ResolvedModel
 
-	client := NewPipelineWrappedClient(forwardExec.ResolvedClient, a.engine, forwardExec, ec)
+	client := NewPipelineWrappedClient(forwardExec.ResolvedClient, a.engine, forwardExec, ec).WithBackwardTimeout(a.backwardTimeout)
 	return client, forwardExec.ResolvedModel, nil
 }
 

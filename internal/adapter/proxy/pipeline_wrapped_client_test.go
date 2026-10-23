@@ -570,13 +570,44 @@ func (e *stallingExecutor) Backward(ctx context.Context, _ pipeline.BackwardInpu
 	return nil, ctx.Err()
 }
 
+// The backward pass is bounded by the configured timeout, 30 s by default,
+// and unbounded at zero; it never ends with the caller.
+func TestPipelineWrappedClient_BackwardContextTimeout(t *testing.T) {
+	caller, cancel := context.WithCancel(context.Background())
+	cancel()
+	for name, tc := range map[string]struct {
+		timeout  time.Duration
+		bounded  bool
+		override bool
+	}{
+		"default":    {DefaultBackwardTimeout, true, false},
+		"configured": {time.Minute, true, true},
+		"zero":       {0, false, true},
+	} {
+		t.Run(name, func(t *testing.T) {
+			client := NewPipelineWrappedClient(nil, nil, nil, pipeline.ExecutionContext{})
+			if tc.override {
+				client.WithBackwardTimeout(tc.timeout)
+			}
+			ctx, cancelBack := client.detachedBackwardContext(caller)
+			defer cancelBack()
+			if ctx.Err() != nil {
+				t.Fatalf("the backward context ended with the caller: %v", ctx.Err())
+			}
+			deadline, ok := ctx.Deadline()
+			if ok != tc.bounded {
+				t.Fatalf("deadline set = %v, want %v", ok, tc.bounded)
+			}
+			if ok && time.Until(deadline) > tc.timeout {
+				t.Errorf("deadline in %v, want at most %v", time.Until(deadline), tc.timeout)
+			}
+		})
+	}
+}
+
 // A node that hangs is cut by the timeout: the answer goes out as the model
 // wrote it, and the log says the pass timed out.
 func TestPipelineWrappedClient_ChatCompletionStream_BackwardTimeout(t *testing.T) {
-	previous := backwardTimeout
-	backwardTimeout = 20 * time.Millisecond
-	t.Cleanup(func() { backwardTimeout = previous })
-
 	var logs bytes.Buffer
 	previousLogger := slog.Default()
 	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, nil)))
@@ -584,7 +615,8 @@ func TestPipelineWrappedClient_ChatCompletionStream_BackwardTimeout(t *testing.T
 
 	registry := pipeline.NewRegistry()
 	registry.Register("rewrite", &stallingExecutor{})
-	wrapped := NewPipelineWrappedClient(&multiChunkClient{parts: []string{"Bonjour ", "[PERSON_1]"}}, pipeline.NewEngine(registry), newTestForwardExecution(), pipeline.ExecutionContext{})
+	wrapped := NewPipelineWrappedClient(&multiChunkClient{parts: []string{"Bonjour ", "[PERSON_1]"}}, pipeline.NewEngine(registry), newTestForwardExecution(), pipeline.ExecutionContext{}).
+		WithBackwardTimeout(20 * time.Millisecond)
 
 	ch, err := wrapped.ChatCompletionStream(context.Background())
 	if err != nil {

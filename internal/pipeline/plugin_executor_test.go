@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/bornholm/genai/llm"
 	"github.com/xolo-gateway/xolo/internal/core/model"
@@ -29,6 +30,35 @@ func (postRespFailingClient) Transcription(context.Context, []byte, ...llm.Trans
 }
 
 var errUpstreamDown = errors.New("upstream down")
+
+// TestPluginExecutor_BackwardDeadline hands a PostResponse cut by its
+// deadline to the engine, which logs it as a timeout, and keeps any other
+// failure of the plugin to itself.
+func TestPluginExecutor_BackwardDeadline(t *testing.T) {
+	failure := errors.New("plugin down")
+	pluginClient := &pipelinetest.PluginClient{
+		PostResponseFunc: func(ctx context.Context, _ *proto.PostResponseInput) (*proto.PostResponseOutput, error) {
+			if err := ctx.Err(); err != nil {
+				return nil, err
+			}
+			return nil, failure
+		},
+	}
+	executor := pipeline.NewPluginExecutor(pipelinetest.NewPluginProvider().
+		Register("post-only", pipelinetest.PostOnlyDescriptor("post-only"), pluginClient))
+	node := model.PipelineNode{ID: "post", Type: model.NodeTypePlugin, Data: pipelinetest.MustJSON(model.PluginNodeData{PluginName: "post-only"})}
+
+	if _, err := executor.Backward(context.Background(), pipeline.BackwardInput{Node: node}); err != nil {
+		t.Fatalf("a plugin failure must stay non-fatal, got %v", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Nanosecond)
+	defer cancel()
+	<-ctx.Done()
+	if _, err := executor.Backward(ctx, pipeline.BackwardInput{Node: node}); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("a pass cut by its deadline must reach the engine, got %v", err)
+	}
+}
 
 // TestPipeline_PostResponsePluginReceivesResolvedModelAfterFallback wires
 // Generator -> Plugin(POST_RESPONSE) -> ModelFallback(primary fails, secondary

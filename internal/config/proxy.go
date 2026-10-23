@@ -13,6 +13,14 @@ type ProxyConfig struct {
 	// provider instead of an opaque reverse-proxy timeout. The reverse proxy
 	// in front of Xolo must keep a strictly longer timeout. "0" disables it.
 	UpstreamTimeout time.Duration `env:"UPSTREAM_TIMEOUT,expand" envDefault:"5m"`
+	// PipelineBackwardTimeout bounds the backward pass of a pipeline, the
+	// post-response nodes (a plugin's PostResponse, the pseudonymizer restoring
+	// its values) that run once the model has answered. The pass outlives a
+	// caller that leaves, so this is what stops a node that hangs; a pass cut
+	// by it is logged as timed out and the response goes out without that
+	// node's rewrite. Raise it for plugins that are slow to answer, "0" leaves
+	// the pass unbounded.
+	PipelineBackwardTimeout time.Duration `env:"PIPELINE_BACKWARD_TIMEOUT,expand" envDefault:"30s"`
 	// ActiveUserCacheTTL is how long the number of users active on a
 	// subscription plan is reused before being counted again. That count is a
 	// COUNT(DISTINCT user_id) over the plan's whole window, run for every proxy

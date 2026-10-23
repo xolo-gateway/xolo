@@ -52,7 +52,7 @@ func (c *PipelineWrappedClient) relayRestoring(ctx context.Context, source <-cha
 		ran := false
 		flush := func(hadError bool) []llm.StreamChunk {
 			ran = true
-			backCtx, cancel := detachedBackwardContext(ctx)
+			backCtx, cancel := c.detachedBackwardContext(ctx)
 			defer cancel()
 			return c.restore(backCtx, &held, lastTokens, hadError)
 		}

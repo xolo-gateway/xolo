@@ -10,19 +10,22 @@ import (
 	"github.com/xolo-gateway/xolo/internal/pipeline"
 )
 
-// backwardTimeout bounds the backward pass of a response. It runs detached from
-// the request, so the caller leaving cannot cut it short: a node that hangs
-// would otherwise hold the request's goroutine forever. A pass cut by the
-// timeout fails like any other, and the response goes out unmodified. A
-// variable only so tests can shorten it.
-var backwardTimeout = 30 * time.Second
+// DefaultBackwardTimeout bounds the backward pass of a response unless
+// XOLO_PROXY_PIPELINE_BACKWARD_TIMEOUT says otherwise. The pass runs detached
+// from the request, so the caller leaving cannot cut it short: a node that
+// hangs would otherwise hold its goroutine forever. A pass cut by the timeout
+// fails like any other, and the response goes out unmodified.
+const DefaultBackwardTimeout = 30 * time.Second
 
 // detachedBackwardContext returns the context a backward pass runs on: it
-// keeps ctx's values, outlives the caller and ends after backwardTimeout.
-// Create it when the pass starts, not before: the timeout bounds the pass,
-// not the response it follows.
-func detachedBackwardContext(ctx context.Context) (context.Context, context.CancelFunc) {
-	return context.WithTimeout(context.WithoutCancel(ctx), backwardTimeout)
+// keeps ctx's values, outlives the caller and ends after the backward timeout
+// of the client, never when it is zero. Create it when the pass starts, not
+// before: the timeout bounds the pass, not the response it follows.
+func (c *PipelineWrappedClient) detachedBackwardContext(ctx context.Context) (context.Context, context.CancelFunc) {
+	if c.backwardTimeout <= 0 {
+		return context.WithCancel(context.WithoutCancel(ctx))
+	}
+	return context.WithTimeout(context.WithoutCancel(ctx), c.backwardTimeout)
 }
 
 // PipelineWrappedClient wraps an llm.Client to run the pipeline's backward pass
@@ -32,6 +35,8 @@ type PipelineWrappedClient struct {
 	engine      *pipeline.Engine
 	forwardExec *pipeline.ForwardExecution
 	ec          pipeline.ExecutionContext
+
+	backwardTimeout time.Duration
 }
 
 // NewPipelineWrappedClient creates a PipelineWrappedClient.
@@ -41,7 +46,14 @@ func NewPipelineWrappedClient(
 	forwardExec *pipeline.ForwardExecution,
 	ec pipeline.ExecutionContext,
 ) *PipelineWrappedClient {
-	return &PipelineWrappedClient{inner: inner, engine: engine, forwardExec: forwardExec, ec: ec}
+	return &PipelineWrappedClient{inner: inner, engine: engine, forwardExec: forwardExec, ec: ec, backwardTimeout: DefaultBackwardTimeout}
+}
+
+// WithBackwardTimeout bounds the backward pass of each response, see
+// DefaultBackwardTimeout. Zero leaves it unbounded.
+func (c *PipelineWrappedClient) WithBackwardTimeout(timeout time.Duration) *PipelineWrappedClient {
+	c.backwardTimeout = timeout
+	return c
 }
 
 // ChatCompletion calls the inner client and runs the backward pass on the
@@ -60,7 +72,7 @@ func (c *PipelineWrappedClient) ChatCompletion(ctx context.Context, funcs ...llm
 	}
 	tokens := extractResponseTokens(resp)
 
-	backCtx, cancelBack := detachedBackwardContext(ctx)
+	backCtx, cancelBack := c.detachedBackwardContext(ctx)
 	defer cancelBack()
 	outcome, backErr := c.engine.RunBackwardWithToolCalls(backCtx, c.forwardExec, content, encodeToolCalls(resp.ToolCalls()), tokens, false)
 	if backErr != nil {
@@ -127,7 +139,7 @@ func (c *PipelineWrappedClient) ChatCompletionStream(ctx context.Context, funcs 
 		// caller leaving mid-pass would otherwise fail the nodes' PostResponse
 		// with "context canceled", and nodes that record state would miss the
 		// response.
-		backCtx, cancelBack := detachedBackwardContext(ctx)
+		backCtx, cancelBack := c.detachedBackwardContext(ctx)
 		defer cancelBack()
 
 		// The caller went away while the answer was being buffered: nothing
@@ -295,7 +307,7 @@ func (c *PipelineWrappedClient) runBackward(ctx context.Context, content string,
 // runBackwardDetached runs the backward pass on a context detached from the
 // caller, see detachedBackwardContext.
 func (c *PipelineWrappedClient) runBackwardDetached(ctx context.Context, content string, tokens *pipeline.TokensUsed, hadError bool) {
-	backCtx, cancel := detachedBackwardContext(ctx)
+	backCtx, cancel := c.detachedBackwardContext(ctx)
 	defer cancel()
 	c.runBackward(backCtx, content, tokens, hadError)
 }
