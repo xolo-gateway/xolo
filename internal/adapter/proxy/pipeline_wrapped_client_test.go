@@ -449,6 +449,82 @@ func (e passiveRecordingExecutor) ModifiesResponse(context.Context, model.Pipeli
 	return false
 }
 
+// lingeringClient streams its parts, then its completion chunk when complete
+// is set, and closes the stream only once the caller is gone: the provider
+// stopping because the request was canceled.
+type lingeringClient struct {
+	multiChunkClient
+	complete bool
+}
+
+func (c *lingeringClient) ChatCompletionStream(ctx context.Context, _ ...llm.ChatCompletionOptionFunc) (<-chan llm.StreamChunk, error) {
+	ch := make(chan llm.StreamChunk, len(c.parts)+1)
+	go func() {
+		defer close(ch)
+		for _, p := range c.parts {
+			ch <- llm.NewStreamChunk(llm.NewStreamDelta(llm.RoleAssistant, p))
+		}
+		if c.complete {
+			ch <- llm.NewCompleteStreamChunk(llm.NewChatCompletionUsage(0, 0, 0))
+		}
+		<-ctx.Done()
+	}()
+	return ch, nil
+}
+
+// The backward pass is told the answer is partial when the caller left before
+// the provider finished it, and only then: on the passthrough path the source
+// simply ends, on the buffered path the answer may be whole though nobody
+// reads it.
+func TestPipelineWrappedClient_ChatCompletionStream_CallerLeavesHadError(t *testing.T) {
+	for name, tc := range map[string]struct {
+		passthrough bool
+		complete    bool
+		hadErr      bool
+	}{
+		"passthrough cut":   {passthrough: true, complete: false, hadErr: true},
+		"passthrough whole": {passthrough: true, complete: true, hadErr: false},
+		"buffered cut":      {passthrough: false, complete: false, hadErr: true},
+		"buffered whole":    {passthrough: false, complete: true, hadErr: false},
+	} {
+		t.Run(name, func(t *testing.T) {
+			exec := &recordingExecutor{done: make(chan struct{})}
+			registry := pipeline.NewRegistry()
+			if tc.passthrough {
+				registry.Register("rewrite", passiveRecordingExecutor{exec})
+			} else {
+				registry.Register("rewrite", exec)
+			}
+			client := &lingeringClient{multiChunkClient: multiChunkClient{parts: []string{"a", "b"}}, complete: tc.complete}
+			wrapped := NewPipelineWrappedClient(client, pipeline.NewEngine(registry), newTestForwardExecution(), pipeline.ExecutionContext{})
+
+			ctx, cancel := context.WithCancel(context.Background())
+			ch, err := wrapped.ChatCompletionStream(ctx)
+			if err != nil {
+				t.Fatalf("ChatCompletionStream() error = %v", err)
+			}
+			if tc.passthrough {
+				<-ch
+				<-ch
+			}
+			cancel()
+			go func() {
+				for range ch {
+				}
+			}()
+
+			select {
+			case <-exec.done:
+			case <-time.After(2 * time.Second):
+				t.Fatal("the backward pass did not run")
+			}
+			if exec.hadErr != tc.hadErr {
+				t.Errorf("backward pass hadError = %v, want %v", exec.hadErr, tc.hadErr)
+			}
+		})
+	}
+}
+
 // A caller that leaves once the whole answer was relayed, while the backward
 // pass runs, must not cancel it.
 func TestPipelineWrappedClient_ChatCompletionStream_PassthroughBackwardOutlivesCaller(t *testing.T) {

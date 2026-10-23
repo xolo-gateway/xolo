@@ -118,9 +118,11 @@ func (c *PipelineWrappedClient) ChatCompletionStream(ctx context.Context, funcs 
 		var buf bytes.Buffer
 		var lastTokens *pipeline.TokensUsed
 		calls := &streamedToolCalls{}
+		complete := false
 
 		for chunk := range sourceCh {
 			chunks = append(chunks, chunk)
+			complete = complete || chunk.IsComplete()
 			if d := chunk.Delta(); d != nil {
 				buf.WriteString(d.Content())
 				calls.collect(d.ToolCalls())
@@ -142,11 +144,12 @@ func (c *PipelineWrappedClient) ChatCompletionStream(ctx context.Context, funcs 
 		backCtx, cancelBack := c.detachedBackwardContext(ctx)
 		defer cancelBack()
 
-		// The caller went away while the answer was being buffered: nothing
-		// will read it. The backward pass still runs so nodes that record
-		// state see the partial response, as on the passthrough path.
+		// The caller went away: nothing will read the answer. The backward
+		// pass still runs so nodes that record state see it, told partial
+		// only when the provider did not finish it, as on the passthrough
+		// path: the caller leaving and the answer being cut are two things.
 		if ctx.Err() != nil {
-			if _, err := c.engine.RunBackwardWithToolCalls(backCtx, c.forwardExec, content, calls.json(), lastTokens, true); err != nil {
+			if _, err := c.engine.RunBackwardWithToolCalls(backCtx, c.forwardExec, content, calls.json(), lastTokens, !complete); err != nil {
 				slog.WarnContext(ctx, "pipeline backward pass (stream) failed", slog.Any("error", err))
 			}
 			return
@@ -249,8 +252,10 @@ func (c *PipelineWrappedClient) streamPassthrough(ctx context.Context, sourceCh 
 
 		var buf bytes.Buffer
 		var lastTokens *pipeline.TokensUsed
+		complete := false
 
 		for chunk := range sourceCh {
+			complete = complete || chunk.IsComplete()
 			buf.WriteString(chunkText(chunk))
 			if u := chunk.Usage(); u != nil {
 				lastTokens = &pipeline.TokensUsed{
@@ -280,8 +285,10 @@ func (c *PipelineWrappedClient) streamPassthrough(ctx context.Context, sourceCh 
 		// this one. Worth revisiting the day such a node exists.
 		//
 		// The caller may leave right after the last chunk: the backward pass
-		// outlives it, as on the other paths.
-		c.runBackwardDetached(ctx, buf.String(), lastTokens, false)
+		// outlives it, as on the other paths. A caller leaving earlier makes
+		// the provider stop, and the source then ends without its completion
+		// chunk: the nodes are told the answer is partial.
+		c.runBackwardDetached(ctx, buf.String(), lastTokens, ctx.Err() != nil && !complete)
 	}()
 
 	return outCh
