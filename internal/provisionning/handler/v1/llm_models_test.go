@@ -14,7 +14,7 @@ import (
 // TestLLMModelEndpoints reads the models of an organization, disabled ones
 // included, and never writes them.
 func TestLLMModelEndpoints(t *testing.T) {
-	env := newEnv(t, service.WithSecretKey(testSecretKey))
+	env := newEnv(t, service.WithMultiTenant(true), service.WithSecretKey(testSecretKey))
 	orgID, _ := createOrganization(t, env.handler, env.tenantID, "acme", false)
 	providerID := uuid.NewString()
 	assertStatus(t, call(t, env.handler, http.MethodPut, env.xoloBase+"/organizations/"+orgID+"/providers/"+providerID, providerBody("OpenAI")), http.StatusOK)
@@ -24,6 +24,9 @@ func TestLLMModelEndpoints(t *testing.T) {
 	disabled := model.NewLLMModel(model.ProviderID(providerID), model.OrgID(orgID), "meta/llama", "llama", "", 0, 0)
 	disabled.SetEnabled(false)
 	require.NoError(t, env.store.CreateLLMModel(t.Context(), disabled))
+
+	// Virtual models have their own family.
+	assertStatus(t, call(t, env.handler, http.MethodPut, env.xoloBase+"/organizations/"+orgID+"/virtual-models/"+uuid.NewString(), virtualModelBody(0.5)), http.StatusOK)
 
 	models := env.xoloBase + "/organizations/" + orgID + "/llm-models"
 	rec := call(t, env.handler, http.MethodGet, models, nil)
@@ -51,4 +54,14 @@ func TestLLMModelEndpoints(t *testing.T) {
 	rec = call(t, env.handler, http.MethodGet, strings.Replace(models, orgID, otherID, 1), nil)
 	assertStatus(t, rec, http.StatusOK)
 	require.Empty(t, decodeBody(t, rec)["items"])
+
+	// Under another tenant, or an unknown organization, too.
+	otherTenant := uuid.NewString()
+	assertStatus(t, call(t, env.handler, http.MethodPut, "/v1/tenants/"+otherTenant, resource("other")), http.StatusOK)
+	rec = call(t, env.handler, http.MethodGet, strings.Replace(models, env.tenantID, otherTenant, 1)+"/"+string(enabled.ID()), nil)
+	assertStatus(t, rec, http.StatusNotFound)
+	rec = call(t, env.handler, http.MethodGet, strings.Replace(models, orgID, uuid.NewString(), 1), nil)
+	assertStatus(t, rec, http.StatusNotFound)
+	rec = call(t, env.handler, http.MethodGet, strings.Replace(models, orgID, uuid.NewString(), 1)+"/"+string(enabled.ID()), nil)
+	assertStatus(t, rec, http.StatusNotFound)
 }

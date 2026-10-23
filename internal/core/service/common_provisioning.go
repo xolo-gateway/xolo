@@ -128,6 +128,9 @@ func (s *ProvisioningService) commonParentTenant(ctx context.Context, tenantID m
 // fails even for an identical representation. The result is the projection
 // written by the same transaction.
 func (s *ProvisioningService) PutCommon(ctx context.Context, scope model.CommonScope, key string, condition model.MatchCondition, put func(ctx context.Context, tx *ProvisioningService) error) (model.CommonItem, error) {
+	if model.IsReadOnlyFamily(scope.Family) {
+		return model.CommonItem{}, errors.WithStack(port.ErrInvalid)
+	}
 	var item model.CommonItem
 	ctx = model.EnsureActor(ctx)
 	err := s.transaction(ctx, func(tx *ProvisioningService) error {

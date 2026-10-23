@@ -596,7 +596,7 @@ only where shown.
 | `virtual_model` | `{"name","description","catalog_overrides","graph"}`, `catalog_overrides` `null` or `{"contextWindow","maxOutputTokens","capabilities"}`, as in the web UI |
 | `middleware` | `{"name","description","enabled","priority","applies_to_all","targets":[{"kind","id"}],"graph"}` |
 | `llm_model` | `{"provider_id","proxy_name","kind","enabled"}`, read-only |
-| `provider` | `{"name","type","base_url","active","currency","cloud_tier","billing_mode","subscription_plan","retry_config","rate_limit_config"}`, the last three `null` or objects, plus the write-only `"api_key"` |
+| `provider` | `{"name","type","base_url","active","currency","cloud_tier","billing_mode","subscription_plan","retry_config","rate_limit_config"}`, the last three `null` or objects, plus the write-only `"api_key"` and the optional `"request_headers"`: `null` or `{"headers":{"Name":"value"},"session_header":"x-opencode-session"}`, the headers a gateway requires (empty values and credential, cookie, framing and forwarding headers are refused) |
 
 - **Keys.** A new resource is created under a canonical UUID chosen by the
   client. A resource created from the web UI keeps its local identifier, which

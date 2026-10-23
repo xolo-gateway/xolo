@@ -1,12 +1,14 @@
 package gorm_test
 
 import (
+	"context"
 	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 	"github.com/xolo-gateway/xolo/internal/core/model"
 	"github.com/xolo-gateway/xolo/internal/core/port"
+	"github.com/xolo-gateway/xolo/internal/core/service"
 	gormpkg "gorm.io/gorm"
 )
 
@@ -53,8 +55,10 @@ func TestLLMModelProjection(t *testing.T) {
 		require.NoError(t, json.Unmarshal(updated.Representation, &rep))
 		require.Equal(t, false, rep["enabled"])
 
-		// The API never deletes a model.
+		// The API never writes a model.
 		require.ErrorIs(t, svc.DeleteBusiness(ctx, scope, string(f.llm), noCondition), port.ErrInvalid)
+		_, err = svc.PutCommon(ctx, scope, string(f.llm), noCondition, func(context.Context, *service.ProvisioningService) error { return nil })
+		require.ErrorIs(t, err, port.ErrInvalid)
 
 		second := model.NewLLMModel(llm.ProviderID(), llm.OrgID(), "embed", "text-embedding-3-small", "", 0, 0)
 		second.SetKind(model.ModelKindEmbeddings)

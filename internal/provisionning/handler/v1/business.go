@@ -12,6 +12,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/xolo-gateway/xolo/internal/core/model"
+	"github.com/xolo-gateway/xolo/internal/core/port"
 )
 
 // businessRoute describes the representation of a business family: the
@@ -246,12 +247,16 @@ func (h *Handler) putBusiness(ctx context.Context, scope model.CommonScope, key 
 			return model.CommonItem{}, err
 		}
 		return h.provisioning.PutMiddleware(ctx, tenantID, orgID, key, condition, v)
-	default:
+	case model.FamilyProvider:
 		var v model.ProviderSettings
 		if err := decode(&v); err != nil {
 			return model.CommonItem{}, err
 		}
 		return h.provisioning.PutProvider(ctx, tenantID, orgID, key, condition, v)
+	default:
+		// A read-only family has no PUT route; refused here as well, so that
+		// it never reaches the decoding of another family.
+		return model.CommonItem{}, port.ErrInvalid
 	}
 }
 
