@@ -157,12 +157,18 @@ func (c *PipelineWrappedClient) ChatCompletionStream(ctx context.Context, funcs 
 			// The proxy still needs one chunk: on a stream closed empty it
 			// runs its error hooks only, and the usage the provider billed
 			// would never be recorded. One chunk carrying that usage lands in
-			// the empty buffer without blocking; the proxy then finds the
-			// caller gone and runs its post-response hooks with it.
+			// the empty buffer; the proxy then finds the caller gone and runs
+			// its post-response hooks with it. The send never blocks: the
+			// caller's context is dead, so emit would drop it, and a full
+			// buffer must not hold this goroutine with no reader.
+			last := llm.NewStreamChunkWithUsage(llm.NewStreamDelta(llm.RoleAssistant, ""), usage)
 			if complete {
-				outCh <- llm.NewCompleteStreamChunk(usage)
-			} else {
-				outCh <- llm.NewStreamChunkWithUsage(llm.NewStreamDelta(llm.RoleAssistant, ""), usage)
+				last = llm.NewCompleteStreamChunk(usage)
+			}
+			select {
+			case outCh <- last:
+			default:
+				slog.WarnContext(ctx, "pipeline: no room for the usage chunk of an abandoned stream")
 			}
 			return
 		}
