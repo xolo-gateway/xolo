@@ -183,6 +183,9 @@ type ModelCardResolver struct {
 	// currencies memoizes ProviderCurrencies per organization, shared with
 	// the listing of the real models.
 	currencies map[model.OrgID]map[model.ProviderID]string
+	// virtualModels memoizes virtualModel by owner and local name, nil for
+	// a name that is no virtual model.
+	virtualModels map[string]model.VirtualModel
 }
 
 type scopedOrg struct {
@@ -202,7 +205,28 @@ func (s *ModelCardService) NewResolver(ctx context.Context, orgIDs []model.OrgID
 		userID:     userID,
 		orgs:       map[model.OrgID]*scopedOrg{},
 		currencies: map[model.OrgID]map[model.ProviderID]string{},
+
+		virtualModels: map[string]model.VirtualModel{},
 	}
+}
+
+// virtualModel looks up a virtual model of owner by its local name, once per
+// resolver: every card of a page may name the same candidates. A store error
+// other than not found is not memoized.
+func (r *ModelCardResolver) virtualModel(owner model.OrgID, name string) (model.VirtualModel, error) {
+	key := string(owner) + "/" + name
+	if vm, ok := r.virtualModels[key]; ok {
+		return vm, nil
+	}
+	vm, err := r.s.virtualModelStore.GetVirtualModelByName(r.ctx, owner, name)
+	switch {
+	case errors.Is(err, port.ErrNotFound):
+		vm, err = nil, nil
+	case err != nil:
+		return nil, err
+	}
+	r.virtualModels[key] = vm
+	return vm, nil
 }
 
 // ProviderCurrencies returns the currency of each provider of an
@@ -391,7 +415,7 @@ func (r *ModelCardResolver) resolveName(name string, owner model.OrgID, visited 
 	// Organization virtual model, looked up by its local name in the owning
 	// organization.
 	if r.s.virtualModelStore != nil && owner != "" {
-		vm, err := r.s.virtualModelStore.GetVirtualModelByName(r.ctx, owner, localName(name))
+		vm, err := r.virtualModel(owner, localName(name))
 		switch {
 		case err == nil && vm != nil:
 			key := "vm:" + string(vm.ID())
