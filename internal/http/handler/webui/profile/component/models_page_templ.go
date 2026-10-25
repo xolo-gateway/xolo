@@ -483,7 +483,7 @@ func ModelsPage(vmodel ModelsPageVModel) templ.Component {
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 30, ": Xolo n'a pas pu les déduire de leur pipeline, les clients les voient donc sans outils, vision ni raisonnement. Un administrateur de l'organisation peut les déclarer dans les surcharges catalogue du modèle virtuel.</p>")
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 30, ": Xolo n'a pas pu les déterminer, les clients les voient donc sans outils, vision ni raisonnement. Un administrateur de l'organisation peut les déclarer dans les surcharges catalogue du modèle virtuel.</p>")
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
@@ -1115,7 +1115,7 @@ func openCodeConfigExample(baseURL string, modelUsages []ModelUsage) string {
 }
 
 // undeterminedModelNames lists the names of the completion models whose
-// capabilities are undetermined, in the order of the OpenCode configuration.
+// capabilities are undetermined, sorted alphabetically.
 func undeterminedModelNames(modelUsages []ModelUsage) []string {
 	var names []string
 	for _, mu := range modelUsages {
