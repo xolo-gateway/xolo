@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"github.com/xolo-gateway/xolo/internal/core/model"
 	common "github.com/xolo-gateway/xolo/internal/http/handler/webui/common/component"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/accordion"
@@ -137,6 +138,18 @@ templ ModelsPage(vmodel ModelsPageVModel) {
 									@icon.Terminal(icon.Props{Class: "h-4 w-4 shrink-0"})
 								}
 							}
+							if names := undeterminedModelNames(vmodel.AllModelUsages); len(names) > 0 {
+								<p class="text-xs text-muted-foreground">
+									Capacités non déterminées pour
+									for i, name := range names {
+										if i > 0 {
+											{ ", " }
+										}
+										<span class="font-mono">{ name }</span>
+									}
+									{ " " }: leur pipeline ne permet pas de les déduire, les clients les voient donc sans outils, vision ni raisonnement. Un administrateur de l'organisation peut les déclarer dans les surcharges catalogue du modèle virtuel.
+								</p>
+							}
 						</div>
 					</div>
 				}
@@ -267,6 +280,9 @@ templ modelCard(mu ModelUsage) {
 					</span>
 					if mu.Model.IsVirtual() {
 						@common.Badge(common.ToneInfo, "virtuel")
+					}
+					if mu.CapabilitiesUndetermined {
+						@common.Badge(common.ToneWarning, "capacités non déterminées")
 					}
 					if mu.Model.Kind() != model.ModelKindCompletion {
 						@common.Badge(common.ToneInfo, common.ModelKindLabel(mu.Model.Kind()))
@@ -419,6 +435,19 @@ func openCodeConfigExample(baseURL string, modelUsages []ModelUsage) string {
 		return ""
 	}
 	return string(data)
+}
+
+// undeterminedModelNames lists the names of the completion models whose
+// capabilities are undetermined, in the order of the OpenCode configuration.
+func undeterminedModelNames(modelUsages []ModelUsage) []string {
+	var names []string
+	for _, mu := range modelUsages {
+		if mu.CapabilitiesUndetermined && mu.Model.Kind() == model.ModelKindCompletion {
+			names = append(names, ModelNames(mu)...)
+		}
+	}
+	slices.Sort(names)
+	return names
 }
 
 func formatCostPerM(microcentsPer1K int64, currency string) string {

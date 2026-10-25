@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/xolo-gateway/xolo/internal/core/model"
 	httpCtx "github.com/xolo-gateway/xolo/internal/http/context"
 	common "github.com/xolo-gateway/xolo/internal/http/handler/webui/common/component"
 )
@@ -300,5 +301,46 @@ func TestModelsPageRangeFormRoundTripsExplicitOrder(t *testing.T) {
 
 	if !strings.Contains(html, `name="order" value="desc"`) {
 		t.Errorf("explicit ?order=desc view must emit the hidden input, got:\n%s", html)
+	}
+}
+
+// TestModelsPageVirtualModelCapabilities pins how the page shows the
+// capabilities of virtual models: derived ones reach the OpenCode
+// configuration, undetermined ones are flagged on the card and named under
+// the examples, since their false values mean unknown.
+func TestModelsPageVirtualModelCapabilities(t *testing.T) {
+	current, _ := url.Parse("http://xolo.test/models")
+	ctx := httpCtx.SetBaseURL(context.Background(), "http://xolo.test")
+	ctx = httpCtx.SetCurrentURL(ctx, current)
+
+	derived := model.NewLLMModel("", "org", "thinker", "", "", 0, 0)
+	derived.SetCapabilities(model.ModelCapabilities{Reasoning: true})
+	undetermined := model.NewLLMModel("", "org", "router", "", "", 0, 0)
+	usages := []ModelUsage{
+		{Model: derived, Names: []string{"acme/thinker"}},
+		{Model: undetermined, Names: []string{"acme/router"}, CapabilitiesUndetermined: true},
+	}
+
+	var out strings.Builder
+	if err := ModelsPage(ModelsPageVModel{
+		AppLayoutVModel: common.AppLayoutVModel{
+			Breadcrumbs: []common.BreadcrumbItem{{Label: "X", Href: ""}},
+		},
+		ModelUsages:    usages,
+		AllModelUsages: usages,
+	}).Render(ctx, &out); err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	html := out.String()
+
+	if !strings.Contains(html, `&#34;reasoning&#34;: true`) {
+		t.Errorf("the derived reasoning capability must reach the OpenCode configuration, got:\n%s", html)
+	}
+	if got := strings.Count(html, "capacités non déterminées"); got != 1 {
+		t.Errorf("only the undetermined model must carry the badge, got %d", got)
+	}
+	note := html[strings.Index(html, "Capacités non déterminées pour"):]
+	if !strings.Contains(note, "acme/router") || strings.Contains(note[:strings.Index(note, "</p>")], "acme/thinker") {
+		t.Errorf("the note must name the undetermined model only, got:\n%s", note)
 	}
 }

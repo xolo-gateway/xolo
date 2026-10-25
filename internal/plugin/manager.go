@@ -399,3 +399,29 @@ func (m *Manager) initialize(ctx context.Context, client proto.XoloPluginClient,
 
 	return resp.HttpUiPort
 }
+
+// DescriptorLister lists the descriptors of the loaded plugins, as Manager
+// does.
+type DescriptorLister interface {
+	List() []*proto.PluginDescriptor
+}
+
+// ModelResolvers returns a function naming, among the plugins lister has
+// loaded, those that pick the model of a request at runtime. It returns nil
+// when lister is nil.
+func ModelResolvers(lister DescriptorLister) func() map[string]bool {
+	if lister == nil {
+		return nil
+	}
+	return func() map[string]bool {
+		out := map[string]bool{}
+		for _, d := range lister.List() {
+			for _, c := range d.GetCapabilities() {
+				if c == proto.PluginDescriptor_RESOLVE_MODEL {
+					out[d.GetName()] = true
+				}
+			}
+		}
+		return out
+	}
+}

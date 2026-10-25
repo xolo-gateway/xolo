@@ -29,6 +29,10 @@ type ModelUsage struct {
 	// Names are the names the user can call the model by: "<org>/<model>"
 	// for the organization-wide access, "<org>/<team>/<model>" per team.
 	Names []string
+	// CapabilitiesUndetermined is true for a virtual model whose capabilities
+	// are neither derived from its pipeline nor declared by its catalogue
+	// overrides: the false values of Model.Capabilities() then mean unknown.
+	CapabilitiesUndetermined bool
 }
 
 // ModelNames returns the names a model card shows, the qualified name when

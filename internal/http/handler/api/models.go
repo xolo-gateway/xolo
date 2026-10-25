@@ -1,7 +1,6 @@
 package api
 
 import (
-	"context"
 	"encoding/json"
 	"log/slog"
 	"net/http"
@@ -16,6 +15,7 @@ import (
 	"github.com/xolo-gateway/xolo/internal/core/service"
 	httpCtx "github.com/xolo-gateway/xolo/internal/http/context"
 	"github.com/xolo-gateway/xolo/internal/http/middleware/authn"
+	"github.com/xolo-gateway/xolo/internal/plugin"
 	proto "github.com/xolo-gateway/xolo/pkg/pluginsdk/proto"
 )
 
@@ -78,6 +78,7 @@ type Handler struct {
 	secretStore         port.SecretStore
 	exchangeRateService *service.ExchangeRateService
 	pluginManager       pluginManagerIface
+	modelCards          *service.ModelCardService
 	// teamStore keeps team slugs and model names apart, see WithTeams.
 	teamStore port.TeamStore
 	// userQuotas, quotaSpend and now serve the caller's quota, see WithUserQuota.
@@ -101,6 +102,7 @@ func NewHandler(providerStore port.ProviderStore, orgStore port.OrgStore, virtua
 		pluginManager:       pluginManager,
 		mux:                 http.NewServeMux(),
 	}
+	h.modelCards = service.NewModelCardService(orgStore, providerStore, virtualModelStore, personalVMStore, plugin.ModelResolvers(pluginManager))
 	h.mux.HandleFunc("GET /api/v1/models", h.handleModels)
 	h.mux.HandleFunc("GET /api/models-dev/lookup", h.handleModelsDevLookup)
 	h.mux.HandleFunc("GET /api/exchange-rate", h.handleExchangeRate)
@@ -234,7 +236,7 @@ func (h *Handler) handleModels(w http.ResponseWriter, r *http.Request) {
 	if u := httpCtx.User(ctx); u != nil {
 		userID = u.ID()
 	}
-	cards := h.newCardResolver(ctx, orgIDs, defaultOrg, userID)
+	cards := h.modelCards.NewResolver(ctx, orgIDs, defaultOrg, userID)
 
 	data := make([]openRouterModel, 0)
 	canUsePersonalVM := false
@@ -259,7 +261,7 @@ func (h *Handler) handleModels(w http.ResponseWriter, r *http.Request) {
 		}
 		var currencies map[model.ProviderID]string
 		if len(models) > 0 {
-			currencies = cards.providerCurrencies(orgID)
+			currencies = cards.ProviderCurrencies(orgID)
 		}
 		for _, m := range models {
 			for _, name := range service.ListedModelNames(perms, bound, org.Slug(), m.ProxyName(), string(m.ID()), rbac.ModelKindLLM) {
@@ -279,7 +281,7 @@ func (h *Handler) handleModels(w http.ResponseWriter, r *http.Request) {
 				if len(names) == 0 {
 					continue
 				}
-				card := cards.orgModelCard(vm)
+				card := cards.OrgModelCard(vm)
 				for _, name := range names {
 					model := h.virtualModelToOpenRouterModel(org.Slug(), vm, card)
 					model.ID = name
@@ -300,7 +302,7 @@ func (h *Handler) handleModels(w http.ResponseWriter, r *http.Request) {
 				slog.WarnContext(ctx, "could not list personal virtual models", slogx.Error(err))
 			} else {
 				for _, pvm := range pvms {
-					m := h.personalVMToOpenRouterModel(pvm, cards.personalModelCard(pvm))
+					m := h.personalVMToOpenRouterModel(pvm, cards.PersonalModelCard(pvm))
 					if filterModel(m, filterParams, filterModalities) {
 						data = append(data, m)
 					}
@@ -325,7 +327,7 @@ func baseSupportedParams() []string {
 	}
 }
 
-func (h *Handler) personalVMToOpenRouterModel(pvm model.PersonalVirtualModel, traits modelTraits) openRouterModel {
+func (h *Handler) personalVMToOpenRouterModel(pvm model.PersonalVirtualModel, traits service.ModelCard) openRouterModel {
 	card := modelCard(traits)
 	card.ID = "~/" + pvm.Name()
 	card.Created = int(pvm.CreatedAt().Unix())
@@ -336,21 +338,8 @@ func (h *Handler) personalVMToOpenRouterModel(pvm model.PersonalVirtualModel, tr
 
 // providerCurrencies maps the providers of orgID to their currency. A failure
 // leaves the prices of the organization's models unknown.
-func (h *Handler) providerCurrencies(ctx context.Context, orgID model.OrgID) map[model.ProviderID]string {
-	providers, err := h.providerStore.ListProviders(ctx, orgID)
-	if err != nil {
-		slog.WarnContext(ctx, "could not list providers for model pricing", slogx.Error(err), slog.String("orgID", string(orgID)))
-		return nil
-	}
-	currencies := make(map[model.ProviderID]string, len(providers))
-	for _, p := range providers {
-		currencies[p.ID()] = p.Currency()
-	}
-	return currencies
-}
-
 func (h *Handler) llmModelToOpenRouterModel(orgSlug string, m model.LLMModel, currency string) openRouterModel {
-	card := modelCard(traitsOfLLMModel(m, currency))
+	card := modelCard(service.ModelCardOf(m, currency))
 	card.ID = orgSlug + "/" + m.ProxyName()
 	card.Created = int(m.CreatedAt().Unix())
 	card.Name = m.ProxyName()
@@ -358,7 +347,7 @@ func (h *Handler) llmModelToOpenRouterModel(orgSlug string, m model.LLMModel, cu
 	return card
 }
 
-func (h *Handler) virtualModelToOpenRouterModel(orgSlug string, vm model.VirtualModel, traits modelTraits) openRouterModel {
+func (h *Handler) virtualModelToOpenRouterModel(orgSlug string, vm model.VirtualModel, traits service.ModelCard) openRouterModel {
 	card := modelCard(traits)
 	card.ID = orgSlug + "/" + vm.Name()
 	card.Created = int(vm.CreatedAt().Unix())
@@ -371,8 +360,8 @@ func (h *Handler) virtualModelToOpenRouterModel(orgSlug string, vm model.Virtual
 // virtual models so both describe capabilities the same way. A virtual model
 // whose traits are unknown renders as text only, free, without a window, and
 // says so in its declarations.
-func modelCard(t modelTraits) openRouterModel {
-	caps := t.caps
+func modelCard(t service.ModelCard) openRouterModel {
+	caps := t.Capabilities
 	inputModalities := []string{"text"}
 	outputModalities := []string{"text"}
 
@@ -394,25 +383,25 @@ func modelCard(t modelTraits) openRouterModel {
 	// A model of another kind than completion outputs what its kind
 	// produces, vectors or probabilities, and takes none of the parameters
 	// of a completion.
-	kind := model.KindOrDefault(t.kind)
+	kind := model.KindOrDefault(t.Kind)
 	if kind != model.ModelKindCompletion {
 		outputModalities = []string{string(kind)}
 		supportedParams = []string{}
 	}
 
 	var contextLength *int
-	if t.contextLength > 0 {
-		cl := int(t.contextLength)
+	if t.ContextLength > 0 {
+		cl := int(t.ContextLength)
 		contextLength = &cl
 	}
 
 	// The token limit wraps the completion client only: on a model of
 	// another kind it limits nothing, so the card announces none.
 	var perLimits *perRequestLimits
-	if kind == model.ModelKindCompletion && (t.promptLimit > 0 || t.completionLimit > 0) {
+	if kind == model.ModelKindCompletion && (t.PromptLimit > 0 || t.CompletionLimit > 0) {
 		perLimits = &perRequestLimits{
-			PromptTokens:     int(t.promptLimit),
-			CompletionTokens: int(t.completionLimit),
+			PromptTokens:     int(t.PromptLimit),
+			CompletionTokens: int(t.CompletionLimit),
 		}
 	}
 
@@ -427,12 +416,12 @@ func modelCard(t modelTraits) openRouterModel {
 		},
 		DefaultParameters: nil,
 		Pricing: modelPricing{
-			Prompt:     float64(t.promptCost) / 1_000_000,
-			Completion: float64(t.completionCost) / 1_000_000,
+			Prompt:     float64(t.PromptCost) / 1_000_000,
+			Completion: float64(t.CompletionCost) / 1_000_000,
 		},
 		PerRequestLimits: perLimits,
 		SupportedParams:  supportedParams,
-		Xolo:             modelDeclarations{CapabilitiesDeclared: t.declared, Currency: t.currency, Kind: kind},
+		Xolo:             modelDeclarations{CapabilitiesDeclared: t.Declared, Currency: t.Currency, Kind: kind},
 	}
 }
 

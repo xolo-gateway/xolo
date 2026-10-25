@@ -206,6 +206,12 @@ func (h *Handler) loadModelUsages(ctx context.Context, userID model.UserID, memb
 	user := httpCtx.User(ctx)
 	isGlobalAdmin := user != nil && slices.Contains(user.Roles(), authz.RoleAdmin)
 
+	orgIDs := make([]model.OrgID, 0, len(memberships))
+	for _, m := range memberships {
+		orgIDs = append(orgIDs, m.OrgID())
+	}
+	cards := h.modelCards.NewResolver(ctx, orgIDs, "", userID)
+
 	var modelUsages []component.ModelUsage
 	for _, m := range memberships {
 		perms, err := h.roleStore.ResolveEffectivePermissions(ctx, userID, m.OrgID())
@@ -285,12 +291,13 @@ func (h *Handler) loadModelUsages(ctx context.Context, userID model.UserID, memb
 						slog.ErrorContext(ctx, "could not aggregate virtual model usage", slogx.Error(err))
 						modelAgg = nil
 					}
-					wrappedModel := &virtualModelAsLLMModel{vm: vm, org: org}
+					card := cards.OrgModelCard(vm)
 					modelUsages = append(modelUsages, component.ModelUsage{
-						Model:     wrappedModel,
-						Org:       org,
-						Aggregate: modelAgg,
-						Names:     names,
+						Model:                    &virtualModelAsLLMModel{vm: vm, org: org, card: card},
+						Org:                      org,
+						Aggregate:                modelAgg,
+						Names:                    names,
+						CapabilitiesUndetermined: !card.Declared,
 					})
 				}
 			}

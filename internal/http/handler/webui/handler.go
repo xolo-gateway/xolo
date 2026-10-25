@@ -11,6 +11,7 @@ import (
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/org"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/profile"
 	"github.com/xolo-gateway/xolo/internal/http/middleware/authz"
+	"github.com/xolo-gateway/xolo/internal/plugin"
 	proto "github.com/xolo-gateway/xolo/pkg/pluginsdk/proto"
 )
 
@@ -34,6 +35,7 @@ type Handler struct {
 	applicationStore    port.ApplicationStore
 	exchangeRateService *service.ExchangeRateService
 	pluginManager       pluginManagerIface
+	modelCards          *service.ModelCardService
 	subscriptionMonitor port.SubscriptionMonitor
 	fairShare           *service.FairShareService
 	orgHandler          *org.Handler
@@ -97,6 +99,7 @@ func NewHandler(
 		pluginManager:       pluginManager,
 		subscriptionMonitor: subscriptionMonitor,
 		fairShare:           fairShare,
+		modelCards:          service.NewModelCardService(orgStore, providerStore, virtualModelStore, personalVMStore, plugin.ModelResolvers(pluginManager)),
 	}
 
 	isActive := authz.Middleware(http.HandlerFunc(h.getInactiveUserPage), authz.Active())

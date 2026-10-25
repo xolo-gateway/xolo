@@ -4,13 +4,16 @@ import (
 	"time"
 
 	"github.com/xolo-gateway/xolo/internal/core/model"
+	"github.com/xolo-gateway/xolo/internal/core/service"
 )
 
 // virtualModelAsLLMModel wraps a VirtualModel to implement LLMModel interface
-// for display purposes on the models page.
+// for display purposes on the models page. Its window and capabilities are
+// those of its catalogue card, as GET /api/v1/models advertises them.
 type virtualModelAsLLMModel struct {
-	vm  model.VirtualModel
-	org model.Organization
+	vm   model.VirtualModel
+	org  model.Organization
+	card service.ModelCard
 }
 
 func (v *virtualModelAsLLMModel) ID() model.LLMModelID             { return model.LLMModelID(v.vm.ID()) }
@@ -24,13 +27,13 @@ func (v *virtualModelAsLLMModel) Enabled() bool                    { return true
 func (v *virtualModelAsLLMModel) PromptCostPer1KTokens() int64       { return 0 }
 func (v *virtualModelAsLLMModel) CachedPromptCostPer1KTokens() int64 { return 0 }
 func (v *virtualModelAsLLMModel) CompletionCostPer1KTokens() int64   { return 0 }
-func (v *virtualModelAsLLMModel) ContextWindow() int64             { return 0 }
-func (v *virtualModelAsLLMModel) OutputWindow() int64              { return 0 }
+func (v *virtualModelAsLLMModel) ContextWindow() int64             { return v.card.ContextLength }
+func (v *virtualModelAsLLMModel) OutputWindow() int64              { return v.card.CompletionLimit }
 func (v *virtualModelAsLLMModel) ActiveParams() int64              { return 0 }
 func (v *virtualModelAsLLMModel) TokensPerSecLow() float64         { return 0 }
 func (v *virtualModelAsLLMModel) TokensPerSecHigh() float64        { return 0 }
 func (v *virtualModelAsLLMModel) Capabilities() model.ModelCapabilities {
-	return model.ModelCapabilities{}
+	return v.card.Capabilities
 }
 func (v *virtualModelAsLLMModel) CreatedAt() time.Time                      { return v.vm.CreatedAt() }
 func (v *virtualModelAsLLMModel) UpdatedAt() time.Time                      { return v.vm.UpdatedAt() }
