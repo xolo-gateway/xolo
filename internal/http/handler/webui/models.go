@@ -291,19 +291,25 @@ func (h *Handler) loadModelUsages(ctx context.Context, userID model.UserID, memb
 						slog.ErrorContext(ctx, "could not aggregate virtual model usage", slogx.Error(err))
 						modelAgg = nil
 					}
-					card := cards.OrgModelCard(vm)
-					modelUsages = append(modelUsages, component.ModelUsage{
-						Model:                    &virtualModelAsLLMModel{vm: vm, org: org, card: card},
-						Org:                      org,
-						Aggregate:                modelAgg,
-						Names:                    names,
-						CapabilitiesUndetermined: !card.Declared,
-					})
+					modelUsages = append(modelUsages, virtualModelUsage(cards, vm, org, modelAgg, names))
 				}
 			}
 		}
 	}
 	return modelUsages
+}
+
+// virtualModelUsage describes a virtual model with its catalogue card: its
+// capabilities are undetermined when the card does not declare them.
+func virtualModelUsage(cards *service.ModelCardResolver, vm model.VirtualModel, org model.Organization, agg *port.UsageAggregate, names []string) component.ModelUsage {
+	card := cards.OrgModelCard(vm)
+	return component.ModelUsage{
+		Model:                    &virtualModelAsLLMModel{vm: vm, org: org, card: card},
+		Org:                      org,
+		Aggregate:                agg,
+		Names:                    names,
+		CapabilitiesUndetermined: !card.Declared,
+	}
 }
 
 func orgSlugOf(org model.Organization) string {

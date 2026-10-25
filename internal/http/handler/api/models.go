@@ -336,8 +336,6 @@ func (h *Handler) personalVMToOpenRouterModel(pvm model.PersonalVirtualModel, tr
 	return card
 }
 
-// providerCurrencies maps the providers of orgID to their currency. A failure
-// leaves the prices of the organization's models unknown.
 func (h *Handler) llmModelToOpenRouterModel(orgSlug string, m model.LLMModel, currency string) openRouterModel {
 	card := modelCard(service.ModelCardOf(m, currency))
 	card.ID = orgSlug + "/" + m.ProxyName()

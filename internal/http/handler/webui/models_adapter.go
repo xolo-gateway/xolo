@@ -8,8 +8,9 @@ import (
 )
 
 // virtualModelAsLLMModel wraps a VirtualModel to implement LLMModel interface
-// for display purposes on the models page. Its window and capabilities are
-// those of its catalogue card, as GET /api/v1/models advertises them.
+// for display purposes on the models page. Its windows and capabilities are
+// those of its catalogue card, derived from its pipeline like the cards of
+// GET /api/v1/models.
 type virtualModelAsLLMModel struct {
 	vm   model.VirtualModel
 	org  model.Organization
@@ -28,7 +29,7 @@ func (v *virtualModelAsLLMModel) PromptCostPer1KTokens() int64       { return 0 
 func (v *virtualModelAsLLMModel) CachedPromptCostPer1KTokens() int64 { return 0 }
 func (v *virtualModelAsLLMModel) CompletionCostPer1KTokens() int64   { return 0 }
 func (v *virtualModelAsLLMModel) ContextWindow() int64             { return v.card.ContextLength }
-func (v *virtualModelAsLLMModel) OutputWindow() int64              { return v.card.CompletionLimit }
+func (v *virtualModelAsLLMModel) OutputWindow() int64              { return v.card.OutputWindow }
 func (v *virtualModelAsLLMModel) ActiveParams() int64              { return 0 }
 func (v *virtualModelAsLLMModel) TokensPerSecLow() float64         { return 0 }
 func (v *virtualModelAsLLMModel) TokensPerSecHigh() float64        { return 0 }

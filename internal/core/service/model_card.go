@@ -14,7 +14,10 @@ import (
 // ModelCard is what the catalogue says about one model: the figures a client
 // sizes its requests with. A zero field means unknown, not zero.
 type ModelCard struct {
-	ContextLength   int64
+	ContextLength int64
+	// OutputWindow is the most tokens the model can produce in one answer,
+	// as a client sizes max_tokens with.
+	OutputWindow    int64
 	PromptLimit     int64
 	CompletionLimit int64
 	Capabilities    model.ModelCapabilities
@@ -37,6 +40,7 @@ type ModelCard struct {
 func ModelCardOf(m model.LLMModel, currency string) ModelCard {
 	t := ModelCard{
 		ContextLength:  m.ContextWindow(),
+		OutputWindow:   m.OutputWindow(),
 		Capabilities:   m.Capabilities(),
 		Kind:           m.Kind(),
 		PromptCost:     m.PromptCostPer1KTokens(),
@@ -73,6 +77,11 @@ func combineTraits(candidates []ModelCard) ModelCard {
 			out.ContextLength = 0
 		} else {
 			out.ContextLength = min(out.ContextLength, c.ContextLength)
+		}
+		if out.OutputWindow <= 0 || c.OutputWindow <= 0 {
+			out.OutputWindow = 0
+		} else {
+			out.OutputWindow = min(out.OutputWindow, c.OutputWindow)
 		}
 		out.PromptLimit = minKnown(out.PromptLimit, c.PromptLimit)
 		out.CompletionLimit = minKnown(out.CompletionLimit, c.CompletionLimit)
@@ -119,6 +128,7 @@ func applyCatalogOverrides(t ModelCard, o *model.CatalogOverrides) ModelCard {
 	}
 	if o.MaxOutputTokens > 0 {
 		t.CompletionLimit = o.MaxOutputTokens
+		t.OutputWindow = o.MaxOutputTokens
 	}
 	if o.Capabilities != nil {
 		t.Capabilities = *o.Capabilities
