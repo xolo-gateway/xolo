@@ -166,6 +166,9 @@ func NewModelCardService(orgStore port.OrgStore, providerStore port.ProviderStor
 // virtual model of the owning organization first, then a real model, local or
 // qualified as "org/name". Only organizations already in the caller's scope
 // are consulted, so a card never reveals a model the caller could not call.
+// Per-model grants do not narrow the candidates: an organization virtual
+// model delegates its static references, which its callers reach without a
+// grant of their own, and a card only derives from static references.
 // It memoizes what it reads and is meant for a single request.
 type ModelCardResolver struct {
 	s      *ModelCardService
