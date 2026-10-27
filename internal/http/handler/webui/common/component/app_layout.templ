@@ -7,6 +7,7 @@ import (
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/button"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/chart"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/dialog"
+	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/dropdown"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/icon"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/input"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/popover"
@@ -31,7 +32,7 @@ import (
 // The attribute is set on <body> rather than here: popover moves its content to
 // a portal on document.body, and a link inside the context switcher would
 // otherwise no longer have the shell as an ancestor to inherit from.
-const boostedShell = "#app-rail,#app-context,#context-switcher,#app-nav,#app-sidebar-footer,#app-banner,#app-breadcrumb"
+const boostedShell = "#app-rail,#app-context,#context-switcher,#user-menu,#app-nav,#app-sidebar-footer,#app-banner,#app-breadcrumb"
 
 // AppLayout is the main application shell: context rail, sidebar (brand, context
 // switcher, grouped navigation, user footer) and the inset holding the header
@@ -51,6 +52,7 @@ templ AppLayout(vmodel AppLayoutVModel, funcs ...PageOptionFunc) {
 			// under 768px.
 			Script{Name: "dialog", Component: dialog.Script()},
 			Script{Name: "popover", Component: popover.Script()},
+			Script{Name: "dropdown", Component: dropdown.Script()},
 			Script{Name: "selectbox", Component: selectbox.Script()},
 			Script{Name: "chart", Component: chart.Script()},
 		))
@@ -66,6 +68,9 @@ templ AppLayout(vmodel AppLayoutVModel, funcs ...PageOptionFunc) {
 		doit rester un frère de #app-context pour qu'aucune des deux régions
 		échangées hors-bande ne contienne l'autre. -->
 		@contextSwitcherContent(vmodel)
+		<!-- Même raison pour le menu utilisateur, dont le déclencheur est dans
+		le pied de la barre latérale. -->
+		@userMenuContent(vmodel)
 		<!-- La coquille tient exactement dans la fenêtre et c'est #content qui
 		défile, comme la maquette (`height:100vh; overflow:hidden`). Sur une
 		hauteur minimale c'était le document qui défilait, et l'en-tête — pourtant
@@ -124,7 +129,6 @@ templ AppLayout(vmodel AppLayoutVModel, funcs ...PageOptionFunc) {
 						}
 					}
 					@userCard(vmodel)
-					@LocaleSwitch("px-1 " + collapsedHidden)
 				}
 			}
 			@sidebar.Inset() {
@@ -464,44 +468,126 @@ templ proxyStatusDot(status ProxyStatus) {
 	</span>
 }
 
-// userCard renders the identity block at the bottom of the sidebar.
+// userCard renders the identity block at the bottom of the sidebar: the
+// trigger of the user menu, or the login button for an anonymous visit.
 templ userCard(vmodel AppLayoutVModel) {
-	<div class="flex items-center gap-2 px-1 group-data-[tui-sidebar-state=collapsed]:group-data-[tui-sidebar-collapsible=icon]:justify-center group-data-[tui-sidebar-state=collapsed]:group-data-[tui-sidebar-collapsible=icon]:px-0">
-		if vmodel.User != nil {
-			<a
-				href={ templ.SafeURL(BaseURLString(ctx, WithPath("/profile"))) }
-				class="shrink-0"
-				title={ vmodel.User.DisplayName() }
-			>
-				@PersonAvatar(vmodel.User.DisplayName(), "size-6")
-			</a>
-			<a href={ templ.SafeURL(BaseURLString(ctx, WithPath("/profile"))) } class={ "flex min-w-0 flex-1 flex-col", collapsedHidden }>
-				<span class="truncate text-sm font-medium">{ vmodel.User.DisplayName() }</span>
-				<span class="truncate font-mono text-2xs text-muted-foreground">{ UserRoleLabel(ctx, vmodel) }</span>
-			</a>
-			@button.Button(button.Props{
-				Variant: button.VariantGhost,
-				Size:    button.SizeIcon,
-				Href:    BaseURLString(ctx, WithPath("/auth/oidc/logout")),
-				Class:   "shrink-0 " + collapsedHidden,
-				// Logging out leaves the application (and often this origin) — a
-				// boosted swap would have nothing to put in #content.
-				Attributes: templ.Attributes{"hx-boost": "false", "title": i18n.T(ctx, "layout.logout")},
-			}) {
-				@icon.LogOut(icon.Props{Class: "size-4"})
-			}
-		} else {
-			@button.Button(button.Props{
-				Variant:    button.VariantOutline,
-				Class:      "w-full justify-start gap-2",
-				Href:       BaseURLString(ctx, WithPath("/auth/oidc/login")),
-				Attributes: templ.Attributes{"hx-boost": "false"},
-			}) {
-				@icon.LogIn(icon.Props{Class: "size-4"})
-				{ i18n.T(ctx, "layout.login") }
+	if vmodel.User != nil {
+		@dropdown.Dropdown(dropdown.Props{ID: "user-menu"}) {
+			@dropdown.Trigger(dropdown.TriggerProps{Class: "block w-full"}) {
+				@button.Button(button.Props{
+					Variant: button.VariantGhost,
+					// `has-[>svg]:px-1` neutralise le palier de taille du bouton,
+					// qui resserre son padding dès qu'il contient une icône.
+					Class: "h-auto w-full justify-start gap-2 px-1 py-1.5 text-left has-[>svg]:px-1" +
+						" group-data-[tui-sidebar-state=collapsed]:group-data-[tui-sidebar-collapsible=icon]:justify-center",
+					Attributes: templ.Attributes{
+						"title":         i18n.T(ctx, "layout.user_menu"),
+						"aria-haspopup": "menu",
+					},
+				}) {
+					@PersonAvatar(vmodel.User.DisplayName(), "size-6")
+					<span class={ "flex min-w-0 flex-1 flex-col leading-tight", collapsedHidden }>
+						<span class="truncate text-sm font-medium">{ vmodel.User.DisplayName() }</span>
+						<span class="truncate font-mono text-2xs font-normal text-muted-foreground">{ UserRoleLabel(ctx, vmodel) }</span>
+					</span>
+					@icon.ChevronsUpDown(icon.Props{Class: "ml-auto size-3.5 shrink-0 text-icon-muted " + collapsedHidden})
+				}
 			}
 		}
-	</div>
+	} else {
+		@button.Button(button.Props{
+			Variant:    button.VariantOutline,
+			Class:      "w-full justify-start gap-2",
+			Href:       BaseURLString(ctx, WithPath("/auth/oidc/login")),
+			Attributes: templ.Attributes{"hx-boost": "false"},
+		}) {
+			@icon.LogIn(icon.Props{Class: "size-4"})
+			{ i18n.T(ctx, "layout.login") }
+		}
+	}
+}
+
+// userMenuContent renders the user menu itself: identity, profile, interface
+// language and logout. It is rendered even for an anonymous visit, empty, so
+// the out-of-band swap of #user-menu always finds its target.
+//
+// The languages are the submit buttons of a plain form, as in LocaleSwitch: it
+// opts out of hx-boost so the redirect reloads the whole document.
+templ userMenuContent(vmodel AppLayoutVModel) {
+	@dropdown.Dropdown(dropdown.Props{ID: "user-menu"}) {
+		@dropdown.Content(dropdown.ContentProps{
+			Placement: dropdown.PlacementRightEnd,
+			Class:     "w-60 max-h-none",
+		}) {
+			if vmodel.User != nil {
+				@dropdown.Label(dropdown.LabelProps{Class: "flex items-center gap-2 font-normal"}) {
+					@PersonAvatar(vmodel.User.DisplayName(), "size-8")
+					<span class="flex min-w-0 flex-col leading-tight">
+						<span class="truncate text-sm font-medium">{ vmodel.User.DisplayName() }</span>
+						if email := vmodel.User.Email(); email != "" {
+							<span class="truncate text-xs text-muted-foreground">{ email }</span>
+						}
+					</span>
+				}
+				@dropdown.Separator()
+				@dropdown.Item(dropdown.ItemProps{
+					Href:  BaseURLString(ctx, WithPath("/profile")),
+					Class: "justify-start gap-2",
+				}) {
+					@icon.UserRound(icon.Props{Class: "size-4 text-muted-foreground"})
+					{ i18n.T(ctx, "nav.profile") }
+				}
+				@dropdown.Separator()
+				@dropdown.Label(dropdown.LabelProps{
+					ID:    "user-menu-locale-label",
+					Class: "flex items-center gap-2 text-xs font-normal text-muted-foreground",
+				}) {
+					@icon.Languages(icon.Props{Class: "size-3.5"})
+					{ i18n.T(ctx, "locale.label") }
+				}
+				<form method="post" action={ templ.SafeURL(BaseURLString(ctx, WithPath("/locale"))) } hx-boost="false">
+					<input type="hidden" name="return_to" value={ localeReturnTo(ctx) }/>
+					@dropdown.Group(dropdown.GroupProps{
+						Class:      "py-0",
+						Attributes: templ.Attributes{"aria-labelledby": "user-menu-locale-label"},
+					}) {
+						for _, option := range i18n.Options(ctx) {
+							@dropdown.Item(dropdown.ItemProps{
+								Class: "gap-2",
+								Attributes: templ.Attributes{
+									"type":         "submit",
+									"role":         "menuitemradio",
+									"name":         "locale",
+									"value":        option.Tag,
+									"lang":         option.Tag,
+									"aria-checked": localePressed(option.Current),
+								},
+							}) {
+								<span class="flex items-center gap-2">
+									<span class="w-5 font-mono text-2xs uppercase text-muted-foreground">{ option.Tag }</span>
+									{ option.Name }
+								</span>
+								if option.Current {
+									@icon.Check(icon.Props{Class: "size-4"})
+								}
+							}
+						}
+					}
+				</form>
+				@dropdown.Separator()
+				@dropdown.Item(dropdown.ItemProps{
+					Href:  BaseURLString(ctx, WithPath("/auth/oidc/logout")),
+					Class: "justify-start gap-2",
+					// Logging out leaves the application (and often this origin) —
+					// a boosted swap would have nothing to put in #content.
+					Attributes: templ.Attributes{"hx-boost": "false"},
+				}) {
+					@icon.LogOut(icon.Props{Class: "size-4 text-muted-foreground"})
+					{ i18n.T(ctx, "layout.logout") }
+				}
+			}
+		}
+	}
 }
 
 // appBreadcrumb renders the trail of the current page.

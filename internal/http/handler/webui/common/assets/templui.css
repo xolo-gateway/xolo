@@ -48,6 +48,7 @@
     --tracking-wide: 0.025em;
     --tracking-wider: 0.05em;
     --tracking-widest: 0.1em;
+    --leading-tight: 1.25;
     --leading-normal: 1.5;
     --leading-relaxed: 1.625;
     --radius-xs: 0.125rem;
@@ -688,6 +689,9 @@
   .max-h-\[500px\] {
     max-height: 500px;
   }
+  .max-h-none {
+    max-height: none;
+  }
   .min-h-0 {
     min-height: calc(var(--spacing) * 0);
   }
@@ -742,6 +746,9 @@
   .w-4 {
     width: calc(var(--spacing) * 4);
   }
+  .w-5 {
+    width: calc(var(--spacing) * 5);
+  }
   .w-6 {
     width: calc(var(--spacing) * 6);
   }
@@ -780,6 +787,9 @@
   }
   .w-56 {
     width: calc(var(--spacing) * 56);
+  }
+  .w-60 {
+    width: calc(var(--spacing) * 60);
   }
   .w-70 {
     width: calc(var(--spacing) * 70);
@@ -1849,6 +1859,10 @@
   .leading-normal {
     --tw-leading: var(--leading-normal);
     line-height: var(--leading-normal);
+  }
+  .leading-tight {
+    --tw-leading: var(--leading-tight);
+    line-height: var(--leading-tight);
   }
   .font-bold {
     --tw-font-weight: var(--font-weight-bold);
@@ -3163,6 +3177,11 @@
   .has-\[\>svg\]\:gap-x-3 {
     &:has(>svg) {
       column-gap: calc(var(--spacing) * 3);
+    }
+  }
+  .has-\[\>svg\]\:px-1 {
+    &:has(>svg) {
+      padding-inline: calc(var(--spacing) * 1);
     }
   }
   .has-\[\>svg\]\:px-2\.5 {
