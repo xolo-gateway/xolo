@@ -7,6 +7,7 @@ import (
 
 	"github.com/d5/tengo/v2"
 	"github.com/d5/tengo/v2/stdlib"
+	"github.com/xolo-gateway/xolo/pkg/pluginsdk"
 	"github.com/xolo-gateway/xolo/pkg/pluginsdk/proto"
 )
 
@@ -49,11 +50,9 @@ func (p *Plugin) PreRequest(_ context.Context, in *proto.PreRequestInput) (*prot
 	}
 
 	// Build ctx.inputs from connected input port values.
-	inputsMap := make(map[string]interface{})
-	if in.InputsJson != "" && in.InputsJson != "{}" {
-		if err := json.Unmarshal([]byte(in.InputsJson), &inputsMap); err != nil {
-			return nil, fmt.Errorf("script-processor: parse inputs_json: %w", err)
-		}
+	inputsMap, err := pluginsdk.PreRequestInputs(in)
+	if err != nil {
+		return nil, fmt.Errorf("script-processor: parse inputs_json: %w", err)
 	}
 
 	// Build ctx.request from the full LLM request body (in.Model = ec.BodyJSON).

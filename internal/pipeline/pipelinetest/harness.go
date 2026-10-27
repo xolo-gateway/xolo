@@ -7,6 +7,7 @@ import (
 	"github.com/xolo-gateway/xolo/internal/core/model"
 	"github.com/xolo-gateway/xolo/internal/core/port"
 	"github.com/xolo-gateway/xolo/internal/pipeline"
+	"github.com/xolo-gateway/xolo/pkg/pluginsdk"
 )
 
 type harnessConfig struct {
@@ -145,9 +146,13 @@ func WithMessagesJSON(messagesJSON string) ECOption {
 
 // WithBodyJSON sets the execution context's raw request body JSON payload.
 // This is the single source of truth that backs the generator node's
-// "request" output and PreRequest plugins' Model field.
+// "request" output and PreRequest plugins' Model field. Like the proxy, it
+// also records the messages the body holds, which plugin calls leave out.
 func WithBodyJSON(bodyJSON string) ECOption {
-	return func(ec *pipeline.ExecutionContext) { ec.BodyJSON = bodyJSON }
+	return func(ec *pipeline.ExecutionContext) {
+		ec.BodyJSON = bodyJSON
+		ec.BodyMessagesJSON = pluginsdk.BodyMessages(bodyJSON)
+	}
 }
 
 // WithTargetModel sets the model requested by the caller, resolved by

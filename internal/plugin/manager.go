@@ -34,6 +34,7 @@ type PluginEntry struct {
 type Manager struct {
 	dir               string
 	memLimit          string        // GOMEMLIMIT value passed to plugin subprocesses, empty = no limit
+	maxMessageSize    int           // bound, in bytes, of every gRPC message exchanged with a plugin
 	restartCooldown   time.Duration // minimum delay between two consecutive restarts of the same plugin
 	providerStore     port.ProviderStore
 	virtualModelStore port.VirtualModelStore
@@ -44,10 +45,13 @@ type Manager struct {
 
 // NewManager creates a Manager that will scan dir for plugin binaries.
 // memLimit is passed as GOMEMLIMIT to each plugin subprocess; empty string disables it.
+// maxMessageSize bounds every gRPC message exchanged with a plugin, in both
+// directions; zero or less selects pluginsdk.DefaultMaxMessageSize.
 // restartCooldown is the minimum interval between consecutive restarts of a given plugin.
 func NewManager(
 	dir string,
 	memLimit string,
+	maxMessageSize int,
 	restartCooldown time.Duration,
 	providerStore port.ProviderStore,
 	virtualModelStore port.VirtualModelStore,
@@ -55,9 +59,13 @@ func NewManager(
 	eventEmitter port.EventEmitter,
 	secretKey string,
 ) *Manager {
+	if maxMessageSize <= 0 {
+		maxMessageSize = pluginsdk.DefaultMaxMessageSize
+	}
 	return &Manager{
 		dir:               dir,
 		memLimit:          memLimit,
+		maxMessageSize:    maxMessageSize,
 		restartCooldown:   restartCooldown,
 		providerStore:     providerStore,
 		virtualModelStore: virtualModelStore,
@@ -307,6 +315,7 @@ func (m *Manager) loadPlugin(ctx context.Context, binaryPath string) (*PluginEnt
 	pluginCmd := exec.Command(binaryPath)
 	pluginCmd.Env = append(os.Environ(),
 		fmt.Sprintf("XOLO_LOGGER_LEVEL=%d", currentSlogLevelInt(ctx)),
+		fmt.Sprintf("%s=%d", pluginsdk.MaxMessageSizeEnv, m.maxMessageSize),
 	)
 	if m.memLimit != "" {
 		pluginCmd.Env = append(pluginCmd.Env, fmt.Sprintf("GOMEMLIMIT=%s", m.memLimit))
@@ -318,6 +327,7 @@ func (m *Manager) loadPlugin(ctx context.Context, binaryPath string) (*PluginEnt
 		Plugins:          pluginsdk.PluginMap,
 		Cmd:              pluginCmd,
 		AllowedProtocols: []goplugin.Protocol{goplugin.ProtocolGRPC},
+		GRPCDialOptions:  pluginsdk.GRPCDialOptions(m.maxMessageSize),
 		Logger: hclog.New(&hclog.LoggerOptions{
 			Name:   filepath.Base(binaryPath),
 			Level:  slogLevelToHCLog(ctx),
@@ -371,8 +381,9 @@ func (m *Manager) initialize(ctx context.Context, client proto.XoloPluginClient,
 	// AcceptAndServe blocks until the plugin connects, so it must run in a goroutine.
 	// We call it before client.Initialize so the listener is ready when the plugin
 	// calls broker.Dial inside its Initialize handler.
+	newServer := pluginsdk.GRPCServerFactory(m.maxMessageSize)
 	go broker.AcceptAndServe(brokerID, func(opts []grpc.ServerOption) *grpc.Server {
-		s := grpc.NewServer(opts...)
+		s := newServer(opts)
 		proto.RegisterXoloHostServiceServer(s, hostSvc)
 		return s
 	})

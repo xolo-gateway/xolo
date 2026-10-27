@@ -17,6 +17,7 @@ import (
 	"github.com/xolo-gateway/xolo/internal/core/service"
 	httpCtx "github.com/xolo-gateway/xolo/internal/http/context"
 	"github.com/xolo-gateway/xolo/internal/pipeline"
+	"github.com/xolo-gateway/xolo/pkg/pluginsdk"
 	proto "github.com/xolo-gateway/xolo/pkg/pluginsdk/proto"
 )
 
@@ -501,23 +502,25 @@ func (a *PipelineHookAdapter) buildMiddlewareEC(ctx context.Context, req *genaiP
 
 	orgID := org.ID()
 	teamID, teamSlug := TeamIDFromMeta(req.Metadata), TeamSlugFromMeta(req.Metadata)
+	bodyMessages := extractMessagesJSON(req.Body)
 	return pipeline.ExecutionContext{
-		OrgID:           string(orgID),
-		OrgSlug:         org.Slug(),
-		SecretScopeID:   string(orgID),
-		UserID:          userID,
-		DisplayName:     displayName,
-		TokenID:         AuthTokenIDFromMeta(req.Metadata),
-		TeamID:          string(teamID),
-		TeamSlug:        teamSlug,
-		RequestedModel:  RequestedModelFromMeta(req.Metadata),
-		Access:          newRequestModelAccess(org, string(teamID), teamSlug, a.orgStore, a.providerStore, a.virtualModelStore),
-		MessagesJSON:    extractMessagesJSON(req.Body),
-		BodyJSON:        string(req.Body),
-		QuotaInfo:       a.quotaInfoFunc(model.UserID(userID), ApplicationIDFromMeta(req.Metadata), orgID, teamID),
-		VisitedVMs:      map[model.VirtualModelID]struct{}{},
-		PersonalVMStore: a.personalVMStore,
-		ToolInspectors:  pipeline.NewToolInspectorSet(),
+		OrgID:            string(orgID),
+		OrgSlug:          org.Slug(),
+		SecretScopeID:    string(orgID),
+		UserID:           userID,
+		DisplayName:      displayName,
+		TokenID:          AuthTokenIDFromMeta(req.Metadata),
+		TeamID:           string(teamID),
+		TeamSlug:         teamSlug,
+		RequestedModel:   RequestedModelFromMeta(req.Metadata),
+		Access:           newRequestModelAccess(org, string(teamID), teamSlug, a.orgStore, a.providerStore, a.virtualModelStore),
+		MessagesJSON:     bodyMessages,
+		BodyMessagesJSON: bodyMessages,
+		BodyJSON:         string(req.Body),
+		QuotaInfo:        a.quotaInfoFunc(model.UserID(userID), ApplicationIDFromMeta(req.Metadata), orgID, teamID),
+		VisitedVMs:       map[model.VirtualModelID]struct{}{},
+		PersonalVMStore:  a.personalVMStore,
+		ToolInspectors:   pipeline.NewToolInspectorSet(),
 		// Every model node in a middleware chain is a passthrough: it wraps the
 		// requested model, never a fixed one.
 		ForcePassthrough: true,
@@ -762,19 +765,21 @@ func (a *PipelineHookAdapter) buildEC(ctx context.Context, req *genaiProxy.Proxy
 		scopeID = "~:" + string(personal.pvm.UserID())
 	}
 	teamID, teamSlug := TeamIDFromMeta(req.Metadata), TeamSlugFromMeta(req.Metadata)
+	bodyMessages := extractMessagesJSON(req.Body)
 	ec := pipeline.ExecutionContext{
-		SecretScopeID:   scopeID,
-		OrgID:           string(orgID),
-		UserID:          userID,
-		DisplayName:     displayName,
-		TokenID:         AuthTokenIDFromMeta(req.Metadata),
-		TeamID:          string(teamID),
-		TeamSlug:        teamSlug,
-		MessagesJSON:    extractMessagesJSON(req.Body),
-		BodyJSON:        string(req.Body),
-		VisitedVMs:      map[model.VirtualModelID]struct{}{vm.ID(): {}},
-		PersonalVMStore: a.personalVMStore,
-		ToolInspectors:  pipeline.NewToolInspectorSet(),
+		SecretScopeID:    scopeID,
+		OrgID:            string(orgID),
+		UserID:           userID,
+		DisplayName:      displayName,
+		TokenID:          AuthTokenIDFromMeta(req.Metadata),
+		TeamID:           string(teamID),
+		TeamSlug:         teamSlug,
+		MessagesJSON:     bodyMessages,
+		BodyMessagesJSON: bodyMessages,
+		BodyJSON:         string(req.Body),
+		VisitedVMs:       map[model.VirtualModelID]struct{}{vm.ID(): {}},
+		PersonalVMStore:  a.personalVMStore,
+		ToolInspectors:   pipeline.NewToolInspectorSet(),
 	}
 	if org == nil {
 		return ec, nil
@@ -895,17 +900,10 @@ func requestSystemMessages(body []byte) ([]llm.Message, error) {
 
 // extractMessagesJSON extracts the "messages" JSON array from a chat completions request body.
 // Returns "[]" on failure so plugins receive a valid (empty) messages JSON.
+// It must match what plugins restore from the body (pluginsdk.BodyMessages),
+// since the plugin calls leave out the messages that equal it.
 func extractMessagesJSON(body []byte) string {
-	if len(body) == 0 {
-		return "[]"
-	}
-	var envelope struct {
-		Messages json.RawMessage `json:"messages"`
-	}
-	if err := json.Unmarshal(body, &envelope); err != nil || envelope.Messages == nil {
-		return "[]"
-	}
-	return string(envelope.Messages)
+	return pluginsdk.BodyMessages(string(body))
 }
 
 // buildProtoModels builds the list of available LLM models for the execution

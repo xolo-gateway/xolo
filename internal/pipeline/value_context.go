@@ -2,6 +2,7 @@ package pipeline
 
 import (
 	"encoding/json"
+	"sort"
 
 	"github.com/xolo-gateway/xolo/internal/core/model"
 )
@@ -60,6 +61,29 @@ func InputsJSON(inputs map[string]interface{}) string {
 		return "{}"
 	}
 	return string(b)
+}
+
+// splitInputs serialises the inputs of a PreRequest call, leaving out the
+// ports whose value is the request body or the messages the call already
+// carries: their names are returned instead, sorted, for the plugin to
+// restore them (pluginsdk.PreRequestInputs). A long conversation would
+// otherwise travel two or three times in the same message.
+func splitInputs(inputs map[string]interface{}, bodyJSON, messagesJSON string) (inputsJSON string, requestPorts, messagesPorts []string) {
+	rest := make(map[string]interface{}, len(inputs))
+	for port, val := range inputs {
+		s, ok := val.(string)
+		switch {
+		case ok && s != "" && s == bodyJSON:
+			requestPorts = append(requestPorts, port)
+		case ok && s != "" && s == messagesJSON:
+			messagesPorts = append(messagesPorts, port)
+		default:
+			rest[port] = val
+		}
+	}
+	sort.Strings(requestPorts)
+	sort.Strings(messagesPorts)
+	return InputsJSON(rest), requestPorts, messagesPorts
 }
 
 // ParseOutputsJSON deserialises a plugin's outputs_json into a map.

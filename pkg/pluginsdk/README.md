@@ -70,4 +70,19 @@ including while running organization graphs. There is no fallback scope.
 
 Rebuild and ship the host and all plugins together when upgrading this contract
 (`scope_id` in secret RPCs and `secret_scope_id` in `RequestContext`).
-The handshake protocol is version 2; version 1 binaries are rejected.
+The handshake protocol is version 3; older binaries are rejected.
+
+## Request payload
+
+The host sends the request body once per call. `PreRequestInput.MessagesJson`
+and `ResolveModelInput.MessagesJson` are empty while the messages are those of
+the body, and an input port that only repeats the body or the messages is left
+out of `InputsJson`. Read them with `PreRequestMessages`, `ResolveModelMessages`
+and `PreRequestInputs`, never from the raw fields.
+
+## Message size
+
+Every gRPC message between Xolo and a plugin is bounded by
+`XOLO_PLUGINS_MAX_MESSAGE_SIZE` (64 MiB by default). The plugin manager hands
+the bound to each plugin through `XOLO_PLUGIN_MAX_MESSAGE_SIZE`; `Serve` and
+`ServeWithUI` apply it.

@@ -51,7 +51,7 @@ func (w *uiWrapper) Initialize(_ context.Context, req *proto.InitializeRequest) 
 		return nil, fmt.Errorf("broker not set: GRPCServer must be called before Initialize")
 	}
 
-	conn, err := w.broker.Dial(req.HostServiceBrokerId)
+	conn, err := w.broker.DialWithOptions(req.HostServiceBrokerId, GRPCDialOptions(MaxMessageSizeFromEnv())...)
 	if err != nil {
 		return nil, fmt.Errorf("dial XoloHostService: %w", err)
 	}

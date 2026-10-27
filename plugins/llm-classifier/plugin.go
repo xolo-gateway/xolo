@@ -107,7 +107,8 @@ func (p *Plugin) classify(ctx context.Context, in *proto.PreRequestInput, cfg Co
 		return fallback
 	}
 
-	text := requesttext.LastUserTurn(in.MessagesJson)
+	messagesJSON := pluginsdk.PreRequestMessages(in)
+	text := requesttext.LastUserTurn(messagesJSON)
 	if text == "" {
 		fallback.Error = "empty request"
 		return fallback
@@ -120,7 +121,7 @@ func (p *Plugin) classify(ctx context.Context, in *proto.PreRequestInput, cfg Co
 		OrgId:        in.GetCtx().GetOrgId(),
 		UserId:       in.GetCtx().GetUserId(),
 		Model:        modelName,
-		Messages:     buildMessages(cfg, text, in.MessagesJson),
+		Messages:     buildMessages(cfg, text, messagesJSON),
 		Temperature:  cfg.Temperature,
 		MaxTokens:    int32(cfg.MaxTokens),
 		JsonResponse: true,

@@ -29,7 +29,7 @@ func (w *noopInitWrapper) setBroker(broker *plugin.GRPCBroker) { w.broker = brok
 
 func (w *noopInitWrapper) Initialize(_ context.Context, req *proto.InitializeRequest) (*proto.InitializeResponse, error) {
 	if setter, ok := w.XoloPluginServer.(HostClientSetter); ok && w.broker != nil && req.GetHostServiceBrokerId() != 0 {
-		conn, err := w.broker.Dial(req.HostServiceBrokerId)
+		conn, err := w.broker.DialWithOptions(req.HostServiceBrokerId, GRPCDialOptions(MaxMessageSizeFromEnv())...)
 		if err != nil {
 			return nil, fmt.Errorf("dial XoloHostService: %w", err)
 		}
@@ -72,7 +72,7 @@ func Serve(impl proto.XoloPluginServer) {
 		Plugins: map[string]plugin.Plugin{
 			PluginName: &XoloPluginGRPC{Impl: WrapWithNoopInit(impl)},
 		},
-		GRPCServer: plugin.DefaultGRPCServer,
+		GRPCServer: GRPCServerFactory(MaxMessageSizeFromEnv()),
 	})
 }
 
@@ -86,6 +86,6 @@ func ServeWithUI(impl proto.XoloPluginServer, pluginName string, uiHandler http.
 		Plugins: map[string]plugin.Plugin{
 			PluginName: &XoloPluginGRPC{Impl: newUIWrapper(impl, pluginName, uiHandler)},
 		},
-		GRPCServer: plugin.DefaultGRPCServer,
+		GRPCServer: GRPCServerFactory(MaxMessageSizeFromEnv()),
 	})
 }

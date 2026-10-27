@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"strings"
 
+	"github.com/xolo-gateway/xolo/pkg/pluginsdk"
 	proto "github.com/xolo-gateway/xolo/pkg/pluginsdk/proto"
 )
 
@@ -62,7 +63,7 @@ func (p *Plugin) ResolveModel(ctx context.Context, in *proto.ResolveModelInput) 
 		user = "(inconnu)"
 	}
 
-	lastMessage := extractLastUserMessage(in.GetMessagesJson())
+	lastMessage := extractLastUserMessage(pluginsdk.ResolveModelMessages(in))
 	content := applyTemplate(cfg.template(), user, lastMessage)
 
 	return &proto.ResolveModelOutput{ResponseContent: content}, nil

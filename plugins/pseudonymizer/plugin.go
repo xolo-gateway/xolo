@@ -210,12 +210,9 @@ func (p *Plugin) PreRequest(ctx context.Context, in *proto.PreRequestInput) (*pr
 
 	// Resolve request body: prefer from input port, fall back to Model (full request body JSON).
 	requestJSON := ""
-	if in.InputsJson != "" {
-		var inputs map[string]any
-		if err := json.Unmarshal([]byte(in.InputsJson), &inputs); err == nil {
-			if v, ok := inputs["request"].(string); ok {
-				requestJSON = v
-			}
+	if inputs, err := pluginsdk.PreRequestInputs(in); err == nil {
+		if v, ok := inputs["request"].(string); ok {
+			requestJSON = v
 		}
 	}
 	if requestJSON == "" {
@@ -230,18 +227,7 @@ func (p *Plugin) PreRequest(ctx context.Context, in *proto.PreRequestInput) (*pr
 		}
 	}
 
-	// Resolve messages JSON.
-	messagesJSON := in.GetMessagesJson()
-	if messagesJSON == "" && requestBody != nil {
-		if msgs, ok := requestBody["messages"]; ok {
-			if b, err := json.Marshal(msgs); err == nil {
-				messagesJSON = string(b)
-			}
-		}
-	}
-	if messagesJSON == "" {
-		return passthroughOutput(), nil
-	}
+	messagesJSON := pluginsdk.PreRequestMessages(in)
 
 	var messages []map[string]any
 	if err := json.Unmarshal([]byte(messagesJSON), &messages); err != nil {

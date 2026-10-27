@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"log/slog"
 
+	"github.com/xolo-gateway/xolo/pkg/pluginsdk"
 	proto "github.com/xolo-gateway/xolo/pkg/pluginsdk/proto"
 )
 
@@ -31,8 +32,9 @@ func (p *Plugin) PreRequest(ctx context.Context, in *proto.PreRequestInput) (*pr
 		return &proto.PreRequestOutput{Allowed: true}, nil
 	}
 
+	messagesJSON := pluginsdk.PreRequestMessages(in)
 	var messages []map[string]interface{}
-	if err := json.Unmarshal([]byte(in.GetMessagesJson()), &messages); err != nil {
+	if err := json.Unmarshal([]byte(messagesJSON), &messages); err != nil {
 		// Malformed MessagesJson: pass the request through untouched so the
 		// client conversation is not silently replaced by a single system
 		// message in replace mode. The configured prompt is skipped for this
@@ -84,7 +86,7 @@ func (p *Plugin) PreRequest(ctx context.Context, in *proto.PreRequestInput) (*pr
 		slog.String("org_id", in.GetCtx().GetOrgId()),
 		slog.Int("original_messages_count", len(messages)),
 		slog.Int("modified_messages_count", len(modified)),
-		slog.Int("original_messages_bytes", len(in.GetMessagesJson())),
+		slog.Int("original_messages_bytes", len(messagesJSON)),
 		slog.Int("modified_messages_bytes", len(b)),
 		slog.Bool("append", cfg.Append),
 	)

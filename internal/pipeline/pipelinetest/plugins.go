@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 
+	"github.com/xolo-gateway/xolo/pkg/pluginsdk"
 	proto "github.com/xolo-gateway/xolo/pkg/pluginsdk/proto"
 )
 
@@ -44,13 +45,12 @@ func PrePostDescriptor(name string) *proto.PluginDescriptor {
 	}
 }
 
-// JSONPreRequest builds a PluginClient whose PreRequest unmarshals InputsJson
-// into a map, passes it to fn, and marshals the returned map as OutputsJson.
+// JSONPreRequest builds a PluginClient whose PreRequest restores its inputs
+// (pluginsdk.PreRequestInputs) into a map, passes it to fn, and marshals the returned map as OutputsJson.
 func JSONPreRequest(fn func(inputs map[string]any) map[string]any) *PluginClient {
 	return &PluginClient{
 		PreRequestFunc: func(_ context.Context, in *proto.PreRequestInput) (*proto.PreRequestOutput, error) {
-			var inputs map[string]any
-			json.Unmarshal([]byte(in.GetInputsJson()), &inputs)
+			inputs, _ := pluginsdk.PreRequestInputs(in)
 
 			outputs := fn(inputs)
 
@@ -69,8 +69,7 @@ func JSONPreRequest(fn func(inputs map[string]any) map[string]any) *PluginClient
 func JSONPreRequestWithState(fn func(inputs map[string]any) (outputs map[string]any, state []byte)) *PluginClient {
 	return &PluginClient{
 		PreRequestFunc: func(_ context.Context, in *proto.PreRequestInput) (*proto.PreRequestOutput, error) {
-			var inputs map[string]any
-			json.Unmarshal([]byte(in.GetInputsJson()), &inputs)
+			inputs, _ := pluginsdk.PreRequestInputs(in)
 
 			outputs, state := fn(inputs)
 

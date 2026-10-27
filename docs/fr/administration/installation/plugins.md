@@ -102,7 +102,7 @@ Ports with an empty `OutputPorts` / `InputPorts` list are **dynamic**: the actua
 
 Plugins integrate into the **pipeline engine** via their ports. Each plugin node in a pipeline graph:
 
-1. Receives upstream port values in `PreRequestInput.InputsJson` (JSON object `{portName: value}`)
+1. Receives upstream port values through `pluginsdk.PreRequestInputs(in)` (map `{portName: value}`)
 2. Produces downstream port values in `PreRequestOutput.OutputsJson` (JSON object `{portName: value}`)
 
 The pipeline engine topologically sorts nodes and passes outputs from upstream nodes as inputs to downstream nodes. This enables composing plugins into dataflow graphs without code changes — only wiring in the UI.
@@ -129,10 +129,14 @@ func (p *Plugin) PreRequest(ctx context.Context, in *proto.PreRequestInput) (*pr
 | -------------- | ----------------- | ---------------------------------------------------------------------------- |
 | `Ctx`          | `*RequestContext` | Organisation, user, token, config                                            |
 | `Model`        | `string`          | Full LLM request body JSON (same as `ec.BodyJSON` in the pipeline engine)    |
-| `MessagesJson` | `string`          | JSON-encoded messages array extracted from the request body                  |
-| `InputsJson`   | `string`          | JSON object `{portName: value}` for connected input ports                    |
+| `MessagesJson` | `string`          | Messages rewritten by an upstream node, empty when they are those of `Model` |
+| `InputsJson`   | `string`          | JSON object `{portName: value}` for connected input ports, minus the ports below |
+| `RequestInputPorts`  | `[]string`  | Input ports whose value is the request body held in `Model`                |
+| `MessagesInputPorts` | `[]string`  | Input ports whose value is the messages entering the node                  |
 
-> **Note:** `Model` does **not** contain just the model name — it contains the entire raw request body as JSON. Use `MessagesJson` for messages, or parse `Model` as JSON to access other fields such as `model`, `temperature`, `max_tokens`, etc.
+> **Note:** `Model` does **not** contain just the model name — it contains the entire raw request body as JSON. Parse it to access fields such as `model`, `temperature`, `max_tokens`, etc.
+
+> **Read the messages and inputs through the SDK.** The host sends the request body once per call: `MessagesJson` is left empty while the messages are those of the body, and an input port that only repeats the body or the messages is left out of `InputsJson`. Call `pluginsdk.PreRequestMessages(in)` for the messages and `pluginsdk.PreRequestInputs(in)` for the inputs; they restore what was left out. Reading the raw fields would see no messages and miss ports. Since protocol version 3.
 
 **Output (`PreRequestOutput`):**
 
@@ -171,8 +175,8 @@ func (p *Plugin) PreRequest(_ context.Context, in *proto.PreRequestInput) (*prot
 ```go
 func (p *Plugin) PreRequest(_ context.Context, in *proto.PreRequestInput) (*proto.PreRequestOutput, error) {
     outputs := map[string]interface{}{
-        "has_vision":   requesttext.HasImage(in.MessagesJson),
-        "input_tokens": requesttext.EstimateTokens(requesttext.Context(in.MessagesJson)),
+        "has_vision":   requesttext.HasImage(pluginsdk.PreRequestMessages(in)),
+        "input_tokens": requesttext.EstimateTokens(requesttext.Context(pluginsdk.PreRequestMessages(in))),
     }
     b, _ := json.Marshal(outputs)
     return &proto.PreRequestOutput{
@@ -253,7 +257,7 @@ if q.GetMonthlyTotal() > 0 {
 ```go
 func (p *Plugin) PreRequest(ctx context.Context, in *proto.PreRequestInput) (*proto.PreRequestOutput, error) {
     var messages []map[string]any
-    if err := json.Unmarshal([]byte(in.GetMessagesJson()), &messages); err != nil {
+    if err := json.Unmarshal([]byte(pluginsdk.PreRequestMessages(in)), &messages); err != nil {
         return &proto.PreRequestOutput{Allowed: true}, nil
     }
     newMessages := append([]map[string]any{
@@ -271,9 +275,14 @@ func (p *Plugin) PreRequest(ctx context.Context, in *proto.PreRequestInput) (*pr
 
 ```go
 func (p *Plugin) PreRequest(_ context.Context, in *proto.PreRequestInput) (*proto.PreRequestOutput, error) {
+    inputs, err := pluginsdk.PreRequestInputs(in) // InputsJson alone misses the ports left out
+    if err != nil {
+        return nil, err
+    }
+    b, _ := json.Marshal(inputs)
     return &proto.PreRequestOutput{
         Allowed:     true,
-        OutputsJson: in.InputsJson, // forward all inputs as outputs
+        OutputsJson: string(b), // forward all inputs as outputs
     }, nil
 }
 ```
@@ -318,7 +327,7 @@ The `arguments` of a call are themselves a JSON document. Restore the values ins
 
 ```go
 func (p *Plugin) PreRequest(_ context.Context, in *proto.PreRequestInput) (*proto.PreRequestOutput, error) {
-    mapping := buildPseudonymMap(in.GetMessagesJson())
+    mapping := buildPseudonymMap(pluginsdk.PreRequestMessages(in))
     state, _ := json.Marshal(mapping)
     return &proto.PreRequestOutput{
         Allowed:   true,
@@ -355,7 +364,7 @@ func (p *Plugin) ResolveModel(ctx context.Context, in *proto.ResolveModelInput) 
 | `Ctx`             | `*RequestContext`     | Organisation, user, token, config          |
 | `RequestedModel`  | `string`              | Virtual model name (e.g. `"my-org/auto"`)  |
 | `AvailableModels` | `[]*ModelInfo`        | All real models in the org's pool          |
-| `MessagesJson`    | `string`              | JSON-encoded messages                      |
+| `MessagesJson`    | `string`              | Rewritten messages, empty when they are those of `BodyJson`: read them with `pluginsdk.ResolveModelMessages(in)` |
 | `VirtualModels`   | `[]*VirtualModelInfo` | Configured virtual models                  |
 | `Quota`           | `*QuotaInfo`          | User's quota status                        |
 | `BodyJson`        | `string`              | Raw request body JSON                      |
@@ -545,6 +554,20 @@ Les autorisations OAuth qui avaient été enregistrées sous un périmètre
 d'organisation doivent être renouvelées depuis le profil : aucun repli de lecture
 ne les récupère. Les plugins installés restent des composants de confiance ; ce
 correctif ne constitue pas une autorisation des RPC face à un binaire malveillant.
+
+## Protocole version 3 : corps de requête transmis une seule fois
+
+Jusqu'au protocole 2, un appel `PreRequest` transportait la conversation jusqu'à
+trois fois : dans le corps de la requête (`Model`), dans `MessagesJson` et dans
+le port d'entrée `request` de `InputsJson`. Une longue conversation d'agent de
+code dépassait alors la taille maximale d'un message gRPC.
+
+Depuis le protocole 3, chaque donnée n'est transmise qu'une fois, et un plugin
+lit les messages et ses entrées avec `pluginsdk.PreRequestMessages`,
+`pluginsdk.ResolveModelMessages` et `pluginsdk.PreRequestInputs`. La taille
+maximale d'un message se règle avec `XOLO_PLUGINS_MAX_MESSAGE_SIZE` (64 Mio par
+défaut). Reconstruire et livrer ensemble le serveur et tous les plugins : les
+binaires du protocole 2 sont refusés au démarrage.
 
 ## Emitting Events
 

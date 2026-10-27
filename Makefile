@@ -154,11 +154,11 @@ goreleaser: tools/goreleaser/bin/goreleaser
 
 tools/protoc-gen-go/bin/protoc-gen-go:
 	mkdir -p tools/protoc-gen-go/bin
-	GOBIN=$(PWD)/tools/protoc-gen-go/bin go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
+	GOBIN=$(PWD)/tools/protoc-gen-go/bin go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.12
 
 tools/protoc-gen-go-grpc/bin/protoc-gen-go-grpc:
 	mkdir -p tools/protoc-gen-go-grpc/bin
-	GOBIN=$(PWD)/tools/protoc-gen-go-grpc/bin go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
+	GOBIN=$(PWD)/tools/protoc-gen-go-grpc/bin go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.6.2
 
 generate-proto: tools/protoc-gen-go/bin/protoc-gen-go tools/protoc-gen-go-grpc/bin/protoc-gen-go-grpc
 	PATH=$(PWD)/tools/protoc-gen-go/bin:$(PWD)/tools/protoc-gen-go-grpc/bin:$(PATH) \

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"sync"
 
+	"github.com/xolo-gateway/xolo/pkg/pluginsdk"
 	proto "github.com/xolo-gateway/xolo/pkg/pluginsdk/proto"
 	"github.com/xolo-gateway/xolo/plugins/internal/complexity"
 	"github.com/xolo-gateway/xolo/plugins/internal/complexity/data"
@@ -55,7 +56,7 @@ func (p *Plugin) Describe(_ context.Context, _ *proto.DescribeRequest) (*proto.P
 
 func (p *Plugin) PreRequest(_ context.Context, in *proto.PreRequestInput) (*proto.PreRequestOutput, error) {
 	cfg := parseConfig(in.GetCtx().GetConfigJson())
-	text := requesttext.LastUserTurn(in.MessagesJson)
+	text := requesttext.LastUserTurn(pluginsdk.PreRequestMessages(in))
 
 	category, confidence, source := p.classify(text, cfg)
 

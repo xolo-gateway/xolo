@@ -40,8 +40,14 @@ type ExecutionContext struct {
 	// generator node's "request" output is seeded from it, and it is exposed
 	// to PreRequest plugins as PreRequestInput.Model.
 	BodyJSON string
-	// MessagesJSON is the JSON array of messages extracted from BodyJSON.
+	// MessagesJSON is the JSON array of the messages entering the node: those
+	// of BodyJSON, as rewritten by the upstream nodes.
 	MessagesJSON string
+	// BodyMessagesJSON is the JSON array of messages extracted from BodyJSON,
+	// as pluginsdk.BodyMessages returns it. A plugin call leaves MessagesJSON
+	// out when it still equals this value, since the plugin restores it from
+	// the body it receives anyway. Empty means unknown: the messages are sent.
+	BodyMessagesJSON string
 	// ProtoModels is the list of available real models for the org.
 	ProtoModels []*proto.ModelInfo
 	// ProtoVMs is the list of virtual models visible to the org.
@@ -211,4 +217,14 @@ type ResponseModifier interface {
 // noopBackward is a helper that returns an empty BackwardResult without error.
 func noopBackward(_ context.Context, _ BackwardInput) (*BackwardResult, error) {
 	return &BackwardResult{}, nil
+}
+
+// sentMessagesJSON returns the messages a plugin call carries: empty when they
+// are those of the request body, which the call carries already and from
+// which the plugin restores them (pluginsdk.PreRequestMessages).
+func (ec ExecutionContext) sentMessagesJSON(messagesJSON string) string {
+	if ec.BodyMessagesJSON != "" && messagesJSON == ec.BodyMessagesJSON {
+		return ""
+	}
+	return messagesJSON
 }

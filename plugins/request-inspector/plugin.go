@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 
+	"github.com/xolo-gateway/xolo/pkg/pluginsdk"
 	proto "github.com/xolo-gateway/xolo/pkg/pluginsdk/proto"
 	"github.com/xolo-gateway/xolo/plugins/internal/requesttext"
 )
@@ -41,14 +42,15 @@ func (p *Plugin) Describe(_ context.Context, _ *proto.DescribeRequest) (*proto.P
 
 func (p *Plugin) PreRequest(_ context.Context, in *proto.PreRequestInput) (*proto.PreRequestOutput, error) {
 	body := parseBody(in.GetModel())
+	messagesJSON := pluginsdk.PreRequestMessages(in)
 
 	outputs := map[string]interface{}{
-		"has_vision":    requesttext.HasImage(in.MessagesJson),
+		"has_vision":    requesttext.HasImage(messagesJSON),
 		"has_reasoning": body.hasReasoning(),
 		"has_tools":     len(body.Tools) > 0 || len(body.Functions) > 0,
 		"is_streaming":  body.Stream,
-		"message_count": countMessages(in.MessagesJson),
-		"input_tokens":  requesttext.EstimateTokens(requesttext.Context(in.MessagesJson)),
+		"message_count": countMessages(messagesJSON),
+		"input_tokens":  requesttext.EstimateTokens(requesttext.Context(messagesJSON)),
 		"max_tokens":    body.maxTokens(),
 	}
 	b, _ := json.Marshal(outputs)

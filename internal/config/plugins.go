@@ -14,6 +14,13 @@ type PluginsConfig struct {
 	// or raw bytes. Empty string disables the limit (default).
 	MemLimit string `env:"MEM_LIMIT" envDefault:""`
 
+	// MaxMessageSize bounds, in bytes, every gRPC message exchanged with a
+	// plugin subprocess, in both directions. A PreRequest carries the whole
+	// request body, so a long agent conversation can exceed it: the request
+	// then fails with a ResourceExhausted error. Set via
+	// XOLO_PLUGINS_MAX_MESSAGE_SIZE. Default: 64 MiB.
+	MaxMessageSize int `env:"MAX_MESSAGE_SIZE" envDefault:"67108864"`
+
 	// RestartCooldown is the minimum delay between two consecutive restarts of the
 	// same plugin subprocess. Prevents OOM restart storms when the plugin crashes
 	// repeatedly. Set via XOLO_PLUGINS_RESTART_COOLDOWN (e.g. "30s", "1m").

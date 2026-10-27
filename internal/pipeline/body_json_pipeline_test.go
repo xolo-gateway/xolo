@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/xolo-gateway/xolo/internal/pipeline/pipelinetest"
+	"github.com/xolo-gateway/xolo/pkg/pluginsdk"
 	proto "github.com/xolo-gateway/xolo/pkg/pluginsdk/proto"
 )
 
@@ -70,5 +71,142 @@ func TestPipeline_BodyJSONFlowsToPreRequestInputModel(t *testing.T) {
 
 	if capturedModel != body {
 		t.Fatalf("PreRequestInput.Model = %q, want %q (full LLM request body sourced from ec.BodyJSON at plugin_executor.go:156)", capturedModel, body)
+	}
+}
+
+// TestPipeline_PreRequestCarriesBodyOnce asserts that a PreRequest call holds
+// the request body a single time: the messages it still carries untouched and
+// the input port fed with the body are left out, and the SDK helpers restore
+// them. A long conversation used to travel three times in the same message
+// and exceed the gRPC message size bound.
+func TestPipeline_PreRequestCarriesBodyOnce(t *testing.T) {
+	body := `{"model":"m","messages":[{"role":"user","content":"hello"}]}`
+	messages := pluginsdk.BodyMessages(body)
+
+	var captured *proto.PreRequestInput
+	capturePlugin := &pipelinetest.PluginClient{
+		PreRequestFunc: func(_ context.Context, in *proto.PreRequestInput) (*proto.PreRequestOutput, error) {
+			captured = in
+			return &proto.PreRequestOutput{Allowed: true}, nil
+		},
+	}
+
+	plugins := pipelinetest.NewPluginProvider().
+		Register("capture", pipelinetest.PreRequestDescriptor("capture"), capturePlugin)
+
+	graph := pipelinetest.NewGraph().
+		Generator("gen").
+		Plugin("capture", "capture").
+		ModelWithProxy("mdl", "org/gpt4").
+		Sink("sink").
+		Edge("gen", "request", "capture", "request").
+		Edge("capture", "request", "mdl", "request").
+		Edge("mdl", "response", "sink", "response").
+		Build()
+
+	h := pipelinetest.New(
+		pipelinetest.WithPlugins(plugins),
+		pipelinetest.WithModelResolver(pipelinetest.NewModelResolver().WithResponse("org/gpt4", "ok")),
+	)
+	ec := pipelinetest.NewExecutionContext(
+		pipelinetest.WithBodyJSON(body),
+		pipelinetest.WithMessagesJSON(messages),
+	)
+
+	if _, err := h.Run(context.Background(), graph, ec); err != nil {
+		t.Fatalf("Run failed: %v", err)
+	}
+	if captured == nil {
+		t.Fatal("PreRequest was not called")
+	}
+
+	if got := captured.GetMessagesJson(); got != "" {
+		t.Errorf("MessagesJson = %q, want empty: the messages are those of the body", got)
+	}
+	if got := captured.GetInputsJson(); got != "{}" {
+		t.Errorf("InputsJson = %q, want {}: the request port only repeats the body", got)
+	}
+	if got := captured.GetRequestInputPorts(); len(got) != 1 || got[0] != "request" {
+		t.Errorf("RequestInputPorts = %v, want [request]", got)
+	}
+
+	if got := pluginsdk.PreRequestMessages(captured); got != messages {
+		t.Errorf("PreRequestMessages = %q, want %q", got, messages)
+	}
+	inputs, err := pluginsdk.PreRequestInputs(captured)
+	if err != nil {
+		t.Fatalf("PreRequestInputs: %v", err)
+	}
+	if got := inputs["request"]; got != body {
+		t.Errorf("restored request input = %v, want the body", got)
+	}
+}
+
+// TestPipeline_PreRequestCarriesRewrittenMessages asserts that messages
+// rewritten by an upstream node do travel, once, in MessagesJson, and that an
+// input port fed with them is left out of InputsJson.
+func TestPipeline_PreRequestCarriesRewrittenMessages(t *testing.T) {
+	body := `{"model":"m","messages":[{"role":"user","content":"hello"}]}`
+	rewritten := `[{"role":"user","content":"bonjour"}]`
+
+	rewriter := pipelinetest.JSONPreRequest(func(map[string]any) map[string]any {
+		return map[string]any{"messages_json": rewritten}
+	})
+
+	var captured *proto.PreRequestInput
+	capturePlugin := &pipelinetest.PluginClient{
+		PreRequestFunc: func(_ context.Context, in *proto.PreRequestInput) (*proto.PreRequestOutput, error) {
+			captured = in
+			return &proto.PreRequestOutput{Allowed: true}, nil
+		},
+	}
+
+	plugins := pipelinetest.NewPluginProvider().
+		Register("rewriter", pipelinetest.PreRequestDescriptor("rewriter"), rewriter).
+		Register("capture", pipelinetest.PreRequestDescriptor("capture"), capturePlugin)
+
+	graph := pipelinetest.NewGraph().
+		Generator("gen").
+		Plugin("rewriter", "rewriter").
+		Plugin("capture", "capture").
+		ModelWithProxy("mdl", "org/gpt4").
+		Sink("sink").
+		Edge("gen", "request", "rewriter", "request").
+		Edge("rewriter", "messages_json", "capture", "messages_json").
+		Edge("capture", "request", "mdl", "request").
+		Edge("mdl", "response", "sink", "response").
+		Build()
+
+	h := pipelinetest.New(
+		pipelinetest.WithPlugins(plugins),
+		pipelinetest.WithModelResolver(pipelinetest.NewModelResolver().WithResponse("org/gpt4", "ok")),
+	)
+	ec := pipelinetest.NewExecutionContext(
+		pipelinetest.WithBodyJSON(body),
+		pipelinetest.WithMessagesJSON(pluginsdk.BodyMessages(body)),
+	)
+
+	if _, err := h.Run(context.Background(), graph, ec); err != nil {
+		t.Fatalf("Run failed: %v", err)
+	}
+	if captured == nil {
+		t.Fatal("PreRequest was not called")
+	}
+
+	if got := captured.GetMessagesJson(); got != rewritten {
+		t.Errorf("MessagesJson = %q, want the rewritten messages %q", got, rewritten)
+	}
+	if got := captured.GetInputsJson(); got != "{}" {
+		t.Errorf("InputsJson = %q, want {}: the messages_json port only repeats MessagesJson", got)
+	}
+	if got := captured.GetMessagesInputPorts(); len(got) != 1 || got[0] != "messages_json" {
+		t.Errorf("MessagesInputPorts = %v, want [messages_json]", got)
+	}
+	inputs, err := pluginsdk.PreRequestInputs(captured)
+	if err != nil {
+		t.Fatalf("PreRequestInputs: %v", err)
+	}
+	if got := inputs["messages_json"]; got != rewritten {
+		t.Errorf("restored messages_json input = %v, want %q", got, rewritten)
 	}
 }

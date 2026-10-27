@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"math"
 
+	"github.com/xolo-gateway/xolo/pkg/pluginsdk"
 	proto "github.com/xolo-gateway/xolo/pkg/pluginsdk/proto"
 	"github.com/xolo-gateway/xolo/plugins/internal/complexity"
 	"github.com/xolo-gateway/xolo/plugins/internal/requesttext"
@@ -47,8 +48,9 @@ func (p *Plugin) Describe(_ context.Context, _ *proto.DescribeRequest) (*proto.P
 }
 
 func (p *Plugin) PreRequest(_ context.Context, in *proto.PreRequestInput) (*proto.PreRequestOutput, error) {
-	turn := complexity.AnalyzeDefault(requesttext.LastUserTurn(in.MessagesJson))
-	contextTokens := requesttext.EstimateTokens(requesttext.Context(in.MessagesJson))
+	messagesJSON := pluginsdk.PreRequestMessages(in)
+	turn := complexity.AnalyzeDefault(requesttext.LastUserTurn(messagesJSON))
+	contextTokens := requesttext.EstimateTokens(requesttext.Context(messagesJSON))
 
 	outputs := map[string]interface{}{
 		"complexity":              turn.Composite,

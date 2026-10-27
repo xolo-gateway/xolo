@@ -54,8 +54,6 @@ func (e *PluginExecutor) Forward(ctx context.Context, node model.PipelineNode, i
 		TeamSlug:      ec.TeamSlug,
 	}
 
-	inputsJSON := InputsJSON(inputs)
-
 	// A node whose plugin inspects tool results registers itself for the
 	// tool loop, in addition to whatever else it does this pass.
 	if hasCapability(desc, proto.PluginDescriptor_TOOL_RESULT_INSPECTOR) && ec.ToolInspectors != nil {
@@ -66,9 +64,9 @@ func (e *PluginExecutor) Forward(ctx context.Context, node model.PipelineNode, i
 	var result *ForwardResult
 	switch {
 	case hasCapability(desc, proto.PluginDescriptor_PRE_REQUEST):
-		result, err = e.forwardPreRequest(ctx, client, reqCtx, node, inputs, inputsJSON, ec)
+		result, err = e.forwardPreRequest(ctx, client, reqCtx, node, inputs, ec)
 	case hasCapability(desc, proto.PluginDescriptor_RESOLVE_MODEL):
-		result, err = e.forwardResolveModel(ctx, client, reqCtx, node, inputs, inputsJSON, ec)
+		result, err = e.forwardResolveModel(ctx, client, reqCtx, node, inputs, ec)
 	case hasCapability(desc, proto.PluginDescriptor_TOOL_PROVIDER):
 		result, err = e.forwardToolProvider(ctx, client, reqCtx, node, inputs, ec)
 	default:
@@ -149,7 +147,6 @@ func (e *PluginExecutor) forwardPreRequest(
 	reqCtx *proto.RequestContext,
 	_ model.PipelineNode,
 	inputs map[string]interface{},
-	inputsJSON string,
 	ec ExecutionContext,
 ) (*ForwardResult, error) {
 	messagesJSON, _ := inputs["messages_json"].(string)
@@ -157,13 +154,15 @@ func (e *PluginExecutor) forwardPreRequest(
 		messagesJSON = ec.MessagesJSON
 	}
 
-	out, err := client.PreRequest(ctx, &proto.PreRequestInput{
+	in := &proto.PreRequestInput{
 		Ctx:          reqCtx,
 		Model:        ec.BodyJSON,
-		MessagesJson: messagesJSON,
-		InputsJson:   inputsJSON,
+		MessagesJson: ec.sentMessagesJSON(messagesJSON),
 		Quota:        ec.quotaInfo(ctx),
-	})
+	}
+	in.InputsJson, in.RequestInputPorts, in.MessagesInputPorts = splitInputs(inputs, ec.BodyJSON, messagesJSON)
+
+	out, err := client.PreRequest(ctx, in)
 	if err != nil {
 		return nil, errors.Wrap(err, "plugin PreRequest failed")
 	}
@@ -195,7 +194,6 @@ func (e *PluginExecutor) forwardResolveModel(
 	reqCtx *proto.RequestContext,
 	_ model.PipelineNode,
 	inputs map[string]interface{},
-	_ string,
 	ec ExecutionContext,
 ) (*ForwardResult, error) {
 	messagesJSON, _ := inputs["messages_json"].(string)
@@ -207,7 +205,7 @@ func (e *PluginExecutor) forwardResolveModel(
 		Ctx:             reqCtx,
 		RequestedModel:  modelFromInputs(inputs),
 		AvailableModels: ec.ProtoModels,
-		MessagesJson:    messagesJSON,
+		MessagesJson:    ec.sentMessagesJSON(messagesJSON),
 		VirtualModels:   ec.ProtoVMs,
 		Quota:           ec.quotaInfo(ctx),
 		BodyJson:        ec.BodyJSON,

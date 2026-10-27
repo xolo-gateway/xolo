@@ -93,16 +93,17 @@ func (p *Plugin) PreRequest(_ context.Context, in *proto.PreRequestInput) (*prot
 		guard = p.defaultGuard()
 	}
 
+	messagesJSON := pluginsdk.PreRequestMessages(in)
 	segments := []promptguard.Segment{
-		{Kind: promptguard.SegmentUser, Text: requesttext.LastUserTurn(in.MessagesJson)},
+		{Kind: promptguard.SegmentUser, Text: requesttext.LastUserTurn(messagesJSON)},
 	}
 	if cfg.AnalyzeHistory {
-		for _, t := range requesttext.EarlierUserTurns(in.MessagesJson) {
+		for _, t := range requesttext.EarlierUserTurns(messagesJSON) {
 			segments = append(segments, promptguard.Segment{Kind: promptguard.SegmentHistory, Text: t})
 		}
 	}
 	if cfg.AnalyzeToolResults {
-		for _, t := range requesttext.ToolResults(in.MessagesJson) {
+		for _, t := range requesttext.ToolResults(messagesJSON) {
 			segments = append(segments, promptguard.Segment{Kind: promptguard.SegmentTool, Text: t})
 		}
 	}

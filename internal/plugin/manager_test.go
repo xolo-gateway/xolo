@@ -13,7 +13,7 @@ func TestPluginManager_EmptyDir(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	mgr := plugin.NewManager(dir, "", 0, nil, nil, nil, nil, "")
+	mgr := plugin.NewManager(dir, "", 0, 0, nil, nil, nil, nil, "")
 	if err := mgr.Start(ctx); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
@@ -29,7 +29,7 @@ func TestPluginManager_MissingDir(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	mgr := plugin.NewManager("/nonexistent/path/xolo/plugins", "", 0, nil, nil, nil, nil, "")
+	mgr := plugin.NewManager("/nonexistent/path/xolo/plugins", "", 0, 0, nil, nil, nil, nil, "")
 	// Should not error — missing dir is treated as empty
 	if err := mgr.Start(ctx); err != nil {
 		t.Fatalf("Start with missing dir: %v", err)
@@ -50,7 +50,7 @@ func TestPluginManager_IgnoresNonExecutable(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	mgr := plugin.NewManager(dir, "", 0, nil, nil, nil, nil, "")
+	mgr := plugin.NewManager(dir, "", 0, 0, nil, nil, nil, nil, "")
 	if err := mgr.Start(ctx); err != nil {
 		t.Fatal(err)
 	}
@@ -62,7 +62,7 @@ func TestPluginManager_IgnoresNonExecutable(t *testing.T) {
 }
 
 func TestManager_HTTPPort_UnknownPlugin_ReturnsZero(t *testing.T) {
-	m := plugin.NewManager("/nonexistent/path/xolo/plugins", "", 0, nil, nil, nil, nil, "")
+	m := plugin.NewManager("/nonexistent/path/xolo/plugins", "", 0, 0, nil, nil, nil, nil, "")
 	if p := m.HTTPPort("unknown-plugin"); p != 0 {
 		t.Errorf("expected 0 for unknown plugin, got %d", p)
 	}
