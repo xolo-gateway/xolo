@@ -1,6 +1,7 @@
 package component
 
 import (
+	"github.com/xolo-gateway/xolo/internal/i18n"
 	common "github.com/xolo-gateway/xolo/internal/http/handler/webui/common/component"
 	orgcomponent "github.com/xolo-gateway/xolo/internal/http/handler/webui/org/component"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/button"
@@ -13,10 +14,10 @@ import (
 )
 
 templ PersonalModelsPage(vmodel PersonalModelsPageVModel) {
-	@common.AppLayout(vmodel.AppLayoutVModel, common.WithTitle("Mes modèles")) {
+	@common.AppLayout(vmodel.AppLayoutVModel, common.WithTitle(i18n.T(ctx, "profile.personal_models.title"))) {
 		@common.PageHeader(common.PageHeaderProps{
-			Title:    "Mes modèles",
-			Subtitle: "Modèles virtuels personnels, appelés via l'API avec le préfixe ~/.",
+			Title:    i18n.T(ctx, "profile.personal_models.title"),
+			Subtitle: i18n.T(ctx, "profile.personal_models.subtitle"),
 		}) {
 			<div class="hidden">
 				@input.Input(input.Props{
@@ -37,7 +38,7 @@ templ PersonalModelsPage(vmodel PersonalModelsPageVModel) {
 					"type":                   "button",
 				},
 			}) {
-				Importer un bundle
+				{ i18n.T(ctx, "profile.personal_models.import") }
 			}
 			@button.Button(button.Props{
 				Size:  button.SizeSm,
@@ -45,22 +46,22 @@ templ PersonalModelsPage(vmodel PersonalModelsPageVModel) {
 				Href:  common.BaseURLString(ctx, common.WithPath("/profile/personal-models/new")),
 			}) {
 				@icon.Plus(icon.Props{Class: "size-3.5"})
-				Nouveau modèle virtuel
+				{ i18n.T(ctx, "profile.personal_models.new") }
 			}
 		}
-		@common.FlashToast(vmodel.Success, "Le modèle virtuel")
-		@common.FlashError(vmodel.Error, "Un modèle virtuel")
+		@common.FlashToast(vmodel.Success, i18n.T(ctx, "profile.personal_models.subject_definite"))
+		@common.FlashError(vmodel.Error, i18n.T(ctx, "profile.personal_models.subject_indefinite"))
 		if len(vmodel.VirtualModels) == 0 {
 			@common.EmptyState(common.EmptyStateProps{
 				Icon:        icon.Network,
-				Title:       "Aucun modèle personnel",
-				Description: "Composez vos propres pipelines à partir des modèles auxquels vos organisations vous donnent accès.",
+				Title:       i18n.T(ctx, "profile.personal_models.empty.title"),
+				Description: i18n.T(ctx, "profile.personal_models.empty.description"),
 			}) {
 				@button.Button(button.Props{
 					Size: button.SizeSm,
 					Href: common.BaseURLString(ctx, common.WithPath("/profile/personal-models/new")),
 				}) {
-					Nouveau modèle virtuel
+					{ i18n.T(ctx, "profile.personal_models.new") }
 				}
 			}
 		} else {
@@ -79,7 +80,7 @@ templ personalModelList(vmodel PersonalModelsPageVModel) {
 	@common.Section() {
 		@common.SectionHeader() {
 			@common.SectionTitle() {
-				{ orgcomponent.Pluralize(len(vmodel.VirtualModels), "modèle virtuel", "modèles virtuels") }
+				{ i18n.T(ctx, "profile.personal_models.count", len(vmodel.VirtualModels)) }
 			}
 		}
 		<div class="flex flex-col">
@@ -93,16 +94,16 @@ templ personalModelList(vmodel PersonalModelsPageVModel) {
 					<span class="flex items-center gap-2">
 						<span class="min-w-0 flex-1 truncate font-mono text-sm font-semibold">~/{ vm.Name() }</span>
 						if vm.Graph() != nil && len(vm.Graph().Nodes) > 0 {
-							@common.Badge(common.TonePositive, "actif")
+							@common.Badge(common.TonePositive, i18n.T(ctx, "profile.personal_models.badge.active"))
 						} else {
-							@common.Badge(common.ToneNeutral, "brouillon")
+							@common.Badge(common.ToneNeutral, i18n.T(ctx, "profile.personal_models.badge.draft"))
 						}
 					</span>
 					if vm.Description() != "" {
 						<span class="mt-0.5 block text-xs text-muted-foreground">{ vm.Description() }</span>
 					}
 					<span class="mt-1.5 block font-mono text-2xs text-muted-foreground">
-						{ orgcomponent.Pluralize(orgcomponent.GraphNodeCount(vm.Graph()), "nœud", "nœuds") }
+						{ i18n.T(ctx, "profile.personal_models.node_count", orgcomponent.GraphNodeCount(vm.Graph())) }
 					</span>
 				</a>
 			}
@@ -120,49 +121,49 @@ templ personalModelDetail(vmodel PersonalModelsPageVModel) {
 				@common.SectionTitle() {
 					<span class="font-mono">~/{ vm.Name() }</span>
 				}
-				<span class="text-xs text-muted-foreground">aperçu</span>
+				<span class="text-xs text-muted-foreground">{ i18n.T(ctx, "profile.personal_models.preview") }</span>
 				<span class="ml-auto flex flex-wrap items-center gap-1">
 					@button.Button(button.Props{
 						Href:    common.BaseURLString(ctx, common.WithPath("/profile/personal-models/", string(vm.ID()), "/edit")),
 						Variant: button.VariantOutline,
 						Size:    button.SizeSm,
 					}) {
-						Renommer
+						{ i18n.T(ctx, "profile.personal_models.rename") }
 					}
 					@button.Button(button.Props{
 						Href:    common.BaseURLString(ctx, common.WithPath("/api/personal-models/", string(vm.ID()), "/export")),
 						Variant: button.VariantOutline,
 						Size:    button.SizeSm,
 					}) {
-						Exporter
+						{ i18n.T(ctx, "profile.personal_models.export") }
 					}
 					@common.ConfirmDelete(common.ConfirmDeleteProps{
 						URL:         common.BaseURLString(ctx, common.WithPath("/profile/personal-models/", string(vm.ID()))),
-						Tooltip:     "Supprimer",
-						Title:       "Supprimer ce modèle virtuel ?",
-						Description: "Les appels qui le nomment échoueront dès la suppression.",
+						Tooltip:     i18n.T(ctx, "profile.personal_models.delete"),
+						Title:       i18n.T(ctx, "profile.personal_models.delete_title"),
+						Description: i18n.T(ctx, "profile.personal_models.delete_description"),
 					})
 					@button.Button(button.Props{Href: pipelineHref, Size: button.SizeSm, Class: "gap-1.5"}) {
 						@icon.Workflow(icon.Props{Class: "size-3.5"})
-						Ouvrir l'éditeur
+						{ i18n.T(ctx, "profile.personal_models.open_editor") }
 					}
 				</span>
 			}
 			@orgcomponent.PipelinePreview(vm.Graph(), pipelineHref)
 			<div class="flex flex-wrap gap-6 border-t px-4 py-3">
-				@common.InlineStat("Nœuds", common.ToneNeutral) {
+				@common.InlineStat(i18n.T(ctx, "profile.personal_models.stat.nodes"), common.ToneNeutral) {
 					{ strconv.Itoa(orgcomponent.GraphNodeCount(vm.Graph())) }
 				}
-				@common.InlineStat("Liaisons", common.ToneNeutral) {
+				@common.InlineStat(i18n.T(ctx, "profile.personal_models.stat.edges"), common.ToneNeutral) {
 					{ strconv.Itoa(orgcomponent.GraphEdgeCount(vm.Graph())) }
 				}
 				<!-- Mêmes colonnes en attente que côté organisation : l'usage n'est
 				pas encore agrégé par modèle virtuel (lot 7 du plan). -->
-				@common.InlineStat("Appels 30 j", common.ToneNeutral) {
-					@common.PendingValue("L'usage n'est pas encore agrégé par modèle virtuel.")
+				@common.InlineStat(i18n.T(ctx, "profile.personal_models.stat.calls_30d"), common.ToneNeutral) {
+					@common.PendingValue(i18n.T(ctx, "profile.personal_models.stat.calls_pending"))
 				}
-				@common.InlineStat("Latence ajoutée p50", common.ToneNeutral) {
-					@common.PendingValue("La latence propre au pipeline n'est pas encore mesurée.")
+				@common.InlineStat(i18n.T(ctx, "profile.personal_models.stat.latency_p50"), common.ToneNeutral) {
+					@common.PendingValue(i18n.T(ctx, "profile.personal_models.stat.latency_pending"))
 				}
 			</div>
 		}
@@ -170,10 +171,10 @@ templ personalModelDetail(vmodel PersonalModelsPageVModel) {
 }
 
 templ PersonalModelFormPage(vmodel PersonalModelFormVModel) {
-	{{ title := "Nouveau modèle virtuel personnel" }}
+	{{ title := i18n.T(ctx, "profile.personal_models.form.new_title") }}
 	{{ action := common.BaseURLString(ctx, common.WithPath("/profile/personal-models")) }}
 	if !vmodel.IsNew {
-		{{ title = "Modifier le modèle virtuel personnel" }}
+		{{ title = i18n.T(ctx, "profile.personal_models.form.edit_title") }}
 		{{ action = common.BaseURLString(ctx, common.WithPath("/profile/personal-models/", string(vmodel.VirtualModel.ID()), "/edit")) }}
 	}
 	@common.AppLayout(vmodel.AppLayoutVModel, common.WithTitle(title)) {
@@ -181,52 +182,52 @@ templ PersonalModelFormPage(vmodel PersonalModelFormVModel) {
 			@common.PageHeader(common.PageHeaderProps{
 				Title: title,
 			})
-			@common.FlashError(vmodel.Error, "Un modèle virtuel")
+			@common.FlashError(vmodel.Error, i18n.T(ctx, "profile.personal_models.subject_indefinite"))
 			<form method="POST" action={ templ.SafeURL(action) } class="space-y-4">
 				<div class="space-y-2">
 					@form.Label() {
-						Nom
+						{ i18n.T(ctx, "profile.personal_models.form.name") }
 					}
 					if vmodel.IsNew {
 						@input.Input(input.Props{
 							Name:        "name",
-							Placeholder: "ex: assistant, rapide, expert",
+							Placeholder: i18n.T(ctx, "profile.personal_models.form.name_placeholder"),
 							Attributes:  templ.Attributes{"required": true},
 						})
 						@form.Description() {
-							Le nom sera utilisé comme suffixe (ex&nbsp;: ~/assistant)
+							{ i18n.T(ctx, "profile.personal_models.form.name_help_new") }
 						}
 					} else {
 						@input.Input(input.Props{
 							Name:        "name",
 							Value:       vmodel.Name,
-							Placeholder: "ex: assistant, rapide, expert",
+							Placeholder: i18n.T(ctx, "profile.personal_models.form.name_placeholder"),
 							Attributes:  templ.Attributes{"required": true, "autocomplete": "off"},
 						})
 						@form.Description() {
-							Renommer change le suffixe utilisé pour appeler ce modèle (ex&nbsp;: ~/assistant). Le nom doit rester unique parmi vos modèles personnels.
+							{ i18n.T(ctx, "profile.personal_models.form.name_help_edit") }
 						}
 					}
 				</div>
 				<div class="space-y-2">
 					@form.Label() {
-						Description
+						{ i18n.T(ctx, "profile.personal_models.form.description") }
 					}
 					@textarea.Textarea(textarea.Props{Name: "description", Rows: 3, Value: vmodel.Description})
 				</div>
 				if len(vmodel.Teams) > 0 {
 					<div class="space-y-2">
 						@form.Label(form.LabelProps{For: "pvm-team-trigger"}) {
-							Équipe débitée
+							{ i18n.T(ctx, "profile.personal_models.form.team") }
 						}
 						@selectbox.SelectBox(selectbox.Props{ID: "pvm-team"}) {
 							@selectbox.Trigger(selectbox.TriggerProps{ID: "pvm-team-trigger", Name: "team_id"}) {
-								@selectbox.Value(selectbox.ValueProps{Placeholder: "Aucune équipe"})
+								@selectbox.Value(selectbox.ValueProps{Placeholder: i18n.T(ctx, "profile.personal_models.form.no_team")})
 							}
 							@selectbox.Content(selectbox.ContentProps{NoSearch: len(vmodel.Teams) < 8}) {
 								@selectbox.Group() {
 									@selectbox.Item(selectbox.ItemProps{Value: "", Selected: vmodel.TeamID == ""}) {
-										Aucune équipe
+										{ i18n.T(ctx, "profile.personal_models.form.no_team") }
 									}
 									for _, opt := range vmodel.Teams {
 										@selectbox.Item(selectbox.ItemProps{Value: string(opt.TeamID), Selected: vmodel.TeamID == opt.TeamID}) {
@@ -237,7 +238,7 @@ templ PersonalModelFormPage(vmodel PersonalModelFormVModel) {
 							}
 						}
 						@form.Description() {
-							Les requêtes envoyées à ce modèle sont débitées sur le budget de cette équipe, et chaque modèle qu'il appelle doit être accessible à l'équipe. Un modèle personnel n'ouvre l'accès à aucun modèle.
+							{ i18n.T(ctx, "profile.personal_models.form.team_help") }
 						}
 					</div>
 				}
@@ -248,13 +249,13 @@ templ PersonalModelFormPage(vmodel PersonalModelFormVModel) {
 				}
 				<div class="flex gap-2">
 					@button.Button(button.Props{Type: button.TypeSubmit}) {
-						Enregistrer
+						{ i18n.T(ctx, "profile.personal_models.form.save") }
 					}
 					@button.Button(button.Props{
 						Href:    common.BaseURLString(ctx, common.WithPath("/profile/personal-models")),
 						Variant: button.VariantOutline,
 					}) {
-						Annuler
+						{ i18n.T(ctx, "profile.personal_models.form.cancel") }
 					}
 				</div>
 			</form>

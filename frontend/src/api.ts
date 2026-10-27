@@ -1,4 +1,5 @@
 import type { VirtualModel, NodeTypeDescriptor, PipelineGraph, PipelineBundle, PipelineModelOption } from './types'
+import { t } from './i18n'
 
 function getBase(): string {
   const root = document.getElementById('pipeline-editor-root')
@@ -59,12 +60,12 @@ export function backLink(): { href: string; label: string } {
   const base = getBase()
 
   if (isPersonalContext()) {
-    return { href: `${base}/profile/personal-models`, label: 'Mes modèles' }
+    return { href: `${base}/profile/personal-models`, label: t('back.personalModels') }
   }
   if (isMiddlewareContext()) {
-    return { href: `${base}/orgs/${orgSlug()}/admin/middlewares`, label: 'Middlewares' }
+    return { href: `${base}/orgs/${orgSlug()}/admin/middlewares`, label: t('back.middlewares') }
   }
-  return { href: `${base}/orgs/${orgSlug()}/admin/virtual-models`, label: 'Modèles virtuels' }
+  return { href: `${base}/orgs/${orgSlug()}/admin/virtual-models`, label: t('back.virtualModels') }
 }
 
 export { vmId, orgSlug }
@@ -76,7 +77,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   })
   if (!res.ok) {
     const text = await res.text()
-    throw new Error(`API error ${res.status}: ${text}`)
+    throw new Error(t('api.error', { status: res.status, body: text }))
   }
   if (res.status === 204) return undefined as T
   return res.json() as Promise<T>

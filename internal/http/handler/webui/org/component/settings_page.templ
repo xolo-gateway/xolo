@@ -6,6 +6,7 @@ import (
 	"github.com/xolo-gateway/xolo/internal/core/model"
 	"github.com/xolo-gateway/xolo/internal/core/rbac"
 	common "github.com/xolo-gateway/xolo/internal/http/handler/webui/common/component"
+	"github.com/xolo-gateway/xolo/internal/i18n"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/button"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/form"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/input"
@@ -24,34 +25,34 @@ func eventsMaxValue(vmodel OrgSettingsPageVModel) string {
 
 // ── Settings Page ─────────────────────────────────────────────────────────────
 templ OrgSettingsPage(vmodel OrgSettingsPageVModel) {
-	@common.AppLayout(vmodel.AppLayoutVModel, common.WithTitle("Paramètres — "+vmodel.Org.Name())) {
+	@common.AppLayout(vmodel.AppLayoutVModel, common.WithTitle(i18n.T(ctx, "org.settings.page_title", vmodel.Org.Name()))) {
 		{{ readonly := !common.HasPermission(ctx, vmodel.Org.ID(), rbac.PermSettingsWrite) }}
 		<div class="max-w-3xl">
 			@common.PageHeader(common.PageHeaderProps{
-				Title:    "Paramètres",
-				Subtitle: "Devise de facturation, partage du budget entre membres et rétention des événements.",
+				Title:    i18n.T(ctx, "org.nav.settings"),
+				Subtitle: i18n.T(ctx, "org.settings.subtitle"),
 			})
 			if vmodel.Success != "" {
 				<div class="mb-3.5">
-					@common.InfoBanner(common.TonePositive, "Paramètres enregistrés.")
+					@common.InfoBanner(common.TonePositive, i18n.T(ctx, "org.settings.saved"))
 				</div>
 			}
 			<form method="POST" action={ templ.SafeURL(common.BaseURLString(ctx, common.WithPath("/orgs/", vmodel.Org.Slug(), "/admin/settings"))) }>
 				@common.Section() {
 					@common.SectionHeader() {
 						@common.SectionTitle() {
-							Général
+							{ i18n.T(ctx, "org.settings.general") }
 						}
 					}
 					@common.SectionBody() {
 						<div class="space-y-3.5">
 							@form.Item() {
 								@form.Label(form.LabelProps{}) {
-									Devise préférée 
+									{ i18n.T(ctx, "org.settings.currency") }
 								}
 								@selectbox.SelectBox(selectbox.Props{ID: "org_currency"}) {
 									@selectbox.Trigger(selectbox.TriggerProps{Name: "currency", Disabled: readonly}) {
-										@selectbox.Value(selectbox.ValueProps{Placeholder: "Sélectionner une devise"})
+										@selectbox.Value(selectbox.ValueProps{Placeholder: i18n.T(ctx, "org.settings.currency_placeholder")})
 									}
 									@selectbox.Content(selectbox.ContentProps{NoSearch: true}) {
 										@selectbox.Group() {
@@ -64,37 +65,37 @@ templ OrgSettingsPage(vmodel OrgSettingsPageVModel) {
 									}
 								}
 								@form.Description() {
-									Utilisée pour les quotas et l'affichage des coûts.
+									{ i18n.T(ctx, "org.settings.currency_help") }
 								}
 							}
 							@form.Item() {
 								@form.ItemFlex() {
 									@switchcomp.Switch(switchcomp.Props{ID: "share_quota_equally", Name: "share_quota_equally", Checked: vmodel.Org.ShareQuotaEqually(), Disabled: readonly})
 									@form.Label(form.LabelProps{For: "share_quota_equally"}) {
-										Répartir le budget de l'organisation équitablement entre les membres
+										{ i18n.T(ctx, "org.settings.share_quota") }
 									}
 								}
 								@form.Description() {
-									S'applique aux membres sans quota individuel défini. 
+									{ i18n.T(ctx, "org.settings.share_quota_help") }
 								}
 								if vmodel.MemberCount > 0 {
 									@form.Description() {
-										Aperçu ({ strconv.Itoa(vmodel.MemberCount) } membres) :
+										{ i18n.T(ctx, "org.settings.share_preview", vmodel.MemberCount) }
 										if vmodel.SharedDailyBudget != nil {
-											{ " " }Journalier : { common.CurrencySymbol(vmodel.Org.Currency()) }{ formatBudgetField(*vmodel.SharedDailyBudget) }
+											{ " " }{ i18n.T(ctx, "org.settings.share_preview_daily", common.CurrencySymbol(vmodel.Org.Currency())+formatBudgetField(*vmodel.SharedDailyBudget)) }
 										}
 										if vmodel.SharedMonthlyBudget != nil {
-											{ " " }Mensuel : { common.CurrencySymbol(vmodel.Org.Currency()) }{ formatBudgetField(*vmodel.SharedMonthlyBudget) }
+											{ " " }{ i18n.T(ctx, "org.settings.share_preview_monthly", common.CurrencySymbol(vmodel.Org.Currency())+formatBudgetField(*vmodel.SharedMonthlyBudget)) }
 										}
 										if vmodel.SharedYearlyBudget != nil {
-											{ " " }Annuel : { common.CurrencySymbol(vmodel.Org.Currency()) }{ formatBudgetField(*vmodel.SharedYearlyBudget) }
+											{ " " }{ i18n.T(ctx, "org.settings.share_preview_yearly", common.CurrencySymbol(vmodel.Org.Currency())+formatBudgetField(*vmodel.SharedYearlyBudget)) }
 										}
 									}
 								}
 							}
 							@form.Item() {
 								@form.Label(form.LabelProps{For: "events_max"}) {
-									Rétention des événements (nombre max conservé) 
+									{ i18n.T(ctx, "org.settings.events_max") }
 								}
 								@input.Input(input.Props{
 									ID:          "events_max",
@@ -105,7 +106,7 @@ templ OrgSettingsPage(vmodel OrgSettingsPageVModel) {
 									Disabled:    readonly,
 								})
 								@form.Description() {
-									Événements non épinglés conservés (fenêtre glissante). Vide = valeur par défaut ({ strconv.Itoa(vmodel.EventsDefault) }). Plafond global : { strconv.Itoa(vmodel.EventsGlobalCap) }.
+									{ i18n.T(ctx, "org.settings.events_max_help", strconv.Itoa(vmodel.EventsDefault), strconv.Itoa(vmodel.EventsGlobalCap)) }
 								}
 							}
 						</div>
@@ -113,7 +114,7 @@ templ OrgSettingsPage(vmodel OrgSettingsPageVModel) {
 					if common.HasPermission(ctx, vmodel.Org.ID(), rbac.PermSettingsWrite) {
 						@common.SectionHeader(common.SectionHeaderProps{Class: "border-b-0 border-t"}) {
 							@button.Button(button.Props{Type: button.TypeSubmit, Size: button.SizeSm}) {
-								Enregistrer
+								{ i18n.T(ctx, "org.settings.save") }
 							}
 						}
 					}
@@ -136,7 +137,7 @@ templ orgDangerZone(vmodel OrgSettingsPageVModel) {
 		@common.Section(common.SectionProps{Class: "border-destructive/40"}) {
 			@common.SectionHeader(common.SectionHeaderProps{Class: "border-destructive/40"}) {
 				@common.SectionTitle() {
-					Zone de danger
+					{ i18n.T(ctx, "org.settings.danger_zone") }
 				}
 				<span class="ml-auto">
 					@common.ComingSoon()
@@ -144,20 +145,17 @@ templ orgDangerZone(vmodel OrgSettingsPageVModel) {
 			}
 			@common.SectionBody(common.SectionBodyProps{Class: "flex flex-wrap items-center gap-3.5"}) {
 				<p class="min-w-0 flex-1 text-sm text-muted-foreground">
-					La suppression de l'organisation emporterait ses membres, ses
-					fournisseurs, ses modèles virtuels, ses applications et son historique
-					d'usage. Elle n'est pas encore proposée ici : contactez un
-					administrateur de la plateforme.
+					{ i18n.T(ctx, "org.settings.delete_org_help") }
 				</p>
 				@button.Button(button.Props{
 					Variant:  button.VariantDestructive,
 					Size:     button.SizeSm,
 					Disabled: true,
 					Attributes: templ.Attributes{
-						"title": "Bientôt disponible",
+						"title": i18n.T(ctx, "org.settings.coming_soon"),
 					},
 				}) {
-					Supprimer l'organisation
+					{ i18n.T(ctx, "org.settings.delete_org") }
 				}
 			}
 		}

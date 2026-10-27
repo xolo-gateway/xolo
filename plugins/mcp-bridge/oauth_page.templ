@@ -4,6 +4,7 @@ import (
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/alert"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/button"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/card"
+	"github.com/xolo-gateway/xolo/internal/i18n"
 )
 
 // connectPage lets a user authorize Xolo on an MCP server.
@@ -17,7 +18,7 @@ templ connectPage(pd connectPageData) {
 			<link rel="stylesheet" href="/assets/templui.css"/>
 		</head>
 		<body class="bg-background text-foreground min-h-screen p-4 space-y-4">
-			<h1 class="text-lg font-semibold">Autoriser un serveur MCP</h1>
+			<h1 class="text-lg font-semibold">{ i18n.T(ctx, "plugin.mcp_bridge.connect.title") }</h1>
 			if pd.Error != "" {
 				@alert.Alert(alert.Props{Variant: alert.VariantDestructive}) {
 					@alert.Description() {
@@ -27,7 +28,7 @@ templ connectPage(pd connectPageData) {
 			} else if pd.Done {
 				@alert.Alert(alert.Props{Variant: alert.VariantDefault}) {
 					@alert.Description() {
-						Xolo peut désormais interroger { pd.Host } en votre nom. Vous pouvez fermer cette page et renouveler votre demande à l'assistant.
+						{ i18n.T(ctx, "plugin.mcp_bridge.connect.done", pd.Host) }
 					}
 				}
 			} else {
@@ -37,18 +38,19 @@ templ connectPage(pd connectPageData) {
 					@card.Card() {
 						@card.Content() {
 							<p class="text-sm pt-6">
-								L'assistant demande à accéder en votre nom au serveur
-								<strong>{ pd.Host }</strong> ({ pd.Endpoint }). Vous allez être
-								redirigé vers ce service pour vous identifier et autoriser Xolo.
+								{ i18n.T(ctx, "plugin.mcp_bridge.connect.request_before") }
+								<strong>{ pd.Host }</strong>
+								{ i18n.T(ctx, "plugin.mcp_bridge.connect.request_after", pd.Endpoint) }
 							</p>
 							<p class="text-xs text-muted-foreground pt-2">
-								Ne continuez que si vous reconnaissez ce serveur.
+								{ i18n.T(ctx, "plugin.mcp_bridge.connect.warning") }
 							</p>
 						}
 					}
 					<div class="flex justify-end">
 						@button.Button(button.Props{Type: button.TypeSubmit}) {
-							Autoriser
+							{ i18n.T(ctx, "plugin.mcp_bridge.connect.submit") }
+
 						}
 					</div>
 				</form>

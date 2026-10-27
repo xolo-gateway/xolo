@@ -9,6 +9,7 @@ import (
 
 	"github.com/a-h/templ"
 	"github.com/xolo-gateway/xolo/pkg/pluginsdk"
+	"github.com/xolo-gateway/xolo/plugins/internal/uilocale"
 )
 
 func newUIHandler() http.Handler {
@@ -17,7 +18,7 @@ func newUIHandler() http.Handler {
 	mux.HandleFunc("POST /api/config", handleSaveConfig)
 	mux.HandleFunc("POST /api/slots/add", handleAddSlot)
 	mux.HandleFunc("POST /api/slots/delete", handleDeleteSlot)
-	return mux
+	return uilocale.Handler(mux)
 }
 
 type uiPageData struct {

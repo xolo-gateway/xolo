@@ -7,27 +7,28 @@ import (
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/button"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/icon"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/table"
+	"github.com/xolo-gateway/xolo/internal/i18n"
 )
 
 // ── Invites Page ──────────────────────────────────────────────────────────────
 templ InvitesPage(vmodel InvitesPageVModel) {
-	@common.AppLayout(vmodel.AppLayoutVModel, common.WithTitle("Invitations — "+vmodel.Org.Name())) {
+	@common.AppLayout(vmodel.AppLayoutVModel, common.WithTitle(i18n.T(ctx, "org.invites.page_title", vmodel.Org.Name()))) {
 		<div class="space-y-6">
 			@common.PageHeader(common.PageHeaderProps{
-				Title:    "Invitations",
-				Subtitle: "Liens d'invitation en attente.",
+				Title:    i18n.T(ctx, "org.invites.title"),
+				Subtitle: i18n.T(ctx, "org.invites.subtitle"),
 			}) {
 				if vmodel.CanCreate {
 					@button.Button(button.Props{Size: button.SizeSm, Href: common.BaseURLString(ctx, common.WithPath("/orgs/", vmodel.Org.Slug(), "/admin/invites/new"))}) {
 						@icon.Plus(icon.Props{Class: "h-4 w-4 mr-2"})
-						Nouvelle invitation
+						{ i18n.T(ctx, "org.invites.new") }
 					}
 				}
 			}
 			if vmodel.NewURL != "" {
 				@alert.Alert(alert.Props{Variant: alert.VariantDefault}) {
 					@alert.Description() {
-						<div class="font-medium">Lien d'invitation créé</div>
+						<div class="font-medium">{ i18n.T(ctx, "org.invites.link_created") }</div>
 						<div class="mt-1">
 							@common.InlineSnippet(vmodel.NewURL)
 						</div>
@@ -35,32 +36,32 @@ templ InvitesPage(vmodel InvitesPageVModel) {
 				}
 			}
 			if vmodel.NewURL == "" {
-				@common.FlashToast(vmodel.Success, "L'invitation")
+				@common.FlashToast(vmodel.Success, i18n.T(ctx, "org.invites.flash_subject"))
 			}
 			if len(vmodel.Invites) == 0 {
 				@common.EmptyState(common.EmptyStateProps{
 					Icon:        icon.Mail,
-					Title:       "Aucune invitation",
-					Description: "Créez un lien d'invitation pour faire entrer de nouveaux membres dans l'organisation.",
+					Title:       i18n.T(ctx, "org.invites.empty_title"),
+					Description: i18n.T(ctx, "org.invites.empty_description"),
 				})
 			} else {
 				@common.Section() {
 					@table.Table() {
 						@table.Header() {
 							@table.Head() {
-								Destinataire / type
+								{ i18n.T(ctx, "org.invites.col.recipient") }
 							}
 							@table.Head() {
-								Rôle
+								{ i18n.T(ctx, "org.invites.col.role") }
 							}
 							@table.Head() {
-								Expire le
+								{ i18n.T(ctx, "org.invites.col.expires") }
 							}
 							@table.Head() {
-								Usages
+								{ i18n.T(ctx, "org.invites.col.uses") }
 							}
 							@table.Head(table.HeadProps{Class: "text-right"}) {
-								Actions
+								{ i18n.T(ctx, "org.invites.col.actions") }
 							}
 						}
 						@table.Body() {
@@ -69,17 +70,17 @@ templ InvitesPage(vmodel InvitesPageVModel) {
 									@table.Cell() {
 										if inv.InviteeEmail() != nil {
 											<div class="font-medium">{ *inv.InviteeEmail() }</div>
-											<div class="text-xs text-muted-foreground">Invitation ciblée</div>
+											<div class="text-xs text-muted-foreground">{ i18n.T(ctx, "org.invites.targeted") }</div>
 										} else {
-											<div class="font-medium">Invitation ouverte</div>
-											<div class="text-xs text-muted-foreground">lien partagé</div>
+											<div class="font-medium">{ i18n.T(ctx, "org.invites.open") }</div>
+											<div class="text-xs text-muted-foreground">{ i18n.T(ctx, "org.invites.shared_link") }</div>
 										}
 									}
 									@table.Cell() {
-										@common.Badge(common.ToneInfo, roleLabelFromMap(vmodel.RoleNames, inv.Role()))
+										@common.Badge(common.ToneInfo, roleLabelFromMap(ctx, vmodel.RoleNames, inv.Role()))
 										if name, ok := vmodel.TeamNames[inv.TeamID()]; ok {
 											<span class="ml-1">
-												@common.Badge(common.ToneNeutral, "équipe "+name)
+												@common.Badge(common.ToneNeutral, i18n.T(ctx, "org.invites.team_badge", name))
 											</span>
 										}
 									}
@@ -87,7 +88,7 @@ templ InvitesPage(vmodel InvitesPageVModel) {
 										if inv.ExpiresAt() != nil {
 											{ inv.ExpiresAt().Format("2006-01-02") }
 										} else {
-											Jamais
+											{ i18n.T(ctx, "org.invites.never") }
 										}
 									}
 									@table.Cell(table.CellProps{Class: "text-muted-foreground"}) {
@@ -100,25 +101,25 @@ templ InvitesPage(vmodel InvitesPageVModel) {
 									@table.Cell(table.CellProps{Class: "text-right"}) {
 										<div class="inline-flex items-center gap-1">
 											if inv.RevokedAt() != nil {
-												@common.Badge(common.ToneNegative, "Révoqué")
+												@common.Badge(common.ToneNegative, i18n.T(ctx, "org.invites.revoked"))
 											}
-											@common.CopyValueButton(vmodel.BaseURL+"/join/"+string(inv.ID()), "Copier le lien")
+											@common.CopyValueButton(vmodel.BaseURL+"/join/"+string(inv.ID()), i18n.T(ctx, "org.invites.copy_link"))
 											if vmodel.CanManageAll || vmodel.WritableTeams[inv.TeamID()] {
 												if inv.RevokedAt() == nil {
 													@common.ConfirmDelete(common.ConfirmDeleteProps{
 														URL:          common.BaseURLString(ctx, common.WithPath("/orgs/", vmodel.Org.Slug(), "/admin/invites/", string(inv.ID()))),
 														Icon:         icon.Ban,
-														Tooltip:      "Révoquer",
-														Title:        "Révoquer cette invitation ?",
-														Description:  "Le lien d'invitation cessera immédiatement de fonctionner. L'invitation reste visible dans la liste.",
-														ConfirmLabel: "Révoquer",
+														Tooltip:      i18n.T(ctx, "org.invites.revoke"),
+														Title:        i18n.T(ctx, "org.invites.revoke_title"),
+														Description:  i18n.T(ctx, "org.invites.revoke_description"),
+														ConfirmLabel: i18n.T(ctx, "org.invites.revoke"),
 													})
 												}
 												@common.ConfirmDelete(common.ConfirmDeleteProps{
 													URL:         common.BaseURLString(ctx, common.WithPath("/orgs/", vmodel.Org.Slug(), "/admin/invites/", string(inv.ID()), "/delete")),
-													Tooltip:     "Supprimer définitivement",
-													Title:       "Supprimer définitivement cette invitation ?",
-													Description: "Elle disparaîtra de la liste. Cette action est irréversible.",
+													Tooltip:     i18n.T(ctx, "org.invites.delete"),
+													Title:       i18n.T(ctx, "org.invites.delete_title"),
+													Description: i18n.T(ctx, "org.invites.delete_description"),
 												})
 											}
 										</div>

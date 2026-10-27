@@ -1,7 +1,6 @@
 package component
 
 import (
-	"fmt"
 	"strconv"
 
 	"github.com/xolo-gateway/xolo/internal/core/rbac"
@@ -10,14 +9,15 @@ import (
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/icon"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/pagination"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/table"
+	"github.com/xolo-gateway/xolo/internal/i18n"
 )
 
 // ── Members Page ──────────────────────────────────────────────────────────────
 templ MembersPage(vmodel MembersPageVModel) {
-	@common.AppLayout(vmodel.AppLayoutVModel, common.WithTitle("Membres — "+vmodel.Org.Name())) {
+	@common.AppLayout(vmodel.AppLayoutVModel, common.WithTitle(i18n.T(ctx, "org.members.page_title", vmodel.Org.Name()))) {
 		@common.PageHeader(common.PageHeaderProps{
-			Title:    "Membres",
-			Subtitle: fmt.Sprintf("%d membre(s) · les rôles décident de ce que chacun peut faire dans l'organisation", vmodel.TotalMembers),
+			Title:    i18n.T(ctx, "org.members.title"),
+			Subtitle: i18n.T(ctx, "org.members.subtitle", strconv.Itoa(vmodel.TotalMembers)),
 		}) {
 			if common.HasPermission(ctx, vmodel.Org.ID(), rbac.PermInvitesWrite) {
 				@button.Button(button.Props{
@@ -26,27 +26,27 @@ templ MembersPage(vmodel MembersPageVModel) {
 					Href:  common.BaseURLString(ctx, common.WithPath("/orgs/", vmodel.Org.Slug(), "/admin/invites/new")),
 				}) {
 					@icon.UserPlus(icon.Props{Class: "size-3.5"})
-					Inviter un membre
+					{ i18n.T(ctx, "org.members.invite") }
 				}
 			}
 		}
 		if vmodel.Success != "" {
 			<div class="mb-3.5">
-				@common.InfoBanner(common.TonePositive, "Opération réussie.")
+				@common.InfoBanner(common.TonePositive, i18n.T(ctx, "org.members.success"))
 			</div>
 		}
 		if len(vmodel.Members) == 0 {
 			@common.EmptyState(common.EmptyStateProps{
 				Icon:        icon.Users,
-				Title:       "Aucun membre",
-				Description: "Créez un lien d'invitation pour donner accès à cette organisation.",
+				Title:       i18n.T(ctx, "org.members.empty_title"),
+				Description: i18n.T(ctx, "org.members.empty_description"),
 			}) {
 				if common.HasPermission(ctx, vmodel.Org.ID(), rbac.PermInvitesWrite) {
 					@button.Button(button.Props{
 						Size: button.SizeSm,
 						Href: common.BaseURLString(ctx, common.WithPath("/orgs/", vmodel.Org.Slug(), "/admin/invites/new")),
 					}) {
-						Inviter un membre
+						{ i18n.T(ctx, "org.members.invite") }
 					}
 				}
 			}
@@ -55,16 +55,16 @@ templ MembersPage(vmodel MembersPageVModel) {
 				@table.Table() {
 					@table.Header() {
 						@table.Head() {
-							Membre
+							{ i18n.T(ctx, "org.members.col.member") }
 						}
 						@table.Head() {
-							Rôles
+							{ i18n.T(ctx, "org.members.col.roles") }
 						}
 						@table.Head() {
-							Statut
+							{ i18n.T(ctx, "org.members.col.status") }
 						}
 						@table.Head(table.HeadProps{Class: "text-right"}) {
-							Actions
+							{ i18n.T(ctx, "org.members.col.actions") }
 						}
 					}
 					@table.Body() {
@@ -86,7 +86,7 @@ templ MembersPage(vmodel MembersPageVModel) {
 								@table.Cell() {
 									<div class="flex flex-wrap gap-1">
 										if len(m.Roles()) == 0 {
-											@common.Badge(common.ToneNeutral, "Aucun rôle")
+											@common.Badge(common.ToneNeutral, i18n.T(ctx, "org.members.no_role"))
 										} else {
 											for _, role := range m.Roles() {
 												@common.Badge(common.ToneInfo, role.Name())
@@ -96,9 +96,9 @@ templ MembersPage(vmodel MembersPageVModel) {
 								}
 								@table.Cell() {
 									if m.User() != nil && m.User().Active() {
-										@common.Badge(common.TonePositive, "Actif")
+										@common.Badge(common.TonePositive, i18n.T(ctx, "org.members.active"))
 									} else {
-										@common.Badge(common.ToneNeutral, "Inactif")
+										@common.Badge(common.ToneNeutral, i18n.T(ctx, "org.members.inactive"))
 									}
 								}
 								@table.Cell(table.CellProps{Class: "text-right"}) {
@@ -109,7 +109,7 @@ templ MembersPage(vmodel MembersPageVModel) {
 												Variant:    button.VariantGhost,
 												Size:       button.SizeIcon,
 												Class:      "size-7",
-												Attributes: templ.Attributes{"title": "Modifier"},
+												Attributes: templ.Attributes{"title": i18n.T(ctx, "org.members.edit")},
 											}) {
 												@icon.Pencil(icon.Props{Class: "size-3.5"})
 											}
@@ -120,7 +120,7 @@ templ MembersPage(vmodel MembersPageVModel) {
 												Variant:    button.VariantGhost,
 												Size:       button.SizeIcon,
 												Class:      "size-7",
-												Attributes: templ.Attributes{"title": "Budget individuel"},
+												Attributes: templ.Attributes{"title": i18n.T(ctx, "org.members.individual_budget")},
 											}) {
 												@icon.PiggyBank(icon.Props{Class: "size-3.5"})
 											}
@@ -129,10 +129,10 @@ templ MembersPage(vmodel MembersPageVModel) {
 											@common.ConfirmDelete(common.ConfirmDeleteProps{
 												URL:          common.BaseURLString(ctx, common.WithPath("/orgs/", vmodel.Org.Slug(), "/admin/members/", string(m.ID()))),
 												Icon:         icon.UserX,
-												Tooltip:      "Retirer",
-												Title:        "Retirer ce membre ?",
-												Description:  "Le membre perdra immédiatement l'accès à cette organisation. Ses clés API rattachées cesseront de fonctionner.",
-												ConfirmLabel: "Retirer",
+												Tooltip:      i18n.T(ctx, "org.members.remove"),
+												Title:        i18n.T(ctx, "org.members.remove_title"),
+												Description:  i18n.T(ctx, "org.members.remove_description"),
+												ConfirmLabel: i18n.T(ctx, "org.members.remove"),
 											})
 										}
 									</div>
@@ -156,7 +156,7 @@ templ membersPagination(vmodel MembersPageVModel) {
 				@pagination.Previous(pagination.PreviousProps{
 					Href:     common.BaseURLString(ctx, common.WithPath("/orgs/", vmodel.Org.Slug(), "/admin/members"), common.WithValues("page", strconv.Itoa(vmodel.CurrentPage-1))),
 					Disabled: !paginator.HasPrevious,
-					Label:    "Précédent",
+					Label:    i18n.T(ctx, "org.members.pagination.previous"),
 				})
 				for _, page := range paginator.Pages {
 					@pagination.Item() {
@@ -171,7 +171,7 @@ templ membersPagination(vmodel MembersPageVModel) {
 				@pagination.Next(pagination.NextProps{
 					Href:     common.BaseURLString(ctx, common.WithPath("/orgs/", vmodel.Org.Slug(), "/admin/members"), common.WithValues("page", strconv.Itoa(vmodel.CurrentPage+1))),
 					Disabled: !paginator.HasNext,
-					Label:    "Suivant",
+					Label:    i18n.T(ctx, "org.members.pagination.next"),
 				})
 			}
 		}

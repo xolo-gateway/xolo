@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { fetchPipelineModels } from '../api'
 import type { PipelineModelOption } from '../types'
+import { rich, t } from '../i18n'
 
 const FREE_TEXT = '__free__'
 
@@ -57,13 +58,13 @@ export function ModelPicker({ value, disabled, onChange }: ModelPickerProps) {
         />
         <div className="pipeline-picker__meta">
           {error ? (
-            <span>Catalogue indisponible, saisie libre.</span>
+            <span>{t('picker.catalogUnavailable')}</span>
           ) : (
             <>
-              <span>Saisie libre.</span>
+              <span>{t('picker.freeText')}</span>
               {options && options.length > 0 && !disabled && (
                 <button type="button" className="schema-form__add" onClick={() => setMode('catalog')}>
-                  Choisir dans le catalogue
+                  {t('picker.chooseFromCatalog')}
                 </button>
               )}
             </>
@@ -74,7 +75,7 @@ export function ModelPicker({ value, disabled, onChange }: ModelPickerProps) {
   }
 
   if (options === null) {
-    return <div className="pipeline-inspector__hint">Chargement du catalogue…</div>
+    return <div className="pipeline-inspector__hint">{t('picker.loading')}</div>
   }
 
   const groups = groupBy(options)
@@ -95,7 +96,7 @@ export function ModelPicker({ value, disabled, onChange }: ModelPickerProps) {
           onChange(e.target.value)
         }}
       >
-        <option value="">— choisir un modèle —</option>
+        <option value="">{t('picker.placeholder')}</option>
         {groups.map(([group, items]) => (
           <optgroup key={group} label={group}>
             {items.map(o => (
@@ -105,34 +106,28 @@ export function ModelPicker({ value, disabled, onChange }: ModelPickerProps) {
             ))}
           </optgroup>
         ))}
-        <option value={FREE_TEXT}>Autre (saisie libre)…</option>
+        <option value={FREE_TEXT}>{t('picker.other')}</option>
       </select>
       {unknownValue && (
         <div className="pipeline-picker__meta">
           <span>
-            Valeur actuelle : <code>{value}</code> (hors catalogue, conservée tant qu'aucun modèle n'est choisi).
+            {rich('picker.currentValue', { value: <code>{value}</code> })}
           </span>
           <button type="button" className="schema-form__add" onClick={() => setMode('free')}>
-            Revenir à la saisie libre
+            {t('picker.backToFreeText')}
           </button>
         </div>
       )}
       {selected && (
         <div className="pipeline-picker__meta">
           <span className={`pipeline-picker__kind pipeline-picker__kind--${selected.kind}`}>
-            {KIND_LABEL[selected.kind]}
+            {t(`picker.kind.${selected.kind}`)}
           </span>
           {selected.description && <span>{selected.description}</span>}
         </div>
       )}
     </div>
   )
-}
-
-const KIND_LABEL: Record<PipelineModelOption['kind'], string> = {
-  model: 'modèle',
-  virtual: 'virtuel',
-  personal: 'personnel',
 }
 
 function groupBy(options: PipelineModelOption[]): Array<[string, PipelineModelOption[]]> {

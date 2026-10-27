@@ -13,6 +13,7 @@ import (
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/label"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/table"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/textarea"
+	"github.com/xolo-gateway/xolo/internal/i18n"
 )
 
 func teamsURL(ctx context.Context, org model.Organization, parts ...string) string {
@@ -21,10 +22,10 @@ func teamsURL(ctx context.Context, org model.Organization, parts ...string) stri
 
 // ── Teams Page ────────────────────────────────────────────────────────────────
 templ TeamsPage(vmodel TeamsPageVModel) {
-	@common.AppLayout(vmodel.AppLayoutVModel, common.WithTitle("Équipes — "+vmodel.Org.Name())) {
+	@common.AppLayout(vmodel.AppLayoutVModel, common.WithTitle(i18n.T(ctx, "org.teams.page_title", vmodel.Org.Name()))) {
 		@common.PageHeader(common.PageHeaderProps{
-			Title:    "Équipes",
-			Subtitle: "Une équipe regroupe des membres, les modèles et middlewares qu'ils utilisent et le budget qu'ils consomment. Un membre choisit l'équipe débitée par le nom du modèle : " + vmodel.Org.Slug() + "/<équipe>/<modèle>.",
+			Title:    i18n.T(ctx, "org.teams.title"),
+			Subtitle: i18n.T(ctx, "org.teams.subtitle", vmodel.Org.Slug()),
 		}) {
 			if vmodel.CanEdit {
 				@button.Button(button.Props{
@@ -33,24 +34,24 @@ templ TeamsPage(vmodel TeamsPageVModel) {
 					Href:  teamsURL(ctx, vmodel.Org, "/new"),
 				}) {
 					@icon.Plus(icon.Props{Class: "size-3.5"})
-					Nouvelle équipe
+					{ i18n.T(ctx, "org.teams.new") }
 				}
 			}
 		}
 		if vmodel.Success != "" {
 			<div class="mb-3.5">
-				@common.InfoBanner(common.TonePositive, teamSuccessMessage(vmodel.Success))
+				@common.InfoBanner(common.TonePositive, teamSuccessMessage(ctx, vmodel.Success))
 			</div>
 		}
 		if len(vmodel.Teams) == 0 {
 			@common.EmptyState(common.EmptyStateProps{
 				Icon:        icon.UsersRound,
-				Title:       "Aucune équipe",
-				Description: "Sans équipe, les membres utilisent les modèles grâce aux permissions de leurs rôles sur toute l'organisation.",
+				Title:       i18n.T(ctx, "org.teams.empty_title"),
+				Description: i18n.T(ctx, "org.teams.empty_description"),
 			}) {
 				if vmodel.CanEdit {
 					@button.Button(button.Props{Size: button.SizeSm, Href: teamsURL(ctx, vmodel.Org, "/new")}) {
-						Nouvelle équipe
+						{ i18n.T(ctx, "org.teams.new") }
 					}
 				}
 			}
@@ -59,16 +60,16 @@ templ TeamsPage(vmodel TeamsPageVModel) {
 				@table.Table() {
 					@table.Header() {
 						@table.Head() {
-							Équipe
+							{ i18n.T(ctx, "org.teams.col.team") }
 						}
 						@table.Head() {
-							Membres
+							{ i18n.T(ctx, "org.teams.col.members") }
 						}
 						@table.Head() {
-							Modèles
+							{ i18n.T(ctx, "org.teams.col.models") }
 						}
 						@table.Head(table.HeadProps{Class: "text-right"}) {
-							Actions
+							{ i18n.T(ctx, "org.teams.col.actions") }
 						}
 					}
 					@table.Body() {
@@ -79,7 +80,7 @@ templ TeamsPage(vmodel TeamsPageVModel) {
 										<div class="flex items-center gap-1.5">
 											<span class="truncate text-sm font-semibold">{ row.Team.Name() }</span>
 											if row.Team.Status() == model.StatusSuspended {
-												@common.Badge(common.ToneWarning, "suspendue")
+												@common.Badge(common.ToneWarning, i18n.T(ctx, "org.teams.badge_suspended"))
 											}
 										</div>
 										@common.Mono(vmodel.Org.Slug() + "/" + row.Team.Slug() + "/…")
@@ -97,7 +98,7 @@ templ TeamsPage(vmodel TeamsPageVModel) {
 										Variant:    button.VariantGhost,
 										Size:       button.SizeIcon,
 										Class:      "size-7",
-										Attributes: templ.Attributes{"title": "Ouvrir"},
+										Attributes: templ.Attributes{"title": i18n.T(ctx, "org.teams.open")},
 									}) {
 										@icon.Pencil(icon.Props{Class: "size-3.5"})
 									}
@@ -113,15 +114,15 @@ templ TeamsPage(vmodel TeamsPageVModel) {
 
 // ── New Team ──────────────────────────────────────────────────────────────────
 templ TeamForm(vmodel TeamFormVModel) {
-	@common.AppLayout(vmodel.AppLayoutVModel, common.WithTitle("Nouvelle équipe")) {
+	@common.AppLayout(vmodel.AppLayoutVModel, common.WithTitle(i18n.T(ctx, "org.teams.new"))) {
 		<div class="max-w-3xl">
 			@common.PageHeader(common.PageHeaderProps{
-				Title:    "Nouvelle équipe",
-				Subtitle: "L'identifiant de l'équipe entre dans le nom des modèles qu'utilisent ses membres. Il ne pourra plus changer.",
+				Title:    i18n.T(ctx, "org.teams.new"),
+				Subtitle: i18n.T(ctx, "org.teams.form.subtitle"),
 			}) {
 				@button.Button(button.Props{Variant: button.VariantOutline, Size: button.SizeSm, Class: "gap-1.5", Href: teamsURL(ctx, vmodel.Org)}) {
 					@icon.ArrowLeft(icon.Props{Class: "size-3.5"})
-					Retour
+					{ i18n.T(ctx, "org.teams.back") }
 				}
 			}
 			if vmodel.Error != "" {
@@ -133,30 +134,30 @@ templ TeamForm(vmodel TeamFormVModel) {
 				@common.Section() {
 					@common.SectionHeader() {
 						@common.SectionTitle() {
-							Informations
+							{ i18n.T(ctx, "org.teams.form.section_info") }
 						}
 					}
 					@common.SectionBody(common.SectionBodyProps{Class: "space-y-3.5"}) {
 						<div class="grid gap-3.5 sm:grid-cols-2">
 							@form.Item() {
 								@label.Label(label.Props{For: "name"}) {
-									Nom
+									{ i18n.T(ctx, "org.teams.form.name") }
 								}
-								@input.Input(input.Props{ID: "name", Name: "name", Value: vmodel.Name, Placeholder: "ex. Juridique", Attributes: templ.Attributes{"required": "required"}})
+								@input.Input(input.Props{ID: "name", Name: "name", Value: vmodel.Name, Placeholder: i18n.T(ctx, "org.teams.form.name_placeholder"), Attributes: templ.Attributes{"required": "required"}})
 							}
 							@form.Item() {
 								@label.Label(label.Props{For: "slug"}) {
-									Identifiant
+									{ i18n.T(ctx, "org.teams.form.slug") }
 								}
-								@input.Input(input.Props{ID: "slug", Name: "slug", Value: vmodel.Slug, Placeholder: "ex. juridique", Attributes: templ.Attributes{"required": "required", "pattern": "[a-z0-9]([a-z0-9-]*[a-z0-9])?", "maxlength": "63"}})
+								@input.Input(input.Props{ID: "slug", Name: "slug", Value: vmodel.Slug, Placeholder: i18n.T(ctx, "org.teams.form.slug_placeholder"), Attributes: templ.Attributes{"required": "required", "pattern": "[a-z0-9]([a-z0-9-]*[a-z0-9])?", "maxlength": "63"}})
 								@form.Description() {
-									{ "Minuscules, chiffres et tirets. Les membres appelleront " + vmodel.Org.Slug() + "/<identifiant>/<modèle>." }
+									{ i18n.T(ctx, "org.teams.form.slug_help", vmodel.Org.Slug()) }
 								}
 							}
 						</div>
 						@form.Item() {
 							@label.Label(label.Props{For: "description"}) {
-								Description
+								{ i18n.T(ctx, "org.teams.form.description") }
 							}
 							@textarea.Textarea(textarea.Props{ID: "description", Name: "description", Value: vmodel.Description, Rows: 2})
 						}
@@ -164,7 +165,7 @@ templ TeamForm(vmodel TeamFormVModel) {
 					@common.SectionHeader(common.SectionHeaderProps{Class: "border-b-0 border-t"}) {
 						@button.Button(button.Props{Type: button.TypeSubmit, Size: button.SizeSm, Class: "gap-1.5"}) {
 							@icon.Save(icon.Props{Class: "size-3.5"})
-							Créer l'équipe
+							{ i18n.T(ctx, "org.teams.form.create") }
 						}
 					}
 				}
@@ -173,12 +174,12 @@ templ TeamForm(vmodel TeamFormVModel) {
 	}
 }
 
-func teamSuccessMessage(code string) string {
+func teamSuccessMessage(ctx context.Context, code string) string {
 	switch code {
 	case "deleted":
-		return "Équipe supprimée."
+		return i18n.T(ctx, "org.teams.success.deleted")
 	case "created":
-		return "Équipe créée."
+		return i18n.T(ctx, "org.teams.success.created")
 	}
-	return "Modifications enregistrées."
+	return i18n.T(ctx, "org.teams.success.saved")
 }

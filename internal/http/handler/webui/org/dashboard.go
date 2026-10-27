@@ -6,11 +6,12 @@ import (
 
 	"github.com/a-h/templ"
 	"github.com/bornholm/go-x/slogx"
+	"github.com/pkg/errors"
 	"github.com/xolo-gateway/xolo/internal/core/port"
 	httpCtx "github.com/xolo-gateway/xolo/internal/http/context"
 	common "github.com/xolo-gateway/xolo/internal/http/handler/webui/common/component"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/org/component"
-	"github.com/pkg/errors"
+	"github.com/xolo-gateway/xolo/internal/i18n"
 )
 
 func (h *Handler) getDashboard(w http.ResponseWriter, r *http.Request) {
@@ -51,7 +52,7 @@ func (h *Handler) getDashboard(w http.ResponseWriter, r *http.Request) {
 			ContextOrgID: org.ID(),
 			Breadcrumbs: []common.BreadcrumbItem{
 				{Label: org.Name(), Href: "/orgs/" + orgSlug + "/usage"},
-				{Label: "Tableau de bord", Href: ""},
+				{Label: i18n.T(ctx, "org.nav.dashboard"), Href: ""},
 			},
 		},
 	}

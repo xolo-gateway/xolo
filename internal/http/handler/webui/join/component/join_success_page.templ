@@ -5,6 +5,7 @@ import (
 	common "github.com/xolo-gateway/xolo/internal/http/handler/webui/common/component"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/button"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/card"
+	"github.com/xolo-gateway/xolo/internal/i18n"
 )
 
 type JoinSuccessVModel struct {
@@ -17,25 +18,29 @@ type JoinSuccessVModel struct {
 }
 
 templ JoinSuccess(vmodel JoinSuccessVModel) {
-	@common.StandaloneLayout(common.WithTitle("Bienvenue dans " + vmodel.OrgName)) {
+	@common.StandaloneLayout(common.WithTitle(i18n.T(ctx, "join.success.title", vmodel.OrgName))) {
 		@card.Card() {
 			@card.Header() {
 				@card.Title() {
-					Bienvenue !
+					{ i18n.T(ctx, "join.success.heading") }
 				}
 			}
 			@card.Content() {
 				<div class="space-y-4">
 					if vmodel.AlreadyMember {
-						<p class="text-sm text-muted-foreground">Vous êtes déjà membre de l'organisation <strong class="text-foreground">{ vmodel.OrgName }</strong>. Vos rôles sont conservés.</p>
+						<p class="text-sm text-muted-foreground">
+							@templ.Raw(i18n.T(ctx, "join.success.already_member", strongName(vmodel.OrgName)))
+						</p>
 					} else {
-						<p class="text-sm text-muted-foreground">Vous avez rejoint l'organisation <strong class="text-foreground">{ vmodel.OrgName }</strong>.</p>
+						<p class="text-sm text-muted-foreground">
+							@templ.Raw(i18n.T(ctx, "join.success.joined", strongName(vmodel.OrgName)))
+						</p>
 					}
 					if vmodel.RoleName != "" {
-						<p class="text-sm">Rôle : { vmodel.RoleName }</p>
+						<p class="text-sm">{ i18n.T(ctx, "join.success.role", vmodel.RoleName) }</p>
 					}
 					@button.Button(button.Props{Href: vmodel.Destination, Class: "w-full"}) {
-						Continuer
+						{ i18n.T(ctx, "join.success.continue") }
 					}
 				</div>
 			}

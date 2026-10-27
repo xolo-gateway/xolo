@@ -1,16 +1,17 @@
 package component
 
 import (
-	"fmt"
+	"context"
 
 	"github.com/xolo-gateway/xolo/internal/core/model"
+	"github.com/xolo-gateway/xolo/internal/i18n"
 )
 
 // lastSyncMessage states when the cache was last filled, from the freshest rate
 // it holds — the service does not record a synchronisation timestamp of its own.
-func lastSyncMessage(rates []model.ExchangeRate) string {
+func lastSyncMessage(ctx context.Context, rates []model.ExchangeRate) string {
 	if len(rates) == 0 {
-		return "Aucune synchronisation n'a encore abouti."
+		return i18n.T(ctx, "admin.exchange_rates.never_synced")
 	}
 
 	latest := rates[0].FetchedAt
@@ -20,8 +21,7 @@ func lastSyncMessage(rates []model.ExchangeRate) string {
 		}
 	}
 
-	return fmt.Sprintf(
-		"Dernière synchronisation le %s. Le rafraîchissement est automatique et périodique.",
-		latest.Format("02/01/2006 à 15:04"),
+	return i18n.T(ctx, "admin.exchange_rates.last_sync",
+		latest.Format("02/01/2006"), latest.Format("15:04"),
 	)
 }

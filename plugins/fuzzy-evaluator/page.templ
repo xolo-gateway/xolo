@@ -8,6 +8,7 @@ import (
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/button"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/card"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/label"
+	"github.com/xolo-gateway/xolo/internal/i18n"
 )
 
 templ page(pd uiPageData) {
@@ -22,13 +23,13 @@ templ page(pd uiPageData) {
 		<body class="bg-background text-foreground min-h-screen p-4 space-y-4">
 			<h1 class="text-lg font-semibold">Fuzzy Evaluator</h1>
 			<p class="text-sm text-muted-foreground">
-				Définissez les variables d'entrée, de sortie et les règles d'inférence floue.
-				Les variables doivent être déclarées dans le DSL avec <code class="font-mono text-xs">DEFINE</code>.
+				{ i18n.T(ctx, "plugin.fuzzy_evaluator.intro") }
+				<code class="font-mono text-xs">DEFINE</code>.
 			</p>
 
 			if pd.Success {
 				@alert.Alert(alert.Props{Variant: alert.VariantDefault}) {
-					@alert.Description() { Configuration sauvegardée avec succès. }
+					@alert.Description() { { i18n.T(ctx, "plugin.fuzzy_evaluator.saved") } }
 				}
 			}
 
@@ -37,20 +38,20 @@ templ page(pd uiPageData) {
 				@card.Card() {
 					@card.Header() {
 						<div class="flex items-center justify-between">
-							@card.Title() { Entrées (number) }
+							@card.Title() { { i18n.T(ctx, "plugin.fuzzy_evaluator.inputs.title") } }
 							@button.Button(button.Props{
 								Type:       button.TypeSubmit,
 								Variant:    button.VariantOutline,
 								Size:       button.SizeSm,
 								Attributes: templ.Attributes{"formaction": "api/inputs/add"},
 							}) {
-								+ Ajouter une entrée
+								{ i18n.T(ctx, "plugin.fuzzy_evaluator.inputs.add") }
 							}
 						</div>
 					}
 					@card.Content() {
 						if len(pd.Config.Inputs) == 0 {
-							<p class="text-sm text-muted-foreground italic text-center py-2">Aucune entrée.</p>
+							<p class="text-sm text-muted-foreground italic text-center py-2">{ i18n.T(ctx, "plugin.fuzzy_evaluator.inputs.empty") }</p>
 						} else {
 							<div class="space-y-2">
 								for i, inp := range pd.Config.Inputs {
@@ -65,20 +66,20 @@ templ page(pd uiPageData) {
 				@card.Card() {
 					@card.Header() {
 						<div class="flex items-center justify-between">
-							@card.Title() { Sorties (number) }
+							@card.Title() { { i18n.T(ctx, "plugin.fuzzy_evaluator.outputs.title") } }
 							@button.Button(button.Props{
 								Type:       button.TypeSubmit,
 								Variant:    button.VariantOutline,
 								Size:       button.SizeSm,
 								Attributes: templ.Attributes{"formaction": "api/outputs/add"},
 							}) {
-								+ Ajouter une sortie
+								{ i18n.T(ctx, "plugin.fuzzy_evaluator.outputs.add") }
 							}
 						</div>
 					}
 					@card.Content() {
 						if len(pd.Config.Outputs) == 0 {
-							<p class="text-sm text-muted-foreground italic text-center py-2">Aucune sortie.</p>
+							<p class="text-sm text-muted-foreground italic text-center py-2">{ i18n.T(ctx, "plugin.fuzzy_evaluator.outputs.empty") }</p>
 						} else {
 							<div class="space-y-2">
 								for i, out := range pd.Config.Outputs {
@@ -92,12 +93,12 @@ templ page(pd uiPageData) {
 				<!-- Rules DSL -->
 				@card.Card() {
 					@card.Header() {
-						@card.Title() { Règles floues (DSL) }
+						@card.Title() { { i18n.T(ctx, "plugin.fuzzy_evaluator.rules.title") } }
 					}
 					@card.Content() {
 						<div class="space-y-2">
 							@label.Label(label.Props{For: "rules_dsl"}) {
-								Règles d'inférence (syntaxe go-fuzzy)
+								{ i18n.T(ctx, "plugin.fuzzy_evaluator.rules.label") }
 							}
 							<textarea
 								id="rules_dsl"
@@ -112,9 +113,14 @@ templ page(pd uiPageData) {
 									onclick="validateDSL()"
 									class="inline-flex items-center px-3 py-1.5 text-sm border border-input rounded-md bg-background hover:bg-accent"
 								>
-									Valider le DSL
+									{ i18n.T(ctx, "plugin.fuzzy_evaluator.rules.validate") }
 								</button>
-								<span id="validate-result" class="text-sm"></span>
+								<span
+									id="validate-result"
+									class="text-sm"
+									data-valid={ i18n.T(ctx, "plugin.fuzzy_evaluator.rules.valid") }
+									data-network-error={ i18n.T(ctx, "plugin.fuzzy_evaluator.rules.network_error") }
+								></span>
 							</div>
 						</div>
 					}
@@ -122,7 +128,8 @@ templ page(pd uiPageData) {
 
 				<div class="flex justify-end">
 					@button.Button(button.Props{Type: button.TypeSubmit}) {
-						Sauvegarder
+						{ i18n.T(ctx, "plugin.fuzzy_evaluator.save") }
+
 					}
 				</div>
 			</form>
@@ -141,14 +148,14 @@ templ page(pd uiPageData) {
 						});
 						const data = await res.json();
 						if (data.valid) {
-							el.textContent = '✓ DSL valide';
+							el.textContent = el.dataset.valid;
 							el.className = 'text-sm text-green-500';
 						} else {
 							el.textContent = '✗ ' + data.error;
 							el.className = 'text-sm text-red-500 break-all';
 						}
 					} catch (e) {
-						el.textContent = '✗ Erreur réseau';
+						el.textContent = el.dataset.networkError;
 						el.className = 'text-sm text-red-500';
 					}
 				}
@@ -163,7 +170,7 @@ templ portRow(prefix string, idx int, name string) {
 			type="text"
 			name={ fmt.Sprintf("%s_%d_name", prefix, idx) }
 			value={ name }
-			placeholder="nom"
+			placeholder={ i18n.T(ctx, "plugin.fuzzy_evaluator.port.name_placeholder") }
 			class="flex-1 h-8 rounded-md border border-input bg-transparent px-2 text-sm font-mono focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
 		/>
 		<span class="text-xs text-muted-foreground px-2 py-1 border border-input rounded-md">number</span>
@@ -173,7 +180,7 @@ templ portRow(prefix string, idx int, name string) {
 			Size:    button.SizeIcon,
 			Attributes: templ.Attributes{
 				"formaction": fmt.Sprintf("api/%ss/%s/delete", prefix, strconv.Itoa(idx)),
-				"title":      "Supprimer",
+				"title":      i18n.T(ctx, "plugin.fuzzy_evaluator.port.delete"),
 			},
 		}) {
 			✕

@@ -13,6 +13,7 @@ import (
 	webcommon "github.com/xolo-gateway/xolo/internal/http/handler/webui/common"
 	common "github.com/xolo-gateway/xolo/internal/http/handler/webui/common/component"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/org/component"
+	"github.com/xolo-gateway/xolo/internal/i18n"
 )
 
 func (h *Handler) getSettingsPage(w http.ResponseWriter, r *http.Request) {
@@ -48,7 +49,7 @@ func (h *Handler) getSettingsPage(w http.ResponseWriter, r *http.Request) {
 			ContextOrgID: org.ID(),
 			Breadcrumbs: []common.BreadcrumbItem{
 				{Label: org.Name(), Href: "/orgs/" + orgSlug + "/usage"},
-				{Label: "Paramètres", Href: ""},
+				{Label: i18n.T(ctx, "org.nav.settings"), Href: ""},
 			},
 		},
 	}

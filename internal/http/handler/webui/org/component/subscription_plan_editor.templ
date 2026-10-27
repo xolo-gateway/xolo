@@ -2,6 +2,7 @@ package component
 
 import (
 	"fmt"
+	"html"
 	"math"
 	"net/url"
 	"slices"
@@ -10,6 +11,7 @@ import (
 	"time"
 
 	"github.com/xolo-gateway/xolo/internal/core/model"
+	"github.com/xolo-gateway/xolo/internal/i18n"
 	common "github.com/xolo-gateway/xolo/internal/http/handler/webui/common/component"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/button"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/checkbox"
@@ -52,18 +54,18 @@ templ SubscriptionPlanEditor(plan *model.SubscriptionPlan, readonly bool, submit
 	@common.Section() {
 		@common.SectionHeader() {
 			@common.SectionTitle() {
-				Plan d'abonnement
+				{ i18n.T(ctx, "org.plan.title") }
 			}
 		}
 		@common.SectionBody(common.SectionBodyProps{Class: "space-y-4"}) {
 			@form.Item() {
 				@form.Label(form.LabelProps{For: "plan_label"}) {
-					Nom du plan
+					{ i18n.T(ctx, "org.plan.label") }
 				}
-				@input.Input(input.Props{ID: "plan_label", Name: "plan_label", Value: planLabel, Placeholder: "ex : MiniMax Max, GLM Coding Pro…", Disabled: readonly})
+				@input.Input(input.Props{ID: "plan_label", Name: "plan_label", Value: planLabel, Placeholder: i18n.T(ctx, "org.plan.label_placeholder"), Disabled: readonly})
 			}
 			<div class="space-y-1">
-				<p class="text-xs font-medium text-muted-foreground">Contraintes</p>
+				<p class="text-xs font-medium text-muted-foreground">{ i18n.T(ctx, "org.plan.constraints") }</p>
 				<div
 					id="plan-constraints"
 					class="space-y-3"
@@ -86,7 +88,7 @@ templ SubscriptionPlanEditor(plan *model.SubscriptionPlan, readonly bool, submit
 					Class:      "w-full",
 					Attributes: templ.Attributes{"data-xolo-row-add": "plan-constraints"},
 				}) {
-					+ Ajouter une contrainte
+					{ i18n.T(ctx, "org.plan.add_constraint") }
 				}
 			}
 		}
@@ -174,7 +176,7 @@ templ planConstraintRow(idx int, c model.PlanConstraint, readonly bool, submitte
 		<div class="flex items-center gap-2">
 			<div class="flex-1 space-y-1">
 				@form.Label(form.LabelProps{For: "plan-kind-" + idxKey}) {
-					Type
+					{ i18n.T(ctx, "org.plan.kind") }
 				}
 				// TODO(rework-ux): passer sur selectbox.* une fois le lot 8 fait.
 				// Ce <select> est cloné depuis le <template> ci-dessus par
@@ -196,19 +198,19 @@ templ planConstraintRow(idx int, c model.PlanConstraint, readonly bool, submitte
 						if c.Kind == "" {
 							selected
 						}
-					>— Sélectionner un type —</option>
+					>{ i18n.T(ctx, "org.plan.kind_placeholder") }</option>
 					<option
 						value="rolling_window"
 						if c.Kind == model.ConstraintRollingWindow {
 							selected
 						}
-					>Fenêtre glissante (rolling window)</option>
+					>{ i18n.T(ctx, "org.plan.kind_rolling_window") }</option>
 					<option
 						value="concurrency"
 						if c.Kind == model.ConstraintConcurrency {
 							selected
 						}
-					>Concurrence max</option>
+					>{ i18n.T(ctx, "org.plan.kind_concurrency") }</option>
 				</select>
 			</div>
 			if !readonly {
@@ -219,7 +221,7 @@ templ planConstraintRow(idx int, c model.PlanConstraint, readonly bool, submitte
 					Class:   "mt-5 text-muted-foreground hover:text-destructive hover:border-destructive",
 					Attributes: templ.Attributes{
 						"data-xolo-row-remove": "",
-						"title":                "Supprimer cette contrainte",
+						"title":                i18n.T(ctx, "org.plan.remove_constraint"),
 					},
 				}) {
 					@icon.X(icon.Props{Size: 15})
@@ -229,12 +231,12 @@ templ planConstraintRow(idx int, c model.PlanConstraint, readonly bool, submitte
 		// ── Label (all kinds) ──────────────────────────────────────────────
 		<div class="space-y-1">
 			@form.Label() {
-				Libellé
+				{ i18n.T(ctx, "org.plan.constraint_label") }
 			}
 			@input.Input(input.Props{
 				Name:        labelName,
 				Value:       c.Label,
-				Placeholder: "ex : 5h, weekly, concurrent…",
+				Placeholder: i18n.T(ctx, "org.plan.constraint_label_placeholder"),
 				Disabled:    readonly,
 				Attributes:  templ.Attributes{"data-xolo-name": "plan_c{i}_label"},
 			})
@@ -248,30 +250,30 @@ templ planConstraintRow(idx int, c model.PlanConstraint, readonly bool, submitte
 			<div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
 				<div class="space-y-1">
 					@form.Label() {
-						Durée de la fenêtre
+						{ i18n.T(ctx, "org.plan.duration") }
 					}
 					@form.Description() {
-						Format Go : <code>5h</code>, <code>168h</code>, <code>30m</code>
+						@templ.Raw(i18n.T(ctx, "org.plan.duration_help", planCode("5h"), planCode("168h"), planCode("30m")))
 					}
 					@input.Input(input.Props{
 						Name:        durationName,
 						Value:       durStr,
-						Placeholder: "ex : 5h",
+						Placeholder: i18n.T(ctx, "org.plan.duration_placeholder"),
 						Disabled:    readonly,
 						Attributes:  templ.Attributes{"data-xolo-name": "plan_c{i}_duration"},
 					})
 				</div>
 				<div class="space-y-1">
 					@form.Label() {
-						Reset dans (optionnel)
+						{ i18n.T(ctx, "org.plan.reset_in") }
 					}
 					@form.Description() {
-						Copié de l'écran du fournisseur (ex : <code>4h29m</code>, <code>4d13h</code>). Vide = fenêtre glissante.
+						@templ.Raw(i18n.T(ctx, "org.plan.reset_in_help", planCode("4h29m"), planCode("4d13h")))
 					}
 					@input.Input(input.Props{
 						Name:        resetInName,
 						Value:       resetInStr,
-						Placeholder: "ex : 4h29m",
+						Placeholder: i18n.T(ctx, "org.plan.reset_in_placeholder"),
 						Disabled:    readonly,
 						Attributes:  templ.Attributes{"data-xolo-name": "plan_c{i}_reset_in"},
 					})
@@ -280,26 +282,26 @@ templ planConstraintRow(idx int, c model.PlanConstraint, readonly bool, submitte
 			<div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
 				<div class="space-y-1">
 					@form.Label() {
-						Budget tokens (vide = illimité)
+						{ i18n.T(ctx, "org.plan.token_budget") }
 					}
 					@input.Input(input.Props{
 						Name:        tokenBudgetName,
 						Type:        input.TypeNumber,
 						Value:       tokenBudgetStr,
-						Placeholder: "ex : 10000000",
+						Placeholder: i18n.T(ctx, "org.plan.token_budget_placeholder"),
 						Disabled:    readonly,
 						Attributes:  templ.Attributes{"data-xolo-name": "plan_c{i}_token_budget", "min": "0"},
 					})
 				</div>
 				<div class="space-y-1">
 					@form.Label() {
-						Budget valeur (devise du fournisseur, vide = illimité)
+						{ i18n.T(ctx, "org.plan.value_budget") }
 					}
 					@input.Input(input.Props{
 						Name:        valueBudgetName,
 						Type:        input.TypeNumber,
 						Value:       valueBudgetStr,
-						Placeholder: "ex : 20.00",
+						Placeholder: i18n.T(ctx, "org.plan.value_budget_placeholder"),
 						Disabled:    readonly,
 						Attributes:  templ.Attributes{"data-xolo-name": "plan_c{i}_value_budget", "min": "0", "step": "any"},
 					})
@@ -317,18 +319,18 @@ templ planConstraintRow(idx int, c model.PlanConstraint, readonly bool, submitte
 							Disabled:   readonly,
 							Attributes: templ.Attributes{"data-xolo-name": "plan_c{i}_scope", "data-xolo-id": "plan_c{i}_scope"},
 						})
-						Décompter par modèle
+						{ i18n.T(ctx, "org.plan.per_model") }
 					</span>
 				}
 				@form.Description() {
-					Chaque modèle du fournisseur dispose alors de sa propre fenêtre et des budgets ci-dessus, comme sur les forfaits qui limitent chaque modèle séparément (OpenCode Go). Les modèles publiés sous plusieurs noms mais pointant vers le même modèle amont sont décomptés ensemble.
+					{ i18n.T(ctx, "org.plan.per_model_help") }
 				}
 				<div class="space-y-1">
 					@form.Label() {
-						Budgets propres à certains modèles (optionnel)
+						{ i18n.T(ctx, "org.plan.model_budgets") }
 					}
 					@form.Description() {
-						Un modèle amont par ligne, sous la forme <code>modèle = budget</code> : <code>kimi-k3 = 3</code>, <code>deepseek-v4.1-flash = 16, 50000000 tokens</code>, <code>longcat-2.5-preview-free = illimité</code>. Un budget listé ici remplace ceux de la contrainte pour ce modèle.
+						@templ.Raw(i18n.T(ctx, "org.plan.model_budgets_help", planCode(i18n.T(ctx, "org.plan.model_budgets_syntax")), planCode("kimi-k3 = 3"), planCode("deepseek-v4.1-flash = 16, 50000000 tokens"), planCode("longcat-2.5-preview-free = "+i18n.T(ctx, "org.plan.model_budgets_unlimited"))))
 					}
 					@textarea.Textarea(textarea.Props{
 						ID:          "plan_c" + idxKey + "_model_budgets",
@@ -363,20 +365,20 @@ templ planConstraintRow(idx int, c model.PlanConstraint, readonly bool, submitte
 				Attributes: templ.Attributes{"data-xolo-id": "plan_c{i}_fairshare"},
 			}) {
 				@collapsible.Trigger(collapsible.TriggerProps{Class: "cursor-pointer text-sm font-medium"}) {
-					Répartition entre utilisateurs (optionnel)
+					{ i18n.T(ctx, "org.plan.fairshare") }
 				}
 				@collapsible.Content(collapsible.ContentProps{Class: "pt-3"}) {
 					<div class="space-y-3">
 						@form.Description() {
-							La part de chaque utilisateur est un plancher garanti à tous les membres, plus le reste réparti entre les seuls utilisateurs actifs de la fenêtre. Laisser vide pour les valeurs par défaut.
+							{ i18n.T(ctx, "org.plan.fairshare_help") }
 						}
 						<div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
 							<div class="space-y-1">
 								@form.Label() {
-									Réserve garantie (%, défaut 30)
+									{ i18n.T(ctx, "org.plan.reserve") }
 								}
 								@form.Description() {
-									Part du budget réservée à parts égales entre tous les membres, y compris ceux qui ne consomment pas.
+									{ i18n.T(ctx, "org.plan.reserve_help") }
 								}
 								@input.Input(input.Props{
 									Name:        reserveName,
@@ -389,10 +391,10 @@ templ planConstraintRow(idx int, c model.PlanConstraint, readonly bool, submitte
 							</div>
 							<div class="space-y-1">
 								@form.Label() {
-									Tolérance de rythme (%, défaut 15)
+									{ i18n.T(ctx, "org.plan.pace_slack") }
 								}
 								@form.Description() {
-									Avance de consommation tolérée sur l'écoulement de la fenêtre avant que les parts ne se resserrent.
+									{ i18n.T(ctx, "org.plan.pace_slack_help") }
 								}
 								@input.Input(input.Props{
 									Name:        paceSlackName,
@@ -405,10 +407,10 @@ templ planConstraintRow(idx int, c model.PlanConstraint, readonly bool, submitte
 							</div>
 							<div class="space-y-1">
 								@form.Label() {
-									Ouverture de fin de fenêtre (%, défaut 90)
+									{ i18n.T(ctx, "org.plan.happy_start") }
 								}
 								@form.Description() {
-									Fraction de la fenêtre au-delà de laquelle le reliquat, qui serait perdu au reset, est réparti entre les actifs. 100 désactive l'ouverture.
+									{ i18n.T(ctx, "org.plan.happy_start_help") }
 								}
 								@input.Input(input.Props{
 									Name:        happyStartName,
@@ -421,15 +423,15 @@ templ planConstraintRow(idx int, c model.PlanConstraint, readonly bool, submitte
 							</div>
 							<div class="space-y-1">
 								@form.Label() {
-									Avance maximale de l'ouverture (défaut : 5 % de la fenêtre, entre 30 min et 4 h)
+									{ i18n.T(ctx, "org.plan.happy_lead") }
 								}
 								@form.Description() {
-									Borne absolue : sur une fenêtre longue, la fraction ci-dessus ouvrirait des heures avant le reset. Une fenêtre de 5 h s'ouvre 30 min avant, une fenêtre hebdomadaire 4 h avant.
+									{ i18n.T(ctx, "org.plan.happy_lead_help") }
 								}
 								@input.Input(input.Props{
 									Name:        happyLeadName,
 									Value:       happyLeadStr,
-									Placeholder: "ex : 1h, 2d",
+									Placeholder: i18n.T(ctx, "org.plan.happy_lead_placeholder"),
 									Disabled:    readonly,
 									Attributes:  templ.Attributes{"data-xolo-name": "plan_c{i}_happy_hour_max_lead"},
 								})
@@ -446,13 +448,13 @@ templ planConstraintRow(idx int, c model.PlanConstraint, readonly bool, submitte
 			hidden?={ !showConcurrency }
 		>
 			@form.Label() {
-				Nombre max de requêtes simultanées
+				{ i18n.T(ctx, "org.plan.max_concurrent") }
 			}
 			@input.Input(input.Props{
 				Name:        maxConcName,
 				Type:        input.TypeNumber,
 				Value:       maxConcStr,
-				Placeholder: "ex : 4",
+				Placeholder: i18n.T(ctx, "org.plan.max_concurrent_placeholder"),
 				Disabled:    readonly,
 				Attributes:  templ.Attributes{"data-xolo-name": "plan_c{i}_max_concurrent", "min": "1"},
 			})
@@ -534,4 +536,10 @@ func formatResetIn(remaining time.Duration) string {
 	default:
 		return fmt.Sprintf("%dm", mins)
 	}
+}
+
+// planCode wraps an example in a <code> element, for help text rendered raw
+// from a message whose arguments carry markup.
+func planCode(s string) string {
+	return "<code>" + html.EscapeString(s) + "</code>"
 }

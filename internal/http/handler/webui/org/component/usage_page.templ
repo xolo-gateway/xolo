@@ -12,6 +12,7 @@ import (
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/popover"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/selectbox"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/table"
+	"github.com/xolo-gateway/xolo/internal/i18n"
 	"slices"
 	"strconv"
 	"strings"
@@ -21,14 +22,14 @@ import (
 templ OrgUsagePage(vmodel OrgUsagePageVModel) {
 	@common.AppLayout(
 		vmodel.AppLayoutVModel,
-		common.WithTitle("Usage — "+vmodel.Org.Name()),
+		common.WithTitle(i18n.T(ctx, "org.usage.page_title", vmodel.Org.Name())),
 	) {
 		<div class="space-y-3.5">
 			@common.PageHeader(common.PageHeaderProps{
-				Title:    "Tableau de bord",
-				Subtitle: orgDashboardMeta(vmodel),
+				Title:    i18n.T(ctx, "org.usage.title"),
+				Subtitle: orgDashboardMeta(ctx, vmodel),
 			}) {
-				@common.SegmentedNav(common.RangeSegments(vmodel.Range, func(r string) string {
+				@common.SegmentedNav(common.RangeSegments(ctx, vmodel.Range, func(r string) string {
 					return common.BaseURLString(ctx, common.WithPath("/orgs/", vmodel.Org.Slug(), "/usage"), common.WithValues("range", r, "owner", strings.Join(vmodel.OwnerFilter, ",")))
 				}))
 				@orgUsageFilters(vmodel)
@@ -77,16 +78,16 @@ templ OrgUsagePage(vmodel OrgUsagePageVModel) {
 								une seule ligne : la maquette les lit d'un trait, « Budget
 								mensuel pay-as-you-go · 64 % · 1 284,40 € sur 2 000,00 € ». -->
 								<div class="flex min-w-0 flex-wrap items-center gap-2">
-									<h2 class="text-sm font-semibold">Budget { periodLabel } pay-as-you-go{ vmodel.BudgetTitle }</h2>
+									<h2 class="text-sm font-semibold">{ usageBudgetTitle(ctx, periodLabel) }{ vmodel.BudgetTitle }</h2>
 									if budget != nil {
 										@common.Badge(common.BudgetTone(pct), fmt.Sprintf("%d %%", pct))
 										<span class="text-xs text-muted-foreground">
-											{ common.FormatCost(spent, vmodel.Currency) } sur { common.FormatCost(*budget, vmodel.Currency) } consommés.
+											{ i18n.T(ctx, "org.usage.budget.consumed", common.FormatCost(spent, vmodel.Currency), common.FormatCost(*budget, vmodel.Currency)) }
 										</span>
 									} else {
-										@common.Badge(common.ToneNeutral, "Illimité")
+										@common.Badge(common.ToneNeutral, i18n.T(ctx, "org.usage.budget.unlimited"))
 										<span class="text-xs text-muted-foreground">
-											Aucun plafond défini — la consommation à l'usage n'est pas bloquée.
+											{ i18n.T(ctx, "org.usage.budget.no_ceiling") }
 										</span>
 									}
 								</div>
@@ -98,7 +99,7 @@ templ OrgUsagePage(vmodel OrgUsagePageVModel) {
 										Href:    usageBudgetHref(ctx, vmodel),
 									}) {
 										@icon.Settings(icon.Props{Class: "size-3.5"})
-										Gérer le budget
+										{ i18n.T(ctx, "org.usage.budget.manage") }
 									}
 								</div>
 							</div>
@@ -106,9 +107,9 @@ templ OrgUsagePage(vmodel OrgUsagePageVModel) {
 								@common.BudgetGauge(pct, projectionPct, "")
 							}
 							<div class="grid grid-cols-2 gap-3.5 sm:grid-cols-4">
-								@budgetPeriodCell("Aujourd'hui", common.FormatCost(vmodel.DailyCost, vmodel.Currency))
-								@budgetPeriodCell("Ce mois", common.FormatCost(vmodel.MonthlyCost, vmodel.Currency))
-								@budgetPeriodCell("Cette année", common.FormatCost(vmodel.YearlyCost, vmodel.Currency))
+								@budgetPeriodCell(i18n.T(ctx, "org.usage.budget.today"), common.FormatCost(vmodel.DailyCost, vmodel.Currency))
+								@budgetPeriodCell(i18n.T(ctx, "org.usage.budget.this_month"), common.FormatCost(vmodel.MonthlyCost, vmodel.Currency))
+								@budgetPeriodCell(i18n.T(ctx, "org.usage.budget.this_year"), common.FormatCost(vmodel.YearlyCost, vmodel.Currency))
 								@budgetForecastCell(forecast, projectionPct, periodLabel, vmodel.Currency)
 							</div>
 						}
@@ -123,18 +124,18 @@ templ OrgUsagePage(vmodel OrgUsagePageVModel) {
 			cartes détachées (design system §06). -->
 			@common.KPIBand(common.KPIBandProps{Class: "grid-cols-2 md:grid-cols-3 2xl:grid-cols-5"}) {
 				@common.KPI(common.KPIProps{
-					Label: "Requêtes",
+					Label: i18n.T(ctx, "org.usage.kpi.requests"),
 					Value: common.FormatCount(aggregateRequests(vmodel.Aggregate)),
 				})
 				@common.KPI(common.KPIProps{
-					Label: "Tokens",
+					Label: i18n.T(ctx, "org.usage.kpi.tokens"),
 					Value: common.FormatCount(aggregateTokens(vmodel.Aggregate)),
-					Note:  cachedTokensNote(vmodel.Aggregate),
+					Note:  cachedTokensNote(ctx, vmodel.Aggregate),
 				})
 				@common.KPI(common.KPIProps{
-					Label: "Coût total",
+					Label: i18n.T(ctx, "org.usage.kpi.total_cost"),
 					Value: totalCostValue(vmodel),
-					Note:  "Hors requêtes couvertes par un forfait",
+					Note:  i18n.T(ctx, "org.usage.kpi.total_cost_note"),
 				})
 				<!-- Les deux estimations énergétiques gardent leur cellule même
 				lorsqu'elles ne sont pas calculables : une cellule omise laisserait
@@ -142,21 +143,21 @@ templ OrgUsagePage(vmodel OrgUsagePageVModel) {
 				d'affichage et non comme une absence de donnée. -->
 				if vmodel.TotalEnergyWh > 0 {
 					@common.KPI(common.KPIProps{
-						Label: "Énergie",
+						Label: i18n.T(ctx, "org.usage.kpi.energy"),
 						Value: common.FormatEnergyWh(vmodel.TotalEnergyWh),
-						Note:  "Estimation ±facteur ×3-5",
+						Note:  i18n.T(ctx, "org.usage.kpi.energy_note"),
 					})
 				} else {
-					@common.KPIPending("Énergie", "Nécessite les paramètres actifs des modèles appelés")
+					@common.KPIPending(i18n.T(ctx, "org.usage.kpi.energy"), i18n.T(ctx, "org.usage.kpi.energy_pending"))
 				}
 				if vmodel.TotalCO2GramsMid > 0 {
 					@common.KPI(common.KPIProps{
-						Label: "CO₂",
+						Label: i18n.T(ctx, "org.usage.kpi.co2"),
 						Value: common.FormatCO2Grams(vmodel.TotalCO2GramsMid),
-						Note:  common.FormatCO2ToCarKilometers(vmodel.TotalCO2GramsMid),
+						Note:  common.FormatCO2ToCarKilometers(ctx, vmodel.TotalCO2GramsMid),
 					})
 				} else {
-					@common.KPIPending("CO₂", "Dérivé de l'estimation énergétique")
+					@common.KPIPending(i18n.T(ctx, "org.usage.kpi.co2"), i18n.T(ctx, "org.usage.kpi.co2_pending"))
 				}
 			}
 			<!-- Chaque bloc de la maquette garde son cadre même sans donnée : un
@@ -173,7 +174,7 @@ templ OrgUsagePage(vmodel OrgUsagePageVModel) {
 						@common.SectionTitle() {
 							<!-- Le titre suit le pas du graphique : au-delà d'un
 							trimestre il agrège par mois. -->
-							{ common.CostSeriesTitle(vmodel.Range) }
+							{ common.CostSeriesTitle(ctx, vmodel.Range) }
 						}
 					}
 					if len(vmodel.ChartPerDay) > 0 {
@@ -183,15 +184,15 @@ templ OrgUsagePage(vmodel OrgUsagePageVModel) {
 					} else {
 						@common.SectionEmpty(common.EmptyStateProps{
 							Icon:        icon.ChartColumn,
-							Title:       "Aucune consommation sur la période",
-							Description: "Les requêtes apparaîtront ici dès qu'un modèle de l'organisation sera appelé.",
+							Title:       i18n.T(ctx, "org.usage.cost.empty_title"),
+							Description: i18n.T(ctx, "org.usage.cost.empty_description"),
 						})
 					}
 				}
 				@common.Section() {
 					@common.SectionHeader() {
 						@common.SectionTitle() {
-							Répartition par modèle
+							{ i18n.T(ctx, "org.usage.models.title") }
 						}
 					}
 					if len(vmodel.ChartSharesPerModel) > 0 {
@@ -203,8 +204,8 @@ templ OrgUsagePage(vmodel OrgUsagePageVModel) {
 					} else {
 						@common.SectionEmpty(common.EmptyStateProps{
 							Icon:        icon.BrainCircuit,
-							Title:       "Aucun modèle appelé",
-							Description: "La répartition se remplit dès qu'une requête cite un modèle.",
+							Title:       i18n.T(ctx, "org.usage.models.empty_title"),
+							Description: i18n.T(ctx, "org.usage.models.empty_description"),
 						})
 					}
 				}
@@ -216,9 +217,9 @@ templ OrgUsagePage(vmodel OrgUsagePageVModel) {
 				@common.Section() {
 					@common.SectionHeader() {
 						@common.SectionTitle() {
-							Top consommateurs
+							{ i18n.T(ctx, "org.usage.callers.title") }
 						}
-						<span class="ml-auto text-xs text-muted-foreground">Coûts à l'usage — hors abonnements</span>
+						<span class="ml-auto text-xs text-muted-foreground">{ i18n.T(ctx, "org.usage.callers.note") }</span>
 					}
 					if len(vmodel.ChartPerUser) > 0 {
 						@common.SectionBody() {
@@ -232,15 +233,15 @@ templ OrgUsagePage(vmodel OrgUsagePageVModel) {
 					} else {
 						@common.SectionEmpty(common.EmptyStateProps{
 							Icon:        icon.Users,
-							Title:       "Aucun appelant sur la période",
-							Description: "Le classement se remplit dès qu'un membre ou une application consomme.",
+							Title:       i18n.T(ctx, "org.usage.callers.empty_title"),
+							Description: i18n.T(ctx, "org.usage.callers.empty_description"),
 						})
 					}
 				}
 				@common.Section() {
 					@common.SectionHeader() {
 						@common.SectionTitle() {
-							Coût par fournisseur
+							{ i18n.T(ctx, "org.usage.providers.title") }
 						}
 					}
 					if len(vmodel.ChartPerProvider) > 0 {
@@ -248,15 +249,15 @@ templ OrgUsagePage(vmodel OrgUsagePageVModel) {
 							for _, row := range common.RankedRows(vmodel.ChartPerProvider) {
 								@common.RankedRow(row, common.RankedRowProps{
 									Mono:  true,
-									Value: common.ProviderCostValue(row.Value, vmodel.Currency, vmodel.PlanCoveredProviders[row.Label]),
+									Value: common.ProviderCostValue(ctx, row.Value, vmodel.Currency, vmodel.PlanCoveredProviders[row.Label]),
 								})
 							}
 						}
 					} else {
 						@common.SectionEmpty(common.EmptyStateProps{
 							Icon:        icon.Server,
-							Title:       "Aucun fournisseur sollicité",
-							Description: "Le coût se ventile par fournisseur dès la première requête servie.",
+							Title:       i18n.T(ctx, "org.usage.providers.empty_title"),
+							Description: i18n.T(ctx, "org.usage.providers.empty_description"),
 						})
 					}
 				}
@@ -265,9 +266,9 @@ templ OrgUsagePage(vmodel OrgUsagePageVModel) {
 				@common.Section() {
 					@common.SectionHeader() {
 						@common.SectionTitle() {
-							Consommation abonnement par utilisateur
+							{ i18n.T(ctx, "org.usage.subscription.title") }
 						}
-						<span class="ml-auto text-xs text-muted-foreground">Tokens consommés sur les fournisseurs en forfait (coût fixe, non refacturable)</span>
+						<span class="ml-auto text-xs text-muted-foreground">{ i18n.T(ctx, "org.usage.subscription.note") }</span>
 					}
 					@common.SectionBody() {
 						@chart.Chart(chart.Props{
@@ -281,7 +282,7 @@ templ OrgUsagePage(vmodel OrgUsagePageVModel) {
 							Data: chart.Data{
 								Labels: common.ChartLabels(vmodel.ChartSubTokensPerUser),
 								Datasets: []chart.Dataset{{
-									Label:           "tokens",
+									Label:           i18n.T(ctx, "org.usage.subscription.chart_label"),
 									Data:            common.ChartValues(vmodel.ChartSubTokensPerUser),
 									BackgroundColor: common.ChartColor(1),
 								}},
@@ -294,7 +295,7 @@ templ OrgUsagePage(vmodel OrgUsagePageVModel) {
 			@common.Section() {
 				@common.SectionHeader() {
 					@common.SectionTitle() {
-						Requêtes récentes
+						{ i18n.T(ctx, "org.usage.records.title") }
 					}
 					<span class="ml-auto font-mono text-2xs text-muted-foreground">
 						{ recordsRangeLabel(vmodel) }
@@ -305,28 +306,28 @@ templ OrgUsagePage(vmodel OrgUsagePageVModel) {
 						@table.Table() {
 							@table.Header() {
 								@table.Head() {
-									Horodatage
+									{ i18n.T(ctx, "org.usage.records.timestamp") }
 								}
 								@table.Head() {
-									Appelant
+									{ i18n.T(ctx, "org.usage.records.caller") }
 								}
 								@table.Head() {
-									Modèle
+									{ i18n.T(ctx, "org.usage.records.model") }
 								}
 								@table.Head(table.HeadProps{Class: "text-right"}) {
-									Tokens in / out
+									{ i18n.T(ctx, "org.usage.records.tokens") }
 								}
 								@table.Head(table.HeadProps{Class: "text-right"}) {
-									Latence
+									{ i18n.T(ctx, "org.usage.records.latency") }
 								}
 								@table.Head(table.HeadProps{Class: "text-right"}) {
-									Coût
+									{ i18n.T(ctx, "org.usage.records.cost") }
 								}
 								@table.Head(table.HeadProps{Class: "text-right"}) {
-									Énergie
+									{ i18n.T(ctx, "org.usage.kpi.energy") }
 								}
 								@table.Head() {
-									Statut
+									{ i18n.T(ctx, "org.usage.records.status") }
 								}
 							}
 							@table.Body() {
@@ -346,7 +347,7 @@ templ OrgUsagePage(vmodel OrgUsagePageVModel) {
 												{ fmt.Sprintf("%d / %d", dr.Record.PromptTokens(), dr.Record.CompletionTokens()) }
 												if dr.Record.CachedTokens() > 0 {
 													<span
-														title={ fmt.Sprintf("%d tokens servis depuis le cache", dr.Record.CachedTokens()) }
+														title={ i18n.T(ctx, "org.usage.records.cached_tokens", dr.Record.CachedTokens()) }
 														class="cursor-help text-muted-foreground"
 													>
 														@icon.DatabaseZap(icon.Props{Class: "size-3.5"})
@@ -359,7 +360,7 @@ templ OrgUsagePage(vmodel OrgUsagePageVModel) {
 										// porte ni l'un ni l'autre — le proxy n'enregistre que la
 										// consommation, pas l'issue de la requête (cf. lot 7).
 										@table.Cell(table.CellProps{Class: "text-right"}) {
-											@common.PendingValue("La latence n'est pas encore enregistrée par requête.")
+											@common.PendingValue(i18n.T(ctx, "org.usage.records.latency_pending"))
 										}
 										@table.Cell(table.CellProps{Class: "text-right tnum"}) {
 											<span class="inline-flex items-center gap-1.5">
@@ -375,7 +376,7 @@ templ OrgUsagePage(vmodel OrgUsagePageVModel) {
 												}
 												if dr.Record.PlanCovered() {
 													<span
-														title="Requête couverte par un forfait abonnement"
+														title={ i18n.T(ctx, "org.usage.records.plan_covered") }
 														class="cursor-help text-muted-foreground"
 													>
 														@icon.Receipt(icon.Props{Class: "size-3.5"})
@@ -386,7 +387,7 @@ templ OrgUsagePage(vmodel OrgUsagePageVModel) {
 										@table.Cell(table.CellProps{Class: "text-right tnum text-muted-foreground"}) {
 											if dr.EnergyWh > 0 {
 												<span
-													title={ fmt.Sprintf("min : %s / max : %s · CO₂ ≈ %s", common.FormatEnergyWh(dr.EnergyLowWh), common.FormatEnergyWh(dr.EnergyHighWh), common.FormatCO2Grams(dr.CO2GramsMid)) }
+													title={ i18n.T(ctx, "org.usage.records.energy_range", common.FormatEnergyWh(dr.EnergyLowWh), common.FormatEnergyWh(dr.EnergyHighWh), common.FormatCO2Grams(dr.CO2GramsMid)) }
 													class="cursor-help underline decoration-dotted"
 												>
 													{ common.FormatEnergyWh(dr.EnergyWh) }
@@ -396,7 +397,7 @@ templ OrgUsagePage(vmodel OrgUsagePageVModel) {
 											}
 										}
 										@table.Cell() {
-											@common.PendingValue("Le code de réponse n'est pas encore enregistré par requête.")
+											@common.PendingValue(i18n.T(ctx, "org.usage.records.status_pending"))
 										}
 									}
 								}
@@ -406,15 +407,15 @@ templ OrgUsagePage(vmodel OrgUsagePageVModel) {
 				} else {
 					@common.SectionEmpty(common.EmptyStateProps{
 						Icon:        icon.ChartLine,
-						Title:       "Aucune requête sur la période",
-						Description: "Rien n'a transité par la passerelle sur cet intervalle. Élargissez la période, ou vérifiez qu'un fournisseur et des modèles sont déclarés.",
+						Title:       i18n.T(ctx, "org.usage.records.empty_title"),
+						Description: i18n.T(ctx, "org.usage.records.empty_description"),
 					}) {
 						@button.Button(button.Props{
 							Variant: button.VariantOutline,
 							Size:    button.SizeSm,
 							Href:    common.BaseURLString(ctx, common.WithPath("/orgs/", vmodel.Org.Slug(), "/admin/providers")),
 						}) {
-							Voir les fournisseurs
+							{ i18n.T(ctx, "org.usage.records.view_providers") }
 						}
 					}
 				}
@@ -425,12 +426,12 @@ templ OrgUsagePage(vmodel OrgUsagePageVModel) {
 						@pagination.Previous(pagination.PreviousProps{
 							Href:     common.BaseURLString(ctx, common.WithPath("/orgs/", vmodel.Org.Slug(), "/usage"), common.WithValues("range", vmodel.Range, "page", fmt.Sprintf("%d", vmodel.Page-1), "owner", strings.Join(vmodel.OwnerFilter, ","))),
 							Disabled: vmodel.Page <= 1,
-							Label:    "Précédent",
+							Label:    i18n.T(ctx, "org.usage.pagination.previous"),
 						})
 						@pagination.Next(pagination.NextProps{
 							Href:     common.BaseURLString(ctx, common.WithPath("/orgs/", vmodel.Org.Slug(), "/usage"), common.WithValues("range", vmodel.Range, "page", fmt.Sprintf("%d", vmodel.Page+1), "owner", strings.Join(vmodel.OwnerFilter, ","))),
 							Disabled: !vmodel.HasNext,
-							Label:    "Suivant",
+							Label:    i18n.T(ctx, "org.usage.pagination.next"),
 						})
 					}
 				}
@@ -459,7 +460,7 @@ templ orgUsageFilters(vmodel OrgUsagePageVModel) {
 				Type:    button.TypeButton,
 			}) {
 				@icon.ListFilter(icon.Props{Class: "size-3.5"})
-				Filtres
+				{ i18n.T(ctx, "org.usage.filters.button") }
 				if activeCount > 0 {
 					<span class="rounded-full bg-primary-tint px-1.5 font-mono text-2xs font-semibold text-primary">
 						{ strconv.Itoa(activeCount) }
@@ -473,17 +474,17 @@ templ orgUsageFilters(vmodel OrgUsagePageVModel) {
 				if len(vmodel.Teams) > 0 {
 					@form.Item() {
 						@form.Label(form.LabelProps{For: "team-trigger"}) {
-							Équipe
+							{ i18n.T(ctx, "org.usage.filters.team") }
 						}
 						@selectbox.SelectBox(selectbox.Props{ID: "usage-team"}) {
 							@selectbox.Trigger(selectbox.TriggerProps{ID: "team-trigger", Name: "team"}) {
-								@selectbox.Value(selectbox.ValueProps{Placeholder: "Toutes"})
+								@selectbox.Value(selectbox.ValueProps{Placeholder: i18n.T(ctx, "org.usage.filters.all_teams")})
 							}
 							@selectbox.Content(selectbox.ContentProps{NoSearch: len(vmodel.Teams) < 8}) {
 								@selectbox.Group() {
 									if !vmodel.TeamOnly {
 										@selectbox.Item(selectbox.ItemProps{Value: "", Selected: vmodel.TeamFilter == ""}) {
-											Toutes
+											{ i18n.T(ctx, "org.usage.filters.all_teams") }
 										}
 									}
 									for _, team := range vmodel.Teams {
@@ -498,7 +499,7 @@ templ orgUsageFilters(vmodel OrgUsagePageVModel) {
 				}
 				@form.Item() {
 					@form.Label(form.LabelProps{For: "owner-trigger"}) {
-						Appelant
+						{ i18n.T(ctx, "org.usage.records.caller") }
 					}
 					@selectbox.SelectBox(selectbox.Props{Multiple: true}) {
 						@selectbox.Trigger(selectbox.TriggerProps{
@@ -506,11 +507,11 @@ templ orgUsageFilters(vmodel OrgUsagePageVModel) {
 							Name:              "owner",
 							Multiple:          true,
 							ShowPills:         false,
-							SelectedCountText: "{n} sélectionnés",
+							SelectedCountText: i18n.T(ctx, "org.usage.filters.selected_count"),
 						}) {
-							@selectbox.Value(selectbox.ValueProps{Placeholder: "Tous", Multiple: true})
+							@selectbox.Value(selectbox.ValueProps{Placeholder: i18n.T(ctx, "org.usage.filters.all_callers"), Multiple: true})
 						}
-						@selectbox.Content(selectbox.ContentProps{SearchPlaceholder: "Rechercher…"}) {
+						@selectbox.Content(selectbox.ContentProps{SearchPlaceholder: i18n.T(ctx, "org.usage.filters.search")}) {
 							@selectbox.Group() {
 								for _, m := range vmodel.Members {
 									if m.User() != nil {
@@ -544,7 +545,7 @@ templ orgUsageFilters(vmodel OrgUsagePageVModel) {
 				}
 				<div class="flex items-center gap-2">
 					@button.Button(button.Props{Type: button.TypeSubmit, Size: button.SizeSm}) {
-						Appliquer
+						{ i18n.T(ctx, "org.usage.filters.apply") }
 					}
 					if activeCount > 0 {
 						@button.Button(button.Props{
@@ -553,7 +554,7 @@ templ orgUsageFilters(vmodel OrgUsagePageVModel) {
 							Type:    button.TypeButton,
 							Href:    common.BaseURLString(ctx, common.WithPath("/orgs/", vmodel.Org.Slug(), "/usage"), common.WithValues("range", vmodel.Range)),
 						}) {
-							Réinitialiser
+							{ i18n.T(ctx, "org.usage.filters.reset") }
 						}
 					}
 				</div>
@@ -576,7 +577,7 @@ templ budgetPeriodCell(label string, value string) {
 templ budgetForecastCell(forecast int64, projectionPct int, periodLabel string, currency string) {
 	<div>
 		<div class="text-2xs font-semibold uppercase tracking-caps text-muted-foreground">
-			{ forecastLabel(periodLabel) }
+			{ forecastLabel(ctx, periodLabel) }
 		</div>
 		<div class={ "mt-0.5 tnum text-sm font-semibold", common.BudgetTone(projectionPct).TextClass() }>
 			{ common.FormatCost(forecast, currency) }
@@ -590,4 +591,16 @@ func usageBudgetHref(ctx context.Context, vmodel OrgUsagePageVModel) string {
 		return common.BaseURLString(ctx, common.WithPath(vmodel.BudgetHref))
 	}
 	return common.BaseURLString(ctx, common.WithPath("/orgs/", vmodel.Org.Slug(), "/admin/quota"))
+}
+
+// usageBudgetTitle names the budget banner after the period periodLabel carries.
+func usageBudgetTitle(ctx context.Context, periodLabel string) string {
+	switch periodLabel {
+	case "annuel":
+		return i18n.T(ctx, "org.usage.budget.title_yearly")
+	case "journalier":
+		return i18n.T(ctx, "org.usage.budget.title_daily")
+	default:
+		return i18n.T(ctx, "org.usage.budget.title_monthly")
+	}
 }

@@ -13,6 +13,7 @@
  */
 
 import { useEffect, useState } from 'react'
+import { t } from '../i18n'
 
 interface JSONSchema {
   type?: string
@@ -63,7 +64,7 @@ export function SchemaForm({ schemaJSON, value, disabled, onChange }: SchemaForm
         />
       ))}
       <details className="schema-form__raw">
-        <summary>JSON brut</summary>
+        <summary>{t('schema.raw')}</summary>
         <RawEditor value={value} disabled={disabled} onChange={onChange} />
       </details>
     </div>
@@ -265,7 +266,7 @@ function ArrayField({ schema, value, disabled, onChange }: ArrayFieldProps) {
                 )}
                 <td>
                   {!disabled && (
-                    <button type="button" className="schema-form__row-remove" onClick={() => remove(idx)} title="Retirer">
+                    <button type="button" className="schema-form__row-remove" onClick={() => remove(idx)} title={t('common.remove')}>
                       ×
                     </button>
                   )}
@@ -277,7 +278,7 @@ function ArrayField({ schema, value, disabled, onChange }: ArrayFieldProps) {
       )}
       {!disabled && (
         <button type="button" className="schema-form__add" onClick={add}>
-          + Ajouter
+          {t('schema.add')}
         </button>
       )}
     </div>

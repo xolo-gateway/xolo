@@ -1,31 +1,29 @@
 package component
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
 	"github.com/xolo-gateway/xolo/internal/core/port"
 	common "github.com/xolo-gateway/xolo/internal/http/handler/webui/common/component"
+	"github.com/xolo-gateway/xolo/internal/i18n"
 )
 
 // personalDashboardMeta builds the grey line under the title: what the figures
 // cover, the way the org dashboard states its own scope.
-func personalDashboardMeta(vmodel DashboardPageVModel) string {
-	parts := []string{"Vos appels"}
+func personalDashboardMeta(ctx context.Context, vmodel DashboardPageVModel) string {
+	parts := []string{i18n.T(ctx, "profile.dashboard.meta.your_calls")}
 
 	if n := len(vmodel.OrgUsages); n > 0 {
-		if n == 1 {
-			parts = append(parts, "1 organisation")
-		} else {
-			parts = append(parts, fmt.Sprintf("%d organisations", n))
-		}
+		parts = append(parts, i18n.T(ctx, "profile.dashboard.meta.organizations", n))
 	}
 
 	if vmodel.Aggregate != nil && vmodel.Aggregate.Currency != "" {
-		parts = append(parts, "devise "+vmodel.Aggregate.Currency)
+		parts = append(parts, i18n.T(ctx, "profile.dashboard.meta.currency", vmodel.Aggregate.Currency))
 	}
 
-	if label := common.RangeLabel(vmodel.Range); label != "" {
+	if label := common.RangeLabel(ctx, vmodel.Range); label != "" {
 		parts = append(parts, label)
 	}
 
@@ -39,14 +37,14 @@ func personalDashboardMeta(vmodel DashboardPageVModel) string {
 //
 // It mirrors the org dashboard's cachedTokensNote: the two screens read the same
 // aggregate and must word it identically, but they live in different packages.
-func personalCachedTokensNote(agg *port.UsageAggregate) string {
+func personalCachedTokensNote(ctx context.Context, agg *port.UsageAggregate) string {
 	if agg == nil || agg.CachedTokens <= 0 || agg.PromptTokens <= 0 {
 		return ""
 	}
 
-	return fmt.Sprintf("Dont %s en cache (%.0f %% des tokens prompt)",
+	return i18n.T(ctx, "profile.dashboard.cached_tokens_note",
 		common.FormatCount(agg.CachedTokens),
-		float64(agg.CachedTokens)/float64(agg.PromptTokens)*100,
+		fmt.Sprintf("%.0f", float64(agg.CachedTokens)/float64(agg.PromptTokens)*100),
 	)
 }
 
@@ -154,23 +152,23 @@ func newPersonalOrgBudget(ou OrgUsage) personalOrgBudgetVModel {
 
 // SpentLabel words the right end of the line: consumed over ceiling, or the
 // consumption alone when the organisation set no ceiling.
-func (vm personalOrgBudgetVModel) SpentLabel() string {
+func (vm personalOrgBudgetVModel) SpentLabel(ctx context.Context) string {
 	spent := common.FormatCost(vm.Spent, vm.Currency)
 	if vm.Budget == nil {
-		return spent + " " + periodAdverb(vm.PeriodLabel)
+		return spent + " " + periodAdverb(ctx, vm.PeriodLabel)
 	}
-	return fmt.Sprintf("%s / %s %s", spent, common.FormatCost(*vm.Budget, vm.Currency), periodAdverb(vm.PeriodLabel))
+	return fmt.Sprintf("%s / %s %s", spent, common.FormatCost(*vm.Budget, vm.Currency), periodAdverb(ctx, vm.PeriodLabel))
 }
 
 // periodAdverb turns the adjective carried by the quota into the phrase the
 // mockup puts after the figures ("8,20 € / 53,48 € ce mois").
-func periodAdverb(periodLabel string) string {
+func periodAdverb(ctx context.Context, periodLabel string) string {
 	switch periodLabel {
 	case "journalier":
-		return "aujourd'hui"
+		return i18n.T(ctx, "profile.dashboard.period.today")
 	case "annuel":
-		return "cette année"
+		return i18n.T(ctx, "profile.dashboard.period.this_year")
 	default:
-		return "ce mois"
+		return i18n.T(ctx, "profile.dashboard.period.this_month")
 	}
 }

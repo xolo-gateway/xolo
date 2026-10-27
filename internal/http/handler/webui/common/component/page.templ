@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/checkbox"
+	"github.com/xolo-gateway/xolo/internal/i18n"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/code"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/collapsible"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/copybutton"
@@ -145,7 +146,7 @@ templ Page(funcs ...PageOptionFunc) {
 	{{ opts := NewPageOptions(funcs...) }}
 	<!DOCTYPE html>
 	<!-- Thème clair uniquement : la classe est figée, cf. templui.css. -->
-	<html class="light">
+	<html class="light" lang={ i18n.Language(ctx).String() }>
 		<head>
 			<meta charset="utf-8"/>
 			<meta name="viewport" content="width=device-width, initial-scale=1"/>

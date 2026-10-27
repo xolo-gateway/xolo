@@ -1,5 +1,6 @@
 import type { Node } from '@xyflow/react'
 import type { NodeTypeDescriptor, PipelineNodeType } from '../types'
+import { plural, t } from '../i18n'
 
 /**
  * builtinTitle names a built-in logic node: the author's label when there is
@@ -35,18 +36,22 @@ export function builtinSummary(kind: PipelineNodeType, data: Record<string, unkn
       return (data.op as string) || 'sum'
     case 'sample': {
       const key = (data.key as string) ?? 'user'
-      const by: Record<string, string> = { user: 'par utilisateur', token: 'par jeton', random: 'aléatoire' }
-      return `${data.percent ?? 10} % ${by[key] ?? key}`
+      const by: Record<string, string> = {
+        user: t('summary.sample.user'),
+        token: t('summary.sample.token'),
+        random: t('summary.sample.random'),
+      }
+      return t('summary.sample', { percent: String(data.percent ?? 10), by: by[key] ?? key })
     }
     case 'context':
       return (data.timezone as string) || 'UTC'
     case 'trace': {
       const inputs = (data.inputs as Array<{ name?: string }> | undefined) ?? []
-      return `${inputs.length} port${inputs.length > 1 ? 's' : ''}`
+      return plural('summary.trace.ports', inputs.length)
     }
     case 'block': {
       const message = ((data.message as string) ?? '').trim()
-      if (!message) return 'message par défaut'
+      if (!message) return t('summary.block.default')
       return message.length > 32 ? message.slice(0, 32) + '…' : message
     }
     case 'note': {
@@ -56,7 +61,7 @@ export function builtinSummary(kind: PipelineNodeType, data: Record<string, unkn
     }
     case 'model_fallback': {
       const models = (data.models as string[] | undefined)?.filter(Boolean) ?? []
-      if (models.length === 0) return 'non configuré'
+      if (models.length === 0) return t('node.unconfigured')
       return models.length > 1 ? `${models[0]} +${models.length - 1}` : models[0]
     }
     default:

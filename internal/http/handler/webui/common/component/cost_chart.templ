@@ -20,6 +20,6 @@ templ CostChart(payg, covered []ChartDataPoint, currency string) {
 		Stacked:     stacked,
 		BeginAtZero: &trueVal,
 		Class:       "h-64",
-		Data:        CostChartData(payg, covered, currency),
+		Data:        CostChartData(ctx, payg, covered, currency),
 	})
 }

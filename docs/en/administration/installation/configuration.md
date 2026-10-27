@@ -35,3 +35,11 @@ Deferred deletion of tenants, organizations and members through the provisioning
 | `XOLO_LIFECYCLE_RETENTION` | `720h` | How long a deleted resource stays frozen before its purge, 1 s to 3650 days. |
 | `XOLO_LIFECYCLE_POLL_INTERVAL` | `1m` | How often the worker looks for deletions to purge, 1 s to 1 h. |
 | `XOLO_LIFECYCLE_PURGE_BATCH` | `1000` | Rows removed by one purge transaction, 1 to 100 000. |
+
+## Language
+
+The web interface is available in English, French and Spanish. Each request uses the language chosen with the language switch (stored in the `xolo_locale` cookie), otherwise the best match of the browser's `Accept-Language` header, otherwise the default below.
+
+| Variable | Default | Description |
+| --- | --- | --- |
+| `XOLO_DEFAULT_LOCALE` | `fr` | Language used when neither the switch nor the browser selects a supported one: `en`, `fr` or `es`. |

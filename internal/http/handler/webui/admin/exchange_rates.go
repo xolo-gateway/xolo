@@ -6,12 +6,13 @@ import (
 	"slices"
 
 	"github.com/a-h/templ"
+	"github.com/pkg/errors"
 	httpCtx "github.com/xolo-gateway/xolo/internal/http/context"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/admin/component"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/common"
 	commonComp "github.com/xolo-gateway/xolo/internal/http/handler/webui/common/component"
 	"github.com/xolo-gateway/xolo/internal/http/middleware/authz"
-	"github.com/pkg/errors"
+	"github.com/xolo-gateway/xolo/internal/i18n"
 )
 
 func (h *Handler) getExchangeRatesPage(w http.ResponseWriter, r *http.Request) {
@@ -55,8 +56,8 @@ func (h *Handler) fillExchangeRatesPageVModelAppLayout(ctx context.Context, vmod
 		IsAdmin:      isAdmin,
 		SelectedItem: "exchange-rates",
 		Breadcrumbs: []commonComp.BreadcrumbItem{
-			{Label: "Plateforme", Href: "/admin/"},
-			{Label: "Taux de change", Href: ""},
+			{Label: i18n.T(ctx, "admin.breadcrumb.platform"), Href: "/admin/"},
+			{Label: i18n.T(ctx, "admin.breadcrumb.exchange_rates"), Href: ""},
 		},
 		Context: commonComp.ContextPlatform,
 	}

@@ -19,6 +19,7 @@ import (
 	common "github.com/xolo-gateway/xolo/internal/http/handler/webui/common/component"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/profile/component"
 	"github.com/xolo-gateway/xolo/internal/http/middleware/authz"
+	"github.com/xolo-gateway/xolo/internal/i18n"
 )
 
 type pluginManagerIface interface {
@@ -97,8 +98,8 @@ func (h *Handler) getProfilePage(w http.ResponseWriter, r *http.Request) {
 			User:         user,
 			SelectedItem: "profile",
 			Breadcrumbs: []common.BreadcrumbItem{
-				{Label: "Espace personnel", Href: "/usage"},
-				{Label: "Profil", Href: ""},
+				{Label: i18n.T(ctx, "profile.breadcrumb.personal_space"), Href: "/usage"},
+				{Label: i18n.T(ctx, "profile.breadcrumb.profile"), Href: ""},
 			},
 			Context: common.ContextPersonal,
 		},
@@ -170,9 +171,9 @@ func (h *Handler) renderTokensPage(w http.ResponseWriter, r *http.Request, creat
 			User:         user,
 			SelectedItem: "tokens",
 			Breadcrumbs: []common.BreadcrumbItem{
-				{Label: "Espace personnel", Href: "/usage"},
-				{Label: "Profil", Href: "/profile/"},
-				{Label: "Jetons API", Href: ""},
+				{Label: i18n.T(ctx, "profile.breadcrumb.personal_space"), Href: "/usage"},
+				{Label: i18n.T(ctx, "profile.breadcrumb.profile"), Href: "/profile/"},
+				{Label: i18n.T(ctx, "profile.breadcrumb.tokens"), Href: ""},
 			},
 			Context: common.ContextPersonal,
 		},
@@ -381,9 +382,9 @@ func (h *Handler) getInvitationsPage(w http.ResponseWriter, r *http.Request) {
 			User:         user,
 			SelectedItem: "profile",
 			Breadcrumbs: []common.BreadcrumbItem{
-				{Label: "Espace personnel", Href: "/usage"},
-				{Label: "Profil", Href: "/profile/"},
-				{Label: "Invitations", Href: ""},
+				{Label: i18n.T(ctx, "profile.breadcrumb.personal_space"), Href: "/usage"},
+				{Label: i18n.T(ctx, "profile.breadcrumb.profile"), Href: "/profile/"},
+				{Label: i18n.T(ctx, "profile.breadcrumb.invitations"), Href: ""},
 			},
 			Context: common.ContextPersonal,
 		},
@@ -396,11 +397,11 @@ func (h *Handler) getForbiddenPage(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
 	vmodel := common.ErrorPageVModel{
-		Message: "L'accès à cette page ne vous est pas autorisé. Veuillez contacter l'administrateur.",
+		Message: i18n.T(ctx, "profile.forbidden.message"),
 		Links: []common.LinkItem{
 			{
 				URL:   string(common.BaseURL(ctx, common.WithPath("/auth/oidc/logout"))),
-				Label: "Se déconnecter",
+				Label: i18n.T(ctx, "profile.forbidden.logout"),
 			},
 		},
 	}

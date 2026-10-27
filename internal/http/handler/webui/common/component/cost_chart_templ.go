@@ -48,7 +48,7 @@ func CostChart(payg, covered []ChartDataPoint, currency string) templ.Component 
 			Stacked:     stacked,
 			BeginAtZero: &trueVal,
 			Class:       "h-64",
-			Data:        CostChartData(payg, covered, currency),
+			Data:        CostChartData(ctx, payg, covered, currency),
 		}).Render(ctx, templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err

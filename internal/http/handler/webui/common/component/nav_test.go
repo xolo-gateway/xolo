@@ -392,7 +392,7 @@ func TestSwitcherGroupLabel(t *testing.T) {
 	}
 	want := []string{"Espace personnel", "Organisations · 2", "", ""}
 	for i, w := range want {
-		if got := switcherGroupLabel(entries, i); got != w {
+		if got := switcherGroupLabel(context.Background(), entries, i); got != w {
 			t.Errorf("entry %d: got %q, want %q", i, got, w)
 		}
 	}

@@ -12,6 +12,7 @@ import (
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/common/component"
 	templuicard "github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/card"
 	templuiicon "github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/icon"
+	"github.com/xolo-gateway/xolo/internal/i18n"
 	"strings"
 )
 
@@ -131,7 +132,12 @@ func LoginPage(vmodel LoginPageVModel) templ.Component {
 							}()
 						}
 						ctx = templ.InitializeContext(ctx)
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, "Veuillez vous authentifier")
+						var templ_7745c5c3_Var7 string
+						templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "auth.login.token_description"))
+						if templ_7745c5c3_Err != nil {
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/middleware/authn/token/component/login_page.templ`, Line: 30, Col: 51}
+						}
+						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var7))
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
@@ -147,11 +153,11 @@ func LoginPage(vmodel LoginPageVModel) templ.Component {
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 7, " ")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, " ")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Var7 := templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
+				templ_7745c5c3_Var8 := templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 					templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 					templ_7745c5c3_Buffer, templ_7745c5c3_IsBuffer := templruntime.GetBuffer(templ_7745c5c3_W)
 					if !templ_7745c5c3_IsBuffer {
@@ -163,39 +169,39 @@ func LoginPage(vmodel LoginPageVModel) templ.Component {
 						}()
 					}
 					ctx = templ.InitializeContext(ctx)
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "<form hx-boost=\"false\" action=\"")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 7, "<form hx-boost=\"false\" action=\"")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
-					var templ_7745c5c3_Var8 templ.SafeURL
-					templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.JoinURLErrs(component.CurrentURL(ctx))
+					var templ_7745c5c3_Var9 templ.SafeURL
+					templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.JoinURLErrs(component.CurrentURL(ctx))
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/middleware/authn/token/component/login_page.templ`, Line: 33, Col: 62}
-					}
-					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var8))
-					if templ_7745c5c3_Err != nil {
-						return templ_7745c5c3_Err
-					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "\" method=\"post\" id=\"loginForm\"><!-- hidden input: no templui equivalent, not rendered --><input type=\"hidden\" name=\"token\" id=\"tokenInput\"></form><script type=\"text/javascript\" data-allowed-origins=\"")
-					if templ_7745c5c3_Err != nil {
-						return templ_7745c5c3_Err
-					}
-					var templ_7745c5c3_Var9 string
-					templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.JoinStringErrs(strings.Join(vmodel.AllowedOrigins, ","))
-					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/middleware/authn/token/component/login_page.templ`, Line: 37, Col: 99}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/middleware/authn/token/component/login_page.templ`, Line: 34, Col: 62}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var9))
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, "\">\n\t\t\t\t      (function() {\n\t\t\t\t        const parentWindow = window.parent;\n\t\t\t\t        if (!parentWindow) return;\n\n\t\t\t\t        const allowedOrigins = document.currentScript.dataset.allowedOrigins.split(',')\n\n\t\t\t\t        window.addEventListener(\"message\", (event) => {\n\t\t\t\t\t\t\t\t\tif (allowedOrigins.indexOf(event.origin) === -1) return;\n\t\t\t\t\t\t\t\t\tconst data = JSON.parse(event.data);\n\t\t\t\t          if (!data.token) return\n\t\t\t\t          document.getElementById(\"tokenInput\").value = data.token;\n\t\t\t\t          document.getElementById(\"loginForm\").requestSubmit();\n\t\t\t\t\t\t\t\t}, false);\n\n\t\t\t\t        parentWindow.postMessage(JSON.stringify({\"action\": \"login\"}), \"*\")\n\t\t\t\t      }())\n\t\t\t\t    </script>")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "\" method=\"post\" id=\"loginForm\"><!-- hidden input: no templui equivalent, not rendered --><input type=\"hidden\" name=\"token\" id=\"tokenInput\"></form><script type=\"text/javascript\" data-allowed-origins=\"")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+					var templ_7745c5c3_Var10 string
+					templ_7745c5c3_Var10, templ_7745c5c3_Err = templ.JoinStringErrs(strings.Join(vmodel.AllowedOrigins, ","))
+					if templ_7745c5c3_Err != nil {
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/middleware/authn/token/component/login_page.templ`, Line: 38, Col: 99}
+					}
+					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var10))
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "\">\n\t\t\t\t      (function() {\n\t\t\t\t        const parentWindow = window.parent;\n\t\t\t\t        if (!parentWindow) return;\n\n\t\t\t\t        const allowedOrigins = document.currentScript.dataset.allowedOrigins.split(',')\n\n\t\t\t\t        window.addEventListener(\"message\", (event) => {\n\t\t\t\t\t\t\t\t\tif (allowedOrigins.indexOf(event.origin) === -1) return;\n\t\t\t\t\t\t\t\t\tconst data = JSON.parse(event.data);\n\t\t\t\t          if (!data.token) return\n\t\t\t\t          document.getElementById(\"tokenInput\").value = data.token;\n\t\t\t\t          document.getElementById(\"loginForm\").requestSubmit();\n\t\t\t\t\t\t\t\t}, false);\n\n\t\t\t\t        parentWindow.postMessage(JSON.stringify({\"action\": \"login\"}), \"*\")\n\t\t\t\t      }())\n\t\t\t\t    </script>")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 					return nil
 				})
-				templ_7745c5c3_Err = templuicard.Content(templuicard.ContentProps{Class: "space-y-4"}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var7), templ_7745c5c3_Buffer)
+				templ_7745c5c3_Err = templuicard.Content(templuicard.ContentProps{Class: "space-y-4"}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var8), templ_7745c5c3_Buffer)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -205,13 +211,13 @@ func LoginPage(vmodel LoginPageVModel) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 11, "</div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, "</div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			return nil
 		})
-		templ_7745c5c3_Err = component.Page(component.WithTitle("Authentification"), component.WithBodyAttributes(templ.Attributes{"hx-boost": "false"})).Render(templ.WithChildren(ctx, templ_7745c5c3_Var2), templ_7745c5c3_Buffer)
+		templ_7745c5c3_Err = component.Page(component.WithTitle(i18n.T(ctx, "auth.title")), component.WithBodyAttributes(templ.Attributes{"hx-boost": "false"})).Render(templ.WithChildren(ctx, templ_7745c5c3_Var2), templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

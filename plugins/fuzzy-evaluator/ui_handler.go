@@ -10,6 +10,7 @@ import (
 	"github.com/a-h/templ"
 	"github.com/bornholm/go-fuzzy/dsl"
 	"github.com/xolo-gateway/xolo/pkg/pluginsdk"
+	"github.com/xolo-gateway/xolo/plugins/internal/uilocale"
 )
 
 func newUIHandler() http.Handler {
@@ -21,16 +22,16 @@ func newUIHandler() http.Handler {
 	mux.HandleFunc("POST /api/outputs/add", handleAddOutput)
 	mux.HandleFunc("POST /api/outputs/{idx}/delete", handleDeleteOutput)
 	mux.HandleFunc("POST /api/validate", handleValidateDSL)
-	return mux
+	return uilocale.Handler(mux)
 }
 
 type uiPageData struct {
-	BasePath     string
-	OrgID        string
-	Config       Config
-	Success      bool
-	ValidateErr  string
-	ValidateOK   bool
+	BasePath    string
+	OrgID       string
+	Config      Config
+	Success     bool
+	ValidateErr string
+	ValidateOK  bool
 }
 
 func loadPageData(r *http.Request) uiPageData {

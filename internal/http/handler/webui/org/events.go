@@ -16,6 +16,7 @@ import (
 	httpCtx "github.com/xolo-gateway/xolo/internal/http/context"
 	common "github.com/xolo-gateway/xolo/internal/http/handler/webui/common/component"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/org/component"
+	"github.com/xolo-gateway/xolo/internal/i18n"
 )
 
 const eventsExplorerPageSize = 50
@@ -47,7 +48,7 @@ const (
 // entry point so the user never switches section unexpectedly. nav selects which
 // org sidebar entry is highlighted, and tailCrumbs are appended after the
 // context root breadcrumb.
-func (h *Handler) eventsLayout(org model.Organization, user model.User, personal bool, nav string, tailCrumbs []common.BreadcrumbItem) common.AppLayoutVModel {
+func (h *Handler) eventsLayout(ctx context.Context, org model.Organization, user model.User, personal bool, nav string, tailCrumbs []common.BreadcrumbItem) common.AppLayoutVModel {
 	if !personal {
 		crumbs := append([]common.BreadcrumbItem{
 			{Label: org.Name(), Href: "/orgs/" + org.Slug() + "/usage"},
@@ -64,7 +65,7 @@ func (h *Handler) eventsLayout(org model.Organization, user model.User, personal
 	}
 
 	crumbs := append([]common.BreadcrumbItem{
-		{Label: "Espace personnel", Href: "/usage"},
+		{Label: i18n.T(ctx, "org.nav.personal_space"), Href: "/usage"},
 	}, tailCrumbs...)
 	return common.AppLayoutVModel{
 		User:         user,
@@ -177,7 +178,7 @@ func (h *Handler) getEventsExplorerPage(w http.ResponseWriter, r *http.Request) 
 		HasNext:         hasNext,
 		View:            viewParam(personal),
 		KnownTypes:      model.PlatformEventTypes(),
-		AppLayoutVModel: h.eventsLayout(org, user, personal, eventsNavEvents, []common.BreadcrumbItem{{Label: "Événements", Href: ""}}),
+		AppLayoutVModel: h.eventsLayout(ctx, org, user, personal, eventsNavEvents, []common.BreadcrumbItem{{Label: i18n.T(ctx, "org.nav.events"), Href: ""}}),
 	}
 
 	templ.Handler(component.EventsExplorerPage(vmodel)).ServeHTTP(w, r)
@@ -263,7 +264,7 @@ func (h *Handler) getIncidentsPage(w http.ResponseWriter, r *http.Request) {
 		Org:             org,
 		Incidents:       views,
 		View:            viewParam(personal),
-		AppLayoutVModel: h.eventsLayout(org, user, personal, eventsNavAlerts, []common.BreadcrumbItem{{Label: "Incidents", Href: ""}}),
+		AppLayoutVModel: h.eventsLayout(ctx, org, user, personal, eventsNavAlerts, []common.BreadcrumbItem{{Label: i18n.T(ctx, "org.nav.incidents"), Href: ""}}),
 	}
 
 	templ.Handler(component.IncidentsPage(vmodel)).ServeHTTP(w, r)

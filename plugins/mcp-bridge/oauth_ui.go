@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/pkg/errors"
+	"github.com/xolo-gateway/xolo/internal/i18n"
 )
 
 // connectPageData describes an authorization of an MCP server by a user.
@@ -30,7 +31,7 @@ func handleConnect(w http.ResponseWriter, r *http.Request) {
 	endpoint, err := parseEndpoint(pd.Endpoint)
 	if err != nil || pd.NodeID == "" {
 		w.WriteHeader(http.StatusBadRequest)
-		pd.Error = "Lien d'autorisation invalide."
+		pd.Error = i18n.T(r.Context(), "plugin.mcp_bridge.connect.invalid_link")
 	} else {
 		pd.Host = endpoint.Host
 	}
@@ -51,7 +52,7 @@ func (o *oauthClient) handleStartConnect(w http.ResponseWriter, r *http.Request)
 	endpoint, err := parseEndpoint(pd.Endpoint)
 	if err != nil || pd.NodeID == "" || userID == "" || publicBaseURL == "" {
 		w.WriteHeader(http.StatusBadRequest)
-		pd.Error = "Lien d'autorisation invalide."
+		pd.Error = i18n.T(r.Context(), "plugin.mcp_bridge.connect.invalid_link")
 		renderTempl(w, r, connectPage(pd))
 		return
 	}
@@ -62,7 +63,7 @@ func (o *oauthClient) handleStartConnect(w http.ResponseWriter, r *http.Request)
 	if err != nil {
 		slog.WarnContext(ctx, "mcp-bridge/ui: could not start the authorization", slog.Any("error", err))
 		w.WriteHeader(http.StatusBadGateway)
-		pd.Error = "Le serveur MCP ne permet pas l'autorisation : " + err.Error()
+		pd.Error = i18n.T(ctx, "plugin.mcp_bridge.connect.unsupported", err.Error())
 		renderTempl(w, r, connectPage(pd))
 		return
 	}
@@ -78,7 +79,7 @@ func (o *oauthClient) handleCallback(w http.ResponseWriter, r *http.Request) {
 
 	if e := query.Get("error"); e != "" {
 		w.WriteHeader(http.StatusForbidden)
-		pd.Error = "L'autorisation a été refusée (" + e + ")."
+		pd.Error = i18n.T(ctx, "plugin.mcp_bridge.connect.denied", e)
 		renderTempl(w, r, connectPage(pd))
 		return
 	}
@@ -96,7 +97,7 @@ func (o *oauthClient) handleCallback(w http.ResponseWriter, r *http.Request) {
 			status = http.StatusBadRequest
 		}
 		w.WriteHeader(status)
-		pd.Error = "L'autorisation n'a pas pu aboutir. Recommencez depuis le lien donné par l'assistant."
+		pd.Error = i18n.T(ctx, "plugin.mcp_bridge.connect.failed")
 		renderTempl(w, r, connectPage(pd))
 		return
 	}

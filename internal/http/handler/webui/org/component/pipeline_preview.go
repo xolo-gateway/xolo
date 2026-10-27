@@ -1,14 +1,15 @@
 package component
 
 import (
+	"context"
 	"encoding/json"
-	"fmt"
 	"sort"
 	"strconv"
 
 	"github.com/a-h/templ"
 	"github.com/xolo-gateway/xolo/internal/core/model"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/icon"
+	"github.com/xolo-gateway/xolo/internal/i18n"
 )
 
 // graphNodeCount and graphEdgeCount count a possibly-nil graph: a virtual model
@@ -40,13 +41,15 @@ func Pluralize(n int, singular, plural string) string {
 // virtual model. It flattens a model.PipelineNode into what the mockup draws:
 // a kind, a name and a one-line detail.
 type PipelineNodeCard struct {
-	Kind   string // "Entrée", "Modèle", "Plugin"…
+	Kind   string // i18n.T(ctx, "org.pipeline.kind.input"), "Modèle", "Plugin"…
 	Name   string
 	Detail string
 	Icon   func(...icon.Props) templ.Component
 	// TintClass is the utility pair of the node's icon square, carrying the kind
 	// of the node the way the mockup colours it.
 	TintClass string
+	// Type is the node type the card was built from.
+	Type model.PipelineNodeType
 }
 
 // PipelineCards flattens a graph into the left-to-right chain of the preview.
@@ -54,7 +57,7 @@ type PipelineNodeCard struct {
 // The editor stores a free-form dataflow graph, so there is no single "the"
 // order; the preview reads the canvas the way a user does — by X position, then
 // by Y for nodes stacked in the same column (a fallback branch, typically).
-func PipelineCards(graph *model.PipelineGraph) []PipelineNodeCard {
+func PipelineCards(ctx context.Context, graph *model.PipelineGraph) []PipelineNodeCard {
 	if graph == nil || len(graph.Nodes) == 0 {
 		return nil
 	}
@@ -70,28 +73,30 @@ func PipelineCards(graph *model.PipelineGraph) []PipelineNodeCard {
 
 	cards := make([]PipelineNodeCard, 0, len(nodes))
 	for _, n := range nodes {
-		cards = append(cards, pipelineCard(n))
+		card := pipelineCard(ctx, n)
+		card.Type = n.Type
+		cards = append(cards, card)
 	}
 
 	return cards
 }
 
-func pipelineCard(n model.PipelineNode) PipelineNodeCard {
+func pipelineCard(ctx context.Context, n model.PipelineNode) PipelineNodeCard {
 	switch n.Type {
 	case model.NodeTypeGenerator:
 		return PipelineNodeCard{
-			Kind:      "Entrée",
-			Name:      "requête",
-			Detail:    "Requête reçue du client",
+			Kind:      i18n.T(ctx, "org.pipeline.kind.input"),
+			Name:      i18n.T(ctx, "org.pipeline.name.request"),
+			Detail:    i18n.T(ctx, "org.pipeline.detail.input"),
 			Icon:      icon.LogIn,
 			TintClass: "bg-muted text-muted-foreground",
 		}
 
 	case model.NodeTypeSink:
 		return PipelineNodeCard{
-			Kind:      "Sortie",
-			Name:      "réponse",
-			Detail:    "Réponse renvoyée au client",
+			Kind:      i18n.T(ctx, "org.pipeline.kind.output"),
+			Name:      i18n.T(ctx, "org.pipeline.name.response"),
+			Detail:    i18n.T(ctx, "org.pipeline.detail.output"),
 			Icon:      icon.LogOut,
 			TintClass: "bg-muted text-muted-foreground",
 		}
@@ -100,20 +105,20 @@ func pipelineCard(n model.PipelineNode) PipelineNodeCard {
 		var data model.ModelNodeData
 		_ = json.Unmarshal(n.Data, &data)
 		card := PipelineNodeCard{
-			Kind:      "Modèle",
+			Kind:      i18n.T(ctx, "org.pipeline.kind.model"),
 			Name:      data.ProxyName,
-			Detail:    "Appel au modèle amont",
+			Detail:    i18n.T(ctx, "org.pipeline.detail.model"),
 			Icon:      icon.BrainCircuit,
 			TintClass: "bg-primary-tint text-primary",
 		}
 		// A passthrough node has no fixed proxy name: it resolves whichever model
 		// the caller asked for, which is how a middleware wraps arbitrary models.
 		if data.Passthrough {
-			card.Name = "modèle demandé"
-			card.Detail = "Résolu à l'exécution"
+			card.Name = i18n.T(ctx, "org.pipeline.name.requested_model")
+			card.Detail = i18n.T(ctx, "org.pipeline.detail.passthrough")
 		}
 		if card.Name == "" {
-			card.Name = "non configuré"
+			card.Name = i18n.T(ctx, "org.pipeline.name.unconfigured")
 		}
 		return card
 
@@ -122,12 +127,12 @@ func pipelineCard(n model.PipelineNode) PipelineNodeCard {
 		_ = json.Unmarshal(n.Data, &data)
 		name := data.ProxyName
 		if name == "" {
-			name = "non configuré"
+			name = i18n.T(ctx, "org.pipeline.name.unconfigured")
 		}
 		return PipelineNodeCard{
-			Kind:      "Modèle (référence)",
+			Kind:      i18n.T(ctx, "org.pipeline.kind.model_ref"),
 			Name:      name,
-			Detail:    "Nom de modèle émis",
+			Detail:    i18n.T(ctx, "org.pipeline.detail.model_ref"),
 			Icon:      icon.BrainCircuit,
 			TintClass: "bg-primary-tint text-primary",
 		}
@@ -135,14 +140,14 @@ func pipelineCard(n model.PipelineNode) PipelineNodeCard {
 	case model.NodeTypeModelFallback:
 		var data model.ModelFallbackNodeData
 		_ = json.Unmarshal(n.Data, &data)
-		name := "non configuré"
+		name := i18n.T(ctx, "org.pipeline.name.unconfigured")
 		if len(data.Models) > 0 {
 			name = data.Models[0]
 		}
 		return PipelineNodeCard{
-			Kind:      "Modèle avec repli",
+			Kind:      i18n.T(ctx, "org.pipeline.kind.model_fallback"),
 			Name:      name,
-			Detail:    fmt.Sprintf("%d modèle(s) en cascade", len(data.Models)),
+			Detail:    i18n.T(ctx, "org.pipeline.detail.model_fallback", len(data.Models)),
 			Icon:      icon.BrainCircuit,
 			TintClass: "bg-primary-tint text-primary",
 		}
@@ -157,9 +162,9 @@ func pipelineCard(n model.PipelineNode) PipelineNodeCard {
 			name = string(n.Type)
 		}
 		return PipelineNodeCard{
-			Kind:      "Logique",
+			Kind:      i18n.T(ctx, "org.pipeline.kind.logic"),
 			Name:      name,
-			Detail:    "Nœud intégré",
+			Detail:    i18n.T(ctx, "org.pipeline.detail.logic"),
 			Icon:      icon.Hash,
 			TintClass: "bg-chart-4/15 text-chart-4",
 		}
@@ -172,9 +177,9 @@ func pipelineCard(n model.PipelineNode) PipelineNodeCard {
 			name = "block"
 		}
 		return PipelineNodeCard{
-			Kind:      "Blocage",
+			Kind:      i18n.T(ctx, "org.pipeline.kind.block"),
 			Name:      name,
-			Detail:    "Refuse la requête si vrai",
+			Detail:    i18n.T(ctx, "org.pipeline.detail.block"),
 			Icon:      icon.ShieldBan,
 			TintClass: "bg-destructive/15 text-destructive",
 		}
@@ -187,9 +192,9 @@ func pipelineCard(n model.PipelineNode) PipelineNodeCard {
 			name = "trace"
 		}
 		return PipelineNodeCard{
-			Kind:      "Trace",
+			Kind:      i18n.T(ctx, "org.pipeline.kind.trace"),
 			Name:      name,
-			Detail:    "Événement pipeline.trace",
+			Detail:    i18n.T(ctx, "org.pipeline.detail.trace"),
 			Icon:      icon.Hash,
 			TintClass: "bg-muted text-muted-foreground",
 		}
@@ -202,12 +207,12 @@ func pipelineCard(n model.PipelineNode) PipelineNodeCard {
 			name = name[:40] + "…"
 		}
 		if name == "" {
-			name = "(vide)"
+			name = i18n.T(ctx, "org.pipeline.name.empty")
 		}
 		return PipelineNodeCard{
-			Kind:      "Note",
+			Kind:      i18n.T(ctx, "org.pipeline.kind.note"),
 			Name:      name,
-			Detail:    "Sans effet à l'exécution",
+			Detail:    i18n.T(ctx, "org.pipeline.detail.note"),
 			Icon:      icon.Hash,
 			TintClass: "bg-muted text-muted-foreground",
 		}
@@ -217,10 +222,10 @@ func pipelineCard(n model.PipelineNode) PipelineNodeCard {
 		_ = json.Unmarshal(n.Data, &data)
 		name := data.Value
 		if name == "" {
-			name = "(vide)"
+			name = i18n.T(ctx, "org.pipeline.name.empty")
 		}
 		return PipelineNodeCard{
-			Kind:      "Valeur",
+			Kind:      i18n.T(ctx, "org.pipeline.kind.value"),
 			Name:      name,
 			Detail:    data.PortType,
 			Icon:      icon.Hash,
@@ -232,12 +237,12 @@ func pipelineCard(n model.PipelineNode) PipelineNodeCard {
 		_ = json.Unmarshal(n.Data, &data)
 		name := data.PluginName
 		if name == "" {
-			name = "non configuré"
+			name = i18n.T(ctx, "org.pipeline.name.unconfigured")
 		}
 		return PipelineNodeCard{
-			Kind:      "Plugin",
+			Kind:      i18n.T(ctx, "org.pipeline.kind.plugin"),
 			Name:      name,
-			Detail:    "Traitement intercalé",
+			Detail:    i18n.T(ctx, "org.pipeline.detail.plugin"),
 			Icon:      icon.Puzzle,
 			TintClass: "bg-chart-3/15 text-chart-3",
 		}

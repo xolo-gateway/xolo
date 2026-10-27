@@ -9,8 +9,11 @@ import "github.com/a-h/templ"
 import templruntime "github.com/a-h/templ/runtime"
 
 import (
+	"context"
+
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/alert"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/toast"
+	"github.com/xolo-gateway/xolo/internal/i18n"
 )
 
 // FlashToast renders the outcome of the previous request as a toast.
@@ -46,8 +49,8 @@ func FlashToast(success, subject string) templ.Component {
 		if success != "" {
 			templ_7745c5c3_Err = toast.Toast(toast.Props{
 				Variant:     toast.VariantSuccess,
-				Title:       "Opération réussie",
-				Description: flashMessage(success, subject),
+				Title:       i18n.T(ctx, "common.flash.success_title"),
+				Description: flashMessage(ctx, success, subject),
 				Dismissible: true,
 				Icon:        true,
 			}).Render(ctx, templ_7745c5c3_Buffer)
@@ -111,9 +114,9 @@ func FlashError(reason, subject string) templ.Component {
 					}
 					ctx = templ.InitializeContext(ctx)
 					var templ_7745c5c3_Var5 string
-					templ_7745c5c3_Var5, templ_7745c5c3_Err = templ.JoinStringErrs(errorMessage(reason, subject))
+					templ_7745c5c3_Var5, templ_7745c5c3_Err = templ.JoinStringErrs(errorMessage(ctx, reason, subject))
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/common/component/flash.templ`, Line: 38, Col: 35}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/common/component/flash.templ`, Line: 41, Col: 40}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var5))
 					if templ_7745c5c3_Err != nil {
@@ -147,19 +150,19 @@ func FlashError(reason, subject string) templ.Component {
 // can opt in without touching flash.templ again, but today's only
 // caller (the tokens page) passes an empty subject, so the
 // branch collapses to the generic wording.
-func errorMessage(reason, subject string) string {
+func errorMessage(ctx context.Context, reason, subject string) string {
 	switch reason {
 	case "exists":
 		if subject == "" {
-			return "Un élément portant ce nom existe déjà."
+			return i18n.T(ctx, "common.flash.error.exists")
 		}
-		return subject + " portant ce nom existe déjà."
+		return i18n.T(ctx, "common.flash.error.exists_subject", subject)
 	case "name_required":
-		return "Le nom est obligatoire."
+		return i18n.T(ctx, "common.flash.error.name_required")
 	case "team_conflict":
-		return "Ce nom commence par l'identifiant d'une équipe suivi de « / » : il serait lu comme un modèle de cette équipe. Choisissez un autre nom."
+		return i18n.T(ctx, "common.flash.error.team_conflict")
 	case "invalid_overrides":
-		return "La fenêtre de contexte et la sortie maximale doivent être des entiers positifs."
+		return i18n.T(ctx, "common.flash.error.invalid_overrides")
 	case "label_required":
 		// The dialog inline message uses the same wording ("Le nom de la clé
 		// est obligatoire."), so the dialog-level alert has to match — the
@@ -167,60 +170,67 @@ func errorMessage(reason, subject string) string {
 		// plumbing exists for future screens that want a specialised noun;
 		// today it is unused and we collapse back to the generic wording.
 		if subject == "" {
-			return "Le nom de la clé est obligatoire."
+			return i18n.T(ctx, "common.flash.error.label_required")
 		}
-		return "Le nom de la " + subject + " est obligatoire."
+		return i18n.T(ctx, "common.flash.error.label_required_subject", subject)
 	case "org_required":
 		// Selecting an organisation is the only constraint the API-key dialog
 		// cannot satisfy from a fresh account, which is why it earns its own
 		// message instead of falling back to the generic "name_required".
-		return "Veuillez sélectionner une organisation."
+		return i18n.T(ctx, "common.flash.error.org_required")
 	case "org_not_member":
 		// Surfaced by createToken's IsMember check: the caller posted an
 		// org_id that does not belong to any of their memberships. Reading
 		// "Veuillez sélectionner une organisation" here would be misleading —
 		// the field is filled, the user just does not own the value.
-		return "Vous n'appartenez pas à cette organisation."
+		return i18n.T(ctx, "common.flash.error.org_not_member")
 	case "org_lookup_failed":
-		return "La vérification de l'organisation a échoué. Réessayez."
+		return i18n.T(ctx, "common.flash.error.org_lookup_failed")
 	case "team_not_in_org":
-		return "L'équipe choisie n'est pas une de vos équipes dans cette organisation."
+		return i18n.T(ctx, "common.flash.error.team_not_in_org")
 	case "invalid_expires_at":
-		return "La date d'expiration est invalide."
+		return i18n.T(ctx, "common.flash.error.invalid_expires_at")
 	case "create_failed":
-		return "La création a échoué."
+		return i18n.T(ctx, "common.flash.error.create_failed")
 	case "update_failed":
-		return "L'enregistrement a échoué."
+		return i18n.T(ctx, "common.flash.error.update_failed")
 	case "delete_failed":
-		return "La suppression a échoué."
+		return i18n.T(ctx, "common.flash.error.delete_failed")
 	case "invalid_form":
-		return "Le formulaire envoyé est invalide."
+		return i18n.T(ctx, "common.flash.error.invalid_form")
 	default:
 		return reason
 	}
 }
 
 // flashMessage words the `?success=` verb, optionally about a named subject.
-func flashMessage(success, subject string) string {
-	var action string
+func flashMessage(ctx context.Context, success, subject string) string {
+	generic := subject == ""
 	switch success {
 	case "created":
-		action = "a été créé."
+		if generic {
+			return i18n.T(ctx, "common.flash.created")
+		}
+		return i18n.T(ctx, "common.flash.created_subject", subject)
 	case "updated", "saved":
-		action = "a été enregistré."
+		if generic {
+			return i18n.T(ctx, "common.flash.saved")
+		}
+		return i18n.T(ctx, "common.flash.saved_subject", subject)
 	case "deleted":
-		action = "a été supprimé."
+		if generic {
+			return i18n.T(ctx, "common.flash.deleted")
+		}
+		return i18n.T(ctx, "common.flash.deleted_subject", subject)
 	case "revoked":
-		action = "a été révoqué."
+		if generic {
+			return i18n.T(ctx, "common.flash.revoked")
+		}
+		return i18n.T(ctx, "common.flash.revoked_subject", subject)
 	default:
 		// Unknown verbs still deserve feedback rather than silence.
-		return "L'opération a été effectuée."
+		return i18n.T(ctx, "common.flash.done")
 	}
-
-	if subject == "" {
-		return "L'élément " + action
-	}
-	return subject + " " + action
 }
 
 var _ = templruntime.GeneratedTemplate

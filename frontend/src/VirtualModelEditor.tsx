@@ -28,6 +28,7 @@ import { validateGraph } from './validate'
 import { fetchVirtualModel, fetchNodeTypes, updateVirtualModel, vmId, orgSlug, isReadonly, backLink } from './api'
 import type { NodeTypeDescriptor, PipelineGraph, PipelineNode, PipelineEdge, PipelineBundle, PluginNodeData } from './types'
 import { ReadonlyContext } from './ReadonlyContext'
+import { plural, t } from './i18n'
 
 const nodeTypes = {
   generator: GeneratorNode,
@@ -273,14 +274,14 @@ export function VirtualModelEditor() {
       const text = await file.text()
       const bundle = JSON.parse(text) as PipelineBundle
       if (!bundle.graph) {
-        setError('Le fichier ne contient pas de graphe de pipeline.')
+        setError(t('editor.import.noGraph'))
         return
       }
       const { nodes: n, edges: ed } = graphToFlow(bundle.graph, descriptorsRef.current)
       setNodes(n)
       setEdges(ed)
     } catch {
-      setError('Impossible de lire le fichier : format invalide.')
+      setError(t('editor.import.invalid'))
     } finally {
       // Reset so the same file can be re-imported if needed.
       e.target.value = ''
@@ -308,21 +309,20 @@ export function VirtualModelEditor() {
 
   const back = backLink()
 
-  if (loading) return <div className="pipeline-loading">Chargement…</div>
+  if (loading) return <div className="pipeline-loading">{t('common.loading')}</div>
 
   return (
     <ReadonlyContext.Provider value={readonly}>
       <div className="pipeline-editor">
         <header className="pipeline-editor__toolbar">
-          <a className="pipeline-editor__back" href={back.href} title={`Retour — ${back.label}`}>
+          <a className="pipeline-editor__back" href={back.href} title={t('editor.back.title', { label: back.label })}>
             ← {back.label}
           </a>
 
           <span className="pipeline-editor__vm-name">{qualifiedName}</span>
 
           <span className="pipeline-editor__counts">
-            {nodes.length} nœud{nodes.length > 1 ? 's' : ''} · {edges.length} liaison
-            {edges.length > 1 ? 's' : ''}
+            {plural('editor.counts.nodes', nodes.length)} · {plural('editor.counts.edges', edges.length)}
           </span>
 
           {error && <span className="pipeline-editor__error">{error}</span>}
@@ -340,9 +340,9 @@ export function VirtualModelEditor() {
                 <button
                   className="pipeline-editor__btn"
                   onClick={() => importInputRef.current?.click()}
-                  title="Charger un pipeline depuis un fichier JSON"
+                  title={t('editor.import.title')}
                 >
-                  Importer
+                  {t('editor.import.button')}
                 </button>
                 {/*
                   TODO(rework-ux): la maquette propose « Aligner » (mise en page
@@ -352,11 +352,11 @@ export function VirtualModelEditor() {
                   route d'exécution à blanc côté proxy. Les contrôles sont visibles
                   et inertes (cf. lot 7 du plan).
                 */}
-                <button className="pipeline-editor__btn" disabled title="Bientôt disponible">
-                  Aligner
+                <button className="pipeline-editor__btn" disabled title={t('editor.comingSoon')}>
+                  {t('editor.align')}
                 </button>
-                <button className="pipeline-editor__btn" disabled title="Bientôt disponible">
-                  Tester
+                <button className="pipeline-editor__btn" disabled title={t('editor.comingSoon')}>
+                  {t('editor.test')}
                 </button>
               </>
             )}
@@ -364,9 +364,9 @@ export function VirtualModelEditor() {
               className="pipeline-editor__btn"
               onClick={exportPipeline}
               disabled={!id}
-              title="Télécharger le pipeline courant (incluant la configuration de chaque nœud)"
+              title={t('editor.export.title')}
             >
-              Exporter
+              {t('editor.export.button')}
             </button>
             {!readonly && (
               <button
@@ -374,7 +374,7 @@ export function VirtualModelEditor() {
                 onClick={save}
                 disabled={saving || !id}
               >
-                {saving ? 'Enregistrement…' : 'Enregistrer'}
+                {saving ? t('editor.saving') : t('editor.save')}
               </button>
             )}
           </span>

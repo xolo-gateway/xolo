@@ -1,0 +1,63 @@
+package component
+
+import (
+	"context"
+
+	httpCtx "github.com/xolo-gateway/xolo/internal/http/context"
+	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/button"
+	"github.com/xolo-gateway/xolo/internal/i18n"
+)
+
+// LocaleSwitch chooses the interface language for this browser without
+// JavaScript: one submit button per supported language, labeled with its
+// short tag and named in its own language, the current one pressed. It opts
+// out of hx-boost so the redirect reloads the whole document.
+templ LocaleSwitch(class string) {
+	<form method="post" action={ templ.SafeURL(BaseURLString(ctx, WithPath("/locale"))) } hx-boost="false" class={ "flex items-center gap-2", class }>
+		<span id="locale-switch-label" class="text-xs text-muted-foreground">{ i18n.T(ctx, "locale.label") }</span>
+		<input type="hidden" name="return_to" value={ localeReturnTo(ctx) }/>
+		<span role="group" aria-labelledby="locale-switch-label" class="inline-flex gap-0.5">
+			for _, option := range i18n.Options(ctx) {
+				@button.Button(button.Props{
+					Type:    button.TypeSubmit,
+					Variant: localeVariant(option.Current),
+					Size:    button.SizeSm,
+					Class:   "h-6 min-w-7 px-1.5 text-2xs uppercase",
+					Attributes: templ.Attributes{
+						"name":         "locale",
+						"value":        option.Tag,
+						"lang":         option.Tag,
+						"title":        option.Name,
+						"aria-pressed": localePressed(option.Current),
+					},
+				}) {
+					<span aria-hidden="true">{ option.Tag }</span>
+					<span class="sr-only">{ option.Name }</span>
+				}
+			}
+		</span>
+	</form>
+}
+
+// localeReturnTo is the page the switch returns to: the current one, or the
+// home page when the request URL is unknown.
+func localeReturnTo(ctx context.Context) string {
+	if current, ok := httpCtx.LookupCurrentURL(ctx); ok {
+		return current.RequestURI()
+	}
+	return "/"
+}
+
+func localeVariant(current bool) button.Variant {
+	if current {
+		return button.VariantSecondary
+	}
+	return button.VariantGhost
+}
+
+func localePressed(current bool) string {
+	if current {
+		return "true"
+	}
+	return "false"
+}

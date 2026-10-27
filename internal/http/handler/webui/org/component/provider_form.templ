@@ -12,14 +12,15 @@ import (
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/input"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/selectbox"
 	switchcomp "github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/switch"
+	"github.com/xolo-gateway/xolo/internal/i18n"
 )
 
 // ── Provider Form ─────────────────────────────────────────────────────────────
 templ ProviderForm(vmodel ProviderFormVModel) {
-	{{ title := "Nouveau fournisseur" }}
+	{{ title := i18n.T(ctx, "org.provider.title_new") }}
 	{{ action := common.BaseURLString(ctx, common.WithPath("/orgs/", vmodel.Org.Slug(), "/admin/providers")) }}
 	if !vmodel.IsNew && vmodel.Provider != nil {
-		{{ title = "Modifier — " + vmodel.Provider.Name() }}
+		{{ title = i18n.T(ctx, "org.provider.title_edit", vmodel.Provider.Name()) }}
 		{{ action = common.BaseURLString(ctx, common.WithPath("/orgs/", vmodel.Org.Slug(), "/admin/providers/", string(vmodel.Provider.ID()), "/edit")) }}
 	}
 	{{ writable := common.HasPermission(ctx, vmodel.Org.ID(), rbac.PermProvidersWrite) }}
@@ -34,21 +35,21 @@ templ ProviderForm(vmodel ProviderFormVModel) {
 						Size:    button.SizeSm,
 						Type:    button.TypeButton,
 					}) {
-						Annuler
+						{ i18n.T(ctx, "org.provider.cancel") }
 					}
 					if writable {
 						@button.Button(button.Props{Type: button.TypeSubmit, Size: button.SizeSm}) {
-							Enregistrer
+							{ i18n.T(ctx, "org.provider.save") }
 						}
 					}
 				}
-				@common.FlashError(vmodel.Error, "Un fournisseur")
+				@common.FlashError(vmodel.Error, i18n.T(ctx, "org.provider.flash_subject"))
 				@common.Section() {
 					@common.SectionBody(common.SectionBodyProps{Class: "flex flex-col gap-4"}) {
 						<div class="grid gap-4 sm:grid-cols-[minmax(0,1fr)_200px]">
 							@form.Item() {
 								@form.Label(form.LabelProps{For: "provider_name"}) {
-									Nom
+									{ i18n.T(ctx, "org.provider.name") }
 								}
 								@input.Input(input.Props{
 									ID:         "provider_name",
@@ -60,11 +61,11 @@ templ ProviderForm(vmodel ProviderFormVModel) {
 							}
 							@form.Item() {
 								@form.Label(form.LabelProps{}) {
-									Type
+									{ i18n.T(ctx, "org.provider.type") }
 								}
 								@selectbox.SelectBox(selectbox.Props{ID: "provider_type"}) {
 									@selectbox.Trigger(selectbox.TriggerProps{Name: "provider_type", Disabled: readonly}) {
-										@selectbox.Value(selectbox.ValueProps{Placeholder: "Sélectionner un type"})
+										@selectbox.Value(selectbox.ValueProps{Placeholder: i18n.T(ctx, "org.provider.type_placeholder")})
 									}
 									@selectbox.Content(selectbox.ContentProps{NoSearch: true}) {
 										@selectbox.Group() {
@@ -80,10 +81,10 @@ templ ProviderForm(vmodel ProviderFormVModel) {
 						</div>
 						@form.Item() {
 							@form.Label(form.LabelProps{For: "provider_base_url"}) {
-								URL de base
+								{ i18n.T(ctx, "org.provider.base_url") }
 							}
 							@form.Description() {
-								Exemples :
+								{ i18n.T(ctx, "org.provider.base_url_examples") }
 								@common.InlineSnippet("https://api.openai.com/v1")
 								@common.InlineSnippet("https://api.mistral.ai/v1")
 								@common.InlineSnippet("https://openrouter.ai/api/v1")
@@ -102,9 +103,9 @@ templ ProviderForm(vmodel ProviderFormVModel) {
 						@form.Item() {
 							@form.Label(form.LabelProps{For: "provider_api_key"}) {
 								if vmodel.IsNew {
-									Clé API
+									{ i18n.T(ctx, "org.provider.api_key") }
 								} else {
-									Clé API (laisser vide pour conserver)
+									{ i18n.T(ctx, "org.provider.api_key_keep") }
 								}
 							}
 							@input.Input(input.Props{
@@ -118,18 +119,18 @@ templ ProviderForm(vmodel ProviderFormVModel) {
 							})
 							if vmodel.IsNew && vmodel.Error != "" {
 								@form.Description() {
-									La clé API n'est jamais réaffichée : saisissez-la de nouveau.
+									{ i18n.T(ctx, "org.provider.api_key_retype") }
 								}
 							}
 						}
 						<div class="grid gap-4 sm:grid-cols-[200px_minmax(0,1fr)]">
 							@form.Item() {
 								@form.Label(form.LabelProps{}) {
-									Devise
+									{ i18n.T(ctx, "org.provider.currency") }
 								}
 								@selectbox.SelectBox(selectbox.Props{ID: "provider_currency"}) {
 									@selectbox.Trigger(selectbox.TriggerProps{Name: "currency", Disabled: readonly}) {
-										@selectbox.Value(selectbox.ValueProps{Placeholder: "Sélectionner une devise"})
+										@selectbox.Value(selectbox.ValueProps{Placeholder: i18n.T(ctx, "org.provider.currency_placeholder")})
 									}
 									@selectbox.Content(selectbox.ContentProps{NoSearch: true}) {
 										@selectbox.Group() {
@@ -144,10 +145,10 @@ templ ProviderForm(vmodel ProviderFormVModel) {
 							}
 							@form.Item() {
 								@form.Label(form.LabelProps{}) {
-									Niveau d'infrastructure (CloudTier)
+									{ i18n.T(ctx, "org.provider.cloud_tier") }
 								}
 								@form.Description() {
-									Utilisé pour l'estimation de consommation énergétique.
+									{ i18n.T(ctx, "org.provider.cloud_tier_help") }
 								}
 								{{ currentTier := 0 }}
 								if vmodel.Provider != nil {
@@ -155,18 +156,18 @@ templ ProviderForm(vmodel ProviderFormVModel) {
 								}
 								@selectbox.SelectBox(selectbox.Props{ID: "cloud_tier"}) {
 									@selectbox.Trigger(selectbox.TriggerProps{Name: "cloud_tier", Disabled: readonly}) {
-										@selectbox.Value(selectbox.ValueProps{Placeholder: "Sélectionner un niveau"})
+										@selectbox.Value(selectbox.ValueProps{Placeholder: i18n.T(ctx, "org.provider.cloud_tier_placeholder")})
 									}
 									@selectbox.Content(selectbox.ContentProps{NoSearch: true}) {
 										@selectbox.Group() {
 											@selectbox.Item(selectbox.ItemProps{Value: "0", Selected: currentTier == 0}) {
-												Hyperscaler (Google, Microsoft, OpenAI, Anthropic)
+												{ i18n.T(ctx, "org.provider.cloud_tier_0") }
 											}
 											@selectbox.Item(selectbox.ItemProps{Value: "1", Selected: currentTier == 1}) {
-												Major Cloud (AWS, OVH, CoreWeave, Mistral)
+												{ i18n.T(ctx, "org.provider.cloud_tier_1") }
 											}
 											@selectbox.Item(selectbox.ItemProps{Value: "2", Selected: currentTier == 2}) {
-												Small Provider
+												{ i18n.T(ctx, "org.provider.cloud_tier_2") }
 											}
 										}
 									}
@@ -176,7 +177,7 @@ templ ProviderForm(vmodel ProviderFormVModel) {
 						<div class="max-w-xs">
 							@form.Item() {
 								@form.Label(form.LabelProps{}) {
-									Mode de facturation
+									{ i18n.T(ctx, "org.provider.billing_mode") }
 								}
 								{{ currentBillingMode := model.BillingModePayg }}
 								if vmodel.Provider != nil {
@@ -184,15 +185,15 @@ templ ProviderForm(vmodel ProviderFormVModel) {
 								}
 								@selectbox.SelectBox(selectbox.Props{ID: "billing_mode"}) {
 									@selectbox.Trigger(selectbox.TriggerProps{Name: "billing_mode", Disabled: readonly}) {
-										@selectbox.Value(selectbox.ValueProps{Placeholder: "Sélectionner un mode"})
+										@selectbox.Value(selectbox.ValueProps{Placeholder: i18n.T(ctx, "org.provider.billing_mode_placeholder")})
 									}
 									@selectbox.Content(selectbox.ContentProps{NoSearch: true}) {
 										@selectbox.Group() {
 											@selectbox.Item(selectbox.ItemProps{Value: string(model.BillingModePayg), Selected: currentBillingMode == model.BillingModePayg}) {
-												Pay-as-you-go
+												{ i18n.T(ctx, "org.provider.billing_payg") }
 											}
 											@selectbox.Item(selectbox.ItemProps{Value: string(model.BillingModeSubscription), Selected: currentBillingMode == model.BillingModeSubscription}) {
-												Abonnement (Token Plan)
+												{ i18n.T(ctx, "org.provider.billing_subscription") }
 											}
 										}
 									}
@@ -203,7 +204,7 @@ templ ProviderForm(vmodel ProviderFormVModel) {
 							@form.ItemFlex() {
 								@switchcomp.Switch(switchcomp.Props{ID: "active", Name: "active", Checked: vmodel.Provider.Active(), Disabled: readonly})
 								@form.Label(form.LabelProps{For: "active"}) {
-									Actif
+									{ i18n.T(ctx, "org.provider.active") }
 								}
 							}
 						}
@@ -223,7 +224,7 @@ templ ProviderForm(vmodel ProviderFormVModel) {
 				if writable {
 					<div class="mt-3.5 flex flex-wrap items-center gap-2">
 						@button.Button(button.Props{Type: button.TypeSubmit}) {
-							Enregistrer
+							{ i18n.T(ctx, "org.provider.save") }
 						}
 						if !vmodel.IsNew && vmodel.Provider != nil {
 							@button.Button(button.Props{
@@ -231,7 +232,7 @@ templ ProviderForm(vmodel ProviderFormVModel) {
 								Variant: button.VariantOutline,
 								Type:    button.TypeButton,
 							}) {
-								Tester la connexion
+								{ i18n.T(ctx, "org.provider.test_connection") }
 							}
 						}
 					</div>
@@ -243,20 +244,19 @@ templ ProviderForm(vmodel ProviderFormVModel) {
 					@common.Section(common.SectionProps{Class: "border-destructive/40"}) {
 						@common.SectionHeader(common.SectionHeaderProps{Class: "border-destructive/40"}) {
 							@common.SectionTitle() {
-								Zone de danger
+								{ i18n.T(ctx, "org.provider.danger_zone") }
 							}
 						}
 						@common.SectionBody(common.SectionBodyProps{Class: "flex flex-wrap items-center gap-3.5"}) {
 							<p class="min-w-0 flex-1 text-sm text-muted-foreground">
-								Supprimer ce fournisseur supprime aussi les modèles qu'il expose ;
-								les appels qui les nomment échoueront immédiatement.
+								{ i18n.T(ctx, "org.provider.delete_warning") }
 							</p>
 							@common.ConfirmDelete(common.ConfirmDeleteProps{
 								URL:         common.BaseURLString(ctx, common.WithPath("/orgs/", vmodel.Org.Slug(), "/admin/providers/", string(vmodel.Provider.ID()))),
 								Variant:     button.VariantDestructive,
-								Label:       "Supprimer le fournisseur",
-								Title:       "Supprimer ce fournisseur et tous ses modèles ?",
-								Description: "Tous les modèles rattachés seront supprimés avec lui et ne seront plus servis. Cette action est irréversible.",
+								Label:       i18n.T(ctx, "org.provider.delete_label"),
+								Title:       i18n.T(ctx, "org.provider.delete_title"),
+								Description: i18n.T(ctx, "org.provider.delete_description"),
 							})
 						}
 					}
@@ -275,10 +275,9 @@ templ providerModelsShortcut(vmodel ProviderFormVModel) {
 		@common.Section() {
 			@common.SectionBody(common.SectionBodyProps{Class: "flex flex-wrap items-center gap-3.5"}) {
 				<div class="min-w-0 flex-1">
-					<div class="text-sm font-semibold">Modèles</div>
+					<div class="text-sm font-semibold">{ i18n.T(ctx, "org.provider.models_title") }</div>
 					<p class="mt-0.5 text-sm text-muted-foreground">
-						Noms de proxy exposés par ce fournisseur, et leurs coûts par million
-						de tokens en { vmodel.Provider.Currency() }.
+						{ i18n.T(ctx, "org.provider.models_description", vmodel.Provider.Currency()) }
 					</p>
 				</div>
 				@button.Button(button.Props{
@@ -288,7 +287,7 @@ templ providerModelsShortcut(vmodel ProviderFormVModel) {
 					Class:   "gap-1.5",
 				}) {
 					@icon.BrainCircuit(icon.Props{Class: "size-3.5"})
-					Gérer les modèles
+					{ i18n.T(ctx, "org.provider.manage_models") }
 				}
 			}
 		}
@@ -304,7 +303,7 @@ templ providerResilienceSection(vmodel ProviderFormVModel, readonly bool) {
 		@common.Section() {
 			@common.SectionHeader() {
 				@common.SectionTitle() {
-					Résilience
+					{ i18n.T(ctx, "org.provider.resilience") }
 				}
 			}
 			@common.SectionBody(common.SectionBodyProps{Class: "flex flex-col gap-5"}) {
@@ -312,13 +311,13 @@ templ providerResilienceSection(vmodel ProviderFormVModel, readonly bool) {
 					@form.ItemFlex() {
 						@switchcomp.Switch(switchcomp.Props{ID: "retry_enabled", Name: "retry_enabled", Checked: retryCfg != nil && retryCfg.Enabled, Disabled: readonly})
 						@form.Label(form.LabelProps{For: "retry_enabled"}) {
-							Retry (nouvelle tentative)
+							{ i18n.T(ctx, "org.provider.retry") }
 						}
 					}
 					<div class="grid gap-3.5 sm:grid-cols-2">
 						@form.Item() {
 							@form.Label(form.LabelProps{For: "retry_max_attempts"}) {
-								Nombre de tentatives
+								{ i18n.T(ctx, "org.provider.retry_attempts") }
 							}
 							@input.Input(input.Props{
 								ID:          "retry_max_attempts",
@@ -332,7 +331,7 @@ templ providerResilienceSection(vmodel ProviderFormVModel, readonly bool) {
 						}
 						@form.Item() {
 							@form.Label(form.LabelProps{For: "retry_delay_value"}) {
-								Délai entre tentatives
+								{ i18n.T(ctx, "org.provider.retry_delay") }
 							}
 							<div class="flex gap-2">
 								@input.Input(input.Props{
@@ -354,13 +353,13 @@ templ providerResilienceSection(vmodel ProviderFormVModel, readonly bool) {
 					@form.ItemFlex() {
 						@switchcomp.Switch(switchcomp.Props{ID: "rate_limit_enabled", Name: "rate_limit_enabled", Checked: rlCfg != nil && rlCfg.Enabled, Disabled: readonly})
 						@form.Label(form.LabelProps{For: "rate_limit_enabled"}) {
-							Rate limit (limitation de débit)
+							{ i18n.T(ctx, "org.provider.rate_limit") }
 						}
 					}
 					<div class="grid gap-3.5 sm:grid-cols-2">
 						@form.Item() {
 							@form.Label(form.LabelProps{For: "rate_limit_interval_value"}) {
-								Intervalle minimum entre requêtes
+								{ i18n.T(ctx, "org.provider.rate_limit_interval") }
 							}
 							<div class="flex gap-2">
 								@input.Input(input.Props{
@@ -378,7 +377,7 @@ templ providerResilienceSection(vmodel ProviderFormVModel, readonly bool) {
 						}
 						@form.Item() {
 							@form.Label(form.LabelProps{For: "rate_limit_max_burst"}) {
-								Capacité de burst (rafale max)
+								{ i18n.T(ctx, "org.provider.rate_limit_burst") }
 							}
 							@input.Input(input.Props{
 								ID:          "rate_limit_max_burst",
@@ -404,13 +403,13 @@ templ providerHeadersSection(vmodel ProviderFormVModel, readonly bool) {
 		@common.Section() {
 			@common.SectionHeader() {
 				@common.SectionTitle() {
-					En-têtes de requête
+					{ i18n.T(ctx, "org.provider.headers") }
 				}
 			}
 			@common.SectionBody(common.SectionBodyProps{Class: "flex flex-col gap-5"}) {
 				@form.Item() {
 					@form.Label(form.LabelProps{For: "session_header"}) {
-						En-tête de session
+						{ i18n.T(ctx, "org.provider.session_header") }
 					}
 					@input.Input(input.Props{
 						ID:          "session_header",
@@ -421,16 +420,16 @@ templ providerHeadersSection(vmodel ProviderFormVModel, readonly bool) {
 						Disabled:    readonly,
 					})
 					@form.Description() {
-						Nom de l'en-tête qui porte l'identifiant de la conversation, pour les passerelles qui l'exigent (<code>x-opencode-session</code> pour OpenCode Go). Xolo y place l'identifiant envoyé par le client (Claude Code, Codex, OpenCode), ou à défaut une empreinte de la conversation. Laisser vide pour ne rien envoyer.
+						@templ.Raw(i18n.T(ctx, "org.provider.session_header_help"))
 					}
 				}
 				<div class="space-y-2">
 					@form.Label(form.LabelProps{}) {
-						En-têtes fixes
+						{ i18n.T(ctx, "org.provider.fixed_headers") }
 					}
 					@ProviderHeadersEditor(providerHeaderRows(vmodel.Provider), readonly)
 					@form.Description() {
-						Ajoutés à chaque requête, ils remplacent ceux du client HTTP (<code>User-Agent</code> compris). Pas de secret ici : seule la clé API est chiffrée. Les en-têtes d'authentification, de cookies, de transport et de transfert (<code>X-Forwarded-For</code>…) sont refusés.
+						@templ.Raw(i18n.T(ctx, "org.provider.fixed_headers_help"))
 					}
 				</div>
 			}
@@ -444,7 +443,7 @@ templ providerHeadersSection(vmodel ProviderFormVModel, readonly bool) {
 templ durationUnitSelect(name string, selected string, readonly bool) {
 	@selectbox.SelectBox(selectbox.Props{ID: name, Class: "w-24"}) {
 		@selectbox.Trigger(selectbox.TriggerProps{Name: name, Disabled: readonly}) {
-			@selectbox.Value(selectbox.ValueProps{Placeholder: "Unité"})
+			@selectbox.Value(selectbox.ValueProps{Placeholder: i18n.T(ctx, "org.provider.unit")})
 		}
 		@selectbox.Content(selectbox.ContentProps{NoSearch: true}) {
 			@selectbox.Group() {

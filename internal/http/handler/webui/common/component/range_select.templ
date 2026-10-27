@@ -1,28 +1,31 @@
 package component
 
 import (
+	"context"
+
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/label"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/selectbox"
+	"github.com/xolo-gateway/xolo/internal/i18n"
 )
 
 // DefaultRange is the period preselected when the request carries none.
 const DefaultRange = "7d"
 
 // rangeOptions are the periods offered by every usage screen.
-var rangeOptions = []struct{ Value, Label string }{
-	{"1d", "Dernier jour"},
-	{"7d", "7 derniers jours"},
-	{"30d", "30 derniers jours"},
-	{"90d", "3 derniers mois"},
-	{"180d", "6 derniers mois"},
-	{"365d", "Dernière année"},
+var rangeOptions = []struct{ Value, Key string }{
+	{"1d", "common.range.option.1d"},
+	{"7d", "common.range.option.7d"},
+	{"30d", "common.range.option.30d"},
+	{"90d", "common.range.option.90d"},
+	{"180d", "common.range.option.180d"},
+	{"365d", "common.range.option.365d"},
 }
 
 // RangeSelect renders the period selector shared by the org, personal and models
 // usage screens. It must sit inside a GET form: changing the period submits it.
 templ RangeSelect(current string) {
 	@label.Label(label.Props{For: "range-trigger", Class: "text-muted-foreground"}) {
-		Période :
+		{ i18n.T(ctx, "common.range.label") }
 	}
 	@selectbox.SelectBox(selectbox.Props{ID: "range", Class: "w-40"}) {
 		@selectbox.Trigger(selectbox.TriggerProps{
@@ -30,7 +33,7 @@ templ RangeSelect(current string) {
 			Name:       "range",
 			Attributes: templ.Attributes{"data-xolo-submit-on-change": ""},
 		}) {
-			@selectbox.Value(selectbox.ValueProps{Placeholder: "Période"})
+			@selectbox.Value(selectbox.ValueProps{Placeholder: i18n.T(ctx, "common.range.placeholder")})
 		}
 		@selectbox.Content(selectbox.ContentProps{NoSearch: true}) {
 			@selectbox.Group() {
@@ -39,7 +42,7 @@ templ RangeSelect(current string) {
 						Value:    opt.Value,
 						Selected: opt.Value == currentRange(current),
 					}) {
-						{ opt.Label }
+						{ i18n.T(ctx, opt.Key) }
 					}
 				}
 			}
@@ -59,29 +62,29 @@ func currentRange(current string) string {
 // rangeSegments are the four periods the dashboards expose as a segmented
 // control. They are a subset of rangeOptions — the mockup trades the long list
 // of the dropdown for the four periods a dashboard is actually read at.
-var rangeSegments = []struct{ Value, Label string }{
-	{"1d", "24 h"},
-	{"7d", "7 j"},
-	{"30d", "30 j"},
-	{"365d", "12 m"},
+var rangeSegments = []struct{ Value, Key string }{
+	{"1d", "common.range.segment.1d"},
+	{"7d", "common.range.segment.7d"},
+	{"30d", "common.range.segment.30d"},
+	{"365d", "common.range.segment.365d"},
 }
 
 // RangeLabel words a period code for the meta line under a screen title. It
 // lives beside rangeOptions so the wording of a period is defined once.
-func RangeLabel(r string) string {
+func RangeLabel(ctx context.Context, r string) string {
 	switch currentRange(r) {
 	case "1d":
-		return "dernières 24 h"
+		return i18n.T(ctx, "common.range.meta.1d")
 	case "7d":
-		return "7 derniers jours"
+		return i18n.T(ctx, "common.range.meta.7d")
 	case "30d":
-		return "30 derniers jours"
+		return i18n.T(ctx, "common.range.meta.30d")
 	case "90d":
-		return "3 derniers mois"
+		return i18n.T(ctx, "common.range.meta.90d")
 	case "180d":
-		return "6 derniers mois"
+		return i18n.T(ctx, "common.range.meta.180d")
 	case "365d":
-		return "12 derniers mois"
+		return i18n.T(ctx, "common.range.meta.365d")
 	default:
 		return ""
 	}
@@ -92,11 +95,11 @@ func RangeLabel(r string) string {
 // `hrefFor` is given the range value and returns the URL of the screen at that
 // period, so the control stays a set of plain links: no form, no script, and the
 // period survives in the URL.
-func RangeSegments(current string, hrefFor func(rangeValue string) string) []Segment {
+func RangeSegments(ctx context.Context, current string, hrefFor func(rangeValue string) string) []Segment {
 	segments := make([]Segment, 0, len(rangeSegments))
 	for _, opt := range rangeSegments {
 		segments = append(segments, Segment{
-			Label:  opt.Label,
+			Label:  i18n.T(ctx, opt.Key),
 			Href:   hrefFor(opt.Value),
 			Active: opt.Value == currentRange(current),
 		})

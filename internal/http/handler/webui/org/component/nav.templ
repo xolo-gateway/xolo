@@ -6,6 +6,7 @@ import (
 	"github.com/xolo-gateway/xolo/internal/core/model"
 	"github.com/xolo-gateway/xolo/internal/core/rbac"
 	common "github.com/xolo-gateway/xolo/internal/http/handler/webui/common/component"
+	"github.com/xolo-gateway/xolo/internal/i18n"
 )
 
 // EventsTabs renders the in-page sub-navigation shared by the events explorer,
@@ -24,15 +25,15 @@ func eventsSegments(ctx context.Context, org model.Organization, current, view s
 	}
 
 	segments := []common.Segment{
-		{Label: "Événements", Href: base("/events"), Active: current == "events"},
+		{Label: i18n.T(ctx, "org.nav.events"), Href: base("/events"), Active: current == "events"},
 	}
 
 	canAlerts := common.HasPermission(ctx, org.ID(), rbac.PermEventsWrite) ||
 		common.HasPermission(ctx, org.ID(), rbac.PermEventsAlertsOwn)
 	if canAlerts {
 		segments = append(segments,
-			common.Segment{Label: "Alertes", Href: base("/events/alerts"), Active: current == "alerts"},
-			common.Segment{Label: "Incidents", Href: base("/events/incidents"), Active: current == "incidents"},
+			common.Segment{Label: i18n.T(ctx, "org.nav.alerts"), Href: base("/events/alerts"), Active: current == "alerts"},
+			common.Segment{Label: i18n.T(ctx, "org.nav.incidents"), Href: base("/events/incidents"), Active: current == "incidents"},
 		)
 	}
 

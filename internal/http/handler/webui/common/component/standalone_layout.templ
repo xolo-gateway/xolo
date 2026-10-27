@@ -1,5 +1,7 @@
 package component
 
+import "github.com/xolo-gateway/xolo/internal/i18n"
+
 // StandaloneLayout renders a centered, sidebar-less page shell used for
 // authentication-adjacent screens (invitations, "no organization" state, etc.).
 templ StandaloneLayout(funcs ...PageOptionFunc) {
@@ -20,8 +22,9 @@ templ StandaloneLayout(funcs ...PageOptionFunc) {
 					<h1 class="text-xl font-semibold">Xolo</h1>
 				</div>
 				{ children... }
+				@LocaleSwitch("justify-center")
 				<p class="text-center text-xs text-muted-foreground">
-					AGPL-3.0 · self-hosted · <a href="https://github.com/xolo-gateway/xolo" class="underline" target="_blank" rel="noreferrer">En savoir plus</a>
+					AGPL-3.0 · self-hosted · <a href="https://github.com/xolo-gateway/xolo" class="underline" target="_blank" rel="noreferrer">{ i18n.T(ctx, "layout.learn_more") }</a>
 				</p>
 			</div>
 		</div>

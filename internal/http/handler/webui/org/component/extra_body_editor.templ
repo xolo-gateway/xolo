@@ -5,6 +5,7 @@ import (
 
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/button"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/input"
+	"github.com/xolo-gateway/xolo/internal/i18n"
 )
 
 // ── Key/Value Editor ──────────────────────────────────────────────────────────
@@ -119,10 +120,10 @@ templ ExtraBodyEditor(rows []ExtraBodyRow, readonly bool) {
 	@KeyValueEditor(KeyValueEditorProps{
 		Name:             "extra_body",
 		ID:               "extra-body",
-		KeyPlaceholder:   "clé (ex : reasoning_split)",
-		ValuePlaceholder: "valeur (ex : true, 40, auto)",
-		AddLabel:         "+ Ajouter un champ",
-		RemoveTitle:      "Supprimer ce champ",
+		KeyPlaceholder:   i18n.T(ctx, "org.models.extra_body.key_placeholder"),
+		ValuePlaceholder: i18n.T(ctx, "org.models.extra_body.value_placeholder"),
+		AddLabel:         i18n.T(ctx, "org.models.extra_body.add"),
+		RemoveTitle:      i18n.T(ctx, "org.models.extra_body.remove"),
 	}, rows, readonly)
 }
 
@@ -135,9 +136,9 @@ templ ProviderHeadersEditor(rows []ExtraBodyRow, readonly bool) {
 	@KeyValueEditor(KeyValueEditorProps{
 		Name:             "request_header",
 		ID:               "request-header",
-		KeyPlaceholder:   "nom (ex : User-Agent)",
-		ValuePlaceholder: "valeur (ex : xolo/1.0)",
-		AddLabel:         "+ Ajouter un en-tête",
-		RemoveTitle:      "Supprimer cet en-tête",
+		KeyPlaceholder:   i18n.T(ctx, "org.models.extra_body.header_key_placeholder"),
+		ValuePlaceholder: i18n.T(ctx, "org.models.extra_body.header_value_placeholder"),
+		AddLabel:         i18n.T(ctx, "org.models.extra_body.header_add"),
+		RemoveTitle:      i18n.T(ctx, "org.models.extra_body.header_remove"),
 	}, rows, readonly)
 }

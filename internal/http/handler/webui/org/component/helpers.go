@@ -1,6 +1,7 @@
 package component
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"math"
@@ -13,6 +14,7 @@ import (
 	"github.com/xolo-gateway/xolo/internal/core/port"
 	"github.com/xolo-gateway/xolo/internal/core/rbac"
 	common "github.com/xolo-gateway/xolo/internal/http/handler/webui/common/component"
+	"github.com/xolo-gateway/xolo/internal/i18n"
 )
 
 func displayOwner(users map[model.UserID]model.User, apps map[model.ApplicationID]model.Application, rec model.UsageRecord) string {
@@ -281,18 +283,18 @@ func quotaFieldError(fieldErrors map[string]string, field string) string {
 // stays in one place and tests can pin it.
 // QuotaFormErrorSummary is quotaFormErrorSummary for the pages that report a
 // refused budget through their own banner, like the team pages.
-func QuotaFormErrorSummary(fieldErrors map[string]string) string {
-	return quotaFormErrorSummary(fieldErrors)
+func QuotaFormErrorSummary(ctx context.Context, fieldErrors map[string]string) string {
+	return quotaFormErrorSummary(ctx, fieldErrors)
 }
 
-func quotaFormErrorSummary(fieldErrors map[string]string) string {
+func quotaFormErrorSummary(ctx context.Context, fieldErrors map[string]string) string {
 	if len(fieldErrors) == 0 {
 		return ""
 	}
 	labels := map[string]string{
-		"daily_budget":   "Journalier",
-		"monthly_budget": "Mensuel",
-		"yearly_budget":  "Annuel",
+		"daily_budget":   i18n.T(ctx, "org.quota.field.daily"),
+		"monthly_budget": i18n.T(ctx, "org.quota.field.monthly"),
+		"yearly_budget":  i18n.T(ctx, "org.quota.field.yearly"),
 	}
 	// Stable order matches the form layout (daily → monthly → yearly), so
 	// the alert reads top-to-bottom the same way the inputs do.
@@ -300,7 +302,7 @@ func quotaFormErrorSummary(fieldErrors map[string]string) string {
 	var lines []string
 	for _, f := range order {
 		if msg, ok := fieldErrors[f]; ok {
-			lines = append(lines, fmt.Sprintf("%s : %s", labels[f], msg))
+			lines = append(lines, i18n.T(ctx, "org.quota.field_error", labels[f], msg))
 		}
 	}
 	return strings.Join(lines, "\n")
@@ -308,13 +310,14 @@ func quotaFormErrorSummary(fieldErrors map[string]string) string {
 
 // cachedTokensNote states the share of prompt tokens served from the provider's
 // cache — the figure that explains a token count far above the billed cost.
-func cachedTokensNote(agg *port.UsageAggregate) string {
+func cachedTokensNote(ctx context.Context, agg *port.UsageAggregate) string {
 	if agg == nil || agg.CachedTokens <= 0 || agg.PromptTokens <= 0 {
 		return ""
 	}
-	return fmt.Sprintf("Dont %s en cache (%.0f %% des tokens prompt)",
+	// The share is rounded here so the printer does not localize the number.
+	return i18n.T(ctx, "org.dashboard.cached_tokens_note",
 		common.FormatCount(agg.CachedTokens),
-		float64(agg.CachedTokens)/float64(agg.PromptTokens)*100,
+		strconv.FormatFloat(float64(agg.CachedTokens)/float64(agg.PromptTokens)*100, 'f', 0, 64),
 	)
 }
 
@@ -346,16 +349,16 @@ func budgetRuleClass(budget *int64, pct int) string {
 // orgDashboardMeta builds the grey line under the dashboard title. The mockup
 // puts the identity of what is displayed there — organisation, size, currency,
 // period — rather than a sentence explaining the screen.
-func orgDashboardMeta(vmodel OrgUsagePageVModel) string {
+func orgDashboardMeta(ctx context.Context, vmodel OrgUsagePageVModel) string {
 	parts := []string{vmodel.Org.Name()}
 
 	if n := len(vmodel.Members); n > 0 {
-		parts = append(parts, Pluralize(n, "membre", "membres"))
+		parts = append(parts, i18n.T(ctx, "org.dashboard.meta_members", n))
 	}
 
-	parts = append(parts, "devise "+vmodel.Currency)
+	parts = append(parts, i18n.T(ctx, "org.dashboard.meta_currency", vmodel.Currency))
 
-	if label := common.RangeLabel(vmodel.Range); label != "" {
+	if label := common.RangeLabel(ctx, vmodel.Range); label != "" {
 		parts = append(parts, label)
 	}
 
@@ -397,7 +400,7 @@ type FilteredPermissionGroup struct {
 // so they compose: searching "write" while filtering on a role lists the write
 // permissions that role grants. The search deliberately covers the group label
 // too, so typing "budget" finds the section even though no code contains it.
-func filterCatalog(vmodel RolesPageVModel) []FilteredPermissionGroup {
+func filterCatalog(ctx context.Context, vmodel RolesPageVModel) []FilteredPermissionGroup {
 	needle := strings.ToLower(strings.TrimSpace(vmodel.Query))
 	role := selectedRole(vmodel)
 
@@ -409,14 +412,14 @@ func filterCatalog(vmodel RolesPageVModel) []FilteredPermissionGroup {
 			if role != nil && !roleGrants(role, def.Code) {
 				continue
 			}
-			if needle != "" && !permissionMatches(group, def, needle) {
+			if needle != "" && !permissionMatches(ctx, group, def, needle) {
 				continue
 			}
 			kept = append(kept, def)
 		}
 
 		if len(kept) > 0 {
-			out = append(out, FilteredPermissionGroup{Label: group.Label, Perms: kept})
+			out = append(out, FilteredPermissionGroup{Label: common.PermissionGroupLabel(ctx, group), Perms: kept})
 		}
 	}
 
@@ -426,10 +429,10 @@ func filterCatalog(vmodel RolesPageVModel) []FilteredPermissionGroup {
 // permissionMatches reports whether a permission answers the search. The code is
 // what a reader types when they know what they want ("quota:write"); the labels
 // are what they type when they do not.
-func permissionMatches(group rbac.PermissionGroup, def rbac.PermissionDef, needle string) bool {
+func permissionMatches(ctx context.Context, group rbac.PermissionGroup, def rbac.PermissionDef, needle string) bool {
 	return strings.Contains(strings.ToLower(string(def.Code)), needle) ||
-		strings.Contains(strings.ToLower(def.Label), needle) ||
-		strings.Contains(strings.ToLower(group.Label), needle)
+		strings.Contains(strings.ToLower(common.PermissionLabel(ctx, def)), needle) ||
+		strings.Contains(strings.ToLower(common.PermissionGroupLabel(ctx, group)), needle)
 }
 
 // selectedRole resolves the `?role=` filter, or nil when it is absent or points
@@ -518,11 +521,11 @@ func permissionCell(role model.Role, perm rbac.Permission, writable bool) Permis
 
 // permissionToggleTitle words the tooltip of a matrix checkbox, stating the
 // action rather than the state — the checkbox already shows the state.
-func permissionToggleTitle(cell PermissionCell, perm rbac.Permission) string {
+func permissionToggleTitle(ctx context.Context, cell PermissionCell, perm rbac.Permission) string {
 	if cell.Granted {
-		return "Retirer " + string(perm) + " à ce rôle"
+		return i18n.T(ctx, "org.permissions.toggle_revoke", string(perm))
 	}
-	return "Accorder " + string(perm) + " à ce rôle"
+	return i18n.T(ctx, "org.permissions.toggle_grant", string(perm))
 }
 
 // roleGrants reports whether a role authorizes a permission, for one cell of the
@@ -562,14 +565,14 @@ func aggregateTokens(agg *port.UsageAggregate) int64 {
 // forecastLabel names the end of the budget period. The period is carried as an
 // adjective ("mensuel") because that is how the banner title reads it; a cell
 // headed "Projection fin de mensuel" needs the noun instead.
-func forecastLabel(periodLabel string) string {
+func forecastLabel(ctx context.Context, periodLabel string) string {
 	switch periodLabel {
 	case "journalier":
-		return "Projection fin de journée"
+		return i18n.T(ctx, "org.dashboard.forecast_day")
 	case "annuel":
-		return "Projection fin d'année"
+		return i18n.T(ctx, "org.dashboard.forecast_year")
 	default:
-		return "Projection fin de mois"
+		return i18n.T(ctx, "org.dashboard.forecast_month")
 	}
 }
 

@@ -1,6 +1,7 @@
 package component
 
 import (
+	"github.com/xolo-gateway/xolo/internal/i18n"
 	commonComp "github.com/xolo-gateway/xolo/internal/http/handler/webui/common/component"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/button"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/card"
@@ -14,10 +15,10 @@ type PluginsDiagnosticsPageVModel struct {
 }
 
 templ PluginsDiagnosticsPage(vmodel PluginsDiagnosticsPageVModel) {
-	@commonComp.AppLayout(vmodel.AppLayoutVModel, commonComp.WithTitle("Plugins")) {
+	@commonComp.AppLayout(vmodel.AppLayoutVModel, commonComp.WithTitle(i18n.T(ctx, "admin.plugins.title"))) {
 		@commonComp.PageHeader(commonComp.PageHeaderProps{
-			Title:    "Plugins (diagnostics)",
-			Subtitle: "Extensions chargées par le moteur de pipeline. Elles sont disponibles dans les modèles virtuels et les middlewares des organisations.",
+			Title:    i18n.T(ctx, "admin.plugins.heading"),
+			Subtitle: i18n.T(ctx, "admin.plugins.subtitle"),
 		}) {
 			<!-- TODO(rework-ux): les plugins sont chargés au démarrage à partir de
 			la configuration ; il n'existe pas de route pour en enregistrer un à
@@ -29,15 +30,15 @@ templ PluginsDiagnosticsPage(vmodel PluginsDiagnosticsPageVModel) {
 				Class:    "gap-1.5",
 			}) {
 				@icon.Upload(icon.Props{Class: "size-3.5"})
-				Charger un plugin
+				{ i18n.T(ctx, "admin.plugins.upload") }
 			}
 			@commonComp.ComingSoon()
 		}
 		if len(vmodel.Descriptors) == 0 {
 			@commonComp.EmptyState(commonComp.EmptyStateProps{
 				Icon:        icon.Plug,
-				Title:       "Aucun plugin chargé",
-				Description: "Déclarez les plugins à charger dans la configuration de la passerelle ; ils apparaîtront ici au prochain démarrage.",
+				Title:       i18n.T(ctx, "admin.plugins.empty.title"),
+				Description: i18n.T(ctx, "admin.plugins.empty.description"),
 			})
 		} else {
 			<div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
@@ -65,13 +66,13 @@ templ pluginCard(descriptor *proto.PluginDescriptor) {
 				if descriptor.Description != "" {
 					{ descriptor.Description }
 				} else {
-					Aucune description fournie par le plugin.
+					{ i18n.T(ctx, "admin.plugins.no_description") }
 				}
 			</p>
 			<div class="mt-2.5 flex flex-wrap items-center gap-1.5">
-				@commonComp.Badge(commonComp.TonePositive, "Chargé")
+				@commonComp.Badge(commonComp.TonePositive, i18n.T(ctx, "admin.plugins.loaded"))
 				for _, capability := range descriptor.Capabilities {
-					@commonComp.Badge(commonComp.ToneNeutral, pluginCapabilityLabel(capability))
+					@commonComp.Badge(commonComp.ToneNeutral, pluginCapabilityLabel(ctx, capability))
 				}
 			</div>
 		}

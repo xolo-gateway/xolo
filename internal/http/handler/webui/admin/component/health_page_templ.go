@@ -11,6 +11,7 @@ import templruntime "github.com/a-h/templ/runtime"
 import (
 	commonComp "github.com/xolo-gateway/xolo/internal/http/handler/webui/common/component"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/icon"
+	"github.com/xolo-gateway/xolo/internal/i18n"
 )
 
 type ProxyHealthPageVModel struct {
@@ -74,8 +75,8 @@ func ProxyHealthPage(vmodel ProxyHealthPageVModel) templ.Component {
 				return nil
 			})
 			templ_7745c5c3_Err = commonComp.PageHeader(commonComp.PageHeaderProps{
-				Title:    "Santé du proxy",
-				Subtitle: "État des endpoints amont, latence et erreurs · fenêtre 24 h",
+				Title:    i18n.T(ctx, "admin.health.title"),
+				Subtitle: i18n.T(ctx, "admin.health.subtitle"),
 			}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var3), templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
@@ -85,24 +86,19 @@ func ProxyHealthPage(vmodel ProxyHealthPageVModel) templ.Component {
 				return templ_7745c5c3_Err
 			}
 			templ_7745c5c3_Err = healthPlaceholder(
-				"Endpoints amont",
+				i18n.T(ctx, "admin.health.upstream.title"),
 				icon.Server,
-				"Disponibilité par endpoint",
-				"La passerelle enregistre la consommation après coup, pas la disponibilité : "+
-					"aucune sonde ne teste les endpoints amont. Le panneau affichera l'état, la "+
-					"latence p95 et le taux d'erreur de chaque fournisseur dès qu'un moniteur "+
-					"périodique les relèvera.",
+				i18n.T(ctx, "admin.health.upstream.heading"),
+				i18n.T(ctx, "admin.health.upstream.reason"),
 			).Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			templ_7745c5c3_Err = healthPlaceholder(
-				"Codes de réponse · 24 h",
+				i18n.T(ctx, "admin.health.status_codes.title"),
 				icon.ChartPie,
-				"Répartition des statuts",
-				"Les statuts de réponse ne sont pas comptabilisés : les enregistrements "+
-					"d'usage ne portent que les requêtes facturées. Un compteur roulant par code "+
-					"(200, 402, 403, 429, 5xx) est nécessaire.",
+				i18n.T(ctx, "admin.health.status_codes.heading"),
+				i18n.T(ctx, "admin.health.status_codes.reason"),
 			).Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
@@ -112,12 +108,10 @@ func ProxyHealthPage(vmodel ProxyHealthPageVModel) templ.Component {
 				return templ_7745c5c3_Err
 			}
 			templ_7745c5c3_Err = healthPlaceholder(
-				"Incidents ouverts",
+				i18n.T(ctx, "admin.health.incidents.title"),
 				icon.TriangleAlert,
-				"Incidents de toutes les organisations",
-				"Les incidents existent par organisation, dans la section « Alertes & "+
-					"incidents ». Les regrouper ici demande une vue plateforme des incidents, "+
-					"ainsi que l'action « Acquitter » qui n'est pas encore implémentée.",
+				i18n.T(ctx, "admin.health.incidents.heading"),
+				i18n.T(ctx, "admin.health.incidents.reason"),
 			).Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
@@ -128,7 +122,7 @@ func ProxyHealthPage(vmodel ProxyHealthPageVModel) templ.Component {
 			}
 			return nil
 		})
-		templ_7745c5c3_Err = commonComp.AppLayout(vmodel.AppLayoutVModel, commonComp.WithTitle("Santé du proxy")).Render(templ.WithChildren(ctx, templ_7745c5c3_Var2), templ_7745c5c3_Buffer)
+		templ_7745c5c3_Err = commonComp.AppLayout(vmodel.AppLayoutVModel, commonComp.WithTitle(i18n.T(ctx, "admin.health.title"))).Render(templ.WithChildren(ctx, templ_7745c5c3_Var2), templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -198,7 +192,7 @@ func healthPlaceholder(title string, glyph func(...icon.Props) templ.Component, 
 					var templ_7745c5c3_Var8 string
 					templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.JoinStringErrs(title)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/admin/component/health_page.templ`, Line: 63, Col: 11}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/admin/component/health_page.templ`, Line: 57, Col: 11}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var8))
 					if templ_7745c5c3_Err != nil {

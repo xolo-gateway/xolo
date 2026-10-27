@@ -1,6 +1,7 @@
 import type { NodeProps } from '@xyflow/react'
 import { NodeCard } from './NodeCard'
 import type { ModelRefNodeData } from '../types'
+import { t } from '../i18n'
 
 /**
  * ModelRefNode names a model of the catalog and emits that name. It is what a
@@ -12,7 +13,7 @@ export function ModelRefNode({ data }: NodeProps) {
   return (
     <NodeCard
       kind="model_ref"
-      title={(typeof nodeData.label === 'string' && nodeData.label.trim()) || nodeData.proxyName || 'non configuré'}
+      title={(typeof nodeData.label === 'string' && nodeData.label.trim()) || nodeData.proxyName || t('node.unconfigured')}
       subtitle={nodeData.label ? nodeData.proxyName || 'proxyName' : 'proxyName'}
       outputs={[{ name: 'model_name', port_type: 'string', label: 'model_name' }]}
     />

@@ -21,3 +21,10 @@ func CurrentURL(ctx context.Context) *url.URL {
 func SetCurrentURL(ctx context.Context, u *url.URL) context.Context {
 	return context.WithValue(ctx, keyCurrentURL, u)
 }
+
+// LookupCurrentURL is CurrentURL for callers that have a fallback, such as the
+// language switch, which a page rendered outside the server may also show.
+func LookupCurrentURL(ctx context.Context) (*url.URL, bool) {
+	currentURL, ok := ctx.Value(keyCurrentURL).(*url.URL)
+	return currentURL, ok
+}

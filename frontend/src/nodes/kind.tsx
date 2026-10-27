@@ -1,4 +1,5 @@
 import type { PipelineNodeType } from '../types'
+import { t } from '../i18n'
 
 /**
  * The editor names a node's kind in three places — the palette, the card on the
@@ -9,40 +10,40 @@ import type { PipelineNodeType } from '../types'
 
 /** Uppercase kind label of the mockup ("GENERATOR", "PLUGIN"…). */
 export const KIND_LABEL: Record<PipelineNodeType, string> = {
-  generator: 'generator',
-  sink: 'sink',
-  model: 'model',
-  model_ref: 'model ref',
-  model_fallback: 'fallback',
-  compare: 'compare',
-  select: 'select',
-  math: 'math',
-  sample: 'sample',
-  context: 'context',
-  trace: 'trace',
-  block: 'block',
-  note: 'note',
-  value: 'value',
-  plugin: 'plugin',
+  generator: t('kind.generator'),
+  sink: t('kind.sink'),
+  model: t('kind.model'),
+  model_ref: t('kind.model_ref'),
+  model_fallback: t('kind.model_fallback'),
+  compare: t('kind.compare'),
+  select: t('kind.select'),
+  math: t('kind.math'),
+  sample: t('kind.sample'),
+  context: t('kind.context'),
+  trace: t('kind.trace'),
+  block: t('kind.block'),
+  note: t('kind.note'),
+  value: t('kind.value'),
+  plugin: t('kind.plugin'),
 }
 
 /** One-line description under a built-in kind in the palette. */
 export const KIND_DESCRIPTION: Record<PipelineNodeType, string> = {
-  generator: 'source : émet la requête',
-  sink: 'sortie : reçoit la réponse',
-  model: 'appelle un modèle réel',
-  model_ref: 'nom d\'un modèle du catalogue',
-  model_fallback: 'modèles en cascade, suivant si échec',
-  compare: 'nombre vs seuil → booléen',
-  select: 'booléen ? chaîne : chaîne',
-  math: 'somme, moyenne, min, max…',
-  sample: 'part du trafic, stable par utilisateur',
-  context: 'utilisateur, org, jeton, heure',
-  trace: 'enregistre les valeurs en événement',
-  block: 'refuse la requête si le booléen est vrai',
-  note: 'texte libre sur le canevas',
-  value: 'valeur statique typée',
-  plugin: 'traitement intercalé',
+  generator: t('kind.description.generator'),
+  sink: t('kind.description.sink'),
+  model: t('kind.description.model'),
+  model_ref: t('kind.description.model_ref'),
+  model_fallback: t('kind.description.model_fallback'),
+  compare: t('kind.description.compare'),
+  select: t('kind.description.select'),
+  math: t('kind.description.math'),
+  sample: t('kind.description.sample'),
+  context: t('kind.description.context'),
+  trace: t('kind.description.trace'),
+  block: t('kind.description.block'),
+  note: t('kind.description.note'),
+  value: t('kind.description.value'),
+  plugin: t('kind.description.plugin'),
 }
 
 /**

@@ -15,6 +15,7 @@ import (
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/admin/component"
 	webcommon "github.com/xolo-gateway/xolo/internal/http/handler/webui/common"
 	common "github.com/xolo-gateway/xolo/internal/http/handler/webui/common/component"
+	"github.com/xolo-gateway/xolo/internal/i18n"
 )
 
 func (h *Handler) getOrgsPage(w http.ResponseWriter, r *http.Request) {
@@ -49,8 +50,8 @@ func (h *Handler) getOrgsPage(w http.ResponseWriter, r *http.Request) {
 			User:         user,
 			SelectedItem: "orgs",
 			Breadcrumbs: []common.BreadcrumbItem{
-				{Label: "Plateforme", Href: "/admin/"},
-				{Label: "Organisations", Href: "/admin/orgs"},
+				{Label: i18n.T(ctx, "admin.breadcrumb.platform"), Href: "/admin/"},
+				{Label: i18n.T(ctx, "admin.breadcrumb.orgs"), Href: "/admin/orgs"},
 			},
 			Context: common.ContextPlatform,
 		},
@@ -112,9 +113,9 @@ func (h *Handler) getNewOrgPage(w http.ResponseWriter, r *http.Request) {
 			User:         user,
 			SelectedItem: "orgs",
 			Breadcrumbs: []common.BreadcrumbItem{
-				{Label: "Plateforme", Href: "/admin/"},
-				{Label: "Organisations", Href: "/admin/orgs"},
-				{Label: "Nouvelle organisation", Href: ""},
+				{Label: i18n.T(ctx, "admin.breadcrumb.platform"), Href: "/admin/"},
+				{Label: i18n.T(ctx, "admin.breadcrumb.orgs"), Href: "/admin/orgs"},
+				{Label: i18n.T(ctx, "admin.breadcrumb.new_org"), Href: ""},
 			},
 			Context: common.ContextPlatform,
 		},
@@ -182,8 +183,8 @@ func (h *Handler) getEditOrgPage(w http.ResponseWriter, r *http.Request) {
 			User:         user,
 			SelectedItem: "orgs",
 			Breadcrumbs: []common.BreadcrumbItem{
-				{Label: "Plateforme", Href: "/admin/"},
-				{Label: "Organisations", Href: "/admin/orgs"},
+				{Label: i18n.T(ctx, "admin.breadcrumb.platform"), Href: "/admin/"},
+				{Label: i18n.T(ctx, "admin.breadcrumb.orgs"), Href: "/admin/orgs"},
 				{Label: org.Name(), Href: ""},
 			},
 			Context: common.ContextPlatform,

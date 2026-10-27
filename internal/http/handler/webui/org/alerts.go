@@ -16,6 +16,7 @@ import (
 	webcommon "github.com/xolo-gateway/xolo/internal/http/handler/webui/common"
 	common "github.com/xolo-gateway/xolo/internal/http/handler/webui/common/component"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/org/component"
+	"github.com/xolo-gateway/xolo/internal/i18n"
 )
 
 // alertPerms resolves the current user's alert capabilities within the org:
@@ -82,7 +83,7 @@ func (h *Handler) getAlertsPage(w http.ResponseWriter, r *http.Request) {
 		CanOwnAlerts:    canOwnAlerts,
 		View:            viewParam(personal),
 		Success:         r.URL.Query().Get("success"),
-		AppLayoutVModel: h.eventsLayout(org, user, personal, eventsNavAlerts, []common.BreadcrumbItem{{Label: "Alertes", Href: ""}}),
+		AppLayoutVModel: h.eventsLayout(ctx, org, user, personal, eventsNavAlerts, []common.BreadcrumbItem{{Label: i18n.T(ctx, "org.nav.alerts"), Href: ""}}),
 	}
 
 	templ.Handler(component.AlertsPage(vmodel)).ServeHTTP(w, r)
@@ -294,25 +295,26 @@ type alertFormValues struct {
 }
 
 func parseAlertForm(r *http.Request) (alertFormValues, string) {
+	ctx := r.Context()
 	if err := r.ParseForm(); err != nil {
-		return alertFormValues{}, "Formulaire invalide."
+		return alertFormValues{}, i18n.T(ctx, "org.errors.alerts.invalid_form")
 	}
 
 	var v alertFormValues
 	v.name = r.FormValue("name")
 	if v.name == "" {
-		return v, "Le nom est obligatoire."
+		return v, i18n.T(ctx, "org.errors.alerts.name_required")
 	}
 	v.description = r.FormValue("description")
 
 	v.query = r.FormValue("query")
 	if _, err := eventql.Compile(v.query); err != nil {
-		return v, "Requête invalide : " + err.Error()
+		return v, i18n.T(ctx, "org.errors.alerts.invalid_query", err.Error())
 	}
 
 	window, err := time.ParseDuration(r.FormValue("window"))
 	if err != nil || window <= 0 {
-		return v, "Fenêtre invalide (ex : 5m, 1h)."
+		return v, i18n.T(ctx, "org.errors.alerts.invalid_window")
 	}
 	v.window = window
 
@@ -320,12 +322,12 @@ func parseAlertForm(r *http.Request) (alertFormValues, string) {
 	switch v.comparator {
 	case model.ComparatorGT, model.ComparatorGTE, model.ComparatorLT, model.ComparatorLTE, model.ComparatorEQ:
 	default:
-		return v, "Comparateur invalide."
+		return v, i18n.T(ctx, "org.errors.alerts.invalid_comparator")
 	}
 
 	threshold, err := strconv.ParseFloat(r.FormValue("threshold"), 64)
 	if err != nil {
-		return v, "Seuil invalide."
+		return v, i18n.T(ctx, "org.errors.alerts.invalid_threshold")
 	}
 	v.threshold = threshold
 
@@ -335,7 +337,7 @@ func parseAlertForm(r *http.Request) (alertFormValues, string) {
 	} else {
 		forDuration, err := time.ParseDuration(forStr)
 		if err != nil || forDuration < 0 {
-			return v, "Durée « pending » invalide (ex : 0s, 1m)."
+			return v, i18n.T(ctx, "org.errors.alerts.invalid_pending")
 		}
 		v.forDuration = forDuration
 	}
@@ -356,7 +358,7 @@ func (h *Handler) newAlertFormVModel(ctx context.Context, org model.Organization
 		scope = model.AlertScopeOrg
 	}
 
-	label := "Nouvelle alerte"
+	label := i18n.T(ctx, "org.nav.alerts_new")
 	if alert != nil {
 		label = alert.Name()
 	}
@@ -371,8 +373,8 @@ func (h *Handler) newAlertFormVModel(ctx context.Context, org model.Organization
 		FormComparator: string(model.ComparatorGT),
 		FormFor:        "0s",
 		FormEnabled:    true,
-		AppLayoutVModel: h.eventsLayout(org, user, personal, eventsNavAlerts, []common.BreadcrumbItem{
-			{Label: "Alertes", Href: "/orgs/" + orgSlug + "/events/alerts"},
+		AppLayoutVModel: h.eventsLayout(ctx, org, user, personal, eventsNavAlerts, []common.BreadcrumbItem{
+			{Label: i18n.T(ctx, "org.nav.alerts"), Href: "/orgs/" + orgSlug + "/events/alerts"},
 			{Label: label, Href: ""},
 		}),
 	}

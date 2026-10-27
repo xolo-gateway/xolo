@@ -6,6 +6,7 @@ import (
 	templuibutton "github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/button"
 	templuicard "github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/card"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/icon"
+	"github.com/xolo-gateway/xolo/internal/i18n"
 )
 
 type Provider struct {
@@ -24,14 +25,14 @@ type LoginPageVModel struct {
 // standalone shell (brand, centred column, legal footer) instead of building its
 // own page chrome.
 templ LoginPage(vmodel LoginPageVModel) {
-	@component.StandaloneLayout(component.WithTitle("Authentification")) {
+	@component.StandaloneLayout(component.WithTitle(i18n.T(ctx, "auth.title"))) {
 		@templuicard.Card() {
 			@templuicard.Header(templuicard.HeaderProps{Class: "text-center"}) {
 				@templuicard.Title() {
-					Connexion
+					{ i18n.T(ctx, "auth.login.heading") }
 				}
 				@templuicard.Description() {
-					Veuillez vous authentifier auprès de votre fournisseur d'identité.
+					{ i18n.T(ctx, "auth.login.oidc_description") }
 				}
 			}
 			@templuicard.Content(templuicard.ContentProps{Class: "space-y-3"}) {

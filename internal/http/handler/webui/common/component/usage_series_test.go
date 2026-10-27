@@ -1,6 +1,7 @@
 package component
 
 import (
+	"context"
 	"testing"
 	"time"
 )
@@ -9,7 +10,7 @@ func TestCostSeriesFillsEveryDayOfThePeriod(t *testing.T) {
 	since := time.Date(2026, 6, 1, 9, 30, 0, 0, time.Local)
 	until := time.Date(2026, 6, 5, 18, 0, 0, 0, time.Local)
 
-	pts := CostSeries(map[string]int64{
+	pts := CostSeries(context.Background(), map[string]int64{
 		"2026-06-01": 1_000_000,
 		"2026-06-04": 2_400,
 	}, since, until, "7d")
@@ -32,7 +33,7 @@ func TestCostSeriesAggregatesLongPeriodsByMonth(t *testing.T) {
 	since := time.Date(2025, 8, 15, 0, 0, 0, 0, time.Local)
 	until := time.Date(2026, 1, 20, 0, 0, 0, 0, time.Local)
 
-	pts := CostSeries(map[string]int64{
+	pts := CostSeries(context.Background(), map[string]int64{
 		"2025-08-20": 1_000_000,
 		"2025-08-31": 500_000,
 		"2025-12-02": 3_000_000,
@@ -68,7 +69,7 @@ func TestCostSeriesKeepsTheTotal(t *testing.T) {
 
 	for _, r := range []string{"30d", "365d"} {
 		var sum float64
-		for _, p := range CostSeries(perDay, since, until, r) {
+		for _, p := range CostSeries(context.Background(), perDay, since, until, r) {
 			sum += p.Value
 		}
 		if sum != 0.2 {
@@ -83,7 +84,7 @@ func TestCostSeriesKeepsUsageOutsideTheWindow(t *testing.T) {
 	since := time.Date(2026, 6, 10, 0, 0, 0, 0, time.Local)
 	until := time.Date(2026, 6, 12, 0, 0, 0, 0, time.Local)
 
-	pts := CostSeries(map[string]int64{"2026-06-02": 5_000_000}, since, until, "7d")
+	pts := CostSeries(context.Background(), map[string]int64{"2026-06-02": 5_000_000}, since, until, "7d")
 
 	var sum float64
 	for _, p := range pts {
@@ -108,23 +109,23 @@ func TestRangeBucket(t *testing.T) {
 			t.Errorf("range %q: got %q, want %q", r, got, want)
 		}
 	}
-	if got := CostSeriesTitle("365d"); got != "Coût par mois" {
+	if got := CostSeriesTitle(context.Background(), "365d"); got != "Coût par mois" {
 		t.Errorf("title on a yearly range: %q", got)
 	}
-	if got := CostSeriesTitle("7d"); got != "Coût par jour" {
+	if got := CostSeriesTitle(context.Background(), "7d"); got != "Coût par jour" {
 		t.Errorf("title on a weekly range: %q", got)
 	}
 }
 
 func TestFormatDayLabel(t *testing.T) {
-	if got, want := FormatDayLabel("2026-07-27"), "27 juil."; got != want {
+	if got, want := FormatDayLabel(context.Background(), "2026-07-27"), "27 juil."; got != want {
 		t.Errorf("got %q, want %q", got, want)
 	}
-	if got, want := FormatDayLabel("2026-01-02"), "2 janv."; got != want {
+	if got, want := FormatDayLabel(context.Background(), "2026-01-02"), "2 janv."; got != want {
 		t.Errorf("got %q, want %q", got, want)
 	}
 	// A key that is not a date keeps its bar labelled rather than blank.
-	if got, want := FormatDayLabel("inconnu"), "inconnu"; got != want {
+	if got, want := FormatDayLabel(context.Background(), "inconnu"), "inconnu"; got != want {
 		t.Errorf("got %q, want %q", got, want)
 	}
 }
@@ -135,7 +136,7 @@ func TestStackedCostSeriesAlignsTheSeries(t *testing.T) {
 	since := time.Date(2026, 6, 1, 0, 0, 0, 0, time.Local)
 	until := time.Date(2026, 6, 3, 0, 0, 0, 0, time.Local)
 
-	series := StackedCostSeries([]map[string]int64{
+	series := StackedCostSeries(context.Background(), []map[string]int64{
 		{"2026-06-01": 1_000_000},
 		{"2026-06-03": 2_000_000, "2026-05-31": 500_000},
 	}, since, until, "7d")
@@ -163,11 +164,11 @@ func TestStackedCostSeriesAlignsTheSeries(t *testing.T) {
 func TestCostChartDataStacksOnlyWhenSomethingIsCovered(t *testing.T) {
 	payg := []ChartDataPoint{{Label: "1 juin", Value: 1}}
 
-	if data := CostChartData(payg, []ChartDataPoint{{Label: "1 juin"}}, "EUR"); len(data.Datasets) != 1 {
+	if data := CostChartData(context.Background(), payg, []ChartDataPoint{{Label: "1 juin"}}, "EUR"); len(data.Datasets) != 1 {
 		t.Errorf("nothing covered: expected a single series, got %d", len(data.Datasets))
 	}
 
-	data := CostChartData(payg, []ChartDataPoint{{Label: "1 juin", Value: 2}}, "EUR")
+	data := CostChartData(context.Background(), payg, []ChartDataPoint{{Label: "1 juin", Value: 2}}, "EUR")
 	if len(data.Datasets) != 2 {
 		t.Fatalf("expected the covered series stacked on the PAYG one, got %d", len(data.Datasets))
 	}
@@ -182,7 +183,7 @@ func TestStackedCostSeriesMergesTheStraysOfEverySeries(t *testing.T) {
 	since := time.Date(2026, 6, 1, 0, 0, 0, 0, time.Local)
 	until := time.Date(2026, 6, 2, 0, 0, 0, 0, time.Local)
 
-	series := StackedCostSeries([]map[string]int64{
+	series := StackedCostSeries(context.Background(), []map[string]int64{
 		{"2026-05-30": 1_000_000, "2026-06-01": 1_000_000},
 		{"2026-05-28": 2_000_000, "2026-05-30": 500_000},
 	}, since, until, "7d")

@@ -16,6 +16,7 @@ import (
 	webcommon "github.com/xolo-gateway/xolo/internal/http/handler/webui/common"
 	common "github.com/xolo-gateway/xolo/internal/http/handler/webui/common/component"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/org/component"
+	"github.com/xolo-gateway/xolo/internal/i18n"
 )
 
 func (h *Handler) getMembersPage(w http.ResponseWriter, r *http.Request) {
@@ -66,7 +67,7 @@ func (h *Handler) getMembersPage(w http.ResponseWriter, r *http.Request) {
 			ContextOrgID: org.ID(),
 			Breadcrumbs: []common.BreadcrumbItem{
 				{Label: org.Name(), Href: "/orgs/" + orgSlug + "/usage"},
-				{Label: "Membres", Href: ""},
+				{Label: i18n.T(ctx, "org.nav.members"), Href: ""},
 			},
 		},
 	}
@@ -166,7 +167,7 @@ func (h *Handler) getEditMemberPage(w http.ResponseWriter, r *http.Request) {
 			ContextOrgID: org.ID(),
 			Breadcrumbs: []common.BreadcrumbItem{
 				{Label: org.Name(), Href: "/orgs/" + orgSlug + "/usage"},
-				{Label: "Membres", Href: "/orgs/" + orgSlug + "/admin/members"},
+				{Label: i18n.T(ctx, "org.nav.members"), Href: "/orgs/" + orgSlug + "/admin/members"},
 				{Label: membership.User().Email(), Href: ""},
 			},
 		},
@@ -250,7 +251,7 @@ func (h *Handler) postEditMember(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if lastOwner {
-			http.Error(w, "Impossible de retirer le dernier propriétaire de l'organisation", http.StatusBadRequest)
+			http.Error(w, i18n.T(ctx, "org.errors.members.last_owner"), http.StatusBadRequest)
 			return
 		}
 	}

@@ -1,6 +1,7 @@
 package component
 
 import (
+	"github.com/xolo-gateway/xolo/internal/i18n"
 	"fmt"
 
 	commonComp "github.com/xolo-gateway/xolo/internal/http/handler/webui/common/component"
@@ -13,10 +14,10 @@ import (
 // OverviewPage is the landing screen of the platform console: the aggregated
 // consumption of every organisation over the last 30 days.
 templ OverviewPage(vmodel OverviewPageVModel) {
-	@commonComp.AppLayout(vmodel.AppLayoutVModel, commonComp.WithTitle("Vue d'ensemble")) {
+	@commonComp.AppLayout(vmodel.AppLayoutVModel, commonComp.WithTitle(i18n.T(ctx, "admin.overview.title"))) {
 		@commonComp.PageHeader(commonComp.PageHeaderProps{
-			Title:    "Vue d'ensemble",
-			Subtitle: overviewSubtitle(vmodel),
+			Title:    i18n.T(ctx, "admin.overview.title"),
+			Subtitle: overviewSubtitle(ctx, vmodel),
 		}) {
 			<!-- TODO(rework-ux): la maquette propose 24 h / 7 j / 30 j / 12 m et un
 			export CSV plateforme. Seule la fenêtre de 30 jours est calculée, et
@@ -38,16 +39,16 @@ templ OverviewPage(vmodel OverviewPageVModel) {
 templ overviewKPIs(vmodel OverviewPageVModel) {
 	@commonComp.KPIBand(commonComp.KPIBandProps{Class: "grid-cols-2 md:grid-cols-3 2xl:grid-cols-6"}) {
 		@commonComp.KPI(commonComp.KPIProps{
-			Label: "Coût total",
+			Label: i18n.T(ctx, "admin.overview.kpi.total_cost"),
 			Value: commonComp.FormatCostCompact(vmodel.TotalCost, vmodel.Currency),
-			Note:  "Hors requêtes couvertes par un forfait",
+			Note:  i18n.T(ctx, "admin.overview.excludes_subscription"),
 		})
 		@commonComp.KPI(commonComp.KPIProps{
-			Label: "Tokens",
+			Label: i18n.T(ctx, "admin.overview.kpi.tokens"),
 			Value: commonComp.FormatCount(vmodel.TotalTokens),
 		})
 		@commonComp.KPI(commonComp.KPIProps{
-			Label: "Requêtes",
+			Label: i18n.T(ctx, "admin.overview.kpi.requests"),
 			Value: commonComp.FormatCount(vmodel.TotalRequests),
 		})
 		<!-- TODO(rework-ux): le taux d'erreur, la latence p95 et l'empreinte
@@ -55,9 +56,9 @@ templ overviewKPIs(vmodel OverviewPageVModel) {
 		statuts de réponse, un histogramme de latences et une agrégation
 		énergétique cross-organisation. Aucun n'existe côté domaine ; les
 		cellules gardent leur place dans la bande (cf. lot 7 du plan). -->
-		@commonComp.KPIPending("Taux d'erreur", "")
-		@commonComp.KPIPending("Latence p95", "")
-		@commonComp.KPIPending("Empreinte CO₂", "")
+		@commonComp.KPIPending(i18n.T(ctx, "admin.overview.kpi.error_rate"), "")
+		@commonComp.KPIPending(i18n.T(ctx, "admin.overview.kpi.latency_p95"), "")
+		@commonComp.KPIPending(i18n.T(ctx, "admin.overview.kpi.carbon"), "")
 	}
 }
 
@@ -71,7 +72,7 @@ templ overviewCostChart(vmodel OverviewPageVModel) {
 	@commonComp.Section() {
 		@commonComp.SectionHeader() {
 			@commonComp.SectionTitle() {
-				Coût par jour et par organisation
+				{ i18n.T(ctx, "admin.overview.cost_chart.title") }
 			}
 			<!-- La légende est bâtie sur les séries tracées, jamais sur le tableau
 			des organisations : le graphique ne porte que le coût à l'usage, donc
@@ -84,14 +85,14 @@ templ overviewCostChart(vmodel OverviewPageVModel) {
 						{ series.OrgName }
 					</span>
 				}
-				<span class="shrink-0 whitespace-nowrap text-xs text-muted-foreground">Hors requêtes couvertes par un forfait</span>
+				<span class="shrink-0 whitespace-nowrap text-xs text-muted-foreground">{ i18n.T(ctx, "admin.overview.excludes_subscription") }</span>
 			</div>
 		}
 		if len(vmodel.CostSeries.Series) == 0 {
 			@commonComp.SectionEmpty(commonComp.EmptyStateProps{
 				Icon:        icon.ChartColumn,
-				Title:       "Aucune consommation à l'usage sur la période",
-				Description: "Les requêtes facturées à l'usage apparaîtront ici ; celles couvertes par un forfait ne sont pas ventilées par jour.",
+				Title:       i18n.T(ctx, "admin.overview.cost_chart.empty.title"),
+				Description: i18n.T(ctx, "admin.overview.cost_chart.empty.description"),
 			})
 		} else {
 			@commonComp.SectionBody() {
@@ -119,7 +120,7 @@ templ overviewProviderShare() {
 	@commonComp.Section() {
 		@commonComp.SectionHeader() {
 			@commonComp.SectionTitle() {
-				Répartition par fournisseur
+				{ i18n.T(ctx, "admin.overview.provider_share.title") }
 			}
 			<span class="ml-auto">
 				@commonComp.ComingSoon()
@@ -132,9 +133,7 @@ templ overviewProviderShare() {
 			contexte d'organisation. Il faudrait un index plateforme des
 			fournisseurs (cf. lot 7 du plan). -->
 			<p class="text-sm text-muted-foreground">
-				La répartition du coût par fournisseur amont n'est pas encore agrégée au
-				niveau de la plateforme. Elle reste disponible par organisation, dans son
-				tableau de bord.
+				{ i18n.T(ctx, "admin.overview.provider_share.pending") }
 			</p>
 		}
 	}
@@ -144,7 +143,7 @@ templ overviewOrgsTable(vmodel OverviewPageVModel) {
 	@commonComp.Section() {
 		@commonComp.SectionHeader() {
 			@commonComp.SectionTitle() {
-				Organisations
+				{ i18n.T(ctx, "admin.overview.orgs.title") }
 			}
 			@button.Button(button.Props{
 				Variant: button.VariantLink,
@@ -152,40 +151,40 @@ templ overviewOrgsTable(vmodel OverviewPageVModel) {
 				Href:    commonComp.BaseURLString(ctx, commonComp.WithPath("/admin/orgs")),
 				Class:   "ml-auto h-auto p-0",
 			}) {
-				Tout voir
+				{ i18n.T(ctx, "admin.overview.orgs.see_all") }
 				@icon.ArrowRight(icon.Props{Class: "size-3.5"})
 			}
 		}
 		if len(vmodel.Orgs) == 0 {
 			@commonComp.SectionEmpty(commonComp.EmptyStateProps{
 				Icon:        icon.Building2,
-				Title:       "Aucune organisation",
-				Description: "Créez la première organisation pour commencer.",
+				Title:       i18n.T(ctx, "admin.overview.orgs.empty.title"),
+				Description: i18n.T(ctx, "admin.overview.orgs.empty.description"),
 			}) {
 				@button.Button(button.Props{
 					Size: button.SizeSm,
 					Href: commonComp.BaseURLString(ctx, commonComp.WithPath("/admin/orgs/new")),
 				}) {
-					Nouvelle organisation
+					{ i18n.T(ctx, "admin.overview.orgs.new") }
 				}
 			}
 		} else {
 			@table.Table() {
 				@table.Header() {
 					@table.Head() {
-						Organisation
+						{ i18n.T(ctx, "admin.overview.orgs.col.org") }
 					}
 					@table.Head(table.HeadProps{Class: "text-right"}) {
-						Coût 30 j
+						{ i18n.T(ctx, "admin.overview.orgs.col.cost_30d") }
 					}
 					@table.Head(table.HeadProps{Class: "text-right"}) {
-						Tokens
+						{ i18n.T(ctx, "admin.overview.kpi.tokens") }
 					}
 					@table.Head(table.HeadProps{Class: "text-right"}) {
-						Requêtes
+						{ i18n.T(ctx, "admin.overview.kpi.requests") }
 					}
 					@table.Head(table.HeadProps{Class: "text-right"}) {
-						Actions
+						{ i18n.T(ctx, "admin.overview.orgs.col.actions") }
 					}
 				}
 				@table.Body() {
@@ -199,7 +198,7 @@ templ overviewOrgsTable(vmodel OverviewPageVModel) {
 								@commonComp.InitialSquare(org.Name)
 									<div class="min-w-0">
 										<div class="truncate text-sm font-semibold">{ org.Name }</div>
-										@commonComp.Mono(fmt.Sprintf("%s · %d membre(s)", org.Slug, org.Members))
+										@commonComp.Mono(i18n.T(ctx, "admin.overview.orgs.slug_members", org.Slug, fmt.Sprint(org.Members)))
 									</div>
 								</div>
 							}
@@ -218,7 +217,7 @@ templ overviewOrgsTable(vmodel OverviewPageVModel) {
 									Size:    button.SizeSm,
 									Href:    commonComp.BaseURLString(ctx, commonComp.WithPath("/orgs/", org.Slug, "/usage")),
 								}) {
-									Ouvrir
+									{ i18n.T(ctx, "admin.overview.orgs.open") }
 								}
 							}
 						}
@@ -234,7 +233,7 @@ templ overviewTodo() {
 	@commonComp.Section() {
 		@commonComp.SectionHeader() {
 			@commonComp.SectionTitle() {
-				À traiter
+				{ i18n.T(ctx, "admin.overview.todo.title") }
 			}
 			<span class="ml-auto">
 				@commonComp.ComingSoon()
@@ -246,9 +245,7 @@ templ overviewTodo() {
 			proches de l'expiration, fournisseurs en erreur). Il demande une file
 			d'événements plateforme, qui n'existe pas (cf. lot 7 du plan). -->
 			<p class="text-sm text-muted-foreground">
-				Les incidents, dépassements de budget et alertes des organisations seront
-				regroupés ici. En attendant, ils restent consultables dans chaque
-				organisation, section « Alertes &amp; incidents ».
+				{ i18n.T(ctx, "admin.overview.todo.pending") }
 			</p>
 		}
 	}

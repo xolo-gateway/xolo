@@ -5,18 +5,19 @@ import (
 
 	"github.com/xolo-gateway/xolo/internal/core/model"
 	common "github.com/xolo-gateway/xolo/internal/http/handler/webui/common/component"
+	"github.com/xolo-gateway/xolo/internal/i18n"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/button"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/icon"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/table"
 )
 
 templ AlertsPage(vmodel AlertsPageVModel) {
-	@common.AppLayout(vmodel.AppLayoutVModel, common.WithTitle("Alertes — "+vmodel.Org.Name())) {
+	@common.AppLayout(vmodel.AppLayoutVModel, common.WithTitle(i18n.T(ctx, "org.alerts.page_title", vmodel.Org.Name()))) {
 		{{ slug := vmodel.Org.Slug() }}
 		<div class="space-y-6">
 			@common.PageHeader(common.PageHeaderProps{
-				Title:    "Alertes",
-				Subtitle: alertsSubtitle(vmodel),
+				Title:    i18n.T(ctx, "org.nav.alerts"),
+				Subtitle: alertsSubtitle(ctx, vmodel),
 			}) {
 				@button.Button(button.Props{
 					Size:  button.SizeSm,
@@ -24,34 +25,34 @@ templ AlertsPage(vmodel AlertsPageVModel) {
 					Href:  viewedPath(common.BaseURLString(ctx, common.WithPath("/orgs/", slug, "/events/alerts/new")), vmodel.View),
 				}) {
 					@icon.Plus(icon.Props{Class: "size-3.5"})
-					Nouvelle alerte
+					{ i18n.T(ctx, "org.alerts.new") }
 				}
 			}
 			<div class="mb-3.5">
 				@EventsTabs(vmodel.Org, "alerts", vmodel.View)
 			</div>
-			@common.FlashToast(vmodel.Success, "L'alerte")
+			@common.FlashToast(vmodel.Success, i18n.T(ctx, "org.alerts.flash_subject"))
 			@common.Section() {
 				@table.Table() {
 					@table.Header() {
 						@table.Row() {
 							@table.Head() {
-								Nom 
+								{ i18n.T(ctx, "org.alerts.col.name") }
 							}
 							@table.Head() {
-								Portée 
+								{ i18n.T(ctx, "org.alerts.col.scope") }
 							}
 							@table.Head() {
-								Requête 
+								{ i18n.T(ctx, "org.alerts.col.query") }
 							}
 							@table.Head() {
-								Condition 
+								{ i18n.T(ctx, "org.alerts.col.condition") }
 							}
 							@table.Head() {
-								État 
+								{ i18n.T(ctx, "org.alerts.col.state") }
 							}
 							@table.Head() {
-								Activée 
+								{ i18n.T(ctx, "org.alerts.col.enabled") }
 							}
 							@table.Head()
 						}
@@ -60,7 +61,7 @@ templ AlertsPage(vmodel AlertsPageVModel) {
 						if len(vmodel.Alerts) == 0 {
 							@table.Row() {
 								@table.Cell(table.CellProps{Attributes: templ.Attributes{"colspan": "7"}, Class: "py-8 text-center text-sm text-muted-foreground"}) {
-									Aucune alerte : créez-en une pour être prévenu quand un motif d'événements se répète.
+									{ i18n.T(ctx, "org.alerts.empty") }
 								}
 							}
 						}
@@ -97,9 +98,9 @@ templ alertRow(slug string, a model.Alert, view string) {
 		}
 		@table.Cell() {
 			if a.Enabled() {
-				@common.Badge(common.TonePositive, "oui")
+				@common.Badge(common.TonePositive, i18n.T(ctx, "org.alerts.yes"))
 			} else {
-				@common.Badge(common.ToneNeutral, "non")
+				@common.Badge(common.ToneNeutral, i18n.T(ctx, "org.alerts.no"))
 			}
 		}
 		@table.Cell(table.CellProps{Class: "text-right whitespace-nowrap"}) {
@@ -109,16 +110,16 @@ templ alertRow(slug string, a model.Alert, view string) {
 					Size:       button.SizeIcon,
 					Class:      "size-7",
 					Href:       viewedPath(common.BaseURLString(ctx, common.WithPath("/orgs/", slug, "/events/alerts/", string(a.ID()), "/edit")), view),
-					Attributes: templ.Attributes{"title": "Modifier"},
+					Attributes: templ.Attributes{"title": i18n.T(ctx, "org.alerts.edit")},
 				}) {
 					@icon.Pencil(icon.Props{Class: "size-3.5"})
 				}
 				@common.ConfirmDelete(common.ConfirmDeleteProps{
 					URL:         viewedPath(common.BaseURLString(ctx, common.WithPath("/orgs/", slug, "/events/alerts/", string(a.ID()), "/delete")), view),
 					Method:      "POST",
-					Tooltip:     "Supprimer",
-					Title:       "Supprimer cette alerte ?",
-					Description: "Elle cessera de surveiller les événements et son historique de déclenchements sera perdu.",
+					Tooltip:     i18n.T(ctx, "org.alerts.delete"),
+					Title:       i18n.T(ctx, "org.alerts.delete_title"),
+					Description: i18n.T(ctx, "org.alerts.delete_description"),
 				})
 			</div>
 		}

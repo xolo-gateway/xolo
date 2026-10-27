@@ -13,6 +13,7 @@ import (
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/selectbox"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/sidebar"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/tooltip"
+	"github.com/xolo-gateway/xolo/internal/i18n"
 )
 
 // boostedShell lists the regions of the shell that must follow a boosted
@@ -116,13 +117,14 @@ templ AppLayout(vmodel AppLayoutVModel, funcs ...PageOptionFunc) {
 							Variant:    button.VariantOutline,
 							Class:      "w-full justify-start gap-2 group-data-[tui-sidebar-state=collapsed]:group-data-[tui-sidebar-collapsible=icon]:justify-center group-data-[tui-sidebar-state=collapsed]:group-data-[tui-sidebar-collapsible=icon]:px-0",
 							Href:       BaseURLString(ctx, WithPath("/admin/")),
-							Attributes: templ.Attributes{"title": "Retour console plateforme"},
+							Attributes: templ.Attributes{"title": i18n.T(ctx, "layout.back_to_platform")},
 						}) {
 							@icon.ArrowLeft(icon.Props{Class: "size-4"})
-							<span class={ collapsedHidden }>Retour console plateforme</span>
+							<span class={ collapsedHidden }>{ i18n.T(ctx, "layout.back_to_platform") }</span>
 						}
 					}
 					@userCard(vmodel)
+					@LocaleSwitch("px-1 " + collapsedHidden)
 				}
 			}
 			@sidebar.Inset() {
@@ -142,7 +144,7 @@ templ AppLayout(vmodel AppLayoutVModel, funcs ...PageOptionFunc) {
 							@alert.Description(alert.DescriptionProps{Class: "text-platform"}) {
 								<div class="flex flex-wrap items-center justify-between gap-2">
 									<span>
-										Accès admin plateforme — vous consultez une organisation dont vous n'êtes pas membre. Les actions sont journalisées.
+										{ i18n.T(ctx, "layout.admin_visit_banner") }
 									</span>
 									@button.Button(button.Props{
 										Variant: button.VariantOutline,
@@ -150,7 +152,7 @@ templ AppLayout(vmodel AppLayoutVModel, funcs ...PageOptionFunc) {
 										Href:    BaseURLString(ctx, WithPath("/admin/orgs")),
 										Class:   "border-platform/30 bg-card text-platform hover:bg-platform-tint",
 									}) {
-										Quitter
+										{ i18n.T(ctx, "layout.leave") }
 									}
 								</div>
 							}
@@ -195,7 +197,7 @@ templ navItem(item NavEntry) {
 				<span class={ "truncate", collapsedHidden }>{ item.Label }</span>
 				if item.ComingSoon {
 					<span class={ "ml-auto shrink-0", collapsedHidden }>
-						@Badge(ToneNeutral, "Bientôt")
+						@Badge(ToneNeutral, i18n.T(ctx, "nav.coming_soon"))
 					</span>
 				}
 			</div>
@@ -311,7 +313,7 @@ templ contextSwitcher(vmodel AppLayoutVModel) {
 			</span>
 			<span class="min-w-0 flex-1 leading-[normal]">
 				<span class={ "block text-[9.5px] font-semibold uppercase tracking-[0.09em]", vmodel.Context.AccentClass() }>
-					{ vmodel.Context.Kicker() }
+					{ vmodel.Context.Kicker(ctx) }
 				</span>
 				<span class="block truncate text-[13px] font-semibold text-foreground">{ vmodel.ContextName }</span>
 			</span>
@@ -335,7 +337,7 @@ templ contextSwitcherContent(vmodel AppLayoutVModel) {
 			@input.Input(input.Props{
 				Type:        input.TypeSearch,
 				Name:        "q",
-				Placeholder: "Rechercher…",
+				Placeholder: i18n.T(ctx, "layout.search_placeholder"),
 				Class:       "h-8",
 				Attributes: templ.Attributes{
 					"hx-get":     SwitcherFragmentURL(ctx, vmodel.Context, vmodel.ContextSlug),
@@ -360,13 +362,13 @@ templ contextSwitcherContent(vmodel AppLayoutVModel) {
 templ SwitcherList(entries []SwitcherEntry) {
 	<div id="switcher-list" class="max-h-80 overflow-auto">
 		if len(entries) == 0 {
-			<p class="px-2 py-3 text-center text-xs text-muted-foreground">Aucun résultat</p>
+			<p class="px-2 py-3 text-center text-xs text-muted-foreground">{ i18n.T(ctx, "switcher.no_results") }</p>
 		}
 		for i, entry := range entries {
 			if i > 0 && entry.Context != entries[i-1].Context {
 				<div class="my-1 border-t"></div>
 			}
-			if label := switcherGroupLabel(entries, i); label != "" {
+			if label := switcherGroupLabel(ctx, entries, i); label != "" {
 				<div class="px-2 pb-1 pt-1.5 text-2xs font-semibold uppercase tracking-caps text-muted-foreground">
 					{ label }
 				</div>
@@ -417,7 +419,7 @@ templ headerActions(vmodel AppLayoutVModel) {
 			Class:    "hidden gap-2 text-muted-foreground md:inline-flex",
 		}) {
 			@icon.Search(icon.Props{Class: "size-4"})
-			Rechercher
+			{ i18n.T(ctx, "layout.search") }
 			<kbd class="rounded border bg-muted px-1 font-mono text-xs">⌘K</kbd>
 		}
 		@proxyStatusDot(vmodel.ProxyStatus)
@@ -435,7 +437,7 @@ templ headerActions(vmodel AppLayoutVModel) {
 					}
 				}
 				@tooltip.Content(tooltip.ContentProps{ID: "header-docs", Position: tooltip.PositionBottom}) {
-					Documentation de l'API
+					{ i18n.T(ctx, "layout.api_docs") }
 				}
 			}
 		}
@@ -451,13 +453,13 @@ templ proxyStatusDot(status ProxyStatus) {
 	<span class="hidden md:inline-block">
 		switch status {
 			case ProxyStatusOperational:
-				@Badge(TonePositive, "Proxy opérationnel")
+				@Badge(TonePositive, i18n.T(ctx, "layout.proxy.operational"))
 			case ProxyStatusDegraded:
-				@Badge(ToneWarning, "Proxy dégradé")
+				@Badge(ToneWarning, i18n.T(ctx, "layout.proxy.degraded"))
 			case ProxyStatusDown:
-				@Badge(ToneNegative, "Proxy indisponible")
+				@Badge(ToneNegative, i18n.T(ctx, "layout.proxy.down"))
 			default:
-				@Badge(ToneNeutral, "État du proxy — bientôt")
+				@Badge(ToneNeutral, i18n.T(ctx, "layout.proxy.unknown"))
 		}
 	</span>
 }
@@ -484,7 +486,7 @@ templ userCard(vmodel AppLayoutVModel) {
 				Class:   "shrink-0 " + collapsedHidden,
 				// Logging out leaves the application (and often this origin) — a
 				// boosted swap would have nothing to put in #content.
-				Attributes: templ.Attributes{"hx-boost": "false", "title": "Déconnexion"},
+				Attributes: templ.Attributes{"hx-boost": "false", "title": i18n.T(ctx, "layout.logout")},
 			}) {
 				@icon.LogOut(icon.Props{Class: "size-4"})
 			}
@@ -496,7 +498,7 @@ templ userCard(vmodel AppLayoutVModel) {
 				Attributes: templ.Attributes{"hx-boost": "false"},
 			}) {
 				@icon.LogIn(icon.Props{Class: "size-4"})
-				Connexion
+				{ i18n.T(ctx, "layout.login") }
 			}
 		}
 	</div>

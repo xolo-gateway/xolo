@@ -19,6 +19,7 @@ import (
 	common "github.com/xolo-gateway/xolo/internal/http/handler/webui/common/component"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/profile/component"
 	"github.com/xolo-gateway/xolo/internal/http/middleware/authz"
+	"github.com/xolo-gateway/xolo/internal/i18n"
 )
 
 func (h *Handler) getModelsPage(w http.ResponseWriter, r *http.Request) {
@@ -81,8 +82,8 @@ func (h *Handler) getModelsPage(w http.ResponseWriter, r *http.Request) {
 			User:         user,
 			SelectedItem: "models",
 			Breadcrumbs: []common.BreadcrumbItem{
-				{Label: "Espace personnel", Href: "/usage"},
-				{Label: "Modèles", Href: ""},
+				{Label: i18n.T(ctx, "nav.context.personal"), Href: "/usage"},
+				{Label: i18n.T(ctx, "nav.models"), Href: ""},
 			},
 			Context: common.ContextPersonal,
 		},

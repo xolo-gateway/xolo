@@ -15,9 +15,11 @@ import (
 	pipelineAssets "github.com/xolo-gateway/xolo/internal/http/handler/webui/pipeline"
 	"github.com/xolo-gateway/xolo/internal/http/middleware/authn"
 	"github.com/xolo-gateway/xolo/internal/http/middleware/authz"
+	localeMiddleware "github.com/xolo-gateway/xolo/internal/http/middleware/locale"
 	membershipsMiddleware "github.com/xolo-gateway/xolo/internal/http/middleware/memberships"
 	"github.com/xolo-gateway/xolo/internal/http/middleware/ratelimit"
 	"github.com/xolo-gateway/xolo/internal/http/middleware/tenant"
+	"github.com/xolo-gateway/xolo/internal/i18n"
 
 	gohttp "net/http"
 	"time"
@@ -311,11 +313,24 @@ func NewHTTPServerFromConfig(ctx context.Context, conf *config.Config) (*http.Se
 		}),
 	)
 
+	locales, err := i18n.Load()
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+	defaultLocale, ok := locales.Lookup(conf.DefaultLocale)
+	if !ok {
+		return nil, errors.Errorf("default locale %q is not supported", conf.DefaultLocale)
+	}
+
 	options := []http.OptionFunc{
 		http.WithAddress(conf.HTTP.Address),
 		http.WithShutdownTimeout(conf.HTTP.ShutdownTimeout),
 		http.WithBaseURL(conf.HTTP.BaseURL),
+		// The language is resolved first so the tenant's error pages are
+		// rendered in it too.
+		http.WithMiddleware(localeMiddleware.Middleware(locales, defaultLocale)),
 		http.WithMiddleware(tenantMiddleware),
+		http.WithRoute("POST /locale", localeMiddleware.Handler(locales, conf.HTTP.Session.Cookie.Secure)),
 		http.WithMount("/assets/", assets),
 		http.WithMount("/assets/pipeline/", pipelineAssets.NewAssetsHandler()),
 		http.WithMount("/auth/oidc/", rateLimiter(oidcAuthn)),

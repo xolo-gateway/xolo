@@ -1,5 +1,6 @@
 import type { NodeTypeDescriptor } from '../types'
 import { KIND_DESCRIPTION, KIND_LABEL, NodeKindIcon } from '../nodes/kind'
+import { t } from '../i18n'
 
 interface NodePaletteProps {
   nodeTypes: NodeTypeDescriptor[]
@@ -23,7 +24,7 @@ export function NodePalette({ nodeTypes, onAddNode }: NodePaletteProps) {
     <aside className="pipeline-palette">
       {builtins.length > 0 && (
         <section className="pipeline-palette__group">
-          <h3 className="pipeline-palette__title">Nœuds intégrés</h3>
+          <h3 className="pipeline-palette__title">{t('palette.builtins')}</h3>
           <ul className="pipeline-palette__list">
             {builtins.map(nd => (
               <PaletteItem
@@ -40,7 +41,7 @@ export function NodePalette({ nodeTypes, onAddNode }: NodePaletteProps) {
       {plugins.length > 0 && (
         <section className="pipeline-palette__group">
           <h3 className="pipeline-palette__title">
-            Plugins <span className="pipeline-palette__count">· {plugins.length}</span>
+            {t('palette.plugins')} <span className="pipeline-palette__count">· {plugins.length}</span>
           </h3>
           <ul className="pipeline-palette__list">
             {plugins.map(nd => (

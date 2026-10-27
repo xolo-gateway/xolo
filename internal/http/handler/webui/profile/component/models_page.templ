@@ -1,6 +1,7 @@
 package component
 
 import (
+	"github.com/xolo-gateway/xolo/internal/i18n"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -41,7 +42,7 @@ type ModelsPageVModel struct {
 
 templ ModelsPage(vmodel ModelsPageVModel) {
 	@common.AppLayout(vmodel.AppLayoutVModel,
-		common.WithTitle("Modèles"),
+		common.WithTitle(i18n.T(ctx, "profile.models.page_title")),
 	) {
 		<div class="space-y-6">
 			<!-- Header + period selector -->
@@ -49,7 +50,7 @@ templ ModelsPage(vmodel ModelsPageVModel) {
 				<div class="flex items-center gap-4">
 					@icon.BrainCircuit(icon.Props{Class: "h-8 w-8"})
 					@common.PageHeader(common.PageHeaderProps{
-						Title: "Modèles d'org.",
+						Title: i18n.T(ctx, "profile.models.title"),
 					})
 				</div>
 				<div class="flex items-center gap-3">
@@ -70,7 +71,7 @@ templ ModelsPage(vmodel ModelsPageVModel) {
 			</div>
 			<!-- Models list -->
 			if len(vmodel.ModelUsages) == 0 {
-				<p class="text-sm text-muted-foreground">Aucun modèle disponible.</p>
+				<p class="text-sm text-muted-foreground">{ i18n.T(ctx, "profile.models.empty") }</p>
 			} else {
 				<div class="space-y-4">
 					<div id="models-grid" class="flex flex-col gap-3">
@@ -88,7 +89,7 @@ templ ModelsPage(vmodel ModelsPageVModel) {
 							href={ href }
 							class="text-sm text-muted-foreground hover:text-foreground underline cursor-pointer"
 						>
-							Afficher { fmt.Sprintf("%d", vmodel.RemainingCount) } modèle(s) supplémentaire(s)
+							{ i18n.T(ctx, "profile.models.show_more", fmt.Sprintf("%d", vmodel.RemainingCount)) }
 						</a>
 					}
 				</div>
@@ -97,57 +98,57 @@ templ ModelsPage(vmodel ModelsPageVModel) {
 			@card.Card() {
 				@card.Header() {
 					@card.Title() {
-						Accès à l'API
+						{ i18n.T(ctx, "profile.models.api.title") }
 					}
-					<p class="text-sm text-muted-foreground">Xolo expose une API compatible OpenAI. Utilisez les paramètres ci-dessous avec vos outils habituels.</p>
+					<p class="text-sm text-muted-foreground">{ i18n.T(ctx, "profile.models.api.intro") }</p>
 				}
 				@card.Content() {
 					<div class="space-y-4">
 						<!-- Base URL -->
 						<div class="space-y-1">
-							<p class="text-xs font-medium uppercase tracking-wide text-muted-foreground">URL de base</p>
+							<p class="text-xs font-medium uppercase tracking-wide text-muted-foreground">{ i18n.T(ctx, "profile.models.api.base_url") }</p>
 							@common.InlineSnippet(common.BaseURLString(ctx, common.WithPath("/api/v1")))
 						</div>
 						<!-- Auth + model name -->
 						<div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
 							<div class="space-y-1">
-								<p class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Authentification</p>
-								<p>En-tête HTTP <code class="bg-muted rounded px-1 text-xs">Authorization: Bearer &lt;clé-api&gt;</code></p>
-								<p class="text-xs text-muted-foreground">Créez une clé API depuis <a href={ common.BaseURL(ctx, common.WithPath("/profile/tokens")) } class="underline">votre profil</a>.</p>
+								<p class="text-xs font-medium uppercase tracking-wide text-muted-foreground">{ i18n.T(ctx, "profile.models.api.auth") }</p>
+								<p>{ i18n.T(ctx, "profile.models.api.http_header") } <code class="bg-muted rounded px-1 text-xs">{ "Authorization: Bearer <" + i18n.T(ctx, "profile.models.api.key_placeholder") + ">" }</code></p>
+								<p class="text-xs text-muted-foreground">{ i18n.T(ctx, "profile.models.api.create_key_before") } <a href={ common.BaseURL(ctx, common.WithPath("/profile/tokens")) } class="underline">{ i18n.T(ctx, "profile.models.api.create_key_link") }</a>{ i18n.T(ctx, "profile.models.api.create_key_after") }</p>
 							</div>
 							<div class="space-y-1">
-								<p class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Nom du modèle</p>
-								<p>Format <code class="bg-muted rounded px-1 text-xs">&lt;organisation&gt;/&lt;modèle&gt;</code></p>
-								<p class="text-xs text-muted-foreground">Le nom complet est affiché sur chaque carte ci-dessous.</p>
+								<p class="text-xs font-medium uppercase tracking-wide text-muted-foreground">{ i18n.T(ctx, "profile.models.api.model_name") }</p>
+								<p>{ i18n.T(ctx, "profile.models.api.format") } <code class="bg-muted rounded px-1 text-xs">{ i18n.T(ctx, "profile.models.api.model_name_format") }</code></p>
+								<p class="text-xs text-muted-foreground">{ i18n.T(ctx, "profile.models.api.full_name_hint") }</p>
 							</div>
 						</div>
 						<!-- Tool examples -->
 						<div class="space-y-2">
-							<p class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Exemples d'utilisation</p>
+							<p class="text-xs font-medium uppercase tracking-wide text-muted-foreground">{ i18n.T(ctx, "profile.models.api.examples") }</p>
 							@accordion.Accordion(accordion.Props{Class: "rounded-md border divide-y"}) {
-								@apiExample("bash", "curl", curlExample(common.BaseURLString(ctx, common.WithPath("/api/v1")))) {
+								@apiExample("bash", "curl", curlExample(ctx, common.BaseURLString(ctx, common.WithPath("/api/v1")))) {
 									@icon.Terminal(icon.Props{Class: "h-4 w-4 shrink-0"})
 								}
-								@apiExample("python", "Python · openai", pythonExample(common.BaseURLString(ctx, common.WithPath("/api/v1")))) {
+								@apiExample("python", "Python · openai", pythonExample(ctx, common.BaseURLString(ctx, common.WithPath("/api/v1")))) {
 									@icon.Code(icon.Props{Class: "h-4 w-4 shrink-0"})
 								}
 								@apiExample("json", "OpenCode · ~/.config/opencode/config.json", openCodeConfigExample(common.BaseURLString(ctx, common.WithPath("/api/v1")), vmodel.AllModelUsages)) {
 									@icon.Code(icon.Props{Class: "h-4 w-4 shrink-0"})
 								}
-								@apiExample("bash", "Claude Code · variables d'environnement", claudeCodeExample(common.BaseURLString(ctx, common.WithPath("/api")))) {
+								@apiExample("bash", i18n.T(ctx, "profile.models.api.claude_code_title"), claudeCodeExample(ctx, common.BaseURLString(ctx, common.WithPath("/api")))) {
 									@icon.Terminal(icon.Props{Class: "h-4 w-4 shrink-0"})
 								}
 							}
 							if names := undeterminedModelNames(vmodel.AllModelUsages); len(names) > 0 {
 								<p class="text-xs text-muted-foreground">
-									Capacités non déterminées pour
+									{ i18n.T(ctx, "profile.models.undetermined.before") }
 									for i, name := range names {
 										if i > 0 {
 											{ ", " }
 										}
 										<span class="font-mono">{ name }</span>
 									}
-									{ " " }: Xolo n'a pas pu les déterminer, les clients les voient donc sans outils, vision ni raisonnement. Un administrateur de l'organisation peut les déclarer dans les surcharges catalogue du modèle virtuel.
+									{ " " }{ i18n.T(ctx, "profile.models.undetermined.after") }
 								</p>
 							}
 						</div>
@@ -216,13 +217,13 @@ func usageSegment(ctx context.Context, currentSort string, currentOrder string) 
 		// the toggle on reachable bookmarks.
 		if currentOrder == "asc" {
 			return common.Segment{
-				Label:  "Usage ↑",
+				Label:  i18n.T(ctx, "profile.models.sort.usage") + " ↑",
 				Href:   common.MutateCurrentURL(ctx, common.WithoutValues("order", "*")),
 				Active: true,
 			}
 		}
 		return common.Segment{
-			Label:  "Usage ↓",
+			Label:  i18n.T(ctx, "profile.models.sort.usage") + " ↓",
 			Href:   common.MutateCurrentURL(ctx, common.WithoutValues("order", "*"), common.WithValues("order", "asc")),
 			Active: true,
 		}
@@ -230,7 +231,7 @@ func usageSegment(ctx context.Context, currentSort string, currentOrder string) 
 	// Inactive: a single "Usage" tab lands on the criterion's natural
 	// default (Usage ↓ = no params).
 	href := common.MutateCurrentURL(ctx, common.WithoutValues("sort", "*"), common.WithoutValues("order", "*"))
-	return common.Segment{Label: "Usage", Href: href}
+	return common.Segment{Label: i18n.T(ctx, "profile.models.sort.usage"), Href: href}
 }
 
 // priceSegment returns the Prix segment of the sort control. Same
@@ -243,13 +244,13 @@ func priceSegment(ctx context.Context, currentSort string, currentOrder string) 
 		// to avoid duplicate `order` params on reachable bookmarks.
 		if currentOrder == "desc" {
 			return common.Segment{
-				Label:  "Prix ↓",
+				Label:  i18n.T(ctx, "profile.models.sort.price") + " ↓",
 				Href:   common.MutateCurrentURL(ctx, common.WithoutValues("order", "*")),
 				Active: true,
 			}
 		}
 		return common.Segment{
-			Label:  "Prix ↑",
+			Label:  i18n.T(ctx, "profile.models.sort.price") + " ↑",
 			Href:   common.MutateCurrentURL(ctx, common.WithoutValues("order", "*"), common.WithValues("order", "desc")),
 			Active: true,
 		}
@@ -260,7 +261,7 @@ func priceSegment(ctx context.Context, currentSort string, currentOrder string) 
 		common.WithoutValues("sort", "*", "order", "*"),
 		common.WithValues("sort", "price"),
 	)
-	return common.Segment{Label: "Prix", Href: href}
+	return common.Segment{Label: i18n.T(ctx, "profile.models.sort.price"), Href: href}
 }
 
 templ modelCard(mu ModelUsage) {
@@ -279,23 +280,23 @@ templ modelCard(mu ModelUsage) {
 						{ ModelNames(mu)[0] }
 					</span>
 					if mu.Model.IsVirtual() {
-						@common.Badge(common.ToneInfo, "virtuel")
+						@common.Badge(common.ToneInfo, i18n.T(ctx, "profile.models.badge.virtual"))
 					}
 					if mu.CapabilitiesUndetermined {
-						@common.Badge(common.ToneWarning, "capacités non déterminées")
+						@common.Badge(common.ToneWarning, i18n.T(ctx, "profile.models.badge.undetermined"))
 					}
 					if mu.Model.Kind() != model.ModelKindCompletion {
-						@common.Badge(common.ToneInfo, common.ModelKindLabel(mu.Model.Kind()))
+						@common.Badge(common.ToneInfo, common.ModelKindLabel(ctx, mu.Model.Kind()))
 					}
 					if mu.Provider != nil && mu.Provider.BillingMode() == model.BillingModeSubscription {
-						@common.Badge(common.ToneNeutral, "abonnement")
+						@common.Badge(common.ToneNeutral, i18n.T(ctx, "profile.models.badge.subscription"))
 					} else if mu.Provider != nil {
-						@common.Badge(common.ToneNeutral, "pay-as-you-go")
+						@common.Badge(common.ToneNeutral, i18n.T(ctx, "profile.models.badge.pay_as_you_go"))
 					}
 				</div>
 				if names := ModelNames(mu); len(names) > 1 {
 					<p class="text-xs text-muted-foreground mt-0.5">
-						Aussi :
+						{ i18n.T(ctx, "profile.models.also") }
 						for i, name := range names[1:] {
 							if i > 0 {
 								{ ", " }
@@ -319,26 +320,26 @@ templ modelCard(mu ModelUsage) {
 				<div class="flex gap-4 shrink-0 self-start">
 					<div class="text-right">
 						<div class="text-sm font-semibold">{ fmt.Sprintf("%d", mu.Aggregate.TotalRequests) }</div>
-						<div class="text-xs text-muted-foreground">req.</div>
+						<div class="text-xs text-muted-foreground">{ i18n.T(ctx, "profile.models.stat.requests_short") }</div>
 					</div>
 					<div class="text-right">
 						<div class="text-sm font-semibold">{ fmt.Sprintf("%d", mu.Aggregate.TotalTokens) }</div>
-						<div class="text-xs text-muted-foreground">tokens</div>
+						<div class="text-xs text-muted-foreground">{ i18n.T(ctx, "profile.models.stat.tokens_short") }</div>
 					</div>
 					<div class="text-right">
 						<div class="text-sm font-semibold">{ common.FormatCost(mu.Aggregate.TotalCost, mu.Aggregate.Currency) }</div>
-						<div class="text-xs text-muted-foreground">coût</div>
+						<div class="text-xs text-muted-foreground">{ i18n.T(ctx, "profile.models.stat.cost_short") }</div>
 					</div>
 				</div>
 			} else if !mu.Model.IsVirtual() {
 				<div class="flex gap-4 shrink-0 self-start">
 					<div class="text-right">
 						<div class="text-sm font-semibold">{ formatCostPerM(mu.Model.PromptCostPer1KTokens(), orgCurrency(mu.Org)) }</div>
-						<div class="text-xs text-muted-foreground">prompt / 1M</div>
+						<div class="text-xs text-muted-foreground">{ i18n.T(ctx, "profile.models.stat.prompt_per_m") }</div>
 					</div>
 					<div class="text-right">
 						<div class="text-sm font-semibold">{ formatCostPerM(mu.Model.CompletionCostPer1KTokens(), orgCurrency(mu.Org)) }</div>
-						<div class="text-xs text-muted-foreground">complétion / 1M</div>
+						<div class="text-xs text-muted-foreground">{ i18n.T(ctx, "profile.models.stat.completion_per_m") }</div>
 					</div>
 				</div>
 			}
@@ -346,36 +347,37 @@ templ modelCard(mu ModelUsage) {
 	}
 }
 
-func curlExample(baseURL string) string {
+func curlExample(ctx context.Context, baseURL string) string {
 	return `curl ` + baseURL + `/chat/completions \
-  -H "Authorization: Bearer <clé-api>" \
+  -H "Authorization: Bearer <` + i18n.T(ctx, "profile.models.api.key_placeholder") + `>" \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "<organisation>/<modèle>",
-    "messages": [{"role": "user", "content": "Bonjour !"}]
+    "model": "` + i18n.T(ctx, "profile.models.api.model_name_format") + `",
+    "messages": [{"role": "user", "content": "` + i18n.T(ctx, "profile.models.example.greeting") + `"}]
   }'`
 }
 
-func pythonExample(baseURL string) string {
+func pythonExample(ctx context.Context, baseURL string) string {
 	return `from openai import OpenAI
 
 client = OpenAI(
     base_url="` + baseURL + `",
-    api_key="<clé-api>",
+    api_key="<` + i18n.T(ctx, "profile.models.api.key_placeholder") + `>",
 )
 
 response = client.chat.completions.create(
-    model="<organisation>/<modèle>",
-    messages=[{"role": "user", "content": "Bonjour !"}],
+    model="` + i18n.T(ctx, "profile.models.api.model_name_format") + `",
+    messages=[{"role": "user", "content": "` + i18n.T(ctx, "profile.models.example.greeting") + `"}],
 )
 print(response.choices[0].message.content)`
 }
 
-func claudeCodeExample(baseURL string) string {
+func claudeCodeExample(ctx context.Context, baseURL string) string {
+	modelName := i18n.T(ctx, "profile.models.api.model_name_format")
 	return `export ANTHROPIC_BASE_URL="` + baseURL + `"
-export ANTHROPIC_AUTH_TOKEN="<clé-api>"
-export ANTHROPIC_MODEL="<organisation>/<modèle>"
-export ANTHROPIC_SMALL_FAST_MODEL="<organisation>/<modèle>"
+export ANTHROPIC_AUTH_TOKEN="<` + i18n.T(ctx, "profile.models.api.key_placeholder") + `>"
+export ANTHROPIC_MODEL="` + modelName + `"
+export ANTHROPIC_SMALL_FAST_MODEL="` + modelName + `"
 export CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1
 
 claude`
@@ -488,26 +490,26 @@ templ ModelsGrid(modelUsages []ModelUsage) {
 						}
 						<div class="grid grid-cols-2 gap-2 text-sm">
 							<div>
-								<span class="text-muted-foreground">Prompt (1M tokens)</span>
+								<span class="text-muted-foreground">{ i18n.T(ctx, "profile.models.grid.prompt") }</span>
 								<p class="font-medium">{ formatCostPerM(mu.Model.PromptCostPer1KTokens(), orgCurrency(mu.Org)) }</p>
 							</div>
 							<div>
-								<span class="text-muted-foreground">Complétion (1M tokens)</span>
+								<span class="text-muted-foreground">{ i18n.T(ctx, "profile.models.grid.completion") }</span>
 								<p class="font-medium">{ formatCostPerM(mu.Model.CompletionCostPer1KTokens(), orgCurrency(mu.Org)) }</p>
 							</div>
 						</div>
 						if mu.Aggregate != nil && mu.Aggregate.TotalRequests > 0 {
 							<div class="border-t pt-3 grid grid-cols-3 gap-2 text-sm">
 								<div>
-									<span class="text-muted-foreground">Requêtes</span>
+									<span class="text-muted-foreground">{ i18n.T(ctx, "profile.models.grid.requests") }</span>
 									<p class="font-medium">{ fmt.Sprintf("%d", mu.Aggregate.TotalRequests) }</p>
 								</div>
 								<div>
-									<span class="text-muted-foreground">Tokens</span>
+									<span class="text-muted-foreground">{ i18n.T(ctx, "profile.models.grid.tokens") }</span>
 									<p class="font-medium">{ fmt.Sprintf("%d", mu.Aggregate.TotalTokens) }</p>
 								</div>
 								<div>
-									<span class="text-muted-foreground">Coût</span>
+									<span class="text-muted-foreground">{ i18n.T(ctx, "profile.models.grid.cost") }</span>
 									<p class="font-medium">{ common.FormatCost(mu.Aggregate.TotalCost, mu.Aggregate.Currency) }</p>
 								</div>
 							</div>

@@ -571,7 +571,7 @@
 }
 /* Seul « requis » est coloré : c'est le seul badge qui signale une obligation,
    les deux autres ne font que nommer le sens du port. */
-.pipeline-inspector__port-badge--requis {
+.pipeline-inspector__port-badge--required {
   background: var(--warning-tint);
   color: var(--warning);
 }

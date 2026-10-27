@@ -2,7 +2,6 @@ package org
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 	"math"
 	"net/http"
@@ -18,6 +17,7 @@ import (
 	webcommon "github.com/xolo-gateway/xolo/internal/http/handler/webui/common"
 	common "github.com/xolo-gateway/xolo/internal/http/handler/webui/common/component"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/org/component"
+	"github.com/xolo-gateway/xolo/internal/i18n"
 )
 
 func (h *Handler) getOrgQuotaPage(w http.ResponseWriter, r *http.Request) {
@@ -43,7 +43,7 @@ func (h *Handler) renderOrgQuotaPage(w http.ResponseWriter, r *http.Request, org
 	loadError := ""
 	if err != nil && !errors.Is(err, port.ErrNotFound) {
 		slog.ErrorContext(ctx, "could not load org budget", slogx.Error(err))
-		loadError = "Budget indisponible : le store a renvoyé une erreur. Le formulaire ci-dessous reste éditable mais le total dépensé peut être inexact."
+		loadError = i18n.T(ctx, "org.flash.quotas.budget_unavailable")
 	}
 
 	orgCurrency := org.Currency()
@@ -58,7 +58,7 @@ func (h *Handler) renderOrgQuotaPage(w http.ResponseWriter, r *http.Request, org
 	for _, e := range []error{dailyErr, monthlyErr, yearlyErr} {
 		if e != nil {
 			slog.ErrorContext(ctx, "could not load org spend", slogx.Error(e))
-			spendLoadError = "Consommation indisponible : le store a renvoyé une erreur. Les barres peuvent afficher 0 %."
+			spendLoadError = i18n.T(ctx, "org.flash.quotas.spend_unavailable")
 			break
 		}
 	}
@@ -89,7 +89,7 @@ func (h *Handler) renderOrgQuotaPage(w http.ResponseWriter, r *http.Request, org
 			ContextOrgID: org.ID(),
 			Breadcrumbs: []common.BreadcrumbItem{
 				{Label: org.Name(), Href: "/orgs/" + orgSlug + "/usage"},
-				{Label: "Budget", Href: "/orgs/" + orgSlug + "/admin/quota"},
+				{Label: i18n.T(ctx, "org.nav.budget"), Href: "/orgs/" + orgSlug + "/admin/quota"},
 			},
 		},
 	}
@@ -173,7 +173,7 @@ func (h *Handler) getMemberQuotaPage(w http.ResponseWriter, r *http.Request) {
 	loadError := ""
 	if err != nil && !errors.Is(err, port.ErrNotFound) {
 		slog.ErrorContext(ctx, "could not load member budget", slogx.Error(err))
-		loadError = "Budget indisponible : le store a renvoyé une erreur. Le formulaire ci-dessous reste éditable mais le total dépensé peut être inexact."
+		loadError = i18n.T(ctx, "org.flash.quotas.budget_unavailable")
 	}
 
 	orgCurrency := org.Currency()
@@ -189,7 +189,7 @@ func (h *Handler) getMemberQuotaPage(w http.ResponseWriter, r *http.Request) {
 	for _, e := range []error{dailyErr, monthlyErr, yearlyErr} {
 		if e != nil {
 			slog.ErrorContext(ctx, "could not load member spend", slogx.Error(e))
-			spendLoadError = "Consommation indisponible : le store a renvoyé une erreur. Les barres peuvent afficher 0 %."
+			spendLoadError = i18n.T(ctx, "org.flash.quotas.spend_unavailable")
 			break
 		}
 	}
@@ -220,9 +220,9 @@ func (h *Handler) getMemberQuotaPage(w http.ResponseWriter, r *http.Request) {
 			ContextOrgID: org.ID(),
 			Breadcrumbs: []common.BreadcrumbItem{
 				{Label: org.Name(), Href: "/orgs/" + orgSlug + "/usage"},
-				{Label: "Membres", Href: "/orgs/" + orgSlug + "/admin/members"},
+				{Label: i18n.T(ctx, "org.nav.members"), Href: "/orgs/" + orgSlug + "/admin/members"},
 				{Label: membership.User().DisplayName(), Href: ""},
-				{Label: "Budget", Href: ""},
+				{Label: i18n.T(ctx, "org.nav.budget"), Href: ""},
 			},
 		},
 	}
@@ -304,7 +304,7 @@ func (h *Handler) getApplicationQuotaPage(w http.ResponseWriter, r *http.Request
 	loadError := ""
 	if err != nil && !errors.Is(err, port.ErrNotFound) {
 		slog.ErrorContext(ctx, "could not load application budget", slogx.Error(err))
-		loadError = "Budget indisponible : le store a renvoyé une erreur. Le formulaire ci-dessous reste éditable mais le total dépensé peut être inexact."
+		loadError = i18n.T(ctx, "org.flash.quotas.budget_unavailable")
 	}
 
 	orgCurrency := org.Currency()
@@ -325,7 +325,7 @@ func (h *Handler) getApplicationQuotaPage(w http.ResponseWriter, r *http.Request
 	for _, e := range []error{dailyErr, monthlyErr, yearlyErr} {
 		if e != nil {
 			slog.ErrorContext(ctx, "could not load application spend", slogx.Error(e))
-			spendLoadError = "Consommation indisponible : le store a renvoyé une erreur. Les barres peuvent afficher 0 %."
+			spendLoadError = i18n.T(ctx, "org.flash.quotas.spend_unavailable")
 			break
 		}
 	}
@@ -356,9 +356,9 @@ func (h *Handler) getApplicationQuotaPage(w http.ResponseWriter, r *http.Request
 			ContextOrgID: org.ID(),
 			Breadcrumbs: []common.BreadcrumbItem{
 				{Label: org.Name(), Href: "/orgs/" + orgSlug + "/usage"},
-				{Label: "Applications", Href: "/orgs/" + orgSlug + "/admin/applications"},
+				{Label: i18n.T(ctx, "org.nav.applications"), Href: "/orgs/" + orgSlug + "/admin/applications"},
 				{Label: app.Name(), Href: "/orgs/" + orgSlug + "/admin/applications/" + string(appID) + "/edit"},
-				{Label: "Budget", Href: ""},
+				{Label: i18n.T(ctx, "org.nav.budget"), Href: ""},
 			},
 		},
 	}
@@ -476,13 +476,13 @@ func parseQuotaBudgetFields(r *http.Request, stored model.Quota) (daily, monthly
 	if errD != nil || errM != nil || errY != nil {
 		fieldErrors = make(map[string]string)
 		if errD != nil {
-			fieldErrors["daily_budget"] = errD.Error()
+			fieldErrors["daily_budget"] = localizedError(r.Context(), errD)
 		}
 		if errM != nil {
-			fieldErrors["monthly_budget"] = errM.Error()
+			fieldErrors["monthly_budget"] = localizedError(r.Context(), errM)
 		}
 		if errY != nil {
-			fieldErrors["yearly_budget"] = errY.Error()
+			fieldErrors["yearly_budget"] = localizedError(r.Context(), errY)
 		}
 	}
 	return daily, monthly, yearly, fieldErrors
@@ -620,7 +620,7 @@ func (h *Handler) renderQuotaFormError(w http.ResponseWriter, r *http.Request, c
 	spendLoadError := ""
 	if spendErr != nil {
 		slog.ErrorContext(ctx, "could not load "+cfg.LoadLog+" spend for re-render", slogx.Error(spendErr))
-		spendLoadError = "Consommation indisponible : le store a renvoyé une erreur. Les barres peuvent afficher 0 %."
+		spendLoadError = i18n.T(ctx, "org.flash.quotas.spend_unavailable")
 	}
 	loadError := ""
 	if spendLoadError != "" {
@@ -677,7 +677,7 @@ func (h *Handler) renderOrgQuotaFormError(w http.ResponseWriter, r *http.Request
 		},
 		Breadcrumbs: []common.BreadcrumbItem{
 			{Label: org.Name(), Href: "/orgs/" + orgSlug + "/usage"},
-			{Label: "Budget", Href: "/orgs/" + orgSlug + "/admin/quota"},
+			{Label: i18n.T(ctx, "org.nav.budget"), Href: "/orgs/" + orgSlug + "/admin/quota"},
 		},
 		Existing: existing,
 	}, fieldErrors)
@@ -700,9 +700,9 @@ func (h *Handler) renderMemberQuotaFormError(w http.ResponseWriter, r *http.Requ
 		},
 		Breadcrumbs: []common.BreadcrumbItem{
 			{Label: org.Name(), Href: "/orgs/" + orgSlug + "/usage"},
-			{Label: "Membres", Href: "/orgs/" + orgSlug + "/admin/members"},
+			{Label: i18n.T(ctx, "org.nav.members"), Href: "/orgs/" + orgSlug + "/admin/members"},
 			{Label: membership.User().DisplayName(), Href: ""},
-			{Label: "Budget", Href: ""},
+			{Label: i18n.T(ctx, "org.nav.budget"), Href: ""},
 		},
 		Existing: existing,
 	}, fieldErrors)
@@ -723,9 +723,9 @@ func (h *Handler) renderApplicationQuotaFormError(w http.ResponseWriter, r *http
 		},
 		Breadcrumbs: []common.BreadcrumbItem{
 			{Label: org.Name(), Href: "/orgs/" + orgSlug + "/usage"},
-			{Label: "Applications", Href: "/orgs/" + orgSlug + "/admin/applications"},
+			{Label: i18n.T(ctx, "org.nav.applications"), Href: "/orgs/" + orgSlug + "/admin/applications"},
 			{Label: app.Name(), Href: "/orgs/" + orgSlug + "/admin/applications/" + appID + "/edit"},
-			{Label: "Budget", Href: ""},
+			{Label: i18n.T(ctx, "org.nav.budget"), Href: ""},
 		},
 		Existing: existing,
 	}, fieldErrors)
@@ -793,20 +793,39 @@ func parseBudgetField(v string) (*int64, error) {
 	}
 	f, err := strconv.ParseFloat(v, 64)
 	if err != nil {
-		return nil, fmt.Errorf("valeur invalide %q : nombre attendu (ex. 10.50)", v)
+		return nil, formError{key: "org.errors.quotas.not_a_number", args: []any{v}}
 	}
 	if math.IsNaN(f) {
-		return nil, errors.New("valeur invalide : NaN n'est pas un plafond acceptable")
+		return nil, formError{key: "org.errors.quotas.nan"}
 	}
 	if math.IsInf(f, 0) {
-		return nil, errors.New("valeur invalide : un nombre infini n'est pas un plafond acceptable")
+		return nil, formError{key: "org.errors.quotas.infinite"}
 	}
 	if f < 0 {
-		return nil, fmt.Errorf("valeur invalide %q : le plafond doit être positif ou nul", v)
+		return nil, formError{key: "org.errors.quotas.negative", args: []any{v}}
 	}
 	if f > float64(maxBudgetUnits) {
-		return nil, fmt.Errorf("valeur invalide %q : le plafond dépasse le maximum supporté (%d)", v, maxBudgetUnits)
+		return nil, formError{key: "org.errors.quotas.too_large", args: []any{v, strconv.FormatInt(maxBudgetUnits, 10)}}
 	}
 	mc := int64(f * 1_000_000)
 	return &mc, nil
+}
+
+// formError is a form validation message built where no request context is
+// at hand. Error renders it unlocalized; localizedError renders it in the
+// request language.
+type formError struct {
+	key  string
+	args []any
+}
+
+func (e formError) Error() string { return i18n.T(context.Background(), e.key, e.args...) }
+
+// localizedError returns the message of err in the language of ctx.
+func localizedError(ctx context.Context, err error) string {
+	var fe formError
+	if errors.As(err, &fe) {
+		return i18n.T(ctx, fe.key, fe.args...)
+	}
+	return err.Error()
 }

@@ -1,12 +1,14 @@
 package component
 
 import (
-	"fmt"
+	"context"
+	"strconv"
 	"time"
 
 	"github.com/xolo-gateway/xolo/internal/core/model"
 	commonComp "github.com/xolo-gateway/xolo/internal/http/handler/webui/common/component"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/chart"
+	"github.com/xolo-gateway/xolo/internal/i18n"
 )
 
 // OverviewPageVModel backs the platform overview, the landing screen of the
@@ -96,9 +98,8 @@ func overviewDatasets(vmodel OverviewPageVModel) []chart.Dataset {
 }
 
 // overviewSubtitle states the scope of the figures, as the mockup does.
-func overviewSubtitle(vmodel OverviewPageVModel) string {
-	return fmt.Sprintf(
-		"Consommation agrégée de %d organisation(s) · %d membre(s) · 30 derniers jours · devise de référence %s",
-		vmodel.TotalOrgs, vmodel.TotalMembers, vmodel.Currency,
+func overviewSubtitle(ctx context.Context, vmodel OverviewPageVModel) string {
+	return i18n.T(ctx, "admin.overview.subtitle",
+		strconv.Itoa(vmodel.TotalOrgs), strconv.Itoa(vmodel.TotalMembers), vmodel.Currency,
 	)
 }

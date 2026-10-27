@@ -3,6 +3,7 @@ package component
 import (
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/button"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/tabs"
+	"github.com/xolo-gateway/xolo/internal/i18n"
 )
 
 // Segment is one entry of a SegmentedNav.
@@ -36,7 +37,7 @@ templ SegmentedNav(segments []Segment) {
 					Disabled: true,
 					Class:    "h-[calc(100%-1px)] rounded-md font-medium",
 					Attributes: templ.Attributes{
-						"title": "Bientôt disponible",
+						"title": i18n.T(ctx, "common.coming_soon"),
 					},
 				}) {
 					{ s.Label }

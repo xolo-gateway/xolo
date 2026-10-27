@@ -8,14 +8,15 @@ import (
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/form"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/input"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/selectbox"
+	"github.com/xolo-gateway/xolo/internal/i18n"
 )
 
 // ── Invite Form ───────────────────────────────────────────────────────────────
 templ InviteForm(vmodel InviteFormVModel) {
-	@common.AppLayout(vmodel.AppLayoutVModel, common.WithTitle("Créer une invitation")) {
+	@common.AppLayout(vmodel.AppLayoutVModel, common.WithTitle(i18n.T(ctx, "org.invites.form.title"))) {
 		<div class="space-y-6">
 			@common.PageHeader(common.PageHeaderProps{
-				Title: "Créer une invitation",
+				Title: i18n.T(ctx, "org.invites.form.title"),
 			})
 			<form method="POST" action={ common.BaseURLString(ctx, common.WithPath("/orgs/", vmodel.Org.Slug(), "/admin/invites")) } class="space-y-4">
 				@card.Card() {
@@ -23,30 +24,30 @@ templ InviteForm(vmodel InviteFormVModel) {
 						<div class="space-y-4 pt-4">
 							<div class="space-y-2">
 								@form.Label(form.LabelProps{}) {
-									Email de l'invité (optionnel) 
+									{ i18n.T(ctx, "org.invites.form.email") }
 								}
-								@input.Input(input.Props{Name: "invitee_email", Type: "email", Placeholder: "utilisateur@exemple.com"})
+								@input.Input(input.Props{Name: "invitee_email", Type: "email", Placeholder: i18n.T(ctx, "org.invites.form.email_placeholder")})
 								@form.Description() {
-									Laisser vide pour un lien utilisable par n'importe qui. 
+									{ i18n.T(ctx, "org.invites.form.email_help") }
 								}
 							</div>
 							if len(vmodel.Teams) > 0 {
 								<div class="space-y-2">
 									@form.Label(form.LabelProps{}) {
-										Équipe
+										{ i18n.T(ctx, "org.invites.form.team") }
 										if !vmodel.TeamOnly {
-											{ " (optionnel)" }
+											{ i18n.T(ctx, "org.invites.form.optional_suffix") }
 										}
 									}
 									@selectbox.SelectBox(selectbox.Props{ID: "invite_team"}) {
 										@selectbox.Trigger(selectbox.TriggerProps{Name: "team_id", Attributes: inviteTeamAttributes(vmodel)}) {
-											@selectbox.Value(selectbox.ValueProps{Placeholder: "Aucune équipe"})
+											@selectbox.Value(selectbox.ValueProps{Placeholder: i18n.T(ctx, "org.invites.form.no_team")})
 										}
 										@selectbox.Content(selectbox.ContentProps{NoSearch: len(vmodel.Teams) < 8}) {
 											@selectbox.Group() {
 												if !vmodel.TeamOnly {
 													@selectbox.Item(selectbox.ItemProps{Value: "", Selected: true}) {
-														Aucune équipe
+														{ i18n.T(ctx, "org.invites.form.no_team") }
 													}
 												}
 												for i, team := range vmodel.Teams {
@@ -58,28 +59,28 @@ templ InviteForm(vmodel InviteFormVModel) {
 										}
 									}
 									@form.Description() {
-										L'invité rejoint aussi cette équipe en rejoignant l'organisation.
+										{ i18n.T(ctx, "org.invites.form.team_help") }
 									}
 								</div>
 							}
 							if vmodel.TeamOnly {
 								<input type="hidden" name="role" value={ model.RoleMember }/>
-								<p class="text-sm text-muted-foreground">L'invité rejoint l'organisation avec le rôle de membre.</p>
+								<p class="text-sm text-muted-foreground">{ i18n.T(ctx, "org.invites.form.member_role_note") }</p>
 							} else {
 							<div class="space-y-2">
 								@form.Label(form.LabelProps{}) {
-									Rôle 
+									{ i18n.T(ctx, "org.invites.form.role") }
 								}
 								@selectbox.SelectBox(selectbox.Props{ID: "invite_role"}) {
 									@selectbox.Trigger(selectbox.TriggerProps{Name: "role"}) {
-										@selectbox.Value(selectbox.ValueProps{Placeholder: "Sélectionner un rôle"})
+										@selectbox.Value(selectbox.ValueProps{Placeholder: i18n.T(ctx, "org.invites.form.role_placeholder")})
 									}
 									@selectbox.Content(selectbox.ContentProps{NoSearch: true}) {
 										@selectbox.Group() {
 											for _, r := range vmodel.OrgRoles {
 												{{ label := r.Name() }}
 												if r.BuiltinKind() != "" {
-													{{ label = BuiltinRoleLabel(r.BuiltinKind()) }}
+													{{ label = BuiltinRoleLabel(ctx, r.BuiltinKind()) }}
 												}
 												@selectbox.Item(selectbox.ItemProps{Value: string(r.ID()), Selected: r.BuiltinKind() == model.BuiltinKindMember}) {
 													{ label }
@@ -92,13 +93,13 @@ templ InviteForm(vmodel InviteFormVModel) {
 							}
 							<div class="space-y-2">
 								@form.Label(form.LabelProps{}) {
-									Date d'expiration (optionnel) 
+									{ i18n.T(ctx, "org.invites.form.expires_at") }
 								}
 								@input.Input(input.Props{Name: "expires_at", Type: "date"})
 							</div>
 							<div class="space-y-2">
 								@form.Label(form.LabelProps{}) {
-									Nombre max d'utilisations (optionnel) 
+									{ i18n.T(ctx, "org.invites.form.max_uses") }
 								}
 								@input.Input(input.Props{Name: "max_uses", Type: "number", Placeholder: "1"})
 							</div>
@@ -106,7 +107,7 @@ templ InviteForm(vmodel InviteFormVModel) {
 					}
 					<div class="pt-0 flex items-center p-6">
 						@button.Button(button.Props{Type: button.TypeSubmit}) {
-							Créer le lien
+							{ i18n.T(ctx, "org.invites.form.submit") }
 						}
 					</div>
 				}

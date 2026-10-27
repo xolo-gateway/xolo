@@ -1,6 +1,9 @@
 package component
 
 import (
+	"context"
+
+	"github.com/xolo-gateway/xolo/internal/i18n"
 	"github.com/xolo-gateway/xolo/internal/core/model"
 	common "github.com/xolo-gateway/xolo/internal/http/handler/webui/common/component"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/alert"
@@ -46,28 +49,28 @@ type TokensPageVModel struct {
 }
 
 templ TokensPage(vmodel TokensPageVModel) {
-	@common.AppLayout(vmodel.AppLayoutVModel, common.WithTitle("Clés API")) {
+	@common.AppLayout(vmodel.AppLayoutVModel, common.WithTitle(i18n.T(ctx, "profile.tokens.title"))) {
 		<div class="space-y-6">
 			<!-- Header -->
 			@common.PageHeader(common.PageHeaderProps{
-				Title:    "Clés API",
-				Subtitle: "Authentifiez vos requêtes vers le proxy compatible OpenAI.",
+				Title:    i18n.T(ctx, "profile.tokens.title"),
+				Subtitle: i18n.T(ctx, "profile.tokens.subtitle"),
 			}) {
 				@dialog.Trigger(dialog.TriggerProps{For: "token-create-dialog"}) {
 					@button.Button(button.Props{Size: button.SizeSm}) {
 						@icon.Plus(icon.Props{Class: "h-4 w-4 mr-2"})
-						Nouvelle clé
+						{ i18n.T(ctx, "profile.tokens.new") }
 					}
 				}
 			}
 			if vmodel.DeletedToken {
-				@common.InfoBanner(common.TonePositive, "Clé API supprimée avec succès.")
+				@common.InfoBanner(common.TonePositive, i18n.T(ctx, "profile.tokens.deleted"))
 			}
 			if vmodel.CreatedToken != "" {
 				@alert.Alert(alert.Props{Variant: alert.VariantDefault}) {
 					@alert.Description() {
-						<div class="font-medium">Clé API créée avec succès</div>
-						<div class="text-sm mt-1">Copiez cette clé maintenant, elle ne sera plus affichée.</div>
+						<div class="font-medium">{ i18n.T(ctx, "profile.tokens.created") }</div>
+						<div class="text-sm mt-1">{ i18n.T(ctx, "profile.tokens.copy_now") }</div>
 						<div class="mt-2">
 							@common.InlineSnippet(vmodel.CreatedToken)
 						</div>
@@ -79,24 +82,24 @@ templ TokensPage(vmodel TokensPageVModel) {
 			if len(vmodel.AuthTokens) == 0 {
 				@common.EmptyState(common.EmptyStateProps{
 					Icon:        icon.KeyRound,
-					Title:       "Aucune clé API",
-					Description: "Une clé API authentifie vos appels au proxy compatible OpenAI depuis vos applications et vos outils habituels.",
+					Title:       i18n.T(ctx, "profile.tokens.empty.title"),
+					Description: i18n.T(ctx, "profile.tokens.empty.description"),
 				})
 			} else {
 				@common.Section() {
 					@table.Table() {
 						@table.Header() {
 							@table.Head() {
-								Nom
+								{ i18n.T(ctx, "profile.tokens.col.name") }
 							}
 							@table.Head() {
-								Organisation
+								{ i18n.T(ctx, "profile.tokens.col.organization") }
 							}
 							@table.Head() {
-								Expiration
+								{ i18n.T(ctx, "profile.tokens.col.expiration") }
 							}
 							@table.Head(table.HeadProps{Class: "text-right"}) {
-								Actions
+								{ i18n.T(ctx, "profile.tokens.col.actions") }
 							}
 						}
 						@table.Body() {
@@ -107,20 +110,20 @@ templ TokensPage(vmodel TokensPageVModel) {
 									}
 									@table.Cell(table.CellProps{Class: "text-muted-foreground"}) {
 										{ tokenOrgName(token, vmodel.OrgMemberships) }
-										if team := tokenTeamName(token, vmodel.Teams); team != "" {
+										if team := tokenTeamName(ctx, token, vmodel.Teams); team != "" {
 											<span class="ml-1 text-xs text-muted-foreground">{ "· " + team }</span>
 										}
 									}
 									@table.Cell(table.CellProps{Class: "text-muted-foreground"}) {
-										{ tokenExpiry(token) }
+										{ tokenExpiry(ctx, token) }
 									}
 									@table.Cell(table.CellProps{Class: "text-right"}) {
 										@common.ConfirmDelete(common.ConfirmDeleteProps{
 											URL:          common.BaseURLString(ctx, common.WithPath("/profile/tokens/", string(token.ID()))),
-											Label:        "Révoquer",
-											Title:        "Révoquer cette clé API ?",
-											Description:  "Tout ce qui utilise cette clé cessera d'accéder à la passerelle. Cette action est irréversible.",
-											ConfirmLabel: "Révoquer",
+											Label:        i18n.T(ctx, "profile.tokens.revoke"),
+											Title:        i18n.T(ctx, "profile.tokens.revoke_title"),
+											Description:  i18n.T(ctx, "profile.tokens.revoke_description"),
+											ConfirmLabel: i18n.T(ctx, "profile.tokens.revoke"),
 										})
 									}
 								}
@@ -135,7 +138,7 @@ templ TokensPage(vmodel TokensPageVModel) {
 			@dialog.Content() {
 				@dialog.Header() {
 					@dialog.Title(dialog.TitleProps{}) {
-						Créer une clé API
+						{ i18n.T(ctx, "profile.tokens.dialog.title") }
 					}
 				}
 				<div class="space-y-4">
@@ -143,33 +146,33 @@ templ TokensPage(vmodel TokensPageVModel) {
 						@common.FlashError(vmodel.Error, "")
 					}
 					<div class="p-3 rounded-md bg-warning-tint text-warning text-sm">
-						<strong>Important :</strong> La clé API ne sera affichée qu'une seule fois après sa création. Assurez-vous de la copier dans un endroit sûr.
+						<strong>{ i18n.T(ctx, "profile.tokens.dialog.important") }</strong> { i18n.T(ctx, "profile.tokens.dialog.warning") }
 					</div>
 					<form id="token-create-form" method="POST" action={ common.BaseURL(ctx, common.WithPath("/profile/tokens")) } class="space-y-4" novalidate>
 						@form.Item() {
 							@form.Label(form.LabelProps{For: "token-label"}) {
-								Nom de la clé
+								{ i18n.T(ctx, "profile.tokens.form.label") }
 							}
 							@input.Input(input.Props{
 								Name:        "label",
 								ID:          "token-label",
-								Placeholder: "Ex: Application mobile, Script de sauvegarde...",
+								Placeholder: i18n.T(ctx, "profile.tokens.form.label_placeholder"),
 								Value:       vmodel.FormLabel,
 								HasError:    vmodel.Error == "label_required",
 							})
 							if vmodel.Error == "label_required" {
 								@form.Message(form.MessageProps{Variant: form.MessageVariantError}) {
-									Le nom de la clé est obligatoire.
+									{ i18n.T(ctx, "profile.tokens.form.label_required") }
 								}
 							}
 						}
 						@form.Item() {
 							@form.Label(form.LabelProps{For: "token-org-trigger"}) {
-								Organisation <span class="text-destructive">*</span>
+								{ i18n.T(ctx, "profile.tokens.form.organization") } <span class="text-destructive">*</span>
 							}
 							if len(vmodel.OrgMemberships) == 0 {
 								@form.Description() {
-									Vous n’appartenez à aucune organisation. Contactez un administrateur pour rejoindre une organisation avant de créer une clé API.
+									{ i18n.T(ctx, "profile.tokens.form.no_membership") }
 								}
 							} else {
 								@selectbox.SelectBox(selectbox.Props{ID: "token-org"}) {
@@ -178,7 +181,7 @@ templ TokensPage(vmodel TokensPageVModel) {
 										Name:     "org_id",
 										HasError: vmodel.Error == "org_required",
 									}) {
-										@selectbox.Value(selectbox.ValueProps{Placeholder: "— Sélectionnez une organisation —"})
+										@selectbox.Value(selectbox.ValueProps{Placeholder: i18n.T(ctx, "profile.tokens.form.organization_placeholder")})
 									}
 									@selectbox.Content(selectbox.ContentProps{NoSearch: true}) {
 										@selectbox.Group() {
@@ -196,7 +199,7 @@ templ TokensPage(vmodel TokensPageVModel) {
 									}
 									if vmodel.Error == "org_required" {
 										@form.Message(form.MessageProps{Variant: form.MessageVariantError}) {
-											Veuillez sélectionner une organisation.
+											{ i18n.T(ctx, "profile.tokens.form.organization_required") }
 										}
 									}
 								}
@@ -205,16 +208,16 @@ templ TokensPage(vmodel TokensPageVModel) {
 						if len(vmodel.Teams) > 0 {
 							@form.Item() {
 								@form.Label(form.LabelProps{For: "token-team-trigger"}) {
-									Équipe (optionnel)
+									{ i18n.T(ctx, "profile.tokens.form.team") }
 								}
 								@selectbox.SelectBox(selectbox.Props{ID: "token-team"}) {
 									@selectbox.Trigger(selectbox.TriggerProps{ID: "token-team-trigger", Name: "team_id"}) {
-										@selectbox.Value(selectbox.ValueProps{Placeholder: "Aucune équipe"})
+										@selectbox.Value(selectbox.ValueProps{Placeholder: i18n.T(ctx, "profile.tokens.form.no_team")})
 									}
 									@selectbox.Content(selectbox.ContentProps{NoSearch: len(vmodel.Teams) < 8}) {
 										@selectbox.Group() {
 											@selectbox.Item(selectbox.ItemProps{Value: "", Selected: vmodel.FormTeamID == ""}) {
-												Aucune équipe
+												{ i18n.T(ctx, "profile.tokens.form.no_team") }
 											}
 											for _, opt := range vmodel.Teams {
 												@selectbox.Item(selectbox.ItemProps{Value: string(opt.TeamID), Selected: vmodel.FormTeamID == opt.TeamID}) {
@@ -225,13 +228,13 @@ templ TokensPage(vmodel TokensPageVModel) {
 									}
 								}
 								@form.Description() {
-									Une clé rattachée à une équipe débite toujours son budget et n'accède qu'à ses modèles. L'équipe doit appartenir à l'organisation choisie.
+									{ i18n.T(ctx, "profile.tokens.form.team_help") }
 								}
 							}
 						}
 						@form.Item() {
 							@form.Label(form.LabelProps{For: "token-expires"}) {
-								Date d'expiration (optionnel)
+								{ i18n.T(ctx, "profile.tokens.form.expires_at") }
 							}
 							@input.Input(input.Props{ID: "token-expires", Name: "expires_at", Type: input.TypeDate, Value: vmodel.FormExpiresAt})
 						}
@@ -253,7 +256,7 @@ templ TokensPage(vmodel TokensPageVModel) {
 						Size:     button.SizeSm,
 						Disabled: len(vmodel.OrgMemberships) == 0,
 					}) {
-						Créer la clé
+						{ i18n.T(ctx, "profile.tokens.form.submit") }
 					}
 				}
 			}
@@ -286,11 +289,11 @@ func tokenOrgName(token model.AuthToken, memberships []model.Membership) string 
 	return string(token.OrgID())
 }
 
-func tokenExpiry(token model.AuthToken) string {
+func tokenExpiry(ctx context.Context, token model.AuthToken) string {
 	if token.ExpiresAt() == nil {
 		return "—"
 	}
-	return token.ExpiresAt().Format("02/01/2006")
+	return token.ExpiresAt().Format(i18n.T(ctx, "profile.date_layout"))
 }
 
 // apiCallExample shows how to spend a key, which is the first thing anyone
@@ -303,13 +306,13 @@ templ apiCallExample() {
 		@common.Section() {
 			@common.SectionHeader() {
 				@common.SectionTitle() {
-					Exemple d'appel
+					{ i18n.T(ctx, "profile.tokens.example.title") }
 				}
-				<span class="ml-auto text-xs text-muted-foreground">Compatible OpenAI</span>
+				<span class="ml-auto text-xs text-muted-foreground">{ i18n.T(ctx, "profile.tokens.example.compatible") }</span>
 			}
 			@common.SectionBody(common.SectionBodyProps{Class: "space-y-2.5"}) {
 				<div class="flex flex-wrap items-center gap-2 text-sm">
-					<span class="text-muted-foreground">URL de base :</span>
+					<span class="text-muted-foreground">{ i18n.T(ctx, "profile.tokens.example.base_url") }</span>
 					<span class="min-w-48 flex-1">
 						@common.InlineSnippet(baseURL)
 					</span>
@@ -317,7 +320,7 @@ templ apiCallExample() {
 				@common.Snippet("bash", "curl "+baseURL+"/chat/completions \\\n"+
 					"  -H \"Authorization: Bearer $XOLO_API_KEY\" \\\n"+
 					"  -H \"Content-Type: application/json\" \\\n"+
-					"  -d '{\"model\": \"mon-modele\", \"messages\": [{\"role\": \"user\", \"content\": \"Bonjour\"}]}'")
+					"  -d '{\"model\": \""+i18n.T(ctx, "profile.tokens.example.model")+"\", \"messages\": [{\"role\": \"user\", \"content\": \""+i18n.T(ctx, "profile.tokens.example.greeting")+"\"}]}'")
 			}
 		}
 	</div>
@@ -325,7 +328,7 @@ templ apiCallExample() {
 
 // tokenTeamName names the team a token is bound to, empty when none or when
 // the user left it.
-func tokenTeamName(token model.AuthToken, teams []TeamOption) string {
+func tokenTeamName(ctx context.Context, token model.AuthToken, teams []TeamOption) string {
 	if token.TeamID() == "" {
 		return ""
 	}
@@ -334,5 +337,5 @@ func tokenTeamName(token model.AuthToken, teams []TeamOption) string {
 			return t.TeamName
 		}
 	}
-	return "équipe quittée ou supprimée"
+	return i18n.T(ctx, "profile.tokens.team_gone")
 }

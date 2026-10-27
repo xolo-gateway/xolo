@@ -8,6 +8,7 @@ import (
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/progress"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/tooltip"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/utils"
+	"github.com/xolo-gateway/xolo/internal/i18n"
 )
 
 // Badge is *the* badge of the design system (§06 « Badges & états »), and the
@@ -123,7 +124,7 @@ templ BudgetGauge(pct int, projection int, label string) {
 				<span
 					class="absolute top-1/2 h-3 w-0.5 -translate-y-1/2 rounded-full bg-foreground"
 					style={ fmt.Sprintf("left:%d%%", projection) }
-					title="Projection de fin de période"
+					title={ i18n.T(ctx, "common.budget.projection") }
 				></span>
 			}
 		</div>
@@ -134,7 +135,7 @@ templ BudgetGauge(pct int, projection int, label string) {
 // docs/plan/rework-ux.md). The badge is what tells a user the blank is
 // deliberate rather than a failure to load.
 templ ComingSoon() {
-	@Badge(ToneNeutral, "Bientôt disponible")
+	@Badge(ToneNeutral, i18n.T(ctx, "common.coming_soon"))
 }
 
 // PendingValue renders the placeholder of a column the domain cannot fill yet:

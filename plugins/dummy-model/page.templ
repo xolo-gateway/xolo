@@ -5,6 +5,7 @@ import (
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/button"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/card"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/label"
+	"github.com/xolo-gateway/xolo/internal/i18n"
 )
 
 // page renders the dummy-model plugin configuration UI.
@@ -20,25 +21,24 @@ templ page(pd uiPageData) {
 		<body class="bg-background text-foreground min-h-screen p-4 space-y-4">
 			<h1 class="text-lg font-semibold">Dummy Model</h1>
 			<p class="text-sm text-muted-foreground">
-				Ce plugin retourne une réponse forgée sans appeler de LLM réel.
-				Utile pour les tests et la mise au point des pipelines.
+				{ i18n.T(ctx, "plugin.dummy_model.intro") }
 			</p>
 
 			if pd.Success {
 				@alert.Alert(alert.Props{Variant: alert.VariantDefault}) {
-					@alert.Description() { Configuration sauvegardée avec succès. }
+					@alert.Description() { i18n.T(ctx, "plugin.dummy_model.saved") }
 				}
 			}
 
 			<form method="POST" action="api/config" class="space-y-6">
 				@card.Card() {
 					@card.Header() {
-						@card.Title() { Modèle de réponse }
+						@card.Title() { i18n.T(ctx, "plugin.dummy_model.response_template.title") }
 					}
 					@card.Content() {
 						<div class="space-y-2">
 							@label.Label(label.Props{For: "response_template"}) {
-								Texte retourné (Markdown)
+								{ i18n.T(ctx, "plugin.dummy_model.response_template.label") }
 							}
 							<textarea
 								id="response_template"
@@ -48,10 +48,11 @@ templ page(pd uiPageData) {
 								placeholder={ defaultResponseTemplate }
 							>{ pd.Config.ResponseTemplate }</textarea>
 							<p class="text-xs text-muted-foreground">
-								Placeholders disponibles :
-								<code class="font-mono">&#123;&#123;.User&#125;&#125;</code> — identifiant de l'utilisateur,
-								<code class="font-mono">&#123;&#123;.LastMessage&#125;&#125;</code> — dernier message utilisateur.
-								Laissez vide pour utiliser le modèle par défaut.
+								{ i18n.T(ctx, "plugin.dummy_model.placeholders") }
+								<code class="font-mono">&#123;&#123;.User&#125;&#125;</code>
+								{ i18n.T(ctx, "plugin.dummy_model.placeholder_user") }
+								<code class="font-mono">&#123;&#123;.LastMessage&#125;&#125;</code>
+								{ i18n.T(ctx, "plugin.dummy_model.placeholder_last_message") + " " + i18n.T(ctx, "plugin.dummy_model.empty_default") }
 							</p>
 						</div>
 					}
@@ -59,7 +60,7 @@ templ page(pd uiPageData) {
 
 				<div class="flex justify-end">
 					@button.Button(button.Props{Type: button.TypeSubmit}) {
-						Sauvegarder
+						{ i18n.T(ctx, "plugin.dummy_model.save") }
 					}
 				</div>
 			</form>

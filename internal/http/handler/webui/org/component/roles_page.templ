@@ -11,6 +11,7 @@ import (
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/icon"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/selectbox"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/table"
+	"github.com/xolo-gateway/xolo/internal/i18n"
 )
 
 // RolesPage renders the permission matrix of the organisation.
@@ -23,11 +24,11 @@ import (
 // without touching this file.
 templ RolesPage(vmodel RolesPageVModel) {
 	{{ writable := common.HasPermission(ctx, vmodel.Org.ID(), rbac.PermRolesWrite) }}
-	@common.AppLayout(vmodel.AppLayoutVModel, common.WithTitle("Rôles — "+vmodel.Org.Name())) {
+	@common.AppLayout(vmodel.AppLayoutVModel, common.WithTitle(i18n.T(ctx, "org.roles.page_title", vmodel.Org.Name()))) {
 		<div class="space-y-3.5">
 			@common.PageHeader(common.PageHeaderProps{
-				Title:    "Rôles & permissions",
-				Subtitle: "Matrice des permissions appliquée aux membres et aux applications M2M.",
+				Title:    i18n.T(ctx, "org.roles.title"),
+				Subtitle: i18n.T(ctx, "org.roles.subtitle"),
 			}) {
 				if writable {
 					@button.Button(button.Props{
@@ -36,43 +37,43 @@ templ RolesPage(vmodel RolesPageVModel) {
 						Href:  common.BaseURLString(ctx, common.WithPath("/orgs/", vmodel.Org.Slug(), "/admin/roles/new")),
 					}) {
 						@icon.Plus(icon.Props{Class: "size-3.5"})
-						Nouveau rôle
+						{ i18n.T(ctx, "org.roles.new_role") }
 					}
 				}
 			}
 			if vmodel.Success != "" {
-				@common.InfoBanner(common.TonePositive, "Opération réussie.")
+				@common.InfoBanner(common.TonePositive, i18n.T(ctx, "org.roles.success"))
 			}
 			if len(vmodel.Roles) == 0 {
 				@common.EmptyState(common.EmptyStateProps{
 					Icon:        icon.Shield,
-					Title:       "Aucun rôle",
-					Description: "Un rôle est un jeu d'autorisations ; chaque membre et chaque application en porte un ou plusieurs.",
+					Title:       i18n.T(ctx, "org.roles.empty_title"),
+					Description: i18n.T(ctx, "org.roles.empty_description"),
 				}) {
 					if writable {
 						@button.Button(button.Props{
 							Size: button.SizeSm,
 							Href: common.BaseURLString(ctx, common.WithPath("/orgs/", vmodel.Org.Slug(), "/admin/roles/new")),
 						}) {
-							Nouveau rôle
+							{ i18n.T(ctx, "org.roles.new_role") }
 						}
 					}
 				}
 			} else {
-				{{ groups := filterCatalog(vmodel) }}
+				{{ groups := filterCatalog(ctx, vmodel) }}
 				@rolesFilterBar(vmodel, countPermissions(groups))
 				if len(groups) == 0 {
 					@common.EmptyState(common.EmptyStateProps{
 						Icon:        icon.SearchX,
-						Title:       "Aucune permission ne correspond",
-						Description: "Aucune permission du catalogue ne répond à ces critères. Élargissez la recherche ou retirez le filtre de rôle.",
+						Title:       i18n.T(ctx, "org.roles.no_match_title"),
+						Description: i18n.T(ctx, "org.roles.no_match_description"),
 					}) {
 						@button.Button(button.Props{
 							Variant: button.VariantOutline,
 							Size:    button.SizeSm,
 							Href:    common.BaseURLString(ctx, common.WithPath("/orgs/", vmodel.Org.Slug(), "/admin/roles")),
 						}) {
-							Réinitialiser les filtres
+							{ i18n.T(ctx, "org.roles.reset_filters") }
 						}
 					}
 				} else {
@@ -88,7 +89,7 @@ templ RolesPage(vmodel RolesPageVModel) {
 									la largeur de son nom (`w-px` + `whitespace-nowrap`) et
 									pousse la matrice contre le bord droit. -->
 									@table.Head(table.HeadProps{Class: "sticky left-0 z-10 w-full bg-row-hover"}) {
-										Permission
+										{ i18n.T(ctx, "org.roles.permission_column") }
 									}
 									for _, role := range vmodel.Roles {
 										@table.Head(table.HeadProps{Class: "w-px whitespace-nowrap text-center"}) {
@@ -103,7 +104,7 @@ templ RolesPage(vmodel RolesPageVModel) {
 											@table.Row() {
 												@table.Cell(table.CellProps{Class: "sticky left-0 z-10 bg-card"}) {
 													<div class="font-mono text-xs font-semibold">{ string(def.Code) }</div>
-													<div class="mt-0.5 text-xs text-muted-foreground">{ def.Label }</div>
+													<div class="mt-0.5 text-xs text-muted-foreground">{ common.PermissionLabel(ctx, def) }</div>
 												}
 												for _, role := range vmodel.Roles {
 													@table.Cell(table.CellProps{Class: "text-center"}) {
@@ -119,13 +120,9 @@ templ RolesPage(vmodel RolesPageVModel) {
 					}
 					@common.SectionNote() {
 						if writable {
-							Cochez une case pour accorder la permission au rôle. Une permission de
-							lecture accordée implicitement par une permission d'écriture est marquée
-							et ne se retire pas séparément ; le rôle propriétaire autorise tout et
-							ne se restreint pas.
+							{ i18n.T(ctx, "org.roles.note_writable") }
 						} else {
-							Consultation seule : accorder ou retirer une permission demande le droit
-							de gérer les rôles.
+							{ i18n.T(ctx, "org.roles.note_readonly") }
 						}
 					}
 				}
@@ -153,33 +150,33 @@ templ rolesFilterBar(vmodel RolesPageVModel, matches int) {
 				ID:          "permission-search",
 				Name:        "q",
 				Value:       vmodel.Query,
-				Placeholder: "Rechercher une permission… (ex : quota, :write)",
+				Placeholder: i18n.T(ctx, "org.roles.search_placeholder"),
 			})
 			@selectbox.SelectBox(selectbox.Props{ID: "role-filter", Class: "w-56"}) {
 				@selectbox.Trigger(selectbox.TriggerProps{
 					Name:       "role",
 					Attributes: templ.Attributes{"data-xolo-submit-on-change": true},
 				}) {
-					@selectbox.Value(selectbox.ValueProps{Placeholder: "Tous les rôles"})
+					@selectbox.Value(selectbox.ValueProps{Placeholder: i18n.T(ctx, "org.roles.all_roles")})
 				}
 				@selectbox.Content(selectbox.ContentProps{NoSearch: true}) {
 					@selectbox.Group() {
 						@selectbox.Item(selectbox.ItemProps{Value: "", Selected: vmodel.RoleID == ""}) {
-							Tous les rôles
+							{ i18n.T(ctx, "org.roles.all_roles") }
 						}
 						for _, role := range vmodel.Roles {
 							@selectbox.Item(selectbox.ItemProps{
 								Value:    string(role.ID()),
 								Selected: string(role.ID()) == vmodel.RoleID,
 							}) {
-								Accordées par { role.Name() }
+								{ i18n.T(ctx, "org.roles.granted_by", role.Name()) }
 							}
 						}
 					}
 				}
 			}
 			@button.Button(button.Props{Type: button.TypeSubmit, Size: button.SizeSm, Variant: button.VariantOutline}) {
-				Filtrer
+				{ i18n.T(ctx, "org.roles.filter") }
 			}
 			if filtered {
 				@button.Button(button.Props{
@@ -188,10 +185,10 @@ templ rolesFilterBar(vmodel RolesPageVModel, matches int) {
 					Type:    button.TypeButton,
 					Href:    action,
 				}) {
-					Réinitialiser
+					{ i18n.T(ctx, "org.roles.reset") }
 				}
 				<span class="text-xs tnum text-muted-foreground">
-					{ strconv.Itoa(matches) } sur { strconv.Itoa(totalPermissions()) } permissions
+					{ i18n.T(ctx, "org.roles.match_count", strconv.Itoa(matches), strconv.Itoa(totalPermissions())) }
 				</span>
 			}
 		}
@@ -217,7 +214,7 @@ templ roleColumnHeader(vmodel RolesPageVModel, role model.Role, writable bool) {
 				<a
 					href={ templ.SafeURL(common.BaseURLString(ctx, common.WithPath("/orgs/", vmodel.Org.Slug(), "/admin/roles/", string(role.ID()), "/edit"))) }
 					class="text-sm font-semibold normal-case tracking-normal text-foreground hover:text-primary"
-					title="Modifier ce rôle"
+					title={ i18n.T(ctx, "org.roles.edit_role") }
 				>
 					{ role.Name() }
 				</a>
@@ -227,9 +224,9 @@ templ roleColumnHeader(vmodel RolesPageVModel, role model.Role, writable bool) {
 			if writable && !role.Builtin() {
 				@common.ConfirmDelete(common.ConfirmDeleteProps{
 					URL:         common.BaseURLString(ctx, common.WithPath("/orgs/", vmodel.Org.Slug(), "/admin/roles/", string(role.ID()))),
-					Tooltip:     "Supprimer ce rôle",
-					Title:       "Supprimer ce rôle ?",
-					Description: "Les membres et les applications qui le portent perdront les permissions qu'il accordait.",
+					Tooltip:     i18n.T(ctx, "org.roles.delete_tooltip"),
+					Title:       i18n.T(ctx, "org.roles.delete_title"),
+					Description: i18n.T(ctx, "org.roles.delete_description"),
 					Class:       "size-5 rounded-sm [&_svg]:size-3.5",
 				})
 			}
@@ -239,9 +236,9 @@ templ roleColumnHeader(vmodel RolesPageVModel, role model.Role, writable bool) {
 		parce que la règle de densité des tables met tout <th> en capitales. -->
 		<span class="normal-case tracking-normal">
 			if role.Builtin() {
-				@common.Badge(common.ToneNeutral, "intégré")
+				@common.Badge(common.ToneNeutral, i18n.T(ctx, "org.roles.builtin"))
 			} else {
-				@common.Badge(common.ToneInfo, "personnalisé")
+				@common.Badge(common.ToneInfo, i18n.T(ctx, "org.roles.custom"))
 			}
 		</span>
 	</div>
@@ -277,7 +274,7 @@ templ permissionCellControl(vmodel RolesPageVModel, role model.Role, perm rbac.P
 		case cell.AlwaysGranted:
 			<span
 				class="inline-flex size-4.5 items-center justify-center rounded-sm bg-success-tint text-success"
-				title="Le rôle propriétaire autorise toutes les permissions"
+				title={ i18n.T(ctx, "org.roles.owner_grants_all") }
 			>
 				@icon.Check(icon.Props{Class: "size-3"})
 			</span>
@@ -286,7 +283,7 @@ templ permissionCellControl(vmodel RolesPageVModel, role model.Role, perm rbac.P
 			piège, elle se recocherait seule à la lecture suivante. -->
 			<span
 				class="inline-flex size-4.5 items-center justify-center rounded-sm bg-success-tint text-success/60"
-				title={ "Accordée implicitement par " + cell.ImpliedBy }
+				title={ i18n.T(ctx, "org.roles.implied_by", cell.ImpliedBy) }
 			>
 				@icon.Check(icon.Props{Class: "size-3"})
 			</span>
@@ -309,7 +306,7 @@ templ permissionCellControl(vmodel RolesPageVModel, role model.Role, perm rbac.P
 					Checked: cell.Granted,
 					Attributes: templ.Attributes{
 						"data-xolo-submit-on-change": true,
-						"title":                      permissionToggleTitle(cell, perm),
+						"title":                      permissionToggleTitle(ctx, cell, perm),
 					},
 				})
 			</form>
@@ -327,11 +324,11 @@ templ permissionMark(granted bool) {
 	if granted {
 		<span
 			class="inline-flex size-4.5 items-center justify-center rounded-sm bg-success-tint text-success"
-			title="Autorisé"
+			title={ i18n.T(ctx, "org.roles.granted") }
 		>
 			@icon.Check(icon.Props{Class: "size-3"})
 		</span>
 	} else {
-		<span class="inline-block text-muted-foreground/40" title="Non autorisé">·</span>
+		<span class="inline-block text-muted-foreground/40" title={ i18n.T(ctx, "org.roles.not_granted") }>·</span>
 	}
 }

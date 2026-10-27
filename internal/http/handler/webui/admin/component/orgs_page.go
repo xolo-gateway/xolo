@@ -4,6 +4,7 @@ import (
 	"context"
 
 	common "github.com/xolo-gateway/xolo/internal/http/handler/webui/common/component"
+	"github.com/xolo-gateway/xolo/internal/i18n"
 )
 
 // OrgStatusActive and OrgStatusInactive are the values of the `status` query
@@ -35,22 +36,22 @@ func orgsSegments(ctx context.Context, vmodel OrgsPageVModel) []common.Segment {
 	}
 
 	return []common.Segment{
-		{Label: "Toutes", Href: href(""), Active: vmodel.Status == ""},
-		{Label: "Actives", Href: href(OrgStatusActive), Active: vmodel.Status == OrgStatusActive},
-		{Label: "En dépassement", Disabled: true},
-		{Label: "Inactives", Href: href(OrgStatusInactive), Active: vmodel.Status == OrgStatusInactive},
+		{Label: i18n.T(ctx, "admin.orgs.filter.all"), Href: href(""), Active: vmodel.Status == ""},
+		{Label: i18n.T(ctx, "admin.orgs.filter.active"), Href: href(OrgStatusActive), Active: vmodel.Status == OrgStatusActive},
+		{Label: i18n.T(ctx, "admin.orgs.filter.over_budget"), Disabled: true},
+		{Label: i18n.T(ctx, "admin.orgs.filter.inactive"), Href: href(OrgStatusInactive), Active: vmodel.Status == OrgStatusInactive},
 	}
 }
 
 // orgsSuccessMessage translates the redirect marker of a mutation into the
 // sentence the banner shows.
-func orgsSuccessMessage(success string) string {
+func orgsSuccessMessage(ctx context.Context, success string) string {
 	switch success {
 	case "created":
-		return "L'organisation a été créée."
+		return i18n.T(ctx, "admin.orgs.success.created")
 	case "saved":
-		return "Les modifications ont été enregistrées."
+		return i18n.T(ctx, "admin.orgs.success.saved")
 	default:
-		return "Opération réussie."
+		return i18n.T(ctx, "admin.orgs.success.default")
 	}
 }

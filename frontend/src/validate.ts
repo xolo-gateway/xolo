@@ -1,6 +1,7 @@
 import type { Edge, Node } from '@xyflow/react'
 import type { NodeTypeDescriptor, PipelineNodeType, PluginNodeData } from './types'
 import { inspectorPorts } from './components/NodeInspector'
+import { t } from './i18n'
 
 export interface GraphValidation {
   valid: boolean
@@ -42,15 +43,15 @@ export function validateGraph(
   }
 
   if (missing.length === 0) {
-    return { valid: true, message: 'Graphe valide — tous les ports requis sont connectés.' }
+    return { valid: true, message: t('validate.ok') }
   }
 
   const head = missing.slice(0, 3).join(', ')
-  const rest = missing.length > 3 ? ` et ${missing.length - 3} autre(s)` : ''
+  const rest = missing.length > 3 ? t('validate.missingRest', { count: missing.length - 3 }) : ''
 
   return {
     valid: false,
-    message: `Ports requis non connectés : ${head}${rest}.`,
+    message: t('validate.missing', { ports: head, rest }),
   }
 }
 
@@ -65,13 +66,13 @@ function compareProblem(node: Node, connected: Set<string>): string | null {
   const hasValue = connected.has(portKey(node.id, 'value'))
   const hasText = connected.has(portKey(node.id, 'text'))
   const name = `compare (${node.id})`
-  if (!hasValue && !hasText) return `${name} : connectez le port value ou le port text.`
-  if (hasValue && hasText) return `${name} : value et text sont connectés, la requête sera refusée à l'exécution ; n'en gardez qu'un.`
+  if (!hasValue && !hasText) return t('validate.compare.noInput', { name })
+  if (hasValue && hasText) return t('validate.compare.both', { name })
   if (hasText) {
-    if (!(data.expected ?? '').trim()) return `${name} : renseignez la chaîne attendue.`
+    if (!(data.expected ?? '').trim()) return t('validate.compare.noExpected', { name })
     // The engine reads an absent op as eq on text; only an explicit ordering op is wrong.
     const op = data.op || 'eq'
-    if (op !== 'eq' && op !== 'ne') return `${name} : l'opérateur ${op} ne s'applique pas à text, choisissez eq ou ne.`
+    if (op !== 'eq' && op !== 'ne') return t('validate.compare.badOperator', { name, op })
   }
   return null
 }

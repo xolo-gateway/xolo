@@ -1,8 +1,11 @@
 package component
 
 import (
+	"context"
+
 	"github.com/xolo-gateway/xolo/internal/core/model"
 	common "github.com/xolo-gateway/xolo/internal/http/handler/webui/common/component"
+	"github.com/xolo-gateway/xolo/internal/i18n"
 )
 
 type MiddlewaresPageVModel struct {
@@ -51,9 +54,9 @@ func middlewareTintClass(mw model.Middleware) string {
 //
 // A pipeline may chain several plugins; the first one is shown, since the row
 // has space for one identifier and the pipeline editor holds the full truth.
-func middlewarePluginName(mw model.Middleware) string {
-	for _, card := range PipelineCards(mw.Graph()) {
-		if card.Kind == "Plugin" {
+func middlewarePluginName(ctx context.Context, mw model.Middleware) string {
+	for _, card := range PipelineCards(ctx, mw.Graph()) {
+		if card.Type == model.NodeTypePlugin {
 			return card.Name
 		}
 	}
@@ -63,11 +66,11 @@ func middlewarePluginName(mw model.Middleware) string {
 
 // middlewareToggleTitle returns the tooltip of the enable switch, stating the
 // action rather than the state — the switch position already shows the state.
-func middlewareToggleTitle(mw model.Middleware) string {
+func middlewareToggleTitle(ctx context.Context, mw model.Middleware) string {
 	if mw.Enabled() {
-		return "Désactiver ce middleware"
+		return i18n.T(ctx, "org.middleware_toggle.disable")
 	}
-	return "Activer ce middleware"
+	return i18n.T(ctx, "org.middleware_toggle.enable")
 }
 
 // TargetKey builds the option value/key for a target model. It uses ":" as a

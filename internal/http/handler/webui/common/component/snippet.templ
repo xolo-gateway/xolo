@@ -4,6 +4,7 @@ import (
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/code"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/copybutton"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/utils"
+	"github.com/xolo-gateway/xolo/internal/i18n"
 )
 
 // Snippet renders a copyable block of code.
@@ -30,7 +31,7 @@ templ Snippet(language, content string) {
 		<div class="absolute top-1 right-1">
 			@copybutton.CopyButton(copybutton.Props{
 				TargetID: blockID,
-				Attrs:    templ.Attributes{"title": "Copier"},
+				Attrs:    templ.Attributes{"title": i18n.T(ctx, "common.copy")},
 			})
 		</div>
 	</div>
@@ -61,7 +62,7 @@ templ InlineSnippet(content string) {
 		@copybutton.CopyButton(copybutton.Props{
 			TargetID: valueID,
 			Class:    "shrink-0",
-			Attrs:    templ.Attributes{"title": "Copier"},
+			Attrs:    templ.Attributes{"title": i18n.T(ctx, "common.copy")},
 		})
 	</div>
 }

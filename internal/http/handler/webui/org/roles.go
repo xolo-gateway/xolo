@@ -17,6 +17,7 @@ import (
 	webcommon "github.com/xolo-gateway/xolo/internal/http/handler/webui/common"
 	common "github.com/xolo-gateway/xolo/internal/http/handler/webui/common/component"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/org/component"
+	"github.com/xolo-gateway/xolo/internal/i18n"
 )
 
 func (h *Handler) getRolesPage(w http.ResponseWriter, r *http.Request) {
@@ -52,7 +53,7 @@ func (h *Handler) getRolesPage(w http.ResponseWriter, r *http.Request) {
 			ContextOrgID: org.ID(),
 			Breadcrumbs: []common.BreadcrumbItem{
 				{Label: org.Name(), Href: "/orgs/" + orgSlug + "/usage"},
-				{Label: "Rôles", Href: ""},
+				{Label: i18n.T(ctx, "org.nav.roles"), Href: ""},
 			},
 		},
 	}
@@ -120,7 +121,7 @@ func (h *Handler) createRole(w http.ResponseWriter, r *http.Request) {
 
 	name := strings.TrimSpace(r.FormValue("name"))
 	if name == "" {
-		h.renderRoleForm(w, r, org, nil, true, "Le nom du rôle est requis.")
+		h.renderRoleForm(w, r, org, nil, true, i18n.T(ctx, "org.errors.roles.name_required"))
 		return
 	}
 
@@ -173,7 +174,7 @@ func (h *Handler) updateRole(w http.ResponseWriter, r *http.Request) {
 
 	// The owner role bypasses all permission checks and is not editable.
 	if role.BuiltinKind() == model.BuiltinKindOwner {
-		http.Error(w, "Ce rôle ne peut pas être modifié", http.StatusBadRequest)
+		http.Error(w, i18n.T(ctx, "org.errors.roles.not_editable"), http.StatusBadRequest)
 		return
 	}
 
@@ -184,7 +185,7 @@ func (h *Handler) updateRole(w http.ResponseWriter, r *http.Request) {
 	if !role.Builtin() {
 		name := strings.TrimSpace(r.FormValue("name"))
 		if name == "" {
-			h.renderRoleForm(w, r, org, role, false, "Le nom du rôle est requis.")
+			h.renderRoleForm(w, r, org, role, false, i18n.T(ctx, "org.errors.roles.name_required"))
 			return
 		}
 		opts = append(opts, model.WithRoleName(name), model.WithRoleDescription(strings.TrimSpace(r.FormValue("description"))))
@@ -240,7 +241,7 @@ func (h *Handler) toggleRolePermission(w http.ResponseWriter, r *http.Request) {
 	// The owner role bypasses all permission checks; its permission list is not
 	// what makes it powerful, so editing it would be misleading.
 	if role.BuiltinKind() == model.BuiltinKindOwner {
-		http.Error(w, "Ce rôle ne peut pas être modifié", http.StatusBadRequest)
+		http.Error(w, i18n.T(ctx, "org.errors.roles.not_editable"), http.StatusBadRequest)
 		return
 	}
 
@@ -337,7 +338,7 @@ func (h *Handler) deleteRole(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if errors.Is(err, port.ErrNotAllowed) {
-			http.Error(w, "Ce rôle ne peut pas être supprimé", http.StatusBadRequest)
+			http.Error(w, i18n.T(ctx, "org.errors.roles.not_deletable"), http.StatusBadRequest)
 			return
 		}
 		slog.ErrorContext(ctx, "could not delete role", slogx.Error(err))
@@ -361,19 +362,19 @@ func (h *Handler) renderRoleForm(w http.ResponseWriter, r *http.Request, org mod
 		}
 	}
 
-	title := "Nouveau rôle"
-	crumb := "Nouveau"
+	title := i18n.T(ctx, "org.nav.roles_new")
+	crumb := i18n.T(ctx, "org.nav.new")
 	if !isNew && role != nil {
 		title = role.Name()
 		crumb = role.Name()
 	}
 
 	vmodel := component.RoleFormVModel{
-		Org:          org,
-		Role:         role,
-		IsNew:        isNew,
-		Error:        formErr,
-		Selected:     selected,
+		Org:      org,
+		Role:     role,
+		IsNew:    isNew,
+		Error:    formErr,
+		Selected: selected,
 		AppLayoutVModel: common.AppLayoutVModel{
 			User:         user,
 			SelectedItem: "org-" + orgSlug + "-roles",
@@ -383,7 +384,7 @@ func (h *Handler) renderRoleForm(w http.ResponseWriter, r *http.Request, org mod
 			ContextOrgID: org.ID(),
 			Breadcrumbs: []common.BreadcrumbItem{
 				{Label: org.Name(), Href: "/orgs/" + orgSlug + "/usage"},
-				{Label: "Rôles", Href: "/orgs/" + orgSlug + "/admin/roles"},
+				{Label: i18n.T(ctx, "org.nav.roles"), Href: "/orgs/" + orgSlug + "/admin/roles"},
 				{Label: crumb, Href: ""},
 			},
 		},

@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/xolo-gateway/xolo/internal/core/port"
+	"github.com/xolo-gateway/xolo/internal/i18n"
 )
 
 // RejectLocked answers 403 when err is a write refused because the resource
@@ -14,9 +15,9 @@ import (
 func RejectLocked(w http.ResponseWriter, r *http.Request, err error) bool {
 	switch {
 	case errors.Is(err, port.ErrOwnershipDenied):
-		HandleError(w, r, NewError(err.Error(), "Cette ressource est gérée par le système de pilotage : elle ne peut pas être modifiée depuis cette instance.", http.StatusForbidden))
+		HandleError(w, r, NewError(err.Error(), i18n.T(r.Context(), "error.resource_managed"), http.StatusForbidden))
 	case errors.Is(err, port.ErrResourceDeleted):
-		HandleError(w, r, NewError(err.Error(), "Cette ressource est en cours de suppression : elle ne peut plus être modifiée.", http.StatusForbidden))
+		HandleError(w, r, NewError(err.Error(), i18n.T(r.Context(), "error.resource_deleting"), http.StatusForbidden))
 	default:
 		return false
 	}

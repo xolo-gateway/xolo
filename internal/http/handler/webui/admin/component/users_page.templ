@@ -1,6 +1,7 @@
 package component
 
 import (
+	"context"
 	"fmt"
 	"strconv"
 	"strings"
@@ -12,6 +13,7 @@ import (
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/pagination"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/table"
 	"github.com/xolo-gateway/xolo/internal/http/middleware/authz"
+	"github.com/xolo-gateway/xolo/internal/i18n"
 )
 
 type UsersPageVModel struct {
@@ -29,15 +31,15 @@ type UsersPageVModel struct {
 }
 
 templ UsersPage(vmodel UsersPageVModel) {
-	@commonComp.AppLayout(vmodel.AppLayoutVModel, commonComp.WithTitle("Utilisateurs")) {
+	@commonComp.AppLayout(vmodel.AppLayoutVModel, commonComp.WithTitle(i18n.T(ctx, "admin.users.title"))) {
 		@commonComp.PageHeader(commonComp.PageHeaderProps{
-			Title:    "Utilisateurs",
-			Subtitle: usersSubtitle(vmodel),
+			Title:    i18n.T(ctx, "admin.users.title"),
+			Subtitle: usersSubtitle(ctx, vmodel),
 		}) {
 			@commonComp.SearchFilter(commonComp.SearchFilterProps{
 				Name:        "q",
 				Value:       vmodel.Search,
-				Placeholder: "Nom, e-mail, identifiant…",
+				Placeholder: i18n.T(ctx, "admin.users.search_placeholder"),
 				Class:       "w-70",
 				Attributes: templ.Attributes{
 					"hx-get":     commonComp.BaseURLString(ctx, commonComp.WithPath("/admin/users")),
@@ -67,22 +69,22 @@ templ usersResults(vmodel UsersPageVModel) {
 			if vmodel.Search != "" {
 				@commonComp.EmptyState(commonComp.EmptyStateProps{
 					Icon:        icon.Search,
-					Title:       "Aucun utilisateur ne correspond",
-					Description: fmt.Sprintf("Aucun compte ne contient « %s » dans son nom, son e-mail ou son identifiant.", vmodel.Search),
+					Title:       i18n.T(ctx, "admin.users.no_match.title"),
+					Description: i18n.T(ctx, "admin.users.no_match.description", vmodel.Search),
 				}) {
 					@button.Button(button.Props{
 						Variant: button.VariantOutline,
 						Size:    button.SizeSm,
 						Href:    commonComp.BaseURLString(ctx, commonComp.WithPath("/admin/users")),
 					}) {
-						Effacer le filtre
+						{ i18n.T(ctx, "admin.users.clear_filter") }
 					}
 				}
 			} else {
 				@commonComp.EmptyState(commonComp.EmptyStateProps{
 					Icon:        icon.Users,
-					Title:       "Aucun utilisateur",
-					Description: "Les comptes sont provisionnés à la première connexion via le fournisseur d'identité.",
+					Title:       i18n.T(ctx, "admin.users.empty.title"),
+					Description: i18n.T(ctx, "admin.users.empty.description"),
 				})
 			}
 		} else {
@@ -90,25 +92,25 @@ templ usersResults(vmodel UsersPageVModel) {
 				@table.Table() {
 					@table.Header() {
 						@table.Head() {
-							Utilisateur
+							{ i18n.T(ctx, "admin.users.col.user") }
 						}
 						@table.Head() {
-							Fournisseur d'identité
+							{ i18n.T(ctx, "admin.users.col.identity_provider") }
 						}
 						@table.Head() {
-							Organisations
+							{ i18n.T(ctx, "admin.users.col.orgs") }
 						}
 						@table.Head() {
-							Rôles plateforme
+							{ i18n.T(ctx, "admin.users.col.platform_roles") }
 						}
 						@table.Head(table.HeadProps{Class: "text-right"}) {
-							Coût 30 j
+							{ i18n.T(ctx, "admin.users.col.cost_30d") }
 						}
 						@table.Head() {
-							Statut
+							{ i18n.T(ctx, "admin.users.col.status") }
 						}
 						@table.Head(table.HeadProps{Class: "text-right"}) {
-							Actions
+							{ i18n.T(ctx, "admin.users.col.actions") }
 						}
 					}
 					@table.Body() {
@@ -132,7 +134,7 @@ templ usersResults(vmodel UsersPageVModel) {
 								@table.Cell() {
 									<div class="flex flex-wrap gap-1">
 										for _, role := range user.Roles() {
-											@commonComp.Badge(roleTone(role), roleLabel(role))
+											@commonComp.Badge(roleTone(role), roleLabel(ctx, role))
 										}
 									</div>
 								}
@@ -141,13 +143,13 @@ templ usersResults(vmodel UsersPageVModel) {
 									utilisateur n'est exposé côté domaine ; la colonne
 									de la maquette reste en place mais sans valeur
 									(cf. lot 7 du plan). -->
-									@commonComp.PendingValue("Coût par utilisateur : bientôt disponible")
+									@commonComp.PendingValue(i18n.T(ctx, "admin.users.cost_pending"))
 								}
 								@table.Cell() {
 									if user.Active() {
-										@commonComp.Badge(commonComp.TonePositive, "Actif")
+										@commonComp.Badge(commonComp.TonePositive, i18n.T(ctx, "admin.users.status.active"))
 									} else {
-										@commonComp.Badge(commonComp.ToneNegative, "Inactif")
+										@commonComp.Badge(commonComp.ToneNegative, i18n.T(ctx, "admin.users.status.inactive"))
 									}
 								}
 								@table.Cell(table.CellProps{Class: "text-right"}) {
@@ -156,7 +158,7 @@ templ usersResults(vmodel UsersPageVModel) {
 										Size:    button.SizeSm,
 										Variant: button.VariantOutline,
 									}) {
-										Modifier
+										{ i18n.T(ctx, "admin.users.edit") }
 									}
 								}
 							}
@@ -178,7 +180,7 @@ templ usersPagination(vmodel UsersPageVModel) {
 				@pagination.Previous(pagination.PreviousProps{
 					Href:     usersPageURL(ctx, vmodel, vmodel.CurrentPage-1),
 					Disabled: !paginator.HasPrevious,
-					Label:    "Précédent",
+					Label:    i18n.T(ctx, "admin.pagination.previous"),
 				})
 				for _, page := range paginator.Pages {
 					@pagination.Item() {
@@ -193,7 +195,7 @@ templ usersPagination(vmodel UsersPageVModel) {
 				@pagination.Next(pagination.NextProps{
 					Href:     usersPageURL(ctx, vmodel, vmodel.CurrentPage+1),
 					Disabled: !paginator.HasNext,
-					Label:    "Suivant",
+					Label:    i18n.T(ctx, "admin.pagination.next"),
 				})
 			}
 		}
@@ -201,13 +203,13 @@ templ usersPagination(vmodel UsersPageVModel) {
 }
 
 // usersSubtitle states what the list holds, in the mockup's wording.
-func usersSubtitle(vmodel UsersPageVModel) string {
+func usersSubtitle(ctx context.Context, vmodel UsersPageVModel) string {
 	if vmodel.Search != "" {
-		return fmt.Sprintf("%d compte(s) correspondant à « %s » sur %d", len(vmodel.Users), vmodel.Search, vmodel.TotalUsers)
+		return i18n.T(ctx, "admin.users.subtitle.search", strconv.Itoa(len(vmodel.Users)), vmodel.Search, strconv.Itoa(vmodel.TotalUsers))
 	}
-	subtitle := fmt.Sprintf("%d compte(s) provisionné(s) à la connexion", vmodel.TotalUsers)
+	subtitle := i18n.T(ctx, "admin.users.subtitle.total", strconv.Itoa(vmodel.TotalUsers))
 	if vmodel.InactiveUsers > 0 {
-		subtitle += fmt.Sprintf(" · %d inactif(s)", vmodel.InactiveUsers)
+		subtitle += i18n.T(ctx, "admin.users.subtitle.inactive", strconv.Itoa(vmodel.InactiveUsers))
 	}
 	return subtitle
 }
@@ -226,12 +228,12 @@ func orgSummary(names []string) string {
 }
 
 // roleLabel translates a platform role code into the wording of the interface.
-func roleLabel(role string) string {
+func roleLabel(ctx context.Context, role string) string {
 	switch role {
 	case authz.RoleAdmin:
-		return "Administrateur"
+		return i18n.T(ctx, "admin.users.role.admin")
 	case authz.RoleUser:
-		return "Utilisateur"
+		return i18n.T(ctx, "admin.users.role.user")
 	default:
 		return role
 	}

@@ -22,6 +22,7 @@ import (
 	common "github.com/xolo-gateway/xolo/internal/http/handler/webui/common/component"
 	orgcomponent "github.com/xolo-gateway/xolo/internal/http/handler/webui/org/component"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/profile/component"
+	"github.com/xolo-gateway/xolo/internal/i18n"
 )
 
 const dashboardPageSize = 20
@@ -325,15 +326,15 @@ func (h *Handler) getDashboardPage(w http.ResponseWriter, r *http.Request) {
 		subscriptionProviders = append(subscriptionProviders, h.buildDashboardSubscriptionUsage(ctx, m.OrgID(), user.ID())...)
 	}
 
-	costPerDay := common.StackedCostSeries([]map[string]int64{perDay, coveredPerDay}, since, time.Now(), rangeParam)
+	costPerDay := common.StackedCostSeries(ctx, []map[string]int64{perDay, coveredPerDay}, since, time.Now(), rangeParam)
 
 	vmodel := component.DashboardPageVModel{
 		AppLayoutVModel: common.AppLayoutVModel{
 			User:         user,
 			SelectedItem: "usage",
 			Breadcrumbs: []common.BreadcrumbItem{
-				{Label: "Espace personnel", Href: "/usage"},
-				{Label: "Usage", Href: ""},
+				{Label: i18n.T(ctx, "nav.context.personal"), Href: "/usage"},
+				{Label: i18n.T(ctx, "nav.group.usage"), Href: ""},
 			},
 			Context: common.ContextPersonal,
 		},
@@ -348,7 +349,7 @@ func (h *Handler) getDashboardPage(w http.ResponseWriter, r *http.Request) {
 		HasNext:               hasNext,
 		ChartPerDay:           costPerDay[0],
 		ChartCoveredPerDay:    costPerDay[1],
-		ChartSharesPerModel:   common.ChartShares(common.TopNChartDataPoints(dashChartByValue(perModel), 5)),
+		ChartSharesPerModel:   common.ChartShares(common.TopNChartDataPoints(ctx, dashChartByValue(perModel), 5)),
 		ChartPerProvider:      dashChartByProvider(perProvider, providerNames),
 		PlanCoveredProviders:  common.PlanCoveredLabels(coveredProviders, providerNames),
 		TotalEnergyWh:         totalEnergyWh,
@@ -478,7 +479,17 @@ func (h *Handler) serveUserUsageCSV(w http.ResponseWriter, r *http.Request, user
 	writer := csv.NewWriter(w)
 	defer writer.Flush()
 
-	writer.Write([]string{"Organisation", "Modèle", "Tokens prompt", "Tokens completion", "Coût", "Devise", "Énergie (Wh)", "CO₂ (g)", "Date"})
+	writer.Write([]string{
+		i18n.T(ctx, "dashboard.csv.organization"),
+		i18n.T(ctx, "dashboard.csv.model"),
+		i18n.T(ctx, "dashboard.csv.prompt_tokens"),
+		i18n.T(ctx, "dashboard.csv.completion_tokens"),
+		i18n.T(ctx, "dashboard.csv.cost"),
+		i18n.T(ctx, "dashboard.csv.currency"),
+		i18n.T(ctx, "dashboard.csv.energy"),
+		i18n.T(ctx, "dashboard.csv.co2"),
+		i18n.T(ctx, "dashboard.csv.date"),
+	})
 
 	for _, rec := range records {
 		orgName := string(rec.OrgID())

@@ -1,6 +1,7 @@
 import type { NodeProps } from '@xyflow/react'
 import type { ModelNodeData } from '../types'
 import { NodeCard } from './NodeCard'
+import { t } from '../i18n'
 
 // In a middleware pipeline every model node is a passthrough: it wraps the model
 // actually requested by the caller (enforced server-side). In other contexts
@@ -18,7 +19,7 @@ export function ModelNode({ data }: NodeProps) {
   // A passthrough node has no fixed model: naming one would be a lie, since the
   // model is whatever the caller asked for.
   const label = typeof nodeData.label === 'string' ? nodeData.label.trim() : ''
-  const title = label || (passthrough ? 'modèle demandé' : (nodeData.proxyName || 'non configuré'))
+  const title = label || (passthrough ? t('node.model.requested') : (nodeData.proxyName || t('node.unconfigured')))
   const subtitle = passthrough ? 'passthrough' : 'proxyName'
 
   const inputs = [{ name: 'request', port_type: 'request', label: 'request' }]

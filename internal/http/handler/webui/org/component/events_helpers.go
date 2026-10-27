@@ -1,6 +1,7 @@
 package component
 
 import (
+	"context"
 	"net/url"
 	"sort"
 	"strconv"
@@ -8,6 +9,7 @@ import (
 
 	"github.com/xolo-gateway/xolo/internal/core/model"
 	common "github.com/xolo-gateway/xolo/internal/http/handler/webui/common/component"
+	"github.com/xolo-gateway/xolo/internal/i18n"
 )
 
 // explorerHref builds an events-explorer URL, preserving and properly
@@ -68,15 +70,14 @@ func alertStateTone(state model.AlertState) common.Tone {
 
 // alertsSubtitle explains what an alert does, and which scope the current user
 // is allowed to work in — the two things that decide what the screen can show.
-func alertsSubtitle(vmodel AlertsPageVModel) string {
-	subtitle := "Une alerte se déclenche quand le nombre d'événements correspondant à sa requête franchit son seuil sur sa fenêtre."
+func alertsSubtitle(ctx context.Context, vmodel AlertsPageVModel) string {
 	switch {
 	case vmodel.CanWriteOrg:
-		return subtitle + " Vous gérez les alertes de l'organisation (portée « org »)."
+		return i18n.T(ctx, "org.alerts.subtitle_org")
 	case vmodel.CanOwnAlerts:
-		return subtitle + " Vos alertes portent sur vos propres événements (portée « perso »)."
+		return i18n.T(ctx, "org.alerts.subtitle_own")
 	default:
-		return subtitle
+		return i18n.T(ctx, "org.alerts.subtitle")
 	}
 }
 

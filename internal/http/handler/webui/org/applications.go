@@ -20,6 +20,7 @@ import (
 	webcommon "github.com/xolo-gateway/xolo/internal/http/handler/webui/common"
 	common "github.com/xolo-gateway/xolo/internal/http/handler/webui/common/component"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/org/component"
+	"github.com/xolo-gateway/xolo/internal/i18n"
 )
 
 // resolveOrgAndApplication loads the organization designated by orgSlug and the
@@ -123,7 +124,7 @@ func (h *Handler) getApplicationsPage(w http.ResponseWriter, r *http.Request) {
 			ContextOrgID: org.ID(),
 			Breadcrumbs: []common.BreadcrumbItem{
 				{Label: org.Name(), Href: "/orgs/" + orgSlug + "/admin/"},
-				{Label: "Applications", Href: ""},
+				{Label: i18n.T(ctx, "org.nav.applications"), Href: ""},
 			},
 		},
 	}
@@ -184,8 +185,8 @@ func (h *Handler) getNewApplicationPage(w http.ResponseWriter, r *http.Request) 
 			ContextOrgID: org.ID(),
 			Breadcrumbs: []common.BreadcrumbItem{
 				{Label: org.Name(), Href: "/orgs/" + orgSlug + "/admin/"},
-				{Label: "Applications", Href: "/orgs/" + orgSlug + "/admin/applications"},
-				{Label: "Nouvelle application", Href: ""},
+				{Label: i18n.T(ctx, "org.nav.applications"), Href: "/orgs/" + orgSlug + "/admin/applications"},
+				{Label: i18n.T(ctx, "org.nav.applications_new"), Href: ""},
 			},
 		},
 	}
@@ -335,7 +336,7 @@ func (h *Handler) renderEditApplicationPage(w http.ResponseWriter, r *http.Reque
 	// we surface it on the form rather than silently rendering "no budget",
 	// which would diverge from what the enforcer actually enforces.
 	quota, err := h.quotaStore.GetQuota(ctx, model.QuotaScopeApplication, appID)
-	quotaSummary, quotaLoadError := applicationBudgetSummary(quota, err)
+	quotaSummary, quotaLoadError := applicationBudgetSummary(ctx, quota, err)
 	if quotaLoadError != "" {
 		slog.ErrorContext(ctx, "could not load application budget for summary", slogx.Error(err))
 	}
@@ -369,7 +370,7 @@ func (h *Handler) renderEditApplicationPage(w http.ResponseWriter, r *http.Reque
 			ContextOrgID: org.ID(),
 			Breadcrumbs: []common.BreadcrumbItem{
 				{Label: org.Name(), Href: "/orgs/" + orgSlug + "/admin/"},
-				{Label: "Applications", Href: "/orgs/" + orgSlug + "/admin/applications"},
+				{Label: i18n.T(ctx, "org.nav.applications"), Href: "/orgs/" + orgSlug + "/admin/applications"},
 				{Label: app.Name(), Href: ""},
 			},
 		},
@@ -387,15 +388,15 @@ func (h *Handler) renderEditApplicationPage(w http.ResponseWriter, r *http.Reque
 // top of a "Budget indisponible" banner. The banner is empty on success and
 // non-empty on store failure; callers check it with `if banner != ""` and
 // pass it through to the template.
-func applicationBudgetSummary(quota model.Quota, err error) (string, string) {
+func applicationBudgetSummary(ctx context.Context, quota model.Quota, err error) (string, string) {
 	if err != nil && !errors.Is(err, port.ErrNotFound) {
 		// Empty summary: the operator would otherwise see "Budget indisponible"
 		// twice (once as the summary, once as the banner). The banner alone
 		// carries the diagnostic.
-		return "", "Budget indisponible : le store a renvoyé une erreur. La page affiche les informations connues mais le total dépensé peut être inexact."
+		return "", i18n.T(ctx, "org.flash.applications.budget_unavailable")
 	}
 	if quota == nil {
-		return "Aucun budget", ""
+		return i18n.T(ctx, "org.flash.applications.no_budget"), ""
 	}
 	currency := quota.Currency()
 	if currency == "" {
@@ -403,16 +404,16 @@ func applicationBudgetSummary(quota model.Quota, err error) (string, string) {
 	}
 	parts := make([]string, 0, 3)
 	if d := quota.DailyBudget(); d != nil {
-		parts = append(parts, fmt.Sprintf("%s / jour", common.FormatCost(*d, currency)))
+		parts = append(parts, i18n.T(ctx, "org.flash.applications.budget_per_day", common.FormatCost(*d, currency)))
 	}
 	if m := quota.MonthlyBudget(); m != nil {
-		parts = append(parts, fmt.Sprintf("%s / mois", common.FormatCost(*m, currency)))
+		parts = append(parts, i18n.T(ctx, "org.flash.applications.budget_per_month", common.FormatCost(*m, currency)))
 	}
 	if y := quota.YearlyBudget(); y != nil {
-		parts = append(parts, fmt.Sprintf("%s / an", common.FormatCost(*y, currency)))
+		parts = append(parts, i18n.T(ctx, "org.flash.applications.budget_per_year", common.FormatCost(*y, currency)))
 	}
 	if len(parts) == 0 {
-		return "Aucun budget", ""
+		return i18n.T(ctx, "org.flash.applications.no_budget"), ""
 	}
 	return strings.Join(parts, "  +  "), ""
 }

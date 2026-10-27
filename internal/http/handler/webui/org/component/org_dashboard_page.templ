@@ -3,6 +3,7 @@ package component
 import (
 	"fmt"
 	common "github.com/xolo-gateway/xolo/internal/http/handler/webui/common/component"
+	"github.com/xolo-gateway/xolo/internal/i18n"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/button"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/card"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/separator"
@@ -21,7 +22,7 @@ templ OrgDashboard(vmodel OrgDashboardVModel) {
 				@card.Card() {
 					@card.Header() {
 						@card.Title() {
-							Membres
+							{ i18n.T(ctx, "org.nav.members") }
 						}
 					}
 					@card.Content() {
@@ -29,14 +30,14 @@ templ OrgDashboard(vmodel OrgDashboardVModel) {
 					}
 					@card.Footer() {
 						@button.Button(button.Props{Href: common.BaseURLString(ctx, common.WithPath("/orgs/", vmodel.Org.Slug(), "/admin/members")), Variant: button.VariantOutline, Size: button.SizeSm}) {
-							Gérer
+							{ i18n.T(ctx, "org.dashboard.page.manage") }
 						}
 					}
 				}
 				@card.Card() {
 					@card.Header() {
 						@card.Title() {
-							Fournisseurs
+							{ i18n.T(ctx, "org.nav.providers") }
 						}
 					}
 					@card.Content() {
@@ -44,14 +45,14 @@ templ OrgDashboard(vmodel OrgDashboardVModel) {
 					}
 					@card.Footer() {
 						@button.Button(button.Props{Href: common.BaseURLString(ctx, common.WithPath("/orgs/", vmodel.Org.Slug(), "/admin/providers")), Variant: button.VariantOutline, Size: button.SizeSm}) {
-							Gérer
+							{ i18n.T(ctx, "org.dashboard.page.manage") }
 						}
 					}
 				}
 				@card.Card() {
 					@card.Header() {
 						@card.Title() {
-							Usage (30j)
+							{ i18n.T(ctx, "org.dashboard.page.usage_30d") }
 						}
 					}
 					@card.Content() {
@@ -59,7 +60,7 @@ templ OrgDashboard(vmodel OrgDashboardVModel) {
 					}
 					@card.Footer() {
 						@button.Button(button.Props{Href: common.BaseURLString(ctx, common.WithPath("/orgs/", vmodel.Org.Slug(), "/usage")), Variant: button.VariantOutline, Size: button.SizeSm}) {
-							Voir
+							{ i18n.T(ctx, "org.dashboard.page.view") }
 						}
 					}
 				}

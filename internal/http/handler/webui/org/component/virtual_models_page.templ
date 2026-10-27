@@ -12,13 +12,14 @@ import (
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/icon"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/input"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/textarea"
+	"github.com/xolo-gateway/xolo/internal/i18n"
 )
 
 templ VirtualModelsPage(vmodel VirtualModelsPageVModel) {
-	@common.AppLayout(vmodel.AppLayoutVModel, common.WithTitle("Modèles virtuels — "+vmodel.Org.Name())) {
+	@common.AppLayout(vmodel.AppLayoutVModel, common.WithTitle(i18n.T(ctx, "org.virtual_models.page_title", vmodel.Org.Name()))) {
 		@common.PageHeader(common.PageHeaderProps{
-			Title:    "Modèles virtuels",
-			Subtitle: "Pipelines de routage, de repli et de traitement composant plusieurs modèles réels.",
+			Title:    i18n.T(ctx, "org.virtual_models.title"),
+			Subtitle: i18n.T(ctx, "org.virtual_models.subtitle"),
 		}) {
 			if common.HasPermission(ctx, vmodel.Org.ID(), rbac.PermVirtualModelsWrite) {
 				<div class="hidden">
@@ -40,7 +41,7 @@ templ VirtualModelsPage(vmodel VirtualModelsPageVModel) {
 						"type":                   "button",
 					},
 				}) {
-					Importer un bundle
+					{ i18n.T(ctx, "org.virtual_models.import_bundle") }
 				}
 				@button.Button(button.Props{
 					Size:  button.SizeSm,
@@ -48,24 +49,24 @@ templ VirtualModelsPage(vmodel VirtualModelsPageVModel) {
 					Href:  common.BaseURLString(ctx, common.WithPath("/orgs/", vmodel.Org.Slug(), "/admin/virtual-models/new")),
 				}) {
 					@icon.Plus(icon.Props{Class: "size-3.5"})
-					Nouveau modèle virtuel
+					{ i18n.T(ctx, "org.virtual_models.new") }
 				}
 			}
 		}
-		@common.FlashToast(vmodel.Success, "Le modèle virtuel")
-		@common.FlashError(vmodel.Error, "Un modèle virtuel")
+		@common.FlashToast(vmodel.Success, i18n.T(ctx, "org.virtual_models.flash_subject_success"))
+		@common.FlashError(vmodel.Error, i18n.T(ctx, "org.virtual_models.flash_subject_error"))
 		if len(vmodel.VirtualModels) == 0 {
 			@common.EmptyState(common.EmptyStateProps{
 				Icon:        icon.Network,
-				Title:       "Aucun modèle virtuel",
-				Description: "Un modèle virtuel compose plusieurs modèles derrière un seul nom : routage, repli, répartition de charge.",
+				Title:       i18n.T(ctx, "org.virtual_models.empty_title"),
+				Description: i18n.T(ctx, "org.virtual_models.empty_description"),
 			}) {
 				if common.HasPermission(ctx, vmodel.Org.ID(), rbac.PermVirtualModelsWrite) {
 					@button.Button(button.Props{
 						Size: button.SizeSm,
 						Href: common.BaseURLString(ctx, common.WithPath("/orgs/", vmodel.Org.Slug(), "/admin/virtual-models/new")),
 					}) {
-						Nouveau modèle virtuel
+						{ i18n.T(ctx, "org.virtual_models.new") }
 					}
 				}
 			}
@@ -85,7 +86,7 @@ templ virtualModelList(vmodel VirtualModelsPageVModel) {
 	@common.Section() {
 		@common.SectionHeader() {
 			@common.SectionTitle() {
-				{ Pluralize(len(vmodel.VirtualModels), "modèle virtuel", "modèles virtuels") }
+				{ i18n.T(ctx, "org.virtual_models.count", len(vmodel.VirtualModels)) }
 			}
 		}
 		<div class="flex flex-col">
@@ -99,16 +100,16 @@ templ virtualModelList(vmodel VirtualModelsPageVModel) {
 					<span class="flex items-center gap-2">
 						<span class="min-w-0 flex-1 truncate font-mono text-sm font-semibold">{ vm.Name() }</span>
 						if vm.Graph() != nil && len(vm.Graph().Nodes) > 0 {
-							@common.Badge(common.TonePositive, "actif")
+							@common.Badge(common.TonePositive, i18n.T(ctx, "org.virtual_models.status_active"))
 						} else {
-							@common.Badge(common.ToneNeutral, "brouillon")
+							@common.Badge(common.ToneNeutral, i18n.T(ctx, "org.virtual_models.status_draft"))
 						}
 					</span>
 					if vm.Description() != "" {
 						<span class="mt-0.5 block text-xs text-muted-foreground">{ vm.Description() }</span>
 					}
 					<span class="mt-1.5 block font-mono text-2xs text-muted-foreground">
-						{ Pluralize(GraphNodeCount(vm.Graph()), "nœud", "nœuds") }
+						{ i18n.T(ctx, "org.virtual_models.node_count", GraphNodeCount(vm.Graph())) }
 					</span>
 				</a>
 			}
@@ -126,7 +127,7 @@ templ virtualModelDetail(vmodel VirtualModelsPageVModel) {
 				@common.SectionTitle() {
 					<span class="font-mono">{ vmodel.Org.Slug() }/{ vm.Name() }</span>
 				}
-				<span class="text-xs text-muted-foreground">aperçu</span>
+				<span class="text-xs text-muted-foreground">{ i18n.T(ctx, "org.virtual_models.preview") }</span>
 				<span class="ml-auto flex flex-wrap items-center gap-1">
 					if common.HasPermission(ctx, vmodel.Org.ID(), rbac.PermVirtualModelsWrite) {
 						@button.Button(button.Props{
@@ -134,34 +135,34 @@ templ virtualModelDetail(vmodel VirtualModelsPageVModel) {
 							Variant: button.VariantOutline,
 							Size:    button.SizeSm,
 						}) {
-							Renommer
+							{ i18n.T(ctx, "org.virtual_models.rename") }
 						}
 						@button.Button(button.Props{
 							Href:    common.BaseURLString(ctx, common.WithPath("/api/orgs/", vmodel.Org.Slug(), "/virtual-models/", string(vm.ID()), "/export")),
 							Variant: button.VariantOutline,
 							Size:    button.SizeSm,
 						}) {
-							Exporter
+							{ i18n.T(ctx, "org.virtual_models.export") }
 						}
 						@common.ConfirmDelete(common.ConfirmDeleteProps{
 							URL:         common.BaseURLString(ctx, common.WithPath("/orgs/", vmodel.Org.Slug(), "/admin/virtual-models/", string(vm.ID()))),
-							Tooltip:     "Supprimer",
-							Title:       "Supprimer ce modèle virtuel ?",
-							Description: "Les appels qui le nomment échoueront dès la suppression.",
+							Tooltip:     i18n.T(ctx, "org.virtual_models.delete_tooltip"),
+							Title:       i18n.T(ctx, "org.virtual_models.delete_title"),
+							Description: i18n.T(ctx, "org.virtual_models.delete_description"),
 						})
 					}
 					if common.HasPermission(ctx, vmodel.Org.ID(), rbac.PermVirtualModelsRead) {
 						@button.Button(button.Props{Href: pipelineHref, Size: button.SizeSm, Class: "gap-1.5"}) {
 							@icon.Workflow(icon.Props{Class: "size-3.5"})
-							Ouvrir l'éditeur
+							{ i18n.T(ctx, "org.virtual_models.open_editor") }
 						}
 					}
 				</span>
 			}
 			<div class="flex flex-wrap items-center gap-1.5 border-b px-4 py-2.5 text-xs text-muted-foreground">
-				<span>Équipes :</span>
+				<span>{ i18n.T(ctx, "org.virtual_models.teams_label") }</span>
 				if len(vmodel.SelectedTeams) == 0 {
-					<span>aucune, seuls les membres ayant accès à tous les modèles virtuels l'utilisent.</span>
+					<span>{ i18n.T(ctx, "org.virtual_models.teams_none") }</span>
 				}
 				for _, team := range vmodel.SelectedTeams {
 					@common.Badge(common.ToneInfo, team.Name())
@@ -169,21 +170,21 @@ templ virtualModelDetail(vmodel VirtualModelsPageVModel) {
 			</div>
 			@PipelinePreview(vm.Graph(), pipelineHref)
 			<div class="flex flex-wrap gap-6 border-t px-4 py-3">
-				@common.InlineStat("Nœuds", common.ToneNeutral) {
+				@common.InlineStat(i18n.T(ctx, "org.virtual_models.stat_nodes"), common.ToneNeutral) {
 					{ strconv.Itoa(GraphNodeCount(vm.Graph())) }
 				}
-				@common.InlineStat("Liaisons", common.ToneNeutral) {
+				@common.InlineStat(i18n.T(ctx, "org.virtual_models.stat_edges"), common.ToneNeutral) {
 					{ strconv.Itoa(GraphEdgeCount(vm.Graph())) }
 				}
 				// TODO(rework-ux): la maquette affiche appels 30 j, latence ajoutée
 				// p50 et rejets par modèle virtuel. port.UsageStore agrège par nom
 				// de modèle proxy, sans distinguer ce qu'un pipeline ajoute — il
 				// manque une mesure par nœud (cf. lot 7 du plan).
-				@common.InlineStat("Appels 30 j", common.ToneNeutral) {
-					@common.PendingValue("L'usage n'est pas encore agrégé par modèle virtuel.")
+				@common.InlineStat(i18n.T(ctx, "org.virtual_models.stat_calls_30d"), common.ToneNeutral) {
+					@common.PendingValue(i18n.T(ctx, "org.virtual_models.stat_calls_pending"))
 				}
-				@common.InlineStat("Latence ajoutée p50", common.ToneNeutral) {
-					@common.PendingValue("La latence propre au pipeline n'est pas encore mesurée.")
+				@common.InlineStat(i18n.T(ctx, "org.virtual_models.stat_latency_p50"), common.ToneNeutral) {
+					@common.PendingValue(i18n.T(ctx, "org.virtual_models.stat_latency_pending"))
 				}
 			</div>
 		}
@@ -197,15 +198,15 @@ templ virtualModelDetail(vmodel VirtualModelsPageVModel) {
 // Exported because the personal virtual models are the same object under another
 // owner, and their screen is the same screen.
 templ PipelinePreview(graph *model.PipelineGraph, href string) {
-	{{ cards := PipelineCards(graph) }}
+	{{ cards := PipelineCards(ctx, graph) }}
 	if len(cards) == 0 {
 		<div class="px-4 py-8 text-center text-sm text-muted-foreground">
-			Ce modèle virtuel n'a pas encore de pipeline.
+			{ i18n.T(ctx, "org.virtual_models.no_pipeline") }
 		</div>
 	} else {
 		<a
 			href={ templ.SafeURL(href) }
-			title="Ouvrir l'éditeur de pipeline"
+			title={ i18n.T(ctx, "org.virtual_models.open_pipeline_editor") }
 			class="block overflow-x-auto bg-row-hover bg-[radial-gradient(theme(colors.border)_1px,transparent_1px)] bg-[length:16px_16px] px-4 py-5"
 		>
 			<span class="flex w-max items-stretch gap-1">
@@ -234,10 +235,10 @@ templ PipelinePreview(graph *model.PipelineGraph, href string) {
 }
 
 templ VirtualModelFormPage(vmodel VirtualModelFormVModel) {
-	{{ title := "Nouveau modèle virtuel" }}
+	{{ title := i18n.T(ctx, "org.virtual_models.title_new") }}
 	{{ action := common.BaseURLString(ctx, common.WithPath("/orgs/", vmodel.Org.Slug(), "/admin/virtual-models")) }}
 	if !vmodel.IsNew {
-		{{ title = "Modifier le modèle virtuel" }}
+		{{ title = i18n.T(ctx, "org.virtual_models.title_edit") }}
 		{{ action = common.BaseURLString(ctx, common.WithPath("/orgs/", vmodel.Org.Slug(), "/admin/virtual-models/", string(vmodel.VirtualModel.ID()), "/edit")) }}
 	}
 	@common.AppLayout(vmodel.AppLayoutVModel, common.WithTitle(title)) {
@@ -245,39 +246,39 @@ templ VirtualModelFormPage(vmodel VirtualModelFormVModel) {
 			@common.PageHeader(common.PageHeaderProps{
 				Title: title,
 			})
-			@common.FlashError(vmodel.Error, "Un modèle virtuel")
+			@common.FlashError(vmodel.Error, i18n.T(ctx, "org.virtual_models.flash_subject_error"))
 			<form method="POST" action={ templ.SafeURL(action) } class="space-y-4">
 				@card.Card() {
 					@card.Content() {
 						<div class="space-y-4 pt-4">
 							<div class="space-y-2">
 								@form.Label(form.LabelProps{}) {
-									Nom 
+									{ i18n.T(ctx, "org.virtual_models.name") }
 								}
 								if vmodel.IsNew {
 									@input.Input(input.Props{
 										Name:        "name",
-										Placeholder: "ex: auto, fast, smart",
+										Placeholder: i18n.T(ctx, "org.virtual_models.name_placeholder"),
 										Attributes:  templ.Attributes{"required": true},
 									})
 									@form.Description() {
-										Le nom sera utilisé comme suffixe du nom qualifié (ex: acme/auto) 
+										{ i18n.T(ctx, "org.virtual_models.name_help_new") }
 									}
 								} else {
 									@input.Input(input.Props{
 										Name:        "name",
 										Value:       vmodel.Name,
-										Placeholder: "ex: auto, fast, smart",
+										Placeholder: i18n.T(ctx, "org.virtual_models.name_placeholder"),
 										Attributes:  templ.Attributes{"required": true, "autocomplete": "off"},
 									})
 									@form.Description() {
-										Renommer change le suffixe du nom qualifié (ex&nbsp;: acme/auto). Le nom doit rester unique au sein de l'organisation.
+										{ i18n.T(ctx, "org.virtual_models.name_help_edit") }
 									}
 								}
 							</div>
 							<div class="space-y-2">
 								@form.Label(form.LabelProps{}) {
-									Description 
+									{ i18n.T(ctx, "org.virtual_models.description") }
 								}
 								@textarea.Textarea(textarea.Props{Name: "description", Rows: 3, Value: vmodel.Description})
 							</div>
@@ -290,13 +291,13 @@ templ VirtualModelFormPage(vmodel VirtualModelFormVModel) {
 					}
 					<div class="pt-0 flex items-center p-6">
 						@button.Button(button.Props{Type: button.TypeSubmit}) {
-							Enregistrer
+							{ i18n.T(ctx, "org.virtual_models.save") }
 						}
 						@button.Button(button.Props{
 							Href:    common.BaseURLString(ctx, common.WithPath("/orgs/", vmodel.Org.Slug(), "/admin/virtual-models")),
 							Variant: button.VariantOutline,
 						}) {
-							Annuler
+							{ i18n.T(ctx, "org.virtual_models.cancel") }
 						}
 					</div>
 				}

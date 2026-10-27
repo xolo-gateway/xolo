@@ -5,6 +5,7 @@ import (
 	common "github.com/xolo-gateway/xolo/internal/http/handler/webui/common/component"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/button"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/card"
+	"github.com/xolo-gateway/xolo/internal/i18n"
 )
 
 type JoinErrorVModel struct {
@@ -13,18 +14,18 @@ type JoinErrorVModel struct {
 }
 
 templ JoinError(vmodel JoinErrorVModel) {
-	@common.StandaloneLayout(common.WithTitle("Invitation invalide")) {
+	@common.StandaloneLayout(common.WithTitle(i18n.T(ctx, "join.error.title"))) {
 		@card.Card() {
 			@card.Header() {
 				@card.Title() {
-					Invitation invalide
+					{ i18n.T(ctx, "join.error.title") }
 				}
 			}
 			@card.Content() {
 				<div class="space-y-4">
 					<p class="text-sm text-muted-foreground">{ vmodel.Message }</p>
 					@button.Button(button.Props{Href: "/", Class: "w-full"}) {
-						Retour à l'accueil
+						{ i18n.T(ctx, "join.error.back_home") }
 					}
 				</div>
 			}

@@ -5,6 +5,7 @@ import (
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/button"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/card"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/label"
+	"github.com/xolo-gateway/xolo/internal/i18n"
 )
 
 templ page(pd uiPageData) {
@@ -19,33 +20,31 @@ templ page(pd uiPageData) {
 		<body class="bg-background text-foreground min-h-screen p-4 space-y-4">
 			<h1 class="text-lg font-semibold">System Prompt</h1>
 			<p class="text-sm text-muted-foreground">
-				Injecte un prompt système fixe dans les messages de requête LLM.
-				En mode "remplacer", les éventuels messages système du client sont supprimés ;
-				en mode "ajouter", le premier message système du client (s'il existe) est concaténé.
+				{ i18n.T(ctx, "plugin.system_prompt.intro") }
 			</p>
 
 			if pd.Success {
 				@alert.Alert(alert.Props{Variant: alert.VariantDefault}) {
-					@alert.Description() { Configuration sauvegardée avec succès. }
+					@alert.Description() { { i18n.T(ctx, "plugin.system_prompt.saved") } }
 				}
 			}
 
 			<form method="POST" action="api/config" class="space-y-6">
 				@card.Card() {
 					@card.Header() {
-						@card.Title() { Prompt système }
+						@card.Title() { { i18n.T(ctx, "plugin.system_prompt.prompt.title") } }
 					}
 					@card.Content() {
 						<div class="space-y-2">
 							@label.Label(label.Props{}) {
-								Contenu du prompt (sera envoyé comme message système)
+								{ i18n.T(ctx, "plugin.system_prompt.prompt.label") }
 							}
 							<textarea
 								id="system_prompt"
 								name="system_prompt"
 								rows="10"
 								class="flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm font-mono shadow-xs placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-								placeholder="Tu es un assistant utile et concis..."
+								placeholder={ i18n.T(ctx, "plugin.system_prompt.prompt.placeholder") }
 							>{ pd.Config.SystemPrompt }</textarea>
 							<div class="flex items-center gap-2 mt-2">
 								<input
@@ -58,7 +57,7 @@ templ page(pd uiPageData) {
 									}
 								/>
 								<label for="append" class="text-sm cursor-pointer">
-									Concaténer avec le prompt système existant (sinon, remplacer)
+									{ i18n.T(ctx, "plugin.system_prompt.append.label") }
 								</label>
 							</div>
 						</div>
@@ -67,7 +66,8 @@ templ page(pd uiPageData) {
 
 				<div class="flex justify-end">
 					@button.Button(button.Props{Type: button.TypeSubmit}) {
-						Sauvegarder
+						{ i18n.T(ctx, "plugin.system_prompt.save") }
+
 					}
 				</div>
 			</form>

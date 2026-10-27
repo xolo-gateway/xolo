@@ -1,6 +1,7 @@
 package component
 
 import (
+	"github.com/xolo-gateway/xolo/internal/i18n"
 	"github.com/xolo-gateway/xolo/internal/core/model"
 	common "github.com/xolo-gateway/xolo/internal/http/handler/webui/common/component"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/form"
@@ -13,22 +14,22 @@ type ProfilePageVModel struct {
 }
 
 templ ProfilePage(vmodel ProfilePageVModel) {
-	@common.AppLayout(vmodel.AppLayoutVModel, common.WithTitle("Profil")) {
+	@common.AppLayout(vmodel.AppLayoutVModel, common.WithTitle(i18n.T(ctx, "profile.profile.title"))) {
 		<div class="max-w-2xl">
 			@common.PageHeader(common.PageHeaderProps{
-				Title:    "Profil",
-				Subtitle: "Votre identité vient du fournisseur d'identité de la plateforme ; elle est affichée ici en lecture seule.",
+				Title:    i18n.T(ctx, "profile.profile.title"),
+				Subtitle: i18n.T(ctx, "profile.profile.subtitle"),
 			})
 			@common.Section() {
 				@common.SectionHeader() {
 					@common.SectionTitle() {
-						Informations du compte
+						{ i18n.T(ctx, "profile.profile.account_info") }
 					}
 				}
 				@common.SectionBody(common.SectionBodyProps{Class: "space-y-3.5"}) {
 					@form.Item() {
 						@form.Label(form.LabelProps{For: "profile-name"}) {
-							Nom d'affichage
+							{ i18n.T(ctx, "profile.profile.display_name") }
 						}
 						@input.Input(input.Props{
 							ID:       "profile-name",
@@ -38,7 +39,7 @@ templ ProfilePage(vmodel ProfilePageVModel) {
 					}
 					@form.Item() {
 						@form.Label(form.LabelProps{For: "profile-email"}) {
-							Courriel
+							{ i18n.T(ctx, "profile.profile.email") }
 						}
 						@input.Input(input.Props{
 							ID:       "profile-email",
@@ -48,7 +49,7 @@ templ ProfilePage(vmodel ProfilePageVModel) {
 					}
 					@form.Item() {
 						@form.Label(form.LabelProps{For: "profile-provider"}) {
-							Fournisseur d'identité
+							{ i18n.T(ctx, "profile.profile.identity_provider") }
 						}
 						@input.Input(input.Props{
 							ID:       "profile-provider",
@@ -57,7 +58,7 @@ templ ProfilePage(vmodel ProfilePageVModel) {
 							Class:    "font-mono",
 						})
 						@form.Description() {
-							Ces informations sont contrôlées par votre fournisseur d'identité et ne peuvent pas être modifiées ici.
+							{ i18n.T(ctx, "profile.profile.identity_provider_help") }
 						}
 					}
 				}

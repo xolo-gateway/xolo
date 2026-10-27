@@ -215,3 +215,11 @@ Prévoyez enfin le DNS et les certificats TLS de chaque domaine — un joker (`*
 ## Vérification
 
 Le fichier `.env.dist` à la racine du dépôt liste l'ensemble des variables avec leurs commentaires. En cas de configuration invalide (secret manquant, fournisseur OIDC mal formé…), `xolo-server` refuse de démarrer et affiche l'erreur en clair sur la sortie standard.
+
+## Langue
+
+L'interface web est disponible en anglais, en français et en espagnol. Chaque requête utilise la langue choisie avec le sélecteur de langue (conservée dans le cookie `xolo_locale`), sinon la meilleure correspondance de l'en-tête `Accept-Language` du navigateur, sinon la langue par défaut ci-dessous.
+
+| Variable | Défaut | Description |
+| --- | --- | --- |
+| `XOLO_DEFAULT_LOCALE` | `fr` | Langue utilisée quand ni le sélecteur ni le navigateur n'en désignent une prise en charge : `en`, `fr` ou `es`. |

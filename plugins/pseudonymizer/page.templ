@@ -8,6 +8,7 @@ import (
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/checkbox"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/input"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/label"
+	"github.com/xolo-gateway/xolo/internal/i18n"
 )
 
 // page renders the pseudonymizer plugin configuration UI.
@@ -21,16 +22,15 @@ templ page(pd uiPageData) {
 			<link rel="stylesheet" href="/assets/templui.css"/>
 		</head>
 		<body class="bg-background text-foreground min-h-screen p-4 space-y-4">
-			<h1 class="text-lg font-semibold">Pseudonymisation</h1>
+			<h1 class="text-lg font-semibold">{ i18n.T(ctx, "plugin.pseudonymizer.title") }</h1>
 			<p class="text-sm text-muted-foreground">
-				Anonymise automatiquement les entités nommées (personnes, lieux, organisations…) dans les
-				messages avant transmission au LLM, et rétablit les données originales dans la réponse.
+				{ i18n.T(ctx, "plugin.pseudonymizer.intro") }
 			</p>
 
 			if pd.Success {
 				@alert.Alert(alert.Props{Variant: alert.VariantDefault}) {
 					@alert.Description() {
-						Configuration sauvegardée avec succès.
+						{ i18n.T(ctx, "plugin.pseudonymizer.saved") }
 					}
 				}
 			}
@@ -45,12 +45,12 @@ templ page(pd uiPageData) {
 			<!-- Model status -->
 			@card.Card() {
 				@card.Header() {
-					@card.Title() { Modèles NER disponibles }
+					@card.Title() { { i18n.T(ctx, "plugin.pseudonymizer.models.title") } }
 				}
 				@card.Content() {
 					if len(pd.ModelStatus) == 0 {
 						<p class="text-sm text-muted-foreground italic">
-							Impossible de lister les modèles disponibles (pas de connexion réseau ou cache vide).
+							{ i18n.T(ctx, "plugin.pseudonymizer.models.unavailable") }
 						</p>
 					} else {
 						<div class="flex flex-wrap gap-2">
@@ -59,7 +59,7 @@ templ page(pd uiPageData) {
 							}
 						</div>
 						<p class="text-xs text-muted-foreground mt-2">
-							Les modèles non encore en cache seront téléchargés automatiquement lors du premier appel.
+							{ i18n.T(ctx, "plugin.pseudonymizer.models.download_hint") }
 						</p>
 					}
 				}
@@ -69,29 +69,28 @@ templ page(pd uiPageData) {
 				<!-- Language & Strategy -->
 				@card.Card() {
 					@card.Header() {
-						@card.Title() { Anonymisation }
+						@card.Title() { { i18n.T(ctx, "plugin.pseudonymizer.anonymization.title") } }
 					}
 					@card.Content() {
 						<div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
 							<div class="space-y-1">
-								@label.Label(label.Props{For: "language"}) { Langue }
+								@label.Label(label.Props{For: "language"}) { { i18n.T(ctx, "plugin.pseudonymizer.language.label") } }
 								<select
 									id="language"
 									name="language"
 									class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
 								>
-									<option value="auto" if pd.Config.Language == LanguageAuto { selected }>Détection automatique</option>
+									<option value="auto" if pd.Config.Language == LanguageAuto { selected }>{ i18n.T(ctx, "plugin.pseudonymizer.language.auto") }</option>
 									for _, lang := range pd.Languages {
 										<option value={ lang } if pd.Config.Language == lang { selected }>{ languageLabel(lang) }</option>
 									}
 								</select>
 								<p class="text-xs text-muted-foreground">
-									En détection automatique, la langue est déterminée à chaque requête à partir des
-									messages, parmi les modèles disponibles.
+									{ i18n.T(ctx, "plugin.pseudonymizer.language.help") }
 								</p>
 							</div>
 							<div class="space-y-1">
-								@label.Label(label.Props{For: "fallback_language"}) { Langue de repli }
+								@label.Label(label.Props{For: "fallback_language"}) { { i18n.T(ctx, "plugin.pseudonymizer.fallback_language.label") } }
 								<select
 									id="fallback_language"
 									name="fallback_language"
@@ -102,11 +101,11 @@ templ page(pd uiPageData) {
 									}
 								</select>
 								<p class="text-xs text-muted-foreground">
-									Utilisée lorsque la détection n'est pas fiable (message trop court, langue non supportée).
+									{ i18n.T(ctx, "plugin.pseudonymizer.fallback_language.help") }
 								</p>
 							</div>
 							<div class="space-y-1">
-								@label.Label(label.Props{For: "strategy"}) { Stratégie }
+								@label.Label(label.Props{For: "strategy"}) { { i18n.T(ctx, "plugin.pseudonymizer.strategy.label") } }
 								<select
 									id="strategy"
 									name="strategy"
@@ -115,7 +114,7 @@ templ page(pd uiPageData) {
 									<option value="tag" if pd.Config.Strategy == "tag" { selected }>Tag — [PERSON_1]</option>
 									<option value="redact" if pd.Config.Strategy == "redact" { selected }>Redact — ████</option>
 									<option value="hash" if pd.Config.Strategy == "hash" { selected }>Hash — [PER_a1b2c3]</option>
-									<option value="consistent" if pd.Config.Strategy == "consistent" { selected }>Consistent — numérotation stable</option>
+									<option value="consistent" if pd.Config.Strategy == "consistent" { selected }>{ i18n.T(ctx, "plugin.pseudonymizer.strategy.consistent") }</option>
 								</select>
 							</div>
 						</div>
@@ -125,12 +124,12 @@ templ page(pd uiPageData) {
 				<!-- Filters -->
 				@card.Card() {
 					@card.Header() {
-						@card.Title() { Filtres NER }
+						@card.Title() { { i18n.T(ctx, "plugin.pseudonymizer.filters.title") } }
 					}
 					@card.Content() {
 						<div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
 							<div class="space-y-1">
-								@label.Label(label.Props{For: "min_confidence"}) { Confiance minimale (0.0 – 1.0) }
+								@label.Label(label.Props{For: "min_confidence"}) { { i18n.T(ctx, "plugin.pseudonymizer.min_confidence.label") } }
 								@input.Input(input.Props{
 									ID:          "min_confidence",
 									Name:        "min_confidence",
@@ -141,7 +140,7 @@ templ page(pd uiPageData) {
 								})
 							</div>
 							<div class="space-y-1">
-								@label.Label(label.Props{For: "max_tokens"}) { Tokens max par entité (0 = illimité) }
+								@label.Label(label.Props{For: "max_tokens"}) { { i18n.T(ctx, "plugin.pseudonymizer.max_tokens.label") } }
 								@input.Input(input.Props{
 									ID:          "max_tokens",
 									Name:        "max_tokens",
@@ -152,7 +151,7 @@ templ page(pd uiPageData) {
 								})
 							</div>
 							<div class="space-y-1">
-								@label.Label(label.Props{For: "min_runes"}) { Caractères min par entité (0 = illimité) }
+								@label.Label(label.Props{For: "min_runes"}) { { i18n.T(ctx, "plugin.pseudonymizer.min_runes.label") } }
 								@input.Input(input.Props{
 									ID:          "min_runes",
 									Name:        "min_runes",
@@ -162,8 +161,7 @@ templ page(pd uiPageData) {
 									Attributes:  templ.Attributes{"min": "0"},
 								})
 								<p class="text-xs text-muted-foreground">
-									Écarte les fragments d'un ou deux signes qu'un texte disloqué (copier-coller de PDF,
-									colonnes entrelacées) fait étiqueter à tort comme des entités.
+									{ i18n.T(ctx, "plugin.pseudonymizer.min_runes.help") }
 								</p>
 							</div>
 						</div>
@@ -173,12 +171,12 @@ templ page(pd uiPageData) {
 			<!-- Vérification -->
 			@card.Card() {
 				@card.Header() {
-					@card.Title() { Vérification de la sortie }
+					@card.Title() { { i18n.T(ctx, "plugin.pseudonymizer.verification.title") } }
 				}
 				@card.Content() {
 					<div class="space-y-3">
-						@checkboxRow("verification", "Observer les fuites (sans bloquer)", "Mesure les fuites de PII résiduelles sans bloquer la requête. Toute fuite est émise comme événement.", pd.Config.Verification)
-						@checkboxRow("verification_strict", "Mode strict — bloque les requêtes sur fuite", "Toute fuite détectée provoque l'échec de l'anonymisation (fail-closed).", pd.Config.VerificationStrict)
+						@checkboxRow("verification", i18n.T(ctx, "plugin.pseudonymizer.verification.label"), i18n.T(ctx, "plugin.pseudonymizer.verification.help"), pd.Config.Verification)
+						@checkboxRow("verification_strict", i18n.T(ctx, "plugin.pseudonymizer.verification_strict.label"), i18n.T(ctx, "plugin.pseudonymizer.verification_strict.help"), pd.Config.VerificationStrict)
 					</div>
 				}
 			}
@@ -186,29 +184,28 @@ templ page(pd uiPageData) {
 			<!-- Pièces jointes -->
 			@card.Card() {
 				@card.Header() {
-					@card.Title() { Pièces jointes }
+					@card.Title() { { i18n.T(ctx, "plugin.pseudonymizer.attachments.title") } }
 				}
 				@card.Content() {
 					<div class="space-y-3">
-						@checkboxRow("process_attachments", "Traiter les pièces jointes documentaires", "Extrait le texte des documents joints (PDF, DOCX, ODT, CSV/TSV, texte), le pseudonymise et le transmet à la place du fichier. Le fichier d'origine n'est jamais transmis au modèle.", pd.Config.ProcessAttachments)
+						@checkboxRow("process_attachments", i18n.T(ctx, "plugin.pseudonymizer.process_attachments.label"), i18n.T(ctx, "plugin.pseudonymizer.process_attachments.help"), pd.Config.ProcessAttachments)
 						<div class="space-y-1">
-							@label.Label(label.Props{For: "unsupported_attachments"}) { Pièces jointes non traitables }
+							@label.Label(label.Props{For: "unsupported_attachments"}) { { i18n.T(ctx, "plugin.pseudonymizer.unsupported_attachments.label") } }
 							<select
 								id="unsupported_attachments"
 								name="unsupported_attachments"
 								class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
 							>
-								<option value="block" if pd.Config.UnsupportedAttachments == "block" { selected }>Bloquer — la requête est refusée</option>
-								<option value="remove" if pd.Config.UnsupportedAttachments == "remove" { selected }>Retirer — la pièce jointe est écartée, la requête passe</option>
+								<option value="block" if pd.Config.UnsupportedAttachments == "block" { selected }>{ i18n.T(ctx, "plugin.pseudonymizer.unsupported_attachments.block") }</option>
+								<option value="remove" if pd.Config.UnsupportedAttachments == "remove" { selected }>{ i18n.T(ctx, "plugin.pseudonymizer.unsupported_attachments.remove") }</option>
 							</select>
 							<p class="text-xs text-muted-foreground">
-								S'applique aux fichiers dont le contenu ne peut pas être pseudonymisé : image, PDF scanné,
-								format inconnu, fichier référencé à distance (identifiant ou URL) ou trop volumineux.
+								{ i18n.T(ctx, "plugin.pseudonymizer.unsupported_attachments.help") }
 							</p>
 						</div>
 						<div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
 							<div class="space-y-1">
-								@label.Label(label.Props{For: "max_attachment_bytes"}) { Taille max par fichier (octets, 0 = illimité) }
+								@label.Label(label.Props{For: "max_attachment_bytes"}) { { i18n.T(ctx, "plugin.pseudonymizer.max_attachment_bytes.label") } }
 								@input.Input(input.Props{
 									ID:          "max_attachment_bytes",
 									Name:        "max_attachment_bytes",
@@ -219,7 +216,7 @@ templ page(pd uiPageData) {
 								})
 							</div>
 							<div class="space-y-1">
-								@label.Label(label.Props{For: "max_attachment_chars"}) { Caractères max extraits par fichier }
+								@label.Label(label.Props{For: "max_attachment_chars"}) { { i18n.T(ctx, "plugin.pseudonymizer.max_attachment_chars.label") } }
 								@input.Input(input.Props{
 									ID:          "max_attachment_chars",
 									Name:        "max_attachment_chars",
@@ -237,17 +234,17 @@ templ page(pd uiPageData) {
 			<!-- Options -->
 			@card.Card() {
 				@card.Header() {
-					@card.Title() { Options }
+					@card.Title() { { i18n.T(ctx, "plugin.pseudonymizer.options.title") } }
 				}
 					@card.Content() {
 						<div class="space-y-3">
-							@checkboxRow("builtin_regex_patterns", "Patterns regex intégrés", "Détecte EMAIL, IPV4/6, IBAN, SIRET, SIREN, PHONE automatiquement.", pd.Config.BuiltinRegexPatterns)
-							@checkboxRow("builtin_secret_patterns", "Patterns secrets intégrés", "Détecte JWT, clés API (OpenAI, AWS, GitHub, Slack…) automatiquement.", pd.Config.BuiltinSecretPatterns)
-							@checkboxRow("siren_contextual", "SIREN contextuel", "N'accepte un SIREN que précédé d'un marqueur textuel (« SIREN 123456782 »). Réduit les faux positifs sur les identifiants à neuf chiffres, au prix de quelques oublis. Sans effet si les patterns regex intégrés sont désactivés.", pd.Config.SirenContextual)
-							@checkboxRow("first_name_reclassify", "Reclassification des prénoms", "Reclasse les entités LOC d'un seul token en PER si le token est un prénom connu.", pd.Config.FirstNameReclassify)
-							@checkboxRow("merge", "Fusion des entités adjacentes", "Fusionne les entités adjacentes de même type (prénom + nom de famille).", pd.Config.Merge)
-							@checkboxRow("name_completion", "Complétion des noms", "Complète les entités PER partielles avec le token de nom de famille adjacent.", pd.Config.NameCompletion)
-							@checkboxRow("inject_instruction", "Instruction de préservation des jetons", "Ajoute une instruction système (dans la langue détectée) demandant au LLM de recopier les jetons de substitution sans les modifier. Ignoré pour la stratégie « redact ».", pd.Config.InjectInstruction)
+							@checkboxRow("builtin_regex_patterns", i18n.T(ctx, "plugin.pseudonymizer.builtin_regex.label"), i18n.T(ctx, "plugin.pseudonymizer.builtin_regex.help"), pd.Config.BuiltinRegexPatterns)
+							@checkboxRow("builtin_secret_patterns", i18n.T(ctx, "plugin.pseudonymizer.builtin_secret.label"), i18n.T(ctx, "plugin.pseudonymizer.builtin_secret.help"), pd.Config.BuiltinSecretPatterns)
+							@checkboxRow("siren_contextual", i18n.T(ctx, "plugin.pseudonymizer.siren_contextual.label"), i18n.T(ctx, "plugin.pseudonymizer.siren_contextual.help"), pd.Config.SirenContextual)
+							@checkboxRow("first_name_reclassify", i18n.T(ctx, "plugin.pseudonymizer.first_name_reclassify.label"), i18n.T(ctx, "plugin.pseudonymizer.first_name_reclassify.help"), pd.Config.FirstNameReclassify)
+							@checkboxRow("merge", i18n.T(ctx, "plugin.pseudonymizer.merge.label"), i18n.T(ctx, "plugin.pseudonymizer.merge.help"), pd.Config.Merge)
+							@checkboxRow("name_completion", i18n.T(ctx, "plugin.pseudonymizer.name_completion.label"), i18n.T(ctx, "plugin.pseudonymizer.name_completion.help"), pd.Config.NameCompletion)
+							@checkboxRow("inject_instruction", i18n.T(ctx, "plugin.pseudonymizer.inject_instruction.label"), i18n.T(ctx, "plugin.pseudonymizer.inject_instruction.help"), pd.Config.InjectInstruction)
 						</div>
 					}
 				}
@@ -255,29 +252,29 @@ templ page(pd uiPageData) {
 				<!-- Model store -->
 				@card.Card() {
 					@card.Header() {
-						@card.Title() { Stockage des modèles }
+						@card.Title() { { i18n.T(ctx, "plugin.pseudonymizer.store.title") } }
 					}
 					@card.Content() {
 						<div class="space-y-3">
 							<div class="space-y-1">
-								@label.Label(label.Props{For: "cache_dir"}) { Répertoire de cache }
+								@label.Label(label.Props{For: "cache_dir"}) { { i18n.T(ctx, "plugin.pseudonymizer.cache_dir.label") } }
 								@input.Input(input.Props{
 									ID:          "cache_dir",
 									Name:        "cache_dir",
 									Value:       pd.Config.CacheDir,
-									Placeholder: "Défaut : répertoire cache système",
+									Placeholder: i18n.T(ctx, "plugin.pseudonymizer.cache_dir.placeholder"),
 								})
 							</div>
 							<div class="space-y-1">
-								@label.Label(label.Props{For: "manifest_url"}) { URL du manifest }
+								@label.Label(label.Props{For: "manifest_url"}) { { i18n.T(ctx, "plugin.pseudonymizer.manifest_url.label") } }
 								@input.Input(input.Props{
 									ID:          "manifest_url",
 									Name:        "manifest_url",
 									Value:       pd.Config.ManifestURL,
-									Placeholder: "Défaut : dépôt officiel go-anon",
+									Placeholder: i18n.T(ctx, "plugin.pseudonymizer.manifest_url.placeholder"),
 								})
 							</div>
-							@checkboxRow("offline", "Mode hors-ligne", "Désactive les téléchargements réseau. Nécessite des modèles déjà en cache.", pd.Config.Offline)
+							@checkboxRow("offline", i18n.T(ctx, "plugin.pseudonymizer.offline.label"), i18n.T(ctx, "plugin.pseudonymizer.offline.help"), pd.Config.Offline)
 						</div>
 					}
 				}
@@ -285,7 +282,8 @@ templ page(pd uiPageData) {
 				<!-- Save -->
 				<div class="flex justify-end">
 					@button.Button(button.Props{Type: button.TypeSubmit}) {
-						Sauvegarder
+						{ i18n.T(ctx, "plugin.pseudonymizer.save") }
+
 					}
 				</div>
 			</form>
@@ -293,17 +291,17 @@ templ page(pd uiPageData) {
 			<!-- Sécurité -->
 			@card.Card() {
 				@card.Header() {
-					@card.Title() { Clé HMAC (stratégie hash) }
+					@card.Title() { { i18n.T(ctx, "plugin.pseudonymizer.hash_key.title") } }
 				}
 				@card.Content() {
 					if pd.NodeID == "" {
 						<p class="text-sm text-muted-foreground italic">
-							Contexte de nœud absent — la clé HMAC ne peut pas être gérée depuis cette UI.
+							{ i18n.T(ctx, "plugin.pseudonymizer.hash_key.no_node") }
 						</p>
 					} else {
 						<form method="POST" action="/api/secrets/hash_key" class="space-y-3">
 							<div class="space-y-1">
-								@label.Label(label.Props{For: "hash_key"}) { Clé HMAC }
+								@label.Label(label.Props{For: "hash_key"}) { { i18n.T(ctx, "plugin.pseudonymizer.hash_key.label") } }
 								@input.Input(input.Props{
 									ID:          "hash_key",
 									Name:        "hash_key",
@@ -312,22 +310,22 @@ templ page(pd uiPageData) {
 								})
 								<p class="text-xs text-muted-foreground">
 									if pd.HasHashKey {
-										Une clé est déjà configurée pour ce nœud. Laisser vide pour la conserver.
+										{ i18n.T(ctx, "plugin.pseudonymizer.hash_key.configured") }
 									} else {
-										Hex ou base64, ≥ 32 octets. Stockée séparément de la configuration.
+										{ i18n.T(ctx, "plugin.pseudonymizer.hash_key.help") }
 									}
 								</p>
 							</div>
 							<div class="flex justify-end">
 								@button.Button(button.Props{Type: button.TypeSubmit}) {
-									Enregistrer la clé
+									{ i18n.T(ctx, "plugin.pseudonymizer.hash_key.save") }
 								}
 							</div>
 						</form>
 						if pd.HasHashKey {
 							<form method="POST" action="/api/secrets/hash_key/delete" class="flex justify-end">
 								@button.Button(button.Props{Variant: button.VariantOutline, Type: button.TypeSubmit}) {
-									Supprimer la clé
+									{ i18n.T(ctx, "plugin.pseudonymizer.hash_key.delete") }
 								}
 							</form>
 						}

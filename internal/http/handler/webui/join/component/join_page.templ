@@ -5,6 +5,7 @@ import (
 	common "github.com/xolo-gateway/xolo/internal/http/handler/webui/common/component"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/button"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/card"
+	"github.com/xolo-gateway/xolo/internal/i18n"
 )
 
 type JoinPageVModel struct {
@@ -16,37 +17,37 @@ type JoinPageVModel struct {
 }
 
 templ JoinPage(vmodel JoinPageVModel) {
-	@common.StandaloneLayout(common.WithTitle("Rejoindre " + vmodel.Org.Name())) {
+	@common.StandaloneLayout(common.WithTitle(i18n.T(ctx, "join.page.title", vmodel.Org.Name()))) {
 		@card.Card() {
 			@card.Header() {
 				@card.Title() {
-					Invitation à rejoindre { vmodel.Org.Name() }
+					{ i18n.T(ctx, "join.page.heading", vmodel.Org.Name()) }
 				}
 			}
 			@card.Content() {
 				<div class="space-y-4">
 					<p class="text-sm text-muted-foreground">
-						Vous avez été invité à rejoindre l'organisation <strong class="text-foreground">{ vmodel.Org.Name() }</strong>.
+						@templ.Raw(i18n.T(ctx, "join.page.invited", strongName(vmodel.Org.Name())))
 					</p>
 					<div class="flex items-center gap-2.5 text-sm">
-						<span class="font-medium">Rôle :</span>
+						<span class="font-medium">{ i18n.T(ctx, "join.role_label") }</span>
 						@common.Badge(common.ToneInfo, vmodel.RoleName)
 					</div>
 					if vmodel.User == nil {
-						<p class="text-sm text-muted-foreground">Vous devez vous connecter pour accepter cette invitation.</p>
+						<p class="text-sm text-muted-foreground">{ i18n.T(ctx, "join.page.login_required") }</p>
 						@button.Button(button.Props{Href: vmodel.LoginURL, Class: "w-full"}) {
-							Se connecter
+							{ i18n.T(ctx, "join.sign_in") }
 						}
 					} else {
 						<div class="flex gap-2.5">
 							<form method="POST" class="flex-1">
 								@button.Button(button.Props{Type: button.TypeSubmit, Class: "w-full"}) {
-									Rejoindre l'organisation
+									{ i18n.T(ctx, "join.page.accept") }
 								}
 							</form>
 							<form method="POST" action={ templ.SafeURL(vmodel.DeclineURL) } class="flex-1">
 								@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantOutline, Class: "w-full"}) {
-									Décliner
+									{ i18n.T(ctx, "join.page.decline") }
 								}
 							</form>
 						</div>
@@ -59,19 +60,25 @@ templ JoinPage(vmodel JoinPageVModel) {
 
 // JoinLogin intentionally receives no organization, recipient or role.
 templ JoinLogin(loginURL string) {
-	@common.StandaloneLayout(common.WithTitle("Invitation")) {
+	@common.StandaloneLayout(common.WithTitle(i18n.T(ctx, "join.login.title"))) {
 		@card.Card() {
 			@card.Header() {
 				@card.Title() {
-					Invitation
+					{ i18n.T(ctx, "join.login.title") }
 				}
 			}
 			@card.Content() {
-				<p class="mb-4 text-sm text-muted-foreground">Connectez-vous pour consulter cette invitation.</p>
+				<p class="mb-4 text-sm text-muted-foreground">{ i18n.T(ctx, "join.login.description") }</p>
 				@button.Button(button.Props{Href: loginURL, Class: "w-full"}) {
-					Se connecter
+					{ i18n.T(ctx, "join.sign_in") }
 				}
 			}
 		}
 	}
+}
+
+// strongName emphasizes an organization name inside a translated sentence. The
+// name is escaped: only the markup around it is trusted.
+func strongName(name string) string {
+	return `<strong class="text-foreground">` + templ.EscapeString(name) + `</strong>`
 }

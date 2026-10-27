@@ -1,12 +1,14 @@
 package component
 
 import (
+	"context"
 	"net/url"
 	"time"
 
 	"github.com/xolo-gateway/xolo/internal/core/model"
 	"github.com/xolo-gateway/xolo/internal/core/port"
 	common "github.com/xolo-gateway/xolo/internal/http/handler/webui/common/component"
+	"github.com/xolo-gateway/xolo/internal/i18n"
 )
 
 type OrgDashboardVModel struct {
@@ -349,23 +351,23 @@ type RoleFormVModel struct {
 
 // roleLabelFromMap uses only roles resolved in the invitation's organization,
 // including explicitly mapped legacy builtin codes.
-func roleLabelFromMap(names map[string]string, roleID string) string {
+func roleLabelFromMap(ctx context.Context, names map[string]string, roleID string) string {
 	if names != nil {
 		if name, ok := names[roleID]; ok {
 			return name
 		}
 	}
-	return "Rôle indisponible"
+	return i18n.T(ctx, "org.invites.role_unavailable")
 }
 
-// BuiltinRoleLabel returns the French label for a builtin role kind.
-func BuiltinRoleLabel(kind string) string {
+// BuiltinRoleLabel returns the label of a builtin role kind.
+func BuiltinRoleLabel(ctx context.Context, kind string) string {
 	switch kind {
 	case model.BuiltinKindOwner:
-		return "Propriétaire"
+		return i18n.T(ctx, "org.members.builtin_role.owner")
 	case model.BuiltinKindAdmin:
-		return "Administrateur"
+		return i18n.T(ctx, "org.members.builtin_role.admin")
 	default:
-		return "Utilisateur"
+		return i18n.T(ctx, "org.members.builtin_role.user")
 	}
 }

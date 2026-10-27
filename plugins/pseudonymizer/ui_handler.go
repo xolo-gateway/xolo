@@ -9,7 +9,9 @@ import (
 	"github.com/a-h/templ"
 	goanon "github.com/bornholm/go-anon"
 	"github.com/bornholm/go-anon/pkg/modelstore"
+	"github.com/xolo-gateway/xolo/internal/i18n"
 	"github.com/xolo-gateway/xolo/pkg/pluginsdk"
+	"github.com/xolo-gateway/xolo/plugins/internal/uilocale"
 )
 
 type pluginUI struct {
@@ -23,7 +25,7 @@ func newUIHandler(p *Plugin) http.Handler {
 	mux.HandleFunc("POST /api/config", ui.handleSaveConfig)
 	mux.HandleFunc("POST /api/secrets/hash_key", ui.handleSaveHashKey)
 	mux.HandleFunc("POST /api/secrets/hash_key/delete", ui.handleDeleteHashKey)
-	return mux
+	return uilocale.Handler(mux)
 }
 
 // uiPageData holds all data needed to render the configuration page.
@@ -192,11 +194,11 @@ func (ui *pluginUI) handleSaveHashKey(w http.ResponseWriter, r *http.Request) {
 	}
 	value := r.FormValue("hash_key")
 	if value == "" {
-		http.Error(w, "hash_key vide", http.StatusBadRequest)
+		http.Error(w, i18n.T(ctx, "plugin.pseudonymizer.hash_key.empty"), http.StatusBadRequest)
 		return
 	}
 	if _, err := goanon.ParseHashKey(value); err != nil {
-		http.Error(w, "clé invalide : "+err.Error(), http.StatusBadRequest)
+		http.Error(w, i18n.T(ctx, "plugin.pseudonymizer.hash_key.invalid", err.Error()), http.StatusBadRequest)
 		return
 	}
 	if err := host.SetSecret(ctx, scopeID, pluginName, nodeID, secretKeyHashHMAC, value); err != nil {

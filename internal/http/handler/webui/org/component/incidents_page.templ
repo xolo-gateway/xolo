@@ -4,17 +4,18 @@ import (
 	"strconv"
 
 	common "github.com/xolo-gateway/xolo/internal/http/handler/webui/common/component"
+	"github.com/xolo-gateway/xolo/internal/i18n"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/button"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/collapsible"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/icon"
 )
 
 templ IncidentsPage(vmodel IncidentsPageVModel) {
-	@common.AppLayout(vmodel.AppLayoutVModel, common.WithTitle("Incidents — "+vmodel.Org.Name())) {
+	@common.AppLayout(vmodel.AppLayoutVModel, common.WithTitle(i18n.T(ctx, "org.events.incidents.page_title", vmodel.Org.Name()))) {
 		<div>
 			@common.PageHeader(common.PageHeaderProps{
-				Title:    "Incidents",
-				Subtitle: "Historique des déclenchements d'alertes. Les événements ayant contribué à un incident sont épinglés et conservés au-delà de la fenêtre glissante.",
+				Title:    i18n.T(ctx, "org.nav.incidents"),
+				Subtitle: i18n.T(ctx, "org.events.incidents.subtitle"),
 			})
 			<div class="mb-3.5">
 				@EventsTabs(vmodel.Org, "incidents", vmodel.View)
@@ -22,8 +23,8 @@ templ IncidentsPage(vmodel IncidentsPageVModel) {
 			if len(vmodel.Incidents) == 0 {
 				@common.EmptyState(common.EmptyStateProps{
 					Icon:        icon.CircleCheck,
-					Title:       "Aucun incident",
-					Description: "Aucune alerte ne s'est déclenchée. Les incidents ouverts et résolus apparaîtront ici.",
+					Title:       i18n.T(ctx, "org.events.incidents.empty_title"),
+					Description: i18n.T(ctx, "org.events.incidents.empty_description"),
 				})
 			} else {
 				<div class="space-y-2.5">
@@ -47,19 +48,19 @@ templ incidentCard(view IncidentView) {
 						if view.Alert != nil {
 							{ view.Alert.Name() }
 						} else {
-							<span class="text-muted-foreground">Alerte supprimée</span>
+							<span class="text-muted-foreground">{ i18n.T(ctx, "org.events.incidents.alert_deleted") }</span>
 						}
 					</div>
 					<div class="text-xs text-muted-foreground">
-						Déclenché le { formatEventTime(view.Incident.StartedAt()) }
+						{ i18n.T(ctx, "org.events.incidents.started_at", formatEventTime(view.Incident.StartedAt())) }
 						if view.Incident.ResolvedAt() != nil {
-							· résolu le { formatOptionalTime(view.Incident.ResolvedAt()) }
+							{ " " }{ i18n.T(ctx, "org.events.incidents.resolved_at", formatOptionalTime(view.Incident.ResolvedAt())) }
 						}
 					</div>
 				</div>
 				<div class="ml-auto flex shrink-0 items-center gap-2">
 					<span class="tnum text-xs text-muted-foreground">
-						pic { strconv.FormatFloat(view.Incident.PeakValue(), 'f', -1, 64) }
+						{ i18n.T(ctx, "org.events.incidents.peak", strconv.FormatFloat(view.Incident.PeakValue(), 'f', -1, 64)) }
 					</span>
 					if view.Incident.Status() == "firing" {
 						@common.Badge(common.ToneNegative, "firing")
@@ -72,10 +73,10 @@ templ incidentCard(view IncidentView) {
 							Size:     button.SizeSm,
 							Disabled: true,
 							Attributes: templ.Attributes{
-								"title": "Bientôt disponible",
+								"title": i18n.T(ctx, "org.events.incidents.coming_soon"),
 							},
 						}) {
-							Acquitter
+							{ i18n.T(ctx, "org.events.incidents.acknowledge") }
 						}
 					} else {
 						@common.Badge(common.TonePositive, "resolved")
@@ -85,7 +86,7 @@ templ incidentCard(view IncidentView) {
 			if len(view.Events) > 0 {
 				@collapsible.Collapsible(collapsible.Props{Class: "text-sm"}) {
 					@collapsible.Trigger(collapsible.TriggerProps{Class: "cursor-pointer text-xs text-muted-foreground"}) {
-						{ strconv.Itoa(len(view.Events)) } événement(s) épinglé(s)
+						{ i18n.T(ctx, "org.events.incidents.pinned_events", len(view.Events)) }
 					}
 					@collapsible.Content(collapsible.ContentProps{Class: "mt-2 space-y-1"}) {
 						for _, e := range view.Events {

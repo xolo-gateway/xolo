@@ -11,6 +11,7 @@ import { builtinPorts, pluginPorts, type ResolvedPort } from '../nodes/ports'
 import { PORT_COLOR } from '../nodes/PortRow'
 import { orgSlug } from '../api'
 import { useInspectorWidth } from './useInspectorWidth'
+import { rich, t } from '../i18n'
 
 interface NodeInspectorProps {
   node: Node | null
@@ -50,7 +51,7 @@ export function NodeInspector({ node, descriptors, readonly, baseUrl }: NodeInsp
       <div
         className="pipeline-inspector__resizer"
         onPointerDown={onPointerDown}
-        title="Redimensionner le panneau"
+        title={t('inspector.resize')}
       />
 
       <header className="pipeline-inspector__header">
@@ -62,7 +63,7 @@ export function NodeInspector({ node, descriptors, readonly, baseUrl }: NodeInsp
       </header>
 
       <div className={hasFrame ? 'pipeline-inspector__body pipeline-inspector__body--frame' : 'pipeline-inspector__body'}>
-        <Field label="Identifiant du nœud">
+        <Field label={t('inspector.nodeId')}>
           {/* The id is what edges reference; it is shown so a graph can be read
               against its exported JSON, and read-only because renaming it would
               orphan every edge pointing at it. */}
@@ -92,11 +93,11 @@ function LabelField({ node, readonly }: { node: Node; readonly: boolean }) {
   const { updateNodeData } = useReactFlow()
   const label = (node.data as { label?: string }).label ?? ''
   return (
-    <Field label="Libellé" hint="optionnel">
+    <Field label={t('inspector.label')} hint={t('inspector.optional')}>
       <input
         className="pipeline-inspector__input"
         value={label}
-        placeholder="ex. modèle selon complexité"
+        placeholder={t('inspector.label.placeholder')}
         disabled={readonly}
         onChange={e => updateNodeData(node.id, { label: e.target.value })}
       />
@@ -121,14 +122,14 @@ function NodeConfig({ node, kind, descriptor, readonly, baseUrl }: NodeConfigPro
     const data = node.data as ModelNodeData
     return (
       <>
-        <Field label="Modèle appelé" hint="proxyName">
+        <Field label={t('inspector.model.called')} hint="proxyName">
           <ModelPicker
             value={data.proxyName ?? ''}
             disabled={readonly || data.passthrough === true}
             onChange={proxyName => updateNodeData(node.id, { proxyName })}
           />
           <p className="pipeline-inspector__hint">
-            Ignoré si le port <code>model_name</code> est connecté : la valeur d'exécution prend le dessus.
+            {rich('inspector.model.portHint', { port: <code>model_name</code> })}
           </p>
         </Field>
         <Field>
@@ -140,10 +141,9 @@ function NodeConfig({ node, kind, descriptor, readonly, baseUrl }: NodeConfigPro
               onChange={e => updateNodeData(node.id, { passthrough: e.target.checked })}
             />
             <span>
-              <span className="pipeline-inspector__switch-label">Passthrough</span>
+              <span className="pipeline-inspector__switch-label">{t('inspector.passthrough')}</span>
               <span className="pipeline-inspector__hint">
-                Appelle le modèle demandé par l'appelant au lieu d'un modèle fixe.
-                Réservé aux pipelines de middleware.
+                {t('inspector.passthrough.hint')}
               </span>
             </span>
           </label>
@@ -155,14 +155,14 @@ function NodeConfig({ node, kind, descriptor, readonly, baseUrl }: NodeConfigPro
   if (kind === 'model_ref') {
     const data = node.data as ModelRefNodeData
     return (
-      <Field label="Modèle" hint="proxyName">
+      <Field label={t('inspector.modelRef.label')} hint="proxyName">
         <ModelPicker
           value={data.proxyName ?? ''}
           disabled={readonly}
           onChange={proxyName => updateNodeData(node.id, { proxyName })}
         />
         <p className="pipeline-inspector__hint">
-          Le nom choisi est émis sur le port <code>model_name</code>, à brancher sur un nœud modèle, un routeur ou un classifieur.
+          {rich('inspector.modelRef.hint', { port: <code>model_name</code> })}
         </p>
       </Field>
     )
@@ -172,7 +172,7 @@ function NodeConfig({ node, kind, descriptor, readonly, baseUrl }: NodeConfigPro
     const models = ((node.data as { models?: string[] }).models ?? [])
     const setModels = (next: string[]) => updateNodeData(node.id, { models: next })
     return (
-      <Field label="Modèles, par ordre de préférence">
+      <Field label={t('inspector.fallback.label')}>
         <div className="pipeline-fallback-list">
           {models.map((m, idx) => (
             <div key={idx} className="pipeline-fallback-list__row">
@@ -186,7 +186,7 @@ function NodeConfig({ node, kind, descriptor, readonly, baseUrl }: NodeConfigPro
                 <button
                   type="button"
                   className="schema-form__row-remove"
-                  title="Retirer"
+                  title={t('common.remove')}
                   onClick={() => setModels(models.filter((_, i) => i !== idx))}
                 >
                   ×
@@ -196,13 +196,12 @@ function NodeConfig({ node, kind, descriptor, readonly, baseUrl }: NodeConfigPro
           ))}
           {!readonly && (
             <button type="button" className="schema-form__add" onClick={() => setModels([...models, ''])}>
-              + Ajouter un modèle
+              {t('inspector.fallback.add')}
             </button>
           )}
         </div>
         <p className="pipeline-inspector__hint">
-          Le premier modèle est appelé ; en cas d'erreur, de délai ou de 429, le suivant prend le relais.
-          Un port <code>model_name</code> connecté passe avant la liste. Modèles réels uniquement.
+          {rich('inspector.fallback.hint', { port: <code>model_name</code> })}
         </p>
       </Field>
     )
@@ -211,7 +210,7 @@ function NodeConfig({ node, kind, descriptor, readonly, baseUrl }: NodeConfigPro
   if (kind === 'note') {
     const text = (node.data as { text?: string }).text ?? ''
     return (
-      <Field label="Texte">
+      <Field label={t('inspector.note.text')}>
         <textarea
           className="pipeline-inspector__input schema-form__textarea"
           value={text}
@@ -224,13 +223,13 @@ function NodeConfig({ node, kind, descriptor, readonly, baseUrl }: NodeConfigPro
 
   if (SCHEMA_CONFIGURED_KINDS.has(kind)) {
     if (!descriptor?.configSchema) {
-      return <p className="pipeline-inspector__hint">Ce nœud n'a rien à configurer : tout passe par ses ports.</p>
+      return <p className="pipeline-inspector__hint">{t('inspector.noConfig')}</p>
     }
     // Built-in nodes keep their configuration at the root of `data`; the
     // descriptor is carried alongside and must survive the replace.
     const { __descriptor, ...config } = node.data as Record<string, unknown>
     return (
-      <Field label="Configuration">
+      <Field label={t('inspector.configuration')}>
         <SchemaForm
           schemaJSON={descriptor.configSchema}
           value={config}
@@ -246,7 +245,7 @@ function NodeConfig({ node, kind, descriptor, readonly, baseUrl }: NodeConfigPro
     const portType = data.portType ?? 'string'
     return (
       <>
-        <Field label="Type">
+        <Field label={t('inspector.value.type')}>
           <select
             className="pipeline-inspector__input"
             value={portType}
@@ -258,7 +257,7 @@ function NodeConfig({ node, kind, descriptor, readonly, baseUrl }: NodeConfigPro
             <option value="boolean">boolean</option>
           </select>
         </Field>
-        <Field label="Valeur">
+        <Field label={t('inspector.value.value')}>
           {portType === 'boolean' ? (
             <select
               className="pipeline-inspector__input"
@@ -293,7 +292,7 @@ function NodeConfig({ node, kind, descriptor, readonly, baseUrl }: NodeConfigPro
     // straight into the node's config, which is what the graph serialises.
     const data = node.data as PluginNodeData
     return (
-      <Field label="Configuration">
+      <Field label={t('inspector.configuration')}>
         <SchemaForm
           schemaJSON={descriptor.configSchema}
           value={(data.config ?? {}) as Record<string, unknown>}
@@ -307,7 +306,7 @@ function NodeConfig({ node, kind, descriptor, readonly, baseUrl }: NodeConfigPro
   if (kind === 'plugin') {
     return (
       <p className="pipeline-inspector__hint">
-        Ce plugin n'expose pas d'interface de configuration.
+        {t('inspector.plugin.noUI')}
       </p>
     )
   }
@@ -383,11 +382,11 @@ function PluginConfigFrame({ node, baseUrl }: PluginConfigFrameProps) {
 
   return (
     <div className="pipeline-inspector__plugin-ui">
-      <div className="pipeline-inspector__label">Configuration</div>
+      <div className="pipeline-inspector__label">{t('inspector.configuration')}</div>
       {ready ? (
-        <iframe src={uiURL} title={`Configuration ${data.pluginName}`} className="pipeline-inspector__iframe" />
+        <iframe src={uiURL} title={t('inspector.plugin.frameTitle', { plugin: data.pluginName })} className="pipeline-inspector__iframe" />
       ) : (
-        <div className="pipeline-inspector__hint">Chargement…</div>
+        <div className="pipeline-inspector__hint">{t('common.loading')}</div>
       )}
     </div>
   )
@@ -425,18 +424,18 @@ function PortList({
 
   return (
     <div className="pipeline-inspector__ports">
-      <div className="pipeline-inspector__label">Ports</div>
+      <div className="pipeline-inspector__label">{t('inspector.ports')}</div>
       {inputs.map(p => (
-        <PortEntry key={`in-${p.name}`} port={p} direction={p.required ? 'requis' : 'entrée'} />
+        <PortEntry key={`in-${p.name}`} port={p} direction={p.required ? 'required' : 'input'} />
       ))}
       {outputs.map(p => (
-        <PortEntry key={`out-${p.name}`} port={p} direction="sortie" />
+        <PortEntry key={`out-${p.name}`} port={p} direction="output" />
       ))}
     </div>
   )
 }
 
-function PortEntry({ port, direction }: { port: ResolvedPort; direction: string }) {
+function PortEntry({ port, direction }: { port: ResolvedPort; direction: 'required' | 'input' | 'output' }) {
   return (
     <div className="pipeline-inspector__port">
       <span
@@ -446,7 +445,7 @@ function PortEntry({ port, direction }: { port: ResolvedPort; direction: string 
       <span className="pipeline-inspector__port-name">{port.name}</span>
       <span className="pipeline-inspector__port-type">{port.port_type}</span>
       <span className={`pipeline-inspector__port-badge pipeline-inspector__port-badge--${direction}`}>
-        {direction}
+        {t(`inspector.port.${direction}`)}
       </span>
     </div>
   )
@@ -460,7 +459,7 @@ function DeleteNodeButton({ nodeId }: { nodeId: string }) {
       className="pipeline-inspector__delete"
       onClick={() => deleteElements({ nodes: [{ id: nodeId }] })}
     >
-      Supprimer le nœud
+      {t('inspector.delete')}
     </button>
   )
 }
@@ -518,16 +517,16 @@ function inspectorTitle(node: Node, kind: PipelineNodeType): string {
       return (node.data as PluginNodeData).pluginName
     case 'model': {
       const data = node.data as ModelNodeData
-      return labelOr(node, data.passthrough ? 'modèle demandé' : data.proxyName || 'non configuré')
+      return labelOr(node, data.passthrough ? t('node.model.requested') : data.proxyName || t('node.unconfigured'))
     }
     case 'model_ref':
-      return labelOr(node, (node.data as ModelRefNodeData).proxyName || 'non configuré')
+      return labelOr(node, (node.data as ModelRefNodeData).proxyName || t('node.unconfigured'))
     case 'value':
       return labelOr(node, (node.data as ValueNodeData).value || '—')
     case 'generator':
       return 'chat.completions'
     case 'sink':
-      return 'réponse'
+      return t('node.sink.title')
     default:
       return builtinTitle(kind, node.data as Record<string, unknown>)
   }

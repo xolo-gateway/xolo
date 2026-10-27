@@ -1,5 +1,7 @@
 package component
 
+import "github.com/xolo-gateway/xolo/internal/i18n"
+
 type KPIBandProps struct {
 	ID    string
 	Class string
@@ -85,7 +87,7 @@ templ KPIPending(label string, note string) {
 			if note != "" {
 				{ note }
 			} else {
-				Bientôt disponible
+				{ i18n.T(ctx, "common.coming_soon") }
 			}
 		</div>
 	</div>

@@ -7,21 +7,22 @@ import (
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/button"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/icon"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/table"
+	"github.com/xolo-gateway/xolo/internal/i18n"
 )
 
 // ── Models Page ───────────────────────────────────────────────────────────────
 templ ModelsPage(vmodel ModelsPageVModel) {
-	@common.AppLayout(vmodel.AppLayoutVModel, common.WithTitle("Modèles — "+vmodel.Provider.Name())) {
+	@common.AppLayout(vmodel.AppLayoutVModel, common.WithTitle(i18n.T(ctx, "org.models.page_title", vmodel.Provider.Name()))) {
 		@common.PageHeader(common.PageHeaderProps{
-			Title:    "Modèles",
-			Subtitle: "Routes de proxy exposées par le fournisseur " + vmodel.Provider.Name() + ".",
+			Title:    i18n.T(ctx, "org.models.title"),
+			Subtitle: i18n.T(ctx, "org.models.subtitle", vmodel.Provider.Name()),
 		}) {
 			@button.Button(button.Props{
 				Href:    common.BaseURLString(ctx, common.WithPath("/orgs/", vmodel.Org.Slug(), "/admin/providers")),
 				Variant: button.VariantOutline,
 				Size:    button.SizeSm,
 			}) {
-				Retour aux fournisseurs
+				{ i18n.T(ctx, "org.models.back_to_providers") }
 			}
 			if common.HasPermission(ctx, vmodel.Org.ID(), rbac.PermProvidersWrite) {
 				@button.Button(button.Props{
@@ -31,7 +32,7 @@ templ ModelsPage(vmodel ModelsPageVModel) {
 					Class:   "gap-1.5",
 				}) {
 					@icon.Import(icon.Props{Class: "size-3.5"})
-					Importer depuis le fournisseur
+					{ i18n.T(ctx, "org.models.import_from_provider") }
 				}
 				@button.Button(button.Props{
 					Size:  button.SizeSm,
@@ -39,27 +40,27 @@ templ ModelsPage(vmodel ModelsPageVModel) {
 					Href:  common.BaseURLString(ctx, common.WithPath("/orgs/", vmodel.Org.Slug(), "/admin/providers/", string(vmodel.Provider.ID()), "/models/new")),
 				}) {
 					@icon.Plus(icon.Props{Class: "size-3.5"})
-					Ajouter un modèle
+					{ i18n.T(ctx, "org.models.add") }
 				}
 			}
 		}
 		if vmodel.Success != "" {
 			<div class="mb-3.5">
-				@common.InfoBanner(common.TonePositive, "Opération réussie.")
+				@common.InfoBanner(common.TonePositive, i18n.T(ctx, "org.models.success"))
 			</div>
 		}
 		if len(vmodel.Models) == 0 {
 			@common.EmptyState(common.EmptyStateProps{
 				Icon:        icon.BrainCircuit,
-				Title:       "Aucun modèle",
-				Description: "Déclarez les modèles que ce fournisseur expose pour les rendre appelables via la passerelle.",
+				Title:       i18n.T(ctx, "org.models.empty_title"),
+				Description: i18n.T(ctx, "org.models.empty_description"),
 			}) {
 				if common.HasPermission(ctx, vmodel.Org.ID(), rbac.PermProvidersWrite) {
 					@button.Button(button.Props{
 						Size: button.SizeSm,
 						Href: common.BaseURLString(ctx, common.WithPath("/orgs/", vmodel.Org.Slug(), "/admin/providers/", string(vmodel.Provider.ID()), "/models/new")),
 					}) {
-						Ajouter un modèle
+						{ i18n.T(ctx, "org.models.add") }
 					}
 				}
 			}
@@ -67,44 +68,44 @@ templ ModelsPage(vmodel ModelsPageVModel) {
 			@common.Section() {
 				@common.SectionHeader() {
 					@common.SectionTitle() {
-						{ Pluralize(len(vmodel.Models), "modèle", "modèles") }
+						{ i18n.T(ctx, "org.models.count", len(vmodel.Models)) }
 					}
 					<span class="ml-auto text-xs text-muted-foreground">
-						Coûts par million de tokens, en { vmodel.Provider.Currency() } — la devise du fournisseur
+						{ i18n.T(ctx, "org.models.cost_unit_note", vmodel.Provider.Currency()) }
 					</span>
 				}
 				<div class="overflow-x-auto">
 					@table.Table() {
 						@table.Header() {
 							@table.Head() {
-								Nom proxy
+								{ i18n.T(ctx, "org.models.col.proxy_name") }
 							}
 							@table.Head() {
-								Modèle réel
+								{ i18n.T(ctx, "org.models.col.real_model") }
 							}
 							@table.Head(table.HeadProps{Class: "text-right"}) {
-								Prompt
+								{ i18n.T(ctx, "org.models.col.prompt") }
 							}
 							@table.Head(table.HeadProps{Class: "text-right"}) {
-								Prompt en cache
+								{ i18n.T(ctx, "org.models.col.cached_prompt") }
 							}
 							@table.Head(table.HeadProps{Class: "text-right"}) {
-								Complétion
+								{ i18n.T(ctx, "org.models.col.completion") }
 							}
 							@table.Head(table.HeadProps{Class: "text-right"}) {
-								Contexte
+								{ i18n.T(ctx, "org.models.col.context") }
 							}
 							@table.Head(table.HeadProps{Class: "text-right"}) {
-								Sortie
+								{ i18n.T(ctx, "org.models.col.output") }
 							}
 							@table.Head() {
-								Capacités
+								{ i18n.T(ctx, "org.models.col.capabilities") }
 							}
 							@table.Head() {
-								Activé
+								{ i18n.T(ctx, "org.models.col.enabled") }
 							}
 							@table.Head(table.HeadProps{Class: "text-right"}) {
-								Actions
+								{ i18n.T(ctx, "org.models.col.actions") }
 							}
 						}
 						@table.Body() {
@@ -136,9 +137,9 @@ templ ModelsPage(vmodel ModelsPageVModel) {
 									}
 									@table.Cell() {
 										if m.Enabled() {
-											@common.Badge(common.TonePositive, "Activé")
+											@common.Badge(common.TonePositive, i18n.T(ctx, "org.models.badge_enabled"))
 										} else {
-											@common.Badge(common.ToneNeutral, "Désactivé")
+											@common.Badge(common.ToneNeutral, i18n.T(ctx, "org.models.badge_disabled"))
 										}
 									}
 									@table.Cell(table.CellProps{Class: "text-right"}) {
@@ -149,7 +150,7 @@ templ ModelsPage(vmodel ModelsPageVModel) {
 													Variant:    button.VariantGhost,
 													Size:       button.SizeIcon,
 													Class:      "size-7",
-													Attributes: templ.Attributes{"title": "Modifier"},
+													Attributes: templ.Attributes{"title": i18n.T(ctx, "org.models.edit")},
 												}) {
 													@icon.Pencil(icon.Props{Class: "size-3.5"})
 												}
@@ -173,19 +174,19 @@ templ ModelsPage(vmodel ModelsPageVModel) {
 templ modelCapabilities(kind model.ModelKind, caps model.ModelCapabilities) {
 	<div class="flex flex-wrap gap-1">
 		if kind != model.ModelKindCompletion {
-			@common.Badge(common.ToneInfo, common.ModelKindLabel(kind))
+			@common.Badge(common.ToneInfo, common.ModelKindLabel(ctx, kind))
 		}
 		if caps.Tools {
-			@common.Badge(common.ToneNeutral, "outils")
+			@common.Badge(common.ToneNeutral, i18n.T(ctx, "org.models.cap.tools"))
 		}
 		if caps.Vision {
-			@common.Badge(common.ToneNeutral, "vision")
+			@common.Badge(common.ToneNeutral, i18n.T(ctx, "org.models.cap.vision"))
 		}
 		if caps.Reasoning {
-			@common.Badge(common.ToneNeutral, "raisonnement")
+			@common.Badge(common.ToneNeutral, i18n.T(ctx, "org.models.cap.reasoning"))
 		}
 		if caps.Audio {
-			@common.Badge(common.ToneNeutral, "audio")
+			@common.Badge(common.ToneNeutral, i18n.T(ctx, "org.models.cap.audio"))
 		}
 	</div>
 }

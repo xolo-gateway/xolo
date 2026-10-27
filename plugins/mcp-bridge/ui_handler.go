@@ -9,6 +9,7 @@ import (
 
 	"github.com/a-h/templ"
 	"github.com/xolo-gateway/xolo/pkg/pluginsdk"
+	"github.com/xolo-gateway/xolo/plugins/internal/uilocale"
 )
 
 func newUIHandler(oauth *oauthClient) http.Handler {
@@ -18,7 +19,7 @@ func newUIHandler(oauth *oauthClient) http.Handler {
 	mux.HandleFunc("GET /connect", handleConnect)
 	mux.HandleFunc("POST /connect", oauth.handleStartConnect)
 	mux.HandleFunc("GET /callback", oauth.handleCallback)
-	return mux
+	return uilocale.Handler(mux)
 }
 
 type uiPageData struct {

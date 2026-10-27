@@ -16,6 +16,7 @@ import (
 	webcommon "github.com/xolo-gateway/xolo/internal/http/handler/webui/common"
 	common "github.com/xolo-gateway/xolo/internal/http/handler/webui/common/component"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/org/component"
+	"github.com/xolo-gateway/xolo/internal/i18n"
 )
 
 func (h *Handler) getVirtualModelsPage(w http.ResponseWriter, r *http.Request) {
@@ -71,7 +72,7 @@ func (h *Handler) getVirtualModelsPage(w http.ResponseWriter, r *http.Request) {
 			ContextOrgID: org.ID(),
 			Breadcrumbs: []common.BreadcrumbItem{
 				{Label: org.Name(), Href: "/orgs/" + orgSlug + "/usage"},
-				{Label: "Modèles virtuels", Href: ""},
+				{Label: i18n.T(ctx, "org.nav.virtual_models"), Href: ""},
 			},
 		},
 	}
@@ -119,8 +120,8 @@ func (h *Handler) getNewVirtualModelPage(w http.ResponseWriter, r *http.Request)
 			ContextOrgID: org.ID(),
 			Breadcrumbs: []common.BreadcrumbItem{
 				{Label: org.Name(), Href: "/orgs/" + orgSlug + "/usage"},
-				{Label: "Modèles virtuels", Href: "/orgs/" + orgSlug + "/admin/virtual-models"},
-				{Label: "Nouveau", Href: ""},
+				{Label: i18n.T(ctx, "org.nav.virtual_models"), Href: "/orgs/" + orgSlug + "/admin/virtual-models"},
+				{Label: i18n.T(ctx, "org.nav.new"), Href: ""},
 			},
 		},
 	}
@@ -238,7 +239,7 @@ func (h *Handler) getEditVirtualModelPage(w http.ResponseWriter, r *http.Request
 			ContextOrgID: org.ID(),
 			Breadcrumbs: []common.BreadcrumbItem{
 				{Label: org.Name(), Href: "/orgs/" + orgSlug + "/usage"},
-				{Label: "Modèles virtuels", Href: "/orgs/" + orgSlug + "/admin/virtual-models"},
+				{Label: i18n.T(ctx, "org.nav.virtual_models"), Href: "/orgs/" + orgSlug + "/admin/virtual-models"},
 				{Label: vm.Name(), Href: ""},
 			},
 		},
@@ -407,7 +408,7 @@ func (h *Handler) getPipelineEditorPage(w http.ResponseWriter, r *http.Request) 
 			FullBleed:    true,
 			Breadcrumbs: []common.BreadcrumbItem{
 				{Label: org.Name(), Href: "/orgs/" + orgSlug + "/usage"},
-				{Label: "Modèles virtuels", Href: "/orgs/" + orgSlug + "/admin/virtual-models"},
+				{Label: i18n.T(ctx, "org.nav.virtual_models"), Href: "/orgs/" + orgSlug + "/admin/virtual-models"},
 				{Label: vm.Name(), Href: ""},
 			},
 		},
@@ -426,7 +427,7 @@ func (h *Handler) virtualModelConflict(ctx context.Context, orgID model.OrgID, n
 	_, err := h.virtualModelStore.GetVirtualModelByName(ctx, orgID, name)
 	switch {
 	case err == nil:
-		return virtualModelConflictMessage(name), nil
+		return virtualModelConflictMessage(ctx, name), nil
 	case errors.Is(err, port.ErrNotFound):
 		return "", nil
 	default:
@@ -436,9 +437,8 @@ func (h *Handler) virtualModelConflict(ctx context.Context, orgID model.OrgID, n
 
 // virtualModelConflictMessage explains that a virtual model of the
 // organization is already named name.
-func virtualModelConflictMessage(name string) string {
-	return "Un modèle virtuel s'appelle déjà « " + name + " » dans cette organisation : " +
-		"il serait servi à la place de ce modèle. Choisissez un autre nom."
+func virtualModelConflictMessage(ctx context.Context, name string) string {
+	return i18n.T(ctx, "org.errors.virtual_models.name_conflict", name)
 }
 
 // orgVirtualModelNames returns the names of the organization's virtual

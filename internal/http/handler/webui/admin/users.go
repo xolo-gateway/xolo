@@ -18,6 +18,7 @@ import (
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/common"
 	commonComp "github.com/xolo-gateway/xolo/internal/http/handler/webui/common/component"
 	"github.com/xolo-gateway/xolo/internal/http/middleware/authz"
+	"github.com/xolo-gateway/xolo/internal/i18n"
 	"github.com/xolo-gateway/xolo/templx/form/renderer/templui"
 )
 
@@ -64,7 +65,7 @@ func (h *Handler) postEditUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	form := h.newUserForm()
+	form := h.newUserForm(ctx)
 	if err := form.Handle(r); err != nil {
 		common.HandleError(w, r, errors.Wrap(err, "could not handle form"))
 		return
@@ -187,8 +188,8 @@ func (h *Handler) fillUsersPageVModelAppLayout(ctx context.Context, vmodel *comp
 		IsAdmin:      isAdmin,
 		SelectedItem: "users",
 		Breadcrumbs: []commonComp.BreadcrumbItem{
-			{Label: "Plateforme", Href: "/admin/"},
-			{Label: "Utilisateurs", Href: "/admin/users"},
+			{Label: i18n.T(ctx, "admin.breadcrumb.platform"), Href: "/admin/"},
+			{Label: i18n.T(ctx, "admin.breadcrumb.users"), Href: "/admin/users"},
 		},
 		Context: commonComp.ContextPlatform,
 	}
@@ -299,8 +300,8 @@ func (h *Handler) fillEditUserPageVModelAppLayout(ctx context.Context, vmodel *c
 		IsAdmin:      isAdmin,
 		SelectedItem: "users",
 		Breadcrumbs: []commonComp.BreadcrumbItem{
-			{Label: "Plateforme", Href: "/admin/"},
-			{Label: "Utilisateurs", Href: "/admin/users"},
+			{Label: i18n.T(ctx, "admin.breadcrumb.platform"), Href: "/admin/"},
+			{Label: i18n.T(ctx, "admin.breadcrumb.users"), Href: "/admin/users"},
 		},
 		Context: commonComp.ContextPlatform,
 	}
@@ -325,7 +326,7 @@ func (h *Handler) fillEditUserPageVModelUser(ctx context.Context, vmodel *compon
 }
 
 func (h *Handler) fillEditUserPageVModelForm(ctx context.Context, vmodel *component.EditUserPageVModel, r *http.Request) error {
-	form := h.newUserForm()
+	form := h.newUserForm(ctx)
 
 	// Pre-populate form with existing values
 	if vmodel.User != nil {
@@ -339,20 +340,20 @@ func (h *Handler) fillEditUserPageVModelForm(ctx context.Context, vmodel *compon
 	return nil
 }
 
-func (h *Handler) newUserForm() *form.Form {
+func (h *Handler) newUserForm(ctx context.Context) *form.Form {
 	// Available roles in the system
 	availableRoles := []struct {
 		Label string
 		Value string
 	}{
-		{Label: "Utilisateur", Value: authz.RoleUser},
-		{Label: "Administrateur", Value: authz.RoleAdmin},
+		{Label: i18n.T(ctx, "admin.users.role.user"), Value: authz.RoleUser},
+		{Label: i18n.T(ctx, "admin.users.role.admin"), Value: authz.RoleAdmin},
 	}
 
 	form := formx.New([]form.Field{
 		formx.NewField("roles",
-			formx.WithLabel("Rôles"),
-			formx.WithDescription("Rôles assignés à l'utilisateur"),
+			formx.WithLabel(i18n.T(ctx, "admin.users.form.roles")),
+			formx.WithDescription(i18n.T(ctx, "admin.users.form.roles_description")),
 			formx.WithType("select"),
 			formx.WithSelectOptions(slices.Collect(func(yield func(formx.SelectOption) bool) {
 				for _, role := range availableRoles {
@@ -366,17 +367,17 @@ func (h *Handler) newUserForm() *form.Form {
 			})...),
 		),
 		formx.NewField("active",
-			formx.WithLabel("Statut"),
-			formx.WithDescription("Statut d'activation de l'utilisateur"),
+			formx.WithLabel(i18n.T(ctx, "admin.users.form.status")),
+			formx.WithDescription(i18n.T(ctx, "admin.users.form.status_description")),
 			formx.WithType("select"),
 			formx.WithRequired(true),
 			formx.WithSelectOptions(
 				formx.SelectOption{
-					Label: "Actif",
+					Label: i18n.T(ctx, "admin.users.status.active"),
 					Value: "true",
 				},
 				formx.SelectOption{
-					Label: "Inactif",
+					Label: i18n.T(ctx, "admin.users.status.inactive"),
 					Value: "false",
 				},
 			),

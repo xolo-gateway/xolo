@@ -10,16 +10,18 @@ import (
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/card"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/input"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/label"
+	"github.com/xolo-gateway/xolo/internal/i18n"
 )
 
-var weekDays = []struct{ ID, Label string }{
-	{"monday", "Lun"},
-	{"tuesday", "Mar"},
-	{"wednesday", "Mer"},
-	{"thursday", "Jeu"},
-	{"friday", "Ven"},
-	{"saturday", "Sam"},
-	{"sunday", "Dim"},
+// weekDays pairs each day identifier with the message key of its short label.
+var weekDays = []struct{ ID, LabelKey string }{
+	{"monday", "plugin.time_restriction.day.monday"},
+	{"tuesday", "plugin.time_restriction.day.tuesday"},
+	{"wednesday", "plugin.time_restriction.day.wednesday"},
+	{"thursday", "plugin.time_restriction.day.thursday"},
+	{"friday", "plugin.time_restriction.day.friday"},
+	{"saturday", "plugin.time_restriction.day.saturday"},
+	{"sunday", "plugin.time_restriction.day.sunday"},
 }
 
 // page renders the time-restriction plugin configuration UI.
@@ -58,16 +60,15 @@ templ page(pd uiPageData) {
 			</style>
 		</head>
 		<body class="bg-background text-foreground min-h-screen p-4 space-y-4">
-			<h1 class="text-lg font-semibold">Restriction horaire</h1>
+			<h1 class="text-lg font-semibold">{ i18n.T(ctx, "plugin.time_restriction.title") }</h1>
 			<p class="text-sm text-muted-foreground">
-				Définissez les créneaux horaires pendant lesquels les requêtes sont autorisées.
-				Toute requête hors créneau sera refusée.
+				{ i18n.T(ctx, "plugin.time_restriction.intro") }
 			</p>
 
 			if pd.Success {
 				@alert.Alert(alert.Props{Variant: alert.VariantDefault}) {
 					@alert.Description() {
-						Configuration sauvegardée avec succès.
+						{ i18n.T(ctx, "plugin.time_restriction.saved") }
 					}
 				}
 			}
@@ -76,19 +77,19 @@ templ page(pd uiPageData) {
 				<!-- Timezone -->
 				@card.Card() {
 					@card.Header() {
-						@card.Title() { Fuseau horaire }
+						@card.Title() { { i18n.T(ctx, "plugin.time_restriction.timezone.title") } }
 					}
 					@card.Content() {
 						<div class="space-y-1">
-							@label.Label(label.Props{For: "timezone"}) { Identifiant IANA }
+							@label.Label(label.Props{For: "timezone"}) { { i18n.T(ctx, "plugin.time_restriction.timezone.label") } }
 							@input.Input(input.Props{
 								ID:          "timezone",
 								Name:        "timezone",
 								Value:       pd.Config.Timezone,
-								Placeholder: "ex: Europe/Paris, UTC, America/New_York",
+								Placeholder: i18n.T(ctx, "plugin.time_restriction.timezone.placeholder"),
 							})
 							<p class="text-xs text-muted-foreground">
-								Exemples : Europe/Paris · UTC · America/New_York · Asia/Tokyo
+								{ i18n.T(ctx, "plugin.time_restriction.timezone.examples") }
 							</p>
 						</div>
 					}
@@ -98,21 +99,21 @@ templ page(pd uiPageData) {
 				@card.Card() {
 					@card.Header() {
 						<div class="flex items-center justify-between">
-							@card.Title() { Créneaux autorisés }
+							@card.Title() { { i18n.T(ctx, "plugin.time_restriction.slots.title") } }
 							@button.Button(button.Props{
 								Type:       button.TypeSubmit,
 								Variant:    button.VariantOutline,
 								Size:       button.SizeSm,
 								Attributes: templ.Attributes{"formaction": "api/slots/add"},
 							}) {
-								+ Ajouter un créneau
+								{ i18n.T(ctx, "plugin.time_restriction.slots.add") }
 							}
 						</div>
 					}
 					@card.Content() {
 						if len(pd.Config.Slots) == 0 {
 							<p class="text-sm text-muted-foreground italic text-center py-4">
-								Aucun créneau configuré — toutes les requêtes seront refusées.
+								{ i18n.T(ctx, "plugin.time_restriction.slots.empty") }
 							</p>
 						} else {
 							<div class="space-y-4">
@@ -127,7 +128,8 @@ templ page(pd uiPageData) {
 				<!-- Save -->
 				<div class="flex justify-end">
 					@button.Button(button.Props{Type: button.TypeSubmit}) {
-						Sauvegarder
+						{ i18n.T(ctx, "plugin.time_restriction.save") }
+
 					}
 				</div>
 			</form>
@@ -139,7 +141,7 @@ templ slotRow(idx int, slot Slot) {
 	<div class="rounded-lg border p-4 space-y-3">
 		<!-- Days -->
 		<div class="space-y-1">
-			<p class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Jours de la semaine</p>
+			<p class="text-xs font-medium text-muted-foreground uppercase tracking-wide">{ i18n.T(ctx, "plugin.time_restriction.slot.days") }</p>
 			<div class="flex flex-wrap gap-1">
 				for _, d := range weekDays {
 					<input
@@ -151,7 +153,7 @@ templ slotRow(idx int, slot Slot) {
 						if slices.Contains(slot.Days, d.ID) { checked }
 					/>
 					<label for={ fmt.Sprintf("slot_%d_%s", idx, d.ID) } class="day-label">
-						{ d.Label }
+						{ i18n.T(ctx, d.LabelKey) }
 					</label>
 				}
 			</div>
@@ -160,7 +162,7 @@ templ slotRow(idx int, slot Slot) {
 		<!-- Time range -->
 		<div class="flex items-end gap-3">
 			<div class="flex-1 space-y-1">
-				@label.Label(label.Props{For: fmt.Sprintf("slot_%d_start", idx)}) { Heure de début }
+				@label.Label(label.Props{For: fmt.Sprintf("slot_%d_start", idx)}) { { i18n.T(ctx, "plugin.time_restriction.slot.start") } }
 				<input
 					type="time"
 					id={ fmt.Sprintf("slot_%d_start", idx) }
@@ -171,7 +173,7 @@ templ slotRow(idx int, slot Slot) {
 			</div>
 			<span class="text-muted-foreground pb-2">→</span>
 			<div class="flex-1 space-y-1">
-				@label.Label(label.Props{For: fmt.Sprintf("slot_%d_end", idx)}) { Heure de fin (exclusif) }
+				@label.Label(label.Props{For: fmt.Sprintf("slot_%d_end", idx)}) { { i18n.T(ctx, "plugin.time_restriction.slot.end") } }
 				<input
 					type="time"
 					id={ fmt.Sprintf("slot_%d_end", idx) }
@@ -188,7 +190,7 @@ templ slotRow(idx int, slot Slot) {
 					Size:    button.SizeIcon,
 					Attributes: templ.Attributes{
 						"formaction": "api/slots/delete",
-						"title":      "Supprimer ce créneau",
+						"title":      i18n.T(ctx, "plugin.time_restriction.slot.delete"),
 					},
 				}) {
 					<input type="hidden" name="index" value={ strconv.Itoa(idx) }/>
@@ -197,7 +199,7 @@ templ slotRow(idx int, slot Slot) {
 			</div>
 		</div>
 		<p class="text-xs text-muted-foreground">
-			Les créneaux couvrant minuit (ex: 22:00 → 02:00) ne sont pas supportés.
+			{ i18n.T(ctx, "plugin.time_restriction.slot.midnight") }
 		</p>
 	</div>
 }

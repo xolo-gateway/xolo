@@ -11,6 +11,7 @@ import (
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/icon"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/input"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/table"
+	"github.com/xolo-gateway/xolo/internal/i18n"
 )
 
 type OrgsPageVModel struct {
@@ -39,10 +40,10 @@ type OrgFormVModel struct {
 }
 
 templ OrgsPage(vmodel OrgsPageVModel) {
-	@common.AppLayout(vmodel.AppLayoutVModel, common.WithTitle("Organisations")) {
+	@common.AppLayout(vmodel.AppLayoutVModel, common.WithTitle(i18n.T(ctx, "admin.orgs.title"))) {
 		@common.PageHeader(common.PageHeaderProps{
-			Title:    "Organisations",
-			Subtitle: fmt.Sprintf("%d organisation(s) · %d membre(s) · devise de référence %s", vmodel.TotalOrgs, vmodel.TotalMembers, vmodel.Currency),
+			Title:    i18n.T(ctx, "admin.orgs.title"),
+			Subtitle: i18n.T(ctx, "admin.orgs.subtitle", fmt.Sprint(vmodel.TotalOrgs), fmt.Sprint(vmodel.TotalMembers), vmodel.Currency),
 		}) {
 			@button.Button(button.Props{
 				Href:  common.BaseURLString(ctx, common.WithPath("/admin/orgs/new")),
@@ -50,19 +51,19 @@ templ OrgsPage(vmodel OrgsPageVModel) {
 				Class: "gap-1.5 bg-platform text-platform-foreground hover:bg-platform/90",
 			}) {
 				@icon.Plus(icon.Props{Class: "size-3.5"})
-				Nouvelle organisation
+				{ i18n.T(ctx, "admin.orgs.new") }
 			}
 		}
 		if vmodel.Success != "" {
 			<div class="mb-3.5">
-				@common.InfoBanner(common.TonePositive, orgsSuccessMessage(vmodel.Success))
+				@common.InfoBanner(common.TonePositive, orgsSuccessMessage(ctx, vmodel.Success))
 			</div>
 		}
 		@common.FilterBar() {
 			@common.SearchFilter(common.SearchFilterProps{
 				Name:        "q",
 				Value:       vmodel.Search,
-				Placeholder: "Filtrer par nom ou slug…",
+				Placeholder: i18n.T(ctx, "admin.orgs.search_placeholder"),
 				Attributes: templ.Attributes{
 					"hx-get":        common.BaseURLString(ctx, common.WithPath("/admin/orgs")),
 					"hx-trigger":    "input changed delay:250ms, search",
@@ -90,29 +91,29 @@ templ orgsResults(vmodel OrgsPageVModel) {
 			if vmodel.Search != "" || vmodel.Status != "" {
 				@common.EmptyState(common.EmptyStateProps{
 					Icon:        icon.Search,
-					Title:       "Aucune organisation ne correspond",
-					Description: "Aucun tenant ne satisfait le filtre courant.",
+					Title:       i18n.T(ctx, "admin.orgs.no_match.title"),
+					Description: i18n.T(ctx, "admin.orgs.no_match.description"),
 				}) {
 					@button.Button(button.Props{
 						Variant: button.VariantOutline,
 						Size:    button.SizeSm,
 						Href:    common.BaseURLString(ctx, common.WithPath("/admin/orgs")),
 					}) {
-						Effacer les filtres
+						{ i18n.T(ctx, "admin.orgs.clear_filters") }
 					}
 				}
 			} else {
 				@common.EmptyState(common.EmptyStateProps{
 					Icon:        icon.Building2,
-					Title:       "Aucune organisation",
-					Description: "Une organisation regroupe des membres, des fournisseurs et un budget. Créez la première pour commencer.",
+					Title:       i18n.T(ctx, "admin.orgs.empty.title"),
+					Description: i18n.T(ctx, "admin.orgs.empty.description"),
 				}) {
 					@button.Button(button.Props{
 						Size:  button.SizeSm,
 						Href:  common.BaseURLString(ctx, common.WithPath("/admin/orgs/new")),
 						Class: "bg-platform text-platform-foreground hover:bg-platform/90",
 					}) {
-						Nouvelle organisation
+						{ i18n.T(ctx, "admin.orgs.new") }
 					}
 				}
 			}
@@ -121,37 +122,37 @@ templ orgsResults(vmodel OrgsPageVModel) {
 				@table.Table() {
 					@table.Header() {
 						@table.Head() {
-							Organisation
+							{ i18n.T(ctx, "admin.orgs.col.org") }
 						}
 						@table.Head(table.HeadProps{Class: "text-right"}) {
-							Membres
+							{ i18n.T(ctx, "admin.orgs.col.members") }
 						}
 						@table.Head(table.HeadProps{Class: "text-right"}) {
-							Applications
+							{ i18n.T(ctx, "admin.orgs.col.applications") }
 						}
 						@table.Head(table.HeadProps{Class: "text-right"}) {
-							Coût 30 j
+							{ i18n.T(ctx, "admin.orgs.col.cost_30d") }
 						}
 						@table.Head(table.HeadProps{Class: "text-right"}) {
-							Tokens
+							{ i18n.T(ctx, "admin.orgs.col.tokens") }
 						}
 						@table.Head(table.HeadProps{Class: "text-right"}) {
-							Requêtes
+							{ i18n.T(ctx, "admin.orgs.col.requests") }
 						}
 						@table.Head(table.HeadProps{Class: "w-38"}) {
-							Budget mensuel
+							{ i18n.T(ctx, "admin.orgs.col.monthly_budget") }
 						}
 						@table.Head(table.HeadProps{Class: "text-right"}) {
-							Erreurs
+							{ i18n.T(ctx, "admin.orgs.col.errors") }
 						}
 						@table.Head(table.HeadProps{Class: "text-right"}) {
-							p95
+							{ i18n.T(ctx, "admin.orgs.col.p95") }
 						}
 						@table.Head() {
-							Statut
+							{ i18n.T(ctx, "admin.orgs.col.status") }
 						}
 						@table.Head(table.HeadProps{Class: "text-right"}) {
-							Actions
+							{ i18n.T(ctx, "admin.orgs.col.actions") }
 						}
 					}
 					@table.Body() {
@@ -174,7 +175,7 @@ templ orgsResults(vmodel OrgsPageVModel) {
 									déclarées par organisation et la console n'a pas de
 									store pour les compter hors contexte d'organisation
 									(cf. lot 7 du plan). -->
-									@common.PendingValue("Nombre d'applications : bientôt disponible")
+									@common.PendingValue(i18n.T(ctx, "admin.orgs.applications_pending"))
 								}
 								@table.Cell(table.CellProps{Class: "text-right text-sm font-semibold"}) {
 									{ common.FormatCostCompact(org.Cost, vmodel.Currency) }
@@ -191,23 +192,23 @@ templ orgsResults(vmodel OrgsPageVModel) {
 									consulte pas. La jauge de la maquette attend un
 									agrégat budget/consommation cross-organisation
 									(cf. lot 7 du plan). -->
-									@common.PendingValue("Budget mensuel : bientôt disponible")
+									@common.PendingValue(i18n.T(ctx, "admin.orgs.monthly_budget_pending"))
 								}
 								@table.Cell(table.CellProps{Class: "text-right"}) {
 									<!-- TODO(rework-ux): aucun compteur de statuts de
 									réponse n'existe (cf. Santé du proxy, lot 7). -->
-									@common.PendingValue("Taux d'erreur : bientôt disponible")
+									@common.PendingValue(i18n.T(ctx, "admin.orgs.error_rate_pending"))
 								}
 								@table.Cell(table.CellProps{Class: "text-right"}) {
 									<!-- TODO(rework-ux): aucun histogramme de latence
 									n'est collecté (cf. Santé du proxy, lot 7). -->
-									@common.PendingValue("Latence p95 : bientôt disponible")
+									@common.PendingValue(i18n.T(ctx, "admin.orgs.latency_pending"))
 								}
 								@table.Cell() {
 									if org.Active {
-										@common.Badge(common.TonePositive, "Active")
+										@common.Badge(common.TonePositive, i18n.T(ctx, "admin.orgs.status.active"))
 									} else {
-										@common.Badge(common.ToneNeutral, "Inactive")
+										@common.Badge(common.ToneNeutral, i18n.T(ctx, "admin.orgs.status.inactive"))
 									}
 								}
 								@table.Cell(table.CellProps{Class: "text-right"}) {
@@ -217,7 +218,7 @@ templ orgsResults(vmodel OrgsPageVModel) {
 											Variant: button.VariantOutline,
 											Size:    button.SizeSm,
 										}) {
-											Ouvrir
+											{ i18n.T(ctx, "admin.orgs.open") }
 										}
 										@button.Button(button.Props{
 											Href:    common.BaseURLString(ctx, common.WithPath("/admin/orgs/", string(org.ID), "/edit")),
@@ -225,8 +226,8 @@ templ orgsResults(vmodel OrgsPageVModel) {
 											Size:    button.SizeIcon,
 											Class:   "size-7",
 											Attributes: templ.Attributes{
-												"title":      "Modifier",
-												"aria-label": "Modifier " + org.Name,
+												"title":      i18n.T(ctx, "admin.orgs.edit"),
+												"aria-label": i18n.T(ctx, "admin.orgs.edit_named", org.Name),
 											},
 										}) {
 											@icon.Pencil(icon.Props{Class: "size-3.5"})
@@ -239,26 +240,24 @@ templ orgsResults(vmodel OrgsPageVModel) {
 				}
 			}
 			@common.SectionNote() {
-				« Ouvrir » vous place dans le contexte de l'organisation ; si vous n'en êtes
-				pas membre, un bandeau d'accès admin plateforme le signale et l'action est
-				journalisée dans les événements de l'organisation.
+				{ i18n.T(ctx, "admin.orgs.open_note") }
 			}
 		}
 	</div>
 }
 
 templ OrgForm(vmodel OrgFormVModel) {
-	{{ title := "Nouvelle organisation" }}
+	{{ title := i18n.T(ctx, "admin.orgs.new") }}
 	{{ action := common.BaseURLString(ctx, common.WithPath("/admin/orgs")) }}
 	if !vmodel.IsNew && vmodel.Org != nil {
-		{{ title = "Modifier — " + vmodel.Org.Name() }}
+		{{ title = i18n.T(ctx, "admin.orgs.form.edit_title", vmodel.Org.Name()) }}
 		{{ action = common.BaseURLString(ctx, common.WithPath("/admin/orgs/", string(vmodel.Org.ID()), "/edit")) }}
 	}
 	@common.AppLayout(vmodel.AppLayoutVModel, common.WithTitle(title)) {
 		<div class="max-w-2xl">
 			@common.PageHeader(common.PageHeaderProps{
 				Title:    title,
-				Subtitle: "Une organisation regroupe ses membres, ses fournisseurs et son budget.",
+				Subtitle: i18n.T(ctx, "admin.orgs.form.subtitle"),
 			})
 			if vmodel.Error != "" {
 				<div class="mb-3.5">
@@ -270,33 +269,33 @@ templ OrgForm(vmodel OrgFormVModel) {
 					@common.SectionBody(common.SectionBodyProps{Class: "space-y-3.5"}) {
 						@form.Item() {
 							@form.Label(form.LabelProps{For: "org-name"}) {
-								Nom
+								{ i18n.T(ctx, "admin.orgs.form.name") }
 							}
 							if !vmodel.IsNew && vmodel.Org != nil {
 								@input.Input(input.Props{ID: "org-name", Name: "name", Value: vmodel.Org.Name()})
 							} else {
-								@input.Input(input.Props{ID: "org-name", Name: "name", Placeholder: "Mon organisation"})
+								@input.Input(input.Props{ID: "org-name", Name: "name", Placeholder: i18n.T(ctx, "admin.orgs.form.name_placeholder")})
 							}
 						}
 						@form.Item() {
 							@form.Label(form.LabelProps{For: "org-slug"}) {
-								Slug (identifiant URL)
+								{ i18n.T(ctx, "admin.orgs.form.slug") }
 							}
 							if !vmodel.IsNew && vmodel.Org != nil {
 								@input.Input(input.Props{ID: "org-slug", Name: "slug", Value: vmodel.Org.Slug(), Disabled: true})
 								@form.Description() {
-									Le slug est figé après création : il apparaît dans les URL et dans les clés d'API.
+									{ i18n.T(ctx, "admin.orgs.form.slug_frozen") }
 								}
 							} else {
-								@input.Input(input.Props{ID: "org-slug", Name: "slug", Placeholder: "mon-organisation"})
+								@input.Input(input.Props{ID: "org-slug", Name: "slug", Placeholder: i18n.T(ctx, "admin.orgs.form.slug_placeholder")})
 								@form.Description() {
-									Caractères alphanumériques et tirets uniquement.
+									{ i18n.T(ctx, "admin.orgs.form.slug_hint") }
 								}
 							}
 						}
 						@form.Item() {
 							@form.Label(form.LabelProps{For: "org-description"}) {
-								Description
+								{ i18n.T(ctx, "admin.orgs.form.description") }
 							}
 							if !vmodel.IsNew && vmodel.Org != nil {
 								@input.Input(input.Props{ID: "org-description", Name: "description", Value: vmodel.Org.Description()})
@@ -308,21 +307,21 @@ templ OrgForm(vmodel OrgFormVModel) {
 							<div class="flex items-center gap-2">
 								@checkbox.Checkbox(checkbox.Props{ID: "active", Name: "active", Checked: vmodel.Org.Active()})
 								@form.Label(form.LabelProps{For: "active"}) {
-									Active
+									{ i18n.T(ctx, "admin.orgs.form.active") }
 								}
 							</div>
 						}
 					}
 					@common.SectionHeader(common.SectionHeaderProps{Class: "border-b-0 border-t"}) {
 						@button.Button(button.Props{Type: "submit", Size: button.SizeSm}) {
-							Enregistrer
+							{ i18n.T(ctx, "admin.orgs.form.save") }
 						}
 						@button.Button(button.Props{
 							Variant: button.VariantGhost,
 							Size:    button.SizeSm,
 							Href:    common.BaseURLString(ctx, common.WithPath("/admin/orgs")),
 						}) {
-							Annuler
+							{ i18n.T(ctx, "admin.orgs.form.cancel") }
 						}
 					}
 				}

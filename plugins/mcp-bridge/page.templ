@@ -8,6 +8,7 @@ import (
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/card"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/input"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/label"
+	"github.com/xolo-gateway/xolo/internal/i18n"
 )
 
 // page renders the mcp-bridge plugin configuration UI.
@@ -21,17 +22,15 @@ templ page(pd uiPageData) {
 			<link rel="stylesheet" href="/assets/templui.css"/>
 		</head>
 		<body class="bg-background text-foreground min-h-screen p-4 space-y-4">
-			<h1 class="text-lg font-semibold">Serveur MCP (Streamable HTTP)</h1>
+			<h1 class="text-lg font-semibold">{ i18n.T(ctx, "plugin.mcp_bridge.title") }</h1>
 			<p class="text-sm text-muted-foreground">
-				Les tools exposés par ce serveur seront proposés au LLM. Les appels
-				d'outils correspondants sont résolus automatiquement côté serveur et
-				ne sont jamais renvoyés au client de l'API.
+				{ i18n.T(ctx, "plugin.mcp_bridge.intro") }
 			</p>
 
 			if pd.Success {
 				@alert.Alert(alert.Props{Variant: alert.VariantDefault}) {
 					@alert.Description() {
-						Configuration sauvegardée avec succès.
+						{ i18n.T(ctx, "plugin.mcp_bridge.saved") }
 					}
 				}
 			}
@@ -40,12 +39,12 @@ templ page(pd uiPageData) {
 				<input type="hidden" name="nodeId" value={ pd.NodeID }/>
 				@card.Card() {
 					@card.Header() {
-						@card.Title() { Connexion }
+						@card.Title() { { i18n.T(ctx, "plugin.mcp_bridge.connection.title") } }
 					}
 					@card.Content() {
 						<div class="space-y-4">
 							<div class="space-y-1">
-								@label.Label(label.Props{For: "endpoint"}) { URL du serveur MCP }
+								@label.Label(label.Props{For: "endpoint"}) { { i18n.T(ctx, "plugin.mcp_bridge.endpoint.label") } }
 								@input.Input(input.Props{
 									ID:          "endpoint",
 									Name:        "endpoint",
@@ -54,18 +53,17 @@ templ page(pd uiPageData) {
 								})
 							</div>
 							<div class="space-y-1">
-								@label.Label(label.Props{For: "auth_mode"}) { Authentification }
+								@label.Label(label.Props{For: "auth_mode"}) { { i18n.T(ctx, "plugin.mcp_bridge.auth_mode.label") } }
 								<select id="auth_mode" name="auth_mode" class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm">
-									<option value="static" selected?={ pd.Config.AuthMode != "oauth" }>En-tête fixe, commun à tous les utilisateurs</option>
-									<option value="oauth" selected?={ pd.Config.AuthMode == "oauth" }>OAuth, chaque utilisateur autorise l'accès en son nom</option>
+									<option value="static" selected?={ pd.Config.AuthMode != "oauth" }>{ i18n.T(ctx, "plugin.mcp_bridge.auth_mode.static") }</option>
+									<option value="oauth" selected?={ pd.Config.AuthMode == "oauth" }>{ i18n.T(ctx, "plugin.mcp_bridge.auth_mode.oauth") }</option>
 								</select>
 								<p class="text-xs text-muted-foreground">
-									En mode OAuth, l'assistant donne à chaque utilisateur un lien pour autoriser
-									Xolo lors de sa première demande ; l'en-tête ci-dessous est alors ignoré.
+									{ i18n.T(ctx, "plugin.mcp_bridge.auth_mode.help") }
 								</p>
 							</div>
 							<div class="space-y-1">
-								@label.Label(label.Props{For: "auth_header_name"}) { Nom de l'en-tête d'authentification }
+								@label.Label(label.Props{For: "auth_header_name"}) { { i18n.T(ctx, "plugin.mcp_bridge.auth_header_name.label") } }
 								@input.Input(input.Props{
 									ID:          "auth_header_name",
 									Name:        "auth_header_name",
@@ -74,7 +72,7 @@ templ page(pd uiPageData) {
 								})
 							</div>
 							<div class="space-y-1">
-								@label.Label(label.Props{For: "auth_value"}) { Valeur d'authentification }
+								@label.Label(label.Props{For: "auth_value"}) { { i18n.T(ctx, "plugin.mcp_bridge.auth_value.label") } }
 								@input.Input(input.Props{
 									ID:          "auth_value",
 									Name:        "auth_value",
@@ -83,23 +81,23 @@ templ page(pd uiPageData) {
 								})
 								<p class="text-xs text-muted-foreground">
 									if pd.HasAuthValue {
-										Une valeur est déjà configurée pour ce nœud. Laisser vide pour la conserver.
+										{ i18n.T(ctx, "plugin.mcp_bridge.auth_value.configured") }
 									} else {
-										ex: jeton Bearer. Stockée séparément, jamais affichée.
+										{ i18n.T(ctx, "plugin.mcp_bridge.auth_value.help") }
 									}
 								</p>
 							</div>
 							<div class="space-y-1">
-								@label.Label(label.Props{For: "tool_filter"}) { Tools autorisés (séparés par des virgules) }
+								@label.Label(label.Props{For: "tool_filter"}) { { i18n.T(ctx, "plugin.mcp_bridge.tool_filter.label") } }
 								@input.Input(input.Props{
 									ID:          "tool_filter",
 									Name:        "tool_filter",
 									Value:       strings.Join(pd.Config.ToolFilter, ", "),
-									Placeholder: "vide = tous les tools exposés",
+									Placeholder: i18n.T(ctx, "plugin.mcp_bridge.tool_filter.placeholder"),
 								})
 							</div>
 							<div class="space-y-1">
-								@label.Label(label.Props{For: "timeout_seconds"}) { Timeout (secondes) }
+								@label.Label(label.Props{For: "timeout_seconds"}) { { i18n.T(ctx, "plugin.mcp_bridge.timeout.label") } }
 								@input.Input(input.Props{
 									ID:          "timeout_seconds",
 									Name:        "timeout_seconds",
@@ -108,12 +106,11 @@ templ page(pd uiPageData) {
 									Placeholder: "120",
 								})
 								<p class="text-xs text-muted-foreground">
-									Les outils MCP de type RAG peuvent être lents (recherche +
-									génération). Vide = défaut (120s).
+									{ i18n.T(ctx, "plugin.mcp_bridge.timeout.help") }
 								</p>
 							</div>
 							<div class="space-y-1">
-								@label.Label(label.Props{For: "max_consecutive_tool_calls"}) { Appels d'outils consécutifs max. }
+								@label.Label(label.Props{For: "max_consecutive_tool_calls"}) { { i18n.T(ctx, "plugin.mcp_bridge.max_tool_calls.label") } }
 								@input.Input(input.Props{
 									ID:          "max_consecutive_tool_calls",
 									Name:        "max_consecutive_tool_calls",
@@ -122,7 +119,7 @@ templ page(pd uiPageData) {
 									Placeholder: "2",
 								})
 								<p class="text-xs text-muted-foreground">
-									Au-delà, le LLM est forcé de répondre sans appeler d'outil supplémentaire. Vide = défaut (2).
+									{ i18n.T(ctx, "plugin.mcp_bridge.max_tool_calls.help") }
 								</p>
 							</div>
 						</div>
@@ -131,7 +128,8 @@ templ page(pd uiPageData) {
 
 				<div class="flex justify-end">
 					@button.Button(button.Props{Type: button.TypeSubmit}) {
-						Sauvegarder
+						{ i18n.T(ctx, "plugin.mcp_bridge.save") }
+
 					}
 				</div>
 			</form>

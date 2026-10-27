@@ -5,6 +5,7 @@ import (
 	templuicard "github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/card"
 	templuiicon "github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/icon"
 	"strings"
+	"github.com/xolo-gateway/xolo/internal/i18n"
 )
 
 type LoginPageVModel struct {
@@ -15,7 +16,7 @@ type LoginPageVModel struct {
 templ LoginPage(vmodel LoginPageVModel) {
 	// Écran hors coquille applicative, affiché dans une iframe par l'application
 	// de bureau : pas de navigation boostée.
-	@component.Page(component.WithTitle("Authentification"), component.WithBodyAttributes(templ.Attributes{"hx-boost": "false"})) {
+	@component.Page(component.WithTitle(i18n.T(ctx, "auth.title")), component.WithBodyAttributes(templ.Attributes{"hx-boost": "false"})) {
 		<div id="content" class="flex min-h-screen items-center justify-center bg-muted/40 p-4">
 			@templuicard.Card(templuicard.Props{Class: "w-full max-w-sm"}) {
 				@templuicard.Header(templuicard.HeaderProps{Class: "text-center space-y-2"}) {
@@ -26,7 +27,7 @@ templ LoginPage(vmodel LoginPageVModel) {
 						Xolo
 					}
 					@templuicard.Description() {
-						Veuillez vous authentifier
+						{ i18n.T(ctx, "auth.login.token_description") }
 					}
 				}
 				@templuicard.Content(templuicard.ContentProps{Class: "space-y-4"}) {

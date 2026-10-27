@@ -14,6 +14,7 @@ import (
 	httpCtx "github.com/xolo-gateway/xolo/internal/http/context"
 	common "github.com/xolo-gateway/xolo/internal/http/handler/webui/common/component"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/profile/component"
+	"github.com/xolo-gateway/xolo/internal/i18n"
 )
 
 func (h *Handler) getPersonalModelsPage(w http.ResponseWriter, r *http.Request) {
@@ -43,8 +44,8 @@ func (h *Handler) getPersonalModelsPage(w http.ResponseWriter, r *http.Request) 
 			User:         user,
 			SelectedItem: "personal-models",
 			Breadcrumbs: []common.BreadcrumbItem{
-				{Label: "Espace personnel", Href: "/usage"},
-				{Label: "Mes modèles", Href: ""},
+				{Label: i18n.T(ctx, "profile.breadcrumb.personal_space"), Href: "/usage"},
+				{Label: i18n.T(ctx, "profile.breadcrumb.my_models"), Href: ""},
 			},
 			Context: common.ContextPersonal,
 		},
@@ -92,9 +93,9 @@ func (h *Handler) getNewPersonalModelPage(w http.ResponseWriter, r *http.Request
 			User:         user,
 			SelectedItem: "personal-models",
 			Breadcrumbs: []common.BreadcrumbItem{
-				{Label: "Espace personnel", Href: "/usage"},
-				{Label: "Mes modèles", Href: "/profile/personal-models"},
-				{Label: "Nouveau", Href: ""},
+				{Label: i18n.T(ctx, "profile.breadcrumb.personal_space"), Href: "/usage"},
+				{Label: i18n.T(ctx, "profile.breadcrumb.my_models"), Href: "/profile/personal-models"},
+				{Label: i18n.T(ctx, "profile.breadcrumb.new"), Href: ""},
 			},
 			Context: common.ContextPersonal,
 		},
@@ -217,8 +218,8 @@ func (h *Handler) getEditPersonalModelPage(w http.ResponseWriter, r *http.Reques
 			User:         user,
 			SelectedItem: "personal-models",
 			Breadcrumbs: []common.BreadcrumbItem{
-				{Label: "Espace personnel", Href: "/usage"},
-				{Label: "Mes modèles", Href: "/profile/personal-models"},
+				{Label: i18n.T(ctx, "profile.breadcrumb.personal_space"), Href: "/usage"},
+				{Label: i18n.T(ctx, "profile.breadcrumb.my_models"), Href: "/profile/personal-models"},
 				{Label: vm.Name(), Href: ""},
 			},
 			Context: common.ContextPersonal,
@@ -413,8 +414,8 @@ func (h *Handler) getPersonalPipelineEditorPage(w http.ResponseWriter, r *http.R
 			SelectedItem: "personal-models",
 			FullBleed:    true,
 			Breadcrumbs: []common.BreadcrumbItem{
-				{Label: "Espace personnel", Href: "/usage"},
-				{Label: "Mes modèles", Href: "/profile/personal-models"},
+				{Label: i18n.T(ctx, "profile.breadcrumb.personal_space"), Href: "/usage"},
+				{Label: i18n.T(ctx, "profile.breadcrumb.my_models"), Href: "/profile/personal-models"},
 				{Label: vm.Name(), Href: ""},
 			},
 			Context: common.ContextPersonal,

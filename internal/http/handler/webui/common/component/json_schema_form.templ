@@ -9,6 +9,7 @@ import (
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/input"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/selectbox"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/textarea"
+	"github.com/xolo-gateway/xolo/internal/i18n"
 )
 
 // JSONSchemaFormArrayObjectField renders a dynamic list editor for array-of-objects fields.
@@ -35,7 +36,7 @@ templ JSONSchemaFormArrayObjectField(name string, schema map[string]any, existin
 			Variant: button.VariantOutline,
 			Class:   "array-field-add",
 		}) {
-			+ Ajouter
+			{ i18n.T(ctx, "common.add_item") }
 		}
 	</div>
 }
@@ -148,7 +149,7 @@ templ JSONSchemaForm(action string, properties map[string]map[string]any, values
 			}
 		}
 		@button.Button(button.Props{Type: button.TypeSubmit}) {
-			Enregistrer
+			{ i18n.T(ctx, "common.save") }
 		}
 	</form>
 }

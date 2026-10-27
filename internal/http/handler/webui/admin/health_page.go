@@ -7,6 +7,7 @@ import (
 	httpCtx "github.com/xolo-gateway/xolo/internal/http/context"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/admin/component"
 	common "github.com/xolo-gateway/xolo/internal/http/handler/webui/common/component"
+	"github.com/xolo-gateway/xolo/internal/i18n"
 )
 
 // getProxyHealthPage serves the proxy health screen.
@@ -26,8 +27,8 @@ func (h *Handler) getProxyHealthPage(w http.ResponseWriter, r *http.Request) {
 			IsAdmin:      true,
 			SelectedItem: "health",
 			Breadcrumbs: []common.BreadcrumbItem{
-				{Label: "Plateforme", Href: "/admin/"},
-				{Label: "Santé du proxy", Href: ""},
+				{Label: i18n.T(ctx, "admin.breadcrumb.platform"), Href: "/admin/"},
+				{Label: i18n.T(ctx, "admin.breadcrumb.health"), Href: ""},
 			},
 			Context: common.ContextPlatform,
 		},

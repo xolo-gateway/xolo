@@ -10,6 +10,7 @@ import (
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/form"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/icon"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/label"
+	"github.com/xolo-gateway/xolo/internal/i18n"
 )
 
 type EditMemberPageVModel struct {
@@ -22,7 +23,7 @@ type EditMemberPageVModel struct {
 
 templ EditMemberPage(vmodel EditMemberPageVModel) {
 	@commonComp.AppLayout(vmodel.AppLayoutVModel,
-		commonComp.WithTitle("Modifier le membre"),
+		commonComp.WithTitle(i18n.T(ctx, "org.members.edit_page.title")),
 	) {
 		{{ readonly := !commonComp.HasPermission(ctx, vmodel.Org.ID(), rbac.PermMembersWrite) }}
 		<div class="space-y-6">
@@ -33,12 +34,12 @@ templ EditMemberPage(vmodel EditMemberPageVModel) {
 						Variant:    button.VariantOutline,
 						Size:       button.SizeIcon,
 						Href:       commonComp.BaseURLString(ctx, commonComp.WithPath("/orgs/", vmodel.Org.Slug(), "/admin/members")),
-						Attributes: templ.Attributes{"title": "Retour aux membres"},
+						Attributes: templ.Attributes{"title": i18n.T(ctx, "org.members.edit_page.back")},
 					}) {
 						@icon.ArrowLeft(icon.Props{Class: "h-4 w-4"})
 					}
 					@commonComp.PageHeader(commonComp.PageHeaderProps{
-						Title: "Modifier le membre",
+						Title: i18n.T(ctx, "org.members.edit_page.title"),
 					})
 				</div>
 			</div>
@@ -47,25 +48,25 @@ templ EditMemberPage(vmodel EditMemberPageVModel) {
 				@card.Header() {
 					@card.Title() {
 						@icon.User(icon.Props{Class: "h-4 w-4 inline mr-2"})
-						Informations membre
+						{ i18n.T(ctx, "org.members.edit_page.info") }
 					}
 				}
 				@card.Content(card.ContentProps{Class: "space-y-4"}) {
 					<div class="space-y-2">
 						@form.Label() {
-							Nom d'affichage
+							{ i18n.T(ctx, "org.members.edit_page.display_name") }
 						}
 						<div class="p-3 rounded-md border bg-muted/50">{ vmodel.Membership.User().DisplayName() }</div>
 					</div>
 					<div class="space-y-2">
 						@form.Label() {
-							Email
+							{ i18n.T(ctx, "org.members.edit_page.email") }
 						}
 						<div class="p-3 rounded-md border bg-muted/50">{ vmodel.Membership.User().Email() }</div>
 					</div>
 					<div class="space-y-2">
 						@form.Label() {
-							Membre depuis
+							{ i18n.T(ctx, "org.members.edit_page.member_since") }
 						}
 						<div class="p-3 rounded-md border bg-muted/50">{ vmodel.Membership.CreatedAt().Format("02/01/2006") }</div>
 					</div>
@@ -76,9 +77,9 @@ templ EditMemberPage(vmodel EditMemberPageVModel) {
 				@card.Header() {
 					@card.Title() {
 						@icon.Shield(icon.Props{Class: "h-4 w-4 inline mr-2"})
-						Rôles
+						{ i18n.T(ctx, "org.members.edit_page.roles") }
 					}
-					<p class="text-sm text-muted-foreground">Sélectionnez les rôles attribués à ce membre dans l'organisation.</p>
+					<p class="text-sm text-muted-foreground">{ i18n.T(ctx, "org.members.edit_page.roles_help") }</p>
 				}
 				@card.Content() {
 					<form method="POST" action={ commonComp.BaseURL(ctx, commonComp.WithPath("/orgs/", vmodel.Org.Slug(), "/admin/members/", string(vmodel.Membership.ID()), "/edit")) }>
@@ -109,11 +110,11 @@ templ EditMemberPage(vmodel EditMemberPageVModel) {
 								if commonComp.HasPermission(ctx, vmodel.Org.ID(), rbac.PermMembersWrite) {
 									@button.Button(button.Props{Type: button.TypeSubmit, Size: button.SizeLg}) {
 										@icon.Save()
-										<span>Enregistrer</span>
+										<span>{ i18n.T(ctx, "org.members.edit_page.save") }</span>
 									}
 								}
 								@button.Button(button.Props{Variant: button.VariantOutline, Size: button.SizeLg, Href: commonComp.BaseURLString(ctx, commonComp.WithPath("/orgs/", vmodel.Org.Slug(), "/admin/members"))}) {
-									Annuler
+									{ i18n.T(ctx, "org.members.edit_page.cancel") }
 								}
 							</div>
 						</div>

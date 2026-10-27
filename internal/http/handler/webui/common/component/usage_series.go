@@ -1,12 +1,14 @@
 package component
 
 import (
+	"context"
 	"fmt"
 	"sort"
 	"time"
 
 	"github.com/xolo-gateway/xolo/internal/core/model"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/chart"
+	"github.com/xolo-gateway/xolo/internal/i18n"
 )
 
 // SeriesBucket is the granularity the cost chart of a period is drawn on.
@@ -32,11 +34,11 @@ func RangeBucket(r string) SeriesBucket {
 }
 
 // CostSeriesTitle names the cost chart after the bucket it actually draws.
-func CostSeriesTitle(r string) string {
+func CostSeriesTitle(ctx context.Context, r string) string {
 	if RangeBucket(r) == SeriesBucketMonth {
-		return "Coût par mois"
+		return i18n.T(ctx, "format.cost_per_month")
 	}
-	return "Coût par jour"
+	return i18n.T(ctx, "format.cost_per_day")
 }
 
 // CostSeries turns the per-day cost sub-totals of a period into a continuous
@@ -51,8 +53,8 @@ func CostSeriesTitle(r string) string {
 //
 // `perDay` is keyed by calendar day, "YYYY-MM-DD", in micro-units of currency,
 // as returned by AggregateCostByDimension on the day dimension.
-func CostSeries(perDay map[string]int64, since, until time.Time, r string) []ChartDataPoint {
-	return StackedCostSeries([]map[string]int64{perDay}, since, until, r)[0]
+func CostSeries(ctx context.Context, perDay map[string]int64, since, until time.Time, r string) []ChartDataPoint {
+	return StackedCostSeries(ctx, []map[string]int64{perDay}, since, until, r)[0]
 }
 
 // StackedCostSeries is CostSeries for several series drawn on the same axis —
@@ -60,7 +62,7 @@ func CostSeries(perDay map[string]int64, since, until time.Time, r string) []Cha
 // one bar. Every returned series has the same buckets in the same order, so the
 // i-th point of each lands on the same bar; a bucket only one series fills is
 // charted at zero in the others.
-func StackedCostSeries(perDay []map[string]int64, since, until time.Time, r string) [][]ChartDataPoint {
+func StackedCostSeries(ctx context.Context, perDay []map[string]int64, since, until time.Time, r string) [][]ChartDataPoint {
 	out := make([][]ChartDataPoint, len(perDay))
 	if until.Before(since) {
 		return out
@@ -117,7 +119,7 @@ func StackedCostSeries(perDay []map[string]int64, since, until time.Time, r stri
 		pts := make([]ChartDataPoint, 0, len(keys))
 		for _, at := range keys {
 			pts = append(pts, ChartDataPoint{
-				Label: seriesLabel(at, bucket),
+				Label: seriesLabel(ctx, at, bucket),
 				Value: float64(series[at.Format(keyLayout(bucket))]) / 1_000_000,
 			})
 		}
@@ -161,18 +163,20 @@ func next(at time.Time, bucket SeriesBucket) time.Time {
 	return at.AddDate(0, 0, 1)
 }
 
-// frenchMonths are the abbreviations the mockup labels its axes with ("30 juin",
-// "7 juil."). Go formats month names in English only.
-var frenchMonths = [...]string{
-	"janv.", "févr.", "mars", "avr.", "mai", "juin",
-	"juil.", "août", "sept.", "oct.", "nov.", "déc.",
+// shortMonthKeys name the abbreviations the mockup labels its axes with ("30
+// juin", "7 juil."). Go formats month names in English only.
+var shortMonthKeys = [...]string{
+	"format.month_short.jan", "format.month_short.feb", "format.month_short.mar",
+	"format.month_short.apr", "format.month_short.may", "format.month_short.jun",
+	"format.month_short.jul", "format.month_short.aug", "format.month_short.sep",
+	"format.month_short.oct", "format.month_short.nov", "format.month_short.dec",
 }
 
 // seriesLabel words one tick of the horizontal axis: "7 juil." for a day,
 // "juil. 25" for a month — the year is carried because a yearly period shows the
 // same month twice.
-func seriesLabel(at time.Time, bucket SeriesBucket) string {
-	month := frenchMonths[int(at.Month())-1]
+func seriesLabel(ctx context.Context, at time.Time, bucket SeriesBucket) string {
+	month := i18n.T(ctx, shortMonthKeys[int(at.Month())-1])
 	if bucket == SeriesBucketMonth {
 		return fmt.Sprintf("%s %02d", month, at.Year()%100)
 	}
@@ -185,13 +189,13 @@ func seriesLabel(at time.Time, bucket SeriesBucket) string {
 // It exists for the screens that bucket their days themselves, the platform
 // overview in particular, so a date is written the same everywhere. A key that
 // is not a date is returned unchanged: a bar keeps a label rather than none.
-func FormatDayLabel(day string) string {
+func FormatDayLabel(ctx context.Context, day string) string {
 	at, err := time.ParseInLocation("2006-01-02", day, time.Local)
 	if err != nil {
 		return day
 	}
 
-	return seriesLabel(at, SeriesBucketDay)
+	return seriesLabel(ctx, at, SeriesBucketDay)
 }
 
 // HasValue reports whether any point of a series is non-zero.
@@ -207,7 +211,7 @@ func HasValue(pts []ChartDataPoint) bool {
 // CostChartData lays the series of CostChart out for Chart.js: the
 // pay-as-you-go spend first, so it sits at the base of each bar, then the value
 // covered by a subscription, only when there is some.
-func CostChartData(payg, covered []ChartDataPoint, currency string) chart.Data {
+func CostChartData(ctx context.Context, payg, covered []ChartDataPoint, currency string) chart.Data {
 	if !HasValue(covered) {
 		return chart.Data{
 			Labels: ChartLabels(payg),
@@ -223,12 +227,12 @@ func CostChartData(payg, covered []ChartDataPoint, currency string) chart.Data {
 		Labels: ChartLabels(payg),
 		Datasets: []chart.Dataset{
 			{
-				Label:           "À l'usage (" + currency + ")",
+				Label:           i18n.T(ctx, "format.chart.payg", currency),
 				Data:            ChartValues(payg),
 				BackgroundColor: ChartColor(0),
 			},
 			{
-				Label:           "Couvert par abonnement (" + currency + ")",
+				Label:           i18n.T(ctx, "format.chart.covered", currency),
 				Data:            ChartValues(covered),
 				BackgroundColor: ChartCoveredColor,
 			},
@@ -239,10 +243,10 @@ func CostChartData(payg, covered []ChartDataPoint, currency string) chart.Data {
 // ProviderCostValue words the figure closing a provider's row in a cost
 // breakdown. A provider billed by subscription gets its equivalent PAYG value,
 // marked as such: it was not charged per request.
-func ProviderCostValue(value float64, currency string, covered bool) string {
+func ProviderCostValue(ctx context.Context, value float64, currency string, covered bool) string {
 	formatted := FormatCost(int64(value*1_000_000), currency)
 	if covered {
-		return formatted + " · forfait"
+		return i18n.T(ctx, "format.cost_plan_value", formatted)
 	}
 	return formatted
 }

@@ -8,6 +8,8 @@ package component
 import "github.com/a-h/templ"
 import templruntime "github.com/a-h/templ/runtime"
 
+import "github.com/xolo-gateway/xolo/internal/i18n"
+
 // StandaloneLayout renders a centered, sidebar-less page shell used for
 // authentication-adjacent screens (invitations, "no organization" state, etc.).
 func StandaloneLayout(funcs ...PageOptionFunc) templ.Component {
@@ -63,7 +65,24 @@ func StandaloneLayout(funcs ...PageOptionFunc) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "<p class=\"text-center text-xs text-muted-foreground\">AGPL-3.0 · self-hosted · <a href=\"https://github.com/xolo-gateway/xolo\" class=\"underline\" target=\"_blank\" rel=\"noreferrer\">En savoir plus</a></p></div></div>")
+			templ_7745c5c3_Err = LocaleSwitch("justify-center").Render(ctx, templ_7745c5c3_Buffer)
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "<p class=\"text-center text-xs text-muted-foreground\">AGPL-3.0 · self-hosted · <a href=\"https://github.com/xolo-gateway/xolo\" class=\"underline\" target=\"_blank\" rel=\"noreferrer\">")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var3 string
+			templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "layout.learn_more"))
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/common/component/standalone_layout.templ`, Line: 27, Col: 164}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var3))
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, "</a></p></div></div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}

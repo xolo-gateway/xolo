@@ -21,6 +21,7 @@ import (
 	webcommon "github.com/xolo-gateway/xolo/internal/http/handler/webui/common"
 	common "github.com/xolo-gateway/xolo/internal/http/handler/webui/common/component"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/org/component"
+	"github.com/xolo-gateway/xolo/internal/i18n"
 
 	_ "github.com/bornholm/genai/llm/provider/anthropic"
 	_ "github.com/bornholm/genai/llm/provider/gemini"
@@ -74,7 +75,7 @@ func (h *Handler) getProvidersPage(w http.ResponseWriter, r *http.Request) {
 			ContextOrgID: org.ID(),
 			Breadcrumbs: []common.BreadcrumbItem{
 				{Label: org.Name(), Href: "/orgs/" + orgSlug + "/usage"},
-				{Label: "Fournisseurs", Href: ""},
+				{Label: i18n.T(ctx, "org.nav.providers"), Href: ""},
 			},
 		},
 	}
@@ -105,8 +106,8 @@ func (h *Handler) getNewProviderPage(w http.ResponseWriter, r *http.Request) {
 			ContextOrgID: org.ID(),
 			Breadcrumbs: []common.BreadcrumbItem{
 				{Label: org.Name(), Href: "/orgs/" + orgSlug + "/usage"},
-				{Label: "Fournisseurs", Href: "/orgs/" + orgSlug + "/admin/providers"},
-				{Label: "Nouveau fournisseur", Href: ""},
+				{Label: i18n.T(ctx, "org.nav.providers"), Href: "/orgs/" + orgSlug + "/admin/providers"},
+				{Label: i18n.T(ctx, "org.nav.providers_new_provider"), Href: ""},
 			},
 		},
 	}
@@ -147,16 +148,16 @@ func (h *Handler) createProvider(w http.ResponseWriter, r *http.Request) {
 	p.SetCloudTier(cloudTier)
 	p.SetBillingMode(billingMode)
 	if !model.IsKnownProviderType(p.Type()) {
-		h.renderProviderFormError(w, r, ctx, user, orgSlug, org, p, true, unknownProviderTypeMessage(p.Type()))
+		h.renderProviderFormError(w, r, ctx, user, orgSlug, org, p, true, unknownProviderTypeMessage(ctx, p.Type()))
 		return
 	}
 	if apiKey == "" {
-		h.renderProviderFormError(w, r, ctx, user, orgSlug, org, p, true, "La clé API est obligatoire.")
+		h.renderProviderFormError(w, r, ctx, user, orgSlug, org, p, true, i18n.T(ctx, "org.errors.providers.api_key_required"))
 		return
 	}
 	requestHeaders, err := parseRequestHeadersFromForm(r)
 	if err != nil {
-		h.renderProviderFormError(w, r, ctx, user, orgSlug, org, p, true, "En-têtes de requête : "+err.Error()+".")
+		h.renderProviderFormError(w, r, ctx, user, orgSlug, org, p, true, i18n.T(ctx, "org.errors.providers.request_headers", err.Error()))
 		return
 	}
 	p.SetRequestHeaders(requestHeaders)
@@ -200,7 +201,7 @@ func (h *Handler) getEditProviderPage(w http.ResponseWriter, r *http.Request) {
 			ContextOrgID: org.ID(),
 			Breadcrumbs: []common.BreadcrumbItem{
 				{Label: org.Name(), Href: "/orgs/" + orgSlug + "/usage"},
-				{Label: "Fournisseurs", Href: "/orgs/" + orgSlug + "/admin/providers"},
+				{Label: i18n.T(ctx, "org.nav.providers"), Href: "/orgs/" + orgSlug + "/admin/providers"},
 				{Label: p.Name(), Href: ""},
 			},
 		},
@@ -258,7 +259,7 @@ func (h *Handler) updateProvider(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			h.renderProviderFormError(w, r, ctx, user, orgSlug, org,
 				submittedProvider(r, existing, billingMode, plan), false,
-				"Forfait : "+err.Error()+".")
+				i18n.T(ctx, "org.errors.providers.plan", err.Error()))
 			return
 		}
 		subscriptionPlan = plan
@@ -274,13 +275,13 @@ func (h *Handler) updateProvider(w http.ResponseWriter, r *http.Request) {
 		delay, err := parseDurationField(r, "retry_delay_value", "retry_delay_unit")
 		if err != nil || delay <= 0 {
 			h.renderProviderFormError(w, r, ctx, user, orgSlug, org, formProvider, false,
-				"Retry : le délai doit être un entier strictement positif.")
+				i18n.T(ctx, "org.errors.providers.retry_delay"))
 			return
 		}
 		attempts, _ := strconv.Atoi(r.FormValue("retry_max_attempts"))
 		if attempts < 1 {
 			h.renderProviderFormError(w, r, ctx, user, orgSlug, org, formProvider, false,
-				"Retry : le nombre de tentatives doit être ≥ 1.")
+				i18n.T(ctx, "org.errors.providers.retry_attempts"))
 			return
 		}
 		retryConfig = &model.RetryConfig{
@@ -296,13 +297,13 @@ func (h *Handler) updateProvider(w http.ResponseWriter, r *http.Request) {
 		interval, err := parseDurationField(r, "rate_limit_interval_value", "rate_limit_interval_unit")
 		if err != nil || interval <= 0 {
 			h.renderProviderFormError(w, r, ctx, user, orgSlug, org, formProvider, false,
-				"Rate limit : l'intervalle doit être un entier strictement positif.")
+				i18n.T(ctx, "org.errors.providers.rate_limit_interval"))
 			return
 		}
 		burst, _ := strconv.Atoi(r.FormValue("rate_limit_max_burst"))
 		if burst < 1 {
 			h.renderProviderFormError(w, r, ctx, user, orgSlug, org, formProvider, false,
-				"Rate limit : la capacité de burst doit être ≥ 1.")
+				i18n.T(ctx, "org.errors.providers.rate_limit_burst"))
 			return
 		}
 		rateLimitConfig = &model.RateLimitConfig{
@@ -315,12 +316,12 @@ func (h *Handler) updateProvider(w http.ResponseWriter, r *http.Request) {
 	requestHeaders, err := parseRequestHeadersFromForm(r)
 	if err != nil {
 		h.renderProviderFormError(w, r, ctx, user, orgSlug, org, formProvider, false,
-			"En-têtes de requête : "+err.Error()+".")
+			i18n.T(ctx, "org.errors.providers.request_headers", err.Error()))
 		return
 	}
 
 	if providerType := r.FormValue("provider_type"); !model.IsKnownProviderType(providerType) {
-		h.renderProviderFormError(w, r, ctx, user, orgSlug, org, formProvider, false, unknownProviderTypeMessage(providerType))
+		h.renderProviderFormError(w, r, ctx, user, orgSlug, org, formProvider, false, unknownProviderTypeMessage(ctx, providerType))
 		return
 	}
 
@@ -412,11 +413,11 @@ func (h *Handler) testProvider(w http.ResponseWriter, r *http.Request) {
 // unknownProviderTypeMessage is the form error for a type the registry
 // does not know, including a type stored before it was removed from the
 // form (an edit must not silently rewrite it).
-func unknownProviderTypeMessage(providerType string) string {
+func unknownProviderTypeMessage(ctx context.Context, providerType string) string {
 	if providerType == "" {
-		return "Sélectionnez un type de fournisseur."
+		return i18n.T(ctx, "org.errors.providers.type_required")
 	}
-	return "Type de fournisseur inconnu : " + providerType + ". Choisissez un type de la liste."
+	return i18n.T(ctx, "org.errors.providers.type_unknown", providerType)
 }
 
 func testProviderConnection(ctx context.Context, providerType, baseURL, apiKey string, headers *model.ProviderRequestHeaders) (bool, error) {
@@ -488,7 +489,7 @@ func (h *Handler) getModelsPage(w http.ResponseWriter, r *http.Request) {
 			ContextOrgID: org.ID(),
 			Breadcrumbs: []common.BreadcrumbItem{
 				{Label: org.Name(), Href: "/orgs/" + orgSlug + "/usage"},
-				{Label: "Fournisseurs", Href: "/orgs/" + orgSlug + "/admin/providers"},
+				{Label: i18n.T(ctx, "org.nav.providers"), Href: "/orgs/" + orgSlug + "/admin/providers"},
 				{Label: p.Name(), Href: "/orgs/" + orgSlug + "/admin/providers/" + string(p.ID()) + "/models"},
 			},
 		},
@@ -522,7 +523,7 @@ func (h *Handler) getNewModelPage(w http.ResponseWriter, r *http.Request) {
 			ContextOrgID: org.ID(),
 			Breadcrumbs: []common.BreadcrumbItem{
 				{Label: org.Name(), Href: "/orgs/" + orgSlug + "/usage"},
-				{Label: "Fournisseurs", Href: "/orgs/" + orgSlug + "/admin/providers"},
+				{Label: i18n.T(ctx, "org.nav.providers"), Href: "/orgs/" + orgSlug + "/admin/providers"},
 				{Label: p.Name(), Href: "/orgs/" + orgSlug + "/admin/providers/" + string(p.ID()) + "/models"},
 				{Label: p.Name(), Href: ""},
 			},
@@ -579,7 +580,7 @@ func parsePlanRatioField(value string) (*float64, error) {
 	// explicit check it would pass the range test, be stored on the constraint,
 	// and fail the whole provider save inside json.Marshal with a bare 500.
 	if err != nil || math.IsNaN(pct) || pct < 0 || pct > 100 {
-		return nil, errors.Errorf("valeur attendue entre 0 et 100, reçu %q", value)
+		return nil, formError{key: "org.errors.providers.ratio_range", args: []any{value}}
 	}
 	fraction := pct / 100
 	return &fraction, nil
@@ -595,6 +596,7 @@ func parsePlanRatioField(value string) (*float64, error) {
 // actually typed instead of on what is stored: losing a plan to one mistyped
 // percentage is its own defect.
 func parseSubscriptionPlanFromForm(r *http.Request) (*model.SubscriptionPlan, error) {
+	ctx := r.Context()
 	label := strings.TrimSpace(r.FormValue("plan_label"))
 	countStr := r.FormValue("plan_constraint_count")
 	if countStr == "" {
@@ -634,7 +636,7 @@ func parseSubscriptionPlanFromForm(r *http.Request) (*model.SubscriptionPlan, er
 				c.TokenBudget = tb
 			}
 			if vb, err := parseBudgetField(r.FormValue(prefix + "value_budget")); err != nil {
-				fail(errors.Wrapf(err, "contrainte « %s » : plafond valeur", c.Label))
+				fail(errors.New(i18n.T(ctx, "org.errors.providers.constraint_value_budget", c.Label, localizedError(ctx, err))))
 			} else if vb != nil {
 				c.ValueBudget = vb
 			}
@@ -649,19 +651,19 @@ func parseSubscriptionPlanFromForm(r *http.Request) (*model.SubscriptionPlan, er
 			// a field the next save silently erases.
 			var err error
 			if c.ReserveRatio, err = parsePlanRatioField(r.FormValue(prefix + "reserve_ratio")); err != nil {
-				fail(errors.Wrapf(err, "contrainte « %s » : réserve garantie", c.Label))
+				fail(errors.New(i18n.T(ctx, "org.errors.providers.constraint_reserve_ratio", c.Label, localizedError(ctx, err))))
 			}
 			if c.PaceSlack, err = parsePlanRatioField(r.FormValue(prefix + "pace_slack")); err != nil {
-				fail(errors.Wrapf(err, "contrainte « %s » : tolérance de rythme", c.Label))
+				fail(errors.New(i18n.T(ctx, "org.errors.providers.constraint_pace_slack", c.Label, localizedError(ctx, err))))
 			}
 			if c.HappyHourStart, err = parsePlanRatioField(r.FormValue(prefix + "happy_hour_start")); err != nil {
-				fail(errors.Wrapf(err, "contrainte « %s » : ouverture de fin de fenêtre", c.Label))
+				fail(errors.New(i18n.T(ctx, "org.errors.providers.constraint_happy_hour_start", c.Label, localizedError(ctx, err))))
 			}
 			// 0 % ouvrirait la fenêtre entière, ce que l'allocateur refuse de faire :
 			// il retomberait sur son défaut, et l'éditeur réafficherait un réglage
 			// que le moteur n'applique pas. C'est 100 qui désactive l'ouverture.
 			if c.HappyHourStart != nil && *c.HappyHourStart <= 0 {
-				fail(errors.Errorf("contrainte « %s » : l'ouverture de fin de fenêtre doit être strictement supérieure à 0 (100 désactive l'ouverture)", c.Label))
+				fail(errors.New(i18n.T(ctx, "org.errors.providers.constraint_happy_hour_positive", c.Label)))
 			}
 			// Per-model metering: the budgets above become those of every
 			// upstream model, each with its own window, and the overrides
@@ -670,10 +672,10 @@ func parseSubscriptionPlanFromForm(r *http.Request) (*model.SubscriptionPlan, er
 				c.Scope = model.PlanScopeModel
 			}
 			if budgets, err := parsePlanModelBudgets(r.FormValue(prefix + "model_budgets")); err != nil {
-				fail(errors.Wrapf(err, "contrainte « %s » : budgets par modèle", c.Label))
+				fail(errors.New(i18n.T(ctx, "org.errors.providers.constraint_model_budgets", c.Label, localizedError(ctx, err))))
 			} else if len(budgets) > 0 {
 				if c.Scope != model.PlanScopeModel {
-					fail(errors.Errorf("contrainte « %s » : des budgets par modèle n'ont de sens que si la contrainte est décomptée par modèle", c.Label))
+					fail(errors.New(i18n.T(ctx, "org.errors.providers.constraint_model_budgets_scope", c.Label)))
 				}
 				c.ModelBudgets = budgets
 			}
@@ -685,7 +687,7 @@ func parseSubscriptionPlanFromForm(r *http.Request) (*model.SubscriptionPlan, er
 					pd := model.PlanDuration(d)
 					c.HappyHourMaxLead = &pd
 				} else {
-					fail(errors.Errorf("contrainte « %s » : l'avance maximale de l'ouverture doit être une durée positive (ex : 1h, 2d)", c.Label))
+					fail(errors.New(i18n.T(ctx, "org.errors.providers.constraint_happy_hour_lead", c.Label)))
 				}
 			}
 		case model.ConstraintConcurrency:
@@ -776,10 +778,10 @@ func parsePlanModelBudgets(text string) (map[string]model.PlanBudget, error) {
 		name, spec, ok := strings.Cut(line, "=")
 		name = strings.TrimSpace(name)
 		if !ok || name == "" {
-			return nil, errors.Errorf("ligne %d : format attendu « modèle = budget », reçu %q", i+1, line)
+			return nil, formError{key: "org.errors.providers.model_budgets_format", args: []any{i + 1, line}}
 		}
 		if _, dup := budgets[name]; dup {
-			return nil, errors.Errorf("ligne %d : le modèle %q est déjà listé", i+1, name)
+			return nil, formError{key: "org.errors.providers.model_budgets_duplicate", args: []any{i + 1, name}}
 		}
 		var b model.PlanBudget
 		for part := range strings.SplitSeq(spec, ",") {
@@ -790,13 +792,13 @@ func parsePlanModelBudgets(text string) (map[string]model.PlanBudget, error) {
 			case strings.HasSuffix(lower, "tokens"):
 				n, err := strconv.ParseInt(strings.TrimSpace(strings.TrimSuffix(lower, "tokens")), 10, 64)
 				if err != nil || n < 0 {
-					return nil, errors.Errorf("ligne %d : budget tokens invalide %q", i+1, part)
+					return nil, formError{key: "org.errors.providers.model_budgets_tokens", args: []any{i + 1, part}}
 				}
 				b.TokenBudget = &n
 			default:
 				v, err := parseBudgetField(part)
 				if err != nil || v == nil {
-					return nil, errors.Errorf("ligne %d : budget invalide %q (ex : 3.50, 2000000 tokens, illimité)", i+1, part)
+					return nil, formError{key: "org.errors.providers.model_budgets_value", args: []any{i + 1, part}}
 				}
 				b.ValueBudget = v
 			}
@@ -833,11 +835,11 @@ func parseCostField(v string) int64 {
 func parseModelAPIFromForm(r *http.Request) (apiType, baseURL string, err error) {
 	apiType = strings.TrimSpace(r.FormValue("api_type"))
 	if apiType != "" && !model.IsKnownProviderType(apiType) {
-		return "", "", errors.Errorf("type d'API inconnu : %s. Choisissez un type de la liste.", apiType)
+		return "", "", errors.New(i18n.T(r.Context(), "org.errors.providers.api_type_unknown", apiType))
 	}
 	baseURL = strings.TrimSpace(r.FormValue("api_base_url"))
 	if baseURL != "" && !model.IsValidBaseURL(baseURL) {
-		return "", "", errors.Errorf("l'URL de base doit être une URL http ou https absolue, sans identifiants, paramètres ni fragment : %s", baseURL)
+		return "", "", errors.New(i18n.T(r.Context(), "org.errors.providers.api_base_url", baseURL))
 	}
 	return apiType, baseURL, nil
 }
@@ -870,10 +872,10 @@ func parseModelKindFromForm(r *http.Request, p model.Provider, apiType string, c
 		}
 	}
 	if !model.IsKnownModelKind(kind) {
-		return "", errors.Errorf("nature inconnue : %s. Choisissez une nature de la liste.", kind)
+		return "", errors.New(i18n.T(r.Context(), "org.errors.providers.kind_unknown", string(kind)))
 	}
 	if !model.ProviderTypeServes(served, kind) {
-		return "", errors.Errorf("le type d'API %s ne sert pas de modèle de nature « %s ».", served, common.ModelKindLabel(kind))
+		return "", errors.New(i18n.T(r.Context(), "org.errors.providers.kind_not_served", served, common.ModelKindLabel(r.Context(), kind)))
 	}
 	return kind, nil
 }
@@ -907,7 +909,7 @@ func parseKeyValueRowsFromForm(r *http.Request, name string) (map[string]string,
 			continue
 		}
 		if _, exists := rows[key]; exists {
-			return nil, errors.Errorf("clé « %s » en double", key)
+			return nil, errors.New(i18n.T(r.Context(), "org.errors.providers.duplicate_key", key))
 		}
 		rows[key] = r.FormValue(prefix + "value")
 	}
@@ -932,7 +934,7 @@ func parseRequestHeadersFromForm(r *http.Request) (*model.ProviderRequestHeaders
 		return nil, nil
 	}
 	if !headers.Valid() {
-		return nil, errors.New("un nom ou une valeur d'en-tête est invalide, ou l'en-tête est réservé (authentification, transport)")
+		return nil, errors.New(i18n.T(r.Context(), "org.errors.providers.invalid_header"))
 	}
 	return headers, nil
 }
@@ -969,7 +971,7 @@ func parseDurationField(r *http.Request, valueField, unitField string) (time.Dur
 	}
 	v, err := strconv.ParseInt(valueStr, 10, 64)
 	if err != nil || v <= 0 {
-		return 0, errors.Errorf("le champ %q doit être un entier strictement positif", valueField)
+		return 0, errors.New(i18n.T(r.Context(), "org.errors.providers.positive_integer_field", valueField))
 	}
 	var multiplier time.Duration
 	switch r.FormValue(unitField) {
@@ -1005,7 +1007,7 @@ func (h *Handler) createModel(w http.ResponseWriter, r *http.Request) {
 	// Reject duplicate proxy names within this organization.
 	if conflicting, err := h.providerStore.GetLLMModelByProxyName(ctx, org.ID(), proxyName); err == nil && conflicting != nil {
 		h.renderModelFormError(w, r, ctx, user, orgSlug, org, p, nil, true,
-			"Un modèle avec le nom proxy « "+proxyName+" » existe déjà dans cette organisation.")
+			i18n.T(ctx, "org.errors.providers.proxy_name_taken", proxyName))
 		return
 	}
 	if msg, err := h.virtualModelConflict(ctx, org.ID(), proxyName); err != nil {
@@ -1040,23 +1042,23 @@ func (h *Handler) createModel(w http.ResponseWriter, r *http.Request) {
 	m.SetTokensPerSecLow(parseFloat64Field(r.FormValue("tokens_per_sec_low")))
 	m.SetTokensPerSecHigh(parseFloat64Field(r.FormValue("tokens_per_sec_high")))
 	m.SetCapabilities(model.ModelCapabilities{
-		Tools:      r.FormValue("cap_tools") == "on",
-		Vision:     r.FormValue("cap_vision") == "on",
-		Reasoning:  r.FormValue("cap_reasoning") == "on",
-		Audio:      r.FormValue("cap_audio") == "on",
+		Tools:     r.FormValue("cap_tools") == "on",
+		Vision:    r.FormValue("cap_vision") == "on",
+		Reasoning: r.FormValue("cap_reasoning") == "on",
+		Audio:     r.FormValue("cap_audio") == "on",
 	})
 
 	extraBody, err := parseExtraBodyFromForm(r)
 	if err != nil {
 		h.renderModelFormError(w, r, ctx, user, orgSlug, org, p, nil, true,
-			"Corps additionnel (extra_body) : "+err.Error())
+			i18n.T(ctx, "org.errors.providers.extra_body", err.Error()))
 		return
 	}
 	m.SetExtraBody(extraBody)
 
 	apiType, apiBaseURL, err := parseModelAPIFromForm(r)
 	if err != nil {
-		h.renderModelFormError(w, r, ctx, user, orgSlug, org, p, nil, true, "Accès à l'API : "+err.Error())
+		h.renderModelFormError(w, r, ctx, user, orgSlug, org, p, nil, true, i18n.T(ctx, "org.errors.providers.api_access", err.Error()))
 		return
 	}
 	m.SetAPIType(apiType)
@@ -1064,7 +1066,7 @@ func (h *Handler) createModel(w http.ResponseWriter, r *http.Request) {
 
 	kind, err := parseModelKindFromForm(r, p, apiType, "")
 	if err != nil {
-		h.renderModelFormError(w, r, ctx, user, orgSlug, org, p, nil, true, "Nature : "+err.Error())
+		h.renderModelFormError(w, r, ctx, user, orgSlug, org, p, nil, true, i18n.T(ctx, "org.errors.providers.kind", err.Error()))
 		return
 	}
 	m.SetKind(kind)
@@ -1105,7 +1107,7 @@ func (h *Handler) getEditModelPage(w http.ResponseWriter, r *http.Request) {
 			ContextOrgID: org.ID(),
 			Breadcrumbs: []common.BreadcrumbItem{
 				{Label: org.Name(), Href: "/orgs/" + orgSlug + "/usage"},
-				{Label: "Fournisseurs", Href: "/orgs/" + orgSlug + "/admin/providers"},
+				{Label: i18n.T(ctx, "org.nav.providers"), Href: "/orgs/" + orgSlug + "/admin/providers"},
 				{Label: p.Name(), Href: "/orgs/" + orgSlug + "/admin/providers/" + string(p.ID()) + "/models"},
 				{Label: m.ProxyName(), Href: ""},
 			},
@@ -1138,7 +1140,7 @@ func (h *Handler) updateModel(w http.ResponseWriter, r *http.Request) {
 	// Reject duplicate proxy names within this organization (excluding the current model).
 	if conflicting, err := h.providerStore.GetLLMModelByProxyName(ctx, org.ID(), proxyName); err == nil && conflicting != nil && conflicting.ID() != existing.ID() {
 		h.renderModelFormError(w, r, ctx, user, orgSlug, org, p, existing, false,
-			"Un modèle avec le nom proxy « "+proxyName+" » existe déjà dans cette organisation.")
+			i18n.T(ctx, "org.errors.providers.proxy_name_taken", proxyName))
 		return
 	}
 	if proxyName != existing.ProxyName() {
@@ -1166,13 +1168,13 @@ func (h *Handler) updateModel(w http.ResponseWriter, r *http.Request) {
 		interval, err := parseDurationField(r, "token_limit_interval_value", "token_limit_interval_unit")
 		if err != nil || interval <= 0 {
 			h.renderModelFormError(w, r, ctx, user, orgSlug, org, p, existing, false,
-				"Limite de tokens : l'intervalle doit être un entier strictement positif.")
+				i18n.T(ctx, "org.errors.providers.token_limit_interval"))
 			return
 		}
 		maxTokens, _ := strconv.Atoi(r.FormValue("token_limit_max_tokens"))
 		if maxTokens < 1 {
 			h.renderModelFormError(w, r, ctx, user, orgSlug, org, p, existing, false,
-				"Limite de tokens : le nombre de tokens doit être ≥ 1.")
+				i18n.T(ctx, "org.errors.providers.token_limit_max"))
 			return
 		}
 		tokenLimitConfig = &model.TokenLimitConfig{
@@ -1185,19 +1187,19 @@ func (h *Handler) updateModel(w http.ResponseWriter, r *http.Request) {
 	extraBody, err := parseExtraBodyFromForm(r)
 	if err != nil {
 		h.renderModelFormError(w, r, ctx, user, orgSlug, org, p, existing, false,
-			"Corps additionnel (extra_body) : "+err.Error())
+			i18n.T(ctx, "org.errors.providers.extra_body", err.Error()))
 		return
 	}
 
 	apiType, apiBaseURL, err := parseModelAPIFromForm(r)
 	if err != nil {
-		h.renderModelFormError(w, r, ctx, user, orgSlug, org, p, existing, false, "Accès à l'API : "+err.Error())
+		h.renderModelFormError(w, r, ctx, user, orgSlug, org, p, existing, false, i18n.T(ctx, "org.errors.providers.api_access", err.Error()))
 		return
 	}
 
 	kind, err := parseModelKindFromForm(r, p, apiType, existing.Kind())
 	if err != nil {
-		h.renderModelFormError(w, r, ctx, user, orgSlug, org, p, existing, false, "Nature : "+err.Error())
+		h.renderModelFormError(w, r, ctx, user, orgSlug, org, p, existing, false, i18n.T(ctx, "org.errors.providers.kind", err.Error()))
 		return
 	}
 
@@ -1219,10 +1221,10 @@ func (h *Handler) updateModel(w http.ResponseWriter, r *http.Request) {
 		tokensPerSecLow:             parseFloat64Field(r.FormValue("tokens_per_sec_low")),
 		tokensPerSecHigh:            parseFloat64Field(r.FormValue("tokens_per_sec_high")),
 		capabilities: model.ModelCapabilities{
-			Tools:      r.FormValue("cap_tools") == "on",
-			Vision:     r.FormValue("cap_vision") == "on",
-			Reasoning:  r.FormValue("cap_reasoning") == "on",
-			Audio:      r.FormValue("cap_audio") == "on",
+			Tools:     r.FormValue("cap_tools") == "on",
+			Vision:    r.FormValue("cap_vision") == "on",
+			Reasoning: r.FormValue("cap_reasoning") == "on",
+			Audio:     r.FormValue("cap_audio") == "on",
 		},
 		createdAt:        existing.CreatedAt(),
 		updatedAt:        time.Now(),
@@ -1257,9 +1259,9 @@ func (h *Handler) renderModelFormError(w http.ResponseWriter, r *http.Request, c
 			ContextOrgID: org.ID(),
 			Breadcrumbs: []common.BreadcrumbItem{
 				{Label: org.Name(), Href: "/orgs/" + orgSlug + "/usage"},
-				{Label: "Fournisseurs", Href: "/orgs/" + orgSlug + "/admin/providers"},
+				{Label: i18n.T(ctx, "org.nav.providers"), Href: "/orgs/" + orgSlug + "/admin/providers"},
 				{Label: p.Name(), Href: "/orgs/" + orgSlug + "/admin/providers/" + string(p.ID()) + "/models"},
-				modelCrumb(m),
+				modelCrumb(ctx, m),
 			},
 		},
 	}
@@ -1269,9 +1271,9 @@ func (h *Handler) renderModelFormError(w http.ResponseWriter, r *http.Request, c
 
 // modelCrumb is the last breadcrumb of the model form: the model's proxy name,
 // or a plain label on a creation that failed, where nothing was stored.
-func modelCrumb(m model.LLMModel) common.BreadcrumbItem {
+func modelCrumb(ctx context.Context, m model.LLMModel) common.BreadcrumbItem {
 	if m == nil {
-		return common.BreadcrumbItem{Label: "Nouveau modèle", Href: ""}
+		return common.BreadcrumbItem{Label: i18n.T(ctx, "org.nav.providers_new_model"), Href: ""}
 	}
 	return common.BreadcrumbItem{Label: m.ProxyName(), Href: ""}
 }
@@ -1279,9 +1281,9 @@ func modelCrumb(m model.LLMModel) common.BreadcrumbItem {
 // providerCrumb is the last breadcrumb of the provider form: the provider's
 // models page when it exists, a dead-end label on a creation that failed,
 // where the id was minted but nothing stored.
-func providerCrumb(orgSlug string, p model.Provider, isNew bool) common.BreadcrumbItem {
+func providerCrumb(ctx context.Context, orgSlug string, p model.Provider, isNew bool) common.BreadcrumbItem {
 	if isNew {
-		return common.BreadcrumbItem{Label: "Nouveau fournisseur", Href: ""}
+		return common.BreadcrumbItem{Label: i18n.T(ctx, "org.nav.providers_new_provider"), Href: ""}
 	}
 	return common.BreadcrumbItem{Label: p.Name(), Href: "/orgs/" + orgSlug + "/admin/providers/" + string(p.ID()) + "/models"}
 }
@@ -1302,8 +1304,8 @@ func (h *Handler) renderProviderFormError(w http.ResponseWriter, r *http.Request
 			ContextOrgID: org.ID(),
 			Breadcrumbs: []common.BreadcrumbItem{
 				{Label: org.Name(), Href: "/orgs/" + orgSlug + "/usage"},
-				{Label: "Fournisseurs", Href: "/orgs/" + orgSlug + "/admin/providers"},
-				providerCrumb(orgSlug, p, isNew),
+				{Label: i18n.T(ctx, "org.nav.providers"), Href: "/orgs/" + orgSlug + "/admin/providers"},
+				providerCrumb(ctx, orgSlug, p, isNew),
 			},
 		},
 	}

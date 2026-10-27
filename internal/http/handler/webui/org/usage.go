@@ -25,6 +25,7 @@ import (
 	webcommon "github.com/xolo-gateway/xolo/internal/http/handler/webui/common"
 	common "github.com/xolo-gateway/xolo/internal/http/handler/webui/common/component"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/org/component"
+	"github.com/xolo-gateway/xolo/internal/i18n"
 )
 
 const usagePageSize = 20
@@ -392,7 +393,7 @@ func (h *Handler) getUsagePage(w http.ResponseWriter, r *http.Request) {
 		if spend, err := h.scopeSpend(ctx, model.QuotaScopeTeam, string(scope.team.ID()), orgID, now); err == nil {
 			dailyCost, monthlyCost, yearlyCost = spend[0], spend[1], spend[2]
 		}
-		budgetTitle = " · équipe " + scope.team.Name()
+		budgetTitle = i18n.T(ctx, "org.nav.usage_budget_team", scope.team.Name())
 		budgetHref = teamURL(org, scope.team)
 	} else {
 		if q, err := h.quotaStore.GetQuota(ctx, model.QuotaScopeOrg, string(orgID)); err == nil && q != nil {
@@ -418,7 +419,7 @@ func (h *Handler) getUsagePage(w http.ResponseWriter, r *http.Request) {
 	// Build subscription provider consumption data.
 	subscriptionProviders := h.buildSubscriptionProviderUsage(ctx, orgID)
 
-	costPerDay := common.StackedCostSeries([]map[string]int64{perDay, coveredPerDay}, since, time.Now(), rangeParam)
+	costPerDay := common.StackedCostSeries(r.Context(), []map[string]int64{perDay, coveredPerDay}, since, time.Now(), rangeParam)
 
 	vmodel := component.OrgUsagePageVModel{
 		Org:                   org,
@@ -447,7 +448,7 @@ func (h *Handler) getUsagePage(w http.ResponseWriter, r *http.Request) {
 		Currency:              orgCurrency,
 		ChartPerDay:           costPerDay[0],
 		ChartCoveredPerDay:    costPerDay[1],
-		ChartSharesPerModel:   common.ChartShares(common.TopNChartDataPoints(chartByValue(perModel), 5)),
+		ChartSharesPerModel:   common.ChartShares(common.TopNChartDataPoints(r.Context(), chartByValue(perModel), 5)),
 		ChartPerUser:          chartByValue(perUser),
 		ChartPerProvider:      chartByProvider(perProvider, providerNames),
 		PlanCoveredProviders:  common.PlanCoveredLabels(coveredProviders, providerNames),
@@ -463,7 +464,7 @@ func (h *Handler) getUsagePage(w http.ResponseWriter, r *http.Request) {
 			ContextOrgID: org.ID(),
 			Breadcrumbs: []common.BreadcrumbItem{
 				{Label: org.Name(), Href: "/orgs/" + orgSlug + "/usage"},
-				{Label: "Tableau de bord", Href: ""},
+				{Label: i18n.T(ctx, "org.nav.dashboard"), Href: ""},
 			},
 		},
 	}

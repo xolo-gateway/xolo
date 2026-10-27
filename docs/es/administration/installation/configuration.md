@@ -35,3 +35,11 @@ Eliminación diferida de tenants, organizaciones y miembros mediante la API de p
 | `XOLO_LIFECYCLE_RETENTION` | `720h` | Tiempo durante el que un recurso eliminado permanece congelado antes de su purga, de 1 s a 3650 días. |
 | `XOLO_LIFECYCLE_POLL_INTERVAL` | `1m` | Frecuencia con la que el worker busca eliminaciones que purgar, de 1 s a 1 h. |
 | `XOLO_LIFECYCLE_PURGE_BATCH` | `1000` | Filas eliminadas por transacción de purga, de 1 a 100 000. |
+
+## Idioma
+
+La interfaz web está disponible en inglés, francés y español. Cada solicitud usa el idioma elegido con el selector de idioma (guardado en la cookie `xolo_locale`); si no, la mejor coincidencia de la cabecera `Accept-Language` del navegador; si no, el idioma predeterminado indicado abajo.
+
+| Variable | Valor predeterminado | Descripción |
+| --- | --- | --- |
+| `XOLO_DEFAULT_LOCALE` | `fr` | Idioma usado cuando ni el selector ni el navegador indican uno compatible: `en`, `fr` o `es`. |

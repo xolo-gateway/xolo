@@ -4,6 +4,7 @@ import (
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/alert"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/button"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/icon"
+	"github.com/xolo-gateway/xolo/internal/i18n"
 )
 
 type ErrorPageVModel struct {
@@ -18,13 +19,13 @@ type LinkItem struct {
 
 templ ErrorPage(vmodel ErrorPageVModel) {
 	// Comme StandaloneLayout : hors coquille applicative, donc rechargement complet.
-	@Page(WithTitle("Erreur"), WithBodyAttributes(templ.Attributes{"hx-boost": "false"})) {
+	@Page(WithTitle(i18n.T(ctx, "error.title")), WithBodyAttributes(templ.Attributes{"hx-boost": "false"})) {
 		<div id="content" class="flex min-h-[calc(100vh-4rem)] items-center justify-center max-w-3xl p-4 mx-auto">
 			@alert.Alert(alert.Props{Variant: alert.VariantDestructive}) {
 				@alert.Title() {
 					<div class="flex items-center gap-2">
 						@icon.CircleAlert()
-						<span>Erreur</span>
+						<span>{ i18n.T(ctx, "error.title") }</span>
 					</div>
 				}
 				@alert.Description() {

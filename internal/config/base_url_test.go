@@ -88,10 +88,11 @@ func TestValidateMultitenantBaseURL(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			conf := config.Config{
-				SecretKey:    secretKeyForTest,
-				HTTP:         config.HTTP{BaseURL: testCase.baseURL, Session: sessionForTest},
-				Plugins:      pluginsForTest,
-				Multitenancy: testCase.multitenancy,
+				SecretKey:     secretKeyForTest,
+				DefaultLocale: "fr",
+				HTTP:          config.HTTP{BaseURL: testCase.baseURL, Session: sessionForTest},
+				Plugins:       pluginsForTest,
+				Multitenancy:  testCase.multitenancy,
 			}
 
 			err := conf.Validate()
@@ -204,10 +205,11 @@ func TestNormalizeBaseURL(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			conf := config.Config{
-				SecretKey:    secretKeyForTest,
-				HTTP:         config.HTTP{BaseURL: testCase.input, Session: sessionForTest},
-				Plugins:      pluginsForTest,
-				Multitenancy: config.Multitenancy{DefaultTenantSlug: "default"},
+				SecretKey:     secretKeyForTest,
+				DefaultLocale: "fr",
+				HTTP:          config.HTTP{BaseURL: testCase.input, Session: sessionForTest},
+				Plugins:       pluginsForTest,
+				Multitenancy:  config.Multitenancy{DefaultTenantSlug: "default"},
 			}
 
 			if err := conf.Validate(); err != nil {
@@ -273,9 +275,10 @@ func TestNormalizeBaseURLFixesMultitenantValidationBypass(t *testing.T) {
 	const raw = " https://xolo.example.com/ "
 
 	conf := config.Config{
-		SecretKey: secretKeyForTest,
-		HTTP:      config.HTTP{BaseURL: raw, Session: sessionForTest},
-		Plugins:   pluginsForTest,
+		SecretKey:     secretKeyForTest,
+		DefaultLocale: "fr",
+		HTTP:          config.HTTP{BaseURL: raw, Session: sessionForTest},
+		Plugins:       pluginsForTest,
 		Multitenancy: config.Multitenancy{
 			Enabled:           true,
 			HostPattern:       "{tenant}.xolo.example.com",

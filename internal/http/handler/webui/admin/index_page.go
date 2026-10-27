@@ -9,12 +9,13 @@ import (
 
 	"github.com/a-h/templ"
 	"github.com/bornholm/go-x/slogx"
+	"github.com/pkg/errors"
 	"github.com/xolo-gateway/xolo/internal/core/model"
 	"github.com/xolo-gateway/xolo/internal/core/port"
 	httpCtx "github.com/xolo-gateway/xolo/internal/http/context"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/admin/component"
 	common "github.com/xolo-gateway/xolo/internal/http/handler/webui/common/component"
-	"github.com/pkg/errors"
+	"github.com/xolo-gateway/xolo/internal/i18n"
 )
 
 // overviewWindow is the period the platform overview reports on. The mockup
@@ -52,8 +53,8 @@ func (h *Handler) getIndexPage(w http.ResponseWriter, r *http.Request) {
 			IsAdmin:      true,
 			SelectedItem: "overview",
 			Breadcrumbs: []common.BreadcrumbItem{
-				{Label: "Plateforme", Href: "/admin/"},
-				{Label: "Vue d'ensemble", Href: ""},
+				{Label: i18n.T(ctx, "admin.breadcrumb.platform"), Href: "/admin/"},
+				{Label: i18n.T(ctx, "admin.breadcrumb.overview"), Href: ""},
 			},
 			Context: common.ContextPlatform,
 		},
@@ -224,7 +225,7 @@ func (h *Handler) overviewCostSeries(ctx context.Context, orgs []component.Overv
 	// dans la même écriture que les autres graphiques de coût.
 	labels := make([]string, 0, len(days))
 	for _, day := range days {
-		labels = append(labels, common.FormatDayLabel(day))
+		labels = append(labels, common.FormatDayLabel(ctx, day))
 	}
 
 	return component.OverviewCostSeries{Labels: labels, Series: series}

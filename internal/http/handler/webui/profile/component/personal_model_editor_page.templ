@@ -1,11 +1,15 @@
 package component
 
-import common "github.com/xolo-gateway/xolo/internal/http/handler/webui/common/component"
+import (
+	common "github.com/xolo-gateway/xolo/internal/http/handler/webui/common/component"
+	"github.com/xolo-gateway/xolo/internal/i18n"
+)
 
 templ PersonalModelEditorPage(vmodel PersonalModelEditorVModel) {
-	@common.AppLayout(vmodel.AppLayoutVModel, common.WithTitle("Pipeline — "+vmodel.VM.Name())) {
+	@common.AppLayout(vmodel.AppLayoutVModel, common.WithTitle(i18n.T(ctx, "profile.pipeline_editor.title", vmodel.VM.Name()))) {
 		<div
 			id="pipeline-editor-root"
+			data-locale={ i18n.Language(ctx).String() }
 			data-vm-id={ string(vmodel.VM.ID()) }
 			data-api-base-url={ vmodel.APIBase }
 			data-context-type="personal"

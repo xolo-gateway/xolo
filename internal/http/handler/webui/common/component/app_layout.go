@@ -1,12 +1,13 @@
 package component
 
 import (
-	"fmt"
+	"context"
 	"strings"
 
 	"github.com/a-h/templ"
 	"github.com/xolo-gateway/xolo/internal/core/model"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/icon"
+	"github.com/xolo-gateway/xolo/internal/i18n"
 )
 
 // Context identifies which of the three product spaces the current page belongs
@@ -22,28 +23,28 @@ const (
 
 // Kicker returns the small uppercase line displayed above the context name in
 // the switcher.
-func (c Context) Kicker() string {
+func (c Context) Kicker(ctx context.Context) string {
 	switch c {
 	case ContextOrg:
-		return "Organisation"
+		return i18n.T(ctx, "nav.context.org")
 	case ContextPlatform:
-		return "Console"
+		return i18n.T(ctx, "nav.context.platform")
 	default:
-		return "Espace personnel"
+		return i18n.T(ctx, "nav.context.personal")
 	}
 }
 
 // DefaultName returns the context name to fall back on when the handler did not
 // provide one. The personal space is named after the user, so resolve overrides
 // this with the display name whenever there is one.
-func (c Context) DefaultName() string {
+func (c Context) DefaultName(ctx context.Context) string {
 	switch c {
 	case ContextPlatform:
-		return "Plateforme"
+		return i18n.T(ctx, "nav.context.platform_name")
 	case ContextOrg:
 		return ""
 	default:
-		return "Personnel"
+		return i18n.T(ctx, "nav.context.personal_name")
 	}
 }
 
@@ -53,13 +54,13 @@ func (c Context) DefaultName() string {
 // The console has no heading: the mockup separates it from the organisations
 // with a plain rule, since it is a single row whose label already says what it
 // is.
-func switcherGroupLabel(entries []SwitcherEntry, i int) string {
+func switcherGroupLabel(ctx context.Context, entries []SwitcherEntry, i int) string {
 	if i > 0 && entries[i].Context == entries[i-1].Context {
 		return ""
 	}
 	switch entries[i].Context {
 	case ContextPersonal:
-		return "Espace personnel"
+		return i18n.T(ctx, "nav.context.personal")
 	case ContextOrg:
 		count := 0
 		for _, e := range entries {
@@ -67,7 +68,7 @@ func switcherGroupLabel(entries []SwitcherEntry, i int) string {
 				count++
 			}
 		}
-		return fmt.Sprintf("Organisations · %d", count)
+		return i18n.T(ctx, "switcher.group.orgs", count)
 	default:
 		return ""
 	}

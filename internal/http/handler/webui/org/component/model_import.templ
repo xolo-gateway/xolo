@@ -12,18 +12,19 @@ import (
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/input"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/label"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/table"
+	"github.com/xolo-gateway/xolo/internal/i18n"
 )
 
 // ── Model Import ──────────────────────────────────────────────────────────────
 templ ModelImportPage(vmodel ModelImportVModel) {
 	{{ modelsURL := common.BaseURLString(ctx, common.WithPath("/orgs/", vmodel.Org.Slug(), "/admin/providers/", string(vmodel.Provider.ID()), "/models")) }}
-	@common.AppLayout(vmodel.AppLayoutVModel, common.WithTitle("Importer des modèles — "+vmodel.Provider.Name())) {
+	@common.AppLayout(vmodel.AppLayoutVModel, common.WithTitle(i18n.T(ctx, "org.import.page_title", vmodel.Provider.Name()))) {
 		@common.PageHeader(common.PageHeaderProps{
-			Title:    "Importer des modèles",
-			Subtitle: "Modèles que le fournisseur " + vmodel.Provider.Name() + " liste sur son API.",
+			Title:    i18n.T(ctx, "org.import.title"),
+			Subtitle: i18n.T(ctx, "org.import.subtitle", vmodel.Provider.Name()),
 		}) {
 			@button.Button(button.Props{Href: modelsURL, Variant: button.VariantOutline, Size: button.SizeSm}) {
-				Retour aux modèles
+				{ i18n.T(ctx, "org.import.back_to_models") }
 			}
 		}
 		<div class="space-y-4">
@@ -38,7 +39,7 @@ templ ModelImportPage(vmodel ModelImportVModel) {
 				@alert.Alert() {
 					@alert.Description() {
 						<p class="font-medium">
-							{ Pluralize(vmodel.Imported, "modèle importé", "modèles importés") }, { Pluralize(len(vmodel.Skipped), "modèle laissé de côté", "modèles laissés de côté") } :
+							{ i18n.T(ctx, "org.import.summary", i18n.T(ctx, "org.import.imported_count", vmodel.Imported), i18n.T(ctx, "org.import.skipped_count", len(vmodel.Skipped))) }
 						</p>
 						<ul class="mt-1 list-disc pl-5 text-sm">
 							for _, reason := range vmodel.Skipped {
@@ -64,10 +65,11 @@ templ ModelImportPage(vmodel ModelImportVModel) {
 					@common.Section() {
 						@common.SectionBody(common.SectionBodyProps{Class: "space-y-2"}) {
 							@form.Label(form.LabelProps{For: "proxy_prefix"}) {
-								Préfixe du nom proxy
+								{ i18n.T(ctx, "org.import.prefix_label") }
 							}
 							@form.Description() {
-								Facultatif. Chaque modèle importé est appelé <code>{ vmodel.Org.Slug() }/&lt;préfixe&gt;&lt;identifiant&gt;</code>. Un préfixe comme <code>opencode-</code> évite les conflits avec les modèles d'autres fournisseurs.
+								{ i18n.T(ctx, "org.import.prefix_help_before") }{ " " }<code>{ vmodel.Org.Slug() }/{ i18n.T(ctx, "org.import.prefix_help_pattern") }</code>.{ " " }
+								@templ.Raw(i18n.T(ctx, "org.import.prefix_help_example"))
 							}
 							@input.Input(input.Props{
 								ID:    "proxy_prefix",
@@ -86,39 +88,39 @@ templ ModelImportPage(vmodel ModelImportVModel) {
 							})
 							@modelImportPrefixError("", false)
 							@form.Description() {
-								Les modèles sont créés désactivés, avec un coût à zéro, le type d'API et l'URL du fournisseur. Saisissez leurs coûts dans leur formulaire avant de les activer : un modèle sans coût n'est ni valorisé ni limité par les quotas. Réglez-y aussi le type d'API d'un modèle servi par une autre API.
+								{ i18n.T(ctx, "org.import.created_disabled_help") }
 							}
 						}
 					}
 					@common.Section() {
 						@common.SectionHeader() {
 							@common.SectionTitle() {
-								{ Pluralize(len(vmodel.Candidates), "modèle listé", "modèles listés") }
+								{ i18n.T(ctx, "org.import.listed_count", len(vmodel.Candidates)) }
 							}
 						}
 						<div class="overflow-x-auto">
 							@table.Table() {
 								@table.Header() {
 									@table.Head(table.HeadProps{Class: "w-8"}) {
-										@checkbox.Checkbox(checkbox.Props{Group: "import-models", GroupParent: true, Attributes: templ.Attributes{"aria-label": "Tout cocher"}})
+										@checkbox.Checkbox(checkbox.Props{Group: "import-models", GroupParent: true, Attributes: templ.Attributes{"aria-label": i18n.T(ctx, "org.import.select_all")}})
 									}
 									@table.Head() {
-										Identifiant
+										{ i18n.T(ctx, "org.import.col_id") }
 									}
 									@table.Head() {
-										Nom
+										{ i18n.T(ctx, "org.import.col_name") }
 									}
 									@table.Head() {
-										Nom proxy
+										{ i18n.T(ctx, "org.import.col_proxy_name") }
 									}
 									@table.Head(table.HeadProps{Class: "text-right"}) {
-										Contexte
+										{ i18n.T(ctx, "org.import.col_context") }
 									}
 									@table.Head(table.HeadProps{Class: "text-right"}) {
-										Sortie
+										{ i18n.T(ctx, "org.import.col_output") }
 									}
 									@table.Head() {
-										État
+										{ i18n.T(ctx, "org.import.col_status") }
 									}
 								}
 								@table.Body() {
@@ -153,7 +155,7 @@ templ ModelImportPage(vmodel ModelImportVModel) {
 											}
 											@table.Cell() {
 												if c.DeclaredAs != "" {
-													@common.Badge(common.ToneNeutral, "déjà déclaré : "+c.DeclaredAs)
+													@common.Badge(common.ToneNeutral, i18n.T(ctx, "org.import.already_declared", c.DeclaredAs))
 												}
 											}
 										}
@@ -164,14 +166,14 @@ templ ModelImportPage(vmodel ModelImportVModel) {
 					}
 					@button.Button(button.Props{Type: button.TypeSubmit, Size: button.SizeSm, Class: "gap-1.5"}) {
 						@icon.Import(icon.Props{Class: "size-3.5"})
-						Importer la sélection
+						{ i18n.T(ctx, "org.import.import_selection") }
 					}
 				</form>
 			} else if vmodel.Error == "" {
 				@common.EmptyState(common.EmptyStateProps{
 					Icon:        icon.BrainCircuit,
-					Title:       "Aucun modèle listé",
-					Description: "Le fournisseur n'a renvoyé aucun modèle.",
+					Title:       i18n.T(ctx, "org.import.empty_title"),
+					Description: i18n.T(ctx, "org.import.empty_description"),
 				})
 			}
 		</div>

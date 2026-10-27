@@ -21,6 +21,7 @@ import (
 	httpCtx "github.com/xolo-gateway/xolo/internal/http/context"
 	common "github.com/xolo-gateway/xolo/internal/http/handler/webui/common/component"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/org/component"
+	"github.com/xolo-gateway/xolo/internal/i18n"
 )
 
 // modelDiscoveryTimeout bounds the call to the provider's model list, so a
@@ -46,7 +47,7 @@ func discoverProviderModels(ctx context.Context, providerType, baseURL, apiKey s
 	name := provider.Name(providerType)
 	opts := newProviderOptions(provider.NewDiscoveryProviderOptions, name, baseURL, apiKey, "", headers)
 	if opts == nil {
-		return nil, errors.Errorf("le type de fournisseur %q ne sait pas lister ses modèles", providerType)
+		return nil, errors.New(i18n.T(ctx, "org.errors.model_import.cannot_list", providerType))
 	}
 
 	client, err := provider.Create(ctx, func(o *provider.Options) error {
@@ -60,7 +61,7 @@ func discoverProviderModels(ctx context.Context, providerType, baseURL, apiKey s
 
 	discovery, ok := client.(llm.DiscoveryClient)
 	if !ok {
-		return nil, errors.Errorf("le type de fournisseur %q ne sait pas lister ses modèles", providerType)
+		return nil, errors.New(i18n.T(ctx, "org.errors.model_import.cannot_list", providerType))
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, modelDiscoveryTimeout)
@@ -140,9 +141,9 @@ func (h *Handler) loadProviderCatalog(ctx context.Context, org model.Organizatio
 		// should an upstream echo it.
 		msg := err.Error()
 		if apiKey != "" {
-			msg = strings.ReplaceAll(msg, apiKey, "[clé masquée]")
+			msg = strings.ReplaceAll(msg, apiKey, i18n.T(ctx, "org.errors.model_import.key_masked"))
 		}
-		return nil, "Le fournisseur n'a pas pu lister ses modèles : " + msg, nil
+		return nil, i18n.T(ctx, "org.errors.model_import.discovery_failed", msg), nil
 	}
 
 	existing, err := h.providerStore.ListLLMModels(ctx, org.ID())
@@ -200,16 +201,16 @@ func takenProxyNames(existing []model.LLMModel) map[string]bool {
 // conflict explains why proxyName cannot name a new model of the
 // organization. It is empty when the name is free. The checks are those of
 // the model form, made on sets read once.
-func (n *orgModelNames) conflict(proxyName string) string {
+func (n *orgModelNames) conflict(ctx context.Context, proxyName string) string {
 	if n.models[proxyName] {
-		return "Un modèle s'appelle déjà « " + proxyName + " » dans cette organisation."
+		return i18n.T(ctx, "org.errors.model_import.name_taken", proxyName)
 	}
 	if n.virtual[proxyName] {
-		return virtualModelConflictMessage(proxyName)
+		return virtualModelConflictMessage(ctx, proxyName)
 	}
 	// Mirrors service.CheckModelLocalName.
 	if segment, _, found := strings.Cut(proxyName, "/"); found && n.teamSlugs[segment] {
-		return teamNameConflictMessage(proxyName)
+		return teamNameConflictMessage(ctx, proxyName)
 	}
 	return ""
 }
@@ -217,7 +218,7 @@ func (n *orgModelNames) conflict(proxyName string) string {
 // nameCandidates gives each candidate not yet declared the proxy name it
 // would be imported under with prefix, and why that name cannot be used, so
 // that the page shows a conflict before the import refuses it.
-func nameCandidates(candidates []component.ModelImportCandidate, names *orgModelNames, prefix string) {
+func nameCandidates(ctx context.Context, candidates []component.ModelImportCandidate, names *orgModelNames, prefix string) {
 	for i := range candidates {
 		c := &candidates[i]
 		if c.DeclaredAs != "" {
@@ -225,28 +226,28 @@ func nameCandidates(candidates []component.ModelImportCandidate, names *orgModel
 			continue
 		}
 		c.ProxyName = prefix + c.ID
-		c.Conflict = names.conflict(c.ProxyName)
+		c.Conflict = names.conflict(ctx, c.ProxyName)
 	}
 }
 
 // prefixError checks the proxy prefix. It returns the message for the page,
 // or an empty string.
-func prefixError(prefix string) string {
+func prefixError(ctx context.Context, prefix string) string {
 	if strings.Contains(prefix, "/") {
 		// A slash would read as an organization or team segment of the name.
-		return "Le préfixe ne peut pas contenir « / »."
+		return i18n.T(ctx, "org.errors.model_import.prefix_slash")
 	}
 	return ""
 }
 
 // importFormError checks the import form before the provider is asked
 // anything. It returns the message for the page, or an empty string.
-func importFormError(prefix string, selected []string) string {
-	if msg := prefixError(prefix); msg != "" {
+func importFormError(ctx context.Context, prefix string, selected []string) string {
+	if msg := prefixError(ctx, prefix); msg != "" {
 		return msg
 	}
 	if len(selected) == 0 {
-		return "Cochez au moins un modèle à importer."
+		return i18n.T(ctx, "org.errors.model_import.none_selected")
 	}
 	return ""
 }
@@ -288,7 +289,7 @@ func (h *Handler) getImportModelsPage(w http.ResponseWriter, r *http.Request) {
 		templ.Handler(component.ModelImportPage(vmodel)).ServeHTTP(w, r)
 		return
 	}
-	nameCandidates(catalog.candidates, catalog.names, "")
+	nameCandidates(ctx, catalog.candidates, catalog.names, "")
 	vmodel.Candidates = catalog.candidates
 	templ.Handler(component.ModelImportPage(vmodel)).ServeHTTP(w, r)
 }
@@ -336,10 +337,10 @@ func (h *Handler) previewImportNames(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	prefix := strings.TrimSpace(r.FormValue("proxy_prefix"))
-	nameCandidates(candidates, names, prefix)
+	nameCandidates(ctx, candidates, names, prefix)
 	// The preview applies the import's own rule on the prefix, so that it
 	// never announces names the import would refuse.
-	templ.Handler(component.ModelImportProxyNames(candidates, prefixError(prefix))).ServeHTTP(w, r)
+	templ.Handler(component.ModelImportProxyNames(candidates, prefixError(ctx, prefix))).ServeHTTP(w, r)
 }
 
 func (h *Handler) importModels(w http.ResponseWriter, r *http.Request) {
@@ -358,7 +359,7 @@ func (h *Handler) importModels(w http.ResponseWriter, r *http.Request) {
 	}
 	prefix := strings.TrimSpace(r.FormValue("proxy_prefix"))
 	selected := uniqueValues(r.Form["models"])
-	formErr := importFormError(prefix, selected)
+	formErr := importFormError(ctx, prefix, selected)
 
 	// The list is fetched again rather than trusted from the form: only
 	// models the provider serves right now are imported, with the limits it
@@ -385,7 +386,7 @@ func (h *Handler) importModels(w http.ResponseWriter, r *http.Request) {
 		// page answers like a failed discovery, with the form's message only.
 		vmodel.Error = formErr
 		if discoveryErr == "" {
-			nameCandidates(catalog.candidates, catalog.names, prefix)
+			nameCandidates(ctx, catalog.candidates, catalog.names, prefix)
 			vmodel.Candidates = catalog.candidates
 		}
 		w.WriteHeader(http.StatusUnprocessableEntity)
@@ -421,7 +422,7 @@ func (h *Handler) importModels(w http.ResponseWriter, r *http.Request) {
 
 	// Some models were left out: show why, on the list updated with the ones
 	// just created, without asking the provider again.
-	nameCandidates(catalog.candidates, catalog.names, prefix)
+	nameCandidates(ctx, catalog.candidates, catalog.names, prefix)
 	vmodel.Imported = imported
 	vmodel.Candidates = catalog.candidates
 	templ.Handler(component.ModelImportPage(vmodel)).ServeHTTP(w, r)
@@ -440,15 +441,15 @@ func (h *Handler) importModel(ctx context.Context, org model.Organization, p mod
 		}
 	}
 	if c == nil {
-		return id + " : le fournisseur ne le liste plus.", nil
+		return i18n.T(ctx, "org.errors.model_import.skip_not_listed", id), nil
 	}
 	if c.DeclaredAs != "" {
-		return id + " : déjà déclaré sous le nom « " + c.DeclaredAs + " ».", nil
+		return i18n.T(ctx, "org.errors.model_import.skip_declared", id, c.DeclaredAs), nil
 	}
 
 	proxyName := prefix + id
-	if conflict := catalog.names.conflict(proxyName); conflict != "" {
-		return id + " : " + conflict, nil
+	if conflict := catalog.names.conflict(ctx, proxyName); conflict != "" {
+		return i18n.T(ctx, "org.errors.model_import.skip_conflict", id, conflict), nil
 	}
 
 	// Costs stay at zero: the provider's list carries no price, and a price
@@ -467,12 +468,12 @@ func (h *Handler) importModel(ctx context.Context, org model.Organization, p mod
 		if lookupErr != nil {
 			// The cause stays unknown: a retry is not promised to succeed.
 			slog.ErrorContext(ctx, "could not check imported model name", slog.String("model", id), slogx.Error(lookupErr))
-			return id + " : l'enregistrement a échoué, et Xolo n'a pas pu vérifier si le nom « " + proxyName + " » est déjà pris.", nil
+			return i18n.T(ctx, "org.errors.model_import.skip_unverified", id, proxyName), nil
 		}
 		if takenProxyNames(existing)[proxyName] {
-			return id + " : Un modèle s'appelle déjà « " + proxyName + " » dans cette organisation.", nil
+			return i18n.T(ctx, "org.errors.model_import.skip_conflict", id, i18n.T(ctx, "org.errors.model_import.name_taken", proxyName)), nil
 		}
-		return id + " : l'enregistrement a échoué, réessayez.", nil
+		return i18n.T(ctx, "org.errors.model_import.skip_failed", id), nil
 	}
 	catalog.declare(id, proxyName)
 	return "", nil
@@ -492,9 +493,9 @@ func (h *Handler) modelImportVModel(ctx context.Context, org model.Organization,
 			ContextOrgID: org.ID(),
 			Breadcrumbs: []common.BreadcrumbItem{
 				{Label: org.Name(), Href: "/orgs/" + orgSlug + "/usage"},
-				{Label: "Fournisseurs", Href: "/orgs/" + orgSlug + "/admin/providers"},
+				{Label: i18n.T(ctx, "org.nav.providers"), Href: "/orgs/" + orgSlug + "/admin/providers"},
 				{Label: p.Name(), Href: "/orgs/" + orgSlug + "/admin/providers/" + string(p.ID()) + "/models"},
-				{Label: "Importer", Href: ""},
+				{Label: i18n.T(ctx, "org.nav.import"), Href: ""},
 			},
 		},
 	}

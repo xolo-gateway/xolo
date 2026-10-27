@@ -8,14 +8,15 @@ import (
 	common "github.com/xolo-gateway/xolo/internal/http/handler/webui/common/component"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/button"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/icon"
+	"github.com/xolo-gateway/xolo/internal/i18n"
 )
 
 // ── Providers Page ────────────────────────────────────────────────────────────
 templ ProvidersPage(vmodel ProvidersPageVModel) {
-	@common.AppLayout(vmodel.AppLayoutVModel, common.WithTitle("Fournisseurs — "+vmodel.Org.Name())) {
+	@common.AppLayout(vmodel.AppLayoutVModel, common.WithTitle(i18n.T(ctx, "org.models.providers.page_title", vmodel.Org.Name()))) {
 		@common.PageHeader(common.PageHeaderProps{
-			Title:    "Fournisseurs",
-			Subtitle: "Endpoints LLM amont déclarés pour " + vmodel.Org.Name() + " et modèles exposés par chacun.",
+			Title:    i18n.T(ctx, "org.models.providers.title"),
+			Subtitle: i18n.T(ctx, "org.models.providers.subtitle", vmodel.Org.Name()),
 		}) {
 			if common.HasPermission(ctx, vmodel.Org.ID(), rbac.PermProvidersWrite) {
 				@button.Button(button.Props{
@@ -24,27 +25,27 @@ templ ProvidersPage(vmodel ProvidersPageVModel) {
 					Href:  common.BaseURLString(ctx, common.WithPath("/orgs/", vmodel.Org.Slug(), "/admin/providers/new")),
 				}) {
 					@icon.Plus(icon.Props{Class: "size-3.5"})
-					Ajouter un fournisseur
+					{ i18n.T(ctx, "org.models.providers.add") }
 				}
 			}
 		}
 		if vmodel.Success != "" {
 			<div class="mb-3.5">
-				@common.InfoBanner(common.TonePositive, "Opération réussie.")
+				@common.InfoBanner(common.TonePositive, i18n.T(ctx, "org.models.providers.success"))
 			</div>
 		}
 		if len(vmodel.Providers) == 0 {
 			@common.EmptyState(common.EmptyStateProps{
 				Icon:        icon.Server,
-				Title:       "Aucun fournisseur",
-				Description: "Un fournisseur est un endpoint LLM amont. Ajoutez-en un pour que l'organisation puisse appeler des modèles.",
+				Title:       i18n.T(ctx, "org.models.providers.empty_title"),
+				Description: i18n.T(ctx, "org.models.providers.empty_description"),
 			}) {
 				if common.HasPermission(ctx, vmodel.Org.ID(), rbac.PermProvidersWrite) {
 					@button.Button(button.Props{
 						Size: button.SizeSm,
 						Href: common.BaseURLString(ctx, common.WithPath("/orgs/", vmodel.Org.Slug(), "/admin/providers/new")),
 					}) {
-						Ajouter un fournisseur
+						{ i18n.T(ctx, "org.models.providers.add") }
 					}
 				}
 			}
@@ -69,33 +70,33 @@ templ providerRow(vmodel ProvidersPageVModel, p model.Provider) {
 				<div class="flex flex-wrap items-center gap-2">
 					<span class="text-sm font-semibold">{ p.Name() }</span>
 					if p.Active() {
-						@common.Badge(common.TonePositive, "actif")
+						@common.Badge(common.TonePositive, i18n.T(ctx, "org.models.providers.badge_active"))
 					} else {
-						@common.Badge(common.ToneNeutral, "inactif")
+						@common.Badge(common.ToneNeutral, i18n.T(ctx, "org.models.providers.badge_inactive"))
 					}
 					@common.Badge(common.ToneNeutral, p.Type())
 					if p.BillingMode() == model.BillingModeSubscription {
-						@common.Badge(common.ToneInfo, "abonnement")
+						@common.Badge(common.ToneInfo, i18n.T(ctx, "org.models.providers.badge_subscription"))
 					}
 				</div>
 				@common.Mono(p.BaseURL())
 			</div>
 			<div class="flex shrink-0 flex-wrap items-start gap-5.5">
-				@common.InlineStat("Modèles", common.ToneNeutral) {
+				@common.InlineStat(i18n.T(ctx, "org.models.providers.models"), common.ToneNeutral) {
 					{ strconv.Itoa(vmodel.ModelCounts[p.ID()]) }
 				}
 				// TODO(rework-ux): la maquette affiche coût 30 j, p95 et taux
 				// d'erreur par fournisseur. Aucun agrégat d'usage n'est indexé par
 				// ProviderID côté domaine (port.UsageStore agrège par modèle), donc
 				// les colonnes gardent leur place sans inventer de chiffre.
-				@common.InlineStat("Coût 30 j", common.ToneNeutral) {
-					@common.PendingValue("Le coût n'est pas encore agrégé par fournisseur.")
+				@common.InlineStat(i18n.T(ctx, "org.models.providers.stat_cost_30d"), common.ToneNeutral) {
+					@common.PendingValue(i18n.T(ctx, "org.models.providers.pending_cost"))
 				}
-				@common.InlineStat("p95", common.ToneNeutral) {
-					@common.PendingValue("La latence amont n'est pas encore mesurée.")
+				@common.InlineStat(i18n.T(ctx, "org.models.providers.stat_p95"), common.ToneNeutral) {
+					@common.PendingValue(i18n.T(ctx, "org.models.providers.pending_latency"))
 				}
-				@common.InlineStat("Erreurs", common.ToneNeutral) {
-					@common.PendingValue("Le taux d'erreur amont n'est pas encore mesuré.")
+				@common.InlineStat(i18n.T(ctx, "org.models.providers.stat_errors"), common.ToneNeutral) {
+					@common.PendingValue(i18n.T(ctx, "org.models.providers.pending_errors"))
 				}
 			</div>
 			<div class="flex shrink-0 items-center gap-1">
@@ -104,7 +105,7 @@ templ providerRow(vmodel ProvidersPageVModel, p model.Provider) {
 					Variant: button.VariantOutline,
 					Size:    button.SizeSm,
 				}) {
-					Modèles
+					{ i18n.T(ctx, "org.models.providers.models") }
 				}
 				if common.HasPermission(ctx, vmodel.Org.ID(), rbac.PermProvidersWrite) {
 					@button.Button(button.Props{
@@ -112,24 +113,24 @@ templ providerRow(vmodel ProvidersPageVModel, p model.Provider) {
 						Variant: button.VariantOutline,
 						Size:    button.SizeSm,
 					}) {
-						Configurer
+						{ i18n.T(ctx, "org.models.providers.configure") }
 					}
 					@common.ConfirmDelete(common.ConfirmDeleteProps{
 						URL:         common.BaseURLString(ctx, common.WithPath("/orgs/", vmodel.Org.Slug(), "/admin/providers/", string(p.ID()))),
-						Tooltip:     "Supprimer",
-						Title:       "Supprimer ce fournisseur ?",
-						Description: "Les modèles qu'il expose disparaîtront avec lui et ne seront plus servis.",
+						Tooltip:     i18n.T(ctx, "org.models.providers.delete"),
+						Title:       i18n.T(ctx, "org.models.providers.delete_title"),
+						Description: i18n.T(ctx, "org.models.providers.delete_description"),
 					})
 				}
 			</div>
 		}
 		if plan := p.SubscriptionPlan(); plan != nil && plan.Label != "" {
 			<div class="flex flex-wrap items-center gap-2.5 border-t bg-row-hover px-4 py-2">
-				<span class="text-xs text-muted-foreground">Forfait { plan.Label }</span>
+				<span class="text-xs text-muted-foreground">{ i18n.T(ctx, "org.models.providers.plan", plan.Label) }</span>
 				// TODO(rework-ux): la maquette montre ici la jauge de consommation
 				// du forfait. Elle demande un rapprochement usage ↔ contraintes de
 				// plan qui n'existe pas encore (cf. lot 7 du plan).
-				@common.PendingValue("La consommation du forfait n'est pas encore rapprochée.")
+				@common.PendingValue(i18n.T(ctx, "org.models.providers.pending_plan_usage"))
 			</div>
 		}
 	}

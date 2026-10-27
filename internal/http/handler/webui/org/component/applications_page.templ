@@ -5,6 +5,7 @@ import (
 
 	"github.com/xolo-gateway/xolo/internal/core/model"
 	"github.com/xolo-gateway/xolo/internal/core/rbac"
+	"github.com/xolo-gateway/xolo/internal/i18n"
 	common "github.com/xolo-gateway/xolo/internal/http/handler/webui/common/component"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/alert"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/button"
@@ -76,10 +77,10 @@ func (v ApplicationFormVModel) HasAssignedRole() bool {
 }
 
 templ ApplicationsPage(vmodel ApplicationsPageVModel) {
-	@common.AppLayout(vmodel.AppLayoutVModel, common.WithTitle("Applications — "+vmodel.Org.Name())) {
+	@common.AppLayout(vmodel.AppLayoutVModel, common.WithTitle(i18n.T(ctx, "org.applications.page_title", vmodel.Org.Name()))) {
 		@common.PageHeader(common.PageHeaderProps{
-			Title:    "Applications",
-			Subtitle: "Identités machine-à-machine : chaque application dispose de ses propres jetons et rôles.",
+			Title:    i18n.T(ctx, "org.applications.title"),
+			Subtitle: i18n.T(ctx, "org.applications.subtitle"),
 		}) {
 			if common.HasPermission(ctx, vmodel.Org.ID(), rbac.PermApplicationsWrite) {
 				@button.Button(button.Props{
@@ -88,27 +89,27 @@ templ ApplicationsPage(vmodel ApplicationsPageVModel) {
 					Href:  common.BaseURLString(ctx, common.WithPath("/orgs/", vmodel.Org.Slug(), "/admin/applications/new")),
 				}) {
 					@icon.Plus(icon.Props{Class: "size-3.5"})
-					Nouvelle application
+					{ i18n.T(ctx, "org.applications.new") }
 				}
 			}
 		}
 		if vmodel.Success != "" {
 			<div class="mb-3.5">
-				@common.InfoBanner(common.TonePositive, "Opération réussie.")
+				@common.InfoBanner(common.TonePositive, i18n.T(ctx, "org.applications.success"))
 			</div>
 		}
 		if len(vmodel.Apps) == 0 {
 			@common.EmptyState(common.EmptyStateProps{
 				Icon:        icon.AppWindow,
-				Title:       "Aucune application",
-				Description: "Une application est une identité machine à machine : elle appelle la passerelle avec sa propre clé et son propre budget.",
+				Title:       i18n.T(ctx, "org.applications.empty_title"),
+				Description: i18n.T(ctx, "org.applications.empty_description"),
 			}) {
 				if common.HasPermission(ctx, vmodel.Org.ID(), rbac.PermApplicationsWrite) {
 					@button.Button(button.Props{
 						Size: button.SizeSm,
 						Href: common.BaseURLString(ctx, common.WithPath("/orgs/", vmodel.Org.Slug(), "/admin/applications/new")),
 					}) {
-						Nouvelle application
+						{ i18n.T(ctx, "org.applications.new") }
 					}
 				}
 			}
@@ -118,28 +119,28 @@ templ ApplicationsPage(vmodel ApplicationsPageVModel) {
 					@table.Table() {
 						@table.Header() {
 							@table.Head() {
-								Application
+								{ i18n.T(ctx, "org.applications.col.application") }
 							}
 							@table.Head() {
-								Rôles
+								{ i18n.T(ctx, "org.applications.col.roles") }
 							}
 							@table.Head(table.HeadProps{Class: "text-right"}) {
-								Jetons
+								{ i18n.T(ctx, "org.applications.col.tokens") }
 							}
 							@table.Head(table.HeadProps{Class: "text-right"}) {
-								Requêtes 30 j
+								{ i18n.T(ctx, "org.applications.col.requests_30d") }
 							}
 							@table.Head(table.HeadProps{Class: "text-right"}) {
-								Coût 30 j
+								{ i18n.T(ctx, "org.applications.col.cost_30d") }
 							}
 							@table.Head() {
-								Statut
+								{ i18n.T(ctx, "org.applications.col.status") }
 							}
 							@table.Head() {
-								Créée le
+								{ i18n.T(ctx, "org.applications.col.created") }
 							}
 							@table.Head(table.HeadProps{Class: "text-right"}) {
-								Actions
+								{ i18n.T(ctx, "org.applications.col.actions") }
 							}
 						}
 						@table.Body() {
@@ -156,7 +157,7 @@ templ ApplicationsPage(vmodel ApplicationsPageVModel) {
 									@table.Cell() {
 										<div class="flex flex-wrap gap-1">
 											if len(vmodel.AppRoles[app.ID()]) == 0 {
-												@common.Badge(common.ToneNegative, "aucun rôle")
+												@common.Badge(common.ToneNegative, i18n.T(ctx, "org.applications.no_role_badge"))
 											} else {
 												for _, role := range vmodel.AppRoles[app.ID()] {
 													@common.Badge(common.ToneInfo, role.Name())
@@ -166,7 +167,7 @@ templ ApplicationsPage(vmodel ApplicationsPageVModel) {
 									}
 									@table.Cell(table.CellProps{Class: "text-right tnum"}) {
 										if vmodel.TokenCounts[app.ID()] == 0 {
-											@common.Badge(common.ToneWarning, "aucun jeton")
+											@common.Badge(common.ToneWarning, i18n.T(ctx, "org.applications.no_token_badge"))
 										} else {
 											{ strconv.Itoa(vmodel.TokenCounts[app.ID()]) }
 										}
@@ -176,16 +177,16 @@ templ ApplicationsPage(vmodel ApplicationsPageVModel) {
 									// enregistre bien l'ApplicationID, mais aucun agrégat n'est
 									// exposé par application (cf. lot 7 du plan).
 									@table.Cell(table.CellProps{Class: "text-right"}) {
-										@common.PendingValue("L'usage n'est pas encore agrégé par application.")
+										@common.PendingValue(i18n.T(ctx, "org.applications.usage_pending"))
 									}
 									@table.Cell(table.CellProps{Class: "text-right"}) {
-										@common.PendingValue("Le coût n'est pas encore agrégé par application.")
+										@common.PendingValue(i18n.T(ctx, "org.applications.cost_pending"))
 									}
 									@table.Cell() {
 										if app.Active() {
-											@common.Badge(common.TonePositive, "Active")
+											@common.Badge(common.TonePositive, i18n.T(ctx, "org.applications.status.active"))
 										} else {
-											@common.Badge(common.ToneNeutral, "Inactive")
+											@common.Badge(common.ToneNeutral, i18n.T(ctx, "org.applications.status.inactive"))
 										}
 									}
 									@table.Cell() {
@@ -197,7 +198,7 @@ templ ApplicationsPage(vmodel ApplicationsPageVModel) {
 											Variant: button.VariantOutline,
 											Size:    button.SizeSm,
 										}) {
-											Configurer
+											{ i18n.T(ctx, "org.applications.configure") }
 										}
 									}
 								}
@@ -212,10 +213,10 @@ templ ApplicationsPage(vmodel ApplicationsPageVModel) {
 
 templ ApplicationForm(vmodel ApplicationFormVModel) {
 	{{ readonly := !common.HasPermission(ctx, vmodel.Org.ID(), rbac.PermApplicationsWrite) }}
-	{{ title := "Nouvelle application" }}
+	{{ title := i18n.T(ctx, "org.applications.new") }}
 	{{ action := common.BaseURLString(ctx, common.WithPath("/orgs/", vmodel.Org.Slug(), "/admin/applications")) }}
 	if !vmodel.IsNew && vmodel.App != nil {
-		{{ title = "Modifier — " + vmodel.App.Name() }}
+		{{ title = i18n.T(ctx, "org.applications.form.edit_title", vmodel.App.Name()) }}
 		{{ action = common.BaseURLString(ctx, common.WithPath("/orgs/", vmodel.Org.Slug(), "/admin/applications/", string(vmodel.App.ID()), "/edit")) }}
 	}
 	@common.AppLayout(vmodel.AppLayoutVModel, common.WithTitle(title)) {
@@ -228,44 +229,44 @@ templ ApplicationForm(vmodel ApplicationFormVModel) {
 						Size:    button.SizeSm,
 						Type:    button.TypeButton,
 					}) {
-						Annuler
+						{ i18n.T(ctx, "org.applications.form.cancel") }
 					}
 					if !readonly {
 						@button.Button(button.Props{Type: button.TypeSubmit, Size: button.SizeSm}) {
-							Enregistrer
+							{ i18n.T(ctx, "org.applications.form.save") }
 						}
 					}
 				}
-				@common.FlashError(vmodel.Error, "Une application")
+				@common.FlashError(vmodel.Error, i18n.T(ctx, "org.applications.form.flash_subject"))
 				@common.Section() {
 					@common.SectionHeader() {
 						@common.SectionTitle() {
-							Identité
+							{ i18n.T(ctx, "org.applications.form.identity") }
 						}
 					}
 					@common.SectionBody(common.SectionBodyProps{Class: "flex flex-col gap-3.5"}) {
 						@form.Item() {
 							@form.Label(form.LabelProps{For: "app_name"}) {
-								Nom
+								{ i18n.T(ctx, "org.applications.form.name") }
 							}
 							@input.Input(input.Props{
 								ID:          "app_name",
 								Name:        "name",
 								Value:       applicationName(vmodel),
-								Placeholder: "Mon application",
+								Placeholder: i18n.T(ctx, "org.applications.form.name_placeholder"),
 								Disabled:    readonly,
 								Attributes:  templ.Attributes{"required": "required"},
 							})
 						}
 						@form.Item() {
 							@form.Label(form.LabelProps{For: "app_description"}) {
-								Description
+								{ i18n.T(ctx, "org.applications.form.description") }
 							}
 							@input.Input(input.Props{
 								ID:          "app_description",
 								Name:        "description",
 								Value:       applicationDescription(vmodel),
-								Placeholder: "À quoi sert cette application",
+								Placeholder: i18n.T(ctx, "org.applications.form.description_placeholder"),
 								Disabled:    readonly,
 							})
 						}
@@ -273,7 +274,7 @@ templ ApplicationForm(vmodel ApplicationFormVModel) {
 							@form.ItemFlex() {
 								@switchcomp.Switch(switchcomp.Props{ID: "active", Name: "active", Checked: vmodel.App.Active(), Disabled: readonly})
 								@form.Label(form.LabelProps{For: "active"}) {
-									Active
+									{ i18n.T(ctx, "org.applications.status.active") }
 								}
 							}
 						}
@@ -283,20 +284,18 @@ templ ApplicationForm(vmodel ApplicationFormVModel) {
 					@common.Section() {
 						@common.SectionHeader() {
 							@common.SectionTitle() {
-								Rôles
+								{ i18n.T(ctx, "org.applications.col.roles") }
 							}
 						}
 						@common.SectionBody(common.SectionBodyProps{Class: "flex flex-col gap-3.5"}) {
 							<p class="text-sm text-muted-foreground">
-								Les rôles déterminent les sections d'administration accessibles aux
-								jetons de cette application, et l'accès à tous les modèles de
-								l'organisation.
+								{ i18n.T(ctx, "org.applications.form.roles_help") }
 							</p>
 							if len(vmodel.OrgRoles) == 0 {
-								<p class="text-sm text-muted-foreground">Aucun rôle défini dans cette organisation.</p>
+								<p class="text-sm text-muted-foreground">{ i18n.T(ctx, "org.applications.form.roles_empty") }</p>
 							} else {
 								if !vmodel.HasAssignedRole() && applicationTeamID(vmodel) == "" {
-									@common.InfoBanner(common.ToneNegative, "Sans rôle ni équipe, cette application ne peut accéder à aucun modèle : ses appels API sont rejetés.")
+									@common.InfoBanner(common.ToneNegative, i18n.T(ctx, "org.applications.form.no_access_banner"))
 								}
 								<div class="flex flex-col gap-3">
 									for _, role := range vmodel.OrgRoles {
@@ -325,22 +324,21 @@ templ ApplicationForm(vmodel ApplicationFormVModel) {
 					@common.Section() {
 						@common.SectionHeader() {
 							@common.SectionTitle() {
-								Équipe
+								{ i18n.T(ctx, "org.applications.form.team") }
 							}
 						}
 						@common.SectionBody(common.SectionBodyProps{Class: "flex flex-col gap-3.5"}) {
 							<p class="text-sm text-muted-foreground">
-								Une application rattachée à une équipe utilise les modèles de l'équipe,
-								et toutes ses requêtes sont débitées sur le budget de l'équipe.
+								{ i18n.T(ctx, "org.applications.form.team_help") }
 							</p>
 							@selectbox.SelectBox(selectbox.Props{ID: "application-team"}) {
 								@selectbox.Trigger(selectbox.TriggerProps{Name: "team_id", Disabled: readonly}) {
-									@selectbox.Value(selectbox.ValueProps{Placeholder: "Aucune équipe"})
+									@selectbox.Value(selectbox.ValueProps{Placeholder: i18n.T(ctx, "org.applications.form.no_team")})
 								}
 								@selectbox.Content(selectbox.ContentProps{NoSearch: len(vmodel.Teams) < 8}) {
 									@selectbox.Group() {
 										@selectbox.Item(selectbox.ItemProps{Value: "", Selected: applicationTeamID(vmodel) == ""}) {
-											Aucune équipe
+											{ i18n.T(ctx, "org.applications.form.no_team") }
 										}
 										for _, team := range vmodel.Teams {
 											@selectbox.Item(selectbox.ItemProps{Value: string(team.ID()), Selected: applicationTeamID(vmodel) == team.ID()}) {
@@ -356,7 +354,7 @@ templ ApplicationForm(vmodel ApplicationFormVModel) {
 				if !readonly {
 					<div class="mt-3.5">
 						@button.Button(button.Props{Type: button.TypeSubmit}) {
-							Enregistrer
+							{ i18n.T(ctx, "org.applications.form.save") }
 						}
 					</div>
 				}
@@ -367,21 +365,19 @@ templ ApplicationForm(vmodel ApplicationFormVModel) {
 					@common.Section() {
 						@common.SectionHeader() {
 							@common.SectionTitle() {
-								Budget
+								{ i18n.T(ctx, "org.applications.form.budget") }
 							}
 							@button.Button(button.Props{
 								Href:    vmodel.QuotaEditURL,
 								Variant: button.VariantOutline,
 								Size:    button.SizeSm,
 							}) {
-								Modifier
+								{ i18n.T(ctx, "org.applications.form.budget_edit") }
 							}
 						}
 						@common.SectionBody(common.SectionBodyProps{Class: "space-y-2"}) {
 							<p class="text-sm text-muted-foreground">
-								Un plafond bloque les nouvelles requêtes de cette application
-								une fois atteint. Les plafonds ne s'appliquent qu'aux fournisseurs
-								en mode pay-as-you-go.
+								{ i18n.T(ctx, "org.applications.form.budget_help") }
 							</p>
 							if vmodel.QuotaLoadError != "" {
 								@common.InfoBanner(common.ToneNegative, vmodel.QuotaLoadError)
@@ -396,21 +392,20 @@ templ ApplicationForm(vmodel ApplicationFormVModel) {
 					@common.Section(common.SectionProps{Class: "border-destructive/40"}) {
 						@common.SectionHeader(common.SectionHeaderProps{Class: "border-destructive/40"}) {
 							@common.SectionTitle() {
-								Zone de danger
+								{ i18n.T(ctx, "org.applications.form.danger_zone") }
 							}
 						}
 						@common.SectionBody(common.SectionBodyProps{Class: "flex flex-wrap items-center gap-3.5"}) {
 							<p class="min-w-0 flex-1 text-sm text-muted-foreground">
-								Supprimer l'application révoque tous ses jetons : les appels qui les
-								portent échoueront immédiatement.
+								{ i18n.T(ctx, "org.applications.form.delete_help") }
 							</p>
 							@common.ConfirmDelete(common.ConfirmDeleteProps{
 								URL:         common.BaseURLString(ctx, common.WithPath("/orgs/", vmodel.Org.Slug(), "/admin/applications/", string(vmodel.App.ID()), "/delete")),
 								Method:      "POST",
 								Variant:     button.VariantDestructive,
-								Label:       "Supprimer l'application",
-								Title:       "Supprimer cette application ?",
-								Description: "Tous ses jetons sont révoqués et les intégrations qui les utilisent cessent de fonctionner. Cette action est irréversible.",
+								Label:       i18n.T(ctx, "org.applications.form.delete"),
+								Title:       i18n.T(ctx, "org.applications.form.delete_title"),
+								Description: i18n.T(ctx, "org.applications.form.delete_description"),
 							})
 						}
 					}
@@ -428,17 +423,17 @@ templ applicationTokensSection(vmodel ApplicationFormVModel, readonly bool) {
 		@common.Section() {
 			@common.SectionHeader() {
 				@common.SectionTitle() {
-					Jetons d'API
+					{ i18n.T(ctx, "org.applications.tokens.title") }
 				}
 			}
 			if vmodel.CreatedToken != "" {
 				@common.SectionBody() {
 					@alert.Alert(alert.Props{Variant: alert.VariantDefault}) {
 						@alert.Title() {
-							Copiez ce jeton maintenant
+							{ i18n.T(ctx, "org.applications.tokens.copy_now") }
 						}
 						@alert.Description() {
-							<p class="mb-2">Il ne sera plus affiché après avoir quitté cette page.</p>
+							<p class="mb-2">{ i18n.T(ctx, "org.applications.tokens.copy_help") }</p>
 							@common.InlineSnippet(vmodel.CreatedToken)
 						}
 					}
@@ -450,41 +445,41 @@ templ applicationTokensSection(vmodel ApplicationFormVModel, readonly bool) {
 						<div class="min-w-40 flex-1">
 							@form.Item() {
 								@form.Label(form.LabelProps{For: "token_label"}) {
-									Libellé
+									{ i18n.T(ctx, "org.applications.tokens.label") }
 								}
-								@input.Input(input.Props{ID: "token_label", Name: "label", Placeholder: "ex : intégration CI"})
+								@input.Input(input.Props{ID: "token_label", Name: "label", Placeholder: i18n.T(ctx, "org.applications.tokens.label_placeholder")})
 							}
 						</div>
 						<div class="w-40">
 							@form.Item() {
 								@form.Label(form.LabelProps{For: "token_expiry"}) {
-									Expiration (jours)
+									{ i18n.T(ctx, "org.applications.tokens.expiry") }
 								}
 								@input.Input(input.Props{ID: "token_expiry", Name: "expiry", Type: input.TypeNumber, Value: "365", Attributes: templ.Attributes{"min": "1"}})
 							}
 						</div>
 						@button.Button(button.Props{Type: button.TypeSubmit}) {
-							Générer un jeton
+							{ i18n.T(ctx, "org.applications.tokens.generate") }
 						}
 					}
 				</form>
 			}
 			if len(vmodel.Tokens) == 0 {
 				@common.SectionBody(common.SectionBodyProps{Class: "border-t text-sm text-muted-foreground"}) {
-					Cette application n'a aucun jeton : elle ne peut appeler la passerelle.
+					{ i18n.T(ctx, "org.applications.tokens.empty") }
 				}
 			} else {
 				<div class="overflow-x-auto border-t">
 					@table.Table() {
 						@table.Header() {
 							@table.Head() {
-								Libellé
+								{ i18n.T(ctx, "org.applications.tokens.label") }
 							}
 							@table.Head() {
-								Expiration
+								{ i18n.T(ctx, "org.applications.tokens.expiration") }
 							}
 							@table.Head(table.HeadProps{Class: "text-right"}) {
-								Actions
+								{ i18n.T(ctx, "org.applications.col.actions") }
 							}
 						}
 						@table.Body() {
@@ -497,7 +492,7 @@ templ applicationTokensSection(vmodel ApplicationFormVModel, readonly bool) {
 										if token.ExpiresAt() != nil {
 											@common.Mono(token.ExpiresAt().Format("02/01/2006"))
 										} else {
-											<span class="text-sm text-muted-foreground">Jamais</span>
+											<span class="text-sm text-muted-foreground">{ i18n.T(ctx, "org.applications.tokens.never") }</span>
 										}
 									}
 									@table.Cell(table.CellProps{Class: "text-right"}) {
@@ -505,10 +500,10 @@ templ applicationTokensSection(vmodel ApplicationFormVModel, readonly bool) {
 											@common.ConfirmDelete(common.ConfirmDeleteProps{
 												URL:          common.BaseURLString(ctx, common.WithPath("/orgs/", vmodel.Org.Slug(), "/admin/applications/", string(vmodel.App.ID()), "/tokens/", string(token.ID()), "/delete")),
 												Method:       "POST",
-												Tooltip:      "Révoquer",
-												Title:        "Révoquer ce jeton ?",
-												Description:  "Les appels qui le portent échoueront immédiatement. Cette action est irréversible.",
-												ConfirmLabel: "Révoquer",
+												Tooltip:      i18n.T(ctx, "org.applications.tokens.revoke"),
+												Title:        i18n.T(ctx, "org.applications.tokens.revoke_title"),
+												Description:  i18n.T(ctx, "org.applications.tokens.revoke_description"),
+												ConfirmLabel: i18n.T(ctx, "org.applications.tokens.revoke"),
 											})
 										}
 									}

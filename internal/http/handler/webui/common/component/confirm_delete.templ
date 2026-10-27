@@ -7,6 +7,7 @@ import (
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/button"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/dialog"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/icon"
+	"github.com/xolo-gateway/xolo/internal/i18n"
 )
 
 // ConfirmDeleteProps configures a destructive action guarded by a dialog.
@@ -49,7 +50,7 @@ type ConfirmDeleteProps struct {
 templ ConfirmDelete(props ConfirmDeleteProps) {
 	{{ confirmLabel := props.ConfirmLabel }}
 	if confirmLabel == "" {
-		{{ confirmLabel = "Supprimer" }}
+		{{ confirmLabel = i18n.T(ctx, "common.delete") }}
 	}
 	{{ variant := props.Variant }}
 	if variant == "" {
@@ -97,7 +98,7 @@ templ ConfirmDelete(props ConfirmDeleteProps) {
 			@dialog.Footer() {
 				@dialog.Close() {
 					@button.Button(button.Props{Variant: button.VariantOutline, Type: button.TypeButton}) {
-						Annuler
+						{ i18n.T(ctx, "common.cancel") }
 					}
 				}
 				@button.Button(button.Props{

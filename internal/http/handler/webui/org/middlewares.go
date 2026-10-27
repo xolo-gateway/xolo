@@ -17,6 +17,7 @@ import (
 	webcommon "github.com/xolo-gateway/xolo/internal/http/handler/webui/common"
 	common "github.com/xolo-gateway/xolo/internal/http/handler/webui/common/component"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/org/component"
+	"github.com/xolo-gateway/xolo/internal/i18n"
 )
 
 func (h *Handler) getMiddlewaresPage(w http.ResponseWriter, r *http.Request) {
@@ -51,7 +52,7 @@ func (h *Handler) getMiddlewaresPage(w http.ResponseWriter, r *http.Request) {
 			ContextOrgID: org.ID(),
 			Breadcrumbs: []common.BreadcrumbItem{
 				{Label: org.Name(), Href: "/orgs/" + orgSlug + "/usage"},
-				{Label: "Middlewares", Href: ""},
+				{Label: i18n.T(ctx, "org.nav.middlewares"), Href: ""},
 			},
 		},
 	}
@@ -83,8 +84,8 @@ func (h *Handler) getNewMiddlewarePage(w http.ResponseWriter, r *http.Request) {
 			ContextOrgID: org.ID(),
 			Breadcrumbs: []common.BreadcrumbItem{
 				{Label: org.Name(), Href: "/orgs/" + orgSlug + "/usage"},
-				{Label: "Middlewares", Href: "/orgs/" + orgSlug + "/admin/middlewares"},
-				{Label: "Nouveau", Href: ""},
+				{Label: i18n.T(ctx, "org.nav.middlewares"), Href: "/orgs/" + orgSlug + "/admin/middlewares"},
+				{Label: i18n.T(ctx, "org.nav.new"), Href: ""},
 			},
 		},
 	}
@@ -170,7 +171,7 @@ func (h *Handler) getEditMiddlewarePage(w http.ResponseWriter, r *http.Request) 
 			ContextOrgID: org.ID(),
 			Breadcrumbs: []common.BreadcrumbItem{
 				{Label: org.Name(), Href: "/orgs/" + orgSlug + "/usage"},
-				{Label: "Middlewares", Href: "/orgs/" + orgSlug + "/admin/middlewares"},
+				{Label: i18n.T(ctx, "org.nav.middlewares"), Href: "/orgs/" + orgSlug + "/admin/middlewares"},
 				{Label: mw.Name(), Href: ""},
 			},
 		},
@@ -347,7 +348,7 @@ func (h *Handler) getMiddlewarePipelineEditorPage(w http.ResponseWriter, r *http
 			FullBleed:    true,
 			Breadcrumbs: []common.BreadcrumbItem{
 				{Label: org.Name(), Href: "/orgs/" + orgSlug + "/usage"},
-				{Label: "Middlewares", Href: "/orgs/" + orgSlug + "/admin/middlewares"},
+				{Label: i18n.T(ctx, "org.nav.middlewares"), Href: "/orgs/" + orgSlug + "/admin/middlewares"},
 				{Label: mw.Name(), Href: ""},
 			},
 		},
@@ -380,7 +381,7 @@ func (h *Handler) middlewareTargetOptions(ctx context.Context, org model.Organiz
 			opts = append(opts, component.MiddlewareTargetOption{
 				Kind:  string(model.ModelRefKindVirtual),
 				ID:    string(vm.ID()),
-				Label: org.Slug() + "/" + vm.Name() + " (virtuel)",
+				Label: i18n.T(ctx, "org.flash.middlewares.virtual_target", org.Slug()+"/"+vm.Name()),
 			})
 		}
 	}

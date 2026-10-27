@@ -137,6 +137,14 @@ func TestParse_OIDCProviderAllowedAudiences(t *testing.T) {
 	}
 }
 
+func TestValidateDefaultLocale(t *testing.T) {
+	for value, valid := range map[string]bool{"fr": true, "en": true, "es": true, "": false, "de": false, "FR": false, "fr-CA": false} {
+		if err := validateDefaultLocale(value); (err == nil) != valid {
+			t.Errorf("locale %q: err=%v, want valid=%t", value, err, valid)
+		}
+	}
+}
+
 // TestValidate_PluginsMaxMessageSize asserts that an out-of-range bound fails
 // at start-up rather than being silently replaced.
 func TestValidate_PluginsMaxMessageSize(t *testing.T) {

@@ -10,6 +10,7 @@ import (
 	httpCtx "github.com/xolo-gateway/xolo/internal/http/context"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/icon"
 	"github.com/xolo-gateway/xolo/internal/http/middleware/authz"
+	"github.com/xolo-gateway/xolo/internal/i18n"
 )
 
 // resolve fills the fields of the layout view model the handlers do not set
@@ -33,7 +34,7 @@ func (v AppLayoutVModel) resolve(ctx context.Context) AppLayoutVModel {
 		if v.Context == ContextPersonal && v.User != nil {
 			v.ContextName = v.User.DisplayName()
 		} else {
-			v.ContextName = v.Context.DefaultName()
+			v.ContextName = v.Context.DefaultName(ctx)
 		}
 	}
 	if v.HomeLink == "" {
@@ -86,19 +87,19 @@ func isAdminVisit(ctx context.Context, orgID model.OrgID) bool {
 
 // PersonalNavGroups builds the sidebar of the personal space.
 func PersonalNavGroups(ctx context.Context, selected string) []NavGroup {
-	space := NavGroup{Title: "Mon espace", Items: []NavEntry{
-		{Label: "Mon usage", Href: BaseURLString(ctx, WithPath("/usage")), Icon: icon.ChartColumn, Active: selected == "usage"},
-		{Label: "Événements", Href: BaseURLString(ctx, WithPath("/events")), Icon: icon.Bell, Active: selected == "events"},
+	space := NavGroup{Title: i18n.T(ctx, "nav.group.my_space"), Items: []NavEntry{
+		{Label: i18n.T(ctx, "nav.my_usage"), Href: BaseURLString(ctx, WithPath("/usage")), Icon: icon.ChartColumn, Active: selected == "usage"},
+		{Label: i18n.T(ctx, "nav.events"), Href: BaseURLString(ctx, WithPath("/events")), Icon: icon.Bell, Active: selected == "events"},
 	}}
 	if CanAccessModelsPage(ctx) {
 		space.Items = append(space.Items, NavEntry{
-			Label: "Modèles d'org.", Href: BaseURLString(ctx, WithPath("/models")),
+			Label: i18n.T(ctx, "nav.org_models"), Href: BaseURLString(ctx, WithPath("/models")),
 			Icon: icon.BrainCircuit, Active: selected == "models",
 		})
 	}
 	if HasPermissionInAnyOrg(ctx, rbac.PermPersonalVMCreate) {
 		space.Items = append(space.Items, NavEntry{
-			Label: "Mes modèles", Href: BaseURLString(ctx, WithPath("/profile/personal-models")),
+			Label: i18n.T(ctx, "nav.my_models"), Href: BaseURLString(ctx, WithPath("/profile/personal-models")),
 			Icon: icon.Network, Active: selected == "personal-models",
 		})
 	}
@@ -106,12 +107,12 @@ func PersonalNavGroups(ctx context.Context, selected string) []NavGroup {
 	// Les clés API sont un outil de travail, pas un réglage de compte : elles
 	// closent « Mon espace », à côté de l'usage et des modèles qu'elles servent.
 	space.Items = append(space.Items, NavEntry{
-		Label: "Clés API", Href: BaseURLString(ctx, WithPath("/profile/tokens")),
+		Label: i18n.T(ctx, "nav.api_keys"), Href: BaseURLString(ctx, WithPath("/profile/tokens")),
 		Icon: icon.KeyRound, Active: selected == "tokens",
 	})
 
-	account := NavGroup{Title: "Compte", Items: []NavEntry{
-		{Label: "Profil & préférences", Href: BaseURLString(ctx, WithPath("/profile")), Icon: icon.User, Active: selected == "profile"},
+	account := NavGroup{Title: i18n.T(ctx, "nav.group.account"), Items: []NavEntry{
+		{Label: i18n.T(ctx, "nav.profile"), Href: BaseURLString(ctx, WithPath("/profile")), Icon: icon.User, Active: selected == "profile"},
 	}}
 
 	return []NavGroup{space, account}
@@ -121,16 +122,16 @@ func PersonalNavGroups(ctx context.Context, selected string) []NavGroup {
 func PlatformNavGroups(ctx context.Context, selected string) []NavGroup {
 	// Organisations sits under Supervision, not Administration: the console reads
 	// the fleet from there — cost, budget, error rate — and only then acts on it.
-	supervision := NavGroup{Title: "Supervision", Items: []NavEntry{
-		{Label: "Vue d'ensemble", Href: BaseURLString(ctx, WithPath("/admin/")), Icon: icon.Gauge, Active: selected == "overview"},
-		{Label: "Organisations", Href: BaseURLString(ctx, WithPath("/admin/orgs")), Icon: icon.Building2, Active: selected == "orgs"},
-		{Label: "Santé du proxy", Href: BaseURLString(ctx, WithPath("/admin/health")), Icon: icon.Activity, Active: selected == "health"},
+	supervision := NavGroup{Title: i18n.T(ctx, "nav.group.supervision"), Items: []NavEntry{
+		{Label: i18n.T(ctx, "nav.overview"), Href: BaseURLString(ctx, WithPath("/admin/")), Icon: icon.Gauge, Active: selected == "overview"},
+		{Label: i18n.T(ctx, "nav.orgs"), Href: BaseURLString(ctx, WithPath("/admin/orgs")), Icon: icon.Building2, Active: selected == "orgs"},
+		{Label: i18n.T(ctx, "nav.proxy_health"), Href: BaseURLString(ctx, WithPath("/admin/health")), Icon: icon.Activity, Active: selected == "health"},
 	}}
 
-	administration := NavGroup{Title: "Administration", Items: []NavEntry{
-		{Label: "Utilisateurs", Href: BaseURLString(ctx, WithPath("/admin/users")), Icon: icon.Users, Active: selected == "users"},
-		{Label: "Taux de change", Href: BaseURLString(ctx, WithPath("/admin/exchange-rates")), Icon: icon.RefreshCw, Active: selected == "exchange-rates"},
-		{Label: "Plugins", Href: BaseURLString(ctx, WithPath("/admin/plugins")), Icon: icon.Plug, Active: selected == "plugins"},
+	administration := NavGroup{Title: i18n.T(ctx, "nav.group.administration"), Items: []NavEntry{
+		{Label: i18n.T(ctx, "nav.users"), Href: BaseURLString(ctx, WithPath("/admin/users")), Icon: icon.Users, Active: selected == "users"},
+		{Label: i18n.T(ctx, "nav.exchange_rates"), Href: BaseURLString(ctx, WithPath("/admin/exchange-rates")), Icon: icon.RefreshCw, Active: selected == "exchange-rates"},
+		{Label: i18n.T(ctx, "nav.plugins"), Href: BaseURLString(ctx, WithPath("/admin/plugins")), Icon: icon.Plug, Active: selected == "plugins"},
 	}}
 
 	return []NavGroup{supervision, administration}
@@ -144,76 +145,76 @@ func OrgNavGroups(ctx context.Context, slug string, orgID model.OrgID, selected 
 		return BaseURLString(ctx, WithPath(append([]string{"/orgs/", slug}, parts...)...))
 	}
 
-	usage := NavGroup{Title: "Usage", Items: []NavEntry{
+	usage := NavGroup{Title: i18n.T(ctx, "nav.group.usage"), Items: []NavEntry{
 		{
-			Label: "Tableau de bord", Href: href("/usage"), Icon: icon.ChartColumn,
+			Label: i18n.T(ctx, "nav.dashboard"), Href: href("/usage"), Icon: icon.ChartColumn,
 			// The org root redirects to /usage, so both selections light the same row.
 			Active: selected == prefix+"usage" || selected == "org-"+slug,
 		},
-		{Label: "Événements", Href: href("/events"), Icon: icon.Bell, Active: selected == prefix+"events"},
+		{Label: i18n.T(ctx, "nav.events"), Href: href("/events"), Icon: icon.Bell, Active: selected == prefix+"events"},
 	}}
 	if HasPermission(ctx, orgID, rbac.PermEventsWrite) || HasPermission(ctx, orgID, rbac.PermEventsAlertsOwn) {
 		usage.Items = append(usage.Items, NavEntry{
-			Label: "Alertes & incidents", Href: href("/events/alerts"), Icon: icon.TriangleAlert,
+			Label: i18n.T(ctx, "nav.alerts"), Href: href("/events/alerts"), Icon: icon.TriangleAlert,
 			Active: selected == prefix+"alerts",
 		})
 	}
 	// Budget opens Gouvernance rather than closing Usage: a ceiling is a decision
 	// taken on the organisation, next to who may spend it and with which role.
-	governance := NavGroup{Title: "Gouvernance"}
+	governance := NavGroup{Title: i18n.T(ctx, "nav.group.governance")}
 	if HasPermission(ctx, orgID, rbac.PermQuotaRead) {
 		governance.Items = append(governance.Items, NavEntry{
-			Label: "Budget", Href: href("/admin/quota"), Icon: icon.PiggyBank, Active: selected == prefix+"quota",
+			Label: i18n.T(ctx, "nav.budget"), Href: href("/admin/quota"), Icon: icon.PiggyBank, Active: selected == prefix+"quota",
 		})
 	}
 	if HasPermission(ctx, orgID, rbac.PermMembersRead) {
 		governance.Items = append(governance.Items, NavEntry{
-			Label: "Membres", Href: href("/admin/members"), Icon: icon.Users, Active: selected == prefix+"members",
+			Label: i18n.T(ctx, "nav.members"), Href: href("/admin/members"), Icon: icon.Users, Active: selected == prefix+"members",
 		})
 	}
 	// A team lead sees the teams it holds a role on, without teams:read.
 	if HasPermission(ctx, orgID, rbac.PermTeamsRead) || HasPermissionInAnyTeam(ctx, orgID, rbac.PermMembersRead) ||
 		HasPermissionInAnyTeam(ctx, orgID, rbac.PermQuotaRead) {
 		governance.Items = append(governance.Items, NavEntry{
-			Label: "Équipes", Href: href("/admin/teams"), Icon: icon.UsersRound, Active: selected == prefix+"teams",
+			Label: i18n.T(ctx, "nav.teams"), Href: href("/admin/teams"), Icon: icon.UsersRound, Active: selected == prefix+"teams",
 		})
 	}
 	if HasPermission(ctx, orgID, rbac.PermRolesRead) {
 		governance.Items = append(governance.Items, NavEntry{
-			Label: "Rôles", Href: href("/admin/roles"), Icon: icon.Shield, Active: selected == prefix+"roles",
+			Label: i18n.T(ctx, "nav.roles"), Href: href("/admin/roles"), Icon: icon.Shield, Active: selected == prefix+"roles",
 		})
 	}
 	if HasPermissionInAnyTeam(ctx, orgID, rbac.PermInvitesRead) {
 		governance.Items = append(governance.Items, NavEntry{
-			Label: "Invitations", Href: href("/admin/invites"), Icon: icon.Mail, Active: selected == prefix+"invites",
+			Label: i18n.T(ctx, "nav.invitations"), Href: href("/admin/invites"), Icon: icon.Mail, Active: selected == prefix+"invites",
 		})
 	}
-	gateway := NavGroup{Title: "Passerelle"}
+	gateway := NavGroup{Title: i18n.T(ctx, "nav.group.gateway")}
 	if HasPermission(ctx, orgID, rbac.PermProvidersRead) {
 		gateway.Items = append(gateway.Items, NavEntry{
-			Label: "Fournisseurs", Href: href("/admin/providers"), Icon: icon.Server, Active: selected == prefix+"providers",
+			Label: i18n.T(ctx, "nav.providers"), Href: href("/admin/providers"), Icon: icon.Server, Active: selected == prefix+"providers",
 		})
 	}
 	if HasPermission(ctx, orgID, rbac.PermVirtualModelsRead) {
 		gateway.Items = append(gateway.Items, NavEntry{
-			Label: "Modèles virtuels", Href: href("/admin/virtual-models"), Icon: icon.BrainCircuit, Active: selected == prefix+"virtual-models",
+			Label: i18n.T(ctx, "nav.virtual_models"), Href: href("/admin/virtual-models"), Icon: icon.BrainCircuit, Active: selected == prefix+"virtual-models",
 		})
 	}
 	if HasPermission(ctx, orgID, rbac.PermMiddlewaresRead) {
 		gateway.Items = append(gateway.Items, NavEntry{
-			Label: "Middlewares", Href: href("/admin/middlewares"), Icon: icon.Layers, Active: selected == prefix+"middlewares",
+			Label: i18n.T(ctx, "nav.middlewares"), Href: href("/admin/middlewares"), Icon: icon.Layers, Active: selected == prefix+"middlewares",
 		})
 	}
 	if HasPermission(ctx, orgID, rbac.PermApplicationsRead) {
 		gateway.Items = append(gateway.Items, NavEntry{
-			Label: "Applications", Href: href("/admin/applications"), Icon: icon.AppWindow, Active: selected == prefix+"applications",
+			Label: i18n.T(ctx, "nav.applications"), Href: href("/admin/applications"), Icon: icon.AppWindow, Active: selected == prefix+"applications",
 		})
 	}
 	// Paramètres closes Passerelle: what it holds — devise, rétention, plafonds —
 	// configures the gateway of the organisation rather than governing its people.
 	if HasPermission(ctx, orgID, rbac.PermSettingsRead) {
 		gateway.Items = append(gateway.Items, NavEntry{
-			Label: "Paramètres", Href: href("/admin/settings"), Icon: icon.Settings, Active: selected == prefix+"settings",
+			Label: i18n.T(ctx, "nav.settings"), Href: href("/admin/settings"), Icon: icon.Settings, Active: selected == prefix+"settings",
 		})
 	}
 
@@ -233,7 +234,7 @@ func SwitcherEntries(ctx context.Context, current Context, currentSlug string) [
 	// The row is labelled with the user, not with "Espace personnel": the group
 	// heading above it already carries that, and the pastille then matches the
 	// avatar of the sidebar footer.
-	personal := "Personnel"
+	personal := i18n.T(ctx, "nav.context.personal_name")
 	if user := User(ctx); user != nil {
 		personal = user.DisplayName()
 	}
@@ -270,7 +271,7 @@ func SwitcherEntries(ctx context.Context, current Context, currentSlug string) [
 	if AssertUser(ctx, authz.Has(authz.RoleAdmin)) {
 		entries = append(entries, SwitcherEntry{
 			Context: ContextPlatform,
-			Label:   "Console plateforme",
+			Label:   i18n.T(ctx, "switcher.platform_console"),
 			Href:    BaseURLString(ctx, WithPath("/admin/")),
 			Current: current == ContextPlatform,
 		})
@@ -310,7 +311,7 @@ func SwitcherFragmentURL(ctx context.Context, current Context, currentSlug strin
 // in the sidebar footer.
 func UserRoleLabel(ctx context.Context, vmodel AppLayoutVModel) string {
 	if vmodel.Context == ContextPlatform || (vmodel.Context == ContextOrg && vmodel.IsAdminVisit) {
-		return "Admin. plateforme"
+		return i18n.T(ctx, "nav.role.platform_admin")
 	}
 	if vmodel.Context == ContextOrg {
 		for _, m := range httpCtx.Memberships(ctx) {
@@ -325,10 +326,10 @@ func UserRoleLabel(ctx context.Context, vmodel AppLayoutVModel) string {
 				return strings.Join(names, ", ")
 			}
 		}
-		return "Membre"
+		return i18n.T(ctx, "nav.role.member")
 	}
 	if AssertUser(ctx, authz.Has(authz.RoleAdmin)) {
-		return "Admin. plateforme"
+		return i18n.T(ctx, "nav.role.platform_admin")
 	}
-	return "Utilisateur"
+	return i18n.T(ctx, "nav.role.user")
 }

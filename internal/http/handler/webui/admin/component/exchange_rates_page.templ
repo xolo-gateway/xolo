@@ -1,6 +1,7 @@
 package component
 
 import (
+	"github.com/xolo-gateway/xolo/internal/i18n"
 	"fmt"
 
 	"github.com/xolo-gateway/xolo/internal/core/model"
@@ -16,14 +17,14 @@ type ExchangeRatesPageVModel struct {
 }
 
 templ ExchangeRatesPage(vmodel ExchangeRatesPageVModel) {
-	@commonComp.AppLayout(vmodel.AppLayoutVModel, commonComp.WithTitle("Taux de change")) {
+	@commonComp.AppLayout(vmodel.AppLayoutVModel, commonComp.WithTitle(i18n.T(ctx, "admin.exchange_rates.title"))) {
 		<div class="max-w-4xl">
 			@commonComp.PageHeader(commonComp.PageHeaderProps{
-				Title:    "Taux de change",
-				Subtitle: "Données en cache, rafraîchies automatiquement. Elles convertissent les coûts des fournisseurs vers la devise de chaque organisation.",
+				Title:    i18n.T(ctx, "admin.exchange_rates.title"),
+				Subtitle: i18n.T(ctx, "admin.exchange_rates.subtitle"),
 			})
 			<div class="mb-3.5">
-				@commonComp.InfoBanner(commonComp.ToneInfo, lastSyncMessage(vmodel.Rates)) {
+				@commonComp.InfoBanner(commonComp.ToneInfo, lastSyncMessage(ctx, vmodel.Rates)) {
 					<!-- TODO(rework-ux): le rafraîchissement est piloté par
 					ExchangeRateService.StartRefresher, sur une minuterie. Aucune
 					route ne le déclenche à la demande ; le bouton de la maquette
@@ -35,31 +36,31 @@ templ ExchangeRatesPage(vmodel ExchangeRatesPageVModel) {
 						Class:    "ml-auto gap-1.5 bg-card",
 					}) {
 						@icon.RefreshCw(icon.Props{Class: "size-3.5"})
-						Synchroniser
+						{ i18n.T(ctx, "admin.exchange_rates.sync") }
 					}
 				}
 			</div>
 			if len(vmodel.Rates) == 0 {
 				@commonComp.EmptyState(commonComp.EmptyStateProps{
 					Icon:        icon.RefreshCw,
-					Title:       "Aucun taux en cache",
-					Description: "Le rafraîchissement automatique peuplera cette table au prochain cycle. Tant qu'elle est vide, les coûts sont affichés dans la devise du fournisseur.",
+					Title:       i18n.T(ctx, "admin.exchange_rates.empty.title"),
+					Description: i18n.T(ctx, "admin.exchange_rates.empty.description"),
 				})
 			} else {
 				@commonComp.Section() {
 					@table.Table() {
 						@table.Header() {
 							@table.Head() {
-								De
+								{ i18n.T(ctx, "admin.exchange_rates.col.from") }
 							}
 							@table.Head() {
-								Vers
+								{ i18n.T(ctx, "admin.exchange_rates.col.to") }
 							}
 							@table.Head(table.HeadProps{Class: "text-right"}) {
-								Taux
+								{ i18n.T(ctx, "admin.exchange_rates.col.rate") }
 							}
 							@table.Head() {
-								Mis à jour le
+								{ i18n.T(ctx, "admin.exchange_rates.col.updated_at") }
 							}
 						}
 						@table.Body() {

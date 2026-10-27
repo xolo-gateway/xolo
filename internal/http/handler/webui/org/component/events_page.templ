@@ -1,10 +1,12 @@
 package component
 
 import (
+	"context"
 	"strconv"
 
 	"github.com/xolo-gateway/xolo/internal/core/model"
 	common "github.com/xolo-gateway/xolo/internal/http/handler/webui/common/component"
+	"github.com/xolo-gateway/xolo/internal/i18n"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/button"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/icon"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/input"
@@ -13,12 +15,12 @@ import (
 )
 
 templ EventsExplorerPage(vmodel EventsExplorerVModel) {
-	@common.AppLayout(vmodel.AppLayoutVModel, common.WithTitle("Événements — "+vmodel.Org.Name())) {
+	@common.AppLayout(vmodel.AppLayoutVModel, common.WithTitle(i18n.T(ctx, "org.events.page_title", vmodel.Org.Name()))) {
 		{{ base := common.BaseURLString(ctx, common.WithPath("/orgs/", vmodel.Org.Slug(), "/events")) }}
 		<div>
 			@common.PageHeader(common.PageHeaderProps{
-				Title:    "Événements",
-				Subtitle: "Interrogez les événements de la passerelle et des plugins avec EventQL, une syntaxe inspirée de LogQL.",
+				Title:    i18n.T(ctx, "org.nav.events"),
+				Subtitle: i18n.T(ctx, "org.events.subtitle"),
 			})
 			<div class="mb-3.5">
 				@EventsTabs(vmodel.Org, "events", vmodel.View)
@@ -43,13 +45,13 @@ templ EventsExplorerPage(vmodel EventsExplorerVModel) {
 						Placeholder: `{type="proxy.request"} | model="gpt-4o"`,
 						Class:       "pl-7 pr-24 font-mono",
 					})
-					<span class="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 font-mono text-2xs text-muted-foreground">⏎ exécuter</span>
+					<span class="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 font-mono text-2xs text-muted-foreground">{ i18n.T(ctx, "org.events.run_hint") }</span>
 				</div>
 				@button.Button(button.Props{Type: button.TypeSubmit, Size: button.SizeSm}) {
-					Rechercher
+					{ i18n.T(ctx, "org.events.search") }
 				}
 				if vmodel.CanReadAll || vmodel.CanReadTeams {
-					@common.SegmentedNav(scopeSegments(base, vmodel.Query, vmodel.Scope, vmodel.View, vmodel.CanReadAll))
+					@common.SegmentedNav(scopeSegments(ctx, base, vmodel.Query, vmodel.Scope, vmodel.View, vmodel.CanReadAll))
 				}
 			</form>
 			if vmodel.Error != "" {
@@ -60,8 +62,8 @@ templ EventsExplorerPage(vmodel EventsExplorerVModel) {
 			if len(vmodel.Events) == 0 {
 				@common.EmptyState(common.EmptyStateProps{
 					Icon:        icon.Bell,
-					Title:       "Aucun événement",
-					Description: "Aucun événement de la fenêtre courante ne correspond à cette requête. Videz la barre EventQL pour tout afficher.",
+					Title:       i18n.T(ctx, "org.events.empty_title"),
+					Description: i18n.T(ctx, "org.events.empty_description"),
 				})
 			} else {
 				@common.Section() {
@@ -69,22 +71,22 @@ templ EventsExplorerPage(vmodel EventsExplorerVModel) {
 						@table.Header() {
 							@table.Row() {
 								@table.Head() {
-									Date
+									{ i18n.T(ctx, "org.events.col.date") }
 								}
 								@table.Head() {
-									Sévérité
+									{ i18n.T(ctx, "org.events.col.severity") }
 								}
 								@table.Head() {
-									Type
+									{ i18n.T(ctx, "org.events.col.type") }
 								}
 								@table.Head() {
-									Source
+									{ i18n.T(ctx, "org.events.col.source") }
 								}
 								@table.Head() {
-									Utilisateur
+									{ i18n.T(ctx, "org.events.col.user") }
 								}
 								@table.Head() {
-									Message
+									{ i18n.T(ctx, "org.events.col.message") }
 								}
 							}
 						}
@@ -104,7 +106,7 @@ templ EventsExplorerPage(vmodel EventsExplorerVModel) {
 					@pagination.Content() {
 						@pagination.Item() {
 							@pagination.Previous(pagination.PreviousProps{
-								Label:    "Précédent",
+								Label:    i18n.T(ctx, "org.events.previous"),
 								Href:     explorerHref(base, vmodel.Scope, vmodel.Query, vmodel.Page-1, vmodel.View),
 								Disabled: !vmodel.HasPrev,
 							})
@@ -116,7 +118,7 @@ templ EventsExplorerPage(vmodel EventsExplorerVModel) {
 						}
 						@pagination.Item() {
 							@pagination.Next(pagination.NextProps{
-								Label:    "Suivant",
+								Label:    i18n.T(ctx, "org.events.next"),
 								Href:     explorerHref(base, vmodel.Scope, vmodel.Query, vmodel.Page+1, vmodel.View),
 								Disabled: !vmodel.HasNext,
 							})
@@ -131,22 +133,22 @@ templ EventsExplorerPage(vmodel EventsExplorerVModel) {
 // scopeSegments builds the "Mes événements / Tous / Globaux" segmented control.
 // Switching scope always restarts at page 1: the cursor of the previous scope
 // means nothing in the next one.
-func scopeSegments(base, query, current, view string, readAll bool) []common.Segment {
+func scopeSegments(ctx context.Context, base, query, current, view string, readAll bool) []common.Segment {
 	scopes := []struct {
 		scope string
 		label string
 	}{
-		{EventScopeMine, "Mes événements"},
-		{EventScopeTeams, "Mes équipes"},
+		{EventScopeMine, i18n.T(ctx, "org.events.scope.mine")},
+		{EventScopeTeams, i18n.T(ctx, "org.events.scope.teams")},
 	}
 	if readAll {
 		scopes = []struct {
 			scope string
 			label string
 		}{
-			{EventScopeMine, "Mes événements"},
-			{EventScopeAll, "Tous"},
-			{EventScopeGlobal, "Globaux"},
+			{EventScopeMine, i18n.T(ctx, "org.events.scope.mine")},
+			{EventScopeAll, i18n.T(ctx, "org.events.scope.all")},
+			{EventScopeGlobal, i18n.T(ctx, "org.events.scope.global")},
 		}
 	}
 
@@ -186,7 +188,7 @@ templ eventRow(e model.Event, actors map[model.UserID]EventActor) {
 					{ actor.Label }
 				</span>
 			} else {
-				<span class="text-muted-foreground">global</span>
+				<span class="text-muted-foreground">{ i18n.T(ctx, "org.events.global_actor") }</span>
 			}
 		}
 		@table.Cell() {

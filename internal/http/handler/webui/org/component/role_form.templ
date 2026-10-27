@@ -11,6 +11,7 @@ import (
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/icon"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/input"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/label"
+	"github.com/xolo-gateway/xolo/internal/i18n"
 )
 
 // roleFormAction returns the form submission URL for create or edit.
@@ -22,12 +23,12 @@ func roleFormAction(ctx context.Context, vmodel RoleFormVModel) string {
 }
 
 templ RoleForm(vmodel RoleFormVModel) {
-	@commonComp.AppLayout(vmodel.AppLayoutVModel, commonComp.WithTitle("Rôle")) {
+	@commonComp.AppLayout(vmodel.AppLayoutVModel, commonComp.WithTitle(i18n.T(ctx, "org.members.role_form.page_title"))) {
 		{{ readonly := !commonComp.HasPermission(ctx, vmodel.Org.ID(), rbac.PermRolesWrite) }}
 		<div class="max-w-5xl">
 			@commonComp.PageHeader(commonComp.PageHeaderProps{
-				Title:    roleFormTitle(vmodel),
-				Subtitle: "Un rôle est un jeu d'autorisations. Cochez ce que ses porteurs pourront faire dans l'organisation.",
+				Title:    roleFormTitle(ctx, vmodel),
+				Subtitle: i18n.T(ctx, "org.members.role_form.subtitle"),
 			}) {
 				@button.Button(button.Props{
 					Variant: button.VariantOutline,
@@ -36,7 +37,7 @@ templ RoleForm(vmodel RoleFormVModel) {
 					Href:    commonComp.BaseURLString(ctx, commonComp.WithPath("/orgs/", vmodel.Org.Slug(), "/admin/roles")),
 				}) {
 					@icon.ArrowLeft(icon.Props{Class: "size-3.5"})
-					Retour
+					{ i18n.T(ctx, "org.members.role_form.back") }
 				}
 			}
 			if vmodel.Error != "" {
@@ -45,40 +46,40 @@ templ RoleForm(vmodel RoleFormVModel) {
 				</div>
 			}
 			<div class="mb-3.5">
-				@commonComp.InfoBanner(commonComp.ToneInfo, "Un rôle ne donne accès à aucun modèle précis : les modèles se règlent sur les équipes. Les permissions marquées « équipe » peuvent aussi être accordées sur une seule équipe, en attribuant le rôle à un membre depuis la page de l'équipe.")
+				@commonComp.InfoBanner(commonComp.ToneInfo, i18n.T(ctx, "org.members.role_form.models_note"))
 			</div>
 			<form method="POST" action={ templ.SafeURL(roleFormAction(ctx, vmodel)) }>
 				<div class="space-y-3.5">
 					@commonComp.Section() {
 						@commonComp.SectionHeader() {
 							@commonComp.SectionTitle() {
-								Informations
+								{ i18n.T(ctx, "org.members.role_form.section_info") }
 							}
 						}
 						@commonComp.SectionBody() {
 							<div class="grid gap-3.5 sm:grid-cols-2">
 								@form.Item() {
 									@label.Label(label.Props{For: "name"}) {
-										Nom du rôle
+										{ i18n.T(ctx, "org.members.role_form.name") }
 									}
 									@input.Input(input.Props{
 										ID:          "name",
 										Name:        "name",
 										Value:       roleName(vmodel),
-										Placeholder: "ex. Lecteur",
+										Placeholder: i18n.T(ctx, "org.members.role_form.name_placeholder"),
 										Disabled:    roleFieldsLocked(vmodel) || readonly,
 										Attributes:  templ.Attributes{"required": "required"},
 									})
 								}
 								@form.Item() {
 									@label.Label(label.Props{For: "description"}) {
-										Description
+										{ i18n.T(ctx, "org.members.role_form.description") }
 									}
 									@input.Input(input.Props{
 										ID:          "description",
 										Name:        "description",
 										Value:       roleDescription(vmodel),
-										Placeholder: "Description du rôle",
+										Placeholder: i18n.T(ctx, "org.members.role_form.description_placeholder"),
 										Disabled:    roleFieldsLocked(vmodel) || readonly,
 									})
 								}
@@ -92,7 +93,7 @@ templ RoleForm(vmodel RoleFormVModel) {
 							@commonComp.Section() {
 								@commonComp.SectionHeader() {
 									@commonComp.SectionTitle() {
-										{ group.Label }
+										{ commonComp.PermissionGroupLabel(ctx, group) }
 									}
 								}
 								@commonComp.SectionBody(commonComp.SectionBodyProps{Class: "space-y-2.5"}) {
@@ -106,9 +107,9 @@ templ RoleForm(vmodel RoleFormVModel) {
 												Disabled: readonly,
 											})
 											@label.Label(label.Props{For: "perm-" + string(def.Code)}) {
-												{ def.Label }
+												{ commonComp.PermissionLabel(ctx, def) }
 												if def.TeamScopable {
-													<span class={ "ml-1.5 inline-flex rounded px-1.5 py-0.5 text-[11px] font-medium", commonComp.ToneInfo.BadgeClass() }>équipe</span>
+													<span class={ "ml-1.5 inline-flex rounded px-1.5 py-0.5 text-[11px] font-medium", commonComp.ToneInfo.BadgeClass() }>{ i18n.T(ctx, "org.members.role_form.team_scopable") }</span>
 												}
 											}
 										</div>
@@ -121,11 +122,11 @@ templ RoleForm(vmodel RoleFormVModel) {
 						if commonComp.HasPermission(ctx, vmodel.Org.ID(), rbac.PermRolesWrite) {
 							@button.Button(button.Props{Type: button.TypeSubmit, Size: button.SizeSm, Class: "gap-1.5"}) {
 								@icon.Save(icon.Props{Class: "size-3.5"})
-								Enregistrer
+								{ i18n.T(ctx, "org.members.role_form.save") }
 							}
 						}
 						@button.Button(button.Props{Variant: button.VariantGhost, Size: button.SizeSm, Href: commonComp.BaseURLString(ctx, commonComp.WithPath("/orgs/", vmodel.Org.Slug(), "/admin/roles"))}) {
-							Annuler
+							{ i18n.T(ctx, "org.members.role_form.cancel") }
 						}
 					</div>
 				</div>
@@ -156,9 +157,9 @@ func roleFieldsLocked(vmodel RoleFormVModel) bool {
 
 // roleFormTitle names the screen: a new role has no name yet, an existing one
 // carries its own.
-func roleFormTitle(vmodel RoleFormVModel) string {
+func roleFormTitle(ctx context.Context, vmodel RoleFormVModel) string {
 	if vmodel.IsNew || vmodel.Role == nil {
-		return "Nouveau rôle"
+		return i18n.T(ctx, "org.members.role_form.new_title")
 	}
 	return vmodel.Role.Name()
 }

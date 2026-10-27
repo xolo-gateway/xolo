@@ -8,18 +8,19 @@ import (
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/alert"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/button"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/form"
+	"github.com/xolo-gateway/xolo/internal/i18n"
 )
 
 // ── Quota Page ────────────────────────────────────────────────────────────────
 templ QuotaPage(vmodel QuotaPageVModel) {
-	{{ title := "Budget de l'organisation" }}
+	{{ title := i18n.T(ctx, "org.quota.title_org") }}
 	{{ action := common.BaseURLString(ctx, common.WithPath("/orgs/", vmodel.Org.Slug(), "/admin/quota")) }}
 	if vmodel.ScopeType == "user" && vmodel.Membership != nil {
-		{{ title = "Budget du membre" }}
+		{{ title = i18n.T(ctx, "org.quota.title_member") }}
 		{{ action = common.BaseURLString(ctx, common.WithPath("/orgs/", vmodel.Org.Slug(), "/admin/members/", string(vmodel.Membership.ID()), "/quota")) }}
 	}
 	if vmodel.ScopeType == "application" && vmodel.Application != nil {
-		{{ title = "Budget de l'application" }}
+		{{ title = i18n.T(ctx, "org.quota.title_application") }}
 		{{ action = common.BaseURLString(ctx, common.WithPath("/orgs/", vmodel.Org.Slug(), "/admin/applications/", string(vmodel.Application.ID()), "/quota")) }}
 	}
 	@common.AppLayout(vmodel.AppLayoutVModel, common.WithTitle(title)) {
@@ -27,11 +28,11 @@ templ QuotaPage(vmodel QuotaPageVModel) {
 		<div class="max-w-4xl">
 			@common.PageHeader(common.PageHeaderProps{
 				Title:    title,
-				Subtitle: "Les plafonds bloquent les nouvelles requêtes une fois atteints. Ils ne s'appliquent qu'aux fournisseurs en mode pay-as-you-go ; les fournisseurs en abonnement ont leurs propres limites de plan.",
+				Subtitle: i18n.T(ctx, "org.quota.subtitle"),
 			})
 			if vmodel.Success != "" {
 				<div class="mb-3.5">
-					@common.InfoBanner(common.TonePositive, "Budget enregistré.")
+					@common.InfoBanner(common.TonePositive, i18n.T(ctx, "org.quota.saved"))
 				</div>
 			}
 			if vmodel.LoadError != "" {
@@ -48,10 +49,10 @@ templ QuotaPage(vmodel QuotaPageVModel) {
 				<div class="mb-3.5">
 					@alert.Alert(alert.Props{Variant: alert.VariantDestructive}) {
 						@alert.Title() {
-							Plafond invalide
+							{ i18n.T(ctx, "org.quota.invalid_ceiling") }
 						}
 						@alert.Description() {
-							{ quotaFormErrorSummary(vmodel.FieldErrors) }
+							{ quotaFormErrorSummary(ctx, vmodel.FieldErrors) }
 						}
 					}
 				</div>
@@ -60,30 +61,30 @@ templ QuotaPage(vmodel QuotaPageVModel) {
 				@common.Section() {
 					@common.SectionHeader() {
 						@common.SectionTitle() {
-							Plafonds
+							{ i18n.T(ctx, "org.quota.ceilings") }
 						}
 						<span class="ml-auto text-xs text-muted-foreground">
-							Devise : { vmodel.Org.Currency() }
+							{ i18n.T(ctx, "org.quota.currency", vmodel.Org.Currency()) }
 						</span>
 					}
 					@common.SectionBody(common.SectionBodyProps{Class: "space-y-3.5"}) {
 						<div class="grid gap-3.5 sm:grid-cols-3">
-							@budgetField("quota-daily", "daily_budget", "Journalier", "10.00", budgetInputValue(vmodel, "daily_budget", budgetScopeDaily), vmodel.Org.Currency(), readonly, quotaFieldError(vmodel.FieldErrors, "daily_budget"))
-							@budgetField("quota-monthly", "monthly_budget", "Mensuel", "100.00", budgetInputValue(vmodel, "monthly_budget", budgetScopeMonthly), vmodel.Org.Currency(), readonly, quotaFieldError(vmodel.FieldErrors, "monthly_budget"))
-							@budgetField("quota-yearly", "yearly_budget", "Annuel", "1000.00", budgetInputValue(vmodel, "yearly_budget", budgetScopeYearly), vmodel.Org.Currency(), readonly, quotaFieldError(vmodel.FieldErrors, "yearly_budget"))
+							@budgetField("quota-daily", "daily_budget", i18n.T(ctx, "org.quota.field.daily"), "10.00", budgetInputValue(vmodel, "daily_budget", budgetScopeDaily), vmodel.Org.Currency(), readonly, quotaFieldError(vmodel.FieldErrors, "daily_budget"))
+							@budgetField("quota-monthly", "monthly_budget", i18n.T(ctx, "org.quota.field.monthly"), "100.00", budgetInputValue(vmodel, "monthly_budget", budgetScopeMonthly), vmodel.Org.Currency(), readonly, quotaFieldError(vmodel.FieldErrors, "monthly_budget"))
+							@budgetField("quota-yearly", "yearly_budget", i18n.T(ctx, "org.quota.field.yearly"), "1000.00", budgetInputValue(vmodel, "yearly_budget", budgetScopeYearly), vmodel.Org.Currency(), readonly, quotaFieldError(vmodel.FieldErrors, "yearly_budget"))
 						</div>
 						<p class="text-xs text-muted-foreground">
-							Un champ vide vaut « illimité ». Saisissez 0 pour geler immédiatement les dépenses (toute nouvelle requête payante reçoit un 429). Pour changer la devise, passez par les
-							<a href={ templ.SafeURL(common.BaseURLString(ctx, common.WithPath("/orgs/", vmodel.Org.Slug(), "/admin/settings"))) } class="font-medium underline">paramètres de l'organisation</a>.
+							{ i18n.T(ctx, "org.quota.help") }
+							<a href={ templ.SafeURL(common.BaseURLString(ctx, common.WithPath("/orgs/", vmodel.Org.Slug(), "/admin/settings"))) } class="font-medium underline">{ i18n.T(ctx, "org.quota.help_settings_link") }</a>.
 						</p>
 						if vmodel.ScopeType == "org" {
-							@cascadeChoice("org-cascade", "Répartition entre les équipes", quotaCascade(vmodel.Quota), readonly)
+							@cascadeChoice("org-cascade", i18n.T(ctx, "org.quota.cascade_title"), quotaCascade(vmodel.Quota), readonly)
 						}
 					}
 					if common.HasPermission(ctx, vmodel.Org.ID(), rbac.PermQuotaWrite) {
 						@common.SectionHeader(common.SectionHeaderProps{Class: "border-b-0 border-t"}) {
 							@button.Button(button.Props{Type: "submit", Size: button.SizeSm}) {
-								Enregistrer
+								{ i18n.T(ctx, "org.quota.save") }
 							}
 						}
 					}
@@ -94,18 +95,18 @@ templ QuotaPage(vmodel QuotaPageVModel) {
 					@common.Section() {
 						@common.SectionHeader() {
 							@common.SectionTitle() {
-								Consommation
+								{ i18n.T(ctx, "org.quota.usage") }
 							}
 						}
 						@common.SectionBody(common.SectionBodyProps{Class: "space-y-3.5"}) {
 							if vmodel.Quota.DailyBudget() != nil {
-								@quotaUsageRow("Journalier", vmodel.DailyCost, *vmodel.Quota.DailyBudget(), vmodel.Org.Currency())
+								@quotaUsageRow(i18n.T(ctx, "org.quota.field.daily"), vmodel.DailyCost, *vmodel.Quota.DailyBudget(), vmodel.Org.Currency())
 							}
 							if vmodel.Quota.MonthlyBudget() != nil {
-								@quotaUsageRow("Mensuel", vmodel.MonthlyCost, *vmodel.Quota.MonthlyBudget(), vmodel.Org.Currency())
+								@quotaUsageRow(i18n.T(ctx, "org.quota.field.monthly"), vmodel.MonthlyCost, *vmodel.Quota.MonthlyBudget(), vmodel.Org.Currency())
 							}
 							if vmodel.Quota.YearlyBudget() != nil {
-								@quotaUsageRow("Annuel", vmodel.YearlyCost, *vmodel.Quota.YearlyBudget(), vmodel.Org.Currency())
+								@quotaUsageRow(i18n.T(ctx, "org.quota.field.yearly"), vmodel.YearlyCost, *vmodel.Quota.YearlyBudget(), vmodel.Org.Currency())
 							}
 						}
 					}

@@ -19,6 +19,7 @@ import (
 	webcommon "github.com/xolo-gateway/xolo/internal/http/handler/webui/common"
 	common "github.com/xolo-gateway/xolo/internal/http/handler/webui/common/component"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/org/component"
+	"github.com/xolo-gateway/xolo/internal/i18n"
 )
 
 // SetTeams enables the team pages and the team-aware budget checks.
@@ -120,12 +121,10 @@ func (h *Handler) teamLayout(ctx context.Context, org model.Organization, crumbs
 		ContextOrgID: org.ID(),
 		Breadcrumbs: append([]common.BreadcrumbItem{
 			{Label: org.Name(), Href: "/orgs/" + org.Slug() + "/usage"},
-			{Label: "Équipes", Href: "/orgs/" + org.Slug() + "/admin/teams"},
+			{Label: i18n.T(ctx, "org.nav.teams"), Href: "/orgs/" + org.Slug() + "/admin/teams"},
 		}, crumbs...),
 	}
 }
-
-const teamSlugTakenMessage = "Une équipe de l'organisation porte déjà cet identifiant."
 
 // teamSlugError checks the slug of a new or renamed team, and returns the
 // message to show when it is refused.
@@ -135,9 +134,9 @@ func (h *Handler) teamSlugError(ctx context.Context, orgID model.OrgID, slug str
 	case err == nil:
 		return "", nil
 	case errors.Is(err, port.ErrInvalid):
-		return "L'identifiant ne peut contenir que des minuscules, des chiffres et des tirets, sans tiret au début ni à la fin.", nil
+		return i18n.T(ctx, "org.errors.teams.slug_invalid"), nil
 	case errors.Is(err, port.ErrTeamNameConflict):
-		return "Un modèle de l'organisation porte déjà un nom commençant par « " + slug + "/ » : choisissez un autre identifiant.", nil
+		return i18n.T(ctx, "org.errors.teams.slug_model_conflict", slug), nil
 	}
 	return "", err
 }
@@ -199,7 +198,7 @@ func (h *Handler) getNewTeamPage(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) renderTeamForm(w http.ResponseWriter, r *http.Request, org model.Organization, vmodel component.TeamFormVModel) {
 	vmodel.Org = org
-	vmodel.AppLayoutVModel = h.teamLayout(r.Context(), org, common.BreadcrumbItem{Label: "Nouvelle"})
+	vmodel.AppLayoutVModel = h.teamLayout(r.Context(), org, common.BreadcrumbItem{Label: i18n.T(r.Context(), "org.nav.teams_new")})
 	templ.Handler(component.TeamForm(vmodel)).ServeHTTP(w, r)
 }
 
@@ -223,7 +222,7 @@ func (h *Handler) createTeam(w http.ResponseWriter, r *http.Request) {
 		Description: strings.TrimSpace(r.FormValue("description")),
 	}
 	if form.Name == "" {
-		form.Error = "Le nom de l'équipe est requis."
+		form.Error = i18n.T(r.Context(), "org.errors.teams.name_required")
 		h.renderTeamForm(w, r, scope.org, form)
 		return
 	}
@@ -242,7 +241,7 @@ func (h *Handler) createTeam(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if errors.Is(err, port.ErrAlreadyExists) {
-			form.Error = teamSlugTakenMessage
+			form.Error = i18n.T(r.Context(), "org.errors.teams.slug_taken")
 			h.renderTeamForm(w, r, scope.org, form)
 			return
 		}
@@ -368,7 +367,7 @@ func (h *Handler) renderTeamPage(w http.ResponseWriter, r *http.Request, scope t
 		return
 	}
 
-	sample := model.ModelName{Org: org.Slug(), Team: team.Slug(), Local: "<modèle>"}.String()
+	sample := model.ModelName{Org: org.Slug(), Team: team.Slug(), Local: i18n.T(ctx, "org.nav.teams_model_placeholder")}.String()
 	if len(options) > 0 {
 		for _, opt := range options {
 			if selectedModels[modelGrantKey(opt.Kind, opt.ID)] {
@@ -420,7 +419,7 @@ func (h *Handler) updateTeam(w http.ResponseWriter, r *http.Request) {
 	}
 	name := strings.TrimSpace(r.FormValue("name"))
 	if name == "" {
-		h.renderTeamPage(w, r, scope, "", "Le nom de l'équipe est requis.")
+		h.renderTeamPage(w, r, scope, "", i18n.T(r.Context(), "org.errors.teams.name_required"))
 		return
 	}
 	slug := strings.TrimSpace(r.FormValue("slug"))
@@ -479,11 +478,11 @@ func (h *Handler) updateTeam(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if errors.Is(err, port.ErrAlreadyExists) {
-			h.renderTeamPage(w, r, scope, "", teamSlugTakenMessage)
+			h.renderTeamPage(w, r, scope, "", i18n.T(r.Context(), "org.errors.teams.slug_taken"))
 			return
 		}
 		if errors.Is(err, port.ErrTeamHasMiddlewares) {
-			h.renderTeamPage(w, r, scope, "", "Des middlewares décochés ne sont rattachés qu'à cette équipe : sans équipe, ils s'appliqueraient à toute l'organisation. Rattachez-les d'abord à une autre équipe, ou supprimez-les.")
+			h.renderTeamPage(w, r, scope, "", i18n.T(r.Context(), "org.errors.teams.middlewares_orphaned_update"))
 			return
 		}
 		slog.ErrorContext(ctx, "could not save team", slogx.Error(err))
@@ -582,11 +581,11 @@ func (h *Handler) deleteTeam(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if errors.Is(err, port.ErrTeamHasMiddlewares) {
-			h.renderTeamPage(w, r, scope, "", "Des middlewares ne sont rattachés qu'à cette équipe : sans elle, ils s'appliqueraient à toute l'organisation. Rattachez-les à une autre équipe, ou supprimez-les, avant de la supprimer.")
+			h.renderTeamPage(w, r, scope, "", i18n.T(r.Context(), "org.errors.teams.middlewares_orphaned_delete"))
 			return
 		}
 		if errors.Is(err, port.ErrNotAllowed) {
-			h.renderTeamPage(w, r, scope, "", "Des applications sont rattachées à cette équipe : rattachez-les ailleurs avant de la supprimer.")
+			h.renderTeamPage(w, r, scope, "", i18n.T(r.Context(), "org.errors.teams.applications_attached"))
 			return
 		}
 		slog.ErrorContext(ctx, "could not delete team", slogx.Error(err))
@@ -629,7 +628,7 @@ func (h *Handler) saveTeamBudget(w http.ResponseWriter, r *http.Request) {
 		var fieldErrors map[string]string
 		daily, monthly, yearly, fieldErrors = parseQuotaBudgetFields(r, stored)
 		if len(fieldErrors) > 0 {
-			h.renderTeamPage(w, r, scope, "", component.QuotaFormErrorSummary(fieldErrors))
+			h.renderTeamPage(w, r, scope, "", component.QuotaFormErrorSummary(r.Context(), fieldErrors))
 			return
 		}
 	}
@@ -930,7 +929,7 @@ func (h *Handler) saveTeamMemberBudget(w http.ResponseWriter, r *http.Request) {
 	}
 	daily, monthly, yearly, fieldErrors := parseQuotaBudgetFields(r, stored)
 	if len(fieldErrors) > 0 {
-		h.renderTeamMemberPage(w, r, scope, member, "", component.QuotaFormErrorSummary(fieldErrors))
+		h.renderTeamMemberPage(w, r, scope, member, "", component.QuotaFormErrorSummary(r.Context(), fieldErrors))
 		return
 	}
 	quota := model.NewQuota(model.QuotaScopeTeamMember, scopeID, orgCurrency(scope.org), daily, monthly, yearly)
@@ -949,7 +948,7 @@ func (h *Handler) saveQuotaChecked(w http.ResponseWriter, r *http.Request, quota
 		err := service.CheckQuotaCascade(ctx, cascadeReader{h.quotaStore, h.teamStore}, quota)
 		var violation *service.CascadeViolation
 		if errors.As(err, &violation) {
-			renderErr(cascadeViolationMessage(violation, quota.Currency()))
+			renderErr(cascadeViolationMessage(ctx, violation, quota.Currency()))
 			return false
 		}
 		if err != nil {
@@ -977,25 +976,36 @@ type cascadeReader struct {
 
 var _ service.QuotaCascadeReader = cascadeReader{}
 
-var cascadePeriodLabels = map[string]string{"daily": "journalier", "monthly": "mensuel", "yearly": "annuel"}
+// The cascade labels hold message keys, translated where the message is built.
+var cascadePeriodLabels = map[string]string{
+	"daily":   "org.errors.teams.cascade_period.daily",
+	"monthly": "org.errors.teams.cascade_period.monthly",
+	"yearly":  "org.errors.teams.cascade_period.yearly",
+}
+
+var cascadePeriodPluralLabels = map[string]string{
+	"daily":   "org.errors.teams.cascade_periods.daily",
+	"monthly": "org.errors.teams.cascade_periods.monthly",
+	"yearly":  "org.errors.teams.cascade_periods.yearly",
+}
 
 var cascadeScopeLabels = map[model.QuotaScope]string{
-	model.QuotaScopeOrg:        "de l'organisation",
-	model.QuotaScopeTeam:       "de l'équipe",
-	model.QuotaScopeTeamMember: "du membre",
+	model.QuotaScopeOrg:        "org.errors.teams.cascade_scope.org",
+	model.QuotaScopeTeam:       "org.errors.teams.cascade_scope.team",
+	model.QuotaScopeTeamMember: "org.errors.teams.cascade_scope.member",
 }
 
 // cascadeViolationMessage explains a broken cascade in the words of the
 // budget pages.
-func cascadeViolationMessage(v *service.CascadeViolation, currency string) string {
-	period := cascadePeriodLabels[v.Period]
+func cascadeViolationMessage(ctx context.Context, v *service.CascadeViolation, currency string) string {
 	limit := common.FormatCost(v.Limit, currency)
+	got := common.FormatCost(v.Got, currency)
+	parent := i18n.T(ctx, cascadeScopeLabels[v.Parent])
 	if v.Mode == model.QuotaCascadeSplit {
-		return "Les budgets " + period + "s répartis sous le budget " + cascadeScopeLabels[v.Parent] + " totalisent " +
-			common.FormatCost(v.Got, currency) + ", au-delà de son enveloppe de " + limit + " : la répartition est « partagée »."
+		return i18n.T(ctx, "org.errors.teams.cascade_split", i18n.T(ctx, cascadePeriodPluralLabels[v.Period]), parent, got, limit)
 	}
-	return "Le budget " + period + " " + cascadeScopeLabels[v.Child] + " (" + common.FormatCost(v.Got, currency) +
-		") dépasse le budget " + period + " " + cascadeScopeLabels[v.Parent] + " (" + limit + ") : la répartition est « plafonnée »."
+	period := i18n.T(ctx, cascadePeriodLabels[v.Period])
+	return i18n.T(ctx, "org.errors.teams.cascade_capped", period, i18n.T(ctx, cascadeScopeLabels[v.Child]), got, period, parent, limit)
 }
 
 func (h *Handler) optionalQuota(ctx context.Context, scope model.QuotaScope, scopeID string) (model.Quota, error) {
@@ -1043,17 +1053,16 @@ func (h *Handler) teamNameConflict(ctx context.Context, orgID model.OrgID, name 
 	}
 	err := service.CheckModelLocalName(ctx, h.teamStore, orgID, name)
 	if errors.Is(err, port.ErrTeamNameConflict) {
-		return teamNameConflictMessage(name), nil
+		return teamNameConflictMessage(ctx, name), nil
 	}
 	return "", err
 }
 
 // teamNameConflictMessage explains that name starts with the slug of a team
 // of the organization.
-func teamNameConflictMessage(name string) string {
+func teamNameConflictMessage(ctx context.Context, name string) string {
 	segment, _, _ := strings.Cut(name, "/")
-	return "Le nom « " + name + " » commence par l'identifiant de l'équipe « " + segment + " » : " +
-		"un client l'appelant serait débité sur cette équipe. Choisissez un autre nom."
+	return i18n.T(ctx, "org.errors.teams.model_name_conflict", name, segment)
 }
 
 // orgTeamSlugs returns the slugs of the organization's teams, for checking

@@ -1,6 +1,9 @@
 package component
 
-import common "github.com/xolo-gateway/xolo/internal/http/handler/webui/common/component"
+import (
+	common "github.com/xolo-gateway/xolo/internal/http/handler/webui/common/component"
+	"github.com/xolo-gateway/xolo/internal/i18n"
+)
 
 // PipelineEditorVModel drives the shared React Flow pipeline editor. It is used
 // for any org-scoped PipelineEntity (virtual models, middlewares). ContextType
@@ -16,9 +19,10 @@ type PipelineEditorVModel struct {
 }
 
 templ PipelineEditorPage(vmodel PipelineEditorVModel) {
-	@common.AppLayout(vmodel.AppLayoutVModel, common.WithTitle("Pipeline — "+vmodel.EntityName)) {
+	@common.AppLayout(vmodel.AppLayoutVModel, common.WithTitle(i18n.T(ctx, "org.models.pipeline_editor.page_title", vmodel.EntityName))) {
 		<div
 			id="pipeline-editor-root"
+			data-locale={ i18n.Language(ctx).String() }
 			data-org-slug={ vmodel.OrgSlug }
 			data-vm-id={ vmodel.EntityID }
 			data-api-base-url={ vmodel.APIBase }

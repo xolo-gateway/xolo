@@ -1,6 +1,9 @@
 package component
 
 import (
+	"context"
+
+	"github.com/xolo-gateway/xolo/internal/i18n"
 	"github.com/xolo-gateway/xolo/internal/core/model"
 	common "github.com/xolo-gateway/xolo/internal/http/handler/webui/common/component"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/button"
@@ -28,12 +31,12 @@ func isDeclined(id string, declinedIDs []string) bool {
 
 // noOrgDescription words the emptiness for who is reading it: a plain account
 // waits for an invitation, an administrator creates the organisation.
-func noOrgDescription(isAdmin bool) string {
+func noOrgDescription(ctx context.Context, isAdmin bool) string {
 	if isAdmin {
-		return "Xolo s'utilise depuis une organisation : c'est elle qui porte les fournisseurs, les modèles et le budget. Créez-en une depuis la console plateforme."
+		return i18n.T(ctx, "profile.no_org.description_admin")
 	}
 
-	return "Xolo s'utilise depuis une organisation : c'est elle qui porte les fournisseurs, les modèles et le budget. Demandez à un administrateur de vous y inviter."
+	return i18n.T(ctx, "profile.no_org.description")
 }
 
 // NoOrgPage is the first screen a freshly provisioned account lands on: either
@@ -47,19 +50,19 @@ templ NoOrgPage(vmodel NoOrgPageVModel) {
 			}
 		}
 	}}
-	@common.StandaloneLayout(common.WithTitle("Aucune organisation")) {
+	@common.StandaloneLayout(common.WithTitle(i18n.T(ctx, "profile.no_org.title"))) {
 		if len(pending) == 0 {
 			@common.EmptyState(common.EmptyStateProps{
 				Icon:        icon.Building2,
-				Title:       "Aucune organisation",
-				Description: "Xolo s'utilise depuis une organisation : c'est elle qui porte les fournisseurs, les modèles et le budget. Demandez à un administrateur de vous y inviter.",
+				Title:       i18n.T(ctx, "profile.no_org.title"),
+				Description: i18n.T(ctx, "profile.no_org.description"),
 			}) {
 				if vmodel.IsAdmin {
 					@button.Button(button.Props{
 						Href: common.BaseURLString(ctx, common.WithPath("/admin/")),
 						Size: button.SizeSm,
 					}) {
-						Console plateforme
+						{ i18n.T(ctx, "profile.no_org.platform_console") }
 					}
 				}
 				@button.Button(button.Props{
@@ -68,15 +71,15 @@ templ NoOrgPage(vmodel NoOrgPageVModel) {
 					Size:       button.SizeSm,
 					Attributes: templ.Attributes{"hx-boost": "false"},
 				}) {
-					Déconnexion
+					{ i18n.T(ctx, "profile.no_org.logout") }
 				}
 			}
 		} else {
 			<div class="space-y-3">
 				<div>
-					<h1 class="text-xl font-semibold tracking-tight">Invitations en attente</h1>
+					<h1 class="text-xl font-semibold tracking-tight">{ i18n.T(ctx, "profile.invitations.title") }</h1>
 					<p class="mt-1 text-sm text-muted-foreground">
-						Rejoignez une organisation pour commencer à utiliser la passerelle.
+						{ i18n.T(ctx, "profile.no_org.invitations_subtitle") }
 					</p>
 				</div>
 				for _, inv := range pending {
@@ -98,11 +101,11 @@ templ NoOrgPage(vmodel NoOrgPageVModel) {
 									Href:  common.BaseURLString(ctx, common.WithPath("/join/", string(inv.ID()))),
 									Class: "flex-1",
 								}) {
-									Rejoindre l'organisation
+									{ i18n.T(ctx, "profile.no_org.join") }
 								}
 								<form method="POST" action={ common.BaseURL(ctx, common.WithPath("/no-org/invitations/", string(inv.ID()), "/decline")) } class="flex-1">
 									@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantOutline, Size: button.SizeSm, Class: "w-full"}) {
-										Décliner
+										{ i18n.T(ctx, "profile.no_org.decline") }
 									}
 								</form>
 							</div>

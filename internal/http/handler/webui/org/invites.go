@@ -15,6 +15,7 @@ import (
 	webcommon "github.com/xolo-gateway/xolo/internal/http/handler/webui/common"
 	common "github.com/xolo-gateway/xolo/internal/http/handler/webui/common/component"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/org/component"
+	"github.com/xolo-gateway/xolo/internal/i18n"
 )
 
 func (h *Handler) getInvitesPage(w http.ResponseWriter, r *http.Request) {
@@ -101,7 +102,7 @@ func (h *Handler) getInvitesPage(w http.ResponseWriter, r *http.Request) {
 			ContextOrgID: org.ID(),
 			Breadcrumbs: []common.BreadcrumbItem{
 				{Label: org.Name(), Href: "/orgs/" + orgSlug + "/usage"},
-				{Label: "Invitations", Href: ""},
+				{Label: i18n.T(ctx, "org.nav.invitations"), Href: ""},
 			},
 		},
 	}
@@ -155,7 +156,7 @@ func (h *Handler) getNewInvitePage(w http.ResponseWriter, r *http.Request) {
 			ContextOrgID: org.ID(),
 			Breadcrumbs: []common.BreadcrumbItem{
 				{Label: org.Name(), Href: "/orgs/" + orgSlug + "/usage"},
-				{Label: "Invitations", Href: "/orgs/" + orgSlug + "/admin/invites"},
+				{Label: i18n.T(ctx, "org.nav.invitations"), Href: "/orgs/" + orgSlug + "/admin/invites"},
 			},
 		},
 	}

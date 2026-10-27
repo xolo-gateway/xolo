@@ -1,12 +1,14 @@
 package component
 
 import (
+	"context"
 	"fmt"
 	"math"
 	"strconv"
 	"strings"
 
 	"github.com/xolo-gateway/xolo/internal/estimator/energy"
+	"github.com/xolo-gateway/xolo/internal/i18n"
 )
 
 // ChartDataPoint represents a single labeled value for bar/pie charts.
@@ -50,7 +52,7 @@ type ChartShare struct {
 // TopNChartDataPoints returns the n highest-value points (pts must be
 // sorted by descending value), aggregating the remaining ones into a
 // trailing "Autres" entry.
-func TopNChartDataPoints(pts []ChartDataPoint, n int) []ChartDataPoint {
+func TopNChartDataPoints(ctx context.Context, pts []ChartDataPoint, n int) []ChartDataPoint {
 	if len(pts) <= n {
 		return pts
 	}
@@ -61,7 +63,7 @@ func TopNChartDataPoints(pts []ChartDataPoint, n int) []ChartDataPoint {
 		rest += p.Value
 	}
 	if rest > 0 {
-		top = append(top, ChartDataPoint{Label: "Autres", Value: rest})
+		top = append(top, ChartDataPoint{Label: i18n.T(ctx, "format.others"), Value: rest})
 	}
 	return top
 }
@@ -328,18 +330,18 @@ func FormatCO2Grams(g float64) string {
 
 // FormatCO2ToCarKilometers converts CO2 grams to equivalent car kilometers
 // based on ADEME data (~109g CO2/km for petrol vehicle).
-func FormatCO2ToCarKilometers(grams float64) string {
+func FormatCO2ToCarKilometers(ctx context.Context, grams float64) string {
 	if grams <= 0 {
 		return ""
 	}
 	km := grams / 109
 	if km < 1 {
-		return fmt.Sprintf("Soit environ %d m parcouru seul dans un véhicule thermique à essence, selon les chiffres de l'ADEME.", int(km*1000))
+		return i18n.T(ctx, "format.co2_car_meters", int(km*1000))
 	}
 	if km < 1000 {
-		return fmt.Sprintf("Soit environ %d km parcouru seul dans un véhicule thermique à essence, selon les chiffres de l'ADEME.", int(km))
+		return i18n.T(ctx, "format.co2_car_km", int(km))
 	}
-	return fmt.Sprintf("Soit environ %s km parcouru seul dans un véhicule thermique à essence, selon les chiffres de l'ADEME.", FormatNumber(km))
+	return i18n.T(ctx, "format.co2_car_km_decimal", FormatNumber(km))
 }
 
 // FormatEnergyToHuman converts energy in Wh to human-equivalent appliance usage.

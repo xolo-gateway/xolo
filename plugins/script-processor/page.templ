@@ -7,6 +7,7 @@ import (
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/button"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/card"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/label"
+	"github.com/xolo-gateway/xolo/internal/i18n"
 )
 
 var inputPortTypes = []string{"number", "string", "boolean", "request", "response"}
@@ -22,16 +23,18 @@ templ page(pd uiPageData) {
 			<link rel="stylesheet" href="/assets/templui.css"/>
 		</head>
 		<body class="bg-background text-foreground min-h-screen p-4 space-y-4">
-			<h1 class="text-lg font-semibold">Processeur de requête scripté</h1>
+			<h1 class="text-lg font-semibold">{ i18n.T(ctx, "plugin.script_processor.title") }</h1>
 			<p class="text-sm text-muted-foreground">
-				Script <a href="https://github.com/d5/tengo" target="_blank" class="underline">Tengo</a>
-				exécuté avant chaque appel LLM. La fonction exportée reçoit un <code class="font-mono text-xs">ctx</code> structuré
-				et retourne un map <code class="font-mono text-xs">&#123;outputs: &#123;…&#125;, messages: […]&#125;</code>.
+				{ i18n.T(ctx, "plugin.script_processor.intro.before_link") }
+				<a href="https://github.com/d5/tengo" target="_blank" class="underline">Tengo</a>
+				{ i18n.T(ctx, "plugin.script_processor.intro.after_link") }
+				<code class="font-mono text-xs">ctx</code>
+				{ i18n.T(ctx, "plugin.script_processor.intro.after_ctx") } <code class="font-mono text-xs">&#123;outputs: &#123;…&#125;, messages: […]&#125;</code>.
 			</p>
 
 			if pd.Success {
 				@alert.Alert(alert.Props{Variant: alert.VariantDefault}) {
-					@alert.Description() { Configuration sauvegardée avec succès. }
+					@alert.Description() { { i18n.T(ctx, "plugin.script_processor.saved") } }
 				}
 			}
 
@@ -40,21 +43,21 @@ templ page(pd uiPageData) {
 				@card.Card() {
 					@card.Header() {
 						<div class="flex items-center justify-between">
-							@card.Title() { Entrées (ports d'entrée) }
+							@card.Title() { { i18n.T(ctx, "plugin.script_processor.inputs.title") } }
 							@button.Button(button.Props{
 								Type:       button.TypeSubmit,
 								Variant:    button.VariantOutline,
 								Size:       button.SizeSm,
 								Attributes: templ.Attributes{"formaction": "api/inputs/add"},
 							}) {
-								+ Ajouter une entrée
+								{ i18n.T(ctx, "plugin.script_processor.inputs.add") }
 							}
 						</div>
 					}
 					@card.Content() {
 						if len(pd.Config.Inputs) == 0 {
 							<p class="text-sm text-muted-foreground italic text-center py-2">
-								Aucune entrée — accessibles via <code class="font-mono text-xs">ctx.inputs["nom"]</code>
+								{ i18n.T(ctx, "plugin.script_processor.inputs.empty") } <code class="font-mono text-xs">ctx.inputs["nom"]</code>
 							</p>
 						} else {
 							<div class="space-y-2">
@@ -70,21 +73,21 @@ templ page(pd uiPageData) {
 				@card.Card() {
 					@card.Header() {
 						<div class="flex items-center justify-between">
-							@card.Title() { Sorties (ports de sortie) }
+							@card.Title() { { i18n.T(ctx, "plugin.script_processor.outputs.title") } }
 							@button.Button(button.Props{
 								Type:       button.TypeSubmit,
 								Variant:    button.VariantOutline,
 								Size:       button.SizeSm,
 								Attributes: templ.Attributes{"formaction": "api/outputs/add"},
 							}) {
-								+ Ajouter une sortie
+								{ i18n.T(ctx, "plugin.script_processor.outputs.add") }
 							}
 						</div>
 					}
 					@card.Content() {
 						if len(pd.Config.Outputs) == 0 {
 							<p class="text-sm text-muted-foreground italic text-center py-2">
-								Aucune sortie — retournées via <code class="font-mono text-xs">&#123;outputs: &#123;nom: valeur&#125;&#125;</code>
+								{ i18n.T(ctx, "plugin.script_processor.outputs.empty") } <code class="font-mono text-xs">&#123;outputs: &#123;nom: valeur&#125;&#125;</code>
 							</p>
 						} else {
 							<div class="space-y-2">
@@ -99,12 +102,13 @@ templ page(pd uiPageData) {
 				<!-- Script -->
 				@card.Card() {
 					@card.Header() {
-						@card.Title() { Script Tengo }
+						@card.Title() { { i18n.T(ctx, "plugin.script_processor.script.title") } }
 					}
 					@card.Content() {
 						<div class="space-y-1">
 							@label.Label(label.Props{For: "script"}) {
-								Module Tengo exportant <code class="font-mono text-xs">func(ctx)</code> → <code class="font-mono text-xs">&#123;outputs, messages&#125;</code>
+								{ i18n.T(ctx, "plugin.script_processor.script.label") }
+								<code class="font-mono text-xs">func(ctx)</code> → <code class="font-mono text-xs">&#123;outputs, messages&#125;</code>
 							}
 							<textarea
 								id="script"
@@ -115,16 +119,19 @@ templ page(pd uiPageData) {
 							>{ pd.Config.Script }</textarea>
 							<div class="text-xs text-muted-foreground space-y-1">
 								<p>
-									<strong>ctx.request</strong> — corps complet de la requête (<code class="font-mono">model</code>, <code class="font-mono">temperature</code>, <code class="font-mono">messages</code>…)
+									<strong>ctx.request</strong> { i18n.T(ctx, "plugin.script_processor.script.help.request") }<code class="font-mono">model</code>, <code class="font-mono">temperature</code>, <code class="font-mono">messages</code>…)
 								</p>
 								<p>
-									<strong>ctx.inputs["nom"]</strong> — valeur du port d'entrée
+									<strong>ctx.inputs["nom"]</strong> { i18n.T(ctx, "plugin.script_processor.script.help.inputs") }
 								</p>
 								<p>
-									Retourner <code class="font-mono">&#123;messages: […]&#125;</code> pour modifier les messages LLM (clé réservée).
+									{ i18n.T(ctx, "plugin.script_processor.script.help.return_before") }
+									<code class="font-mono">&#123;messages: […]&#125;</code>
+									{ i18n.T(ctx, "plugin.script_processor.script.help.return_after") }
 								</p>
 								<p>
-									Modules disponibles : <code class="font-mono">json</code>, <code class="font-mono">math</code>, <code class="font-mono">text</code>, <code class="font-mono">rand</code>, <code class="font-mono">times</code>.
+									{ i18n.T(ctx, "plugin.script_processor.script.help.modules") }
+									<code class="font-mono">json</code>, <code class="font-mono">math</code>, <code class="font-mono">text</code>, <code class="font-mono">rand</code>, <code class="font-mono">times</code>.
 								</p>
 							</div>
 						</div>
@@ -133,7 +140,8 @@ templ page(pd uiPageData) {
 
 				<div class="flex justify-end">
 					@button.Button(button.Props{Type: button.TypeSubmit}) {
-						Sauvegarder
+						{ i18n.T(ctx, "plugin.script_processor.save") }
+
 					}
 				</div>
 			</form>
@@ -160,7 +168,7 @@ templ portRow(prefix string, idx int, p PortDef, types []string) {
 			type="text"
 			name={ fmt.Sprintf("%s_%d_name", prefix, idx) }
 			value={ p.Name }
-			placeholder="nom"
+			placeholder={ i18n.T(ctx, "plugin.script_processor.port.name_placeholder") }
 			class="flex-1 h-8 rounded-md border border-input bg-transparent px-2 text-sm font-mono focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
 		/>
 		<select
@@ -177,7 +185,7 @@ templ portRow(prefix string, idx int, p PortDef, types []string) {
 			Size:    button.SizeIcon,
 			Attributes: templ.Attributes{
 				"formaction": fmt.Sprintf("api/%ss/%d/delete", prefix, idx),
-				"title":      "Supprimer",
+				"title":      i18n.T(ctx, "plugin.script_processor.port.delete"),
 			},
 		}) {
 			✕
