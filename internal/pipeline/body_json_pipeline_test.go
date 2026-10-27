@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/xolo-gateway/xolo/internal/core/model"
 	"github.com/xolo-gateway/xolo/internal/pipeline/pipelinetest"
 	"github.com/xolo-gateway/xolo/pkg/pluginsdk"
 	proto "github.com/xolo-gateway/xolo/pkg/pluginsdk/proto"
@@ -332,5 +333,80 @@ func TestPipeline_ResolveModelCarriesBodyOnce(t *testing.T) {
 	}
 	if got := pluginsdk.ResolveModelMessages(captured); got != messages {
 		t.Errorf("ResolveModelMessages = %q, want %q", got, messages)
+	}
+}
+
+// TestPipeline_NestedPipelineReceivesRewrittenBody asserts that a body
+// rewritten upstream of a virtual model node is the body the plugins of the
+// virtual model's own graph receive: they must never see the original values.
+func TestPipeline_NestedPipelineReceivesRewrittenBody(t *testing.T) {
+	body := `{"model":"m","messages":[{"role":"user","content":"Jean Dupont"}]}`
+	rewrittenMessages := `[{"role":"user","content":"[PERSON_1]"}]`
+	rewrittenBody := `{"model":"m","messages":` + rewrittenMessages + `}`
+
+	rewriter := pipelinetest.JSONPreRequest(func(map[string]any) map[string]any {
+		return map[string]any{"request": rewrittenBody, "messages_json": rewrittenMessages}
+	})
+
+	var captured *proto.PreRequestInput
+	capturePlugin := &pipelinetest.PluginClient{
+		PreRequestFunc: func(_ context.Context, in *proto.PreRequestInput) (*proto.PreRequestOutput, error) {
+			captured = in
+			return &proto.PreRequestOutput{Allowed: true}, nil
+		},
+	}
+
+	plugins := pipelinetest.NewPluginProvider().
+		Register("rewriter", pipelinetest.PreRequestDescriptor("rewriter"), rewriter).
+		Register("capture", pipelinetest.PreRequestDescriptor("capture"), capturePlugin)
+
+	innerGraph := pipelinetest.NewGraph().
+		Generator("gen").
+		Plugin("capture", "capture").
+		ModelWithProxy("mdl", "org/gpt4").
+		Sink("sink").
+		Edge("gen", "request", "capture", "request").
+		Edge("capture", "request", "mdl", "request").
+		Edge("mdl", "response", "sink", "response").
+		Build()
+	innerVM := model.NewVirtualModel("test-org", "inner", "inner vm")
+	innerVM.SetGraph(innerGraph)
+
+	outerGraph := pipelinetest.NewGraph().
+		Generator("gen").
+		Plugin("rewriter", "rewriter").
+		ModelWithProxy("mdl", "test-org/inner").
+		Sink("sink").
+		Edge("gen", "request", "rewriter", "request").
+		Edge("rewriter", "request", "mdl", "request").
+		Edge("rewriter", "messages_json", "mdl", "messages_json").
+		Edge("mdl", "response", "sink", "response").
+		Build()
+
+	h := pipelinetest.New(
+		pipelinetest.WithPlugins(plugins),
+		pipelinetest.WithModelResolver(pipelinetest.NewModelResolver().WithResponse("org/gpt4", "ok")),
+		pipelinetest.WithVirtualModelStore(pipelinetest.NewVirtualModelStore(innerVM)),
+	)
+	ec := pipelinetest.NewExecutionContext(
+		pipelinetest.WithBodyJSON(body),
+		pipelinetest.WithMessagesJSON(pluginsdk.BodyMessages(body)),
+	)
+
+	if _, err := h.Engine().RunForward(context.Background(), outerGraph, ec); err != nil {
+		t.Fatalf("RunForward failed: %v", err)
+	}
+	if captured == nil {
+		t.Fatal("the virtual model's plugin was not called")
+	}
+
+	if got := captured.GetModel(); got != rewrittenBody {
+		t.Errorf("Model = %q, want the rewritten body %q", got, rewrittenBody)
+	}
+	if got := captured.GetMessagesJson(); got != "" {
+		t.Errorf("MessagesJson = %q, want empty: the messages are those of the rewritten body", got)
+	}
+	if got := pluginsdk.PreRequestMessages(captured); got != rewrittenMessages {
+		t.Errorf("PreRequestMessages = %q, want %q", got, rewrittenMessages)
 	}
 }

@@ -39,6 +39,11 @@ func NewModelExecutor(resolver ModelResolver, virtualModelStore port.VirtualMode
 }
 
 func (e *ModelExecutor) Forward(ctx context.Context, node model.PipelineNode, inputs map[string]interface{}, ec ExecutionContext) (*ForwardResult, error) {
+	// A nested pipeline (virtual model, middleware) starts from the body
+	// entering this node: its plugins must not see the original body once an
+	// upstream node, a pseudonymizer for instance, rewrote it.
+	ec.BodyJSON, ec.BodyMessagesJSON = ec.nodeBody(inputs)
+
 	// Passthrough model node (used by Middleware pipelines): instead of a fixed
 	// model, it wraps the next pending middleware in the chain, or — when the
 	// chain is exhausted — resolves the model the caller actually requested.
