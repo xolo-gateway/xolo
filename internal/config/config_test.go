@@ -136,3 +136,28 @@ func TestParse_OIDCProviderAllowedAudiences(t *testing.T) {
 		t.Errorf("unexpected allowed audiences: %q", got)
 	}
 }
+
+// TestValidate_PluginsMaxMessageSize asserts that an out-of-range bound fails
+// at start-up rather than being silently replaced.
+func TestValidate_PluginsMaxMessageSize(t *testing.T) {
+	for _, tc := range []struct {
+		size    int
+		wantErr bool
+	}{
+		{64 << 20, false},
+		{MinPluginMaxMessageSize, false},
+		{MaxPluginMaxMessageSize, false},
+		{0, true},
+		{-1, true},
+		{MinPluginMaxMessageSize - 1, true},
+		{MaxPluginMaxMessageSize + 1, true},
+	} {
+		err := PluginsConfig{MaxMessageSize: tc.size}.Validate()
+		if tc.wantErr && err == nil {
+			t.Errorf("size %d: expected an error, got none", tc.size)
+		}
+		if !tc.wantErr && err != nil {
+			t.Errorf("size %d: unexpected error: %v", tc.size, err)
+		}
+	}
+}

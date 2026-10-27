@@ -138,7 +138,7 @@ Le schéma est créé et migré automatiquement au démarrage. Il n'existe pas d
 | --- | --- | --- |
 | `XOLO_PLUGINS_DIR` | `./plugins` | Répertoire scanné au démarrage pour les binaires de plugins exécutables. |
 | `XOLO_PLUGINS_MEM_LIMIT` | _(désactivé)_ | Limite mémoire (`GOMEMLIMIT`) appliquée à chaque sous-processus plugin, ex. `512MiB`. |
-| `XOLO_PLUGINS_MAX_MESSAGE_SIZE` | `67108864` (64 Mio) | Taille maximale, en octets, d'un message échangé entre Xolo et un plugin, dans les deux sens. Une requête traversant un plugin `PreRequest` (pseudonymizer, prompt-guard…) lui est transmise en entier : une longue conversation d'agent de code ou des pièces jointes en ligne peuvent dépasser cette borne, la requête échoue alors avec une erreur `ResourceExhausted` « received message larger than max ». La valeur est transmise à chaque plugin au démarrage. |
+| `XOLO_PLUGINS_MAX_MESSAGE_SIZE` | `67108864` (64 Mio) | Taille maximale, en octets, d'un message échangé entre Xolo et un plugin, dans les deux sens. Une requête traversant un plugin `PreRequest` (pseudonymizer, prompt-guard…) lui est transmise en entier : une longue conversation d'agent de code ou des pièces jointes en ligne peuvent dépasser cette borne, la requête échoue alors avec une erreur `ResourceExhausted` « received message larger than max ». La valeur, comprise entre 1 Mio et 1 Gio, est transmise à chaque plugin au démarrage ; une valeur hors de ces bornes empêche le serveur de démarrer. |
 | `XOLO_PLUGINS_RESTART_COOLDOWN` | `30s` | Délai minimum entre deux redémarrages d'un même plugin, pour éviter les redémarrages en boucle. |
 
 ## Proxy

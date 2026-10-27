@@ -210,3 +210,127 @@ func TestPipeline_PreRequestCarriesRewrittenMessages(t *testing.T) {
 		t.Errorf("restored messages_json input = %v, want %q", got, rewritten)
 	}
 }
+
+// TestPipeline_PreRequestDownstreamOfBodyRewrite asserts that a node fed a
+// body rewritten upstream, as the pseudonymizer emits on its "request" port,
+// receives that body as Model, never the original, and still carries it once.
+func TestPipeline_PreRequestDownstreamOfBodyRewrite(t *testing.T) {
+	body := `{"model":"m","messages":[{"role":"user","content":"Jean Dupont"}]}`
+	rewrittenMessages := `[{"role":"user","content":"[PERSON_1]"}]`
+	rewrittenBody := `{"model":"m","messages":` + rewrittenMessages + `}`
+
+	rewriter := pipelinetest.JSONPreRequest(func(map[string]any) map[string]any {
+		return map[string]any{"request": rewrittenBody, "messages_json": rewrittenMessages}
+	})
+
+	var captured *proto.PreRequestInput
+	capturePlugin := &pipelinetest.PluginClient{
+		PreRequestFunc: func(_ context.Context, in *proto.PreRequestInput) (*proto.PreRequestOutput, error) {
+			captured = in
+			return &proto.PreRequestOutput{Allowed: true}, nil
+		},
+	}
+
+	plugins := pipelinetest.NewPluginProvider().
+		Register("rewriter", pipelinetest.PreRequestDescriptor("rewriter"), rewriter).
+		Register("capture", pipelinetest.PreRequestDescriptor("capture"), capturePlugin)
+
+	graph := pipelinetest.NewGraph().
+		Generator("gen").
+		Plugin("rewriter", "rewriter").
+		Plugin("capture", "capture").
+		ModelWithProxy("mdl", "org/gpt4").
+		Sink("sink").
+		Edge("gen", "request", "rewriter", "request").
+		Edge("rewriter", "request", "capture", "request").
+		Edge("rewriter", "messages_json", "capture", "messages_json").
+		Edge("capture", "request", "mdl", "request").
+		Edge("mdl", "response", "sink", "response").
+		Build()
+
+	h := pipelinetest.New(
+		pipelinetest.WithPlugins(plugins),
+		pipelinetest.WithModelResolver(pipelinetest.NewModelResolver().WithResponse("org/gpt4", "ok")),
+	)
+	ec := pipelinetest.NewExecutionContext(
+		pipelinetest.WithBodyJSON(body),
+		pipelinetest.WithMessagesJSON(pluginsdk.BodyMessages(body)),
+	)
+
+	if _, err := h.Run(context.Background(), graph, ec); err != nil {
+		t.Fatalf("Run failed: %v", err)
+	}
+	if captured == nil {
+		t.Fatal("PreRequest was not called")
+	}
+
+	if got := captured.GetModel(); got != rewrittenBody {
+		t.Errorf("Model = %q, want the rewritten body %q", got, rewrittenBody)
+	}
+	if got := captured.GetMessagesJson(); got != "" {
+		t.Errorf("MessagesJson = %q, want empty: the messages are those of the rewritten body", got)
+	}
+	if got := captured.GetInputsJson(); got != "{}" {
+		t.Errorf("InputsJson = %q, want {}", got)
+	}
+	if got := pluginsdk.PreRequestMessages(captured); got != rewrittenMessages {
+		t.Errorf("PreRequestMessages = %q, want %q", got, rewrittenMessages)
+	}
+	inputs, err := pluginsdk.PreRequestInputs(captured)
+	if err != nil {
+		t.Fatalf("PreRequestInputs: %v", err)
+	}
+	if inputs["request"] != rewrittenBody || inputs["messages_json"] != rewrittenMessages {
+		t.Errorf("restored inputs = %v, want the rewritten body and messages", inputs)
+	}
+}
+
+// TestPipeline_ResolveModelCarriesBodyOnce asserts that a RESOLVE_MODEL call
+// leaves out the messages its body holds, and that the SDK restores them.
+func TestPipeline_ResolveModelCarriesBodyOnce(t *testing.T) {
+	body := `{"model":"m","messages":[{"role":"user","content":"hello"}]}`
+	messages := pluginsdk.BodyMessages(body)
+
+	var captured *proto.ResolveModelInput
+	router := &pipelinetest.PluginClient{
+		ResolveModelFunc: func(_ context.Context, in *proto.ResolveModelInput) (*proto.ResolveModelOutput, error) {
+			captured = in
+			return &proto.ResolveModelOutput{ResponseContent: "ok"}, nil
+		},
+	}
+	descriptor := &proto.PluginDescriptor{
+		Name:         "router",
+		Capabilities: []proto.PluginDescriptor_Capability{proto.PluginDescriptor_RESOLVE_MODEL},
+	}
+
+	graph := pipelinetest.NewGraph().
+		Generator("gen").
+		Plugin("router", "router").
+		Sink("sink").
+		Edge("gen", "request", "router", "request").
+		Edge("router", "response", "sink", "response").
+		Build()
+
+	h := pipelinetest.New(pipelinetest.WithPlugins(pipelinetest.NewPluginProvider().Register("router", descriptor, router)))
+	ec := pipelinetest.NewExecutionContext(
+		pipelinetest.WithBodyJSON(body),
+		pipelinetest.WithMessagesJSON(messages),
+	)
+
+	if _, err := h.Run(context.Background(), graph, ec); err != nil {
+		t.Fatalf("Run failed: %v", err)
+	}
+	if captured == nil {
+		t.Fatal("ResolveModel was not called")
+	}
+
+	if got := captured.GetBodyJson(); got != body {
+		t.Errorf("BodyJson = %q, want the body", got)
+	}
+	if got := captured.GetMessagesJson(); got != "" {
+		t.Errorf("MessagesJson = %q, want empty: the messages are those of the body", got)
+	}
+	if got := pluginsdk.ResolveModelMessages(captured); got != messages {
+		t.Errorf("ResolveModelMessages = %q, want %q", got, messages)
+	}
+}

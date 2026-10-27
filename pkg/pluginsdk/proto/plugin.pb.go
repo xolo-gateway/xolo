@@ -1775,11 +1775,13 @@ func (x *VirtualModelInfo) GetDescription() string {
 type PreRequestInput struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	Ctx   *RequestContext        `protobuf:"bytes,1,opt,name=ctx,proto3" json:"ctx,omitempty"`
-	// model is the raw JSON body of the incoming LLM request.
+	// model is the raw JSON body of the LLM request entering this node: the
+	// value of its "request" input port when an upstream node feeds one (a body
+	// rewritten by a pseudonymizer, for instance), the incoming request body
+	// otherwise.
 	Model string `protobuf:"bytes,2,opt,name=model,proto3" json:"model,omitempty"`
 	// messages_json is the JSON array of the messages entering this node. It is
-	// empty when they are those of the body held in model, untouched by any
-	// upstream node.
+	// empty when they are those of the body held in model.
 	MessagesJson string `protobuf:"bytes,3,opt,name=messages_json,json=messagesJson,proto3" json:"messages_json,omitempty"`
 	// inputs_json contains the values of connected input ports as a JSON object
 	// {portName: value}. Populated by the pipeline engine from upstream node
@@ -2156,12 +2158,14 @@ type ResolveModelInput struct {
 	RequestedModel  string                 `protobuf:"bytes,2,opt,name=requested_model,json=requestedModel,proto3" json:"requested_model,omitempty"`
 	AvailableModels []*ModelInfo           `protobuf:"bytes,3,rep,name=available_models,json=availableModels,proto3" json:"available_models,omitempty"`
 	// messages_json is the JSON array of the messages entering this node. It is
-	// empty when they are those of body_json, untouched by any upstream node:
-	// read them with pluginsdk.ResolveModelMessages.
+	// empty when they are those of body_json: read them with
+	// pluginsdk.ResolveModelMessages.
 	MessagesJson  string              `protobuf:"bytes,4,opt,name=messages_json,json=messagesJson,proto3" json:"messages_json,omitempty"`
 	VirtualModels []*VirtualModelInfo `protobuf:"bytes,5,rep,name=virtual_models,json=virtualModels,proto3" json:"virtual_models,omitempty"`
 	Quota         *QuotaInfo          `protobuf:"bytes,6,opt,name=quota,proto3" json:"quota,omitempty"`
-	BodyJson      string              `protobuf:"bytes,7,opt,name=body_json,json=bodyJson,proto3" json:"body_json,omitempty"`
+	// body_json is the raw JSON body of the LLM request entering this node, as
+	// PreRequestInput.model.
+	BodyJson      string `protobuf:"bytes,7,opt,name=body_json,json=bodyJson,proto3" json:"body_json,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }

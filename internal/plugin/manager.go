@@ -309,17 +309,25 @@ func isWithinDir(path, dir string) bool {
 	return len(rel) > 0 && rel[0] != '.'
 }
 
-func (m *Manager) loadPlugin(ctx context.Context, binaryPath string) (*PluginEntry, error) {
+// pluginEnv returns the environment of a plugin subprocess: the server's own,
+// plus the settings the plugin must share with the host.
+func (m *Manager) pluginEnv(ctx context.Context) []string {
 	// Forward the current log level to the plugin subprocess so its slog
 	// logger applies the same level without needing hclog conversion.
-	pluginCmd := exec.Command(binaryPath)
-	pluginCmd.Env = append(os.Environ(),
+	env := append(os.Environ(),
 		fmt.Sprintf("XOLO_LOGGER_LEVEL=%d", currentSlogLevelInt(ctx)),
+		// Both sides of the plugin boundary must accept the same messages.
 		fmt.Sprintf("%s=%d", pluginsdk.MaxMessageSizeEnv, m.maxMessageSize),
 	)
 	if m.memLimit != "" {
-		pluginCmd.Env = append(pluginCmd.Env, fmt.Sprintf("GOMEMLIMIT=%s", m.memLimit))
+		env = append(env, fmt.Sprintf("GOMEMLIMIT=%s", m.memLimit))
 	}
+	return env
+}
+
+func (m *Manager) loadPlugin(ctx context.Context, binaryPath string) (*PluginEntry, error) {
+	pluginCmd := exec.Command(binaryPath)
+	pluginCmd.Env = m.pluginEnv(ctx)
 	bindToServer(pluginCmd)
 
 	client := goplugin.NewClient(&goplugin.ClientConfig{

@@ -17,6 +17,8 @@ const secretKeyForTest = "000000000000000000000000000000000000000000000000000000
 // Validate checks too.
 var sessionForTest = config.Session{Cookie: config.Cookie{MaxAge: 24 * time.Hour}}
 
+var pluginsForTest = config.PluginsConfig{MaxMessageSize: 64 << 20}
+
 func TestValidateMultitenantBaseURL(t *testing.T) {
 	for name, testCase := range map[string]struct {
 		baseURL      string
@@ -88,6 +90,7 @@ func TestValidateMultitenantBaseURL(t *testing.T) {
 			conf := config.Config{
 				SecretKey:    secretKeyForTest,
 				HTTP:         config.HTTP{BaseURL: testCase.baseURL, Session: sessionForTest},
+				Plugins:      pluginsForTest,
 				Multitenancy: testCase.multitenancy,
 			}
 
@@ -203,6 +206,7 @@ func TestNormalizeBaseURL(t *testing.T) {
 			conf := config.Config{
 				SecretKey:    secretKeyForTest,
 				HTTP:         config.HTTP{BaseURL: testCase.input, Session: sessionForTest},
+				Plugins:      pluginsForTest,
 				Multitenancy: config.Multitenancy{DefaultTenantSlug: "default"},
 			}
 
@@ -271,6 +275,7 @@ func TestNormalizeBaseURLFixesMultitenantValidationBypass(t *testing.T) {
 	conf := config.Config{
 		SecretKey: secretKeyForTest,
 		HTTP:      config.HTTP{BaseURL: raw, Session: sessionForTest},
+		Plugins:   pluginsForTest,
 		Multitenancy: config.Multitenancy{
 			Enabled:           true,
 			HostPattern:       "{tenant}.xolo.example.com",

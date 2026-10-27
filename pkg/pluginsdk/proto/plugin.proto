@@ -224,11 +224,13 @@ message VirtualModelInfo {
 // rather than from the raw fields.
 message PreRequestInput {
   RequestContext ctx = 1;
-  // model is the raw JSON body of the incoming LLM request.
+  // model is the raw JSON body of the LLM request entering this node: the
+  // value of its "request" input port when an upstream node feeds one (a body
+  // rewritten by a pseudonymizer, for instance), the incoming request body
+  // otherwise.
   string model = 2;
   // messages_json is the JSON array of the messages entering this node. It is
-  // empty when they are those of the body held in model, untouched by any
-  // upstream node.
+  // empty when they are those of the body held in model.
   string messages_json = 3;
   // inputs_json contains the values of connected input ports as a JSON object
   // {portName: value}. Populated by the pipeline engine from upstream node
@@ -305,11 +307,13 @@ message ResolveModelInput {
   string requested_model = 2;
   repeated ModelInfo available_models = 3;
   // messages_json is the JSON array of the messages entering this node. It is
-  // empty when they are those of body_json, untouched by any upstream node:
-  // read them with pluginsdk.ResolveModelMessages.
+  // empty when they are those of body_json: read them with
+  // pluginsdk.ResolveModelMessages.
   string messages_json = 4;
   repeated VirtualModelInfo virtual_models = 5;
   QuotaInfo quota = 6;
+  // body_json is the raw JSON body of the LLM request entering this node, as
+  // PreRequestInput.model.
   string body_json = 7;
 }
 

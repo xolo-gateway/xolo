@@ -170,6 +170,10 @@ func (c *Config) Validate() error {
 		return errors.WithStack(err)
 	}
 
+	if err := c.Plugins.Validate(); err != nil {
+		return errors.WithStack(err)
+	}
+
 	if err := validateMultitenantBaseURL(c.HTTP.BaseURL, c.Multitenancy.Enabled); err != nil {
 		return errors.WithStack(err)
 	}

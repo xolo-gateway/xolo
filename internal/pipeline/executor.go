@@ -6,6 +6,7 @@ import (
 	"github.com/bornholm/genai/llm"
 	"github.com/xolo-gateway/xolo/internal/core/model"
 	"github.com/xolo-gateway/xolo/internal/core/port"
+	"github.com/xolo-gateway/xolo/pkg/pluginsdk"
 	proto "github.com/xolo-gateway/xolo/pkg/pluginsdk/proto"
 )
 
@@ -38,15 +39,17 @@ type ExecutionContext struct {
 	// BodyJSON is the raw JSON of the LLM request body. It is the single source
 	// of truth for "the incoming request" inside the pipeline engine: the
 	// generator node's "request" output is seeded from it, and it is exposed
-	// to PreRequest plugins as PreRequestInput.Model.
+	// to PreRequest plugins as PreRequestInput.Model unless an upstream node
+	// feeds the plugin node a rewritten body (see nodeBody).
 	BodyJSON string
 	// MessagesJSON is the JSON array of the messages entering the node: those
 	// of BodyJSON, as rewritten by the upstream nodes.
 	MessagesJSON string
 	// BodyMessagesJSON is the JSON array of messages extracted from BodyJSON,
-	// as pluginsdk.BodyMessages returns it. A plugin call leaves MessagesJSON
-	// out when it still equals this value, since the plugin restores it from
-	// the body it receives anyway. Empty means unknown: the messages are sent.
+	// as pluginsdk.BodyMessages returns it. A plugin call fed BodyJSON leaves
+	// MessagesJSON out when it still equals this value, since the plugin
+	// restores it from that body anyway. Empty means unknown: the messages are
+	// sent.
 	BodyMessagesJSON string
 	// ProtoModels is the list of available real models for the org.
 	ProtoModels []*proto.ModelInfo
@@ -219,11 +222,24 @@ func noopBackward(_ context.Context, _ BackwardInput) (*BackwardResult, error) {
 	return &BackwardResult{}, nil
 }
 
+// nodeBody returns the request body entering a plugin node and the messages
+// it holds: the "request" input when an upstream node feeds one, rewritten by
+// a pseudonymizer for instance, the incoming request body otherwise. A node
+// downstream of a rewrite thus never sees the original body, and its call
+// carries the body once.
+func (ec ExecutionContext) nodeBody(inputs map[string]interface{}) (body, bodyMessages string) {
+	if b, ok := inputs["request"].(string); ok && b != "" && b != ec.BodyJSON {
+		return b, pluginsdk.BodyMessages(b)
+	}
+	return ec.BodyJSON, ec.BodyMessagesJSON
+}
+
 // sentMessagesJSON returns the messages a plugin call carries: empty when they
-// are those of the request body, which the call carries already and from
-// which the plugin restores them (pluginsdk.PreRequestMessages).
-func (ec ExecutionContext) sentMessagesJSON(messagesJSON string) string {
-	if ec.BodyMessagesJSON != "" && messagesJSON == ec.BodyMessagesJSON {
+// are those of the body the call carries already (bodyMessages), from which
+// the plugin restores them (pluginsdk.PreRequestMessages). An empty
+// bodyMessages is unknown: the messages are sent.
+func sentMessagesJSON(messagesJSON, bodyMessages string) string {
+	if bodyMessages != "" && messagesJSON == bodyMessages {
 		return ""
 	}
 	return messagesJSON

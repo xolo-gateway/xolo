@@ -128,13 +128,13 @@ func (p *Plugin) PreRequest(ctx context.Context, in *proto.PreRequestInput) (*pr
 | Field          | Type              | Description                                                                  |
 | -------------- | ----------------- | ---------------------------------------------------------------------------- |
 | `Ctx`          | `*RequestContext` | Organisation, user, token, config                                            |
-| `Model`        | `string`          | Full LLM request body JSON (same as `ec.BodyJSON` in the pipeline engine)    |
+| `Model`        | `string`          | Full JSON body of the LLM request entering the node: the `request` input when an upstream node feeds one, the incoming request body otherwise |
 | `MessagesJson` | `string`          | Messages rewritten by an upstream node, empty when they are those of `Model` |
 | `InputsJson`   | `string`          | JSON object `{portName: value}` for connected input ports, minus the ports below |
 | `RequestInputPorts`  | `[]string`  | Input ports whose value is the request body held in `Model`                |
 | `MessagesInputPorts` | `[]string`  | Input ports whose value is the messages entering the node                  |
 
-> **Note:** `Model` does **not** contain just the model name — it contains the entire raw request body as JSON. Parse it to access fields such as `model`, `temperature`, `max_tokens`, etc.
+> **Note:** `Model` does **not** contain just the model name — it contains the entire raw request body as JSON. Parse it to access fields such as `model`, `temperature`, `max_tokens`, etc. Downstream of a node that rewrites the body, such as the pseudonymizer, it holds the rewritten body, never the original one.
 
 > **Read the messages and inputs through the SDK.** The host sends the request body once per call: `MessagesJson` is left empty while the messages are those of the body, and an input port that only repeats the body or the messages is left out of `InputsJson`. Call `pluginsdk.PreRequestMessages(in)` for the messages and `pluginsdk.PreRequestInputs(in)` for the inputs; they restore what was left out. Reading the raw fields would see no messages and miss ports. Since protocol version 3.
 
@@ -367,7 +367,7 @@ func (p *Plugin) ResolveModel(ctx context.Context, in *proto.ResolveModelInput) 
 | `MessagesJson`    | `string`              | Rewritten messages, empty when they are those of `BodyJson`: read them with `pluginsdk.ResolveModelMessages(in)` |
 | `VirtualModels`   | `[]*VirtualModelInfo` | Configured virtual models                  |
 | `Quota`           | `*QuotaInfo`          | User's quota status                        |
-| `BodyJson`        | `string`              | Raw request body JSON                      |
+| `BodyJson`        | `string`              | Raw JSON body of the request entering the node, as `PreRequestInput.Model` |
 
 **Output (`ResolveModelOutput`):**
 
@@ -536,8 +536,9 @@ Avant cette mise à niveau :
 1. Arrêter toutes les instances qui écrivent dans la base, puis sauvegarder la
    base et conserver la clé de chiffrement existante.
 2. Reconstruire et livrer ensemble le serveur, le SDK et tous les plugins. Cette
-   évolution utilise le protocole de plugin version 2 ; les anciens binaires sont
-   refusés au démarrage.
+   évolution a fait passer le protocole de plugin à la version 2 ; les binaires
+   construits pour un protocole antérieur à celui du serveur sont refusés au
+   démarrage.
 3. Démarrer une seule instance pour appliquer la migration `202609300003`, avant
    de réouvrir les écritures. La migration vérifie les identifiants invalides et
    les doublons, crée l'unicité `(org_id, plugin_name, node_id, key)`, puis supprime
@@ -564,7 +565,10 @@ code dépassait alors la taille maximale d'un message gRPC.
 
 Depuis le protocole 3, chaque donnée n'est transmise qu'une fois, et un plugin
 lit les messages et ses entrées avec `pluginsdk.PreRequestMessages`,
-`pluginsdk.ResolveModelMessages` et `pluginsdk.PreRequestInputs`. La taille
+`pluginsdk.ResolveModelMessages` et `pluginsdk.PreRequestInputs`. `Model` (et
+`BodyJson` pour `ResolveModel`) contient désormais le corps qui entre dans le
+nœud : en aval d'un nœud qui réécrit le corps, comme le pseudonymizer, c'est le
+corps réécrit, et un plugin n'y voit plus les valeurs d'origine. La taille
 maximale d'un message se règle avec `XOLO_PLUGINS_MAX_MESSAGE_SIZE` (64 Mio par
 défaut). Reconstruire et livrer ensemble le serveur et tous les plugins : les
 binaires du protocole 2 sont refusés au démarrage.

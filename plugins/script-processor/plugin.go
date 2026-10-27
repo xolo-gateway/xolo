@@ -55,7 +55,7 @@ func (p *Plugin) PreRequest(_ context.Context, in *proto.PreRequestInput) (*prot
 		return nil, fmt.Errorf("script-processor: parse inputs_json: %w", err)
 	}
 
-	// Build ctx.request from the full LLM request body (in.Model = ec.BodyJSON).
+	// Build ctx.request from the full LLM request body entering the node (in.Model).
 	requestMap := make(map[string]interface{})
 	if in.GetModel() != "" {
 		if err := json.Unmarshal([]byte(in.GetModel()), &requestMap); err != nil {

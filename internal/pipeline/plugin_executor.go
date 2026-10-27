@@ -154,13 +154,14 @@ func (e *PluginExecutor) forwardPreRequest(
 		messagesJSON = ec.MessagesJSON
 	}
 
+	body, bodyMessages := ec.nodeBody(inputs)
 	in := &proto.PreRequestInput{
 		Ctx:          reqCtx,
-		Model:        ec.BodyJSON,
-		MessagesJson: ec.sentMessagesJSON(messagesJSON),
+		Model:        body,
+		MessagesJson: sentMessagesJSON(messagesJSON, bodyMessages),
 		Quota:        ec.quotaInfo(ctx),
 	}
-	in.InputsJson, in.RequestInputPorts, in.MessagesInputPorts = splitInputs(inputs, ec.BodyJSON, messagesJSON)
+	in.InputsJson, in.RequestInputPorts, in.MessagesInputPorts = splitInputs(inputs, body, messagesJSON)
 
 	out, err := client.PreRequest(ctx, in)
 	if err != nil {
@@ -201,14 +202,15 @@ func (e *PluginExecutor) forwardResolveModel(
 		messagesJSON = ec.MessagesJSON
 	}
 
+	body, bodyMessages := ec.nodeBody(inputs)
 	out, err := client.ResolveModel(ctx, &proto.ResolveModelInput{
 		Ctx:             reqCtx,
 		RequestedModel:  modelFromInputs(inputs),
 		AvailableModels: ec.ProtoModels,
-		MessagesJson:    ec.sentMessagesJSON(messagesJSON),
+		MessagesJson:    sentMessagesJSON(messagesJSON, bodyMessages),
 		VirtualModels:   ec.ProtoVMs,
 		Quota:           ec.quotaInfo(ctx),
-		BodyJson:        ec.BodyJSON,
+		BodyJson:        body,
 	})
 	if err != nil {
 		return nil, errors.Wrap(err, "plugin ResolveModel failed")
