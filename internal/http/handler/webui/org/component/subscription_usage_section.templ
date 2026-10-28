@@ -9,7 +9,10 @@ import (
 	"github.com/xolo-gateway/xolo/internal/core/model"
 	common "github.com/xolo-gateway/xolo/internal/http/handler/webui/common/component"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/card"
+	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/collapsible"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/progress"
+	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/tooltip"
+	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/utils"
 	"github.com/xolo-gateway/xolo/internal/i18n"
 )
 
@@ -31,13 +34,21 @@ templ SubscriptionUsageSection(providers []SubscriptionProviderUsage) {
 }
 
 templ subscriptionProviderCard(pu SubscriptionProviderUsage) {
+	{{ groups := groupSubscriptionConstraints(pu.Constraints) }}
 	@card.Card() {
 		@card.Header() {
 			@card.Title() {
-				<div class="flex items-center gap-2">
+				<div class="flex flex-wrap items-center gap-2">
 					<span>{ pu.Provider.Name() }</span>
 					if pu.PerUser {
 						@common.Badge(common.ToneNeutral, i18n.T(ctx, "org.subscription.my_share"))
+					}
+					// The most constrained gauge, so the card can be read without
+					// scanning every row.
+					if peak, ok := peakOf(groups); ok {
+						<span class="ml-auto text-xs font-normal text-muted-foreground">
+							{ i18n.T(ctx, "org.subscription.peak", subscriptionPeakLabel(peak)) }
+						</span>
 					}
 				</div>
 			}
@@ -50,15 +61,11 @@ templ subscriptionProviderCard(pu SubscriptionProviderUsage) {
 			}
 		}
 		@card.Content() {
-			<div class="space-y-4">
-				for _, cu := range pu.Constraints {
-					if cu.Constraint.Kind == model.ConstraintRollingWindow {
-						@rollingWindowConstraintRow(cu)
-					} else if cu.Constraint.Kind == model.ConstraintConcurrency {
-						@concurrencyConstraintRow(cu)
-					}
+			<div class="@container space-y-4">
+				for _, g := range groups {
+					@subscriptionConstraintGroupView(g)
 				}
-				if len(pu.Constraints) == 0 {
+				if len(groups) == 0 {
 					<p class="text-xs text-muted-foreground">{ i18n.T(ctx, "org.subscription.no_constraints") }</p>
 				}
 			</div>
@@ -66,135 +73,137 @@ templ subscriptionProviderCard(pu SubscriptionProviderUsage) {
 	}
 }
 
-templ rollingWindowConstraintRow(cu SubscriptionConstraintUsage) {
-	<div class="space-y-2">
-		<div class="flex flex-wrap items-center gap-2">
-			<span class="text-sm font-medium">{ cu.Constraint.Label }</span>
-			if cu.UpstreamModel != "" {
-				<code class="text-xs">{ cu.UpstreamModel }</code>
-			} else if cu.Constraint.PerModel() {
-				@common.Badge(common.ToneNeutral, i18n.T(ctx, "org.subscription.per_model"))
-			}
-			if cu.Anchored {
-				@common.Badge(common.ToneNeutral, i18n.T(ctx, "org.subscription.fixed_window"))
-			} else {
-				@common.Badge(common.ToneNeutral, i18n.T(ctx, "org.subscription.sliding_window"))
-			}
-			if cu.Exhausted {
-				@common.Badge(common.ToneWarning, i18n.T(ctx, "org.subscription.exhausted_upstream"))
+// subscriptionConstraintGroupView renders one plan constraint: a header saying
+// once what its rows share, then one compact line per gauge.
+templ subscriptionConstraintGroupView(g subscriptionConstraintGroup) {
+	<div class="space-y-1.5">
+		<div class="flex flex-wrap items-baseline gap-x-2 text-xs text-muted-foreground">
+			<span class="text-sm font-medium text-foreground">{ g.Constraint.Label }</span>
+			<span>{ subscriptionGroupTiming(ctx, g) }</span>
+			if g.Kind != gaugeNone && g.Kind != gaugeConcurrency {
+				<span class="ml-auto">{ subscriptionGaugeKindLabel(ctx, g.Kind) }</span>
 			}
 		</div>
-		if cu.Constraint.PerModel() && cu.UpstreamModel == "" {
+		if g.IdlePerModel {
 			<p class="text-xs text-muted-foreground">{ i18n.T(ctx, "org.subscription.per_model_note") }</p>
 		}
-		// The allocation basis. A share computed on the active users moves between
-		// two visits, so the figures it was computed from are shown rather than left
-		// for the reader to guess.
-		if cu.ShareDegraded {
+		// The degraded share holds for the whole constraint: said once rather
+		// than on every model.
+		if g.ShareDegraded {
 			<p class="text-xs text-muted-foreground">{ i18n.T(ctx, "org.subscription.share_degraded") }</p>
-		} else if cu.ActiveUsers > 0 && cu.MemberCount > 0 {
-			<p class="text-xs text-muted-foreground">
-				{ i18n.T(ctx, "org.subscription.share_basis", fmt.Sprintf("%d", cu.ActiveUsers), fmt.Sprintf("%d", cu.MemberCount)) }
-			</p>
 		}
-		// Token budget bar
-		if cu.Constraint.TokenBudget != nil && *cu.Constraint.TokenBudget > 0 {
-			{{ pctTokens := clampPct(cu.TokensUsed, *cu.Constraint.TokenBudget) }}
-			<div class="space-y-1">
-				<div class="flex justify-between text-xs text-muted-foreground">
-					<span class="flex items-center gap-2">
-						{ i18n.T(ctx, "org.subscription.tokens") }
-						@fairShareBadge(cu.TokenMode)
-					</span>
-					<span>{ fmt.Sprintf("%d%%", pctTokens) }</span>
-				</div>
-				@progressBar(pctTokens, pctTokens >= 90)
-			</div>
-			@fairShareNote(cu.TokenMode)
-		} else if cu.Constraint.TokenBudget == nil && cu.TokensUsed > 0 {
-			<p class="text-xs text-muted-foreground">{ i18n.T(ctx, "org.subscription.tokens_used_unlimited", formatLargeInt(cu.TokensUsed)) }</p>
+		for _, r := range g.Rows {
+			@subscriptionGaugeLine(g, r)
 		}
-		// Value budget bar
-		if cu.Constraint.ValueBudget != nil && *cu.Constraint.ValueBudget > 0 {
-			{{ pctValue := clampPct(cu.ValueUsed, *cu.Constraint.ValueBudget) }}
-			<div class="space-y-1">
-				<div class="flex justify-between text-xs text-muted-foreground">
-					<span class="flex items-center gap-2">
-						{ i18n.T(ctx, "org.subscription.value") }
-						@fairShareBadge(cu.ValueMode)
-					</span>
-					<span>{ fmt.Sprintf("%d%%", pctValue) }</span>
-				</div>
-				@progressBar(pctValue, pctValue >= 90)
-			</div>
-			if cu.TokenMode != cu.ValueMode {
-				@fairShareNote(cu.ValueMode)
+		if len(g.Folded) > 0 {
+			@collapsible.Collapsible() {
+				@collapsible.Trigger(collapsible.TriggerProps{Class: "cursor-pointer text-xs text-muted-foreground hover:text-foreground"}) {
+					{ i18n.T(ctx, "org.subscription.more_models", len(g.Folded), fmt.Sprintf("%d%%", g.FoldedPeak)) }
+				}
+				@collapsible.Content(collapsible.ContentProps{Class: "mt-1.5"}) {
+					<div class="space-y-1.5">
+						for _, r := range g.Folded {
+							@subscriptionGaugeLine(g, r)
+						}
+					</div>
+				}
 			}
-		}
-		// Window timing. We always show a timezone-independent relative countdown.
-		if cu.Anchored && !cu.ResetAt.IsZero() {
-			// Fixed (tumbling) window aligned on the provider's real reset schedule.
-			<p class="text-xs text-muted-foreground">
-				{ i18n.T(ctx, "org.subscription.fixed_window_reset", formatDurationLabel(ctx, cu.Constraint.Duration.Duration()), formatUntil(ctx, cu.ResetAt)) }
-			</p>
-		} else if !cu.OldestUsage.IsZero() {
-			// Sliding window: usage frees up progressively as the oldest records age out.
-			<p class="text-xs text-muted-foreground">
-				{ i18n.T(ctx, "org.subscription.sliding_window_frees", formatDurationLabel(ctx, cu.Constraint.Duration.Duration()), formatTimeUntilReset(ctx, cu.OldestUsage, cu.Constraint.Duration.Duration())) }
-			</p>
-		} else {
-			<p class="text-xs text-muted-foreground">
-				{ i18n.T(ctx, "org.subscription.sliding_window_idle", formatDurationLabel(ctx, cu.Constraint.Duration.Duration())) }
-			</p>
 		}
 	</div>
 }
 
-// fairShareBadge names the regime a gauge was allocated under. The nominal
-// regime carries no badge: only a share that is narrower or wider than usual
-// needs accounting for.
-templ fairShareBadge(mode model.FairShareMode) {
-	if mode == model.FairShareModeThrottled {
-		@common.Badge(common.ToneWarning, i18n.T(ctx, "org.subscription.share_throttled"))
-	} else if mode == model.FairShareModeCapped {
-		@common.Badge(common.ToneWarning, i18n.T(ctx, "org.subscription.share_capped"))
-	} else if mode == model.FairShareModeHappyHour {
-		@common.Badge(common.TonePositive, i18n.T(ctx, "org.subscription.share_happy_hour"))
-	}
-}
-
-templ fairShareNote(mode model.FairShareMode) {
-	if mode == model.FairShareModeThrottled {
-		<p class="text-xs text-muted-foreground">{ i18n.T(ctx, "org.subscription.note_throttled") }</p>
-	} else if mode == model.FairShareModeCapped {
-		<p class="text-xs text-muted-foreground">{ i18n.T(ctx, "org.subscription.note_capped") }</p>
-	} else if mode == model.FairShareModeHappyHour {
-		<p class="text-xs text-muted-foreground">{ i18n.T(ctx, "org.subscription.note_happy_hour") }</p>
-	}
-}
-
-templ concurrencyConstraintRow(cu SubscriptionConstraintUsage) {
-	<div class="space-y-2">
-		<div class="flex items-center gap-2">
-			<span class="text-sm font-medium">{ cu.Constraint.Label }</span>
-			@common.Badge(common.ToneNeutral, i18n.T(ctx, "org.subscription.concurrency"))
+// subscriptionGaugeLine renders one gauge on a single line: name, thin bar and
+// percentage, then the secondary figures, which wrap below on a narrow card.
+templ subscriptionGaugeLine(g subscriptionConstraintGroup, r subscriptionGaugeRow) {
+	{{ cu := r.Usage }}
+	<div class="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs">
+		<span class="w-full min-w-0 truncate @md:w-40">
+			if cu.UpstreamModel != "" {
+				<code title={ cu.UpstreamModel }>{ cu.UpstreamModel }</code>
+			} else if g.IdlePerModel {
+				@common.Badge(common.ToneNeutral, i18n.T(ctx, "org.subscription.per_model"))
+			} else if cu.Constraint.Kind == model.ConstraintConcurrency {
+				{ i18n.T(ctx, "org.subscription.concurrent_requests") }
+			} else {
+				{ i18n.T(ctx, "org.subscription.all_models") }
+			}
+		</span>
+		if r.Kind != gaugeNone {
+			<div class="min-w-16 flex-1">
+				@progressBar(r.Pct, r.Pct >= subscriptionDangerPct || cu.Exhausted)
+			</div>
+			<span class="min-w-12 whitespace-nowrap text-right tabular-nums">
+				if r.Kind == gaugeConcurrency {
+					{ fmt.Sprintf("%d / %d", cu.InFlight, *cu.Constraint.MaxConcurrent) }
+				} else {
+					if g.Kind == gaugeNone {
+						<span class="text-muted-foreground">{ subscriptionGaugeKindLabel(ctx, r.Kind) }</span>
+					}
+					{ fmt.Sprintf(" %d%%", r.Pct) }
+				}
+			</span>
+		}
+		<div class="flex w-full flex-wrap items-center gap-x-2 gap-y-0.5 text-muted-foreground @md:pl-43 @2xl:w-auto @2xl:pl-0">
 			if cu.Exhausted {
-				@common.Badge(common.ToneNegative, i18n.T(ctx, "org.subscription.exhausted"))
+				if cu.Constraint.Kind == model.ConstraintConcurrency {
+					@common.Badge(common.ToneNegative, i18n.T(ctx, "org.subscription.exhausted"))
+				} else {
+					@common.Badge(common.ToneWarning, i18n.T(ctx, "org.subscription.exhausted_upstream"))
+				}
+			}
+			@fairShareBadge(r.Mode)
+			@fairShareBadge(r.OtherMode)
+			{{ figures := subscriptionGaugeFigures(ctx, g, r) }}
+			for i, part := range figures {
+				if i > 0 {
+					<span aria-hidden="true">·</span>
+				}
+				<span>{ part }</span>
+			}
+			if cu.ActiveUsers > 0 && cu.MemberCount > 0 && !cu.ShareDegraded {
+				if len(figures) > 0 {
+					<span aria-hidden="true">·</span>
+				}
+				// The allocation basis. A share computed on the active users moves
+				// between two visits, so the figures it was computed from are shown
+				// rather than left for the reader to guess.
+				{{ basisID := "share-basis-" + utils.RandomID() }}
+				@tooltip.Tooltip() {
+					@tooltip.Trigger(tooltip.TriggerProps{For: basisID}) {
+						<span class="cursor-help">
+							{ i18n.T(ctx, "org.subscription.share_basis_short", strconv.Itoa(cu.ActiveUsers), strconv.Itoa(cu.MemberCount)) }
+						</span>
+					}
+					@tooltip.Content(tooltip.ContentProps{ID: basisID, Position: tooltip.PositionTop}) {
+						{ i18n.T(ctx, "org.subscription.share_basis", strconv.Itoa(cu.ActiveUsers), strconv.Itoa(cu.MemberCount)) }
+					}
+				}
 			}
 		</div>
-		if cu.Constraint.MaxConcurrent != nil {
-			{{ pctConc := clampPct(int64(cu.InFlight), int64(*cu.Constraint.MaxConcurrent)) }}
-			<div class="space-y-1">
-				<div class="flex justify-between text-xs text-muted-foreground">
-					<span>{ i18n.T(ctx, "org.subscription.concurrent_requests") }</span>
-					<span>{ fmt.Sprintf("%d", cu.InFlight) } / { fmt.Sprintf("%d", *cu.Constraint.MaxConcurrent) }</span>
-				</div>
-				@progressBar(pctConc, cu.Exhausted)
-			</div>
-		} else {
-			<p class="text-xs text-muted-foreground">{ i18n.T(ctx, "org.subscription.concurrent_in_flight", fmt.Sprintf("%d", cu.InFlight)) }</p>
-		}
 	</div>
+}
+
+// fairShareBadge names the regime a gauge was allocated under, its explanation
+// in a tooltip. The nominal regime carries no badge: only a share that is
+// narrower or wider than usual needs accounting for.
+templ fairShareBadge(mode model.FairShareMode) {
+	if notableFairShare(mode) {
+		{{ noteID := "fair-share-" + utils.RandomID() }}
+		@tooltip.Tooltip() {
+			@tooltip.Trigger(tooltip.TriggerProps{For: noteID, Class: "cursor-help"}) {
+				if mode == model.FairShareModeHappyHour {
+					@common.Badge(common.TonePositive, i18n.T(ctx, "org.subscription.share_happy_hour"))
+				} else if mode == model.FairShareModeCapped {
+					@common.Badge(common.ToneWarning, i18n.T(ctx, "org.subscription.share_capped"))
+				} else {
+					@common.Badge(common.ToneWarning, i18n.T(ctx, "org.subscription.share_throttled"))
+				}
+			}
+			@tooltip.Content(tooltip.ContentProps{ID: noteID, Position: tooltip.PositionTop, Class: "max-w-xs text-xs"}) {
+				{ fairShareNote(ctx, mode) }
+			}
+		}
+	}
 }
 
 // progressBar renders a plan consumption bar.
@@ -211,6 +220,83 @@ templ progressBar(pct int, danger bool) {
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+
+// subscriptionGroupTiming describes the window of a constraint group. A fixed
+// window resets at the same instant for every model, so its countdown belongs
+// here; a sliding window frees up per model, so its countdown stays on the rows.
+func subscriptionGroupTiming(ctx context.Context, g subscriptionConstraintGroup) string {
+	if g.Constraint.Kind == model.ConstraintConcurrency {
+		return i18n.T(ctx, "org.subscription.concurrency")
+	}
+	duration := formatDurationLabel(ctx, g.Constraint.Duration.Duration())
+	if g.Anchored {
+		if g.ResetAt.IsZero() {
+			return i18n.T(ctx, "org.subscription.fixed_window_of", duration)
+		}
+		return i18n.T(ctx, "org.subscription.fixed_window_reset", duration, formatUntil(ctx, g.ResetAt))
+	}
+	return i18n.T(ctx, "org.subscription.sliding_window_of", duration)
+}
+
+func subscriptionGaugeKindLabel(ctx context.Context, kind subscriptionGaugeKind) string {
+	switch kind {
+	case gaugeTokens:
+		return i18n.T(ctx, "org.subscription.tokens")
+	case gaugeValue:
+		return i18n.T(ctx, "org.subscription.value")
+	case gaugeConcurrency:
+		return i18n.T(ctx, "org.subscription.concurrency")
+	default:
+		return ""
+	}
+}
+
+// subscriptionGaugeFigures returns the secondary figures of a gauge line, in
+// reading order: the other budget, the tokens consumed, the release countdown.
+func subscriptionGaugeFigures(ctx context.Context, g subscriptionConstraintGroup, r subscriptionGaugeRow) []string {
+	cu := r.Usage
+	var parts []string
+	if cu.Constraint.Kind == model.ConstraintConcurrency {
+		if r.Kind == gaugeNone {
+			parts = append(parts, i18n.T(ctx, "org.subscription.concurrent_in_flight", strconv.Itoa(cu.InFlight)))
+		}
+		return parts
+	}
+	if r.OtherKind != gaugeNone {
+		parts = append(parts, i18n.T(ctx, "org.subscription.other_gauge", subscriptionGaugeKindLabel(ctx, r.OtherKind), fmt.Sprintf("%d%%", r.OtherPct)))
+	}
+	if r.Kind == gaugeNone && cu.TokensUsed > 0 {
+		parts = append(parts, i18n.T(ctx, "org.subscription.tokens_used_unlimited", formatLargeInt(cu.TokensUsed)))
+	} else if cu.TokensUsed > 0 {
+		parts = append(parts, i18n.T(ctx, "org.subscription.tokens_count", formatLargeInt(cu.TokensUsed)))
+	}
+	// Sliding window: usage frees up progressively as the oldest records age out.
+	if !g.Anchored && !cu.OldestUsage.IsZero() {
+		parts = append(parts, i18n.T(ctx, "org.subscription.frees_in", formatTimeUntilReset(ctx, cu.OldestUsage, cu.Constraint.Duration.Duration())))
+	}
+	return parts
+}
+
+func subscriptionPeakLabel(p subscriptionPeak) string {
+	label := fmt.Sprintf("%d%% · %s", p.Pct, p.Label)
+	if p.UpstreamModel != "" {
+		label += " · " + p.UpstreamModel
+	}
+	return label
+}
+
+func fairShareNote(ctx context.Context, mode model.FairShareMode) string {
+	switch mode {
+	case model.FairShareModeThrottled:
+		return i18n.T(ctx, "org.subscription.note_throttled")
+	case model.FairShareModeCapped:
+		return i18n.T(ctx, "org.subscription.note_capped")
+	case model.FairShareModeHappyHour:
+		return i18n.T(ctx, "org.subscription.note_happy_hour")
+	default:
+		return ""
+	}
+}
 
 func clampPct(used, total int64) int {
 	if total <= 0 {
