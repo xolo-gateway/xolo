@@ -147,12 +147,13 @@ func TestUsageTrackerComputesCostWhenPlanProviderReportsZero(t *testing.T) {
 		name        string
 		billingMode model.BillingMode
 		wantCost    int64
+		wantValue   int64
 		wantSource  model.CostSource
 	}{
 		// A plan covers the call: the zero is what it bills, not what the call is worth.
-		{name: "subscription", billingMode: model.BillingModeSubscription, wantCost: 2000, wantSource: model.CostSourceComputed},
+		{name: "subscription", billingMode: model.BillingModeSubscription, wantCost: 2000, wantValue: 2000, wantSource: model.CostSourceComputed},
 		// Pay as you go: the zero is the actual bill.
-		{name: "payg", billingMode: model.BillingModePayg, wantCost: 0, wantSource: model.CostSourceProvider},
+		{name: "payg", billingMode: model.BillingModePayg, wantCost: 0, wantValue: 0, wantSource: model.CostSourceProvider},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			provider := model.NewProvider(orgID, "opencode", "openai", "https://opencode.ai", "key", "USD")
@@ -178,6 +179,10 @@ func TestUsageTrackerComputesCostWhenPlanProviderReportsZero(t *testing.T) {
 			}
 			if got := usageStore.recorded.Cost(); got != tc.wantCost {
 				t.Errorf("Cost() = %d, want %d", got, tc.wantCost)
+			}
+			// ProviderCost is what the plan's value budgets sum.
+			if got := usageStore.recorded.ProviderCost(); got != tc.wantValue {
+				t.Errorf("ProviderCost() = %d, want %d", got, tc.wantValue)
 			}
 			if got := usageStore.recorded.CostSource(); got != tc.wantSource {
 				t.Errorf("CostSource() = %q, want %q", got, tc.wantSource)

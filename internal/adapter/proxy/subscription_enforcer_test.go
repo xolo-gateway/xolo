@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"context"
+	"encoding/json"
 	stderrors "errors"
 	"net/http"
 	"slices"
@@ -282,6 +283,28 @@ func TestSubscriptionEnforcer_UpstreamCapacity429DoesNotCoolDown(t *testing.T) {
 	}
 	if msg := f.denial(t, f.kimi); msg != "" {
 		t.Errorf("kimi denied (%q) after a relayed capacity 429, want granted", msg)
+	}
+}
+
+func TestIsUpstreamCapacityError(t *testing.T) {
+	capacity := `{"error":{"type":"server_error","message":"the cell is at capacity"}}`
+	rateLimit := `{"error":{"type":"rate_limit_error","message":"usage limit reached"}}`
+	for _, tc := range []struct {
+		name string
+		body any
+		want bool
+	}{
+		{"string", capacity, true},
+		{"bytes", []byte(capacity), true},
+		{"raw message", json.RawMessage(capacity), true},
+		{"decoded", map[string]any{"error": map[string]any{"type": "server_error"}}, true},
+		{"rate limit", rateLimit, false},
+		{"not json", "too many requests", false},
+		{"nil", nil, false},
+	} {
+		if got := isUpstreamCapacityError(tc.body); got != tc.want {
+			t.Errorf("%s: isUpstreamCapacityError() = %v, want %v", tc.name, got, tc.want)
+		}
 	}
 }
 

@@ -338,20 +338,30 @@ func isOwnResponse(res *genaiProxy.ProxyResponse) bool {
 // is, without putting the plan in cooldown, which would refuse every request
 // of the model as exhausted for defaultExhaustionCooldown.
 //
-// The body is the decoded JSON a relay passes through, or the raw text of an
-// llm.HTTPError.
+// The body is the decoded JSON a relay passes through, the raw text of an
+// llm.HTTPError, or raw JSON bytes.
 func isUpstreamCapacityError(body any) bool {
-	if raw, ok := body.(string); ok {
-		var decoded map[string]any
-		if err := json.Unmarshal([]byte(raw), &decoded); err != nil {
-			return false
-		}
-		body = decoded
-	}
-	decoded, ok := body.(map[string]any)
-	if !ok {
+	var raw []byte
+	switch b := body.(type) {
+	case map[string]any:
+		return isCapacityErrorObject(b)
+	case string:
+		raw = []byte(b)
+	case []byte:
+		raw = b
+	case json.RawMessage:
+		raw = b
+	default:
 		return false
 	}
+	var decoded map[string]any
+	if err := json.Unmarshal(raw, &decoded); err != nil {
+		return false
+	}
+	return isCapacityErrorObject(decoded)
+}
+
+func isCapacityErrorObject(decoded map[string]any) bool {
 	errObj, ok := decoded["error"].(map[string]any)
 	if !ok {
 		return false
