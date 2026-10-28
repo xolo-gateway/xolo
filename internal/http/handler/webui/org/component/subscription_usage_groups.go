@@ -39,6 +39,8 @@ type subscriptionGaugeRow struct {
 	// OtherKind is the second budget, shown as text rather than as a second bar.
 	OtherKind subscriptionGaugeKind
 	OtherPct  int
+	// OtherMode is the regime of the second budget, set only when it differs
+	// from Mode: the same regime on both budgets is said by a single badge.
 	OtherMode model.FairShareMode
 }
 
@@ -101,8 +103,18 @@ func groupSubscriptionConstraints(usages []SubscriptionConstraintUsage) []subscr
 	return groups
 }
 
+// sameConstraint reports whether two entries come from the same plan
+// constraint: everything the group header says must agree.
 func sameConstraint(a, b model.PlanConstraint) bool {
-	return a.Kind == b.Kind && a.Label == b.Label && a.Duration == b.Duration && a.Scope == b.Scope
+	return a.Kind == b.Kind && a.Label == b.Label && a.Duration == b.Duration && a.Scope == b.Scope &&
+		sameAnchor(a.WindowAnchor, b.WindowAnchor)
+}
+
+func sameAnchor(a, b *time.Time) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return a.Equal(*b)
 }
 
 func newSubscriptionGaugeRow(cu SubscriptionConstraintUsage) subscriptionGaugeRow {
@@ -196,13 +208,14 @@ type subscriptionPeak struct {
 
 // peakOf returns the most constrained gauge across the groups, and false when
 // there is nothing worth summing up: no gauge above zero, or a single gauge the
-// card already shows in full.
+// card already shows in full. Folded rows are not scanned: each group's rows
+// are sorted, so its most constrained one is never folded.
 func peakOf(groups []subscriptionConstraintGroup) (subscriptionPeak, bool) {
 	var peak subscriptionPeak
 	rows := 0
 	for _, g := range groups {
-		for _, r := range append(slices.Clip(g.Rows), g.Folded...) {
-			rows++
+		rows += len(g.Rows) + len(g.Folded)
+		for _, r := range g.Rows {
 			if r.Kind != gaugeNone && r.Pct > peak.Pct {
 				peak = subscriptionPeak{Pct: r.Pct, Label: g.Constraint.Label, UpstreamModel: r.Usage.UpstreamModel}
 			}

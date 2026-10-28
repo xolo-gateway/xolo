@@ -163,3 +163,42 @@ func TestSubscriptionUsageSection_SaysTheSharedInformationOnce(t *testing.T) {
 		t.Error("the most constrained model should come first")
 	}
 }
+
+func TestSubscriptionUsageSection_RendersProviderWideAndConcurrencyLines(t *testing.T) {
+	budget := int64(100)
+	maxConcurrent := 5
+	usages := []SubscriptionConstraintUsage{
+		{Constraint: model.PlanConstraint{Kind: model.ConstraintRollingWindow, Label: "5h", Duration: model.PlanDuration(5 * time.Hour), TokenBudget: &budget}},
+		{Constraint: model.PlanConstraint{Kind: model.ConstraintConcurrency, Label: "bounded", MaxConcurrent: &maxConcurrent}, InFlight: 2},
+		{Constraint: model.PlanConstraint{Kind: model.ConstraintConcurrency, Label: "unbounded"}, InFlight: 3},
+	}
+
+	provider := model.NewProvider("org-1", "Acme", "openai", "", "", "EUR")
+	var out strings.Builder
+	err := SubscriptionUsageSection([]SubscriptionProviderUsage{{Provider: provider, Constraints: usages}}).Render(context.Background(), &out)
+	if err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	html := stdhtml.UnescapeString(out.String())
+
+	for _, want := range []string{
+		"Tous les modèles",             // the provider-wide line
+		"aucune consommation en cours", // an idle sliding window says so
+		"2 / 5",                        // the bounded concurrency gauge
+		"3 requêtes simultanées en cours",
+	} {
+		if !strings.Contains(html, want) {
+			t.Errorf("render is missing %q", want)
+		}
+	}
+}
+
+func TestGroupSubscriptionConstraints_KeepsDifferentlyAnchoredConstraintsApart(t *testing.T) {
+	anchor := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	anchored := perModelUsage("5h", 100, "a", 1)
+	anchored.Constraint.WindowAnchor = &anchor
+	groups := groupSubscriptionConstraints([]SubscriptionConstraintUsage{perModelUsage("5h", 100, "a", 1), anchored})
+	if len(groups) != 2 {
+		t.Errorf("got %d groups, want a sliding and a fixed window kept apart", len(groups))
+	}
+}

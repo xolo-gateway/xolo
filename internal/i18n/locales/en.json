@@ -620,6 +620,7 @@
   "org.subscription.share_basis_short": "%s/%s active",
   "org.subscription.more_models": "+ %d other models, up to %s",
   "org.subscription.peak": "Peak: %s",
+  "org.subscription.no_usage": "no usage in progress",
   "org.middlewares.page_title": "Middlewares - %s",
   "org.middlewares.title": "Middlewares",
   "org.middlewares.subtitle": "Processing applied dynamically to requests, in ascending priority order.",
