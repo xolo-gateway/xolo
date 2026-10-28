@@ -9,6 +9,7 @@ package locale
 import (
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 
 	"golang.org/x/text/language"
@@ -22,9 +23,15 @@ const CookieName = "xolo_locale"
 
 const cookieMaxAge = 365 * 24 * 60 * 60
 
-// Middleware puts the request language in the context and announces it,
-// except on assets, which do not vary by language.
-func Middleware(bundle *i18n.Bundle, fallback language.Tag) func(http.Handler) http.Handler {
+// Header carries the language the host resolved for a request to the plugin
+// UIs it reverse-proxies, so they render in it, configured default included.
+const Header = "X-Xolo-Locale"
+
+// Middleware puts the request language in the context and announces it.
+// Paths under one of the unlocalized prefixes, such as assets or a JSON API,
+// still get the language in their context, for their error pages, but are
+// not announced as varying by it: a shared cache can keep a single copy.
+func Middleware(bundle *i18n.Bundle, fallback language.Tag, unlocalized ...string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			tag := language.Und
@@ -34,7 +41,7 @@ func Middleware(bundle *i18n.Bundle, fallback language.Tag) func(http.Handler) h
 			if tag == language.Und {
 				tag = bundle.Match(r.Header.Get("Accept-Language"), fallback)
 			}
-			if !strings.HasPrefix(r.URL.Path, "/assets/") {
+			if !slices.ContainsFunc(unlocalized, func(prefix string) bool { return strings.HasPrefix(r.URL.Path, prefix) }) {
 				w.Header().Set("Content-Language", tag.String())
 				w.Header().Add("Vary", "Accept-Language, Cookie")
 			}
@@ -57,6 +64,9 @@ func Handler(bundle *i18n.Bundle, secure bool) http.Handler {
 			http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
 			return
 		}
+		// The redirect has no body in any language.
+		w.Header().Del("Content-Language")
+		w.Header().Del("Vary")
 		http.SetCookie(w, &http.Cookie{Name: CookieName, Value: tag.String(), Path: "/", MaxAge: cookieMaxAge, HttpOnly: true, Secure: secure, SameSite: http.SameSiteLaxMode})
 		http.Redirect(w, r, LocalPath(r.PostFormValue("return_to")), http.StatusSeeOther)
 	}))

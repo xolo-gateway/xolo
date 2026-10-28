@@ -329,7 +329,7 @@ func DashboardPage(vmodel DashboardPageVModel) templ.Component {
 				ctx = templ.InitializeContext(ctx)
 				templ_7745c5c3_Err = common.KPI(common.KPIProps{
 					Label: i18n.T(ctx, "profile.dashboard.kpi.requests"),
-					Value: common.FormatCount(personalRequests(vmodel.Aggregate)),
+					Value: common.FormatCount(ctx, personalRequests(vmodel.Aggregate)),
 				}).Render(ctx, templ_7745c5c3_Buffer)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
@@ -340,7 +340,7 @@ func DashboardPage(vmodel DashboardPageVModel) templ.Component {
 				}
 				templ_7745c5c3_Err = common.KPI(common.KPIProps{
 					Label: i18n.T(ctx, "profile.dashboard.kpi.tokens"),
-					Value: common.FormatCount(personalTokens(vmodel.Aggregate)),
+					Value: common.FormatCount(ctx, personalTokens(vmodel.Aggregate)),
 					Note:  personalCachedTokensNote(ctx, vmodel.Aggregate),
 				}).Render(ctx, templ_7745c5c3_Buffer)
 				if templ_7745c5c3_Err != nil {
@@ -352,7 +352,7 @@ func DashboardPage(vmodel DashboardPageVModel) templ.Component {
 				}
 				templ_7745c5c3_Err = common.KPI(common.KPIProps{
 					Label: i18n.T(ctx, "profile.dashboard.kpi.total_cost"),
-					Value: personalTotalCostValue(vmodel),
+					Value: personalTotalCostValue(ctx, vmodel),
 				}).Render(ctx, templ_7745c5c3_Buffer)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
@@ -364,7 +364,7 @@ func DashboardPage(vmodel DashboardPageVModel) templ.Component {
 				if vmodel.TotalEnergyWh > 0 {
 					templ_7745c5c3_Err = common.KPI(common.KPIProps{
 						Label: i18n.T(ctx, "profile.dashboard.kpi.energy"),
-						Value: common.FormatEnergyWh(vmodel.TotalEnergyWh),
+						Value: common.FormatEnergyWh(ctx, vmodel.TotalEnergyWh),
 						Note:  common.FormatEnergyToHuman(vmodel.TotalEnergyWh),
 					}).Render(ctx, templ_7745c5c3_Buffer)
 					if templ_7745c5c3_Err != nil {
@@ -383,7 +383,7 @@ func DashboardPage(vmodel DashboardPageVModel) templ.Component {
 				if vmodel.TotalCO2GramsMid > 0 {
 					templ_7745c5c3_Err = common.KPI(common.KPIProps{
 						Label: i18n.T(ctx, "profile.dashboard.kpi.co2"),
-						Value: common.FormatCO2Grams(vmodel.TotalCO2GramsMid),
+						Value: common.FormatCO2Grams(ctx, vmodel.TotalCO2GramsMid),
 						Note:  common.FormatCO2ToCarKilometers(ctx, vmodel.TotalCO2GramsMid),
 					}).Render(ctx, templ_7745c5c3_Buffer)
 					if templ_7745c5c3_Err != nil {
@@ -1274,9 +1274,9 @@ func DashboardPage(vmodel DashboardPageVModel) templ.Component {
 												return templ_7745c5c3_Err
 											}
 											var templ_7745c5c3_Var58 string
-											templ_7745c5c3_Var58, templ_7745c5c3_Err = templ.JoinStringErrs(common.FormatCost(dr.Record.Cost(), dr.Record.Currency()))
+											templ_7745c5c3_Var58, templ_7745c5c3_Err = templ.JoinStringErrs(common.FormatCost(ctx, dr.Record.Cost(), dr.Record.Currency()))
 											if templ_7745c5c3_Err != nil {
-												return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/profile/component/dashboard_page.templ`, Line: 322, Col: 79}
+												return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/profile/component/dashboard_page.templ`, Line: 322, Col: 84}
 											}
 											_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var58))
 											if templ_7745c5c3_Err != nil {
@@ -1287,9 +1287,9 @@ func DashboardPage(vmodel DashboardPageVModel) templ.Component {
 												return templ_7745c5c3_Err
 											}
 											var templ_7745c5c3_Var59 string
-											templ_7745c5c3_Var59, templ_7745c5c3_Err = templ.JoinStringErrs(common.FormatCost(dr.DisplayCost, dr.DisplayCurrency))
+											templ_7745c5c3_Var59, templ_7745c5c3_Err = templ.JoinStringErrs(common.FormatCost(ctx, dr.DisplayCost, dr.DisplayCurrency))
 											if templ_7745c5c3_Err != nil {
-												return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/profile/component/dashboard_page.templ`, Line: 325, Col: 69}
+												return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/profile/component/dashboard_page.templ`, Line: 325, Col: 74}
 											}
 											_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var59))
 											if templ_7745c5c3_Err != nil {
@@ -1301,9 +1301,9 @@ func DashboardPage(vmodel DashboardPageVModel) templ.Component {
 											}
 										} else {
 											var templ_7745c5c3_Var60 string
-											templ_7745c5c3_Var60, templ_7745c5c3_Err = templ.JoinStringErrs(common.FormatCost(dr.DisplayCost, dr.DisplayCurrency))
+											templ_7745c5c3_Var60, templ_7745c5c3_Err = templ.JoinStringErrs(common.FormatCost(ctx, dr.DisplayCost, dr.DisplayCurrency))
 											if templ_7745c5c3_Err != nil {
-												return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/profile/component/dashboard_page.templ`, Line: 328, Col: 68}
+												return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/profile/component/dashboard_page.templ`, Line: 328, Col: 73}
 											}
 											_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var60))
 											if templ_7745c5c3_Err != nil {
@@ -1373,9 +1373,9 @@ func DashboardPage(vmodel DashboardPageVModel) templ.Component {
 												return templ_7745c5c3_Err
 											}
 											var templ_7745c5c3_Var63 string
-											templ_7745c5c3_Var63, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "profile.dashboard.records.energy_range", common.FormatEnergyWh(dr.EnergyLowWh), common.FormatEnergyWh(dr.EnergyHighWh)))
+											templ_7745c5c3_Var63, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "profile.dashboard.records.energy_range", common.FormatEnergyWh(ctx, dr.EnergyLowWh), common.FormatEnergyWh(ctx, dr.EnergyHighWh)))
 											if templ_7745c5c3_Err != nil {
-												return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/profile/component/dashboard_page.templ`, Line: 343, Col: 153}
+												return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/profile/component/dashboard_page.templ`, Line: 343, Col: 163}
 											}
 											_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var63))
 											if templ_7745c5c3_Err != nil {
@@ -1386,9 +1386,9 @@ func DashboardPage(vmodel DashboardPageVModel) templ.Component {
 												return templ_7745c5c3_Err
 											}
 											var templ_7745c5c3_Var64 string
-											templ_7745c5c3_Var64, templ_7745c5c3_Err = templ.JoinStringErrs(common.FormatEnergyWh(dr.EnergyWh))
+											templ_7745c5c3_Var64, templ_7745c5c3_Err = templ.JoinStringErrs(common.FormatEnergyWh(ctx, dr.EnergyWh))
 											if templ_7745c5c3_Err != nil {
-												return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/profile/component/dashboard_page.templ`, Line: 346, Col: 49}
+												return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/profile/component/dashboard_page.templ`, Line: 346, Col: 54}
 											}
 											_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var64))
 											if templ_7745c5c3_Err != nil {
@@ -1432,9 +1432,9 @@ func DashboardPage(vmodel DashboardPageVModel) templ.Component {
 												return templ_7745c5c3_Err
 											}
 											var templ_7745c5c3_Var66 string
-											templ_7745c5c3_Var66, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "profile.dashboard.records.co2_range", common.FormatCO2Grams(dr.CO2GramsMin), common.FormatCO2Grams(dr.CO2GramsMid), common.FormatCO2Grams(dr.CO2GramsMax)))
+											templ_7745c5c3_Var66, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "profile.dashboard.records.co2_range", common.FormatCO2Grams(ctx, dr.CO2GramsMin), common.FormatCO2Grams(ctx, dr.CO2GramsMid), common.FormatCO2Grams(ctx, dr.CO2GramsMax)))
 											if templ_7745c5c3_Err != nil {
-												return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/profile/component/dashboard_page.templ`, Line: 355, Col: 188}
+												return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/profile/component/dashboard_page.templ`, Line: 355, Col: 203}
 											}
 											_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var66))
 											if templ_7745c5c3_Err != nil {
@@ -1445,9 +1445,9 @@ func DashboardPage(vmodel DashboardPageVModel) templ.Component {
 												return templ_7745c5c3_Err
 											}
 											var templ_7745c5c3_Var67 string
-											templ_7745c5c3_Var67, templ_7745c5c3_Err = templ.JoinStringErrs(common.FormatCO2Grams(dr.CO2GramsMid))
+											templ_7745c5c3_Var67, templ_7745c5c3_Err = templ.JoinStringErrs(common.FormatCO2Grams(ctx, dr.CO2GramsMid))
 											if templ_7745c5c3_Err != nil {
-												return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/profile/component/dashboard_page.templ`, Line: 358, Col: 52}
+												return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/profile/component/dashboard_page.templ`, Line: 358, Col: 57}
 											}
 											_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var67))
 											if templ_7745c5c3_Err != nil {

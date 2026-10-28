@@ -404,13 +404,13 @@ func applicationBudgetSummary(ctx context.Context, quota model.Quota, err error)
 	}
 	parts := make([]string, 0, 3)
 	if d := quota.DailyBudget(); d != nil {
-		parts = append(parts, i18n.T(ctx, "org.flash.applications.budget_per_day", common.FormatCost(*d, currency)))
+		parts = append(parts, i18n.T(ctx, "org.flash.applications.budget_per_day", common.FormatCost(ctx, *d, currency)))
 	}
 	if m := quota.MonthlyBudget(); m != nil {
-		parts = append(parts, i18n.T(ctx, "org.flash.applications.budget_per_month", common.FormatCost(*m, currency)))
+		parts = append(parts, i18n.T(ctx, "org.flash.applications.budget_per_month", common.FormatCost(ctx, *m, currency)))
 	}
 	if y := quota.YearlyBudget(); y != nil {
-		parts = append(parts, i18n.T(ctx, "org.flash.applications.budget_per_year", common.FormatCost(*y, currency)))
+		parts = append(parts, i18n.T(ctx, "org.flash.applications.budget_per_year", common.FormatCost(ctx, *y, currency)))
 	}
 	if len(parts) == 0 {
 		return i18n.T(ctx, "org.flash.applications.no_budget"), ""

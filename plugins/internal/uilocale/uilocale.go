@@ -1,10 +1,11 @@
 // Package uilocale renders a plugin UI in the language of the console page
 // that embeds it.
 //
-// The host reverse-proxies plugin UI requests with the browser's Cookie and
-// Accept-Language headers, so a plugin resolves the language exactly as the
-// host does: the locale cookie, then Accept-Language, then French. The host's
-// configured default language is not known to the plugin.
+// The host reverse-proxies plugin UI requests with the language it resolved
+// in the X-Xolo-Locale header (cookie, then Accept-Language, then its
+// configured default), and a plugin renders in it. Without the header, as
+// when the UI is reached outside the host, the plugin negotiates from the
+// forwarded Cookie and Accept-Language headers, then falls back to French.
 package uilocale
 
 import (
@@ -20,5 +21,13 @@ func Handler(h http.Handler) http.Handler {
 	if err != nil {
 		panic("load embedded locales: " + err.Error())
 	}
-	return locale.Middleware(bundle, i18n.Unlocalized)(h)
+	negotiated := locale.Middleware(bundle, i18n.Unlocalized)(h)
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		tag, ok := bundle.Lookup(r.Header.Get(locale.Header))
+		if !ok {
+			negotiated.ServeHTTP(w, r)
+			return
+		}
+		h.ServeHTTP(w, r.WithContext(bundle.WithLanguage(r.Context(), tag)))
+	})
 }

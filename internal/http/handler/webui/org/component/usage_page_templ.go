@@ -227,9 +227,9 @@ func OrgUsagePage(vmodel OrgUsagePageVModel) templ.Component {
 								return templ_7745c5c3_Err
 							}
 							var templ_7745c5c3_Var9 string
-							templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.usage.budget.consumed", common.FormatCost(spent, vmodel.Currency), common.FormatCost(*budget, vmodel.Currency)))
+							templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.usage.budget.consumed", common.FormatCost(ctx, spent, vmodel.Currency), common.FormatCost(ctx, *budget, vmodel.Currency)))
 							if templ_7745c5c3_Err != nil {
-								return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/usage_page.templ`, Line: 85, Col: 141}
+								return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/usage_page.templ`, Line: 85, Col: 151}
 							}
 							_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var9))
 							if templ_7745c5c3_Err != nil {
@@ -320,15 +320,15 @@ func OrgUsagePage(vmodel OrgUsagePageVModel) templ.Component {
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
-						templ_7745c5c3_Err = budgetPeriodCell(i18n.T(ctx, "org.usage.budget.today"), common.FormatCost(vmodel.DailyCost, vmodel.Currency)).Render(ctx, templ_7745c5c3_Buffer)
+						templ_7745c5c3_Err = budgetPeriodCell(i18n.T(ctx, "org.usage.budget.today"), common.FormatCost(ctx, vmodel.DailyCost, vmodel.Currency)).Render(ctx, templ_7745c5c3_Buffer)
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
-						templ_7745c5c3_Err = budgetPeriodCell(i18n.T(ctx, "org.usage.budget.this_month"), common.FormatCost(vmodel.MonthlyCost, vmodel.Currency)).Render(ctx, templ_7745c5c3_Buffer)
+						templ_7745c5c3_Err = budgetPeriodCell(i18n.T(ctx, "org.usage.budget.this_month"), common.FormatCost(ctx, vmodel.MonthlyCost, vmodel.Currency)).Render(ctx, templ_7745c5c3_Buffer)
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
-						templ_7745c5c3_Err = budgetPeriodCell(i18n.T(ctx, "org.usage.budget.this_year"), common.FormatCost(vmodel.YearlyCost, vmodel.Currency)).Render(ctx, templ_7745c5c3_Buffer)
+						templ_7745c5c3_Err = budgetPeriodCell(i18n.T(ctx, "org.usage.budget.this_year"), common.FormatCost(ctx, vmodel.YearlyCost, vmodel.Currency)).Render(ctx, templ_7745c5c3_Buffer)
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
@@ -385,7 +385,7 @@ func OrgUsagePage(vmodel OrgUsagePageVModel) templ.Component {
 				ctx = templ.InitializeContext(ctx)
 				templ_7745c5c3_Err = common.KPI(common.KPIProps{
 					Label: i18n.T(ctx, "org.usage.kpi.requests"),
-					Value: common.FormatCount(aggregateRequests(vmodel.Aggregate)),
+					Value: common.FormatCount(ctx, aggregateRequests(vmodel.Aggregate)),
 				}).Render(ctx, templ_7745c5c3_Buffer)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
@@ -396,7 +396,7 @@ func OrgUsagePage(vmodel OrgUsagePageVModel) templ.Component {
 				}
 				templ_7745c5c3_Err = common.KPI(common.KPIProps{
 					Label: i18n.T(ctx, "org.usage.kpi.tokens"),
-					Value: common.FormatCount(aggregateTokens(vmodel.Aggregate)),
+					Value: common.FormatCount(ctx, aggregateTokens(vmodel.Aggregate)),
 					Note:  cachedTokensNote(ctx, vmodel.Aggregate),
 				}).Render(ctx, templ_7745c5c3_Buffer)
 				if templ_7745c5c3_Err != nil {
@@ -408,7 +408,7 @@ func OrgUsagePage(vmodel OrgUsagePageVModel) templ.Component {
 				}
 				templ_7745c5c3_Err = common.KPI(common.KPIProps{
 					Label: i18n.T(ctx, "org.usage.kpi.total_cost"),
-					Value: totalCostValue(vmodel),
+					Value: totalCostValue(ctx, vmodel),
 					Note:  i18n.T(ctx, "org.usage.kpi.total_cost_note"),
 				}).Render(ctx, templ_7745c5c3_Buffer)
 				if templ_7745c5c3_Err != nil {
@@ -421,7 +421,7 @@ func OrgUsagePage(vmodel OrgUsagePageVModel) templ.Component {
 				if vmodel.TotalEnergyWh > 0 {
 					templ_7745c5c3_Err = common.KPI(common.KPIProps{
 						Label: i18n.T(ctx, "org.usage.kpi.energy"),
-						Value: common.FormatEnergyWh(vmodel.TotalEnergyWh),
+						Value: common.FormatEnergyWh(ctx, vmodel.TotalEnergyWh),
 						Note:  i18n.T(ctx, "org.usage.kpi.energy_note"),
 					}).Render(ctx, templ_7745c5c3_Buffer)
 					if templ_7745c5c3_Err != nil {
@@ -440,7 +440,7 @@ func OrgUsagePage(vmodel OrgUsagePageVModel) templ.Component {
 				if vmodel.TotalCO2GramsMid > 0 {
 					templ_7745c5c3_Err = common.KPI(common.KPIProps{
 						Label: i18n.T(ctx, "org.usage.kpi.co2"),
-						Value: common.FormatCO2Grams(vmodel.TotalCO2GramsMid),
+						Value: common.FormatCO2Grams(ctx, vmodel.TotalCO2GramsMid),
 						Note:  common.FormatCO2ToCarKilometers(ctx, vmodel.TotalCO2GramsMid),
 					}).Render(ctx, templ_7745c5c3_Buffer)
 					if templ_7745c5c3_Err != nil {
@@ -771,7 +771,7 @@ func OrgUsagePage(vmodel OrgUsagePageVModel) templ.Component {
 						for _, row := range common.RankedRows(vmodel.ChartPerUser) {
 							templ_7745c5c3_Err = common.RankedRow(row, common.RankedRowProps{
 								Initials: true,
-								Value:    common.FormatCost(int64(row.Value*1_000_000), vmodel.Currency),
+								Value:    common.FormatCost(ctx, int64(row.Value*1_000_000), vmodel.Currency),
 							}).Render(ctx, templ_7745c5c3_Buffer)
 							if templ_7745c5c3_Err != nil {
 								return templ_7745c5c3_Err
@@ -1628,9 +1628,9 @@ func OrgUsagePage(vmodel OrgUsagePageVModel) templ.Component {
 												return templ_7745c5c3_Err
 											}
 											var templ_7745c5c3_Var76 string
-											templ_7745c5c3_Var76, templ_7745c5c3_Err = templ.JoinStringErrs(common.FormatCost(dr.Record.Cost(), dr.Record.Currency()))
+											templ_7745c5c3_Var76, templ_7745c5c3_Err = templ.JoinStringErrs(common.FormatCost(ctx, dr.Record.Cost(), dr.Record.Currency()))
 											if templ_7745c5c3_Err != nil {
-												return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/usage_page.templ`, Line: 369, Col: 79}
+												return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/usage_page.templ`, Line: 369, Col: 84}
 											}
 											_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var76))
 											if templ_7745c5c3_Err != nil {
@@ -1641,9 +1641,9 @@ func OrgUsagePage(vmodel OrgUsagePageVModel) templ.Component {
 												return templ_7745c5c3_Err
 											}
 											var templ_7745c5c3_Var77 string
-											templ_7745c5c3_Var77, templ_7745c5c3_Err = templ.JoinStringErrs(common.FormatCost(dr.DisplayCost, dr.DisplayCurrency))
+											templ_7745c5c3_Var77, templ_7745c5c3_Err = templ.JoinStringErrs(common.FormatCost(ctx, dr.DisplayCost, dr.DisplayCurrency))
 											if templ_7745c5c3_Err != nil {
-												return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/usage_page.templ`, Line: 372, Col: 69}
+												return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/usage_page.templ`, Line: 372, Col: 74}
 											}
 											_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var77))
 											if templ_7745c5c3_Err != nil {
@@ -1655,9 +1655,9 @@ func OrgUsagePage(vmodel OrgUsagePageVModel) templ.Component {
 											}
 										} else {
 											var templ_7745c5c3_Var78 string
-											templ_7745c5c3_Var78, templ_7745c5c3_Err = templ.JoinStringErrs(common.FormatCost(dr.DisplayCost, dr.DisplayCurrency))
+											templ_7745c5c3_Var78, templ_7745c5c3_Err = templ.JoinStringErrs(common.FormatCost(ctx, dr.DisplayCost, dr.DisplayCurrency))
 											if templ_7745c5c3_Err != nil {
-												return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/usage_page.templ`, Line: 375, Col: 68}
+												return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/usage_page.templ`, Line: 375, Col: 73}
 											}
 											_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var78))
 											if templ_7745c5c3_Err != nil {
@@ -1727,9 +1727,9 @@ func OrgUsagePage(vmodel OrgUsagePageVModel) templ.Component {
 												return templ_7745c5c3_Err
 											}
 											var templ_7745c5c3_Var81 string
-											templ_7745c5c3_Var81, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.usage.records.energy_range", common.FormatEnergyWh(dr.EnergyLowWh), common.FormatEnergyWh(dr.EnergyHighWh), common.FormatCO2Grams(dr.CO2GramsMid)))
+											templ_7745c5c3_Var81, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.usage.records.energy_range", common.FormatEnergyWh(ctx, dr.EnergyLowWh), common.FormatEnergyWh(ctx, dr.EnergyHighWh), common.FormatCO2Grams(ctx, dr.CO2GramsMid)))
 											if templ_7745c5c3_Err != nil {
-												return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/usage_page.templ`, Line: 390, Col: 184}
+												return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/usage_page.templ`, Line: 390, Col: 199}
 											}
 											_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var81))
 											if templ_7745c5c3_Err != nil {
@@ -1740,9 +1740,9 @@ func OrgUsagePage(vmodel OrgUsagePageVModel) templ.Component {
 												return templ_7745c5c3_Err
 											}
 											var templ_7745c5c3_Var82 string
-											templ_7745c5c3_Var82, templ_7745c5c3_Err = templ.JoinStringErrs(common.FormatEnergyWh(dr.EnergyWh))
+											templ_7745c5c3_Var82, templ_7745c5c3_Err = templ.JoinStringErrs(common.FormatEnergyWh(ctx, dr.EnergyWh))
 											if templ_7745c5c3_Err != nil {
-												return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/usage_page.templ`, Line: 393, Col: 49}
+												return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/usage_page.templ`, Line: 393, Col: 54}
 											}
 											_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var82))
 											if templ_7745c5c3_Err != nil {
@@ -2735,9 +2735,9 @@ func budgetForecastCell(forecast int64, projectionPct int, periodLabel string, c
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var130 string
-		templ_7745c5c3_Var130, templ_7745c5c3_Err = templ.JoinStringErrs(common.FormatCost(forecast, currency))
+		templ_7745c5c3_Var130, templ_7745c5c3_Err = templ.JoinStringErrs(common.FormatCost(ctx, forecast, currency))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/usage_page.templ`, Line: 583, Col: 42}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/usage_page.templ`, Line: 583, Col: 47}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var130))
 		if templ_7745c5c3_Err != nil {

@@ -328,7 +328,7 @@ func NewHTTPServerFromConfig(ctx context.Context, conf *config.Config) (*http.Se
 		http.WithBaseURL(conf.HTTP.BaseURL),
 		// The language is resolved first so the tenant's error pages are
 		// rendered in it too.
-		http.WithMiddleware(localeMiddleware.Middleware(locales, defaultLocale)),
+		http.WithMiddleware(localeMiddleware.Middleware(locales, defaultLocale, "/assets/", "/api/", "/metrics/", "/auth/token/")),
 		http.WithMiddleware(tenantMiddleware),
 		http.WithRoute("POST /locale", localeMiddleware.Handler(locales, conf.HTTP.Session.Cookie.Secure)),
 		http.WithMount("/assets/", assets),

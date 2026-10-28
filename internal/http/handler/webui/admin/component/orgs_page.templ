@@ -178,13 +178,13 @@ templ orgsResults(vmodel OrgsPageVModel) {
 									@common.PendingValue(i18n.T(ctx, "admin.orgs.applications_pending"))
 								}
 								@table.Cell(table.CellProps{Class: "text-right text-sm font-semibold"}) {
-									{ common.FormatCostCompact(org.Cost, vmodel.Currency) }
+									{ common.FormatCostCompact(ctx, org.Cost, vmodel.Currency) }
 								}
 								@table.Cell(table.CellProps{Class: "text-right text-sm text-muted-foreground"}) {
-									{ common.FormatCount(org.Tokens) }
+									{ common.FormatCount(ctx, org.Tokens) }
 								}
 								@table.Cell(table.CellProps{Class: "text-right text-sm text-muted-foreground"}) {
-									{ common.FormatCount(org.Requests) }
+									{ common.FormatCount(ctx, org.Requests) }
 								}
 								@table.Cell() {
 									<!-- TODO(rework-ux): les quotas vivent dans le store

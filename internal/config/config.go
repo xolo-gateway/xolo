@@ -109,13 +109,6 @@ func nonEmptyTrimmed(values []string) []string {
 	return out
 }
 
-// secretKeyBytes is the key length AES-GCM is used with throughout the
-// codebase. Anything shorter silently downgrades the cipher; anything invalid
-// only surfaces at the first encryption, long after start-up.
-const secretKeyBytes = 32
-
-// validateSecretKey asserts the secret key decodes to exactly the key length
-// the AES-GCM helpers expect.
 // validateDefaultLocale refuses a language without a catalog, which would
 // otherwise only fail when the first page renders.
 func validateDefaultLocale(value string) error {
@@ -129,6 +122,13 @@ func validateDefaultLocale(value string) error {
 	return nil
 }
 
+// secretKeyBytes is the key length AES-GCM is used with throughout the
+// codebase. Anything shorter silently downgrades the cipher; anything invalid
+// only surfaces at the first encryption, long after start-up.
+const secretKeyBytes = 32
+
+// validateSecretKey asserts the secret key decodes to exactly the key length
+// the AES-GCM helpers expect.
 func validateSecretKey(secretKey string) error {
 	if secretKey == "" {
 		return errors.New("XOLO_SECRET_KEY is required but not set (must be a 32-byte hex string, e.g. generated with: openssl rand -hex 32)")

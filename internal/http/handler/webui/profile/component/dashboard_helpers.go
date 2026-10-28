@@ -43,19 +43,19 @@ func personalCachedTokensNote(ctx context.Context, agg *port.UsageAggregate) str
 	}
 
 	return i18n.T(ctx, "profile.dashboard.cached_tokens_note",
-		common.FormatCount(agg.CachedTokens),
+		common.FormatCount(ctx, agg.CachedTokens),
 		fmt.Sprintf("%.0f", float64(agg.CachedTokens)/float64(agg.PromptTokens)*100),
 	)
 }
 
 // personalTotalCostValue renders the total cost, or an em dash when nothing was
 // billed — a zero would read as a measured value rather than as an absence.
-func personalTotalCostValue(vmodel DashboardPageVModel) string {
+func personalTotalCostValue(ctx context.Context, vmodel DashboardPageVModel) string {
 	if vmodel.Aggregate == nil || vmodel.Aggregate.TotalCost == 0 {
 		return "—"
 	}
 
-	return common.FormatCostCompact(vmodel.Aggregate.TotalCost, vmodel.Aggregate.Currency)
+	return common.FormatCostCompact(ctx, vmodel.Aggregate.TotalCost, vmodel.Aggregate.Currency)
 }
 
 // personalRequests and personalTokens read the aggregate defensively: the KPI
@@ -153,11 +153,11 @@ func newPersonalOrgBudget(ou OrgUsage) personalOrgBudgetVModel {
 // SpentLabel words the right end of the line: consumed over ceiling, or the
 // consumption alone when the organisation set no ceiling.
 func (vm personalOrgBudgetVModel) SpentLabel(ctx context.Context) string {
-	spent := common.FormatCost(vm.Spent, vm.Currency)
+	spent := common.FormatCost(ctx, vm.Spent, vm.Currency)
 	if vm.Budget == nil {
 		return spent + " " + periodAdverb(ctx, vm.PeriodLabel)
 	}
-	return fmt.Sprintf("%s / %s %s", spent, common.FormatCost(*vm.Budget, vm.Currency), periodAdverb(ctx, vm.PeriodLabel))
+	return fmt.Sprintf("%s / %s %s", spent, common.FormatCost(ctx, *vm.Budget, vm.Currency), periodAdverb(ctx, vm.PeriodLabel))
 }
 
 // periodAdverb turns the adjective carried by the quota into the phrase the

@@ -11,6 +11,8 @@ import (
 	"github.com/pkg/errors"
 	"github.com/xolo-gateway/xolo/internal/core/port"
 	httpCtx "github.com/xolo-gateway/xolo/internal/http/context"
+	"github.com/xolo-gateway/xolo/internal/http/middleware/locale"
+	"github.com/xolo-gateway/xolo/internal/i18n"
 )
 
 // servePluginUI reverse-proxies requests to a plugin's embedded HTTP server.
@@ -23,6 +25,7 @@ import (
 //   - X-Xolo-User-Id       — the signed-in user, for plugins acting on their behalf
 //   - X-Xolo-Public-Base-URL — public URL of the tenant, to build absolute URLs
 //     (OAuth redirect URIs, links given to the user)
+//   - X-Xolo-Locale        — language of the console page, as resolved by the host
 //   - X-Xolo-Node-Id       — pipeline node instance ID (from the ?nodeId= query param), used
 //     by the plugin to scope GetSecret/SetSecret calls to this node placement
 //
@@ -89,6 +92,7 @@ func (h *Handler) servePluginUI(w http.ResponseWriter, r *http.Request) {
 			req.Header.Set("X-Xolo-User-Id", string(user.ID()))
 		}
 		req.Header.Set("X-Xolo-Public-Base-URL", strings.TrimSuffix(httpCtx.BaseURL(ctx).String(), "/"))
+		req.Header.Set(locale.Header, i18n.Language(ctx).String())
 		// Inject the node instance ID so the plugin can scope GetSecret/SetSecret calls.
 		if nodeID != "" {
 			req.Header.Set("X-Xolo-Node-Id", nodeID)

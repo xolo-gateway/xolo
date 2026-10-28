@@ -327,18 +327,18 @@ templ modelCard(mu ModelUsage) {
 						<div class="text-xs text-muted-foreground">{ i18n.T(ctx, "profile.models.stat.tokens_short") }</div>
 					</div>
 					<div class="text-right">
-						<div class="text-sm font-semibold">{ common.FormatCost(mu.Aggregate.TotalCost, mu.Aggregate.Currency) }</div>
+						<div class="text-sm font-semibold">{ common.FormatCost(ctx, mu.Aggregate.TotalCost, mu.Aggregate.Currency) }</div>
 						<div class="text-xs text-muted-foreground">{ i18n.T(ctx, "profile.models.stat.cost_short") }</div>
 					</div>
 				</div>
 			} else if !mu.Model.IsVirtual() {
 				<div class="flex gap-4 shrink-0 self-start">
 					<div class="text-right">
-						<div class="text-sm font-semibold">{ formatCostPerM(mu.Model.PromptCostPer1KTokens(), orgCurrency(mu.Org)) }</div>
+						<div class="text-sm font-semibold">{ formatCostPerM(ctx, mu.Model.PromptCostPer1KTokens(), orgCurrency(mu.Org)) }</div>
 						<div class="text-xs text-muted-foreground">{ i18n.T(ctx, "profile.models.stat.prompt_per_m") }</div>
 					</div>
 					<div class="text-right">
-						<div class="text-sm font-semibold">{ formatCostPerM(mu.Model.CompletionCostPer1KTokens(), orgCurrency(mu.Org)) }</div>
+						<div class="text-sm font-semibold">{ formatCostPerM(ctx, mu.Model.CompletionCostPer1KTokens(), orgCurrency(mu.Org)) }</div>
 						<div class="text-xs text-muted-foreground">{ i18n.T(ctx, "profile.models.stat.completion_per_m") }</div>
 					</div>
 				</div>
@@ -452,8 +452,8 @@ func undeterminedModelNames(modelUsages []ModelUsage) []string {
 	return names
 }
 
-func formatCostPerM(microcentsPer1K int64, currency string) string {
-	return common.FormatCost(microcentsPer1K*1000, currency)
+func formatCostPerM(ctx context.Context, microcentsPer1K int64, currency string) string {
+	return common.FormatCost(ctx, microcentsPer1K*1000, currency)
 }
 
 func orgCurrency(org model.Organization) string {
@@ -491,11 +491,11 @@ templ ModelsGrid(modelUsages []ModelUsage) {
 						<div class="grid grid-cols-2 gap-2 text-sm">
 							<div>
 								<span class="text-muted-foreground">{ i18n.T(ctx, "profile.models.grid.prompt") }</span>
-								<p class="font-medium">{ formatCostPerM(mu.Model.PromptCostPer1KTokens(), orgCurrency(mu.Org)) }</p>
+								<p class="font-medium">{ formatCostPerM(ctx, mu.Model.PromptCostPer1KTokens(), orgCurrency(mu.Org)) }</p>
 							</div>
 							<div>
 								<span class="text-muted-foreground">{ i18n.T(ctx, "profile.models.grid.completion") }</span>
-								<p class="font-medium">{ formatCostPerM(mu.Model.CompletionCostPer1KTokens(), orgCurrency(mu.Org)) }</p>
+								<p class="font-medium">{ formatCostPerM(ctx, mu.Model.CompletionCostPer1KTokens(), orgCurrency(mu.Org)) }</p>
 							</div>
 						</div>
 						if mu.Aggregate != nil && mu.Aggregate.TotalRequests > 0 {
@@ -510,7 +510,7 @@ templ ModelsGrid(modelUsages []ModelUsage) {
 								</div>
 								<div>
 									<span class="text-muted-foreground">{ i18n.T(ctx, "profile.models.grid.cost") }</span>
-									<p class="font-medium">{ common.FormatCost(mu.Aggregate.TotalCost, mu.Aggregate.Currency) }</p>
+									<p class="font-medium">{ common.FormatCost(ctx, mu.Aggregate.TotalCost, mu.Aggregate.Currency) }</p>
 								</div>
 							</div>
 						}

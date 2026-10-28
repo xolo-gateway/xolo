@@ -144,7 +144,7 @@ templ quotaUsageRow(label string, spent int64, budget int64, currency string) {
 		<div class="flex flex-wrap items-baseline gap-2 text-sm">
 			<span class="font-medium">{ label }</span>
 			<span class="tnum text-muted-foreground">
-				{ common.FormatCost(spent, currency) } / { common.FormatCost(budget, currency) }
+				{ common.FormatCost(ctx, spent, currency) } / { common.FormatCost(ctx, budget, currency) }
 			</span>
 			<span class="ml-auto">
 				@common.Badge(common.BudgetTone(pct), fmt.Sprintf("%d %%", pct))

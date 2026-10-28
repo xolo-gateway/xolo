@@ -911,9 +911,9 @@ func orgsResults(vmodel OrgsPageVModel) templ.Component {
 									}
 									ctx = templ.InitializeContext(ctx)
 									var templ_7745c5c3_Var48 string
-									templ_7745c5c3_Var48, templ_7745c5c3_Err = templ.JoinStringErrs(common.FormatCostCompact(org.Cost, vmodel.Currency))
+									templ_7745c5c3_Var48, templ_7745c5c3_Err = templ.JoinStringErrs(common.FormatCostCompact(ctx, org.Cost, vmodel.Currency))
 									if templ_7745c5c3_Err != nil {
-										return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/admin/component/orgs_page.templ`, Line: 181, Col: 62}
+										return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/admin/component/orgs_page.templ`, Line: 181, Col: 67}
 									}
 									_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var48))
 									if templ_7745c5c3_Err != nil {
@@ -942,9 +942,9 @@ func orgsResults(vmodel OrgsPageVModel) templ.Component {
 									}
 									ctx = templ.InitializeContext(ctx)
 									var templ_7745c5c3_Var50 string
-									templ_7745c5c3_Var50, templ_7745c5c3_Err = templ.JoinStringErrs(common.FormatCount(org.Tokens))
+									templ_7745c5c3_Var50, templ_7745c5c3_Err = templ.JoinStringErrs(common.FormatCount(ctx, org.Tokens))
 									if templ_7745c5c3_Err != nil {
-										return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/admin/component/orgs_page.templ`, Line: 184, Col: 41}
+										return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/admin/component/orgs_page.templ`, Line: 184, Col: 46}
 									}
 									_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var50))
 									if templ_7745c5c3_Err != nil {
@@ -973,9 +973,9 @@ func orgsResults(vmodel OrgsPageVModel) templ.Component {
 									}
 									ctx = templ.InitializeContext(ctx)
 									var templ_7745c5c3_Var52 string
-									templ_7745c5c3_Var52, templ_7745c5c3_Err = templ.JoinStringErrs(common.FormatCount(org.Requests))
+									templ_7745c5c3_Var52, templ_7745c5c3_Err = templ.JoinStringErrs(common.FormatCount(ctx, org.Requests))
 									if templ_7745c5c3_Err != nil {
-										return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/admin/component/orgs_page.templ`, Line: 187, Col: 43}
+										return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/admin/component/orgs_page.templ`, Line: 187, Col: 48}
 									}
 									_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var52))
 									if templ_7745c5c3_Err != nil {

@@ -316,18 +316,18 @@ func cachedTokensNote(ctx context.Context, agg *port.UsageAggregate) string {
 	}
 	// The share is rounded here so the printer does not localize the number.
 	return i18n.T(ctx, "org.dashboard.cached_tokens_note",
-		common.FormatCount(agg.CachedTokens),
+		common.FormatCount(ctx, agg.CachedTokens),
 		strconv.FormatFloat(float64(agg.CachedTokens)/float64(agg.PromptTokens)*100, 'f', 0, 64),
 	)
 }
 
 // totalCostValue renders the total cost, or an em dash when nothing was billed —
 // a zero would read as a measured value rather than as an absence.
-func totalCostValue(vmodel OrgUsagePageVModel) string {
+func totalCostValue(ctx context.Context, vmodel OrgUsagePageVModel) string {
 	if vmodel.Aggregate == nil || vmodel.Aggregate.TotalCost == 0 {
 		return "—"
 	}
-	return common.FormatCostCompact(vmodel.Aggregate.TotalCost, vmodel.Aggregate.Currency)
+	return common.FormatCostCompact(ctx, vmodel.Aggregate.TotalCost, vmodel.Aggregate.Currency)
 }
 
 // budgetRuleClass returns the coloured left rule of the budget banner, on the

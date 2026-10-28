@@ -26,14 +26,18 @@ templ page(pd uiPageData) {
 
 			if pd.Success {
 				@alert.Alert(alert.Props{Variant: alert.VariantDefault}) {
-					@alert.Description() { i18n.T(ctx, "plugin.dummy_model.saved") }
+					@alert.Description() {
+						{ i18n.T(ctx, "plugin.dummy_model.saved") }
+					}
 				}
 			}
 
 			<form method="POST" action="api/config" class="space-y-6">
 				@card.Card() {
 					@card.Header() {
-						@card.Title() { i18n.T(ctx, "plugin.dummy_model.response_template.title") }
+						@card.Title() {
+							{ i18n.T(ctx, "plugin.dummy_model.response_template.title") }
+						}
 					}
 					@card.Content() {
 						<div class="space-y-2">

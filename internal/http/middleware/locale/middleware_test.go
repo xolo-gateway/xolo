@@ -24,7 +24,7 @@ func bundle(t *testing.T) *i18n.Bundle {
 
 func TestMiddlewareResolvesCookieThenHeaderThenDefault(t *testing.T) {
 	var got language.Tag
-	handler := Middleware(bundle(t), language.French)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := Middleware(bundle(t), language.French, "/assets/", "/api/")(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		got = i18n.Language(r.Context())
 	}))
 	for _, tc := range []struct {
@@ -49,10 +49,14 @@ func TestMiddlewareResolvesCookieThenHeaderThenDefault(t *testing.T) {
 			t.Errorf("header=%q cookie=%q: language=%v headers=%v", tc.header, tc.cookie, got, rec.Header())
 		}
 	}
-	rec := httptest.NewRecorder()
-	handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/assets/app.css", nil))
-	if rec.Header().Get("Content-Language") != "" || len(rec.Header().Values("Vary")) != 0 {
-		t.Fatalf("assets headers=%v", rec.Header())
+	for _, path := range []string{"/assets/app.css", "/api/v1/models"} {
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		req.Header.Set("Accept-Language", "es")
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		if got != language.Spanish || rec.Header().Get("Content-Language") != "" || len(rec.Header().Values("Vary")) != 0 {
+			t.Errorf("%s: language=%v headers=%v", path, got, rec.Header())
+		}
 	}
 }
 
@@ -93,5 +97,14 @@ func TestHandlerStoresTheChoiceAndRedirectsLocally(t *testing.T) {
 	}
 	if rec := post(handler, "https://evil.example", url.Values{"locale": {"en"}}); rec.Code != http.StatusForbidden {
 		t.Fatalf("cross-origin status=%d", rec.Code)
+	}
+}
+
+func TestHandlerRedirectAnnouncesNoLanguage(t *testing.T) {
+	b := bundle(t)
+	handler := Middleware(b, language.French)(Handler(b, true))
+	rec := post(handler, "", url.Values{"locale": {"en"}, "return_to": {"/orgs"}})
+	if rec.Code != http.StatusSeeOther || rec.Header().Get("Content-Language") != "" || len(rec.Header().Values("Vary")) != 0 {
+		t.Fatalf("status=%d headers=%v", rec.Code, rec.Header())
 	}
 }

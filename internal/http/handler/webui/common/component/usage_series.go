@@ -244,7 +244,7 @@ func CostChartData(ctx context.Context, payg, covered []ChartDataPoint, currency
 // breakdown. A provider billed by subscription gets its equivalent PAYG value,
 // marked as such: it was not charged per request.
 func ProviderCostValue(ctx context.Context, value float64, currency string, covered bool) string {
-	formatted := FormatCost(int64(value*1_000_000), currency)
+	formatted := FormatCost(ctx, int64(value*1_000_000), currency)
 	if covered {
 		return i18n.T(ctx, "format.cost_plan_value", formatted)
 	}

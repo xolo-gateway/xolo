@@ -268,9 +268,9 @@ templ teamMembersSection(vmodel TeamPageVModel) {
 							}
 							@table.Cell() {
 								<span class="tnum text-sm">
-									{ common.FormatCost(row.MonthSpend, vmodel.Org.Currency()) }
+									{ common.FormatCost(ctx, row.MonthSpend, vmodel.Org.Currency()) }
 									if row.Budget != nil && row.Budget.MonthlyBudget() != nil {
-										{ " / " + common.FormatCost(*row.Budget.MonthlyBudget(), vmodel.Org.Currency()) }
+										{ " / " + common.FormatCost(ctx, *row.Budget.MonthlyBudget(), vmodel.Org.Currency()) }
 									}
 								</span>
 							}

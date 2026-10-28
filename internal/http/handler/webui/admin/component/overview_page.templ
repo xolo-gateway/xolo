@@ -40,16 +40,16 @@ templ overviewKPIs(vmodel OverviewPageVModel) {
 	@commonComp.KPIBand(commonComp.KPIBandProps{Class: "grid-cols-2 md:grid-cols-3 2xl:grid-cols-6"}) {
 		@commonComp.KPI(commonComp.KPIProps{
 			Label: i18n.T(ctx, "admin.overview.kpi.total_cost"),
-			Value: commonComp.FormatCostCompact(vmodel.TotalCost, vmodel.Currency),
+			Value: commonComp.FormatCostCompact(ctx, vmodel.TotalCost, vmodel.Currency),
 			Note:  i18n.T(ctx, "admin.overview.excludes_subscription"),
 		})
 		@commonComp.KPI(commonComp.KPIProps{
 			Label: i18n.T(ctx, "admin.overview.kpi.tokens"),
-			Value: commonComp.FormatCount(vmodel.TotalTokens),
+			Value: commonComp.FormatCount(ctx, vmodel.TotalTokens),
 		})
 		@commonComp.KPI(commonComp.KPIProps{
 			Label: i18n.T(ctx, "admin.overview.kpi.requests"),
-			Value: commonComp.FormatCount(vmodel.TotalRequests),
+			Value: commonComp.FormatCount(ctx, vmodel.TotalRequests),
 		})
 		<!-- TODO(rework-ux): le taux d'erreur, la latence p95 et l'empreinte
 		carbone au niveau plateforme demandent respectivement un compteur de
@@ -203,13 +203,13 @@ templ overviewOrgsTable(vmodel OverviewPageVModel) {
 								</div>
 							}
 							@table.Cell(table.CellProps{Class: "text-right text-sm font-medium"}) {
-								{ commonComp.FormatCostCompact(org.Cost, vmodel.Currency) }
+								{ commonComp.FormatCostCompact(ctx, org.Cost, vmodel.Currency) }
 							}
 							@table.Cell(table.CellProps{Class: "text-right text-sm text-muted-foreground"}) {
-								{ commonComp.FormatCount(org.Tokens) }
+								{ commonComp.FormatCount(ctx, org.Tokens) }
 							}
 							@table.Cell(table.CellProps{Class: "text-right text-sm text-muted-foreground"}) {
-								{ commonComp.FormatCount(org.Requests) }
+								{ commonComp.FormatCount(ctx, org.Requests) }
 							}
 							@table.Cell(table.CellProps{Class: "text-right"}) {
 								@button.Button(button.Props{

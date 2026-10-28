@@ -164,7 +164,7 @@ func overviewKPIs(vmodel OverviewPageVModel) templ.Component {
 			ctx = templ.InitializeContext(ctx)
 			templ_7745c5c3_Err = commonComp.KPI(commonComp.KPIProps{
 				Label: i18n.T(ctx, "admin.overview.kpi.total_cost"),
-				Value: commonComp.FormatCostCompact(vmodel.TotalCost, vmodel.Currency),
+				Value: commonComp.FormatCostCompact(ctx, vmodel.TotalCost, vmodel.Currency),
 				Note:  i18n.T(ctx, "admin.overview.excludes_subscription"),
 			}).Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
@@ -176,7 +176,7 @@ func overviewKPIs(vmodel OverviewPageVModel) templ.Component {
 			}
 			templ_7745c5c3_Err = commonComp.KPI(commonComp.KPIProps{
 				Label: i18n.T(ctx, "admin.overview.kpi.tokens"),
-				Value: commonComp.FormatCount(vmodel.TotalTokens),
+				Value: commonComp.FormatCount(ctx, vmodel.TotalTokens),
 			}).Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
@@ -187,7 +187,7 @@ func overviewKPIs(vmodel OverviewPageVModel) templ.Component {
 			}
 			templ_7745c5c3_Err = commonComp.KPI(commonComp.KPIProps{
 				Label: i18n.T(ctx, "admin.overview.kpi.requests"),
-				Value: commonComp.FormatCount(vmodel.TotalRequests),
+				Value: commonComp.FormatCount(ctx, vmodel.TotalRequests),
 			}).Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
@@ -1026,9 +1026,9 @@ func overviewOrgsTable(vmodel OverviewPageVModel) templ.Component {
 									}
 									ctx = templ.InitializeContext(ctx)
 									var templ_7745c5c3_Var50 string
-									templ_7745c5c3_Var50, templ_7745c5c3_Err = templ.JoinStringErrs(commonComp.FormatCostCompact(org.Cost, vmodel.Currency))
+									templ_7745c5c3_Var50, templ_7745c5c3_Err = templ.JoinStringErrs(commonComp.FormatCostCompact(ctx, org.Cost, vmodel.Currency))
 									if templ_7745c5c3_Err != nil {
-										return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/admin/component/overview_page.templ`, Line: 206, Col: 65}
+										return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/admin/component/overview_page.templ`, Line: 206, Col: 70}
 									}
 									_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var50))
 									if templ_7745c5c3_Err != nil {
@@ -1057,9 +1057,9 @@ func overviewOrgsTable(vmodel OverviewPageVModel) templ.Component {
 									}
 									ctx = templ.InitializeContext(ctx)
 									var templ_7745c5c3_Var52 string
-									templ_7745c5c3_Var52, templ_7745c5c3_Err = templ.JoinStringErrs(commonComp.FormatCount(org.Tokens))
+									templ_7745c5c3_Var52, templ_7745c5c3_Err = templ.JoinStringErrs(commonComp.FormatCount(ctx, org.Tokens))
 									if templ_7745c5c3_Err != nil {
-										return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/admin/component/overview_page.templ`, Line: 209, Col: 44}
+										return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/admin/component/overview_page.templ`, Line: 209, Col: 49}
 									}
 									_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var52))
 									if templ_7745c5c3_Err != nil {
@@ -1088,9 +1088,9 @@ func overviewOrgsTable(vmodel OverviewPageVModel) templ.Component {
 									}
 									ctx = templ.InitializeContext(ctx)
 									var templ_7745c5c3_Var54 string
-									templ_7745c5c3_Var54, templ_7745c5c3_Err = templ.JoinStringErrs(commonComp.FormatCount(org.Requests))
+									templ_7745c5c3_Var54, templ_7745c5c3_Err = templ.JoinStringErrs(commonComp.FormatCount(ctx, org.Requests))
 									if templ_7745c5c3_Err != nil {
-										return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/admin/component/overview_page.templ`, Line: 212, Col: 46}
+										return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/admin/component/overview_page.templ`, Line: 212, Col: 51}
 									}
 									_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var54))
 									if templ_7745c5c3_Err != nil {

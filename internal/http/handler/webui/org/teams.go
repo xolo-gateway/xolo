@@ -998,8 +998,8 @@ var cascadeScopeLabels = map[model.QuotaScope]string{
 // cascadeViolationMessage explains a broken cascade in the words of the
 // budget pages.
 func cascadeViolationMessage(ctx context.Context, v *service.CascadeViolation, currency string) string {
-	limit := common.FormatCost(v.Limit, currency)
-	got := common.FormatCost(v.Got, currency)
+	limit := common.FormatCost(ctx, v.Limit, currency)
+	got := common.FormatCost(ctx, v.Got, currency)
 	parent := i18n.T(ctx, cascadeScopeLabels[v.Parent])
 	if v.Mode == model.QuotaCascadeSplit {
 		return i18n.T(ctx, "org.errors.teams.cascade_split", i18n.T(ctx, cascadePeriodPluralLabels[v.Period]), parent, got, limit)

@@ -9,6 +9,8 @@ import (
 	"strings"
 
 	httpCtx "github.com/xolo-gateway/xolo/internal/http/context"
+	"github.com/xolo-gateway/xolo/internal/http/middleware/locale"
+	"github.com/xolo-gateway/xolo/internal/i18n"
 )
 
 // servePersonalPluginUI reverse-proxies plugin UI requests in the personal (no-org) context.
@@ -63,6 +65,7 @@ func (h *Handler) servePersonalPluginUI(w http.ResponseWriter, r *http.Request) 
 			req.Header.Set("X-Xolo-User-Id", string(user.ID()))
 		}
 		req.Header.Set("X-Xolo-Public-Base-URL", strings.TrimSuffix(httpCtx.BaseURL(ctx).String(), "/"))
+		req.Header.Set(locale.Header, i18n.Language(ctx).String())
 		if nodeID != "" {
 			req.Header.Set("X-Xolo-Node-Id", nodeID)
 		}

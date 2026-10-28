@@ -7,6 +7,8 @@ import (
 	"github.com/xolo-gateway/xolo/internal/core/model"
 	"github.com/xolo-gateway/xolo/internal/core/port"
 	httpCtx "github.com/xolo-gateway/xolo/internal/http/context"
+	"github.com/xolo-gateway/xolo/internal/i18n"
+	"golang.org/x/text/language"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -47,6 +49,8 @@ func TestPluginUITrustedContext(t *testing.T) {
 	require.NoError(t, err)
 	portNum, err := strconv.Atoi(portString)
 	require.NoError(t, err)
+	locales, err := i18n.Load()
+	require.NoError(t, err)
 	tenant := model.NewTenant("tenant", "Tenant", "")
 	user := model.NewUser(tenant.ID(), "test", "user", "u@test", "User", true, "admin")
 	organization := model.NewOrganization(tenant.ID(), "org", "Org", "")
@@ -57,12 +61,13 @@ func TestPluginUITrustedContext(t *testing.T) {
 			req.SetPathValue("pluginName", "pseudonymizer")
 			req.SetPathValue("orgSlug", "org")
 			req.SetPathValue("uiPath", "config")
-			for _, key := range []string{"X-Xolo-Org-Id", "X-Xolo-Secret-Scope-Id", "X-Xolo-User-Id", "X-Xolo-Node-Id", "X-Xolo-Plugin-Base-Path", "X-Xolo-Public-Base-URL", "X-Xolo-Untrusted"} {
+			for _, key := range []string{"X-Xolo-Org-Id", "X-Xolo-Secret-Scope-Id", "X-Xolo-User-Id", "X-Xolo-Node-Id", "X-Xolo-Plugin-Base-Path", "X-Xolo-Public-Base-URL", "X-Xolo-Locale", "X-Xolo-Untrusted"} {
 				req.Header.Set(key, "forged")
 			}
 			// Rewrite must also survive malicious hop-by-hop header names.
 			req.Header.Set("Connection", "X-Xolo-Secret-Scope-Id, X-Xolo-Node-Id")
 			ctx := httpCtx.SetBaseURL(httpCtx.SetUser(httpCtx.SetTenant(req.Context(), tenant), user), "https://tenant.example.test")
+			ctx = locales.WithLanguage(ctx, language.Spanish)
 			rec := httptest.NewRecorder()
 			h.servePluginUI(rec, req.WithContext(ctx))
 			require.Equal(t, http.StatusOK, rec.Code)
@@ -73,6 +78,7 @@ func TestPluginUITrustedContext(t *testing.T) {
 			require.Equal(t, string(user.ID()), headers.Get("X-Xolo-User-Id"))
 			require.Equal(t, node, headers.Get("X-Xolo-Node-Id"))
 			require.Equal(t, "https://tenant.example.test", headers.Get("X-Xolo-Public-Base-URL"))
+			require.Equal(t, "es", headers.Get("X-Xolo-Locale"))
 			require.NotEqual(t, "forged", headers.Get("X-Xolo-Plugin-Base-Path"))
 			require.Empty(t, headers.Get("X-Xolo-Untrusted"))
 		})

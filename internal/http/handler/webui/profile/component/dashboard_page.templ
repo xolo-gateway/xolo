@@ -146,21 +146,21 @@ templ DashboardPage(vmodel DashboardPageVModel) {
 			@common.KPIBand(common.KPIBandProps{Class: "grid-cols-2 md:grid-cols-3 2xl:grid-cols-5"}) {
 				@common.KPI(common.KPIProps{
 					Label: i18n.T(ctx, "profile.dashboard.kpi.requests"),
-					Value: common.FormatCount(personalRequests(vmodel.Aggregate)),
+					Value: common.FormatCount(ctx, personalRequests(vmodel.Aggregate)),
 				})
 				@common.KPI(common.KPIProps{
 					Label: i18n.T(ctx, "profile.dashboard.kpi.tokens"),
-					Value: common.FormatCount(personalTokens(vmodel.Aggregate)),
+					Value: common.FormatCount(ctx, personalTokens(vmodel.Aggregate)),
 					Note:  personalCachedTokensNote(ctx, vmodel.Aggregate),
 				})
 				@common.KPI(common.KPIProps{
 					Label: i18n.T(ctx, "profile.dashboard.kpi.total_cost"),
-					Value: personalTotalCostValue(vmodel),
+					Value: personalTotalCostValue(ctx, vmodel),
 				})
 				if vmodel.TotalEnergyWh > 0 {
 					@common.KPI(common.KPIProps{
 						Label: i18n.T(ctx, "profile.dashboard.kpi.energy"),
-						Value: common.FormatEnergyWh(vmodel.TotalEnergyWh),
+						Value: common.FormatEnergyWh(ctx, vmodel.TotalEnergyWh),
 						Note:  common.FormatEnergyToHuman(vmodel.TotalEnergyWh),
 					})
 				} else {
@@ -169,7 +169,7 @@ templ DashboardPage(vmodel DashboardPageVModel) {
 				if vmodel.TotalCO2GramsMid > 0 {
 					@common.KPI(common.KPIProps{
 						Label: i18n.T(ctx, "profile.dashboard.kpi.co2"),
-						Value: common.FormatCO2Grams(vmodel.TotalCO2GramsMid),
+						Value: common.FormatCO2Grams(ctx, vmodel.TotalCO2GramsMid),
 						Note:  common.FormatCO2ToCarKilometers(ctx, vmodel.TotalCO2GramsMid),
 					})
 				} else {
@@ -319,13 +319,13 @@ templ DashboardPage(vmodel DashboardPageVModel) {
 											<div class="flex items-center gap-1.5">
 												if dr.Converted {
 													<span
-														title={ common.FormatCost(dr.Record.Cost(), dr.Record.Currency()) }
+														title={ common.FormatCost(ctx, dr.Record.Cost(), dr.Record.Currency()) }
 														class="cursor-help underline decoration-dotted"
 													>
-														{ common.FormatCost(dr.DisplayCost, dr.DisplayCurrency) }
+														{ common.FormatCost(ctx, dr.DisplayCost, dr.DisplayCurrency) }
 													</span>
 												} else {
-													{ common.FormatCost(dr.DisplayCost, dr.DisplayCurrency) }
+													{ common.FormatCost(ctx, dr.DisplayCost, dr.DisplayCurrency) }
 												}
 												if dr.Record.PlanCovered() {
 													<span
@@ -340,10 +340,10 @@ templ DashboardPage(vmodel DashboardPageVModel) {
 										@table.Cell() {
 											if dr.EnergyWh > 0 {
 												<span
-													title={ i18n.T(ctx, "profile.dashboard.records.energy_range", common.FormatEnergyWh(dr.EnergyLowWh), common.FormatEnergyWh(dr.EnergyHighWh)) }
+													title={ i18n.T(ctx, "profile.dashboard.records.energy_range", common.FormatEnergyWh(ctx, dr.EnergyLowWh), common.FormatEnergyWh(ctx, dr.EnergyHighWh)) }
 													class="cursor-help underline decoration-dotted"
 												>
-													{ common.FormatEnergyWh(dr.EnergyWh) }
+													{ common.FormatEnergyWh(ctx, dr.EnergyWh) }
 												</span>
 											} else {
 												—
@@ -352,10 +352,10 @@ templ DashboardPage(vmodel DashboardPageVModel) {
 										@table.Cell() {
 											if dr.CO2GramsMid > 0 {
 												<span
-													title={ i18n.T(ctx, "profile.dashboard.records.co2_range", common.FormatCO2Grams(dr.CO2GramsMin), common.FormatCO2Grams(dr.CO2GramsMid), common.FormatCO2Grams(dr.CO2GramsMax)) }
+													title={ i18n.T(ctx, "profile.dashboard.records.co2_range", common.FormatCO2Grams(ctx, dr.CO2GramsMin), common.FormatCO2Grams(ctx, dr.CO2GramsMid), common.FormatCO2Grams(ctx, dr.CO2GramsMax)) }
 													class="cursor-help underline decoration-dotted text-muted-foreground"
 												>
-													{ common.FormatCO2Grams(dr.CO2GramsMid) }
+													{ common.FormatCO2Grams(ctx, dr.CO2GramsMid) }
 												</span>
 											} else {
 												—

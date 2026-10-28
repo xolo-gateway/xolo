@@ -82,7 +82,7 @@ templ OrgUsagePage(vmodel OrgUsagePageVModel) {
 									if budget != nil {
 										@common.Badge(common.BudgetTone(pct), fmt.Sprintf("%d %%", pct))
 										<span class="text-xs text-muted-foreground">
-											{ i18n.T(ctx, "org.usage.budget.consumed", common.FormatCost(spent, vmodel.Currency), common.FormatCost(*budget, vmodel.Currency)) }
+											{ i18n.T(ctx, "org.usage.budget.consumed", common.FormatCost(ctx, spent, vmodel.Currency), common.FormatCost(ctx, *budget, vmodel.Currency)) }
 										</span>
 									} else {
 										@common.Badge(common.ToneNeutral, i18n.T(ctx, "org.usage.budget.unlimited"))
@@ -107,9 +107,9 @@ templ OrgUsagePage(vmodel OrgUsagePageVModel) {
 								@common.BudgetGauge(pct, projectionPct, "")
 							}
 							<div class="grid grid-cols-2 gap-3.5 sm:grid-cols-4">
-								@budgetPeriodCell(i18n.T(ctx, "org.usage.budget.today"), common.FormatCost(vmodel.DailyCost, vmodel.Currency))
-								@budgetPeriodCell(i18n.T(ctx, "org.usage.budget.this_month"), common.FormatCost(vmodel.MonthlyCost, vmodel.Currency))
-								@budgetPeriodCell(i18n.T(ctx, "org.usage.budget.this_year"), common.FormatCost(vmodel.YearlyCost, vmodel.Currency))
+								@budgetPeriodCell(i18n.T(ctx, "org.usage.budget.today"), common.FormatCost(ctx, vmodel.DailyCost, vmodel.Currency))
+								@budgetPeriodCell(i18n.T(ctx, "org.usage.budget.this_month"), common.FormatCost(ctx, vmodel.MonthlyCost, vmodel.Currency))
+								@budgetPeriodCell(i18n.T(ctx, "org.usage.budget.this_year"), common.FormatCost(ctx, vmodel.YearlyCost, vmodel.Currency))
 								@budgetForecastCell(forecast, projectionPct, periodLabel, vmodel.Currency)
 							</div>
 						}
@@ -125,16 +125,16 @@ templ OrgUsagePage(vmodel OrgUsagePageVModel) {
 			@common.KPIBand(common.KPIBandProps{Class: "grid-cols-2 md:grid-cols-3 2xl:grid-cols-5"}) {
 				@common.KPI(common.KPIProps{
 					Label: i18n.T(ctx, "org.usage.kpi.requests"),
-					Value: common.FormatCount(aggregateRequests(vmodel.Aggregate)),
+					Value: common.FormatCount(ctx, aggregateRequests(vmodel.Aggregate)),
 				})
 				@common.KPI(common.KPIProps{
 					Label: i18n.T(ctx, "org.usage.kpi.tokens"),
-					Value: common.FormatCount(aggregateTokens(vmodel.Aggregate)),
+					Value: common.FormatCount(ctx, aggregateTokens(vmodel.Aggregate)),
 					Note:  cachedTokensNote(ctx, vmodel.Aggregate),
 				})
 				@common.KPI(common.KPIProps{
 					Label: i18n.T(ctx, "org.usage.kpi.total_cost"),
-					Value: totalCostValue(vmodel),
+					Value: totalCostValue(ctx, vmodel),
 					Note:  i18n.T(ctx, "org.usage.kpi.total_cost_note"),
 				})
 				<!-- Les deux estimations énergétiques gardent leur cellule même
@@ -144,7 +144,7 @@ templ OrgUsagePage(vmodel OrgUsagePageVModel) {
 				if vmodel.TotalEnergyWh > 0 {
 					@common.KPI(common.KPIProps{
 						Label: i18n.T(ctx, "org.usage.kpi.energy"),
-						Value: common.FormatEnergyWh(vmodel.TotalEnergyWh),
+						Value: common.FormatEnergyWh(ctx, vmodel.TotalEnergyWh),
 						Note:  i18n.T(ctx, "org.usage.kpi.energy_note"),
 					})
 				} else {
@@ -153,7 +153,7 @@ templ OrgUsagePage(vmodel OrgUsagePageVModel) {
 				if vmodel.TotalCO2GramsMid > 0 {
 					@common.KPI(common.KPIProps{
 						Label: i18n.T(ctx, "org.usage.kpi.co2"),
-						Value: common.FormatCO2Grams(vmodel.TotalCO2GramsMid),
+						Value: common.FormatCO2Grams(ctx, vmodel.TotalCO2GramsMid),
 						Note:  common.FormatCO2ToCarKilometers(ctx, vmodel.TotalCO2GramsMid),
 					})
 				} else {
@@ -226,7 +226,7 @@ templ OrgUsagePage(vmodel OrgUsagePageVModel) {
 							for _, row := range common.RankedRows(vmodel.ChartPerUser) {
 								@common.RankedRow(row, common.RankedRowProps{
 									Initials: true,
-									Value:    common.FormatCost(int64(row.Value*1_000_000), vmodel.Currency),
+									Value:    common.FormatCost(ctx, int64(row.Value*1_000_000), vmodel.Currency),
 								})
 							}
 						}
@@ -366,13 +366,13 @@ templ OrgUsagePage(vmodel OrgUsagePageVModel) {
 											<span class="inline-flex items-center gap-1.5">
 												if dr.Converted {
 													<span
-														title={ common.FormatCost(dr.Record.Cost(), dr.Record.Currency()) }
+														title={ common.FormatCost(ctx, dr.Record.Cost(), dr.Record.Currency()) }
 														class="cursor-help underline decoration-dotted"
 													>
-														{ common.FormatCost(dr.DisplayCost, dr.DisplayCurrency) }
+														{ common.FormatCost(ctx, dr.DisplayCost, dr.DisplayCurrency) }
 													</span>
 												} else {
-													{ common.FormatCost(dr.DisplayCost, dr.DisplayCurrency) }
+													{ common.FormatCost(ctx, dr.DisplayCost, dr.DisplayCurrency) }
 												}
 												if dr.Record.PlanCovered() {
 													<span
@@ -387,10 +387,10 @@ templ OrgUsagePage(vmodel OrgUsagePageVModel) {
 										@table.Cell(table.CellProps{Class: "text-right tnum text-muted-foreground"}) {
 											if dr.EnergyWh > 0 {
 												<span
-													title={ i18n.T(ctx, "org.usage.records.energy_range", common.FormatEnergyWh(dr.EnergyLowWh), common.FormatEnergyWh(dr.EnergyHighWh), common.FormatCO2Grams(dr.CO2GramsMid)) }
+													title={ i18n.T(ctx, "org.usage.records.energy_range", common.FormatEnergyWh(ctx, dr.EnergyLowWh), common.FormatEnergyWh(ctx, dr.EnergyHighWh), common.FormatCO2Grams(ctx, dr.CO2GramsMid)) }
 													class="cursor-help underline decoration-dotted"
 												>
-													{ common.FormatEnergyWh(dr.EnergyWh) }
+													{ common.FormatEnergyWh(ctx, dr.EnergyWh) }
 												</span>
 											} else {
 												—
@@ -580,7 +580,7 @@ templ budgetForecastCell(forecast int64, projectionPct int, periodLabel string, 
 			{ forecastLabel(ctx, periodLabel) }
 		</div>
 		<div class={ "mt-0.5 tnum text-sm font-semibold", common.BudgetTone(projectionPct).TextClass() }>
-			{ common.FormatCost(forecast, currency) }
+			{ common.FormatCost(ctx, forecast, currency) }
 		</div>
 	</div>
 }

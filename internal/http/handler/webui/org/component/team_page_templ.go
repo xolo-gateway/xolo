@@ -1576,9 +1576,9 @@ func teamMembersSection(vmodel TeamPageVModel) templ.Component {
 										return templ_7745c5c3_Err
 									}
 									var templ_7745c5c3_Var78 string
-									templ_7745c5c3_Var78, templ_7745c5c3_Err = templ.JoinStringErrs(common.FormatCost(row.MonthSpend, vmodel.Org.Currency()))
+									templ_7745c5c3_Var78, templ_7745c5c3_Err = templ.JoinStringErrs(common.FormatCost(ctx, row.MonthSpend, vmodel.Org.Currency()))
 									if templ_7745c5c3_Err != nil {
-										return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/team_page.templ`, Line: 271, Col: 67}
+										return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/team_page.templ`, Line: 271, Col: 72}
 									}
 									_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var78))
 									if templ_7745c5c3_Err != nil {
@@ -1590,9 +1590,9 @@ func teamMembersSection(vmodel TeamPageVModel) templ.Component {
 									}
 									if row.Budget != nil && row.Budget.MonthlyBudget() != nil {
 										var templ_7745c5c3_Var79 string
-										templ_7745c5c3_Var79, templ_7745c5c3_Err = templ.JoinStringErrs(" / " + common.FormatCost(*row.Budget.MonthlyBudget(), vmodel.Org.Currency()))
+										templ_7745c5c3_Var79, templ_7745c5c3_Err = templ.JoinStringErrs(" / " + common.FormatCost(ctx, *row.Budget.MonthlyBudget(), vmodel.Org.Currency()))
 										if templ_7745c5c3_Err != nil {
-											return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/team_page.templ`, Line: 273, Col: 89}
+											return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/team_page.templ`, Line: 273, Col: 94}
 										}
 										_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var79))
 										if templ_7745c5c3_Err != nil {
