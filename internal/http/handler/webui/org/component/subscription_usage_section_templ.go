@@ -701,7 +701,7 @@ func subscriptionGaugeLine(g subscriptionConstraintGroup, r subscriptionGaugeRow
 				}
 			}
 		}
-		if r.OtherKind != gaugeNone {
+		if r.OtherKind != gaugeNone && r.OtherMode != r.Mode {
 			templ_7745c5c3_Err = fairShareBadge(r.Mode, subscriptionGaugeKindLabel(ctx, r.Kind)).Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
@@ -735,7 +735,7 @@ func subscriptionGaugeLine(g subscriptionConstraintGroup, r subscriptionGaugeRow
 			var templ_7745c5c3_Var33 string
 			templ_7745c5c3_Var33, templ_7745c5c3_Err = templ.JoinStringErrs(part)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/subscription_usage_section.templ`, Line: 166, Col: 16}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/subscription_usage_section.templ`, Line: 167, Col: 16}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var33))
 			if templ_7745c5c3_Err != nil {
@@ -789,7 +789,7 @@ func subscriptionGaugeLine(g subscriptionConstraintGroup, r subscriptionGaugeRow
 					var templ_7745c5c3_Var36 string
 					templ_7745c5c3_Var36, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.subscription.share_basis_short", strconv.Itoa(cu.ActiveUsers), strconv.Itoa(cu.MemberCount)))
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/subscription_usage_section.templ`, Line: 179, Col: 118}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/subscription_usage_section.templ`, Line: 180, Col: 118}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var36))
 					if templ_7745c5c3_Err != nil {
@@ -824,7 +824,7 @@ func subscriptionGaugeLine(g subscriptionConstraintGroup, r subscriptionGaugeRow
 					var templ_7745c5c3_Var38 string
 					templ_7745c5c3_Var38, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.subscription.share_basis", strconv.Itoa(cu.ActiveUsers), strconv.Itoa(cu.MemberCount)))
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/subscription_usage_section.templ`, Line: 183, Col: 111}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/subscription_usage_section.templ`, Line: 184, Col: 111}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var38))
 					if templ_7745c5c3_Err != nil {
@@ -944,7 +944,7 @@ func fairShareBadge(mode model.FairShareMode, budget string) templ.Component {
 						var templ_7745c5c3_Var43 string
 						templ_7745c5c3_Var43, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.subscription.share_note_of", budget, fairShareNote(ctx, mode)))
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/subscription_usage_section.templ`, Line: 210, Col: 86}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/subscription_usage_section.templ`, Line: 211, Col: 86}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var43))
 						if templ_7745c5c3_Err != nil {
@@ -954,7 +954,7 @@ func fairShareBadge(mode model.FairShareMode, budget string) templ.Component {
 						var templ_7745c5c3_Var44 string
 						templ_7745c5c3_Var44, templ_7745c5c3_Err = templ.JoinStringErrs(fairShareNote(ctx, mode))
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/subscription_usage_section.templ`, Line: 212, Col: 31}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/subscription_usage_section.templ`, Line: 213, Col: 31}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var44))
 						if templ_7745c5c3_Err != nil {

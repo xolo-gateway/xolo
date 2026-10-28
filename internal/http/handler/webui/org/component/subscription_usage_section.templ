@@ -151,8 +151,9 @@ templ subscriptionGaugeLine(g subscriptionConstraintGroup, r subscriptionGaugeRo
 					@common.Badge(common.ToneWarning, i18n.T(ctx, "org.subscription.exhausted_upstream"))
 				}
 			}
-			// On a line showing two budgets, each tooltip names the budget it is for.
-			if r.OtherKind != gaugeNone {
+			// On a line showing two budgets under different regimes, each tooltip
+			// names the budget it is for; a regime shared by both is said once.
+			if r.OtherKind != gaugeNone && r.OtherMode != r.Mode {
 				@fairShareBadge(r.Mode, subscriptionGaugeKindLabel(ctx, r.Kind))
 				@fairShareBadge(r.OtherMode, subscriptionGaugeKindLabel(ctx, r.OtherKind))
 			} else {

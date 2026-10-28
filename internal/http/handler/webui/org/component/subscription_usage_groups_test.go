@@ -128,6 +128,13 @@ func TestGroupSubscriptionConstraints_MixedKindsAreSaidPerRow(t *testing.T) {
 	if got := strings.Join(rowModels(groups[0].Rows), ","); got != "metered,free" {
 		t.Errorf("rows = %s, want the row without a bar last", got)
 	}
+
+	light := perModelUsage("5h", 0, "light", 10)
+	light.Constraint.TokenBudget = nil
+	groups = groupSubscriptionConstraints([]SubscriptionConstraintUsage{light, free})
+	if got := strings.Join(rowModels(groups[0].Rows), ","); got != "free,light" {
+		t.Errorf("rows = %s, want rows without a bar ranked by tokens consumed", got)
+	}
 }
 
 func TestSubscriptionUsageSection_SaysTheSharedInformationOnce(t *testing.T) {
@@ -219,5 +226,28 @@ func TestSubscriptionUsageSection_AttributesTheFairShareNoteOnATwoBudgetLine(t *
 	}
 	if html := stdhtml.UnescapeString(out.String()); !strings.Contains(html, "Valeur : ") {
 		t.Error("the fair-share note should name the budget it applies to when the line shows two")
+	}
+}
+
+func TestSubscriptionUsageSection_SaysARegimeSharedByBothBudgetsOnce(t *testing.T) {
+	cu := perModelUsage("5h", 1000, "m", 100)
+	value := int64(1000)
+	cu.Constraint.ValueBudget = &value
+	cu.ValueUsed = 600
+	cu.TokenMode = model.FairShareModeThrottled
+	cu.ValueMode = model.FairShareModeThrottled
+
+	provider := model.NewProvider("org-1", "Acme", "openai", "", "", "EUR")
+	var out strings.Builder
+	err := SubscriptionUsageSection([]SubscriptionProviderUsage{{Provider: provider, Constraints: []SubscriptionConstraintUsage{cu}}}).Render(context.Background(), &out)
+	if err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	html := stdhtml.UnescapeString(out.String())
+	if n := strings.Count(html, "Part réduite"); n != 1 {
+		t.Errorf("badge rendered %d times, want once for a regime both budgets share", n)
+	}
+	if strings.Contains(html, "Valeur : ") || strings.Contains(html, "Tokens : ") {
+		t.Error("a regime shared by both budgets should not be attributed to one of them")
 	}
 }

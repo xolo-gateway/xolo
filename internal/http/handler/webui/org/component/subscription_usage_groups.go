@@ -39,8 +39,8 @@ type subscriptionGaugeRow struct {
 	// OtherKind is the second budget, shown as text rather than as a second bar.
 	OtherKind subscriptionGaugeKind
 	OtherPct  int
-	// OtherMode is the regime of the second budget, set only when it differs
-	// from Mode: the same regime on both budgets is said by a single badge.
+	// OtherMode is the regime of the second budget. When it equals Mode, the
+	// regime holds for both budgets and is said by a single badge.
 	OtherMode model.FairShareMode
 }
 
@@ -148,10 +148,7 @@ func newSubscriptionGaugeRow(cu SubscriptionConstraintUsage) subscriptionGaugeRo
 			bar, other = value, tokens
 		}
 		row.Kind, row.Pct, row.Mode = bar.Kind, bar.Pct, bar.Mode
-		row.OtherKind, row.OtherPct = other.Kind, other.Pct
-		if other.Mode != bar.Mode {
-			row.OtherMode = other.Mode
-		}
+		row.OtherKind, row.OtherPct, row.OtherMode = other.Kind, other.Pct, other.Mode
 	case hasTokens:
 		row.Kind, row.Pct, row.Mode = tokens.Kind, tokens.Pct, tokens.Mode
 	case hasValue:
@@ -177,6 +174,10 @@ func (g *subscriptionConstraintGroup) finish() {
 				return 1
 			}
 			return -1
+		}
+		if a.Kind == gaugeNone {
+			// Without a percentage, the most consumed model comes first.
+			return cmp.Compare(b.Usage.TokensUsed, a.Usage.TokensUsed)
 		}
 		return cmp.Compare(b.Pct, a.Pct)
 	})
