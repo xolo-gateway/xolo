@@ -701,7 +701,7 @@ func subscriptionGaugeLine(g subscriptionConstraintGroup, r subscriptionGaugeRow
 				}
 			}
 		}
-		if notableFairShare(r.OtherMode) {
+		if r.OtherKind != gaugeNone {
 			templ_7745c5c3_Err = fairShareBadge(r.Mode, subscriptionGaugeKindLabel(ctx, r.Kind)).Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
@@ -942,9 +942,9 @@ func fairShareBadge(mode model.FairShareMode, budget string) templ.Component {
 					ctx = templ.InitializeContext(ctx)
 					if budget != "" {
 						var templ_7745c5c3_Var43 string
-						templ_7745c5c3_Var43, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.subscription.other_gauge", budget, fairShareNote(ctx, mode)))
+						templ_7745c5c3_Var43, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.subscription.share_note_of", budget, fairShareNote(ctx, mode)))
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/subscription_usage_section.templ`, Line: 210, Col: 84}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/subscription_usage_section.templ`, Line: 210, Col: 86}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var43))
 						if templ_7745c5c3_Err != nil {

@@ -617,6 +617,7 @@
   "org.subscription.all_models": "All models",
   "org.subscription.tokens_count": "%s tokens",
   "org.subscription.other_gauge": "%s %s",
+  "org.subscription.share_note_of": "%s: %s",
   "org.subscription.share_basis_short": "%s/%s active",
   "org.subscription.more_models": "+ %d other models, up to %s",
   "org.subscription.peak": "Peak: %s",

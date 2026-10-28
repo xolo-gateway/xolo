@@ -202,3 +202,22 @@ func TestGroupSubscriptionConstraints_KeepsDifferentlyAnchoredConstraintsApart(t
 		t.Errorf("got %d groups, want a sliding and a fixed window kept apart", len(groups))
 	}
 }
+
+func TestSubscriptionUsageSection_AttributesTheFairShareNoteOnATwoBudgetLine(t *testing.T) {
+	cu := perModelUsage("5h", 1000, "m", 100)
+	value := int64(1000)
+	cu.Constraint.ValueBudget = &value
+	cu.ValueUsed = 600
+	cu.ValueMode = model.FairShareModeThrottled
+	cu.TokenMode = model.FairShareModeShared
+
+	provider := model.NewProvider("org-1", "Acme", "openai", "", "", "EUR")
+	var out strings.Builder
+	err := SubscriptionUsageSection([]SubscriptionProviderUsage{{Provider: provider, Constraints: []SubscriptionConstraintUsage{cu}}}).Render(context.Background(), &out)
+	if err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	if html := stdhtml.UnescapeString(out.String()); !strings.Contains(html, "Valeur : ") {
+		t.Error("the fair-share note should name the budget it applies to when the line shows two")
+	}
+}

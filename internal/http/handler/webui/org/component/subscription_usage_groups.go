@@ -104,10 +104,19 @@ func groupSubscriptionConstraints(usages []SubscriptionConstraintUsage) []subscr
 }
 
 // sameConstraint reports whether two entries come from the same plan
-// constraint: everything the group header says must agree.
+// constraint: everything the group header says must agree. Budgets are not
+// compared: the models of one per-model constraint may each have their own
+// (ModelBudgets), and every row renders its own.
 func sameConstraint(a, b model.PlanConstraint) bool {
 	return a.Kind == b.Kind && a.Label == b.Label && a.Duration == b.Duration && a.Scope == b.Scope &&
-		sameAnchor(a.WindowAnchor, b.WindowAnchor)
+		sameAnchor(a.WindowAnchor, b.WindowAnchor) && sameMaxConcurrent(a.MaxConcurrent, b.MaxConcurrent)
+}
+
+func sameMaxConcurrent(a, b *int) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return *a == *b
 }
 
 func sameAnchor(a, b *time.Time) bool {
