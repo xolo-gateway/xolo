@@ -102,9 +102,14 @@ func TestHandlerStoresTheChoiceAndRedirectsLocally(t *testing.T) {
 
 func TestHandlerRedirectAnnouncesNoLanguage(t *testing.T) {
 	b := bundle(t)
-	handler := Middleware(b, language.French)(Handler(b, true))
+	inner := Middleware(b, language.French)(Handler(b, true))
+	// An outer layer, as CORS does, varies the response by its own header.
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Add("Vary", "Origin")
+		inner.ServeHTTP(w, r)
+	})
 	rec := post(handler, "", url.Values{"locale": {"en"}, "return_to": {"/orgs"}})
-	if rec.Code != http.StatusSeeOther || rec.Header().Get("Content-Language") != "" || len(rec.Header().Values("Vary")) != 0 {
+	if rec.Code != http.StatusSeeOther || rec.Header().Get("Content-Language") != "" || !slices.Equal(rec.Header().Values("Vary"), []string{"Origin"}) {
 		t.Fatalf("status=%d headers=%v", rec.Code, rec.Header())
 	}
 }

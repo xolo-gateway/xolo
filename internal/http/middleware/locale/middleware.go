@@ -23,6 +23,9 @@ const CookieName = "xolo_locale"
 
 const cookieMaxAge = 365 * 24 * 60 * 60
 
+// resolvedFrom are the request headers Middleware resolves the language from.
+var resolvedFrom = []string{"Accept-Language", "Cookie"}
+
 // Header carries the language the host resolved for a request to the plugin
 // UIs it reverse-proxies, so they render in it, configured default included.
 const Header = "X-Xolo-Locale"
@@ -42,7 +45,7 @@ func Middleware(bundle *i18n.Bundle, fallback language.Tag, unlocalized ...strin
 				tag = bundle.Match(r.Header.Get("Accept-Language"), fallback)
 			}
 			if !slices.ContainsFunc(unlocalized, func(prefix string) bool { return strings.HasPrefix(r.URL.Path, prefix) }) {
-				Announce(w, tag, "Accept-Language", "Cookie")
+				Announce(w, tag, resolvedFrom...)
 			}
 			next.ServeHTTP(w, r.WithContext(bundle.WithLanguage(r.Context(), tag)))
 		})
@@ -70,12 +73,23 @@ func Handler(bundle *i18n.Bundle, secure bool) http.Handler {
 			http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
 			return
 		}
-		// The redirect has no body in any language.
+		// The redirect has no body in any language. Only the announcement of
+		// Middleware is withdrawn: a Vary set by another layer, such as CORS's
+		// Origin, still applies.
 		w.Header().Del("Content-Language")
-		w.Header().Del("Vary")
+		withdrawVary(w.Header(), strings.Join(resolvedFrom, ", "))
 		http.SetCookie(w, &http.Cookie{Name: CookieName, Value: tag.String(), Path: "/", MaxAge: cookieMaxAge, HttpOnly: true, Secure: secure, SameSite: http.SameSiteLaxMode})
 		http.Redirect(w, r, LocalPath(r.PostFormValue("return_to")), http.StatusSeeOther)
 	}))
+}
+
+// withdrawVary removes one value from the Vary header, keeping the others.
+func withdrawVary(header http.Header, value string) {
+	kept := slices.DeleteFunc(header.Values("Vary"), func(v string) bool { return v == value })
+	header.Del("Vary")
+	for _, v := range kept {
+		header.Add("Vary", v)
+	}
 }
 
 // LocalPath keeps a redirect target on the current origin. Anything that is
