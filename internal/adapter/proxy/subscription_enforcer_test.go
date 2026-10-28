@@ -259,6 +259,47 @@ func TestSubscriptionEnforcer_Upstream429WithoutRetryAfterUsesTheDefaultCooldown
 	}
 }
 
+func TestSubscriptionEnforcer_UpstreamCapacity429DoesNotCoolDown(t *testing.T) {
+	f := newEnforcerFixture(t, perModelConstraint("5h", 3_000_000, nil))
+
+	upstream := &llm.HTTPError{
+		StatusCode: http.StatusTooManyRequests,
+		Body:       `{"error":{"type":"server_error","message":"Upstream request failed: [ttft_admission_refused] the cell is at capacity; retry shortly (after 36 s)"}}`,
+	}
+	if _, err := f.enforcer.OnError(context.Background(), f.request(f.kimi), errors.WithStack(stderrors.Join(llm.ErrRateLimit, upstream))); err != nil {
+		t.Fatalf("OnError: %v", err)
+	}
+	if msg := f.denial(t, f.kimi); msg != "" {
+		t.Errorf("kimi denied (%q), want granted: a capacity refusal does not exhaust the plan", msg)
+	}
+
+	relayed := &genaiProxy.ProxyResponse{
+		StatusCode: http.StatusTooManyRequests,
+		Body:       map[string]any{"error": map[string]any{"type": "server_error", "message": "the cell is at capacity"}},
+	}
+	if _, err := f.enforcer.PostResponse(context.Background(), f.request(f.kimi), relayed); err != nil {
+		t.Fatalf("PostResponse: %v", err)
+	}
+	if msg := f.denial(t, f.kimi); msg != "" {
+		t.Errorf("kimi denied (%q) after a relayed capacity 429, want granted", msg)
+	}
+}
+
+func TestSubscriptionEnforcer_UpstreamRateLimit429StillCoolsDown(t *testing.T) {
+	f := newEnforcerFixture(t, perModelConstraint("5h", 3_000_000, nil))
+
+	upstream := &llm.HTTPError{
+		StatusCode: http.StatusTooManyRequests,
+		Body:       `{"error":{"type":"rate_limit_error","message":"usage limit reached"}}`,
+	}
+	if _, err := f.enforcer.OnError(context.Background(), f.request(f.kimi), upstream); err != nil {
+		t.Fatalf("OnError: %v", err)
+	}
+	if msg := f.denial(t, f.kimi); !strings.Contains(msg, "cooldown") {
+		t.Errorf("kimi message = %q, want a cooldown", msg)
+	}
+}
+
 func TestSubscriptionEnforcer_UpstreamGroupingIsCached(t *testing.T) {
 	f := newEnforcerFixture(t, perModelConstraint("5h", 3_000_000, nil))
 

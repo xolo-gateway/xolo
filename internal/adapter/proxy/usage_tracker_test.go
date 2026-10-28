@@ -137,6 +137,55 @@ func TestUsageTrackerFallsBackToComputedCost(t *testing.T) {
 	}
 }
 
+func TestUsageTrackerComputesCostWhenPlanProviderReportsZero(t *testing.T) {
+	orgID := model.OrgID("org-1")
+	providerID := model.NewProviderID()
+	llmModel := model.NewLLMModel(providerID, orgID, "cadoles/test-model", "real/model", "desc", 1000, 2000)
+	org := model.NewOrganization(testTenantID, "org-1", "Org 1", "", "USD")
+
+	for _, tc := range []struct {
+		name        string
+		billingMode model.BillingMode
+		wantCost    int64
+		wantSource  model.CostSource
+	}{
+		// A plan covers the call: the zero is what it bills, not what the call is worth.
+		{name: "subscription", billingMode: model.BillingModeSubscription, wantCost: 2000, wantSource: model.CostSourceComputed},
+		// Pay as you go: the zero is the actual bill.
+		{name: "payg", billingMode: model.BillingModePayg, wantCost: 0, wantSource: model.CostSourceProvider},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			provider := model.NewProvider(orgID, "opencode", "openai", "https://opencode.ai", "key", "USD")
+			provider.SetBillingMode(tc.billingMode)
+
+			tracker, usageStore := newTestTracker(&fakeProviderStore{provider: provider, llmModel: llmModel}, &fakeOrgStore{org: org})
+
+			cost := 0.0
+			req, res := newTestRequestResponse(llmModel.ID(), orgID, &genaiProxy.TokenUsage{
+				PromptTokens:     1000,
+				CompletionTokens: 500,
+				TotalTokens:      1500,
+				Cost:             &cost,
+				CostCurrency:     "USD",
+			})
+
+			if _, err := tracker.PostResponse(context.Background(), req, res); err != nil {
+				t.Fatalf("PostResponse() error = %v", err)
+			}
+
+			if usageStore.recorded == nil {
+				t.Fatal("expected a usage record to be persisted")
+			}
+			if got := usageStore.recorded.Cost(); got != tc.wantCost {
+				t.Errorf("Cost() = %d, want %d", got, tc.wantCost)
+			}
+			if got := usageStore.recorded.CostSource(); got != tc.wantSource {
+				t.Errorf("CostSource() = %q, want %q", got, tc.wantSource)
+			}
+		})
+	}
+}
+
 // testTenantID is the tenant every fixture of this package belongs to.
 // Tenancy is not what these tests exercise: they only need a stable, shared
 // owner so the tenant-scoped unique keys behave like the pre-tenant ones.

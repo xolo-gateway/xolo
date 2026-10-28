@@ -132,7 +132,9 @@ func (t *XoloUsageTracker) PostResponse(ctx context.Context, req *genaiProxy.Pro
 		providerCurrency string
 		costSource       model.CostSource
 	)
-	if res.TokensUsed.Cost != nil && !estimatedUsage {
+	planCovered := p.BillingMode() == model.BillingModeSubscription
+
+	if res.TokensUsed.Cost != nil && !estimatedUsage && !zeroPlanCost(planCovered, *res.TokensUsed.Cost, promptTokens+completionTokens) {
 		// Provider reported the actual billed cost (e.g. OpenRouter usage.cost).
 		providerCost = int64(math.Round(*res.TokensUsed.Cost * 1_000_000))
 		providerCurrency = res.TokensUsed.CostCurrency
@@ -148,8 +150,6 @@ func (t *XoloUsageTracker) PostResponse(ctx context.Context, req *genaiProxy.Pro
 			costSource = model.CostSourceEstimated
 		}
 	}
-
-	planCovered := p.BillingMode() == model.BillingModeSubscription
 
 	recordCost := providerCost
 	recordCurrency := providerCurrency
@@ -203,6 +203,16 @@ func (t *XoloUsageTracker) PostResponse(ctx context.Context, req *genaiProxy.Pro
 	}
 
 	return nil, nil
+}
+
+// zeroPlanCost reports whether a provider-reported cost is the zero a
+// subscription provider bills a call its plan covers. That zero says nothing
+// of the call's value, which is what the plan budgets meter: taking it as is
+// would let the plan be consumed without its budgets ever moving. The cost is
+// computed from the model's pricing instead, which stays zero for a free
+// model.
+func zeroPlanCost(planCovered bool, cost float64, tokens int) bool {
+	return planCovered && cost == 0 && tokens > 0
 }
 
 var _ genaiProxy.PostResponseHook = &XoloUsageTracker{}

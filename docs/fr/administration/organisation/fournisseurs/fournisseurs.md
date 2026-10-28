@@ -119,6 +119,12 @@ global (des tokens, ou une valeur exprimée dans la devise du fournisseur) pour
 toute l'organisation, sur une fenêtre qui se réinitialise. Le plan décrit ces
 limites sous forme de **contraintes**.
 
+La valeur d'une requête est son coût au tarif du modèle déclaré dans Xolo, ou le
+coût que rapporte le fournisseur. Un fournisseur en abonnement rapporte souvent
+un coût nul pour une requête couverte par le forfait : Xolo ne retient pas ce
+zéro, qui laisserait les budgets valeur immobiles, et calcule la valeur au tarif
+du modèle.
+
 ### Contraintes
 
 | Type                     | Champs                                           | Rôle                                                              |
@@ -169,6 +175,9 @@ autre sur l'ensemble du fournisseur s'appliquent toutes les deux. Quand un plan
 décompte par modèle et que le fournisseur répond `429`, seul le modèle demandé
 est mis en pause, pour la durée indiquée par l'en-tête `Retry-After`, ou cinq
 minutes à défaut.
+Un `429` dont l'erreur est de type `server_error`, par exemple un fournisseur
+saturé qui demande de réessayer dans quelques secondes, ne dit rien du forfait :
+il est transmis au client sans mise en pause.
 
 Sur la page d'usage et le tableau de bord, une contrainte par modèle affiche une
 jauge par modèle consommé dans la fenêtre en cours.

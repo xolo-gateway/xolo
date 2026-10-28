@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"context"
+	"encoding/json"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -150,7 +151,7 @@ func (e *XoloSubscriptionEnforcer) PostResponse(ctx context.Context, req *genaiP
 
 	// A 429 the proxy answers with is either one of ours, or an upstream one a
 	// relay passed through as is.
-	if res != nil && res.StatusCode == http.StatusTooManyRequests && !isOwnResponse(res) {
+	if res != nil && res.StatusCode == http.StatusTooManyRequests && !isOwnResponse(res) && !isUpstreamCapacityError(res.Body) {
 		e.markExhausted(ctx, req, res.Headers)
 	}
 
@@ -164,7 +165,7 @@ func (e *XoloSubscriptionEnforcer) OnError(ctx context.Context, req *genaiProxy.
 	// An upstream 429 reaches the hooks as an error: mark the plan as exhausted
 	// for a cooldown so the provider is not hammered before its window resets.
 	var httpErr *llm.HTTPError
-	if errors.As(err, &httpErr) && httpErr.StatusCode == http.StatusTooManyRequests {
+	if errors.As(err, &httpErr) && httpErr.StatusCode == http.StatusTooManyRequests && !isUpstreamCapacityError(httpErr.Body) {
 		e.markExhausted(ctx, req, httpErr.Header)
 	}
 
@@ -328,6 +329,35 @@ func isOwnResponse(res *genaiProxy.ProxyResponse) bool {
 	}
 	code, _ := errObj["code"].(string)
 	return strings.HasPrefix(code, "plan_") || code == "quota_exceeded"
+}
+
+// isUpstreamCapacityError reports whether an upstream 429 body puts the
+// refusal on the provider's side (an OpenAI-style error of type server_error,
+// such as "the cell is at capacity; retry shortly") rather than on the plan.
+// Such a refusal says nothing of the plan's budgets: it reaches the client as
+// is, without putting the plan in cooldown, which would refuse every request
+// of the model as exhausted for defaultExhaustionCooldown.
+//
+// The body is the decoded JSON a relay passes through, or the raw text of an
+// llm.HTTPError.
+func isUpstreamCapacityError(body any) bool {
+	if raw, ok := body.(string); ok {
+		var decoded map[string]any
+		if err := json.Unmarshal([]byte(raw), &decoded); err != nil {
+			return false
+		}
+		body = decoded
+	}
+	decoded, ok := body.(map[string]any)
+	if !ok {
+		return false
+	}
+	errObj, ok := decoded["error"].(map[string]any)
+	if !ok {
+		return false
+	}
+	errType, _ := errObj["type"].(string)
+	return errType == "server_error"
 }
 
 func planExhaustedResponse(message string) *genaiProxy.ProxyResponse {
