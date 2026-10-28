@@ -42,12 +42,18 @@ func Middleware(bundle *i18n.Bundle, fallback language.Tag, unlocalized ...strin
 				tag = bundle.Match(r.Header.Get("Accept-Language"), fallback)
 			}
 			if !slices.ContainsFunc(unlocalized, func(prefix string) bool { return strings.HasPrefix(r.URL.Path, prefix) }) {
-				w.Header().Set("Content-Language", tag.String())
-				w.Header().Add("Vary", "Accept-Language, Cookie")
+				Announce(w, tag, "Accept-Language", "Cookie")
 			}
 			next.ServeHTTP(w, r.WithContext(bundle.WithLanguage(r.Context(), tag)))
 		})
 	}
+}
+
+// Announce declares the language of a response and the request headers it
+// was resolved from, so a cache keeps one copy per language.
+func Announce(w http.ResponseWriter, tag language.Tag, resolvedFrom ...string) {
+	w.Header().Set("Content-Language", tag.String())
+	w.Header().Add("Vary", strings.Join(resolvedFrom, ", "))
 }
 
 // Handler stores the chosen language and redirects to the local page named by

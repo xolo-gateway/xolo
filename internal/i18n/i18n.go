@@ -91,6 +91,8 @@ func load(locales fs.FS) (*Bundle, error) {
 	// The source language comes first: it is what the matcher falls back to.
 	slices.SortFunc(bundle.tags, func(a, b language.Tag) int {
 		switch {
+		case a == b:
+			return 0
 		case a == Source:
 			return -1
 		case b == Source:

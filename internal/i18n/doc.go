@@ -10,7 +10,8 @@
 //
 // English (locales/en.json) is the source: it defines the key set and is the
 // fallback for a key another catalog lacks. Tests require every catalog to
-// define exactly the source keys with the same formatting verbs.
+// define exactly the source keys with the same formatting verbs, in every
+// plural form, since the form the count selects gets all the arguments.
 //
 // To add a language, copy locales/en.json to locales/<tag>.json and translate
 // it. Loading discovers the file; no code changes.

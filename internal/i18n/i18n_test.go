@@ -92,6 +92,15 @@ func TestCatalogsMatchTheSourceKeysAndVerbs(t *testing.T) {
 			if got, want := verbs(translated), verbs(value); !slices.Equal(got, want) {
 				t.Errorf("%s: key %q has verbs %v, want %v", locale, key, got, want)
 			}
+			// T formats whichever form the count selects with the same
+			// arguments, so every form must format them all.
+			if forms, plural := translated.(map[string]string); plural {
+				for form, text := range forms {
+					if got, want := verbs(text), verbs(value); !slices.Equal(got, want) {
+						t.Errorf("%s: key %q form %q has verbs %v, want %v", locale, key, form, got, want)
+					}
+				}
+			}
 		}
 		for key := range messages {
 			if _, ok := source[key]; !ok {
