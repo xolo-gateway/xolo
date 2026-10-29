@@ -54,7 +54,7 @@ func TestApplyFairShare_ReplacesTheDenominatorAndReportsTheBasis(t *testing.T) {
 	c := planConstraint(1000)
 	cu := orgcomponent.SubscriptionConstraintUsage{Constraint: fairShareConstraint(c, 20)}
 
-	if !applyFairShare(context.Background(), service.NewFairShareService(reader), &cu, c, model.PlanUsageScope{OrgID: "org-1", ProviderID: "prov-1"}, "user-1", 20, time.Now(), nil) {
+	if !applyFairShare(context.Background(), service.NewFairShareService(reader), &cu, c, model.PlanUsageScope{OrgID: "org-1", ProviderID: "prov-1"}, "user-1", 20, time.Now(), nil, nil) {
 		t.Fatal("applyFairShare reported failure, want success")
 	}
 
@@ -85,7 +85,7 @@ func TestApplyFairShare_KeepsTheStaticShareWhenTheAllocationFails(t *testing.T) 
 	c := planConstraint(1000)
 	cu := orgcomponent.SubscriptionConstraintUsage{Constraint: fairShareConstraint(c, 20)}
 
-	if applyFairShare(context.Background(), service.NewFairShareService(reader), &cu, c, model.PlanUsageScope{OrgID: "org-1", ProviderID: "prov-1"}, "user-1", 20, time.Now(), nil) {
+	if applyFairShare(context.Background(), service.NewFairShareService(reader), &cu, c, model.PlanUsageScope{OrgID: "org-1", ProviderID: "prov-1"}, "user-1", 20, time.Now(), nil, nil) {
 		t.Fatal("applyFairShare reported success, want failure")
 	}
 	if cu.Constraint.TokenBudget == nil || *cu.Constraint.TokenBudget != 50 {
@@ -117,7 +117,7 @@ func TestApplyFairShare_SkippedWithoutTheBasisToAllocateOn(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			cu := orgcomponent.SubscriptionConstraintUsage{Constraint: tc.constraint}
-			if applyFairShare(context.Background(), tc.service, &cu, tc.constraint, model.PlanUsageScope{OrgID: "org-1", ProviderID: "prov-1"}, tc.userID, tc.memberCount, time.Now(), nil) {
+			if applyFairShare(context.Background(), tc.service, &cu, tc.constraint, model.PlanUsageScope{OrgID: "org-1", ProviderID: "prov-1"}, tc.userID, tc.memberCount, time.Now(), nil, nil) {
 				t.Error("applyFairShare reported success, want it skipped")
 			}
 			if cu.ActiveUsers != 0 || cu.TokenMode != "" {
@@ -135,7 +135,7 @@ func TestApplyFairShare_UsesThePreReadPlanTotals(t *testing.T) {
 	cu := orgcomponent.SubscriptionConstraintUsage{Constraint: c}
 
 	ok := applyFairShare(context.Background(), service.NewFairShareService(reader), &cu, c,
-		model.PlanUsageScope{OrgID: "org-1", ProviderID: "prov-1"}, "user-1", 20, time.Now(), &service.PlanUsage{Tokens: 300})
+		model.PlanUsageScope{OrgID: "org-1", ProviderID: "prov-1"}, "user-1", 20, time.Now(), &service.PlanUsage{Tokens: 300}, nil)
 	if !ok {
 		t.Fatal("applyFairShare reported failure, want success")
 	}

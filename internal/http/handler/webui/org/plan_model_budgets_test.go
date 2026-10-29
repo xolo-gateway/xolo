@@ -88,3 +88,54 @@ func TestParseSubscriptionPlanFromForm_ModelBudgetsNeedPerModelScope(t *testing.
 		t.Error("plan accepted, want an error for per-model budgets on a provider-wide constraint")
 	}
 }
+
+func TestParseSubscriptionPlanFromForm_Shared(t *testing.T) {
+	r := makeRequest(map[string]string{
+		"plan_label":            "OpenCode Go",
+		"plan_constraint_count": "1",
+		"plan_c0_kind":          "rolling_window",
+		"plan_c0_label":         "Mois",
+		"plan_c0_duration":      "720h",
+		"plan_c0_value_budget":  "60",
+		"plan_c0_scope":         "shared",
+		"plan_c0_model_budgets": "deepseek-v4.1-flash = 160\nbeam-free = unlimited",
+	})
+
+	plan, err := parseSubscriptionPlanFromForm(r)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	c := plan.Constraints[0]
+	if !c.Shared() {
+		t.Errorf("Scope = %q, want a shared constraint", c.Scope)
+	}
+	if b := c.ModelBudgets["deepseek-v4.1-flash"]; b.ValueBudget == nil || *b.ValueBudget != 160_000_000 {
+		t.Errorf("ModelBudgets = %+v, want deepseek-v4.1-flash at 160", c.ModelBudgets)
+	}
+}
+
+func TestParseSubscriptionPlanFromForm_SharedRejectsUnweighableBudgets(t *testing.T) {
+	tests := map[string]string{
+		// A zero budget would weigh infinitely.
+		"zero budget": "deepseek-v4.1-flash = 0",
+		// The constraint has no token budget for these tokens to weigh on.
+		"budget kind the constraint lacks": "deepseek-v4.1-flash = 50000000 tokens",
+	}
+	for name, budgets := range tests {
+		t.Run(name, func(t *testing.T) {
+			r := makeRequest(map[string]string{
+				"plan_label":            "OpenCode Go",
+				"plan_constraint_count": "1",
+				"plan_c0_kind":          "rolling_window",
+				"plan_c0_label":         "Mois",
+				"plan_c0_duration":      "720h",
+				"plan_c0_value_budget":  "60",
+				"plan_c0_scope":         "shared",
+				"plan_c0_model_budgets": budgets,
+			})
+			if _, err := parseSubscriptionPlanFromForm(r); err == nil {
+				t.Error("plan accepted, want an error")
+			}
+		})
+	}
+}

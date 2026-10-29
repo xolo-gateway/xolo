@@ -66,9 +66,20 @@ type UsageStore interface {
 	HasPlanUsageSince(ctx context.Context, userID model.UserID, scope model.PlanUsageScope, since time.Time) (bool, error)
 	// EarliestPlanUsageSince returns the creation time of the oldest subscription-covered
 	// (plan_covered=true) usage record of a plan scope still inside the rolling window
-	// starting at `since`. Used to display when the window will next free up. Returns a zero
-	// time when no such record exists.
-	EarliestPlanUsageSince(ctx context.Context, scope model.PlanUsageScope, since time.Time) (time.Time, error)
+	// starting at `since`, restricted to one user when userID is set. Used to display when
+	// the window will next free up. Returns a zero time when no such record exists.
+	EarliestPlanUsageSince(ctx context.Context, scope model.PlanUsageScope, userID model.UserID, since time.Time) (time.Time, error)
+	// SumPlanUsageByKeySince is SumPlanUsageByModelSince grouped by API key of the
+	// provider too: one read gives every key of a pool its consumption, each
+	// model apart so a shared constraint can weigh it. Keys without usage in the
+	// window are absent from the result.
+	SumPlanUsageByKeySince(ctx context.Context, scope model.PlanUsageScope, since time.Time) (map[model.ProviderKeyID]map[model.LLMModelID]PlanUsageTotals, error)
+	// LastPlanUsageKey returns the API key of the provider that the user's most
+	// recent subscription-covered (plan_covered=true) request on the plan scope
+	// went through, and false when the user has none. A provider spreading its
+	// plan over several keys keeps each user on that key, where the upstream
+	// prompt cache of their conversations lives.
+	LastPlanUsageKey(ctx context.Context, scope model.PlanUsageScope, userID model.UserID) (model.ProviderKeyID, bool, error)
 	// AggregateCostByDimension returns cost sub-totals grouped by the given dimension, the
 	// record's org, currency and billing arrangement, honoring the filter. It lets the
 	// usage/dashboard charts bucket costs in SQL instead of loading every record into memory.

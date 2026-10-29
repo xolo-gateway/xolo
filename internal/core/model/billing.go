@@ -2,6 +2,7 @@ package model
 
 import (
 	"encoding/json"
+	"math"
 	"slices"
 	"strings"
 	"time"
@@ -51,12 +52,19 @@ const (
 	// It is the scope of a constraint that sets none.
 	PlanScopeProvider PlanConstraintScope = "provider"
 	// PlanScopeModel gives each upstream model its own budget and its own
-	// window, as plans that meter every model separately do (OpenCode Go).
+	// window, as plans that meter every model separately do.
 	PlanScopeModel PlanConstraintScope = "model"
+	// PlanScopeShared counts every model of the provider against one budget,
+	// each at its own rate: a model whose own budget (ModelBudgets) is twice
+	// the constraint's counts for half of what it consumes. Plans that publish
+	// a usage limit per model but meter a single window work this way (OpenCode
+	// Go): the per-model limit is what the whole window holds when spent on
+	// that model alone.
+	PlanScopeShared PlanConstraintScope = "shared"
 )
 
-// PlanBudget is the budget of one upstream model on a per-model constraint.
-// A nil field leaves that dimension unlimited for the model.
+// PlanBudget is the budget of one upstream model on a per-model or shared
+// constraint. A nil field leaves that dimension unlimited for the model.
 type PlanBudget struct {
 	TokenBudget *int64 `json:"token_budget,omitempty"`
 	ValueBudget *int64 `json:"value_budget,omitempty"` // microcents in provider currency
@@ -75,14 +83,18 @@ type PlanConstraint struct {
 	ValueBudget   *int64             `json:"value_budget,omitempty"` // microcents in provider currency
 	MaxConcurrent *int               `json:"max_concurrent,omitempty"`
 	// Scope is what a rolling_window constraint counts: the whole provider
-	// (empty or PlanScopeProvider) or each upstream model on its own
-	// (PlanScopeModel). Concurrency constraints are always provider-wide.
+	// (empty or PlanScopeProvider), each upstream model on its own
+	// (PlanScopeModel), or the whole provider with each model weighted by its
+	// own budget (PlanScopeShared). Concurrency constraints are always
+	// provider-wide.
 	Scope PlanConstraintScope `json:"scope,omitempty"`
-	// ModelBudgets overrides, on a per-model constraint, the budgets of the
-	// upstream models named by their real model name. An override replaces
-	// TokenBudget and ValueBudget as a whole: a model listed with no budget is
-	// unlimited, which is how a plan's free models are described. Models not
-	// listed take the constraint's own budgets.
+	// ModelBudgets overrides, on a per-model or shared constraint, the budgets
+	// of the upstream models named by their real model name. An override
+	// replaces TokenBudget and ValueBudget as a whole: a model listed with no
+	// budget is unlimited, which is how a plan's free models are described.
+	// Models not listed take the constraint's own budgets. On a shared
+	// constraint they only set the rate at which each model fills the single
+	// budget of the constraint (see Weigh).
 	ModelBudgets map[string]PlanBudget `json:"model_budgets,omitempty"`
 	// ReserveRatio, PaceSlack, HappyHourStart and HappyHourMaxLead tune the
 	// per-user fair-share allocator (see ComputeFairShare); nil means the package
@@ -109,6 +121,70 @@ func (c PlanConstraint) PerModel() bool {
 	return c.Kind == ConstraintRollingWindow && c.Scope == PlanScopeModel
 }
 
+// Shared reports whether the constraint counts every model against one budget,
+// each weighted by its own budget.
+func (c PlanConstraint) Shared() bool {
+	return c.Kind == ConstraintRollingWindow && c.Scope == PlanScopeShared
+}
+
+// Weigh converts the consumption of one upstream model into the units of a
+// shared constraint's budgets: tokens and value are scaled by the ratio of the
+// constraint's budget to the model's own, so that spending a model's whole
+// budget fills the constraint's. A model listed without a budget of a kind
+// weighs nothing on it. A model not listed, a dimension the constraint does
+// not limit, and any constraint that is not shared keep the figures as they
+// are.
+func (c PlanConstraint) Weigh(realModel string, tokens, value int64) (int64, int64) {
+	b, ok := c.ModelBudgets[realModel]
+	if !c.Shared() || !ok {
+		return tokens, value
+	}
+	return weighUsage(tokens, c.TokenBudget, b.TokenBudget), weighUsage(value, c.ValueBudget, b.ValueBudget)
+}
+
+// WeighUnknown converts the consumption of a model whose upstream model is
+// unknown, deleted since or not listed, into the units of a shared
+// constraint's budgets. It takes the highest rate among the listed models, and
+// at least the constraint's own: the window then closes early rather than
+// late, whichever model it was.
+func (c PlanConstraint) WeighUnknown(tokens, value int64) (int64, int64) {
+	if !c.Shared() {
+		return tokens, value
+	}
+	return weighUnknown(tokens, c.TokenBudget, c.ModelBudgets, func(b PlanBudget) *int64 { return b.TokenBudget }),
+		weighUnknown(value, c.ValueBudget, c.ModelBudgets, func(b PlanBudget) *int64 { return b.ValueBudget })
+}
+
+func weighUnknown(used int64, budget *int64, budgets map[string]PlanBudget, of func(PlanBudget) *int64) int64 {
+	if budget == nil {
+		return used
+	}
+	// The smallest model budget weighs the most; the constraint's own budget
+	// bounds it, so the rate is never below 1.
+	smallest := *budget
+	for _, b := range budgets {
+		if mb := of(b); mb != nil && *mb > 0 && *mb < smallest {
+			smallest = *mb
+		}
+	}
+	return weighUsage(used, budget, &smallest)
+}
+
+func weighUsage(used int64, budget, modelBudget *int64) int64 {
+	switch {
+	case budget == nil:
+		return used
+	case modelBudget == nil:
+		return 0
+	case *modelBudget <= 0:
+		// Validation refuses a zero model budget on a shared constraint: it
+		// would weigh infinitely. Counting the usage as is keeps a stored plan
+		// that slipped through from dividing by zero.
+		return used
+	}
+	return int64(math.Round(float64(used) * float64(*budget) / float64(*modelBudget)))
+}
+
 // ForModel returns the constraint as it applies to one upstream model: its
 // budgets are the model's override when there is one. A provider-wide
 // constraint is returned unchanged.
@@ -121,6 +197,15 @@ func (c PlanConstraint) ForModel(realModel string) PlanConstraint {
 	}
 	c.ModelBudgets = nil
 	return c
+}
+
+// HasSharedConstraint reports whether one of the plan's constraints weighs
+// each model by its own budget, which needs the provider's models to resolve.
+func (p *SubscriptionPlan) HasSharedConstraint() bool {
+	if p == nil {
+		return false
+	}
+	return slices.ContainsFunc(p.Constraints, PlanConstraint.Shared)
 }
 
 // HasPerModelConstraint reports whether one of the plan's constraints meters
@@ -147,6 +232,11 @@ type PlanUsageScope struct {
 	// provider. A per-model constraint lists every model of the provider that
 	// targets the same upstream model, since the provider meters them as one.
 	ModelIDs []LLMModelID
+	// ByKey narrows the count to the usage of one API key of the provider,
+	// KeyID, when the provider spreads its plan over several keys. Without it
+	// the count covers every key.
+	ByKey bool
+	KeyID ProviderKeyID
 }
 
 // UpstreamModelIDs returns the ids of the models, among models, that m's
@@ -170,7 +260,11 @@ func (s PlanUsageScope) Key() string {
 		ids[i] = string(id)
 	}
 	slices.Sort(ids)
-	return string(s.OrgID) + "|" + string(s.ProviderID) + "|" + strings.Join(ids, ",")
+	key := string(s.OrgID) + "|" + string(s.ProviderID) + "|" + strings.Join(ids, ",")
+	if s.ByKey {
+		key += "|key:" + string(s.KeyID)
+	}
+	return key
 }
 
 // IsAnchored reports whether the constraint uses a fixed (tumbling) window aligned on a

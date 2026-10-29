@@ -9,7 +9,8 @@ type SubscriptionMonitor interface {
 	CurrentInFlight(orgID model.OrgID, providerID model.ProviderID) int
 	CurrentUserInFlight(orgID model.OrgID, providerID model.ProviderID, userID model.UserID) int
 	// IsExhausted reports whether a constraint is in cooldown after an upstream
-	// exhaustion. upstreamModel names the model of a per-model constraint and
-	// is empty for a provider-wide one.
-	IsExhausted(orgID model.OrgID, providerID model.ProviderID, label, upstreamModel string) bool
+	// exhaustion on every one of the given API keys of the provider (see
+	// model.ProviderKeyIDs). upstreamModel names the model of a per-model
+	// constraint and is empty for a provider-wide one.
+	IsExhausted(orgID model.OrgID, providerID model.ProviderID, keys []model.ProviderKeyID, label, upstreamModel string) bool
 }

@@ -903,3 +903,22 @@ func (r *slowProbeReader) HasPlanUsageSince(ctx context.Context, _ model.UserID,
 	<-ctx.Done()
 	return false, ctx.Err()
 }
+
+func TestFairShareService_PreReadUserTotalsAreNotSummedAgain(t *testing.T) {
+	// A shared constraint weighs the user's consumption per model, which the
+	// plain sum cannot: the figures handed in are the ones the share is
+	// decided on.
+	reader := &fakePlanUsageReader{userTokens: 900, userValue: 9_000, otherActiveUsers: 2}
+	svc := service.NewFairShareService(reader)
+
+	req := request(tokenAndValueConstraint(1000, 10_000))
+	req.UserUsage = &service.PlanUsage{Tokens: 100, Value: 1_000}
+
+	got, err := svc.Resolve(context.Background(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got.UserTokens != 100 || got.UserValue != 1_000 {
+		t.Errorf("user usage = (%d, %d), want the values handed in", got.UserTokens, got.UserValue)
+	}
+}

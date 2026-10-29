@@ -14,6 +14,7 @@ type updatedProviderAdapter struct {
 	pType            string
 	baseURL          string
 	apiKey           string
+	extraAPIKeys     []model.ProviderKey
 	active           bool
 	currency         string
 	cloudTier        int
@@ -32,6 +33,7 @@ func (p *updatedProviderAdapter) Name() string                              { re
 func (p *updatedProviderAdapter) Type() string                              { return p.pType }
 func (p *updatedProviderAdapter) BaseURL() string                           { return p.baseURL }
 func (p *updatedProviderAdapter) APIKey() string                            { return p.apiKey }
+func (p *updatedProviderAdapter) ExtraAPIKeys() []model.ProviderKey         { return p.extraAPIKeys }
 func (p *updatedProviderAdapter) Active() bool                              { return p.active }
 func (p *updatedProviderAdapter) Currency() string                          { return p.currency }
 func (p *updatedProviderAdapter) CloudTier() int                            { return p.cloudTier }

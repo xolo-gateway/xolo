@@ -68,7 +68,30 @@ templ subscriptionProviderCard(pu SubscriptionProviderUsage) {
 				if len(groups) == 0 {
 					<p class="text-xs text-muted-foreground">{ i18n.T(ctx, "org.subscription.no_constraints") }</p>
 				}
+				if len(pu.Keys) > 0 {
+					@subscriptionKeysView(pu.Keys)
+				}
 			</div>
+		}
+	}
+}
+
+// subscriptionKeysView breaks a pooled plan down by API key, folded: the card
+// leads with the pool its users share.
+templ subscriptionKeysView(keys []SubscriptionKeyUsage) {
+	@collapsible.Collapsible() {
+		@collapsible.Trigger(collapsible.TriggerProps{Class: "cursor-pointer text-xs text-muted-foreground hover:text-foreground"}) {
+			{ i18n.T(ctx, "org.subscription.keys_detail", len(keys)) }
+		}
+		@collapsible.Content(collapsible.ContentProps{Class: "mt-3 space-y-4"}) {
+			for _, k := range keys {
+				<div class="space-y-2 border-l-2 border-border pl-3">
+					<p class="text-xs font-medium text-foreground">{ subscriptionKeyLabel(ctx, k) }</p>
+					for _, g := range groupSubscriptionConstraints(k.Constraints) {
+						@subscriptionConstraintGroupView(g)
+					}
+				</div>
+			}
 		}
 	}
 }
@@ -395,4 +418,13 @@ func formatDurationLabel(ctx context.Context, d time.Duration) string {
 	default:
 		return d.String()
 	}
+}
+
+// subscriptionKeyLabel names a key of a pooled plan: its label, or the
+// provider's own key.
+func subscriptionKeyLabel(ctx context.Context, k SubscriptionKeyUsage) string {
+	if k.Label == "" {
+		return i18n.T(ctx, "org.subscription.primary_key")
+	}
+	return k.Label
 }

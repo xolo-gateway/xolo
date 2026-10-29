@@ -298,6 +298,11 @@ func (s *ProvisioningService) PutProvider(ctx context.Context, tenantID model.Te
 		provider.SetRetryConfig(v.RetryConfig)
 		provider.SetRateLimitConfig(v.RateLimitConfig)
 		provider.SetRequestHeaders(v.RequestHeaders)
+		if current != nil {
+			// The extra keys are managed in the web UI only: provisioning
+			// keeps them as they are.
+			provider.SetExtraAPIKeys(current.ExtraAPIKeys())
+		}
 		if target.exists {
 			return errors.WithStack(tx.tx.SaveProvider(ctx, provider))
 		}
@@ -639,7 +644,7 @@ func validatePlanConstraint(c model.PlanConstraint) error {
 		if len(c.ModelBudgets) > 0 {
 			return invalid
 		}
-	case model.PlanScopeModel:
+	case model.PlanScopeModel, model.PlanScopeShared:
 		if c.Kind != model.ConstraintRollingWindow || len(c.ModelBudgets) > maxPlanModelBudgets {
 			return invalid
 		}
@@ -654,6 +659,17 @@ func validatePlanConstraint(c model.PlanConstraint) error {
 			if budget != nil && *budget < 0 {
 				return invalid
 			}
+			// A shared constraint divides by the model's budget: a zero one
+			// would weigh infinitely.
+			if budget != nil && *budget == 0 && c.Scope == model.PlanScopeShared {
+				return invalid
+			}
+		}
+		// Nor can it weigh a kind it does not limit: such a budget would be
+		// stored and silently ignored.
+		if c.Scope == model.PlanScopeShared &&
+			((b.TokenBudget != nil && c.TokenBudget == nil) || (b.ValueBudget != nil && c.ValueBudget == nil)) {
+			return invalid
 		}
 	}
 	for _, ratio := range []*float64{c.ReserveRatio, c.PaceSlack, c.HappyHourStart} {

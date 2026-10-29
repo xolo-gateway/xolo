@@ -14,7 +14,7 @@ import (
 	"github.com/xolo-gateway/xolo/internal/i18n"
 	common "github.com/xolo-gateway/xolo/internal/http/handler/webui/common/component"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/button"
-	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/checkbox"
+	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/radio"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/collapsible"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/form"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/icon"
@@ -39,7 +39,7 @@ import (
 //   - plan_c{i}_pace_slack           (percent 0-100, empty = allocator default)
 //   - plan_c{i}_happy_hour_start     (percent 1-100, empty = allocator default; 100 disables)
 //   - plan_c{i}_happy_hour_max_lead  (duration, e.g. "1h", "2d"; empty = allocator default)
-//   - plan_c{i}_scope                ("model" when checked: each upstream model metered on its own)
+//   - plan_c{i}_scope                ("provider", "model": each upstream model metered on its own, or "shared": one budget, each model weighted by its own)
 //   - plan_c{i}_model_budgets        (one "model = budget" override per line, see parsePlanModelBudgets)
 // submitted, when not nil, is the form as it was posted: the page is being
 // rendered back with an error, and every field shows what the operator typed —
@@ -122,11 +122,14 @@ templ planConstraintRow(idx int, c model.PlanConstraint, readonly bool, submitte
 	{{ happyLeadName := "plan_c" + idxKey + "_happy_hour_max_lead" }}
 	{{ scopeName := "plan_c" + idxKey + "_scope" }}
 	{{ modelBudgetsName := "plan_c" + idxKey + "_model_budgets" }}
-	// An unchecked box is absent from the posted form, so a form rendered back
-	// reads the box from the submission alone, never from the stored plan.
-	{{ perModel := c.Scope == model.PlanScopeModel }}
+	// A form rendered back reads the scope from the submission alone, never
+	// from the stored plan, as the editor does for every other field.
+	{{ scope := c.Scope }}
 	if submitted != nil {
-		{{ perModel = submitted.Get(scopeName) == string(model.PlanScopeModel) }}
+		{{ scope = model.PlanConstraintScope(submitted.Get(scopeName)) }}
+	}
+	if scope == "" {
+		{{ scope = model.PlanScopeProvider }}
 	}
 	{{ modelBudgetsStr := submittedOr(submitted, modelBudgetsName, formatModelBudgets(c.ModelBudgets)) }}
 	// Duration value: empty string when zero (template row or unset).
@@ -307,24 +310,33 @@ templ planConstraintRow(idx int, c model.PlanConstraint, readonly bool, submitte
 					})
 				</div>
 			</div>
-			// ── Per-model metering ─────────────────────────────────────────
+			// ── Metering scope ─────────────────────────────────────────────
 			<div class="space-y-3 rounded-md border bg-background p-3">
-				@form.Label() {
-					<span class="flex items-center gap-2">
-						@checkbox.Checkbox(checkbox.Props{
-							ID:         "plan_c" + idxKey + "_scope",
-							Name:       scopeName,
-							Value:      string(model.PlanScopeModel),
-							Checked:    perModel,
-							Disabled:   readonly,
-							Attributes: templ.Attributes{"data-xolo-name": "plan_c{i}_scope", "data-xolo-id": "plan_c{i}_scope"},
-						})
-						{ i18n.T(ctx, "org.plan.per_model") }
-					</span>
-				}
-				@form.Description() {
-					{ i18n.T(ctx, "org.plan.per_model_help") }
-				}
+				<div class="space-y-2">
+					@form.Label() {
+						{ i18n.T(ctx, "org.plan.scope") }
+					}
+					for _, opt := range planScopeOptions {
+						<label class="flex items-start gap-2 text-sm">
+							@radio.Radio(radio.Props{
+								ID:         "plan_c" + idxKey + "_scope_" + string(opt.Scope),
+								Name:       scopeName,
+								Value:      string(opt.Scope),
+								Checked:    scope == opt.Scope,
+								Disabled:   readonly,
+								Class:      "mt-0.5 shrink-0",
+								Attributes: templ.Attributes{"data-xolo-name": "plan_c{i}_scope", "data-xolo-id": "plan_c{i}_scope_" + string(opt.Scope)},
+							})
+							<span class="space-y-0.5">
+								<span class="block font-medium">{ i18n.T(ctx, opt.LabelKey) }</span>
+								<span class="block text-xs text-muted-foreground">{ i18n.T(ctx, opt.HelpKey) }</span>
+							</span>
+						</label>
+					}
+					@form.Description() {
+						{ i18n.T(ctx, "org.plan.scope_help") }
+					}
+				</div>
 				<div class="space-y-1">
 					@form.Label() {
 						{ i18n.T(ctx, "org.plan.model_budgets") }
@@ -474,6 +486,19 @@ func submittedOr(submitted url.Values, name, stored string) string {
 		return stored
 	}
 	return submitted.Get(name)
+}
+
+// planScopeOption is one choice of the metering scope of a rolling window.
+type planScopeOption struct {
+	Scope    model.PlanConstraintScope
+	LabelKey string
+	HelpKey  string
+}
+
+var planScopeOptions = []planScopeOption{
+	{model.PlanScopeProvider, "org.plan.scope_provider", "org.plan.scope_provider_help"},
+	{model.PlanScopeModel, "org.plan.scope_model", "org.plan.scope_model_help"},
+	{model.PlanScopeShared, "org.plan.scope_shared", "org.plan.scope_shared_help"},
 }
 
 // formatModelBudgets renders per-model overrides in the one-per-line syntax

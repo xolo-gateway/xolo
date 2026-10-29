@@ -284,7 +284,63 @@ func planUsageQuery(db *gorm.DB, scope model.PlanUsageScope, since time.Time) *g
 		}
 		query = query.Where("model_id IN ?", ids)
 	}
+	if scope.ByKey {
+		query = query.Where("provider_key_id = ?", string(scope.KeyID))
+	}
 	return query
+}
+
+// SumPlanUsageByKeySince implements port.UsageStore.
+func (s *Store) SumPlanUsageByKeySince(ctx context.Context, scope model.PlanUsageScope, since time.Time) (map[model.ProviderKeyID]map[model.LLMModelID]port.PlanUsageTotals, error) {
+	var rows []struct {
+		ProviderKeyID string
+		ModelID       string
+		Tokens        int64
+		ProviderValue int64
+	}
+
+	err := s.read(ctx, func(ctx context.Context, db *gorm.DB) error {
+		return errors.WithStack(planUsageQuery(db, scope, since).
+			Select("provider_key_id as provider_key_id, model_id as model_id, COALESCE(SUM(total_tokens), 0) as tokens, COALESCE(SUM(provider_cost), 0) as provider_value").
+			Group("provider_key_id, model_id").
+			Scan(&rows).Error)
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	result := make(map[model.ProviderKeyID]map[model.LLMModelID]port.PlanUsageTotals)
+	for _, r := range rows {
+		key := model.ProviderKeyID(r.ProviderKeyID)
+		if result[key] == nil {
+			result[key] = make(map[model.LLMModelID]port.PlanUsageTotals)
+		}
+		result[key][model.LLMModelID(r.ModelID)] = port.PlanUsageTotals{Tokens: r.Tokens, Value: r.ProviderValue}
+	}
+	return result, nil
+}
+
+// LastPlanUsageKey implements port.UsageStore.
+func (s *Store) LastPlanUsageKey(ctx context.Context, scope model.PlanUsageScope, userID model.UserID) (model.ProviderKeyID, bool, error) {
+	var keys []string
+
+	err := s.read(ctx, func(ctx context.Context, db *gorm.DB) error {
+		// Walks idx_usage_org_prov_user backwards from the user's newest entry
+		// and stops there.
+		return errors.WithStack(db.Model(&UsageRecord{}).
+			Where("org_id = ? AND provider_id = ? AND plan_covered = 1 AND user_id = ?",
+				string(scope.OrgID), string(scope.ProviderID), string(userID)).
+			Order("created_at DESC").
+			Limit(1).
+			Pluck("provider_key_id", &keys).Error)
+	})
+	if err != nil {
+		return "", false, err
+	}
+	if len(keys) == 0 {
+		return "", false, nil
+	}
+	return model.ProviderKeyID(keys[0]), true, nil
 }
 
 // SumPlanUsageSince implements port.UsageStore.
@@ -518,15 +574,18 @@ func (s *Store) AggregateRequestSizes(ctx context.Context, filter port.UsageFilt
 }
 
 // EarliestPlanUsageSince implements port.UsageStore.
-func (s *Store) EarliestPlanUsageSince(ctx context.Context, scope model.PlanUsageScope, since time.Time) (time.Time, error) {
+func (s *Store) EarliestPlanUsageSince(ctx context.Context, scope model.PlanUsageScope, userID model.UserID, since time.Time) (time.Time, error) {
 	var row struct {
 		Earliest *time.Time
 	}
 
 	err := s.read(ctx, func(ctx context.Context, db *gorm.DB) error {
-		return errors.WithStack(planUsageQuery(db, scope, since).
-			Select("MIN(created_at) as earliest").
-			Scan(&row).Error)
+		query := planUsageQuery(db, scope, since).
+			Select("MIN(created_at) as earliest")
+		if userID != "" {
+			query = query.Where("user_id = ?", string(userID))
+		}
+		return errors.WithStack(query.Scan(&row).Error)
 	})
 	if err != nil {
 		return time.Time{}, err
