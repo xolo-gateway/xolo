@@ -134,9 +134,14 @@ func (h *Handler) previewCatalogImport(w http.ResponseWriter, r *http.Request) {
 			models = append(models, bm)
 		}
 		bundle.Models = models
-		// A budget of a model left out would apply to none.
+		// A budget of a model left out would apply to none. A shared
+		// constraint keeps it: its smallest budget weighs the models it
+		// does not list, which the published plan sets.
 		if plan := bundle.Provider.SubscriptionPlan; plan != nil && leftOut > 0 {
 			for i := range plan.Constraints {
+				if plan.Constraints[i].Shared() {
+					continue
+				}
 				for name := range plan.Constraints[i].ModelBudgets {
 					if !slices.ContainsFunc(models, func(bm model.ProviderBundleModel) bool { return bm.RealModel == name }) {
 						delete(plan.Constraints[i].ModelBudgets, name)

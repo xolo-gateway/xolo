@@ -625,7 +625,7 @@ func TestCatalogImport_LeavesOutTheModelsTheTargetAPIDoesNotServe(t *testing.T) 
 	if strings.Contains(page, `"embed"`) {
 		t.Error("the plan posted back keeps a budget for the embeddings model left out")
 	}
-	if rr.Code != http.StatusOK || !strings.Contains(page, "Modèles laissés de côté, que l'API anthropic ne sert pas ici : 1.") {
+	if rr.Code != http.StatusOK || !strings.Contains(page, "Modèles laissés de côté, que l'API anthropic ne sert pas ici, avec leurs budgets par modèle : 1.") {
 		t.Errorf("status %d, want the dry run with the embeddings model left out and said so", rr.Code)
 	}
 }
@@ -662,7 +662,7 @@ func TestCatalogImport_DecidesTheAPIOfAnotherProvidersOfferingsOneByOne(t *testi
 	if rr.Code != http.StatusOK || strings.Contains(page, "beta.test") || strings.Contains(page, `"real_model":"argon"`) {
 		t.Errorf("status %d: argon, only served through Gemini at Beta's, should be left out", rr.Code)
 	}
-	if !strings.Contains(page, `"api_type":"anthropic"`) || !strings.Contains(page, "que l'API openai ne sert pas ici : 1.") {
+	if !strings.Contains(page, `"api_type":"anthropic"`) || !strings.Contains(page, "que l'API openai ne sert pas ici, avec leurs budgets par modèle : 1.") {
 		t.Error("haiku should keep the Anthropic API served at the provider's address, and argon be counted out")
 	}
 }
@@ -682,5 +682,30 @@ func TestCatalogImport_KeepsTheCatalogProvidersAPIForAnOfferingAtTheTarget(t *te
 	h.previewCatalogImport(rr, bundleRequest(t, s, tenant, string(s.provider.ID()), bytes.NewBufferString(fields.Encode()), "application/x-www-form-urlencoded"))
 	if page := stdhtml.UnescapeString(rr.Body.String()); rr.Code != http.StatusOK || !strings.Contains(page, `"api_type":"anthropic"`) {
 		t.Errorf("status %d, want haiku on the Anthropic API served at the provider's address", rr.Code)
+	}
+}
+
+func TestCatalogImport_KeepsTheSharedBudgetsOfTheModelsItLeavesOut(t *testing.T) {
+	h, s, tenant := importFixture(t, "https://acme.test/v1", "sk")
+	s.provider.(*model.BaseProvider).SetType("anthropic")
+	tokens := func(v int64) *int64 { return &v }
+	beta := catalog.Provider{ID: "beta", Name: "Beta", Currency: "USD", Offerings: []catalog.Offering{
+		{Model: "chat", ModelID: "chat", Prices: catalog.Prices{Input: 1, Output: 2}},
+		{Model: "embed", ModelID: "embed", Prices: catalog.Prices{Input: 1}},
+	}, Plans: []catalog.Plan{{ID: "pro", Name: "Pro", Constraints: []catalog.Constraint{{
+		Kind: "rolling_window", Label: "5h", Duration: "5h", Scope: "shared", TokenBudget: tokens(1000),
+		ModelBudgets: map[string]catalog.Budget{"chat": {TokenBudget: tokens(1000)}, "embed": {TokenBudget: tokens(10)}},
+	}}}}}
+	beta.Xolo.Type, beta.Xolo.BaseURL = "openai", "https://beta.test/v1"
+	h.SetCatalog(catalog.NewStaticSource(&catalog.Catalog{Kind: catalog.Kind, Format: catalog.Format, Version: "v1",
+		Models:    []catalog.Model{{ID: "chat", Name: "Chat"}, {ID: "embed", Name: "Embed", Kind: "embeddings"}},
+		Providers: []catalog.Provider{beta}}))
+
+	fields := url.Values{"catalog_provider": {"beta"}, "plan": {"pro"}}
+	rr := httptest.NewRecorder()
+	h.previewCatalogImport(rr, bundleRequest(t, s, tenant, string(s.provider.ID()), bytes.NewBufferString(fields.Encode()), "application/x-www-form-urlencoded"))
+	// The smallest budget weighs the models the plan does not list.
+	if page := stdhtml.UnescapeString(rr.Body.String()); rr.Code != http.StatusOK || !strings.Contains(page, `"embed":{"token_budget":10}`) {
+		t.Errorf("status %d, want the shared budget of embed kept in the plan posted back", rr.Code)
 	}
 }

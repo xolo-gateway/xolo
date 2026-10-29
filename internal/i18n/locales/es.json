@@ -684,7 +684,7 @@
   "org.catalog_import.from_catalog": "Importar desde el catálogo",
   "org.catalog_import.from": "Cambios propuestos por el catálogo de modelos, versión %s. Los precios son los del nivel base: un proveedor que factura según el tamaño del prompt o la hora publica los otros niveles en el catálogo.",
   "org.catalog_import.other_endpoint": "Este proveedor del catálogo no está en la dirección de %s: se importan sus modelos, precios y plan, no su API ni sus puntos de acceso.",
-  "org.catalog_import.unserved_left_out": "Modelos omitidos, que la API %s no sirve aquí: %d.",
+  "org.catalog_import.unserved_left_out": "Modelos omitidos, que la API %s no sirve aquí, con sus presupuestos por modelo: %d.",
   "org.errors.catalog_import.unavailable": "No se puede leer el catálogo de modelos en este momento: inténtelo más tarde.",
   "org.errors.catalog_import.unknown": "Este proveedor o plan no está en el catálogo de modelos.",
   "org.errors.catalog_import.invalid": "La versión %s del catálogo no se puede importar: una de sus entradas está mal formada. Inténtelo de nuevo cuando se publique una versión corregida.",
