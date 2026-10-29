@@ -615,6 +615,8 @@
   "org.provider_bundle.col_current": "Actual",
   "org.provider_bundle.col_imported": "Importado",
   "org.provider_bundle.billing_help": "El modo de facturación y el plan de suscripción solo se aplican si se marcan: las organizaciones que comparten una cuenta del proveedor suelen repartir sus presupuestos en lugar de copiarlos.",
+  "org.provider_bundle.key_overrides_dropped": "Aplicar este plan elimina estos ajustes de las claves del proveedor, al no tener ya su ventana o el presupuesto que ajustan: %s.",
+  "org.provider_bundle.key_override_ref": "clave «%s», ventana «%s»",
   "org.provider_bundle.models_title": "Modelos (%d)",
   "org.provider_bundle.col_model": "Modelo",
   "org.provider_bundle.col_action": "Acción",

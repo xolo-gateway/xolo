@@ -232,6 +232,9 @@ templ providerBundleFieldCells(id string, c service.BundleFieldChange, withCurre
 		if len(c.Unserved) > 0 {
 			<p class="font-sans text-destructive">{ i18n.T(ctx, "org.provider_bundle.type_unserved", strings.Join(c.Unserved, ", ")) }</p>
 		}
+		if len(c.DroppedOverrides) > 0 {
+			<p class="font-sans text-destructive">{ i18n.T(ctx, "org.provider_bundle.key_overrides_dropped", providerBundleKeyOverrides(ctx, c.DroppedOverrides)) }</p>
+		}
 	}
 }
 
