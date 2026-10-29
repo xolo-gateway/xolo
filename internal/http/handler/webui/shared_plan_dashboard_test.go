@@ -53,7 +53,7 @@ func (s *sharedPlanUsageStore) HasPlanUsageSince(context.Context, model.UserID, 
 	return true, nil
 }
 
-func (s *sharedPlanUsageStore) EarliestPlanUsageSince(context.Context, model.PlanUsageScope, time.Time) (time.Time, error) {
+func (s *sharedPlanUsageStore) EarliestPlanUsageSince(context.Context, model.PlanUsageScope, model.UserID, time.Time) (time.Time, error) {
 	return time.Time{}, nil
 }
 
