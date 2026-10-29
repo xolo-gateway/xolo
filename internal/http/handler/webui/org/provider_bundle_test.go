@@ -347,3 +347,21 @@ func TestConvertBundleCurrency_ConvertsConstraintBudgetsToo(t *testing.T) {
 		t.Error("the conversion changed the source budget in place")
 	}
 }
+
+func TestCatalogImport_TellsAMalformedReleaseFromAnUnknownProvider(t *testing.T) {
+	h, s, tenant := importFixture(t, "https://acme.test/v1", "sk")
+	broken := &catalog.Catalog{Kind: catalog.Kind, Format: catalog.Format, Version: "v-broken", Providers: []catalog.Provider{{
+		ID: "acme", Name: "Acme", Currency: "USD",
+		Plans: []catalog.Plan{{ID: "pro", Name: "Pro", Constraints: []catalog.Constraint{{Kind: "rolling_window", Label: "5h", Duration: "five hours"}}}},
+	}}}
+	h.SetCatalog(catalog.NewStaticSource(broken))
+
+	for plan, want := range map[string]string{"pro": "v-broken", "gold": "pas dans le catalogue"} {
+		fields := url.Values{"catalog_provider": {"acme"}, "plan": {plan}}
+		rr := httptest.NewRecorder()
+		h.previewCatalogImport(rr, bundleRequest(t, s, tenant, string(s.provider.ID()), bytes.NewBufferString(fields.Encode()), "application/x-www-form-urlencoded"))
+		if rr.Code != http.StatusUnprocessableEntity || !strings.Contains(stdhtml.UnescapeString(rr.Body.String()), want) {
+			t.Errorf("plan %s: status %d, want 422 mentioning %q", plan, rr.Code, want)
+		}
+	}
+}

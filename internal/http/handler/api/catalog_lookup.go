@@ -107,6 +107,8 @@ func catalogPrefill(c *catalog.Catalog, found catalog.Prefill, providerType, bas
 		}
 		if o.Throughput != nil {
 			out.TokensPerSecLow, out.TokensPerSecHigh = o.Throughput.Low, o.Throughput.High
+			estimated("tokens_per_sec_low", o.Throughput.Provenance)
+			estimated("tokens_per_sec_high", o.Throughput.Provenance)
 		}
 		// The API is pre-filled when it is not the provider's own, by the rule
 		// of the catalog import: the same model either way. Only an offering

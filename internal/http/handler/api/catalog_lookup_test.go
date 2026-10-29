@@ -19,7 +19,8 @@ func lookupCatalog() *catalog.Catalog {
 		{Model: "glm", ModelID: "glm", APIType: "openai", BaseURL: "https://acme.test/openai/v1", Prices: catalog.Prices{Input: 1, Output: 2, Provenance: published}},
 		{Model: "haiku", ModelID: "haiku", APIType: "anthropic", BaseURL: "https://acme.test/anthropic/v1", Prices: catalog.Prices{Input: 1, Output: 5, Provenance: published}},
 		{Model: "glm", ModelID: "glm-cheap", Prices: catalog.Prices{Input: 0.1, CachedInput: 0.01, Output: 0.2, Provenance: estimated},
-			ContextWindow: &catalog.Count{Value: 64_000, Provenance: published}},
+			ContextWindow: &catalog.Count{Value: 64_000, Provenance: published},
+			Throughput:    &catalog.Throughput{Low: 40, High: 80, Provenance: estimated}},
 	}}
 	p.Xolo.Type, p.Xolo.BaseURL = "openai", "https://acme.test/v1"
 	return &catalog.Catalog{Kind: catalog.Kind, Format: catalog.Format, Version: "test",
@@ -75,6 +76,9 @@ func TestCatalogLookup_FlagsEveryEstimatedPriceAndTheOfferingsWindow(t *testing.
 	fields := estimatedFields(got)
 	if !fields["prompt_cost"] || !fields["completion_cost"] || !fields["cached_prompt_cost"] {
 		t.Errorf("estimated = %v, want every price", got.Estimated)
+	}
+	if got.TokensPerSecLow != 40 || !fields["tokens_per_sec_low"] || !fields["tokens_per_sec_high"] {
+		t.Errorf("throughput = %v estimated=%v, want the estimated throughput flagged", got.TokensPerSecLow, got.Estimated)
 	}
 	if got.ContextWindow != 64_000 || fields["context_window"] {
 		t.Errorf("window = %d estimated=%v, want the offering's published window", got.ContextWindow, fields["context_window"])

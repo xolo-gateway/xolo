@@ -7,6 +7,8 @@ import (
 
 	"github.com/a-h/templ"
 	"github.com/bornholm/go-x/slogx"
+	"github.com/pkg/errors"
+	"github.com/xolo-gateway/xolo/internal/catalog"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/org/component"
 	"github.com/xolo-gateway/xolo/internal/i18n"
 )
@@ -66,7 +68,14 @@ func (h *Handler) previewCatalogImport(w http.ResponseWriter, r *http.Request) {
 	c := h.catalog.Catalog(ctx)
 	bundle, err := c.Bundle(r.FormValue("catalog_provider"), plan)
 	if err != nil {
-		h.renderProviderBundleError(w, r, vmodel, i18n.T(ctx, "org.errors.catalog_import.unknown"))
+		// A provider or plan the release lacks is the operator's to fix; a
+		// release that does not convert is the catalog's, and is logged.
+		if errors.Is(err, catalog.ErrNotFound) {
+			h.renderProviderBundleError(w, r, vmodel, i18n.T(ctx, "org.errors.catalog_import.unknown"))
+			return
+		}
+		slog.ErrorContext(ctx, "could not convert the catalog provider", slog.String("version", c.Version), slogx.Error(err))
+		h.renderProviderBundleError(w, r, vmodel, i18n.T(ctx, "org.errors.catalog_import.invalid", c.Version))
 		return
 	}
 	// The catalog publishes in each provider's currency: imported into a
