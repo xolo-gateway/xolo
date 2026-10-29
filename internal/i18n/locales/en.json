@@ -691,6 +691,7 @@
   "org.model.prefill_no_rate": "The prices were not filled: no exchange rate is available to convert them into the provider's currency.",
   "org.errors.catalog_import.no_rate": "The catalog publishes these prices in %s and no exchange rate to %s is available: try again later.",
   "org.errors.provider_bundle.no_rate": "This bundle is priced in %s and no exchange rate to %s is available: try again later.",
+  "org.errors.provider_bundle.converted_invalid": "Converted into %s, this bundle leaves the allowed bounds: %s",
   "org.errors.provider_bundle.invalid_settings": "The provider settings of this bundle are invalid (plan, currency, retries or headers): nothing was written.",
   "org.subscription.title": "Subscriptions",
   "org.subscription.my_share": "My share",

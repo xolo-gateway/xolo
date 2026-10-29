@@ -691,6 +691,7 @@
   "org.model.prefill_no_rate": "Los precios no se rellenaron: no hay tipo de cambio disponible para convertirlos a la moneda del proveedor.",
   "org.errors.catalog_import.no_rate": "El catálogo publica estos precios en %s y no hay tipo de cambio a %s disponible: inténtelo más tarde.",
   "org.errors.provider_bundle.no_rate": "Este bundle tiene precios en %s y no hay tipo de cambio a %s disponible: inténtelo más tarde.",
+  "org.errors.provider_bundle.converted_invalid": "Convertido a %s, este bundle sale de los límites permitidos: %s",
   "org.errors.provider_bundle.invalid_settings": "La configuración del proveedor de este bundle no es válida (plan, moneda, reintentos o cabeceras): no se escribió nada.",
   "org.subscription.title": "Suscripciones",
   "org.subscription.my_share": "Mi parte",

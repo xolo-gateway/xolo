@@ -1236,3 +1236,16 @@ func TestApplyProviderBundle_ReportsALockedProviderNextToTheModelsWritten(t *tes
 		}
 	}
 }
+
+func TestPlanProviderBundleImport_ShowsNoHeaderChangeForASessionHeaderItKeeps(t *testing.T) {
+	p := model.NewProvider("org-a", "P", "openai", "", "key", "USD")
+	p.SetRequestHeaders(&model.ProviderRequestHeaders{SessionHeader: "x-opencode-session"})
+	bundle := model.ProviderBundle{Kind: model.ProviderBundleKind, Version: model.ProviderBundleVersion,
+		Provider: model.ProviderBundleSettings{Type: "openai", Currency: "USD"}}
+	plan := PlanProviderBundleImport(bundle, p, nil, takenNames{})
+	for _, c := range plan.Settings {
+		if c.Field == BundleFieldRequestHeaders {
+			t.Errorf("request headers change %+v, want none: the import keeps the session header", c)
+		}
+	}
+}

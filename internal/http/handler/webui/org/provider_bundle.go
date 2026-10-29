@@ -154,6 +154,12 @@ func (h *Handler) importProviderBundle(w http.ResponseWriter, r *http.Request) {
 			h.renderProviderBundleError(w, r, vmodel, i18n.T(ctx, "org.errors.provider_bundle.no_rate", bundle.Provider.Currency, p.Currency()))
 			return
 		}
+		// Converted, a price may leave the bounds the apply step checks
+		// again on the bundle posted back.
+		if err := bundle.Validate(); err != nil {
+			h.renderProviderBundleError(w, r, vmodel, i18n.T(ctx, "org.errors.provider_bundle.converted_invalid", p.Currency(), err.Error()))
+			return
+		}
 	}
 
 	// The apply step plans with the selection it applies, which may change

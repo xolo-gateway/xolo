@@ -637,8 +637,12 @@ func planBundleModel(i int, bm model.ProviderBundleModel, existing model.LLMMode
 
 func planProviderSettings(s model.ProviderBundleSettings, target model.Provider) ([]BundleFieldChange, *BundleFieldChange) {
 	var current model.ProviderBundleSettings
+	imported := s.RequestHeaders
 	if target != nil {
 		current = model.NewProviderBundle(target, nil, false, time.Time{}).Provider
+		// The headers the provider ends with: the bundle's, with those of
+		// its own a bundle never erases.
+		imported = model.ImportedHeaders(target.RequestHeaders(), s.RequestHeaders)
 	}
 	fields := []struct {
 		name     string
@@ -650,7 +654,7 @@ func planProviderSettings(s model.ProviderBundleSettings, target model.Provider)
 		{BundleFieldCloudTier, current.CloudTier, s.CloudTier},
 		{BundleFieldRetry, jsonValue(current.Retry), jsonValue(s.Retry)},
 		{BundleFieldRateLimit, jsonValue(current.RateLimit), jsonValue(s.RateLimit)},
-		{BundleFieldRequestHeaders, jsonValue(current.RequestHeaders), jsonValue(s.RequestHeaders)},
+		{BundleFieldRequestHeaders, jsonValue(current.RequestHeaders), jsonValue(imported)},
 	}
 	var changes []BundleFieldChange
 	for _, f := range fields {

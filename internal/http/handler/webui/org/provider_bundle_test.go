@@ -629,3 +629,16 @@ func TestCatalogImport_LeavesOutTheModelsTheTargetAPIDoesNotServe(t *testing.T) 
 		t.Errorf("status %d, want the dry run with the embeddings model left out and said so", rr.Code)
 	}
 }
+
+func TestProviderBundle_RefusesAtThePreviewAPriceTheConversionTakesOutOfBounds(t *testing.T) {
+	h, s, tenant := importFixture(t, "https://example.test/v1", "sk")
+	h.exchangeRateService = service.NewExchangeRateService(fixedRates{"EUR>USD": 10}, &memoryRates{rates: map[string]model.ExchangeRate{}}, time.Hour)
+	doc := `{"kind":"xolo.provider","version":"1","provider":{"type":"openai","currency":"EUR"},` +
+		`"models":[{"real_model":"m","proxy_name":"m","enabled":true,"prices":{"input":500000,"output":1}}]}`
+	fields := url.Values{"step": {"preview"}, "bundle": {doc}}
+	rr := httptest.NewRecorder()
+	h.importProviderBundle(rr, bundleRequest(t, s, tenant, string(s.provider.ID()), bytes.NewBufferString(fields.Encode()), "application/x-www-form-urlencoded"))
+	if rr.Code != http.StatusUnprocessableEntity || !strings.Contains(stdhtml.UnescapeString(rr.Body.String()), "Converti en USD") {
+		t.Errorf("status = %d, want 5000000 USD refused at the preview, the conversion named", rr.Code)
+	}
+}
