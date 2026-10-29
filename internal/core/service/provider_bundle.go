@@ -722,6 +722,15 @@ type BundleApplyResult struct {
 	// Stranded lists the models written for a provider type the provider
 	// did not take, which its own type does not serve.
 	Stranded []string
+	// written holds the proxy names of the models the import wrote.
+	written map[string]bool
+}
+
+func (r *BundleApplyResult) wrote(m model.LLMModel) {
+	if r.written == nil {
+		r.written = map[string]bool{}
+	}
+	r.written[m.ProxyName()] = true
 }
 
 // Refused reports whether a selected change could not be written.
@@ -829,6 +838,7 @@ func ApplyProviderBundle(ctx context.Context, store port.ProviderStore, plan Pro
 			continue
 		}
 		result.Created++
+		result.wrote(m)
 	}
 
 	if updated != nil {
@@ -850,7 +860,11 @@ func saveProviderSettings(ctx context.Context, store port.ProviderStore, plan Pr
 	if updated.Type() != t.Type() {
 		all, err := store.ListLLMModels(ctx, t.OrgID())
 		if err != nil {
-			return errors.Wrap(err, "could not list provider models")
+			// The models are written: the settings, whose type change
+			// could not be checked, are reported unsaved rather than lost
+			// in an error.
+			result.SettingsFailed = errors.Wrap(err, "could not list provider models")
+			return nil
 		}
 		models = all
 		if unserved := unservedModels(models, t.ID(), updated.Type()); len(unserved) > 0 {
@@ -867,15 +881,24 @@ func saveProviderSettings(ctx context.Context, store port.ProviderStore, plan Pr
 	if updated.Type() != t.Type() || others {
 		updated.SetUpdatedAt(time.Now())
 		if err := store.SaveProvider(ctx, updated); err != nil {
+			// A provider the ownership policy or a deletion locks is
+			// answered as such: importing again would not get through.
+			if errors.Is(err, port.ErrOwnershipDenied) || errors.Is(err, port.ErrResourceDeleted) {
+				return errors.Wrap(err, "could not update provider")
+			}
 			result.SettingsFailed = errors.Wrap(err, "could not update provider")
 		} else {
 			result.Provider, result.ProviderChanged = updated, true
 		}
 	}
-	// The models written for a type the provider did not take are named:
-	// a new import completes them once it can be written.
+	// The models this import wrote for a type the provider did not take
+	// are named: a new import completes them once it can be written.
 	if models != nil && result.Provider.Type() == t.Type() {
-		result.Stranded = unservedModels(models, t.ID(), t.Type())
+		for _, name := range unservedModels(models, t.ID(), t.Type()) {
+			if result.written[name] {
+				result.Stranded = append(result.Stranded, name)
+			}
+		}
 	}
 	return nil
 }
@@ -1025,4 +1048,5 @@ func applyBundleUpdate(ctx context.Context, store port.ProviderStore, mp BundleM
 		return
 	}
 	result.Updated++
+	result.wrote(m)
 }
