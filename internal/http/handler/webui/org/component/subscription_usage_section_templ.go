@@ -67,7 +67,7 @@ func SubscriptionUsageSection(providers []SubscriptionProviderUsage) templ.Compo
 				var templ_7745c5c3_Var3 string
 				templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.subscription.title"))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/subscription_usage_section.templ`, Line: 25, Col: 43}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `subscription_usage_section.templ`, Line: 25, Col: 43}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var3))
 				if templ_7745c5c3_Err != nil {
@@ -163,7 +163,7 @@ func subscriptionProviderCard(pu SubscriptionProviderUsage) templ.Component {
 					var templ_7745c5c3_Var8 string
 					templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.JoinStringErrs(pu.Provider.Name())
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/subscription_usage_section.templ`, Line: 42, Col: 31}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `subscription_usage_section.templ`, Line: 42, Col: 31}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var8))
 					if templ_7745c5c3_Err != nil {
@@ -187,7 +187,7 @@ func subscriptionProviderCard(pu SubscriptionProviderUsage) templ.Component {
 						var templ_7745c5c3_Var9 string
 						templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.subscription.peak", subscriptionPeakLabel(peak)))
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/subscription_usage_section.templ`, Line: 50, Col: 74}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `subscription_usage_section.templ`, Line: 50, Col: 74}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var9))
 						if templ_7745c5c3_Err != nil {
@@ -228,7 +228,7 @@ func subscriptionProviderCard(pu SubscriptionProviderUsage) templ.Component {
 						var templ_7745c5c3_Var11 string
 						templ_7745c5c3_Var11, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.subscription.personal_share", pu.Plan.Label))
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/subscription_usage_section.templ`, Line: 57, Col: 68}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `subscription_usage_section.templ`, Line: 57, Col: 68}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var11))
 						if templ_7745c5c3_Err != nil {
@@ -238,7 +238,7 @@ func subscriptionProviderCard(pu SubscriptionProviderUsage) templ.Component {
 						var templ_7745c5c3_Var12 string
 						templ_7745c5c3_Var12, templ_7745c5c3_Err = templ.JoinStringErrs(pu.Plan.Label)
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/subscription_usage_section.templ`, Line: 59, Col: 20}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `subscription_usage_section.templ`, Line: 59, Col: 20}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var12))
 						if templ_7745c5c3_Err != nil {
@@ -291,7 +291,7 @@ func subscriptionProviderCard(pu SubscriptionProviderUsage) templ.Component {
 					var templ_7745c5c3_Var14 string
 					templ_7745c5c3_Var14, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.subscription.no_constraints"))
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/subscription_usage_section.templ`, Line: 69, Col: 94}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `subscription_usage_section.templ`, Line: 69, Col: 94}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var14))
 					if templ_7745c5c3_Err != nil {
@@ -378,7 +378,7 @@ func subscriptionKeysView(keys []SubscriptionKeyUsage) templ.Component {
 				var templ_7745c5c3_Var18 string
 				templ_7745c5c3_Var18, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.subscription.keys_detail", len(keys)))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/subscription_usage_section.templ`, Line: 84, Col: 59}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `subscription_usage_section.templ`, Line: 84, Col: 59}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var18))
 				if templ_7745c5c3_Err != nil {
@@ -414,7 +414,7 @@ func subscriptionKeysView(keys []SubscriptionKeyUsage) templ.Component {
 					var templ_7745c5c3_Var20 string
 					templ_7745c5c3_Var20, templ_7745c5c3_Err = templ.JoinStringErrs(subscriptionKeyLabel(ctx, k))
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/subscription_usage_section.templ`, Line: 89, Col: 82}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `subscription_usage_section.templ`, Line: 89, Col: 82}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var20))
 					if templ_7745c5c3_Err != nil {
@@ -481,7 +481,7 @@ func subscriptionConstraintGroupView(g subscriptionConstraintGroup) templ.Compon
 		var templ_7745c5c3_Var22 string
 		templ_7745c5c3_Var22, templ_7745c5c3_Err = templ.JoinStringErrs(g.Constraint.Label)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/subscription_usage_section.templ`, Line: 104, Col: 73}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `subscription_usage_section.templ`, Line: 104, Col: 73}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var22))
 		if templ_7745c5c3_Err != nil {
@@ -494,7 +494,7 @@ func subscriptionConstraintGroupView(g subscriptionConstraintGroup) templ.Compon
 		var templ_7745c5c3_Var23 string
 		templ_7745c5c3_Var23, templ_7745c5c3_Err = templ.JoinStringErrs(subscriptionGroupTiming(ctx, g))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/subscription_usage_section.templ`, Line: 105, Col: 42}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `subscription_usage_section.templ`, Line: 105, Col: 42}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var23))
 		if templ_7745c5c3_Err != nil {
@@ -512,7 +512,7 @@ func subscriptionConstraintGroupView(g subscriptionConstraintGroup) templ.Compon
 			var templ_7745c5c3_Var24 string
 			templ_7745c5c3_Var24, templ_7745c5c3_Err = templ.JoinStringErrs(subscriptionGaugeKindLabel(ctx, g.Kind))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/subscription_usage_section.templ`, Line: 107, Col: 67}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `subscription_usage_section.templ`, Line: 107, Col: 67}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var24))
 			if templ_7745c5c3_Err != nil {
@@ -535,7 +535,7 @@ func subscriptionConstraintGroupView(g subscriptionConstraintGroup) templ.Compon
 			var templ_7745c5c3_Var25 string
 			templ_7745c5c3_Var25, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.subscription.per_model_note"))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/subscription_usage_section.templ`, Line: 111, Col: 92}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `subscription_usage_section.templ`, Line: 111, Col: 92}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var25))
 			if templ_7745c5c3_Err != nil {
@@ -554,7 +554,7 @@ func subscriptionConstraintGroupView(g subscriptionConstraintGroup) templ.Compon
 			var templ_7745c5c3_Var26 string
 			templ_7745c5c3_Var26, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.subscription.share_degraded"))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/subscription_usage_section.templ`, Line: 116, Col: 92}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `subscription_usage_section.templ`, Line: 116, Col: 92}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var26))
 			if templ_7745c5c3_Err != nil {
@@ -599,7 +599,7 @@ func subscriptionConstraintGroupView(g subscriptionConstraintGroup) templ.Compon
 					var templ_7745c5c3_Var29 string
 					templ_7745c5c3_Var29, templ_7745c5c3_Err = templ.JoinStringErrs(subscriptionFoldLabel(ctx, g))
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/subscription_usage_section.templ`, Line: 124, Col: 36}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `subscription_usage_section.templ`, Line: 124, Col: 36}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var29))
 					if templ_7745c5c3_Err != nil {
@@ -698,7 +698,7 @@ func subscriptionGaugeLine(g subscriptionConstraintGroup, r subscriptionGaugeRow
 			var templ_7745c5c3_Var32 string
 			templ_7745c5c3_Var32, templ_7745c5c3_Err = templ.JoinStringErrs(cu.UpstreamModel)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/subscription_usage_section.templ`, Line: 145, Col: 34}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `subscription_usage_section.templ`, Line: 145, Col: 34}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var32))
 			if templ_7745c5c3_Err != nil {
@@ -711,7 +711,7 @@ func subscriptionGaugeLine(g subscriptionConstraintGroup, r subscriptionGaugeRow
 			var templ_7745c5c3_Var33 string
 			templ_7745c5c3_Var33, templ_7745c5c3_Err = templ.JoinStringErrs(cu.UpstreamModel)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/subscription_usage_section.templ`, Line: 145, Col: 55}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `subscription_usage_section.templ`, Line: 145, Col: 55}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var33))
 			if templ_7745c5c3_Err != nil {
@@ -730,7 +730,7 @@ func subscriptionGaugeLine(g subscriptionConstraintGroup, r subscriptionGaugeRow
 			var templ_7745c5c3_Var34 string
 			templ_7745c5c3_Var34, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.subscription.concurrent_requests"))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/subscription_usage_section.templ`, Line: 149, Col: 57}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `subscription_usage_section.templ`, Line: 149, Col: 57}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var34))
 			if templ_7745c5c3_Err != nil {
@@ -740,7 +740,7 @@ func subscriptionGaugeLine(g subscriptionConstraintGroup, r subscriptionGaugeRow
 			var templ_7745c5c3_Var35 string
 			templ_7745c5c3_Var35, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.subscription.all_models"))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/subscription_usage_section.templ`, Line: 151, Col: 48}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `subscription_usage_section.templ`, Line: 151, Col: 48}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var35))
 			if templ_7745c5c3_Err != nil {
@@ -768,7 +768,7 @@ func subscriptionGaugeLine(g subscriptionConstraintGroup, r subscriptionGaugeRow
 				var templ_7745c5c3_Var36 string
 				templ_7745c5c3_Var36, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("%d / %d", cu.InFlight, *cu.Constraint.MaxConcurrent))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/subscription_usage_section.templ`, Line: 160, Col: 72}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `subscription_usage_section.templ`, Line: 160, Col: 72}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var36))
 				if templ_7745c5c3_Err != nil {
@@ -783,7 +783,7 @@ func subscriptionGaugeLine(g subscriptionConstraintGroup, r subscriptionGaugeRow
 					var templ_7745c5c3_Var37 string
 					templ_7745c5c3_Var37, templ_7745c5c3_Err = templ.JoinStringErrs(subscriptionGaugeKindLabel(ctx, r.Kind))
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/subscription_usage_section.templ`, Line: 163, Col: 83}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `subscription_usage_section.templ`, Line: 163, Col: 83}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var37))
 					if templ_7745c5c3_Err != nil {
@@ -801,7 +801,7 @@ func subscriptionGaugeLine(g subscriptionConstraintGroup, r subscriptionGaugeRow
 				var templ_7745c5c3_Var38 string
 				templ_7745c5c3_Var38, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf(" %d%%", r.Pct))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/subscription_usage_section.templ`, Line: 165, Col: 34}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `subscription_usage_section.templ`, Line: 165, Col: 34}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var38))
 				if templ_7745c5c3_Err != nil {
@@ -864,7 +864,7 @@ func subscriptionGaugeLine(g subscriptionConstraintGroup, r subscriptionGaugeRow
 			var templ_7745c5c3_Var39 string
 			templ_7745c5c3_Var39, templ_7745c5c3_Err = templ.JoinStringErrs(part)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/subscription_usage_section.templ`, Line: 190, Col: 16}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `subscription_usage_section.templ`, Line: 190, Col: 16}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var39))
 			if templ_7745c5c3_Err != nil {
@@ -905,7 +905,7 @@ func subscriptionGaugeLine(g subscriptionConstraintGroup, r subscriptionGaugeRow
 				var templ_7745c5c3_Var41 string
 				templ_7745c5c3_Var41, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.subscription.share_basis_short", strconv.Itoa(cu.ActiveUsers), strconv.Itoa(cu.MemberCount)))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/subscription_usage_section.templ`, Line: 201, Col: 117}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `subscription_usage_section.templ`, Line: 201, Col: 117}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var41))
 				if templ_7745c5c3_Err != nil {
@@ -1064,7 +1064,7 @@ func subscriptionExplanation(text string) templ.Component {
 			var templ_7745c5c3_Var47 string
 			templ_7745c5c3_Var47, templ_7745c5c3_Err = templ.JoinStringErrs(text)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/subscription_usage_section.templ`, Line: 239, Col: 8}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `subscription_usage_section.templ`, Line: 239, Col: 8}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var47))
 			if templ_7745c5c3_Err != nil {

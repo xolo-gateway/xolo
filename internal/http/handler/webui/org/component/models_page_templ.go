@@ -80,7 +80,7 @@ func ModelsPage(vmodel ModelsPageVModel) templ.Component {
 					var templ_7745c5c3_Var5 string
 					templ_7745c5c3_Var5, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.models.back_to_providers"))
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/models_page.templ`, Line: 26, Col: 49}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `models_page.templ`, Line: 26, Col: 49}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var5))
 					if templ_7745c5c3_Err != nil {
@@ -132,7 +132,7 @@ func ModelsPage(vmodel ModelsPageVModel) templ.Component {
 						var templ_7745c5c3_Var7 string
 						templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.provider_bundle.import_bundle"))
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/models_page.templ`, Line: 37, Col: 55}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `models_page.templ`, Line: 37, Col: 55}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var7))
 						if templ_7745c5c3_Err != nil {
@@ -176,7 +176,7 @@ func ModelsPage(vmodel ModelsPageVModel) templ.Component {
 						var templ_7745c5c3_Var9 string
 						templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.models.import_from_provider"))
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/models_page.templ`, Line: 46, Col: 53}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `models_page.templ`, Line: 46, Col: 53}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var9))
 						if templ_7745c5c3_Err != nil {
@@ -220,7 +220,7 @@ func ModelsPage(vmodel ModelsPageVModel) templ.Component {
 						var templ_7745c5c3_Var11 string
 						templ_7745c5c3_Var11, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.models.add"))
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/models_page.templ`, Line: 54, Col: 36}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `models_page.templ`, Line: 54, Col: 36}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var11))
 						if templ_7745c5c3_Err != nil {
@@ -297,7 +297,7 @@ func ModelsPage(vmodel ModelsPageVModel) templ.Component {
 							var templ_7745c5c3_Var14 string
 							templ_7745c5c3_Var14, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.models.add"))
 							if templ_7745c5c3_Err != nil {
-								return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/models_page.templ`, Line: 74, Col: 37}
+								return templ.Error{Err: templ_7745c5c3_Err, FileName: `models_page.templ`, Line: 74, Col: 37}
 							}
 							_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var14))
 							if templ_7745c5c3_Err != nil {
@@ -363,7 +363,7 @@ func ModelsPage(vmodel ModelsPageVModel) templ.Component {
 							var templ_7745c5c3_Var18 string
 							templ_7745c5c3_Var18, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.models.count", len(vmodel.Models)))
 							if templ_7745c5c3_Err != nil {
-								return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/models_page.templ`, Line: 82, Col: 59}
+								return templ.Error{Err: templ_7745c5c3_Err, FileName: `models_page.templ`, Line: 82, Col: 59}
 							}
 							_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var18))
 							if templ_7745c5c3_Err != nil {
@@ -382,7 +382,7 @@ func ModelsPage(vmodel ModelsPageVModel) templ.Component {
 						var templ_7745c5c3_Var19 string
 						templ_7745c5c3_Var19, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.models.cost_unit_note", vmodel.Provider.Currency()))
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/models_page.templ`, Line: 85, Col: 76}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `models_page.templ`, Line: 85, Col: 76}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var19))
 						if templ_7745c5c3_Err != nil {
@@ -441,7 +441,7 @@ func ModelsPage(vmodel ModelsPageVModel) templ.Component {
 								var templ_7745c5c3_Var23 string
 								templ_7745c5c3_Var23, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.models.col.proxy_name"))
 								if templ_7745c5c3_Err != nil {
-									return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/models_page.templ`, Line: 92, Col: 50}
+									return templ.Error{Err: templ_7745c5c3_Err, FileName: `models_page.templ`, Line: 92, Col: 50}
 								}
 								_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var23))
 								if templ_7745c5c3_Err != nil {
@@ -472,7 +472,7 @@ func ModelsPage(vmodel ModelsPageVModel) templ.Component {
 								var templ_7745c5c3_Var25 string
 								templ_7745c5c3_Var25, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.models.col.real_model"))
 								if templ_7745c5c3_Err != nil {
-									return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/models_page.templ`, Line: 95, Col: 50}
+									return templ.Error{Err: templ_7745c5c3_Err, FileName: `models_page.templ`, Line: 95, Col: 50}
 								}
 								_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var25))
 								if templ_7745c5c3_Err != nil {
@@ -503,7 +503,7 @@ func ModelsPage(vmodel ModelsPageVModel) templ.Component {
 								var templ_7745c5c3_Var27 string
 								templ_7745c5c3_Var27, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.models.col.prompt"))
 								if templ_7745c5c3_Err != nil {
-									return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/models_page.templ`, Line: 98, Col: 46}
+									return templ.Error{Err: templ_7745c5c3_Err, FileName: `models_page.templ`, Line: 98, Col: 46}
 								}
 								_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var27))
 								if templ_7745c5c3_Err != nil {
@@ -534,7 +534,7 @@ func ModelsPage(vmodel ModelsPageVModel) templ.Component {
 								var templ_7745c5c3_Var29 string
 								templ_7745c5c3_Var29, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.models.col.cached_prompt"))
 								if templ_7745c5c3_Err != nil {
-									return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/models_page.templ`, Line: 101, Col: 53}
+									return templ.Error{Err: templ_7745c5c3_Err, FileName: `models_page.templ`, Line: 101, Col: 53}
 								}
 								_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var29))
 								if templ_7745c5c3_Err != nil {
@@ -565,7 +565,7 @@ func ModelsPage(vmodel ModelsPageVModel) templ.Component {
 								var templ_7745c5c3_Var31 string
 								templ_7745c5c3_Var31, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.models.col.completion"))
 								if templ_7745c5c3_Err != nil {
-									return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/models_page.templ`, Line: 104, Col: 50}
+									return templ.Error{Err: templ_7745c5c3_Err, FileName: `models_page.templ`, Line: 104, Col: 50}
 								}
 								_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var31))
 								if templ_7745c5c3_Err != nil {
@@ -596,7 +596,7 @@ func ModelsPage(vmodel ModelsPageVModel) templ.Component {
 								var templ_7745c5c3_Var33 string
 								templ_7745c5c3_Var33, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.models.col.context"))
 								if templ_7745c5c3_Err != nil {
-									return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/models_page.templ`, Line: 107, Col: 47}
+									return templ.Error{Err: templ_7745c5c3_Err, FileName: `models_page.templ`, Line: 107, Col: 47}
 								}
 								_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var33))
 								if templ_7745c5c3_Err != nil {
@@ -627,7 +627,7 @@ func ModelsPage(vmodel ModelsPageVModel) templ.Component {
 								var templ_7745c5c3_Var35 string
 								templ_7745c5c3_Var35, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.models.col.output"))
 								if templ_7745c5c3_Err != nil {
-									return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/models_page.templ`, Line: 110, Col: 46}
+									return templ.Error{Err: templ_7745c5c3_Err, FileName: `models_page.templ`, Line: 110, Col: 46}
 								}
 								_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var35))
 								if templ_7745c5c3_Err != nil {
@@ -658,7 +658,7 @@ func ModelsPage(vmodel ModelsPageVModel) templ.Component {
 								var templ_7745c5c3_Var37 string
 								templ_7745c5c3_Var37, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.models.col.capabilities"))
 								if templ_7745c5c3_Err != nil {
-									return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/models_page.templ`, Line: 113, Col: 52}
+									return templ.Error{Err: templ_7745c5c3_Err, FileName: `models_page.templ`, Line: 113, Col: 52}
 								}
 								_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var37))
 								if templ_7745c5c3_Err != nil {
@@ -689,7 +689,7 @@ func ModelsPage(vmodel ModelsPageVModel) templ.Component {
 								var templ_7745c5c3_Var39 string
 								templ_7745c5c3_Var39, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.models.col.enabled"))
 								if templ_7745c5c3_Err != nil {
-									return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/models_page.templ`, Line: 116, Col: 47}
+									return templ.Error{Err: templ_7745c5c3_Err, FileName: `models_page.templ`, Line: 116, Col: 47}
 								}
 								_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var39))
 								if templ_7745c5c3_Err != nil {
@@ -720,7 +720,7 @@ func ModelsPage(vmodel ModelsPageVModel) templ.Component {
 								var templ_7745c5c3_Var41 string
 								templ_7745c5c3_Var41, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.models.col.actions"))
 								if templ_7745c5c3_Err != nil {
-									return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/models_page.templ`, Line: 119, Col: 47}
+									return templ.Error{Err: templ_7745c5c3_Err, FileName: `models_page.templ`, Line: 119, Col: 47}
 								}
 								_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var41))
 								if templ_7745c5c3_Err != nil {
@@ -782,7 +782,7 @@ func ModelsPage(vmodel ModelsPageVModel) templ.Component {
 										var templ_7745c5c3_Var45 string
 										templ_7745c5c3_Var45, templ_7745c5c3_Err = templ.JoinStringErrs(vmodel.Org.Slug())
 										if templ_7745c5c3_Err != nil {
-											return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/models_page.templ`, Line: 126, Col: 29}
+											return templ.Error{Err: templ_7745c5c3_Err, FileName: `models_page.templ`, Line: 126, Col: 29}
 										}
 										_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var45))
 										if templ_7745c5c3_Err != nil {
@@ -795,7 +795,7 @@ func ModelsPage(vmodel ModelsPageVModel) templ.Component {
 										var templ_7745c5c3_Var46 string
 										templ_7745c5c3_Var46, templ_7745c5c3_Err = templ.JoinStringErrs(m.ProxyName())
 										if templ_7745c5c3_Err != nil {
-											return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/models_page.templ`, Line: 126, Col: 47}
+											return templ.Error{Err: templ_7745c5c3_Err, FileName: `models_page.templ`, Line: 126, Col: 47}
 										}
 										_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var46))
 										if templ_7745c5c3_Err != nil {
@@ -852,7 +852,7 @@ func ModelsPage(vmodel ModelsPageVModel) templ.Component {
 										var templ_7745c5c3_Var49 string
 										templ_7745c5c3_Var49, templ_7745c5c3_Err = templ.JoinStringErrs(formatCostRateBare(m.PromptCostPer1KTokens()))
 										if templ_7745c5c3_Err != nil {
-											return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/models_page.templ`, Line: 132, Col: 57}
+											return templ.Error{Err: templ_7745c5c3_Err, FileName: `models_page.templ`, Line: 132, Col: 57}
 										}
 										_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var49))
 										if templ_7745c5c3_Err != nil {
@@ -883,7 +883,7 @@ func ModelsPage(vmodel ModelsPageVModel) templ.Component {
 										var templ_7745c5c3_Var51 string
 										templ_7745c5c3_Var51, templ_7745c5c3_Err = templ.JoinStringErrs(formatCostRateBare(m.CachedPromptCostPer1KTokens()))
 										if templ_7745c5c3_Err != nil {
-											return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/models_page.templ`, Line: 135, Col: 63}
+											return templ.Error{Err: templ_7745c5c3_Err, FileName: `models_page.templ`, Line: 135, Col: 63}
 										}
 										_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var51))
 										if templ_7745c5c3_Err != nil {
@@ -914,7 +914,7 @@ func ModelsPage(vmodel ModelsPageVModel) templ.Component {
 										var templ_7745c5c3_Var53 string
 										templ_7745c5c3_Var53, templ_7745c5c3_Err = templ.JoinStringErrs(formatCostRateBare(m.CompletionCostPer1KTokens()))
 										if templ_7745c5c3_Err != nil {
-											return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/models_page.templ`, Line: 138, Col: 61}
+											return templ.Error{Err: templ_7745c5c3_Err, FileName: `models_page.templ`, Line: 138, Col: 61}
 										}
 										_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var53))
 										if templ_7745c5c3_Err != nil {
@@ -945,7 +945,7 @@ func ModelsPage(vmodel ModelsPageVModel) templ.Component {
 										var templ_7745c5c3_Var55 string
 										templ_7745c5c3_Var55, templ_7745c5c3_Err = templ.JoinStringErrs(formatTokenWindow(m.ContextWindow()))
 										if templ_7745c5c3_Err != nil {
-											return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/models_page.templ`, Line: 141, Col: 48}
+											return templ.Error{Err: templ_7745c5c3_Err, FileName: `models_page.templ`, Line: 141, Col: 48}
 										}
 										_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var55))
 										if templ_7745c5c3_Err != nil {
@@ -976,7 +976,7 @@ func ModelsPage(vmodel ModelsPageVModel) templ.Component {
 										var templ_7745c5c3_Var57 string
 										templ_7745c5c3_Var57, templ_7745c5c3_Err = templ.JoinStringErrs(formatTokenWindow(m.OutputWindow()))
 										if templ_7745c5c3_Err != nil {
-											return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/models_page.templ`, Line: 144, Col: 47}
+											return templ.Error{Err: templ_7745c5c3_Err, FileName: `models_page.templ`, Line: 144, Col: 47}
 										}
 										_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var57))
 										if templ_7745c5c3_Err != nil {
@@ -1286,7 +1286,7 @@ func providerBundleExportMenu(vmodel ModelsPageVModel) templ.Component {
 					var templ_7745c5c3_Var67 string
 					templ_7745c5c3_Var67, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.provider_bundle.export"))
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/models_page.templ`, Line: 214, Col: 47}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `models_page.templ`, Line: 214, Col: 47}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var67))
 					if templ_7745c5c3_Err != nil {
@@ -1335,7 +1335,7 @@ func providerBundleExportMenu(vmodel ModelsPageVModel) templ.Component {
 					var templ_7745c5c3_Var70 string
 					templ_7745c5c3_Var70, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.provider_bundle.export_all"))
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/models_page.templ`, Line: 219, Col: 51}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `models_page.templ`, Line: 219, Col: 51}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var70))
 					if templ_7745c5c3_Err != nil {
@@ -1366,7 +1366,7 @@ func providerBundleExportMenu(vmodel ModelsPageVModel) templ.Component {
 					var templ_7745c5c3_Var72 string
 					templ_7745c5c3_Var72, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.provider_bundle.export_enabled"))
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/models_page.templ`, Line: 222, Col: 55}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `models_page.templ`, Line: 222, Col: 55}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var72))
 					if templ_7745c5c3_Err != nil {

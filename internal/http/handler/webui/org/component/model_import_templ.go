@@ -85,7 +85,7 @@ func ModelImportPage(vmodel ModelImportVModel) templ.Component {
 					var templ_7745c5c3_Var5 string
 					templ_7745c5c3_Var5, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.import.back_to_models"))
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/model_import.templ`, Line: 27, Col: 46}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `model_import.templ`, Line: 27, Col: 46}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var5))
 					if templ_7745c5c3_Err != nil {
@@ -138,7 +138,7 @@ func ModelImportPage(vmodel ModelImportVModel) templ.Component {
 						var templ_7745c5c3_Var8 string
 						templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.JoinStringErrs(vmodel.Error)
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/model_import.templ`, Line: 34, Col: 20}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `model_import.templ`, Line: 34, Col: 20}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var8))
 						if templ_7745c5c3_Err != nil {
@@ -189,7 +189,7 @@ func ModelImportPage(vmodel ModelImportVModel) templ.Component {
 						var templ_7745c5c3_Var11 string
 						templ_7745c5c3_Var11, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.import.summary", i18n.T(ctx, "org.import.imported_count", vmodel.Imported), i18n.T(ctx, "org.import.skipped_count", len(vmodel.Skipped))))
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/model_import.templ`, Line: 42, Col: 163}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `model_import.templ`, Line: 42, Col: 163}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var11))
 						if templ_7745c5c3_Err != nil {
@@ -207,7 +207,7 @@ func ModelImportPage(vmodel ModelImportVModel) templ.Component {
 							var templ_7745c5c3_Var12 string
 							templ_7745c5c3_Var12, templ_7745c5c3_Err = templ.JoinStringErrs(reason)
 							if templ_7745c5c3_Err != nil {
-								return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/model_import.templ`, Line: 46, Col: 20}
+								return templ.Error{Err: templ_7745c5c3_Err, FileName: `model_import.templ`, Line: 46, Col: 20}
 							}
 							_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var12))
 							if templ_7745c5c3_Err != nil {
@@ -244,7 +244,7 @@ func ModelImportPage(vmodel ModelImportVModel) templ.Component {
 				var templ_7745c5c3_Var13 templ.SafeURL
 				templ_7745c5c3_Var13, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(importURL))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/model_import.templ`, Line: 54, Col: 57}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `model_import.templ`, Line: 54, Col: 57}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var13))
 				if templ_7745c5c3_Err != nil {
@@ -263,7 +263,7 @@ func ModelImportPage(vmodel ModelImportVModel) templ.Component {
 						var templ_7745c5c3_Var14 string
 						templ_7745c5c3_Var14, templ_7745c5c3_Err = templ.JoinStringErrs(c.ID)
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/model_import.templ`, Line: 60, Col: 57}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `model_import.templ`, Line: 60, Col: 57}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var14))
 						if templ_7745c5c3_Err != nil {
@@ -319,7 +319,7 @@ func ModelImportPage(vmodel ModelImportVModel) templ.Component {
 							var templ_7745c5c3_Var18 string
 							templ_7745c5c3_Var18, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.import.prefix_label"))
 							if templ_7745c5c3_Err != nil {
-								return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/model_import.templ`, Line: 68, Col: 48}
+								return templ.Error{Err: templ_7745c5c3_Err, FileName: `model_import.templ`, Line: 68, Col: 48}
 							}
 							_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var18))
 							if templ_7745c5c3_Err != nil {
@@ -350,7 +350,7 @@ func ModelImportPage(vmodel ModelImportVModel) templ.Component {
 							var templ_7745c5c3_Var20 string
 							templ_7745c5c3_Var20, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.import.prefix_help_before"))
 							if templ_7745c5c3_Err != nil {
-								return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/model_import.templ`, Line: 71, Col: 54}
+								return templ.Error{Err: templ_7745c5c3_Err, FileName: `model_import.templ`, Line: 71, Col: 54}
 							}
 							_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var20))
 							if templ_7745c5c3_Err != nil {
@@ -359,7 +359,7 @@ func ModelImportPage(vmodel ModelImportVModel) templ.Component {
 							var templ_7745c5c3_Var21 string
 							templ_7745c5c3_Var21, templ_7745c5c3_Err = templ.JoinStringErrs(" ")
 							if templ_7745c5c3_Err != nil {
-								return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/model_import.templ`, Line: 71, Col: 61}
+								return templ.Error{Err: templ_7745c5c3_Err, FileName: `model_import.templ`, Line: 71, Col: 61}
 							}
 							_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var21))
 							if templ_7745c5c3_Err != nil {
@@ -372,7 +372,7 @@ func ModelImportPage(vmodel ModelImportVModel) templ.Component {
 							var templ_7745c5c3_Var22 string
 							templ_7745c5c3_Var22, templ_7745c5c3_Err = templ.JoinStringErrs(vmodel.Org.Slug())
 							if templ_7745c5c3_Err != nil {
-								return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/model_import.templ`, Line: 71, Col: 88}
+								return templ.Error{Err: templ_7745c5c3_Err, FileName: `model_import.templ`, Line: 71, Col: 88}
 							}
 							_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var22))
 							if templ_7745c5c3_Err != nil {
@@ -385,7 +385,7 @@ func ModelImportPage(vmodel ModelImportVModel) templ.Component {
 							var templ_7745c5c3_Var23 string
 							templ_7745c5c3_Var23, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.import.prefix_help_pattern"))
 							if templ_7745c5c3_Err != nil {
-								return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/model_import.templ`, Line: 71, Col: 138}
+								return templ.Error{Err: templ_7745c5c3_Err, FileName: `model_import.templ`, Line: 71, Col: 138}
 							}
 							_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var23))
 							if templ_7745c5c3_Err != nil {
@@ -398,7 +398,7 @@ func ModelImportPage(vmodel ModelImportVModel) templ.Component {
 							var templ_7745c5c3_Var24 string
 							templ_7745c5c3_Var24, templ_7745c5c3_Err = templ.JoinStringErrs(" ")
 							if templ_7745c5c3_Err != nil {
-								return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/model_import.templ`, Line: 71, Col: 153}
+								return templ.Error{Err: templ_7745c5c3_Err, FileName: `model_import.templ`, Line: 71, Col: 153}
 							}
 							_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var24))
 							if templ_7745c5c3_Err != nil {
@@ -463,7 +463,7 @@ func ModelImportPage(vmodel ModelImportVModel) templ.Component {
 							var templ_7745c5c3_Var26 string
 							templ_7745c5c3_Var26, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.import.created_disabled_help"))
 							if templ_7745c5c3_Err != nil {
-								return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/model_import.templ`, Line: 91, Col: 57}
+								return templ.Error{Err: templ_7745c5c3_Err, FileName: `model_import.templ`, Line: 91, Col: 57}
 							}
 							_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var26))
 							if templ_7745c5c3_Err != nil {
@@ -526,7 +526,7 @@ func ModelImportPage(vmodel ModelImportVModel) templ.Component {
 							var templ_7745c5c3_Var30 string
 							templ_7745c5c3_Var30, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.import.listed_count", len(vmodel.Candidates)))
 							if templ_7745c5c3_Err != nil {
-								return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/model_import.templ`, Line: 98, Col: 72}
+								return templ.Error{Err: templ_7745c5c3_Err, FileName: `model_import.templ`, Line: 98, Col: 72}
 							}
 							_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var30))
 							if templ_7745c5c3_Err != nil {
@@ -613,7 +613,7 @@ func ModelImportPage(vmodel ModelImportVModel) templ.Component {
 								var templ_7745c5c3_Var35 string
 								templ_7745c5c3_Var35, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.import.col_id"))
 								if templ_7745c5c3_Err != nil {
-									return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/model_import.templ`, Line: 108, Col: 44}
+									return templ.Error{Err: templ_7745c5c3_Err, FileName: `model_import.templ`, Line: 108, Col: 44}
 								}
 								_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var35))
 								if templ_7745c5c3_Err != nil {
@@ -644,7 +644,7 @@ func ModelImportPage(vmodel ModelImportVModel) templ.Component {
 								var templ_7745c5c3_Var37 string
 								templ_7745c5c3_Var37, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.import.col_name"))
 								if templ_7745c5c3_Err != nil {
-									return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/model_import.templ`, Line: 111, Col: 46}
+									return templ.Error{Err: templ_7745c5c3_Err, FileName: `model_import.templ`, Line: 111, Col: 46}
 								}
 								_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var37))
 								if templ_7745c5c3_Err != nil {
@@ -675,7 +675,7 @@ func ModelImportPage(vmodel ModelImportVModel) templ.Component {
 								var templ_7745c5c3_Var39 string
 								templ_7745c5c3_Var39, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.import.col_proxy_name"))
 								if templ_7745c5c3_Err != nil {
-									return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/model_import.templ`, Line: 114, Col: 52}
+									return templ.Error{Err: templ_7745c5c3_Err, FileName: `model_import.templ`, Line: 114, Col: 52}
 								}
 								_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var39))
 								if templ_7745c5c3_Err != nil {
@@ -706,7 +706,7 @@ func ModelImportPage(vmodel ModelImportVModel) templ.Component {
 								var templ_7745c5c3_Var41 string
 								templ_7745c5c3_Var41, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.import.col_context"))
 								if templ_7745c5c3_Err != nil {
-									return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/model_import.templ`, Line: 117, Col: 49}
+									return templ.Error{Err: templ_7745c5c3_Err, FileName: `model_import.templ`, Line: 117, Col: 49}
 								}
 								_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var41))
 								if templ_7745c5c3_Err != nil {
@@ -737,7 +737,7 @@ func ModelImportPage(vmodel ModelImportVModel) templ.Component {
 								var templ_7745c5c3_Var43 string
 								templ_7745c5c3_Var43, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.import.col_output"))
 								if templ_7745c5c3_Err != nil {
-									return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/model_import.templ`, Line: 120, Col: 48}
+									return templ.Error{Err: templ_7745c5c3_Err, FileName: `model_import.templ`, Line: 120, Col: 48}
 								}
 								_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var43))
 								if templ_7745c5c3_Err != nil {
@@ -768,7 +768,7 @@ func ModelImportPage(vmodel ModelImportVModel) templ.Component {
 								var templ_7745c5c3_Var45 string
 								templ_7745c5c3_Var45, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.import.col_status"))
 								if templ_7745c5c3_Err != nil {
-									return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/model_import.templ`, Line: 123, Col: 48}
+									return templ.Error{Err: templ_7745c5c3_Err, FileName: `model_import.templ`, Line: 123, Col: 48}
 								}
 								_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var45))
 								if templ_7745c5c3_Err != nil {
@@ -876,7 +876,7 @@ func ModelImportPage(vmodel ModelImportVModel) templ.Component {
 											var templ_7745c5c3_Var51 string
 											templ_7745c5c3_Var51, templ_7745c5c3_Err = templ.JoinStringErrs(c.ID)
 											if templ_7745c5c3_Err != nil {
-												return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/model_import.templ`, Line: 139, Col: 19}
+												return templ.Error{Err: templ_7745c5c3_Err, FileName: `model_import.templ`, Line: 139, Col: 19}
 											}
 											_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var51))
 											if templ_7745c5c3_Err != nil {
@@ -913,7 +913,7 @@ func ModelImportPage(vmodel ModelImportVModel) templ.Component {
 										var templ_7745c5c3_Var53 string
 										templ_7745c5c3_Var53, templ_7745c5c3_Err = templ.JoinStringErrs(c.DisplayName)
 										if templ_7745c5c3_Err != nil {
-											return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/model_import.templ`, Line: 143, Col: 27}
+											return templ.Error{Err: templ_7745c5c3_Err, FileName: `model_import.templ`, Line: 143, Col: 27}
 										}
 										_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var53))
 										if templ_7745c5c3_Err != nil {
@@ -972,7 +972,7 @@ func ModelImportPage(vmodel ModelImportVModel) templ.Component {
 										var templ_7745c5c3_Var56 string
 										templ_7745c5c3_Var56, templ_7745c5c3_Err = templ.JoinStringErrs(formatTokenWindow(c.ContextWindow))
 										if templ_7745c5c3_Err != nil {
-											return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/model_import.templ`, Line: 151, Col: 48}
+											return templ.Error{Err: templ_7745c5c3_Err, FileName: `model_import.templ`, Line: 151, Col: 48}
 										}
 										_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var56))
 										if templ_7745c5c3_Err != nil {
@@ -1003,7 +1003,7 @@ func ModelImportPage(vmodel ModelImportVModel) templ.Component {
 										var templ_7745c5c3_Var58 string
 										templ_7745c5c3_Var58, templ_7745c5c3_Err = templ.JoinStringErrs(formatTokenWindow(c.OutputWindow))
 										if templ_7745c5c3_Err != nil {
-											return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/model_import.templ`, Line: 154, Col: 47}
+											return templ.Error{Err: templ_7745c5c3_Err, FileName: `model_import.templ`, Line: 154, Col: 47}
 										}
 										_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var58))
 										if templ_7745c5c3_Err != nil {
@@ -1095,7 +1095,7 @@ func ModelImportPage(vmodel ModelImportVModel) templ.Component {
 					var templ_7745c5c3_Var61 string
 					templ_7745c5c3_Var61, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.import.import_selection"))
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/model_import.templ`, Line: 169, Col: 50}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `model_import.templ`, Line: 169, Col: 50}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var61))
 					if templ_7745c5c3_Err != nil {
@@ -1215,7 +1215,7 @@ func modelImportPrefixError(message string, oob bool) templ.Component {
 		var templ_7745c5c3_Var64 string
 		templ_7745c5c3_Var64, templ_7745c5c3_Err = templ.JoinStringErrs(message)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/model_import.templ`, Line: 198, Col: 114}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `model_import.templ`, Line: 198, Col: 114}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var64))
 		if templ_7745c5c3_Err != nil {
@@ -1259,7 +1259,7 @@ func modelImportProxyName(i int, c ModelImportCandidate, oob bool) templ.Compone
 		var templ_7745c5c3_Var66 string
 		templ_7745c5c3_Var66, templ_7745c5c3_Err = templ.JoinStringErrs("import-name-" + strconv.Itoa(i))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/model_import.templ`, Line: 204, Col: 43}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `model_import.templ`, Line: 204, Col: 43}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var66))
 		if templ_7745c5c3_Err != nil {
@@ -1282,7 +1282,7 @@ func modelImportProxyName(i int, c ModelImportCandidate, oob bool) templ.Compone
 		var templ_7745c5c3_Var67 string
 		templ_7745c5c3_Var67, templ_7745c5c3_Err = templ.JoinStringErrs(c.ProxyName)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/model_import.templ`, Line: 205, Col: 47}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `model_import.templ`, Line: 205, Col: 47}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var67))
 		if templ_7745c5c3_Err != nil {
@@ -1300,7 +1300,7 @@ func modelImportProxyName(i int, c ModelImportCandidate, oob bool) templ.Compone
 			var templ_7745c5c3_Var68 string
 			templ_7745c5c3_Var68, templ_7745c5c3_Err = templ.JoinStringErrs(c.Conflict)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/model_import.templ`, Line: 207, Col: 60}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `model_import.templ`, Line: 207, Col: 60}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var68))
 			if templ_7745c5c3_Err != nil {

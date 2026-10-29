@@ -29,7 +29,8 @@ const (
 	maxBusinessDescriptionLength = 4000
 	maxAlertQueryLength          = 8192
 	maxAlertDuration             = 31 * 24 * time.Hour
-	maxProviderKeyLength         = 16384
+	// MaxProviderKeyLength bounds a provider API key, on every write path.
+	MaxProviderKeyLength = 16384
 	// maxPlanModelBudgets bounds the per-model overrides of one plan
 	// constraint; aggregators list a few dozen models.
 	maxPlanModelBudgets = 1000
@@ -592,7 +593,7 @@ func validateProvider(v model.ProviderSettings) error {
 	if v.BaseURL != "" && !model.IsValidBaseURL(v.BaseURL) {
 		return errors.Wrap(port.ErrInvalid, "invalid base_url")
 	}
-	if v.APIKey != nil && (*v.APIKey == "" || len(*v.APIKey) > maxProviderKeyLength) {
+	if v.APIKey != nil && (*v.APIKey == "" || len(*v.APIKey) > MaxProviderKeyLength) {
 		return errors.Wrap(port.ErrInvalid, "invalid api_key")
 	}
 	if c := v.RetryConfig; c != nil && c.Enabled && (c.Delay <= 0 || c.MaxAttempts < 1 || c.MaxAttempts > 100) {

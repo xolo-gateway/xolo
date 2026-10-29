@@ -149,7 +149,7 @@ func QuotaPage(vmodel QuotaPageVModel) templ.Component {
 						var templ_7745c5c3_Var5 string
 						templ_7745c5c3_Var5, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.quota.invalid_ceiling"))
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/quota_page.templ`, Line: 52, Col: 49}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `quota_page.templ`, Line: 52, Col: 49}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var5))
 						if templ_7745c5c3_Err != nil {
@@ -180,7 +180,7 @@ func QuotaPage(vmodel QuotaPageVModel) templ.Component {
 						var templ_7745c5c3_Var7 string
 						templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.JoinStringErrs(quotaFormErrorSummary(ctx, vmodel.FieldErrors))
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/quota_page.templ`, Line: 55, Col: 55}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `quota_page.templ`, Line: 55, Col: 55}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var7))
 						if templ_7745c5c3_Err != nil {
@@ -210,7 +210,7 @@ func QuotaPage(vmodel QuotaPageVModel) templ.Component {
 			var templ_7745c5c3_Var8 templ.SafeURL
 			templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(action))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/quota_page.templ`, Line: 60, Col: 53}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `quota_page.templ`, Line: 60, Col: 53}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var8))
 			if templ_7745c5c3_Err != nil {
@@ -259,7 +259,7 @@ func QuotaPage(vmodel QuotaPageVModel) templ.Component {
 						var templ_7745c5c3_Var12 string
 						templ_7745c5c3_Var12, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.quota.ceilings"))
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/quota_page.templ`, Line: 64, Col: 42}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `quota_page.templ`, Line: 64, Col: 42}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var12))
 						if templ_7745c5c3_Err != nil {
@@ -278,7 +278,7 @@ func QuotaPage(vmodel QuotaPageVModel) templ.Component {
 					var templ_7745c5c3_Var13 string
 					templ_7745c5c3_Var13, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.quota.currency", vmodel.Org.Currency()))
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/quota_page.templ`, Line: 67, Col: 65}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `quota_page.templ`, Line: 67, Col: 65}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var13))
 					if templ_7745c5c3_Err != nil {
@@ -333,7 +333,7 @@ func QuotaPage(vmodel QuotaPageVModel) templ.Component {
 					var templ_7745c5c3_Var15 string
 					templ_7745c5c3_Var15, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.quota.help"))
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/quota_page.templ`, Line: 77, Col: 38}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `quota_page.templ`, Line: 77, Col: 38}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var15))
 					if templ_7745c5c3_Err != nil {
@@ -346,7 +346,7 @@ func QuotaPage(vmodel QuotaPageVModel) templ.Component {
 					var templ_7745c5c3_Var16 templ.SafeURL
 					templ_7745c5c3_Var16, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(common.BaseURLString(ctx, common.WithPath("/orgs/", vmodel.Org.Slug(), "/admin/settings"))))
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/quota_page.templ`, Line: 78, Col: 122}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `quota_page.templ`, Line: 78, Col: 122}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var16))
 					if templ_7745c5c3_Err != nil {
@@ -359,7 +359,7 @@ func QuotaPage(vmodel QuotaPageVModel) templ.Component {
 					var templ_7745c5c3_Var17 string
 					templ_7745c5c3_Var17, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.quota.help_settings_link"))
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/quota_page.templ`, Line: 78, Col: 200}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `quota_page.templ`, Line: 78, Col: 200}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var17))
 					if templ_7745c5c3_Err != nil {
@@ -413,7 +413,7 @@ func QuotaPage(vmodel QuotaPageVModel) templ.Component {
 							var templ_7745c5c3_Var20 string
 							templ_7745c5c3_Var20, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.quota.save"))
 							if templ_7745c5c3_Err != nil {
-								return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/quota_page.templ`, Line: 87, Col: 39}
+								return templ.Error{Err: templ_7745c5c3_Err, FileName: `quota_page.templ`, Line: 87, Col: 39}
 							}
 							_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var20))
 							if templ_7745c5c3_Err != nil {
@@ -486,7 +486,7 @@ func QuotaPage(vmodel QuotaPageVModel) templ.Component {
 							var templ_7745c5c3_Var24 string
 							templ_7745c5c3_Var24, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.quota.usage"))
 							if templ_7745c5c3_Err != nil {
-								return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/quota_page.templ`, Line: 98, Col: 40}
+								return templ.Error{Err: templ_7745c5c3_Err, FileName: `quota_page.templ`, Line: 98, Col: 40}
 							}
 							_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var24))
 							if templ_7745c5c3_Err != nil {
@@ -625,7 +625,7 @@ func budgetField(id string, name string, label string, placeholder string, value
 				var templ_7745c5c3_Var29 string
 				templ_7745c5c3_Var29, templ_7745c5c3_Err = templ.JoinStringErrs(label)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/quota_page.templ`, Line: 122, Col: 10}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `quota_page.templ`, Line: 122, Col: 10}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var29))
 				if templ_7745c5c3_Err != nil {
@@ -673,7 +673,7 @@ func budgetField(id string, name string, label string, placeholder string, value
 					var templ_7745c5c3_Var31 string
 					templ_7745c5c3_Var31, templ_7745c5c3_Err = templ.JoinStringErrs(errMsg)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/quota_page.templ`, Line: 135, Col: 12}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `quota_page.templ`, Line: 135, Col: 12}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var31))
 					if templ_7745c5c3_Err != nil {
@@ -725,7 +725,7 @@ func quotaUsageRow(label string, spent int64, budget int64, currency string) tem
 		var templ_7745c5c3_Var33 string
 		templ_7745c5c3_Var33, templ_7745c5c3_Err = templ.JoinStringErrs(label)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/quota_page.templ`, Line: 145, Col: 36}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `quota_page.templ`, Line: 145, Col: 36}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var33))
 		if templ_7745c5c3_Err != nil {
@@ -738,7 +738,7 @@ func quotaUsageRow(label string, spent int64, budget int64, currency string) tem
 		var templ_7745c5c3_Var34 string
 		templ_7745c5c3_Var34, templ_7745c5c3_Err = templ.JoinStringErrs(common.FormatCost(ctx, spent, currency))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/quota_page.templ`, Line: 147, Col: 45}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `quota_page.templ`, Line: 147, Col: 45}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var34))
 		if templ_7745c5c3_Err != nil {
@@ -751,7 +751,7 @@ func quotaUsageRow(label string, spent int64, budget int64, currency string) tem
 		var templ_7745c5c3_Var35 string
 		templ_7745c5c3_Var35, templ_7745c5c3_Err = templ.JoinStringErrs(common.FormatCost(ctx, budget, currency))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/quota_page.templ`, Line: 147, Col: 92}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `quota_page.templ`, Line: 147, Col: 92}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var35))
 		if templ_7745c5c3_Err != nil {

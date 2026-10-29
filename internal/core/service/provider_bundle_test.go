@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -920,5 +921,39 @@ func TestApplyProviderBundle_KeepsTheTargetsExtraKeys(t *testing.T) {
 	}
 	if keys := result.Provider.ExtraAPIKeys(); len(keys) != 1 || keys[0].APIKey != "encrypted-2" || keys[0].Overrides["5h"].ValueBudget == nil {
 		t.Errorf("extra keys = %+v, want the target's kept with their plan overrides", keys)
+	}
+}
+
+func TestPlanProviderBundleImport_RefusesATypeChangeThatLeavesAModelUnserved(t *testing.T) {
+	mem, p, _, _ := renameFixture(t)
+	e := model.NewLLMModel(p.ID(), "org-a", "e", "model-e", "", 100, 0)
+	e.SetKind(model.ModelKindEmbeddings)
+	if err := mem.CreateLLMModel(context.Background(), e); err != nil {
+		t.Fatal(err)
+	}
+	models := mem.modelsOf("org-a")
+	// The bundle moves the provider to an API without embeddings and does
+	// not hold the embeddings model, which would be left unserved.
+	bundle := model.ProviderBundle{Kind: model.ProviderBundleKind, Version: model.ProviderBundleVersion,
+		Provider: model.ProviderBundleSettings{Type: "anthropic", Currency: "USD", BaseURL: "https://p.test/v1"},
+		Models: []model.ProviderBundleModel{
+			{RealModel: "model-a", ProxyName: "a", Enabled: true, Prices: model.ModelPrices{Input: 0.1, Output: 0.2}},
+		}}
+	plan := PlanProviderBundleImport(bundle, p, models, namesOf(models))
+	var typeChange *BundleFieldChange
+	for i := range plan.Settings {
+		if plan.Settings[i].Field == BundleFieldType {
+			typeChange = &plan.Settings[i]
+		}
+	}
+	if typeChange == nil || !slices.Equal(typeChange.Unserved, []string{"e"}) || !typeChange.Refused() {
+		t.Fatalf("type change = %+v, want it refused for the embeddings model e", typeChange)
+	}
+
+	if _, err := ApplyProviderBundle(context.Background(), mem, plan, selectAll(plan), nil); err != nil {
+		t.Fatal(err)
+	}
+	if got := mem.providers[p.ID()]; got != nil && got.Type() != "openai" {
+		t.Errorf("type = %q, want the refused change left unapplied", got.Type())
 	}
 }

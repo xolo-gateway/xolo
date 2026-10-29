@@ -197,6 +197,10 @@ func (h *Handler) importProviderBundle(w http.ResponseWriter, r *http.Request) {
 			h.renderProviderBundleError(w, r, vmodel, i18n.T(ctx, "org.errors.providers.api_key_required"))
 			return
 		}
+		if len(apiKey) > service.MaxProviderKeyLength {
+			h.renderProviderBundleError(w, r, vmodel, i18n.T(ctx, "org.errors.providers.api_key_too_long", service.MaxProviderKeyLength))
+			return
+		}
 		encryptedKey, err := crypto.Encrypt(h.secretKey, apiKey)
 		if err != nil {
 			slog.ErrorContext(ctx, "could not encrypt API key", slogx.Error(err))

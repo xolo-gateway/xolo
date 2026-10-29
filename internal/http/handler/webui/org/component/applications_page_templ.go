@@ -153,7 +153,7 @@ func ApplicationsPage(vmodel ApplicationsPageVModel) templ.Component {
 						var templ_7745c5c3_Var5 string
 						templ_7745c5c3_Var5, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.applications.new"))
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/applications_page.templ`, Line: 92, Col: 42}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `applications_page.templ`, Line: 92, Col: 42}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var5))
 						if templ_7745c5c3_Err != nil {
@@ -230,7 +230,7 @@ func ApplicationsPage(vmodel ApplicationsPageVModel) templ.Component {
 							var templ_7745c5c3_Var8 string
 							templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.applications.new"))
 							if templ_7745c5c3_Err != nil {
-								return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/applications_page.templ`, Line: 112, Col: 43}
+								return templ.Error{Err: templ_7745c5c3_Err, FileName: `applications_page.templ`, Line: 112, Col: 43}
 							}
 							_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var8))
 							if templ_7745c5c3_Err != nil {
@@ -312,7 +312,7 @@ func ApplicationsPage(vmodel ApplicationsPageVModel) templ.Component {
 								var templ_7745c5c3_Var13 string
 								templ_7745c5c3_Var13, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.applications.col.application"))
 								if templ_7745c5c3_Err != nil {
-									return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/applications_page.templ`, Line: 122, Col: 57}
+									return templ.Error{Err: templ_7745c5c3_Err, FileName: `applications_page.templ`, Line: 122, Col: 57}
 								}
 								_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var13))
 								if templ_7745c5c3_Err != nil {
@@ -343,7 +343,7 @@ func ApplicationsPage(vmodel ApplicationsPageVModel) templ.Component {
 								var templ_7745c5c3_Var15 string
 								templ_7745c5c3_Var15, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.applications.col.roles"))
 								if templ_7745c5c3_Err != nil {
-									return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/applications_page.templ`, Line: 125, Col: 51}
+									return templ.Error{Err: templ_7745c5c3_Err, FileName: `applications_page.templ`, Line: 125, Col: 51}
 								}
 								_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var15))
 								if templ_7745c5c3_Err != nil {
@@ -374,7 +374,7 @@ func ApplicationsPage(vmodel ApplicationsPageVModel) templ.Component {
 								var templ_7745c5c3_Var17 string
 								templ_7745c5c3_Var17, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.applications.col.tokens"))
 								if templ_7745c5c3_Err != nil {
-									return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/applications_page.templ`, Line: 128, Col: 52}
+									return templ.Error{Err: templ_7745c5c3_Err, FileName: `applications_page.templ`, Line: 128, Col: 52}
 								}
 								_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var17))
 								if templ_7745c5c3_Err != nil {
@@ -405,7 +405,7 @@ func ApplicationsPage(vmodel ApplicationsPageVModel) templ.Component {
 								var templ_7745c5c3_Var19 string
 								templ_7745c5c3_Var19, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.applications.col.requests_30d"))
 								if templ_7745c5c3_Err != nil {
-									return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/applications_page.templ`, Line: 131, Col: 58}
+									return templ.Error{Err: templ_7745c5c3_Err, FileName: `applications_page.templ`, Line: 131, Col: 58}
 								}
 								_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var19))
 								if templ_7745c5c3_Err != nil {
@@ -436,7 +436,7 @@ func ApplicationsPage(vmodel ApplicationsPageVModel) templ.Component {
 								var templ_7745c5c3_Var21 string
 								templ_7745c5c3_Var21, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.applications.col.cost_30d"))
 								if templ_7745c5c3_Err != nil {
-									return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/applications_page.templ`, Line: 134, Col: 54}
+									return templ.Error{Err: templ_7745c5c3_Err, FileName: `applications_page.templ`, Line: 134, Col: 54}
 								}
 								_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var21))
 								if templ_7745c5c3_Err != nil {
@@ -467,7 +467,7 @@ func ApplicationsPage(vmodel ApplicationsPageVModel) templ.Component {
 								var templ_7745c5c3_Var23 string
 								templ_7745c5c3_Var23, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.applications.col.status"))
 								if templ_7745c5c3_Err != nil {
-									return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/applications_page.templ`, Line: 137, Col: 52}
+									return templ.Error{Err: templ_7745c5c3_Err, FileName: `applications_page.templ`, Line: 137, Col: 52}
 								}
 								_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var23))
 								if templ_7745c5c3_Err != nil {
@@ -498,7 +498,7 @@ func ApplicationsPage(vmodel ApplicationsPageVModel) templ.Component {
 								var templ_7745c5c3_Var25 string
 								templ_7745c5c3_Var25, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.applications.col.created"))
 								if templ_7745c5c3_Err != nil {
-									return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/applications_page.templ`, Line: 140, Col: 53}
+									return templ.Error{Err: templ_7745c5c3_Err, FileName: `applications_page.templ`, Line: 140, Col: 53}
 								}
 								_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var25))
 								if templ_7745c5c3_Err != nil {
@@ -529,7 +529,7 @@ func ApplicationsPage(vmodel ApplicationsPageVModel) templ.Component {
 								var templ_7745c5c3_Var27 string
 								templ_7745c5c3_Var27, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.applications.col.actions"))
 								if templ_7745c5c3_Err != nil {
-									return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/applications_page.templ`, Line: 143, Col: 53}
+									return templ.Error{Err: templ_7745c5c3_Err, FileName: `applications_page.templ`, Line: 143, Col: 53}
 								}
 								_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var27))
 								if templ_7745c5c3_Err != nil {
@@ -595,7 +595,7 @@ func ApplicationsPage(vmodel ApplicationsPageVModel) templ.Component {
 										var templ_7745c5c3_Var31 string
 										templ_7745c5c3_Var31, templ_7745c5c3_Err = templ.JoinStringErrs(app.Name())
 										if templ_7745c5c3_Err != nil {
-											return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/applications_page.templ`, Line: 151, Col: 67}
+											return templ.Error{Err: templ_7745c5c3_Err, FileName: `applications_page.templ`, Line: 151, Col: 67}
 										}
 										_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var31))
 										if templ_7745c5c3_Err != nil {
@@ -613,7 +613,7 @@ func ApplicationsPage(vmodel ApplicationsPageVModel) templ.Component {
 											var templ_7745c5c3_Var32 string
 											templ_7745c5c3_Var32, templ_7745c5c3_Err = templ.JoinStringErrs(app.Description())
 											if templ_7745c5c3_Err != nil {
-												return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/applications_page.templ`, Line: 153, Col: 90}
+												return templ.Error{Err: templ_7745c5c3_Err, FileName: `applications_page.templ`, Line: 153, Col: 90}
 											}
 											_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var32))
 											if templ_7745c5c3_Err != nil {
@@ -702,7 +702,7 @@ func ApplicationsPage(vmodel ApplicationsPageVModel) templ.Component {
 											var templ_7745c5c3_Var35 string
 											templ_7745c5c3_Var35, templ_7745c5c3_Err = templ.JoinStringErrs(strconv.Itoa(vmodel.TokenCounts[app.ID()]))
 											if templ_7745c5c3_Err != nil {
-												return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/applications_page.templ`, Line: 172, Col: 55}
+												return templ.Error{Err: templ_7745c5c3_Err, FileName: `applications_page.templ`, Line: 172, Col: 55}
 											}
 											_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var35))
 											if templ_7745c5c3_Err != nil {
@@ -857,7 +857,7 @@ func ApplicationsPage(vmodel ApplicationsPageVModel) templ.Component {
 											var templ_7745c5c3_Var42 string
 											templ_7745c5c3_Var42, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.applications.configure"))
 											if templ_7745c5c3_Err != nil {
-												return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/applications_page.templ`, Line: 201, Col: 54}
+												return templ.Error{Err: templ_7745c5c3_Err, FileName: `applications_page.templ`, Line: 201, Col: 54}
 											}
 											_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var42))
 											if templ_7745c5c3_Err != nil {
@@ -966,7 +966,7 @@ func ApplicationForm(vmodel ApplicationFormVModel) templ.Component {
 			var templ_7745c5c3_Var45 templ.SafeURL
 			templ_7745c5c3_Var45, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(action))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/applications_page.templ`, Line: 224, Col: 53}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `applications_page.templ`, Line: 224, Col: 53}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var45))
 			if templ_7745c5c3_Err != nil {
@@ -1003,7 +1003,7 @@ func ApplicationForm(vmodel ApplicationFormVModel) templ.Component {
 					var templ_7745c5c3_Var48 string
 					templ_7745c5c3_Var48, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.applications.form.cancel"))
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/applications_page.templ`, Line: 232, Col: 51}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `applications_page.templ`, Line: 232, Col: 51}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var48))
 					if templ_7745c5c3_Err != nil {
@@ -1040,7 +1040,7 @@ func ApplicationForm(vmodel ApplicationFormVModel) templ.Component {
 						var templ_7745c5c3_Var50 string
 						templ_7745c5c3_Var50, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.applications.form.save"))
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/applications_page.templ`, Line: 236, Col: 50}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `applications_page.templ`, Line: 236, Col: 50}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var50))
 						if templ_7745c5c3_Err != nil {
@@ -1102,7 +1102,7 @@ func ApplicationForm(vmodel ApplicationFormVModel) templ.Component {
 						var templ_7745c5c3_Var54 string
 						templ_7745c5c3_Var54, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.applications.form.identity"))
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/applications_page.templ`, Line: 244, Col: 54}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `applications_page.templ`, Line: 244, Col: 54}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var54))
 						if templ_7745c5c3_Err != nil {
@@ -1163,7 +1163,7 @@ func ApplicationForm(vmodel ApplicationFormVModel) templ.Component {
 							var templ_7745c5c3_Var58 string
 							templ_7745c5c3_Var58, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.applications.form.name"))
 							if templ_7745c5c3_Err != nil {
-								return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/applications_page.templ`, Line: 250, Col: 51}
+								return templ.Error{Err: templ_7745c5c3_Err, FileName: `applications_page.templ`, Line: 250, Col: 51}
 							}
 							_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var58))
 							if templ_7745c5c3_Err != nil {
@@ -1227,7 +1227,7 @@ func ApplicationForm(vmodel ApplicationFormVModel) templ.Component {
 							var templ_7745c5c3_Var61 string
 							templ_7745c5c3_Var61, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.applications.form.description"))
 							if templ_7745c5c3_Err != nil {
-								return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/applications_page.templ`, Line: 263, Col: 58}
+								return templ.Error{Err: templ_7745c5c3_Err, FileName: `applications_page.templ`, Line: 263, Col: 58}
 							}
 							_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var61))
 							if templ_7745c5c3_Err != nil {
@@ -1299,7 +1299,7 @@ func ApplicationForm(vmodel ApplicationFormVModel) templ.Component {
 								var templ_7745c5c3_Var64 string
 								templ_7745c5c3_Var64, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.applications.status.active"))
 								if templ_7745c5c3_Err != nil {
-									return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/applications_page.templ`, Line: 277, Col: 56}
+									return templ.Error{Err: templ_7745c5c3_Err, FileName: `applications_page.templ`, Line: 277, Col: 56}
 								}
 								_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var64))
 								if templ_7745c5c3_Err != nil {
@@ -1373,7 +1373,7 @@ func ApplicationForm(vmodel ApplicationFormVModel) templ.Component {
 						var templ_7745c5c3_Var68 string
 						templ_7745c5c3_Var68, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.applications.col.roles"))
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/applications_page.templ`, Line: 287, Col: 51}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `applications_page.templ`, Line: 287, Col: 51}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var68))
 						if templ_7745c5c3_Err != nil {
@@ -1414,7 +1414,7 @@ func ApplicationForm(vmodel ApplicationFormVModel) templ.Component {
 					var templ_7745c5c3_Var70 string
 					templ_7745c5c3_Var70, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.applications.form.roles_help"))
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/applications_page.templ`, Line: 292, Col: 57}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `applications_page.templ`, Line: 292, Col: 57}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var70))
 					if templ_7745c5c3_Err != nil {
@@ -1432,7 +1432,7 @@ func ApplicationForm(vmodel ApplicationFormVModel) templ.Component {
 						var templ_7745c5c3_Var71 string
 						templ_7745c5c3_Var71, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.applications.form.roles_empty"))
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/applications_page.templ`, Line: 295, Col: 99}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `applications_page.templ`, Line: 295, Col: 99}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var71))
 						if templ_7745c5c3_Err != nil {
@@ -1487,7 +1487,7 @@ func ApplicationForm(vmodel ApplicationFormVModel) templ.Component {
 								var templ_7745c5c3_Var73 string
 								templ_7745c5c3_Var73, templ_7745c5c3_Err = templ.JoinStringErrs(role.Name())
 								if templ_7745c5c3_Err != nil {
-									return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/applications_page.templ`, Line: 312, Col: 26}
+									return templ.Error{Err: templ_7745c5c3_Err, FileName: `applications_page.templ`, Line: 312, Col: 26}
 								}
 								_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var73))
 								if templ_7745c5c3_Err != nil {
@@ -1507,7 +1507,7 @@ func ApplicationForm(vmodel ApplicationFormVModel) templ.Component {
 								var templ_7745c5c3_Var74 string
 								templ_7745c5c3_Var74, templ_7745c5c3_Err = templ.JoinStringErrs(role.Description())
 								if templ_7745c5c3_Err != nil {
-									return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/applications_page.templ`, Line: 315, Col: 74}
+									return templ.Error{Err: templ_7745c5c3_Err, FileName: `applications_page.templ`, Line: 315, Col: 74}
 								}
 								_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var74))
 								if templ_7745c5c3_Err != nil {
@@ -1579,7 +1579,7 @@ func ApplicationForm(vmodel ApplicationFormVModel) templ.Component {
 						var templ_7745c5c3_Var78 string
 						templ_7745c5c3_Var78, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.applications.form.team"))
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/applications_page.templ`, Line: 327, Col: 51}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `applications_page.templ`, Line: 327, Col: 51}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var78))
 						if templ_7745c5c3_Err != nil {
@@ -1620,7 +1620,7 @@ func ApplicationForm(vmodel ApplicationFormVModel) templ.Component {
 					var templ_7745c5c3_Var80 string
 					templ_7745c5c3_Var80, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.applications.form.team_help"))
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/applications_page.templ`, Line: 332, Col: 56}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `applications_page.templ`, Line: 332, Col: 56}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var80))
 					if templ_7745c5c3_Err != nil {
@@ -1707,7 +1707,7 @@ func ApplicationForm(vmodel ApplicationFormVModel) templ.Component {
 									var templ_7745c5c3_Var86 string
 									templ_7745c5c3_Var86, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.applications.form.no_team"))
 									if templ_7745c5c3_Err != nil {
-										return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/applications_page.templ`, Line: 341, Col: 57}
+										return templ.Error{Err: templ_7745c5c3_Err, FileName: `applications_page.templ`, Line: 341, Col: 57}
 									}
 									_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var86))
 									if templ_7745c5c3_Err != nil {
@@ -1735,7 +1735,7 @@ func ApplicationForm(vmodel ApplicationFormVModel) templ.Component {
 										var templ_7745c5c3_Var88 string
 										templ_7745c5c3_Var88, templ_7745c5c3_Err = templ.JoinStringErrs(team.Name() + " (" + team.Slug() + ")")
 										if templ_7745c5c3_Err != nil {
-											return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/applications_page.templ`, Line: 345, Col: 52}
+											return templ.Error{Err: templ_7745c5c3_Err, FileName: `applications_page.templ`, Line: 345, Col: 52}
 										}
 										_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var88))
 										if templ_7745c5c3_Err != nil {
@@ -1802,7 +1802,7 @@ func ApplicationForm(vmodel ApplicationFormVModel) templ.Component {
 					var templ_7745c5c3_Var90 string
 					templ_7745c5c3_Var90, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.applications.form.save"))
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/applications_page.templ`, Line: 357, Col: 50}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `applications_page.templ`, Line: 357, Col: 50}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var90))
 					if templ_7745c5c3_Err != nil {
@@ -1871,7 +1871,7 @@ func ApplicationForm(vmodel ApplicationFormVModel) templ.Component {
 							var templ_7745c5c3_Var94 string
 							templ_7745c5c3_Var94, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.applications.form.budget"))
 							if templ_7745c5c3_Err != nil {
-								return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/applications_page.templ`, Line: 368, Col: 53}
+								return templ.Error{Err: templ_7745c5c3_Err, FileName: `applications_page.templ`, Line: 368, Col: 53}
 							}
 							_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var94))
 							if templ_7745c5c3_Err != nil {
@@ -1902,7 +1902,7 @@ func ApplicationForm(vmodel ApplicationFormVModel) templ.Component {
 							var templ_7745c5c3_Var96 string
 							templ_7745c5c3_Var96, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.applications.form.budget_edit"))
 							if templ_7745c5c3_Err != nil {
-								return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/applications_page.templ`, Line: 375, Col: 58}
+								return templ.Error{Err: templ_7745c5c3_Err, FileName: `applications_page.templ`, Line: 375, Col: 58}
 							}
 							_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var96))
 							if templ_7745c5c3_Err != nil {
@@ -1947,7 +1947,7 @@ func ApplicationForm(vmodel ApplicationFormVModel) templ.Component {
 						var templ_7745c5c3_Var98 string
 						templ_7745c5c3_Var98, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.applications.form.budget_help"))
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/applications_page.templ`, Line: 380, Col: 58}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `applications_page.templ`, Line: 380, Col: 58}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var98))
 						if templ_7745c5c3_Err != nil {
@@ -1970,7 +1970,7 @@ func ApplicationForm(vmodel ApplicationFormVModel) templ.Component {
 						var templ_7745c5c3_Var99 string
 						templ_7745c5c3_Var99, templ_7745c5c3_Err = templ.JoinStringErrs(vmodel.QuotaSummary)
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/applications_page.templ`, Line: 386, Col: 29}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `applications_page.templ`, Line: 386, Col: 29}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var99))
 						if templ_7745c5c3_Err != nil {
@@ -2035,7 +2035,7 @@ func ApplicationForm(vmodel ApplicationFormVModel) templ.Component {
 							var templ_7745c5c3_Var103 string
 							templ_7745c5c3_Var103, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.applications.form.danger_zone"))
 							if templ_7745c5c3_Err != nil {
-								return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/applications_page.templ`, Line: 395, Col: 58}
+								return templ.Error{Err: templ_7745c5c3_Err, FileName: `applications_page.templ`, Line: 395, Col: 58}
 							}
 							_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var103))
 							if templ_7745c5c3_Err != nil {
@@ -2076,7 +2076,7 @@ func ApplicationForm(vmodel ApplicationFormVModel) templ.Component {
 						var templ_7745c5c3_Var105 string
 						templ_7745c5c3_Var105, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.applications.form.delete_help"))
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/applications_page.templ`, Line: 400, Col: 58}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `applications_page.templ`, Line: 400, Col: 58}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var105))
 						if templ_7745c5c3_Err != nil {
@@ -2195,7 +2195,7 @@ func applicationTokensSection(vmodel ApplicationFormVModel, readonly bool) templ
 					var templ_7745c5c3_Var110 string
 					templ_7745c5c3_Var110, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.applications.tokens.title"))
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/applications_page.templ`, Line: 426, Col: 51}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `applications_page.templ`, Line: 426, Col: 51}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var110))
 					if templ_7745c5c3_Err != nil {
@@ -2257,7 +2257,7 @@ func applicationTokensSection(vmodel ApplicationFormVModel, readonly bool) templ
 							var templ_7745c5c3_Var114 string
 							templ_7745c5c3_Var114, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.applications.tokens.copy_now"))
 							if templ_7745c5c3_Err != nil {
-								return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/applications_page.templ`, Line: 433, Col: 56}
+								return templ.Error{Err: templ_7745c5c3_Err, FileName: `applications_page.templ`, Line: 433, Col: 56}
 							}
 							_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var114))
 							if templ_7745c5c3_Err != nil {
@@ -2292,7 +2292,7 @@ func applicationTokensSection(vmodel ApplicationFormVModel, readonly bool) templ
 							var templ_7745c5c3_Var116 string
 							templ_7745c5c3_Var116, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.applications.tokens.copy_help"))
 							if templ_7745c5c3_Err != nil {
-								return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/applications_page.templ`, Line: 436, Col: 73}
+								return templ.Error{Err: templ_7745c5c3_Err, FileName: `applications_page.templ`, Line: 436, Col: 73}
 							}
 							_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var116))
 							if templ_7745c5c3_Err != nil {
@@ -2337,7 +2337,7 @@ func applicationTokensSection(vmodel ApplicationFormVModel, readonly bool) templ
 				var templ_7745c5c3_Var117 templ.SafeURL
 				templ_7745c5c3_Var117, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(tokenAction))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/applications_page.templ`, Line: 443, Col: 59}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `applications_page.templ`, Line: 443, Col: 59}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var117))
 				if templ_7745c5c3_Err != nil {
@@ -2390,7 +2390,7 @@ func applicationTokensSection(vmodel ApplicationFormVModel, readonly bool) templ
 							var templ_7745c5c3_Var121 string
 							templ_7745c5c3_Var121, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.applications.tokens.label"))
 							if templ_7745c5c3_Err != nil {
-								return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/applications_page.templ`, Line: 448, Col: 55}
+								return templ.Error{Err: templ_7745c5c3_Err, FileName: `applications_page.templ`, Line: 448, Col: 55}
 							}
 							_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var121))
 							if templ_7745c5c3_Err != nil {
@@ -2447,7 +2447,7 @@ func applicationTokensSection(vmodel ApplicationFormVModel, readonly bool) templ
 							var templ_7745c5c3_Var124 string
 							templ_7745c5c3_Var124, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.applications.tokens.expiry"))
 							if templ_7745c5c3_Err != nil {
-								return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/applications_page.templ`, Line: 456, Col: 56}
+								return templ.Error{Err: templ_7745c5c3_Err, FileName: `applications_page.templ`, Line: 456, Col: 56}
 							}
 							_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var124))
 							if templ_7745c5c3_Err != nil {
@@ -2492,7 +2492,7 @@ func applicationTokensSection(vmodel ApplicationFormVModel, readonly bool) templ
 						var templ_7745c5c3_Var126 string
 						templ_7745c5c3_Var126, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.applications.tokens.generate"))
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/applications_page.templ`, Line: 462, Col: 56}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `applications_page.templ`, Line: 462, Col: 56}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var126))
 						if templ_7745c5c3_Err != nil {
@@ -2535,7 +2535,7 @@ func applicationTokensSection(vmodel ApplicationFormVModel, readonly bool) templ
 					var templ_7745c5c3_Var128 string
 					templ_7745c5c3_Var128, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.applications.tokens.empty"))
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/applications_page.templ`, Line: 469, Col: 51}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `applications_page.templ`, Line: 469, Col: 51}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var128))
 					if templ_7745c5c3_Err != nil {
@@ -2591,7 +2591,7 @@ func applicationTokensSection(vmodel ApplicationFormVModel, readonly bool) templ
 							var templ_7745c5c3_Var132 string
 							templ_7745c5c3_Var132, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.applications.tokens.label"))
 							if templ_7745c5c3_Err != nil {
-								return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/applications_page.templ`, Line: 476, Col: 54}
+								return templ.Error{Err: templ_7745c5c3_Err, FileName: `applications_page.templ`, Line: 476, Col: 54}
 							}
 							_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var132))
 							if templ_7745c5c3_Err != nil {
@@ -2622,7 +2622,7 @@ func applicationTokensSection(vmodel ApplicationFormVModel, readonly bool) templ
 							var templ_7745c5c3_Var134 string
 							templ_7745c5c3_Var134, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.applications.tokens.expiration"))
 							if templ_7745c5c3_Err != nil {
-								return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/applications_page.templ`, Line: 479, Col: 59}
+								return templ.Error{Err: templ_7745c5c3_Err, FileName: `applications_page.templ`, Line: 479, Col: 59}
 							}
 							_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var134))
 							if templ_7745c5c3_Err != nil {
@@ -2653,7 +2653,7 @@ func applicationTokensSection(vmodel ApplicationFormVModel, readonly bool) templ
 							var templ_7745c5c3_Var136 string
 							templ_7745c5c3_Var136, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.applications.col.actions"))
 							if templ_7745c5c3_Err != nil {
-								return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/applications_page.templ`, Line: 482, Col: 53}
+								return templ.Error{Err: templ_7745c5c3_Err, FileName: `applications_page.templ`, Line: 482, Col: 53}
 							}
 							_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var136))
 							if templ_7745c5c3_Err != nil {
@@ -2715,7 +2715,7 @@ func applicationTokensSection(vmodel ApplicationFormVModel, readonly bool) templ
 									var templ_7745c5c3_Var140 string
 									templ_7745c5c3_Var140, templ_7745c5c3_Err = templ.JoinStringErrs(token.Label())
 									if templ_7745c5c3_Err != nil {
-										return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/applications_page.templ`, Line: 489, Col: 25}
+										return templ.Error{Err: templ_7745c5c3_Err, FileName: `applications_page.templ`, Line: 489, Col: 25}
 									}
 									_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var140))
 									if templ_7745c5c3_Err != nil {
@@ -2756,7 +2756,7 @@ func applicationTokensSection(vmodel ApplicationFormVModel, readonly bool) templ
 										var templ_7745c5c3_Var142 string
 										templ_7745c5c3_Var142, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.applications.tokens.never"))
 										if templ_7745c5c3_Err != nil {
-											return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/applications_page.templ`, Line: 495, Col: 101}
+											return templ.Error{Err: templ_7745c5c3_Err, FileName: `applications_page.templ`, Line: 495, Col: 101}
 										}
 										_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var142))
 										if templ_7745c5c3_Err != nil {

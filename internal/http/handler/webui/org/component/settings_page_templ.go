@@ -98,7 +98,7 @@ func OrgSettingsPage(vmodel OrgSettingsPageVModel) templ.Component {
 			var templ_7745c5c3_Var3 templ.SafeURL
 			templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(common.BaseURLString(ctx, common.WithPath("/orgs/", vmodel.Org.Slug(), "/admin/settings"))))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/settings_page.templ`, Line: 40, Col: 137}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `settings_page.templ`, Line: 40, Col: 137}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var3))
 			if templ_7745c5c3_Err != nil {
@@ -147,7 +147,7 @@ func OrgSettingsPage(vmodel OrgSettingsPageVModel) templ.Component {
 						var templ_7745c5c3_Var7 string
 						templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.settings.general"))
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/settings_page.templ`, Line: 44, Col: 44}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `settings_page.templ`, Line: 44, Col: 44}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var7))
 						if templ_7745c5c3_Err != nil {
@@ -212,7 +212,7 @@ func OrgSettingsPage(vmodel OrgSettingsPageVModel) templ.Component {
 							var templ_7745c5c3_Var11 string
 							templ_7745c5c3_Var11, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.settings.currency"))
 							if templ_7745c5c3_Err != nil {
-								return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/settings_page.templ`, Line: 51, Col: 47}
+								return templ.Error{Err: templ_7745c5c3_Err, FileName: `settings_page.templ`, Line: 51, Col: 47}
 							}
 							_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var11))
 							if templ_7745c5c3_Err != nil {
@@ -306,7 +306,7 @@ func OrgSettingsPage(vmodel OrgSettingsPageVModel) templ.Component {
 											var templ_7745c5c3_Var17 string
 											templ_7745c5c3_Var17, templ_7745c5c3_Err = templ.JoinStringErrs(c)
 											if templ_7745c5c3_Err != nil {
-												return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/settings_page.templ`, Line: 61, Col: 16}
+												return templ.Error{Err: templ_7745c5c3_Err, FileName: `settings_page.templ`, Line: 61, Col: 16}
 											}
 											_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var17))
 											if templ_7745c5c3_Err != nil {
@@ -356,7 +356,7 @@ func OrgSettingsPage(vmodel OrgSettingsPageVModel) templ.Component {
 							var templ_7745c5c3_Var19 string
 							templ_7745c5c3_Var19, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.settings.currency_help"))
 							if templ_7745c5c3_Err != nil {
-								return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/settings_page.templ`, Line: 68, Col: 52}
+								return templ.Error{Err: templ_7745c5c3_Err, FileName: `settings_page.templ`, Line: 68, Col: 52}
 							}
 							_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var19))
 							if templ_7745c5c3_Err != nil {
@@ -421,7 +421,7 @@ func OrgSettingsPage(vmodel OrgSettingsPageVModel) templ.Component {
 								var templ_7745c5c3_Var23 string
 								templ_7745c5c3_Var23, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.settings.share_quota"))
 								if templ_7745c5c3_Err != nil {
-									return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/settings_page.templ`, Line: 75, Col: 51}
+									return templ.Error{Err: templ_7745c5c3_Err, FileName: `settings_page.templ`, Line: 75, Col: 51}
 								}
 								_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var23))
 								if templ_7745c5c3_Err != nil {
@@ -458,7 +458,7 @@ func OrgSettingsPage(vmodel OrgSettingsPageVModel) templ.Component {
 							var templ_7745c5c3_Var25 string
 							templ_7745c5c3_Var25, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.settings.share_quota_help"))
 							if templ_7745c5c3_Err != nil {
-								return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/settings_page.templ`, Line: 79, Col: 55}
+								return templ.Error{Err: templ_7745c5c3_Err, FileName: `settings_page.templ`, Line: 79, Col: 55}
 							}
 							_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var25))
 							if templ_7745c5c3_Err != nil {
@@ -490,7 +490,7 @@ func OrgSettingsPage(vmodel OrgSettingsPageVModel) templ.Component {
 								var templ_7745c5c3_Var27 string
 								templ_7745c5c3_Var27, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.settings.share_preview", vmodel.MemberCount))
 								if templ_7745c5c3_Err != nil {
-									return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/settings_page.templ`, Line: 83, Col: 73}
+									return templ.Error{Err: templ_7745c5c3_Err, FileName: `settings_page.templ`, Line: 83, Col: 73}
 								}
 								_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var27))
 								if templ_7745c5c3_Err != nil {
@@ -504,7 +504,7 @@ func OrgSettingsPage(vmodel OrgSettingsPageVModel) templ.Component {
 									var templ_7745c5c3_Var28 string
 									templ_7745c5c3_Var28, templ_7745c5c3_Err = templ.JoinStringErrs(" ")
 									if templ_7745c5c3_Err != nil {
-										return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/settings_page.templ`, Line: 85, Col: 16}
+										return templ.Error{Err: templ_7745c5c3_Err, FileName: `settings_page.templ`, Line: 85, Col: 16}
 									}
 									_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var28))
 									if templ_7745c5c3_Err != nil {
@@ -513,7 +513,7 @@ func OrgSettingsPage(vmodel OrgSettingsPageVModel) templ.Component {
 									var templ_7745c5c3_Var29 string
 									templ_7745c5c3_Var29, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.settings.share_preview_daily", common.CurrencySymbol(vmodel.Org.Currency())+formatBudgetField(*vmodel.SharedDailyBudget)))
 									if templ_7745c5c3_Err != nil {
-										return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/settings_page.templ`, Line: 85, Col: 158}
+										return templ.Error{Err: templ_7745c5c3_Err, FileName: `settings_page.templ`, Line: 85, Col: 158}
 									}
 									_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var29))
 									if templ_7745c5c3_Err != nil {
@@ -528,7 +528,7 @@ func OrgSettingsPage(vmodel OrgSettingsPageVModel) templ.Component {
 									var templ_7745c5c3_Var30 string
 									templ_7745c5c3_Var30, templ_7745c5c3_Err = templ.JoinStringErrs(" ")
 									if templ_7745c5c3_Err != nil {
-										return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/settings_page.templ`, Line: 88, Col: 16}
+										return templ.Error{Err: templ_7745c5c3_Err, FileName: `settings_page.templ`, Line: 88, Col: 16}
 									}
 									_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var30))
 									if templ_7745c5c3_Err != nil {
@@ -537,7 +537,7 @@ func OrgSettingsPage(vmodel OrgSettingsPageVModel) templ.Component {
 									var templ_7745c5c3_Var31 string
 									templ_7745c5c3_Var31, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.settings.share_preview_monthly", common.CurrencySymbol(vmodel.Org.Currency())+formatBudgetField(*vmodel.SharedMonthlyBudget)))
 									if templ_7745c5c3_Err != nil {
-										return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/settings_page.templ`, Line: 88, Col: 162}
+										return templ.Error{Err: templ_7745c5c3_Err, FileName: `settings_page.templ`, Line: 88, Col: 162}
 									}
 									_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var31))
 									if templ_7745c5c3_Err != nil {
@@ -552,7 +552,7 @@ func OrgSettingsPage(vmodel OrgSettingsPageVModel) templ.Component {
 									var templ_7745c5c3_Var32 string
 									templ_7745c5c3_Var32, templ_7745c5c3_Err = templ.JoinStringErrs(" ")
 									if templ_7745c5c3_Err != nil {
-										return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/settings_page.templ`, Line: 91, Col: 16}
+										return templ.Error{Err: templ_7745c5c3_Err, FileName: `settings_page.templ`, Line: 91, Col: 16}
 									}
 									_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var32))
 									if templ_7745c5c3_Err != nil {
@@ -561,7 +561,7 @@ func OrgSettingsPage(vmodel OrgSettingsPageVModel) templ.Component {
 									var templ_7745c5c3_Var33 string
 									templ_7745c5c3_Var33, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.settings.share_preview_yearly", common.CurrencySymbol(vmodel.Org.Currency())+formatBudgetField(*vmodel.SharedYearlyBudget)))
 									if templ_7745c5c3_Err != nil {
-										return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/settings_page.templ`, Line: 91, Col: 160}
+										return templ.Error{Err: templ_7745c5c3_Err, FileName: `settings_page.templ`, Line: 91, Col: 160}
 									}
 									_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var33))
 									if templ_7745c5c3_Err != nil {
@@ -608,7 +608,7 @@ func OrgSettingsPage(vmodel OrgSettingsPageVModel) templ.Component {
 							var templ_7745c5c3_Var36 string
 							templ_7745c5c3_Var36, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.settings.events_max"))
 							if templ_7745c5c3_Err != nil {
-								return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/settings_page.templ`, Line: 98, Col: 49}
+								return templ.Error{Err: templ_7745c5c3_Err, FileName: `settings_page.templ`, Line: 98, Col: 49}
 							}
 							_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var36))
 							if templ_7745c5c3_Err != nil {
@@ -654,7 +654,7 @@ func OrgSettingsPage(vmodel OrgSettingsPageVModel) templ.Component {
 							var templ_7745c5c3_Var38 string
 							templ_7745c5c3_Var38, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.settings.events_max_help", strconv.Itoa(vmodel.EventsDefault), strconv.Itoa(vmodel.EventsGlobalCap)))
 							if templ_7745c5c3_Err != nil {
-								return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/settings_page.templ`, Line: 109, Col: 128}
+								return templ.Error{Err: templ_7745c5c3_Err, FileName: `settings_page.templ`, Line: 109, Col: 128}
 							}
 							_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var38))
 							if templ_7745c5c3_Err != nil {
@@ -714,7 +714,7 @@ func OrgSettingsPage(vmodel OrgSettingsPageVModel) templ.Component {
 							var templ_7745c5c3_Var41 string
 							templ_7745c5c3_Var41, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.settings.save"))
 							if templ_7745c5c3_Err != nil {
-								return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/settings_page.templ`, Line: 117, Col: 42}
+								return templ.Error{Err: templ_7745c5c3_Err, FileName: `settings_page.templ`, Line: 117, Col: 42}
 							}
 							_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var41))
 							if templ_7745c5c3_Err != nil {
@@ -832,7 +832,7 @@ func orgDangerZone(vmodel OrgSettingsPageVModel) templ.Component {
 					var templ_7745c5c3_Var46 string
 					templ_7745c5c3_Var46, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.settings.danger_zone"))
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/settings_page.templ`, Line: 140, Col: 46}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `settings_page.templ`, Line: 140, Col: 46}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var46))
 					if templ_7745c5c3_Err != nil {
@@ -885,7 +885,7 @@ func orgDangerZone(vmodel OrgSettingsPageVModel) templ.Component {
 				var templ_7745c5c3_Var48 string
 				templ_7745c5c3_Var48, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.settings.delete_org_help"))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/settings_page.templ`, Line: 148, Col: 50}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `settings_page.templ`, Line: 148, Col: 50}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var48))
 				if templ_7745c5c3_Err != nil {
@@ -910,7 +910,7 @@ func orgDangerZone(vmodel OrgSettingsPageVModel) templ.Component {
 					var templ_7745c5c3_Var50 string
 					templ_7745c5c3_Var50, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.settings.delete_org"))
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/settings_page.templ`, Line: 158, Col: 45}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `settings_page.templ`, Line: 158, Col: 45}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var50))
 					if templ_7745c5c3_Err != nil {

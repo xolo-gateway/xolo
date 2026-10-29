@@ -98,7 +98,7 @@ func TeamsPage(vmodel TeamsPageVModel) templ.Component {
 						var templ_7745c5c3_Var5 string
 						templ_7745c5c3_Var5, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.teams.new"))
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/teams_page.templ`, Line: 37, Col: 35}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `teams_page.templ`, Line: 37, Col: 35}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var5))
 						if templ_7745c5c3_Err != nil {
@@ -175,7 +175,7 @@ func TeamsPage(vmodel TeamsPageVModel) templ.Component {
 							var templ_7745c5c3_Var8 string
 							templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.teams.new"))
 							if templ_7745c5c3_Err != nil {
-								return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/teams_page.templ`, Line: 54, Col: 36}
+								return templ.Error{Err: templ_7745c5c3_Err, FileName: `teams_page.templ`, Line: 54, Col: 36}
 							}
 							_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var8))
 							if templ_7745c5c3_Err != nil {
@@ -250,7 +250,7 @@ func TeamsPage(vmodel TeamsPageVModel) templ.Component {
 								var templ_7745c5c3_Var13 string
 								templ_7745c5c3_Var13, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.teams.col.team"))
 								if templ_7745c5c3_Err != nil {
-									return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/teams_page.templ`, Line: 63, Col: 42}
+									return templ.Error{Err: templ_7745c5c3_Err, FileName: `teams_page.templ`, Line: 63, Col: 42}
 								}
 								_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var13))
 								if templ_7745c5c3_Err != nil {
@@ -281,7 +281,7 @@ func TeamsPage(vmodel TeamsPageVModel) templ.Component {
 								var templ_7745c5c3_Var15 string
 								templ_7745c5c3_Var15, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.teams.col.members"))
 								if templ_7745c5c3_Err != nil {
-									return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/teams_page.templ`, Line: 66, Col: 45}
+									return templ.Error{Err: templ_7745c5c3_Err, FileName: `teams_page.templ`, Line: 66, Col: 45}
 								}
 								_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var15))
 								if templ_7745c5c3_Err != nil {
@@ -312,7 +312,7 @@ func TeamsPage(vmodel TeamsPageVModel) templ.Component {
 								var templ_7745c5c3_Var17 string
 								templ_7745c5c3_Var17, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.teams.col.models"))
 								if templ_7745c5c3_Err != nil {
-									return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/teams_page.templ`, Line: 69, Col: 44}
+									return templ.Error{Err: templ_7745c5c3_Err, FileName: `teams_page.templ`, Line: 69, Col: 44}
 								}
 								_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var17))
 								if templ_7745c5c3_Err != nil {
@@ -343,7 +343,7 @@ func TeamsPage(vmodel TeamsPageVModel) templ.Component {
 								var templ_7745c5c3_Var19 string
 								templ_7745c5c3_Var19, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.teams.col.actions"))
 								if templ_7745c5c3_Err != nil {
-									return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/teams_page.templ`, Line: 72, Col: 45}
+									return templ.Error{Err: templ_7745c5c3_Err, FileName: `teams_page.templ`, Line: 72, Col: 45}
 								}
 								_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var19))
 								if templ_7745c5c3_Err != nil {
@@ -409,7 +409,7 @@ func TeamsPage(vmodel TeamsPageVModel) templ.Component {
 										var templ_7745c5c3_Var23 string
 										templ_7745c5c3_Var23, templ_7745c5c3_Err = templ.JoinStringErrs(row.Team.Name())
 										if templ_7745c5c3_Err != nil {
-											return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/teams_page.templ`, Line: 81, Col: 73}
+											return templ.Error{Err: templ_7745c5c3_Err, FileName: `teams_page.templ`, Line: 81, Col: 73}
 										}
 										_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var23))
 										if templ_7745c5c3_Err != nil {
@@ -462,7 +462,7 @@ func TeamsPage(vmodel TeamsPageVModel) templ.Component {
 										var templ_7745c5c3_Var25 string
 										templ_7745c5c3_Var25, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("%d", row.Members))
 										if templ_7745c5c3_Err != nil {
-											return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/teams_page.templ`, Line: 90, Col: 41}
+											return templ.Error{Err: templ_7745c5c3_Err, FileName: `teams_page.templ`, Line: 90, Col: 41}
 										}
 										_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var25))
 										if templ_7745c5c3_Err != nil {
@@ -493,7 +493,7 @@ func TeamsPage(vmodel TeamsPageVModel) templ.Component {
 										var templ_7745c5c3_Var27 string
 										templ_7745c5c3_Var27, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("%d", len(row.Team.ModelGrants())))
 										if templ_7745c5c3_Err != nil {
-											return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/teams_page.templ`, Line: 93, Col: 57}
+											return templ.Error{Err: templ_7745c5c3_Err, FileName: `teams_page.templ`, Line: 93, Col: 57}
 										}
 										_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var27))
 										if templ_7745c5c3_Err != nil {
@@ -664,7 +664,7 @@ func TeamForm(vmodel TeamFormVModel) templ.Component {
 					var templ_7745c5c3_Var34 string
 					templ_7745c5c3_Var34, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.teams.back"))
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/teams_page.templ`, Line: 125, Col: 36}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `teams_page.templ`, Line: 125, Col: 36}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var34))
 					if templ_7745c5c3_Err != nil {
@@ -706,7 +706,7 @@ func TeamForm(vmodel TeamFormVModel) templ.Component {
 			var templ_7745c5c3_Var35 templ.SafeURL
 			templ_7745c5c3_Var35, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(teamsURL(ctx, vmodel.Org)))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/teams_page.templ`, Line: 133, Col: 72}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `teams_page.templ`, Line: 133, Col: 72}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var35))
 			if templ_7745c5c3_Err != nil {
@@ -755,7 +755,7 @@ func TeamForm(vmodel TeamFormVModel) templ.Component {
 						var templ_7745c5c3_Var39 string
 						templ_7745c5c3_Var39, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.teams.form.section_info"))
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/teams_page.templ`, Line: 137, Col: 51}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `teams_page.templ`, Line: 137, Col: 51}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var39))
 						if templ_7745c5c3_Err != nil {
@@ -820,7 +820,7 @@ func TeamForm(vmodel TeamFormVModel) templ.Component {
 							var templ_7745c5c3_Var43 string
 							templ_7745c5c3_Var43, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.teams.form.name"))
 							if templ_7745c5c3_Err != nil {
-								return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/teams_page.templ`, Line: 144, Col: 45}
+								return templ.Error{Err: templ_7745c5c3_Err, FileName: `teams_page.templ`, Line: 144, Col: 45}
 							}
 							_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var43))
 							if templ_7745c5c3_Err != nil {
@@ -873,7 +873,7 @@ func TeamForm(vmodel TeamFormVModel) templ.Component {
 							var templ_7745c5c3_Var46 string
 							templ_7745c5c3_Var46, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.teams.form.slug"))
 							if templ_7745c5c3_Err != nil {
-								return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/teams_page.templ`, Line: 150, Col: 45}
+								return templ.Error{Err: templ_7745c5c3_Err, FileName: `teams_page.templ`, Line: 150, Col: 45}
 							}
 							_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var46))
 							if templ_7745c5c3_Err != nil {
@@ -912,7 +912,7 @@ func TeamForm(vmodel TeamFormVModel) templ.Component {
 							var templ_7745c5c3_Var48 string
 							templ_7745c5c3_Var48, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.teams.form.slug_help", vmodel.Org.Slug()))
 							if templ_7745c5c3_Err != nil {
-								return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/teams_page.templ`, Line: 154, Col: 69}
+								return templ.Error{Err: templ_7745c5c3_Err, FileName: `teams_page.templ`, Line: 154, Col: 69}
 							}
 							_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var48))
 							if templ_7745c5c3_Err != nil {
@@ -961,7 +961,7 @@ func TeamForm(vmodel TeamFormVModel) templ.Component {
 							var templ_7745c5c3_Var51 string
 							templ_7745c5c3_Var51, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.teams.form.description"))
 							if templ_7745c5c3_Err != nil {
-								return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/teams_page.templ`, Line: 160, Col: 51}
+								return templ.Error{Err: templ_7745c5c3_Err, FileName: `teams_page.templ`, Line: 160, Col: 51}
 							}
 							_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var51))
 							if templ_7745c5c3_Err != nil {
@@ -1032,7 +1032,7 @@ func TeamForm(vmodel TeamFormVModel) templ.Component {
 						var templ_7745c5c3_Var54 string
 						templ_7745c5c3_Var54, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.teams.form.create"))
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/teams_page.templ`, Line: 168, Col: 45}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `teams_page.templ`, Line: 168, Col: 45}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var54))
 						if templ_7745c5c3_Err != nil {

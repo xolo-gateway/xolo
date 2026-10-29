@@ -89,7 +89,7 @@ func ProvidersPage(vmodel ProvidersPageVModel) templ.Component {
 						var templ_7745c5c3_Var5 string
 						templ_7745c5c3_Var5, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.provider_bundle.import_provider"))
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/providers_page.templ`, Line: 29, Col: 57}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `providers_page.templ`, Line: 29, Col: 57}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var5))
 						if templ_7745c5c3_Err != nil {
@@ -133,7 +133,7 @@ func ProvidersPage(vmodel ProvidersPageVModel) templ.Component {
 						var templ_7745c5c3_Var7 string
 						templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.models.providers.add"))
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/providers_page.templ`, Line: 37, Col: 46}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `providers_page.templ`, Line: 37, Col: 46}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var7))
 						if templ_7745c5c3_Err != nil {
@@ -210,7 +210,7 @@ func ProvidersPage(vmodel ProvidersPageVModel) templ.Component {
 							var templ_7745c5c3_Var10 string
 							templ_7745c5c3_Var10, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.models.providers.add"))
 							if templ_7745c5c3_Err != nil {
-								return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/providers_page.templ`, Line: 57, Col: 47}
+								return templ.Error{Err: templ_7745c5c3_Err, FileName: `providers_page.templ`, Line: 57, Col: 47}
 							}
 							_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var10))
 							if templ_7745c5c3_Err != nil {
@@ -321,7 +321,7 @@ func providerRow(vmodel ProvidersPageVModel, p model.Provider) templ.Component {
 				var templ_7745c5c3_Var14 string
 				templ_7745c5c3_Var14, templ_7745c5c3_Err = templ.JoinStringErrs(p.Name())
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/providers_page.templ`, Line: 80, Col: 51}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `providers_page.templ`, Line: 80, Col: 51}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var14))
 				if templ_7745c5c3_Err != nil {
@@ -379,7 +379,7 @@ func providerRow(vmodel ProvidersPageVModel, p model.Provider) templ.Component {
 					var templ_7745c5c3_Var16 string
 					templ_7745c5c3_Var16, templ_7745c5c3_Err = templ.JoinStringErrs(strconv.Itoa(vmodel.ModelCounts[p.ID()]))
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/providers_page.templ`, Line: 95, Col: 47}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `providers_page.templ`, Line: 95, Col: 47}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var16))
 					if templ_7745c5c3_Err != nil {
@@ -476,7 +476,7 @@ func providerRow(vmodel ProvidersPageVModel, p model.Provider) templ.Component {
 					var templ_7745c5c3_Var21 string
 					templ_7745c5c3_Var21, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.models.providers.models"))
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/providers_page.templ`, Line: 117, Col: 49}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `providers_page.templ`, Line: 117, Col: 49}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var21))
 					if templ_7745c5c3_Err != nil {
@@ -508,7 +508,7 @@ func providerRow(vmodel ProvidersPageVModel, p model.Provider) templ.Component {
 						var templ_7745c5c3_Var23 string
 						templ_7745c5c3_Var23, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.models.providers.configure"))
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/providers_page.templ`, Line: 125, Col: 53}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `providers_page.templ`, Line: 125, Col: 53}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var23))
 						if templ_7745c5c3_Err != nil {
@@ -560,7 +560,7 @@ func providerRow(vmodel ProvidersPageVModel, p model.Provider) templ.Component {
 				var templ_7745c5c3_Var24 string
 				templ_7745c5c3_Var24, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.models.providers.plan", plan.Label))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/providers_page.templ`, Line: 138, Col: 102}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `providers_page.templ`, Line: 138, Col: 102}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var24))
 				if templ_7745c5c3_Err != nil {

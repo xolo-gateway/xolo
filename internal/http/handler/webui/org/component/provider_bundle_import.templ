@@ -2,6 +2,7 @@ package component
 
 import (
 	"strconv"
+	"strings"
 
 	"github.com/xolo-gateway/xolo/internal/core/service"
 	common "github.com/xolo-gateway/xolo/internal/http/handler/webui/common/component"
@@ -151,7 +152,9 @@ templ providerBundlePlan(vmodel ProviderBundleImportVModel, importURL string) {
 									@table.Cell() {
 										// A new provider takes every setting: only the
 										// settings of an existing one are chosen.
-										if plan.Target != nil {
+										if plan.Target != nil && c.Refused() {
+											@checkbox.Checkbox(checkbox.Props{ID: id, Disabled: true})
+										} else if plan.Target != nil {
 											@checkbox.Checkbox(checkbox.Props{ID: id, Name: "setting", Value: c.Field})
 										}
 									}
@@ -226,6 +229,9 @@ templ providerBundleFieldCells(id string, c service.BundleFieldChange, withCurre
 	}
 	@table.Cell(table.CellProps{Class: "font-mono text-xs break-all"}) {
 		{ c.To }
+		if len(c.Unserved) > 0 {
+			<p class="font-sans text-destructive">{ i18n.T(ctx, "org.provider_bundle.type_unserved", strings.Join(c.Unserved, ", ")) }</p>
+		}
 	}
 }
 

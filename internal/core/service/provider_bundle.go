@@ -35,11 +35,15 @@ type BundleFieldChange struct {
 	// KindNotServed, on a kind change, is the provider type whose API, kept
 	// by the model, does not serve the new kind.
 	KindNotServed string
+	// Unserved, on a provider type change, lists the proxy names of the
+	// target's models the new API would not serve: models the bundle does
+	// not contain, or keeps on the provider's API with the same kind.
+	Unserved []string
 }
 
 // Refused reports whether the change cannot be applied.
 func (c BundleFieldChange) Refused() bool {
-	return c.Conflict != "" || c.KindNotServed != ""
+	return c.Conflict != "" || c.KindNotServed != "" || len(c.Unserved) > 0
 }
 
 // BundleModelPlan is what importing one model of a bundle would do.
@@ -306,11 +310,24 @@ func PlanProviderBundleImportWith(bundle model.ProviderBundle, target model.Prov
 		}
 	}
 
+	// A type change is refused while it would leave a model of the target
+	// on an API that does not serve its kind, as the model form refuses.
+	typeRefused := false
+	if target != nil {
+		for i := range plan.Settings {
+			if plan.Settings[i].Field != BundleFieldType {
+				continue
+			}
+			plan.Settings[i].Unserved = unservedByType(bundle, existing, own, matched, bundle.Provider.Type)
+			typeRefused = plan.Settings[i].Refused()
+		}
+	}
+
 	// The API a model without one of its own is served by: the target's,
 	// or the bundle's when the import creates the provider or changes its
 	// type.
 	servedType := bundle.Provider.Type
-	if target != nil && (sel == nil || !sel.Settings[BundleFieldType]) {
+	if target != nil && (sel == nil || !sel.Settings[BundleFieldType] || typeRefused) {
 		servedType = target.Type()
 	}
 
@@ -334,6 +351,28 @@ func PlanProviderBundleImportWith(bundle model.ProviderBundle, target model.Prov
 	}
 	plan.Models = plans
 	return plan
+}
+
+// unservedByType returns the proxy names of the target's models that would
+// be left on the API of providerType, which does not serve their kind: the
+// models of own that no bundle model updates, and those the bundle keeps on
+// the provider's API with their kind. The bundle models that change the API
+// or the kind are checked by planBundleModel.
+func unservedByType(bundle model.ProviderBundle, existing, own []model.LLMModel, matched map[model.LLMModelID]bool, providerType string) []string {
+	var names []string
+	for _, m := range own {
+		if !matched[m.ID()] && m.APIType() == "" && !model.ProviderTypeServes(providerType, m.Kind()) {
+			names = append(names, m.ProxyName())
+		}
+	}
+	for i, m := range existing {
+		bm := bundle.Models[i]
+		if m != nil && m.APIType() == "" && bm.APIType == "" && bm.Kind == m.Kind() && !model.ProviderTypeServes(providerType, m.Kind()) {
+			names = append(names, m.ProxyName())
+		}
+	}
+	slices.Sort(names)
+	return names
 }
 
 // resolveRenames settles, before any model is planned, the final name of
@@ -707,7 +746,7 @@ func applyProviderSettings(ctx context.Context, store port.ProviderStore, plan P
 	updated := model.CopyProvider(t)
 	changed := false
 	for _, change := range plan.Settings {
-		if !sel.Settings[change.Field] {
+		if !sel.Settings[change.Field] || change.Refused() {
 			continue
 		}
 		changed = true
