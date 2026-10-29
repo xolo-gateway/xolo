@@ -422,10 +422,13 @@ func TestApplyProviderBundle_GoesOnPastAModelTheStoreRefuses(t *testing.T) {
 
 func TestParseProviderBundle_RefusesReservedHeadersAndAbsurdPrices(t *testing.T) {
 	for name, doc := range map[string]string{
-		"reserved header": `{"kind":"xolo.provider","version":"1","provider":{"type":"openai","request_headers":{"headers":{"Authorization":"Bearer x"}}}}`,
-		"negative window": `{"kind":"xolo.provider","version":"1","provider":{"type":"openai"},"models":[{"real_model":"a","proxy_name":"a","context_window":-1,"prices":{"input":1,"output":1}}]}`,
-		"negative speed":  `{"kind":"xolo.provider","version":"1","provider":{"type":"openai"},"models":[{"real_model":"a","proxy_name":"a","tokens_per_sec_low":-5,"prices":{"input":1,"output":1}}]}`,
-		"absurd price":    `{"kind":"xolo.provider","version":"1","provider":{"type":"openai"},"models":[{"real_model":"a","proxy_name":"a","prices":{"input":1e300,"output":1}}]}`,
+		"reserved header":  `{"kind":"xolo.provider","version":"1","provider":{"type":"openai","request_headers":{"headers":{"Authorization":"Bearer x"}}}}`,
+		"zero retry delay": `{"kind":"xolo.provider","version":"1","provider":{"type":"openai","retry":{"enabled":true,"max_attempts":3,"delay":0}}}`,
+		"zero rate burst":  `{"kind":"xolo.provider","version":"1","provider":{"type":"openai","rate_limit":{"enabled":true,"interval":1000000000,"max_burst":0}}}`,
+		"zero token limit": `{"kind":"xolo.provider","version":"1","provider":{"type":"openai"},"models":[{"real_model":"a","proxy_name":"a","token_limit":{"enabled":true,"max_tokens":10,"interval":0},"prices":{"input":1,"output":1}}]}`,
+		"negative window":  `{"kind":"xolo.provider","version":"1","provider":{"type":"openai"},"models":[{"real_model":"a","proxy_name":"a","context_window":-1,"prices":{"input":1,"output":1}}]}`,
+		"negative speed":   `{"kind":"xolo.provider","version":"1","provider":{"type":"openai"},"models":[{"real_model":"a","proxy_name":"a","tokens_per_sec_low":-5,"prices":{"input":1,"output":1}}]}`,
+		"absurd price":     `{"kind":"xolo.provider","version":"1","provider":{"type":"openai"},"models":[{"real_model":"a","proxy_name":"a","prices":{"input":1e300,"output":1}}]}`,
 	} {
 		if _, err := model.ParseProviderBundle([]byte(doc)); err == nil {
 			t.Errorf("%s: parsed, want refused", name)

@@ -215,7 +215,11 @@ func (h *Handler) importProviderBundle(w http.ResponseWriter, r *http.Request) {
 	if len(result.Failed) == 0 && len(result.Skipped) == 0 {
 		vmodel.Notice = i18n.T(ctx, "org.provider_bundle.nothing_applied")
 	} else {
-		vmodel.Notice = i18n.T(ctx, "org.provider_bundle.applied", result.Created, result.Updated)
+		notice := "org.provider_bundle.applied"
+		if result.ProviderChanged {
+			notice = "org.provider_bundle.applied_with_provider"
+		}
+		vmodel.Notice = i18n.T(ctx, notice, result.Created, result.Updated)
 		vmodel.Failures = append(h.bundleFailureReasons(ctx, org, result.Failed), bundleSkipReasons(ctx, result.Skipped)...)
 	}
 	templ.Handler(component.ProviderBundleImportPage(vmodel)).ServeHTTP(w, r)

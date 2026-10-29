@@ -176,6 +176,14 @@ func (b ProviderBundle) Validate() error {
 	if !IsKnownProviderType(b.Provider.Type) {
 		return errors.Wrapf(ErrInvalidProviderBundle, "unknown provider type %q", b.Provider.Type)
 	}
+	// The resilience settings follow the rules of the provider and model
+	// forms: an enabled setting needs a positive interval and count.
+	if r := b.Provider.Retry; r != nil && r.Enabled && (r.Delay <= 0 || r.MaxAttempts < 1) {
+		return errors.Wrap(ErrInvalidProviderBundle, "retry needs a positive delay and at least one attempt")
+	}
+	if r := b.Provider.RateLimit; r != nil && r.Enabled && (r.Interval <= 0 || r.MaxBurst < 1) {
+		return errors.Wrap(ErrInvalidProviderBundle, "rate_limit needs a positive interval and a burst of at least one")
+	}
 	if !b.Provider.RequestHeaders.Valid() {
 		return errors.Wrap(ErrInvalidProviderBundle, "request_headers name a reserved header or exceed the limits")
 	}
@@ -207,6 +215,9 @@ func (b ProviderBundle) Validate() error {
 		}
 		if m.Kind != "" && !ProviderTypeServes(served, m.Kind) {
 			return errors.Wrapf(ErrInvalidProviderBundle, "model %q is of kind %q, which %q does not serve", m.RealModel, m.Kind, served)
+		}
+		if l := m.TokenLimit; l != nil && l.Enabled && (l.Interval <= 0 || l.MaxTokens < 1) {
+			return errors.Wrapf(ErrInvalidProviderBundle, "model %q: token_limit needs a positive interval and at least one token", m.RealModel)
 		}
 		if m.ContextWindow < 0 || m.OutputWindow < 0 || m.ActiveParams < 0 {
 			return errors.Wrapf(ErrInvalidProviderBundle, "model %q has a negative window or parameter count", m.RealModel)
