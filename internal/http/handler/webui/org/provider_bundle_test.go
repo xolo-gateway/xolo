@@ -144,11 +144,11 @@ func TestProviderBundle_AnswersInvalidSettingsWithThePage(t *testing.T) {
 	h, s, tenant := importFixture(t, "https://example.test/v1", "sk")
 	store := &bundleStore{modelFormStore: s}
 	h.providerStore = store
-	// Model budgets on a provider-wide limit: the bundle parses, the
-	// provider validation every write path applies refuses it.
-	doc := `{"kind":"xolo.provider","version":"1","provider":{"type":"openai","currency":"USD","billing_mode":"subscription",` +
-		`"subscription_plan":{"label":"P","constraints":[{"kind":"concurrency","label":"c","max_concurrent":2,"model_budgets":{"a":{}}}]}},"models":[]}`
-	fields := url.Values{"step": {"apply"}, "bundle": {doc}, "billing": {"on"}, "name": {"P"}, "api_key": {"k"}}
+	// A name too long for a provider: the bundle and its preview hold
+	// nothing wrong, the provider validation every write path applies
+	// refuses it.
+	doc := `{"kind":"xolo.provider","version":"1","provider":{"type":"openai","currency":"USD"},"models":[]}`
+	fields := url.Values{"step": {"apply"}, "bundle": {doc}, "name": {strings.Repeat("P", 1000)}, "api_key": {"k"}}
 	rr := httptest.NewRecorder()
 	h.importProviderBundle(rr, bundleRequest(t, s, tenant, "", bytes.NewBufferString(fields.Encode()), "application/x-www-form-urlencoded"))
 	if rr.Code != http.StatusUnprocessableEntity {
@@ -156,6 +156,20 @@ func TestProviderBundle_AnswersInvalidSettingsWithThePage(t *testing.T) {
 	}
 	if !strings.Contains(stdhtml.UnescapeString(rr.Body.String()), "rien n'a été écrit") || len(store.providers) != 0 {
 		t.Error("the page should say nothing was written, and nothing should be")
+	}
+}
+
+func TestProviderBundle_RefusesAtThePreviewAPlanThePlanEditorRefuses(t *testing.T) {
+	h, s, tenant := importFixture(t, "https://example.test/v1", "sk")
+	// Model budgets on a provider-wide limit: the bundle parses, the plan
+	// editor refuses it.
+	doc := `{"kind":"xolo.provider","version":"1","provider":{"type":"openai","currency":"USD","billing_mode":"subscription",` +
+		`"subscription_plan":{"label":"P","constraints":[{"kind":"concurrency","label":"c","max_concurrent":2,"model_budgets":{"a":{}}}]}},"models":[]}`
+	fields := url.Values{"step": {"preview"}, "bundle": {doc}}
+	rr := httptest.NewRecorder()
+	h.importProviderBundle(rr, bundleRequest(t, s, tenant, string(s.provider.ID()), bytes.NewBufferString(fields.Encode()), "application/x-www-form-urlencoded"))
+	if rr.Code != http.StatusUnprocessableEntity || !strings.Contains(stdhtml.UnescapeString(rr.Body.String()), "n'est pas un bundle de fournisseur") {
+		t.Errorf("status = %d, want the bundle refused at the preview rather than at the apply", rr.Code)
 	}
 }
 

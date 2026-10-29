@@ -605,14 +605,21 @@ func validateProvider(v model.ProviderSettings) error {
 	if !v.RequestHeaders.Valid() {
 		return errors.Wrap(port.ErrInvalid, "invalid request_headers")
 	}
-	if plan := v.SubscriptionPlan; plan != nil {
-		if !validCommonText(plan.Label, 0, maxBusinessNameLength) || len(plan.Constraints) > 100 {
-			return errors.Wrap(port.ErrInvalid, "invalid subscription_plan")
-		}
-		for _, c := range plan.Constraints {
-			if err := validatePlanConstraint(c); err != nil {
-				return err
-			}
+	return ValidateSubscriptionPlan(v.SubscriptionPlan)
+}
+
+// ValidateSubscriptionPlan checks plan with the rules of the plan editor:
+// an import validates the plan it previews with them.
+func ValidateSubscriptionPlan(plan *model.SubscriptionPlan) error {
+	if plan == nil {
+		return nil
+	}
+	if !validCommonText(plan.Label, 0, maxBusinessNameLength) || len(plan.Constraints) > 100 {
+		return errors.Wrap(port.ErrInvalid, "invalid subscription_plan")
+	}
+	for _, c := range plan.Constraints {
+		if err := validatePlanConstraint(c); err != nil {
+			return err
 		}
 	}
 	return nil
