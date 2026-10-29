@@ -318,13 +318,7 @@ func PlanProviderBundleImportWith(bundle model.ProviderBundle, target model.Prov
 	// apply time, only the selected ones count.
 	selected := func(i int, field string) bool { return sel == nil || sel.Fields[i][field] }
 
-	// The names the renames leave are freed first, whatever the order of
-	// the bundle, so that a model can take the name another one leaves.
-	for i, bm := range bundle.Models {
-		if m := existing[i]; m != nil && m.ProxyName() != bm.ProxyName && selected(i, BundleFieldProxyName) {
-			names.Release(m.ProxyName())
-		}
-	}
+	renameConflicts := resolveRenames(bundle, existing, selected, names)
 
 	// The models to update are planned first, so that a name one of them
 	// leaves is free for a model to create.
@@ -334,17 +328,75 @@ func PlanProviderBundleImportWith(bundle model.ProviderBundle, target model.Prov
 			if (existing[i] != nil) != updates {
 				continue
 			}
-			plans[i] = planBundleModel(i, bm, existing[i], servedType,
-				selected(i, BundleFieldProxyName), selected(i, BundleFieldAPI), names)
+			conflict, decided := renameConflicts[i]
+			plans[i] = planBundleModel(i, bm, existing[i], servedType, decided, conflict, selected(i, BundleFieldAPI), names)
 		}
 	}
 	plan.Models = plans
 	return plan
 }
 
+// resolveRenames settles, before any model is planned, the final name of
+// every selected rename, so that the dry run never offers a name that stays
+// taken. The names the renames leave are freed first, whatever the order of
+// the bundle; a rename whose new name is still held (outside the bundle, by
+// a model that keeps its name, or by an earlier rename to the same name) is
+// refused and its model takes its own name back, which may refuse others in
+// turn, until nothing moves. The accepted renames then take their new
+// names. It returns, by bundle index, the conflict of each selected rename,
+// empty when accepted.
+func resolveRenames(bundle model.ProviderBundle, existing []model.LLMModel, selected func(int, string) bool, names ProxyNames) map[int]string {
+	var renames []int
+	for i, bm := range bundle.Models {
+		if m := existing[i]; m != nil && m.ProxyName() != bm.ProxyName && selected(i, BundleFieldProxyName) {
+			renames = append(renames, i)
+			names.Release(m.ProxyName())
+		}
+	}
+	// Each round claims the new names in bundle order; a refusal gives the
+	// model its own name back and starts a new round, as it may refuse
+	// renames planned earlier. Refusals only grow, so the rounds end.
+	conflicts := make(map[int]string, len(renames))
+	for {
+		var claimed []string
+		refusedThisRound := false
+		for _, i := range renames {
+			if _, refused := conflicts[i]; refused {
+				continue
+			}
+			target := bundle.Models[i].ProxyName
+			if conflict := names.Conflict(target); conflict != "" {
+				conflicts[i] = conflict
+				names.Declare(existing[i].ProxyName())
+				refusedThisRound = true
+				continue
+			}
+			names.Declare(target)
+			claimed = append(claimed, target)
+		}
+		if !refusedThisRound {
+			break
+		}
+		for _, name := range claimed {
+			names.Release(name)
+		}
+		// A name claimed this round may be the one a refused model took
+		// back: every refused model holds its own name again.
+		for i := range conflicts {
+			names.Declare(existing[i].ProxyName())
+		}
+	}
+	for _, i := range renames {
+		if _, refused := conflicts[i]; !refused {
+			conflicts[i] = ""
+		}
+	}
+	return conflicts
+}
+
 // planBundleModel plans the import of the bundle model bm, at index i, into
 // the target model existing (nil to create it).
-func planBundleModel(i int, bm model.ProviderBundleModel, existing model.LLMModel, servedType string, renames, apiChanges bool, names ProxyNames) BundleModelPlan {
+func planBundleModel(i int, bm model.ProviderBundleModel, existing model.LLMModel, servedType string, renameDecided bool, renameConflict string, apiChanges bool, names ProxyNames) BundleModelPlan {
 	mp := BundleModelPlan{Index: i, Model: bm, Existing: existing}
 
 	// The kind must be one the API serving the model serves, as the model
@@ -388,15 +440,13 @@ func planBundleModel(i int, bm model.ProviderBundleModel, existing model.LLMMode
 			change.KindNotServed = served
 		}
 		if f.name == BundleFieldProxyName {
-			if conflict := names.Conflict(bm.ProxyName); conflict != "" {
-				change.Conflict = conflict
-				// The model keeps its name: the one freed for it is taken
-				// back.
-				if renames {
-					names.Declare(existing.ProxyName())
-				}
-			} else if renames {
-				names.Declare(bm.ProxyName)
+			if renameDecided {
+				// Settled with every other rename by resolveRenames.
+				change.Conflict = renameConflict
+			} else {
+				// A rename the operator did not select takes no name: it is
+				// only shown, with what would stop it.
+				change.Conflict = names.Conflict(bm.ProxyName)
 			}
 		}
 		mp.Changes = append(mp.Changes, change)
