@@ -660,6 +660,8 @@
   "org.provider_bundle.omitted_headers": "These request headers were left out of the export as their name looks like a credential: %s. Configure them again on this provider if it needs them.",
   "org.provider_bundle.type_unserved": "Cannot be applied: the API of this type does not serve these models of the provider, which the import leaves as they are: %s.",
   "org.provider_bundle.type_not_applied": "The provider type was not changed: its API does not serve these models of the provider: %s.",
+  "org.provider_bundle.settings_not_saved": "The provider settings could not be saved: the models were written, import the bundle again to apply the settings.",
+  "org.provider_bundle.models_stranded": "These models were written for a provider type the provider did not take, and its current type does not serve them: %s. Import the bundle again to complete them.",
   "org.provider_bundle.applied": "%d model(s) created, %d updated. Some changes could not be written:",
   "org.provider_bundle.applied_with_provider": "Provider settings saved, %d model(s) created, %d updated. Some changes could not be written:",
   "org.provider_bundle.change_not_applied": "%s: change of \"%s\" not applied: %s",

@@ -716,11 +716,17 @@ type BundleApplyResult struct {
 	// SkippedSettings lists the selected provider settings the plan applied
 	// refused, such as a type change that would leave a model unserved.
 	SkippedSettings []BundleFieldChange
+	// SettingsFailed is the store's refusal of the provider settings of an
+	// existing target, written after its models.
+	SettingsFailed error
+	// Stranded lists the models written for a provider type the provider
+	// did not take, which its own type does not serve.
+	Stranded []string
 }
 
 // Refused reports whether a selected change could not be written.
 func (r BundleApplyResult) Refused() bool {
-	return len(r.Failed) > 0 || len(r.Skipped) > 0 || len(r.SkippedSettings) > 0
+	return len(r.Failed) > 0 || len(r.Skipped) > 0 || len(r.SkippedSettings) > 0 || r.SettingsFailed != nil || len(r.Stranded) > 0
 }
 
 // Wrote reports whether the import wrote anything.
@@ -836,41 +842,55 @@ func ApplyProviderBundle(ctx context.Context, store port.ProviderStore, plan Pro
 // saveProviderSettings writes the settings of an existing target once its
 // models are: a type change applies only if the new API serves every model
 // of the provider as written, since a model write the type change depended
-// on may have failed.
+// on may have failed. A failed write is reported in result, next to the
+// models already written.
 func saveProviderSettings(ctx context.Context, store port.ProviderStore, plan ProviderBundlePlan, sel BundleSelection, updated *model.BaseProvider, result *BundleApplyResult) error {
 	t := plan.Target
+	var models []model.LLMModel
 	if updated.Type() != t.Type() {
 		all, err := store.ListLLMModels(ctx, t.OrgID())
 		if err != nil {
 			return errors.Wrap(err, "could not list provider models")
 		}
-		var unserved []string
-		for _, m := range all {
-			if m.ProviderID() == t.ID() && m.APIType() == "" && !model.ProviderTypeServes(updated.Type(), m.Kind()) {
-				unserved = append(unserved, m.ProxyName())
-			}
-		}
-		if len(unserved) > 0 {
-			slices.Sort(unserved)
+		models = all
+		if unserved := unservedModels(models, t.ID(), updated.Type()); len(unserved) > 0 {
 			result.SkippedSettings = append(result.SkippedSettings, BundleFieldChange{
 				Field: BundleFieldType, From: t.Type(), To: updated.Type(), Unserved: unserved,
 			})
 			updated.SetType(t.Type())
-			others := sel.Billing && plan.Billing != nil
-			for _, change := range plan.Settings {
-				others = others || (change.Field != BundleFieldType && sel.Settings[change.Field] && !change.Refused())
-			}
-			if !others {
-				return nil
-			}
 		}
 	}
-	updated.SetUpdatedAt(time.Now())
-	if err := store.SaveProvider(ctx, updated); err != nil {
-		return errors.Wrap(err, "could not update provider")
+	others := sel.Billing && plan.Billing != nil
+	for _, change := range plan.Settings {
+		others = others || (change.Field != BundleFieldType && sel.Settings[change.Field] && !change.Refused())
 	}
-	result.Provider, result.ProviderChanged = updated, true
+	if updated.Type() != t.Type() || others {
+		updated.SetUpdatedAt(time.Now())
+		if err := store.SaveProvider(ctx, updated); err != nil {
+			result.SettingsFailed = errors.Wrap(err, "could not update provider")
+		} else {
+			result.Provider, result.ProviderChanged = updated, true
+		}
+	}
+	// The models written for a type the provider did not take are named:
+	// a new import completes them once it can be written.
+	if models != nil && result.Provider.Type() == t.Type() {
+		result.Stranded = unservedModels(models, t.ID(), t.Type())
+	}
 	return nil
+}
+
+// unservedModels returns the sorted proxy names of the models of provider
+// on its own API that providerType does not serve.
+func unservedModels(models []model.LLMModel, provider model.ProviderID, providerType string) []string {
+	var names []string
+	for _, m := range models {
+		if m.ProviderID() == provider && m.APIType() == "" && !model.ProviderTypeServes(providerType, m.Kind()) {
+			names = append(names, m.ProxyName())
+		}
+	}
+	slices.Sort(names)
+	return names
 }
 
 // applyProviderSettings creates the provider a plan without target imports
