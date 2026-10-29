@@ -670,6 +670,7 @@
   "org.provider_bundle.change_not_applied": "%s : changement « %s » non appliqué : %s",
   "org.errors.provider_bundle.too_large": "Le bundle est trop volumineux (4 Mo au plus).",
   "org.errors.provider_bundle.no_rate": "Ce bundle est tarifé en %s et aucun taux de change vers %s n'est disponible : réessayez plus tard.",
+  "org.errors.provider_bundle.converted_invalid": "Converti en %s, ce bundle sort des bornes autorisées : %s",
   "org.errors.provider_bundle.invalid_settings": "Les paramètres du fournisseur de ce bundle sont invalides (forfait, devise, nouvelles tentatives ou en-têtes) : rien n'a été écrit.",
   "org.subscription.title": "Abonnements",
   "org.subscription.my_share": "Ma part",

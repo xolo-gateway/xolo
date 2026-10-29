@@ -44,3 +44,16 @@ func TestBaseProvider_SetRequestHeadersStoresAnEmptyConfigurationAsNone(t *testi
 		t.Errorf("RequestHeaders() = %+v, want nil", p.RequestHeaders())
 	}
 }
+
+func TestMergeImportedHeaders_KeepsTheSessionHeaderABundleLacks(t *testing.T) {
+	current := &ProviderRequestHeaders{SessionHeader: "x-opencode-session", Headers: map[string]string{"Authorization-Extra": "secret", "X-Title": "old"}}
+	for _, imported := range []*ProviderRequestHeaders{nil, {Headers: map[string]string{"X-Title": "new"}}} {
+		merged := MergeImportedHeaders(current, imported)
+		if merged == nil || merged.SessionHeader != "x-opencode-session" {
+			t.Errorf("imported %+v: merged = %+v, want the provider's session header kept", imported, merged)
+		}
+	}
+	if merged := MergeImportedHeaders(current, &ProviderRequestHeaders{SessionHeader: "x-session"}); merged.SessionHeader != "x-session" {
+		t.Errorf("session header = %q, want the bundle's", merged.SessionHeader)
+	}
+}
