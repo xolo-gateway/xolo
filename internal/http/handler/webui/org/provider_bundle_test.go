@@ -622,10 +622,10 @@ func TestCatalogImport_LeavesOutTheModelsTheTargetAPIDoesNotServe(t *testing.T) 
 	rr := httptest.NewRecorder()
 	h.previewCatalogImport(rr, bundleRequest(t, s, tenant, string(s.provider.ID()), bytes.NewBufferString(fields.Encode()), "application/x-www-form-urlencoded"))
 	page := stdhtml.UnescapeString(rr.Body.String())
-	if strings.Contains(page, `"embed"`) {
-		t.Error("the plan posted back keeps a budget for the embeddings model left out")
+	if strings.Contains(page, `"embed"`) || !strings.Contains(page, "Leurs budgets des contraintes par modèle sont retirés") {
+		t.Error("the plan posted back keeps a budget for the embeddings model left out, or does not say it goes")
 	}
-	if rr.Code != http.StatusOK || !strings.Contains(page, "Modèles laissés de côté, que l'API anthropic ne sert pas ici, avec leurs budgets par modèle : 1.") {
+	if rr.Code != http.StatusOK || !strings.Contains(page, "Modèles laissés de côté, que l'API anthropic ne sert pas ici : 1.") {
 		t.Errorf("status %d, want the dry run with the embeddings model left out and said so", rr.Code)
 	}
 }
@@ -662,7 +662,7 @@ func TestCatalogImport_DecidesTheAPIOfAnotherProvidersOfferingsOneByOne(t *testi
 	if rr.Code != http.StatusOK || strings.Contains(page, "beta.test") || strings.Contains(page, `"real_model":"argon"`) {
 		t.Errorf("status %d: argon, only served through Gemini at Beta's, should be left out", rr.Code)
 	}
-	if !strings.Contains(page, `"api_type":"anthropic"`) || !strings.Contains(page, "que l'API openai ne sert pas ici, avec leurs budgets par modèle : 1.") {
+	if !strings.Contains(page, `"api_type":"anthropic"`) || !strings.Contains(page, "que l'API openai ne sert pas ici : 1.") {
 		t.Error("haiku should keep the Anthropic API served at the provider's address, and argon be counted out")
 	}
 }
@@ -705,7 +705,11 @@ func TestCatalogImport_KeepsTheSharedBudgetsOfTheModelsItLeavesOut(t *testing.T)
 	rr := httptest.NewRecorder()
 	h.previewCatalogImport(rr, bundleRequest(t, s, tenant, string(s.provider.ID()), bytes.NewBufferString(fields.Encode()), "application/x-www-form-urlencoded"))
 	// The smallest budget weighs the models the plan does not list.
-	if page := stdhtml.UnescapeString(rr.Body.String()); rr.Code != http.StatusOK || !strings.Contains(page, `"embed":{"token_budget":10}`) {
+	page := stdhtml.UnescapeString(rr.Body.String())
+	if rr.Code != http.StatusOK || !strings.Contains(page, `"embed":{"token_budget":10}`) {
 		t.Errorf("status %d, want the shared budget of embed kept in the plan posted back", rr.Code)
+	}
+	if strings.Contains(page, "Leurs budgets des contraintes par modèle sont retirés") {
+		t.Error("the page says budgets were removed, none was")
 	}
 }

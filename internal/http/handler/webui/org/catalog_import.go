@@ -98,7 +98,7 @@ func (h *Handler) previewCatalogImport(w http.ResponseWriter, r *http.Request) {
 	// another API is left out, the others give their figures. So is a model
 	// of a kind the API it ends on does not serve.
 	otherEndpoint := p != nil && strings.TrimRight(c.Provider(r.FormValue("catalog_provider")).Xolo.BaseURL, "/") != strings.TrimRight(p.BaseURL(), "/")
-	leftOut := 0
+	leftOut, budgetsDropped := 0, false
 	if otherEndpoint {
 		target, catalogType := strings.TrimRight(p.BaseURL(), "/"), bundle.Provider.Type
 		bundle.Provider.Type, bundle.Provider.BaseURL = p.Type(), p.BaseURL()
@@ -145,6 +145,7 @@ func (h *Handler) previewCatalogImport(w http.ResponseWriter, r *http.Request) {
 				for name := range plan.Constraints[i].ModelBudgets {
 					if !slices.ContainsFunc(models, func(bm model.ProviderBundleModel) bool { return bm.RealModel == name }) {
 						delete(plan.Constraints[i].ModelBudgets, name)
+						budgetsDropped = true
 					}
 				}
 			}
@@ -197,6 +198,9 @@ func (h *Handler) previewCatalogImport(w http.ResponseWriter, r *http.Request) {
 	}
 	if leftOut > 0 {
 		vmodel.Notice += " " + i18n.T(ctx, "org.catalog_import.unserved_left_out", p.Type(), leftOut)
+	}
+	if budgetsDropped {
+		vmodel.Notice += " " + i18n.T(ctx, "org.catalog_import.budgets_dropped")
 	}
 	templ.Handler(component.ProviderBundleImportPage(vmodel)).ServeHTTP(w, r)
 }
