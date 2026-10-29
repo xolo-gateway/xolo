@@ -455,3 +455,26 @@ func TestProviderBundle_SaysNothingWasWrittenWhenTheOnlyChangeIsRefused(t *testi
 		t.Errorf("status = %d, want the page saying nothing was written and why", rr.Code)
 	}
 }
+
+func TestProviderBundle_ReportsAFailedUpdateAsAFailureNotAConflict(t *testing.T) {
+	h, s, tenant := importFixture(t, "https://example.test/v1", "sk", [2]string{"chat", "chat-1"})
+	s.saveErr = errors.New("store unavailable")
+	s.provider.(*model.BaseProvider).SetRequestHeaders(&model.ProviderRequestHeaders{Headers: map[string]string{"X-Api-Token": "secret"}})
+	bundle := model.NewProviderBundle(s.provider, s.created, false, time.Now())
+	bundle.Models[0].Description = "A chat model"
+	doc, _ := json.Marshal(bundle)
+
+	fields := url.Values{"step": {"apply"}, "bundle": {string(doc)}, "field": {"0:" + service.BundleFieldDescription}}
+	rr := httptest.NewRecorder()
+	h.importProviderBundle(rr, bundleRequest(t, s, tenant, string(s.provider.ID()), bytes.NewBufferString(fields.Encode()), "application/x-www-form-urlencoded"))
+	page := stdhtml.UnescapeString(rr.Body.String())
+	if rr.Code != http.StatusOK || !strings.Contains(page, "chat : l'enregistrement a échoué, réessayez.") {
+		t.Errorf("status = %d, want the update of chat reported as a failure to retry", rr.Code)
+	}
+	if strings.Contains(page, "Un modèle s'appelle déjà « chat »") {
+		t.Error("the failed update is reported as a name conflict: chat holds its own name")
+	}
+	if !strings.Contains(page, "exportés, leur nom évoquant un identifiant : X-Api-Token") {
+		t.Error("the report page should still name the header left out of the bundle")
+	}
+}

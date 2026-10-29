@@ -654,7 +654,9 @@ func planProviderSettings(s model.ProviderBundleSettings, target model.Provider)
 	}
 	var changes []BundleFieldChange
 	for _, f := range fields {
-		if target != nil && reflect.DeepEqual(f.from, f.to) {
+		if target != nil && (f.name == BundleFieldCurrency || reflect.DeepEqual(f.from, f.to)) {
+			// The target keeps its currency: its other models are priced
+			// in it. A bundle priced in another one is converted first.
 			continue
 		}
 		changes = append(changes, BundleFieldChange{Field: f.name, From: displayValue(f.from), To: displayValue(f.to)})
@@ -707,7 +709,9 @@ type BundleApplyResult struct {
 	Failed []BundleModelFailure
 	// Skipped lists the selected models the plan applied could not write:
 	// the selection changed what they are served by or the names they can
-	// take since the dry run the operator chose from.
+	// take since the dry run the operator chose from. A model updated with
+	// refused changes appears once per refused field, RefusedField naming
+	// it.
 	Skipped []BundleModelPlan
 	// SkippedSettings lists the selected provider settings the plan applied
 	// refused, such as a type change that would leave a model unserved.
@@ -728,7 +732,9 @@ func (r BundleApplyResult) Wrote() bool {
 type BundleModelFailure struct {
 	Index     int
 	ProxyName string
-	Err       error
+	// ModelID is the model an update failed to write, empty for a create.
+	ModelID model.LLMModelID
+	Err     error
 }
 
 // ApplyProviderBundle writes the selected part of plan through store. When
@@ -739,12 +745,17 @@ type BundleModelFailure struct {
 // still differs.
 func ApplyProviderBundle(ctx context.Context, store port.ProviderStore, plan ProviderBundlePlan, sel BundleSelection, newProvider *NewProviderTarget) (BundleApplyResult, error) {
 	var result BundleApplyResult
+	if plan.Target != nil && plan.Bundle.Provider.Currency != plan.Target.Currency() {
+		// The target keeps its currency, its other models being priced in
+		// it: a merge writes prices in that currency only.
+		return result, errors.Wrapf(port.ErrInvalid, "bundle priced in %q, provider in %q: convert it first", plan.Bundle.Provider.Currency, plan.Target.Currency())
+	}
 
-	target, changed, err := applyProviderSettings(ctx, store, plan, sel, newProvider)
+	target, updated, err := applyProviderSettings(ctx, store, plan, sel, newProvider)
 	if err != nil {
 		return result, err
 	}
-	result.Provider, result.ProviderChanged = target, changed
+	result.Provider, result.ProviderChanged = target, plan.Target == nil
 	for _, change := range plan.Settings {
 		if change.Refused() && sel.Settings[change.Field] {
 			result.SkippedSettings = append(result.SkippedSettings, change)
@@ -813,14 +824,64 @@ func ApplyProviderBundle(ctx context.Context, store port.ProviderStore, plan Pro
 		}
 		result.Created++
 	}
+
+	if updated != nil {
+		if err := saveProviderSettings(ctx, store, plan, sel, updated, &result); err != nil {
+			return result, err
+		}
+	}
 	return result, nil
 }
 
-func applyProviderSettings(ctx context.Context, store port.ProviderStore, plan ProviderBundlePlan, sel BundleSelection, newProvider *NewProviderTarget) (model.Provider, bool, error) {
+// saveProviderSettings writes the settings of an existing target once its
+// models are: a type change applies only if the new API serves every model
+// of the provider as written, since a model write the type change depended
+// on may have failed.
+func saveProviderSettings(ctx context.Context, store port.ProviderStore, plan ProviderBundlePlan, sel BundleSelection, updated *model.BaseProvider, result *BundleApplyResult) error {
+	t := plan.Target
+	if updated.Type() != t.Type() {
+		all, err := store.ListLLMModels(ctx, t.OrgID())
+		if err != nil {
+			return errors.Wrap(err, "could not list provider models")
+		}
+		var unserved []string
+		for _, m := range all {
+			if m.ProviderID() == t.ID() && m.APIType() == "" && !model.ProviderTypeServes(updated.Type(), m.Kind()) {
+				unserved = append(unserved, m.ProxyName())
+			}
+		}
+		if len(unserved) > 0 {
+			slices.Sort(unserved)
+			result.SkippedSettings = append(result.SkippedSettings, BundleFieldChange{
+				Field: BundleFieldType, From: t.Type(), To: updated.Type(), Unserved: unserved,
+			})
+			updated.SetType(t.Type())
+			others := sel.Billing && plan.Billing != nil
+			for _, change := range plan.Settings {
+				others = others || (change.Field != BundleFieldType && sel.Settings[change.Field] && !change.Refused())
+			}
+			if !others {
+				return nil
+			}
+		}
+	}
+	updated.SetUpdatedAt(time.Now())
+	if err := store.SaveProvider(ctx, updated); err != nil {
+		return errors.Wrap(err, "could not update provider")
+	}
+	result.Provider, result.ProviderChanged = updated, true
+	return nil
+}
+
+// applyProviderSettings creates the provider a plan without target imports
+// into. For an existing target, it returns the provider with the selected
+// settings, validated but not written yet, or nil when none changes:
+// saveProviderSettings writes it after the models.
+func applyProviderSettings(ctx context.Context, store port.ProviderStore, plan ProviderBundlePlan, sel BundleSelection, newProvider *NewProviderTarget) (model.Provider, *model.BaseProvider, error) {
 	s := plan.Bundle.Provider
 	if plan.Target == nil {
 		if newProvider == nil {
-			return nil, false, errors.New("no provider to import into")
+			return nil, nil, errors.New("no provider to import into")
 		}
 		p := model.NewProvider(newProvider.OrgID, newProvider.Name, s.Type, s.BaseURL, newProvider.APIKey, s.Currency)
 		p.SetCloudTier(s.CloudTier)
@@ -832,12 +893,12 @@ func applyProviderSettings(ctx context.Context, store port.ProviderStore, plan P
 			p.SetSubscriptionPlan(s.SubscriptionPlan)
 		}
 		if err := validateBundleProvider(p); err != nil {
-			return nil, false, err
+			return nil, nil, err
 		}
 		if err := store.CreateProvider(ctx, p); err != nil {
-			return nil, false, errors.Wrap(err, "could not create provider")
+			return nil, nil, errors.Wrap(err, "could not create provider")
 		}
-		return p, true, nil
+		return p, nil, nil
 	}
 
 	t := plan.Target
@@ -853,8 +914,6 @@ func applyProviderSettings(ctx context.Context, store port.ProviderStore, plan P
 			updated.SetType(s.Type)
 		case BundleFieldBaseURL:
 			updated.SetBaseURL(s.BaseURL)
-		case BundleFieldCurrency:
-			updated.SetCurrency(s.Currency)
 		case BundleFieldCloudTier:
 			updated.SetCloudTier(s.CloudTier)
 		case BundleFieldRetry:
@@ -875,16 +934,12 @@ func applyProviderSettings(ctx context.Context, store port.ProviderStore, plan P
 		updated.SetExtraAPIKeys(keys)
 	}
 	if !changed {
-		return t, false, nil
+		return t, nil, nil
 	}
-	updated.SetUpdatedAt(time.Now())
 	if err := validateBundleProvider(updated); err != nil {
-		return nil, false, err
+		return nil, nil, err
 	}
-	if err := store.SaveProvider(ctx, updated); err != nil {
-		return nil, false, errors.Wrap(err, "could not update provider")
-	}
-	return updated, true, nil
+	return t, updated, nil
 }
 
 // billingModeOrPayg reads an empty billing mode as pay-as-you-go, the mode of
@@ -946,7 +1001,7 @@ func applyBundleUpdate(ctx context.Context, store port.ProviderStore, mp BundleM
 	}
 	m := model.NewLLMModelFromBundle(mp.Existing.ID(), mp.Existing.ProviderID(), mp.Existing.OrgID(), mp.Existing.CreatedAt(), updated)
 	if err := store.SaveLLMModel(ctx, m); err != nil {
-		result.Failed = append(result.Failed, BundleModelFailure{Index: mp.Index, ProxyName: m.ProxyName(), Err: errors.WithStack(err)})
+		result.Failed = append(result.Failed, BundleModelFailure{Index: mp.Index, ProxyName: m.ProxyName(), ModelID: m.ID(), Err: errors.WithStack(err)})
 		return
 	}
 	result.Updated++
