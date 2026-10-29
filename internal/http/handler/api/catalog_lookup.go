@@ -118,7 +118,10 @@ func catalogPrefill(c *catalog.Catalog, found catalog.Prefill, providerType, bas
 		// The API is pre-filled when it is not the provider's own, by the rule
 		// of the catalog import: the same model either way. Only an offering
 		// of the provider being configured gives its endpoint: another
-		// provider's would send this provider's key elsewhere.
+		// provider's would send this provider's key elsewhere. An offering
+		// served at the provider's own address is one too: unlike the
+		// import, which decides on the whole provider by its endpoint, the
+		// pre-fill sets one model's API, the one that address serves.
 		if found.Provider != nil && found.Provider.ServesAt(o, baseURL) && o.Reachable(found.Provider) {
 			if o.APIType != "" && o.APIType != providerType {
 				out.APIType = o.APIType

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"slices"
 	"strings"
 
 	"github.com/a-h/templ"
@@ -108,6 +109,16 @@ func (h *Handler) previewCatalogImport(w http.ResponseWriter, r *http.Request) {
 			models = append(models, bm)
 		}
 		bundle.Models = models
+		// A budget of a model left out would apply to none.
+		if plan := bundle.Provider.SubscriptionPlan; plan != nil && leftOut > 0 {
+			for i := range plan.Constraints {
+				for name := range plan.Constraints[i].ModelBudgets {
+					if !slices.ContainsFunc(models, func(bm model.ProviderBundleModel) bool { return bm.RealModel == name }) {
+						delete(plan.Constraints[i].ModelBudgets, name)
+					}
+				}
+			}
+		}
 	}
 	// The catalog publishes in each provider's currency: imported into a
 	// provider billing in another one, its prices and budgets are converted,

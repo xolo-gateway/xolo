@@ -609,16 +609,22 @@ func TestCatalogImport_LeavesOutTheModelsTheTargetAPIDoesNotServe(t *testing.T) 
 	beta := catalog.Provider{ID: "beta", Name: "Beta", Currency: "USD", Offerings: []catalog.Offering{
 		{Model: "chat", ModelID: "chat", Prices: catalog.Prices{Input: 1, Output: 2}},
 		{Model: "embed", ModelID: "embed", Prices: catalog.Prices{Input: 1}},
-	}}
+	}, Plans: []catalog.Plan{{ID: "pro", Name: "Pro", Constraints: []catalog.Constraint{{
+		Kind: "rolling_window", Label: "5h", Duration: "5h", Scope: "model",
+		ModelBudgets: map[string]catalog.Budget{"chat": {}, "embed": {}},
+	}}}}}
 	beta.Xolo.Type, beta.Xolo.BaseURL = "openai", "https://beta.test/v1"
 	h.SetCatalog(catalog.NewStaticSource(&catalog.Catalog{Kind: catalog.Kind, Format: catalog.Format, Version: "v1",
 		Models:    []catalog.Model{{ID: "chat", Name: "Chat"}, {ID: "embed", Name: "Embed", Kind: "embeddings"}},
 		Providers: []catalog.Provider{beta}}))
 
-	fields := url.Values{"catalog_provider": {"beta"}, "plan": {"none"}}
+	fields := url.Values{"catalog_provider": {"beta"}, "plan": {"pro"}}
 	rr := httptest.NewRecorder()
 	h.previewCatalogImport(rr, bundleRequest(t, s, tenant, string(s.provider.ID()), bytes.NewBufferString(fields.Encode()), "application/x-www-form-urlencoded"))
 	page := stdhtml.UnescapeString(rr.Body.String())
+	if strings.Contains(page, `"embed"`) {
+		t.Error("the plan posted back keeps a budget for the embeddings model left out")
+	}
 	if rr.Code != http.StatusOK || !strings.Contains(page, "Modèles laissés de côté, d'un type que l'API anthropic ne sert pas : 1.") {
 		t.Errorf("status %d, want the dry run with the embeddings model left out and said so", rr.Code)
 	}
