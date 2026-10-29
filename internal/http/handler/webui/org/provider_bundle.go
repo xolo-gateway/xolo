@@ -188,18 +188,22 @@ func (h *Handler) importProviderBundle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if len(result.Failed) == 0 && result.Wrote() {
+	if len(result.Failed) == 0 && len(result.Skipped) == 0 && result.Wrote() {
 		http.Redirect(w, r, "/orgs/"+org.Slug()+"/admin/providers/"+string(result.Provider.ID())+"/models?success=imported", http.StatusSeeOther)
 		return
 	}
 
 	// Some models were refused, or nothing was left to apply: show it on
 	// the dry run of the bundle against the state the import left.
-	if p == nil && result.ProviderChanged {
+	if result.ProviderChanged {
+		if p == nil {
+			name := vmodel.Name
+			vmodel = h.providerBundleImportVModel(ctx, org, result.Provider)
+			vmodel.Bundle, vmodel.Name = string(raw), name
+		}
+		// The dry run is replanned against the provider as written: its type
+		// may have changed.
 		p = result.Provider
-		name := vmodel.Name
-		vmodel = h.providerBundleImportVModel(ctx, org, p)
-		vmodel.Bundle, vmodel.Name = string(raw), name
 	}
 	replan, err := h.planProviderBundleImport(ctx, org, p, bundle, nil)
 	if err != nil {
@@ -208,11 +212,11 @@ func (h *Handler) importProviderBundle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	vmodel.Plan = &replan
-	if len(result.Failed) == 0 {
+	if len(result.Failed) == 0 && len(result.Skipped) == 0 {
 		vmodel.Notice = i18n.T(ctx, "org.provider_bundle.nothing_applied")
 	} else {
 		vmodel.Notice = i18n.T(ctx, "org.provider_bundle.applied", result.Created, result.Updated)
-		vmodel.Failures = h.bundleFailureReasons(ctx, org, result.Failed)
+		vmodel.Failures = append(h.bundleFailureReasons(ctx, org, result.Failed), bundleSkipReasons(ctx, result.Skipped)...)
 	}
 	templ.Handler(component.ProviderBundleImportPage(vmodel)).ServeHTTP(w, r)
 }
@@ -234,6 +238,19 @@ func (h *Handler) bundleFailureReasons(ctx context.Context, org model.Organizati
 			continue
 		}
 		reasons = append(reasons, i18n.T(ctx, "org.errors.model_import.skip_failed", f.ProxyName))
+	}
+	return reasons
+}
+
+// bundleSkipReasons explains why selected models could not be applied.
+func bundleSkipReasons(ctx context.Context, skipped []service.BundleModelPlan) []string {
+	reasons := make([]string, 0, len(skipped))
+	for _, mp := range skipped {
+		reason := mp.Conflict
+		if mp.KindNotServed != "" {
+			reason = i18n.T(ctx, "org.errors.providers.kind_not_served", mp.KindNotServed, common.ModelKindLabel(ctx, mp.Model.Kind))
+		}
+		reasons = append(reasons, i18n.T(ctx, "org.errors.model_import.skip_conflict", mp.Model.ProxyName, reason))
 	}
 	return reasons
 }

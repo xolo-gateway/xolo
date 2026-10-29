@@ -310,7 +310,10 @@ func PlanProviderBundleImportWith(bundle model.ProviderBundle, target model.Prov
 			if (existing[i] != nil) != updates {
 				continue
 			}
-			plans[i] = planBundleModel(i, bm, existing[i], servedType, names)
+			// Without a selection, the dry run assumes every rename applies;
+			// at apply time, only the selected ones free their name.
+			renames := sel == nil || sel.Fields[i][BundleFieldProxyName]
+			plans[i] = planBundleModel(i, bm, existing[i], servedType, renames, names)
 		}
 	}
 	plan.Models = plans
@@ -319,7 +322,7 @@ func PlanProviderBundleImportWith(bundle model.ProviderBundle, target model.Prov
 
 // planBundleModel plans the import of the bundle model bm, at index i, into
 // the target model existing (nil to create it).
-func planBundleModel(i int, bm model.ProviderBundleModel, existing model.LLMModel, servedType string, names ProxyNames) BundleModelPlan {
+func planBundleModel(i int, bm model.ProviderBundleModel, existing model.LLMModel, servedType string, renames bool, names ProxyNames) BundleModelPlan {
 	mp := BundleModelPlan{Index: i, Model: bm, Existing: existing}
 
 	// The kind must be one the API serving the model serves, as the model
@@ -357,7 +360,7 @@ func planBundleModel(i int, bm model.ProviderBundleModel, existing model.LLMMode
 		if f.name == BundleFieldProxyName {
 			if conflict := names.Conflict(bm.ProxyName); conflict != "" {
 				change.Conflict = conflict
-			} else {
+			} else if renames {
 				names.Declare(bm.ProxyName)
 				names.Release(existing.ProxyName())
 			}
@@ -441,6 +444,10 @@ type BundleApplyResult struct {
 	// Failed lists the models the store refused, the import going on with
 	// the others.
 	Failed []BundleModelFailure
+	// Skipped lists the selected models the plan applied could not write:
+	// the selection changed what they are served by or the names they can
+	// take since the dry run the operator chose from.
+	Skipped []BundleModelPlan
 }
 
 // Wrote reports whether the import wrote anything.
@@ -469,6 +476,12 @@ func ApplyProviderBundle(ctx context.Context, store port.ProviderStore, plan Pro
 		return result, err
 	}
 	result.Provider, result.ProviderChanged = target, changed
+
+	for _, mp := range plan.Models {
+		if mp.Action == BundleModelSkip && (sel.Models[mp.Index] || len(sel.Fields[mp.Index]) > 0) {
+			result.Skipped = append(result.Skipped, mp)
+		}
+	}
 
 	// Updates go first, as the plan orders them: a model to create may take
 	// the name a renamed model leaves.

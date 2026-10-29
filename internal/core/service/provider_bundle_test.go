@@ -508,3 +508,28 @@ func TestPlanProviderBundleImportWith_ChecksKindsAgainstTheImportedType(t *testi
 		t.Errorf("kind = %s %q, want the default of the typesafe type it takes", m.Action, m.Model.Kind)
 	}
 }
+
+func TestApplyProviderBundle_ReportsWhatTheSelectionMadeInapplicable(t *testing.T) {
+	mem := newMemoryProviderStore()
+	p := configuredProvider(t, mem, "org-a")
+	models := mem.modelsOf("org-a")
+
+	bundle := model.NewProviderBundle(p, models, false, time.Now())
+	for i := range bundle.Models {
+		if bundle.Models[i].RealModel == "kimi-k3" {
+			bundle.Models[i].ProxyName = "go/kimi-k3"
+		}
+	}
+	bundle.Models = append([]model.ProviderBundleModel{{RealModel: "kimi-k3.1", ProxyName: "kimi-k3", Enabled: true}}, bundle.Models...)
+
+	// The operator unchecks the rename but keeps the model taking its name.
+	sel := BundleSelection{Models: map[int]bool{0: true}, Fields: map[int]map[string]bool{}}
+	plan := PlanProviderBundleImportWith(bundle, p, models, namesOf(models), &sel)
+	result, err := ApplyProviderBundle(context.Background(), uniqueNamesStore{mem}, plan, sel, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Created != 0 || len(result.Failed) != 0 || len(result.Skipped) != 1 || result.Skipped[0].Conflict == "" {
+		t.Errorf("result = created %d failed %+v skipped %+v; want the creation reported as blocked by the kept name", result.Created, result.Failed, result.Skipped)
+	}
+}
