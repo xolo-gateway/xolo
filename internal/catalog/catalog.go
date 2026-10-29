@@ -376,8 +376,11 @@ func (p Plan) SubscriptionPlan() (*model.SubscriptionPlan, error) {
 			}
 			pc.Duration = model.PlanDuration(d)
 		}
-		if c.Scope == "model" {
+		switch c.Scope {
+		case "model":
 			pc.Scope = model.PlanScopeModel
+		case "shared":
+			pc.Scope = model.PlanScopeShared
 		}
 		if len(c.ModelBudgets) > 0 {
 			pc.ModelBudgets = make(map[string]model.PlanBudget, len(c.ModelBudgets))

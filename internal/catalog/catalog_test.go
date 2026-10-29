@@ -207,3 +207,19 @@ func TestBundle_KeysPlanBudgetsByTheProvidersModelID(t *testing.T) {
 		}
 	}
 }
+
+func TestPlan_ConvertsASharedWindow(t *testing.T) {
+	budget, model60 := 60.0, 120.0
+	plan := Plan{ID: "go", Name: "Go", Constraints: []Constraint{{
+		Kind: "rolling_window", Label: "month", Duration: "720h", Scope: "shared", ValueBudget: &budget,
+		ModelBudgets: map[string]Budget{"glm": {ValueBudget: &model60}, "free": {}},
+	}}}
+	sp, err := plan.SubscriptionPlan()
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := sp.Constraints[0]
+	if !c.Shared() || *c.ValueBudget != 60_000_000 || *c.ModelBudgets["glm"].ValueBudget != 120_000_000 {
+		t.Errorf("constraint = %+v, want a shared 60$ window weighing glm at 120$", c)
+	}
+}
