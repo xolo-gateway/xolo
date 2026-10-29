@@ -224,12 +224,12 @@ func (h *Handler) importProviderBundle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if len(result.Failed) == 0 && len(result.Skipped) == 0 && result.Wrote() {
+	if !result.Refused() && result.Wrote() {
 		http.Redirect(w, r, "/orgs/"+org.Slug()+"/admin/providers/"+string(result.Provider.ID())+"/models?success=imported", http.StatusSeeOther)
 		return
 	}
 
-	// Some models were refused, or nothing was left to apply: show it on
+	// Some changes were refused, or nothing was left to apply: show it on
 	// the dry run of the bundle against the state the import left.
 	if result.ProviderChanged {
 		if p == nil {
@@ -248,7 +248,7 @@ func (h *Handler) importProviderBundle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	vmodel.Plan = &replan
-	if len(result.Failed) == 0 && len(result.Skipped) == 0 {
+	if !result.Refused() {
 		vmodel.Notice = i18n.T(ctx, "org.provider_bundle.nothing_applied")
 	} else {
 		notice := "org.provider_bundle.applied"

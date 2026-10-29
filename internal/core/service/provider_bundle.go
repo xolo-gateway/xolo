@@ -707,6 +707,11 @@ type BundleApplyResult struct {
 	SkippedSettings []BundleFieldChange
 }
 
+// Refused reports whether a selected change could not be written.
+func (r BundleApplyResult) Refused() bool {
+	return len(r.Failed) > 0 || len(r.Skipped) > 0 || len(r.SkippedSettings) > 0
+}
+
 // Wrote reports whether the import wrote anything.
 func (r BundleApplyResult) Wrote() bool {
 	return r.ProviderChanged || r.Created > 0 || r.Updated > 0

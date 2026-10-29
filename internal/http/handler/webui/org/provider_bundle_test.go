@@ -406,3 +406,33 @@ func TestCatalogImport_SaysWhenTheCatalogCannotBeRead(t *testing.T) {
 		t.Errorf("status = %d, want 503 and the page saying the catalog cannot be read", rr.Code)
 	}
 }
+
+func TestProviderBundle_ReportsARefusedTypeChangeNextToWrittenModels(t *testing.T) {
+	h, s, tenant := importFixture(t, "https://example.test/v1", "sk")
+	e := model.NewLLMModel(s.provider.ID(), s.org.ID(), "e", "embed-1", "", 10, 0)
+	e.SetKind(model.ModelKindEmbeddings)
+	s.created = append(s.created, e)
+	// The bundle moves the provider to an API without embeddings, turns e
+	// into a completion model and adds a model: the operator selects the
+	// type change and the new model, not the kind change e needs.
+	bundle := model.NewProviderBundle(s.provider, s.created, false, time.Now())
+	bundle.Provider.Type = "anthropic"
+	bundle.Models[0].Kind = model.ModelKindCompletion
+	bundle.Models = append(bundle.Models, model.ProviderBundleModel{RealModel: "chat-1", ProxyName: "chat", Enabled: true, Prices: model.ModelPrices{Input: 1, Output: 2}})
+	doc, _ := json.Marshal(bundle)
+
+	fields := url.Values{"step": {"apply"}, "bundle": {string(doc)}, "setting": {service.BundleFieldType}, "create": {"1"}}
+	rr := httptest.NewRecorder()
+	h.importProviderBundle(rr, bundleRequest(t, s, tenant, string(s.provider.ID()), bytes.NewBufferString(fields.Encode()), "application/x-www-form-urlencoded"))
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want the page rather than a success redirect", rr.Code)
+	}
+	if !strings.Contains(stdhtml.UnescapeString(rr.Body.String()), "Le type du fournisseur n'a pas été changé") {
+		t.Error("the page should say the provider type was not changed")
+	}
+	// The store does not implement SaveProvider: writing the refused type
+	// change would have panicked.
+	if len(s.created) != 2 {
+		t.Errorf("created %d models, want the selected one written next to the refusal", len(s.created)-1)
+	}
+}
