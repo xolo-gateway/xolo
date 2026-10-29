@@ -153,3 +153,13 @@ func TestCatalogLookup_PrefersTheProviderWhoseOfferingEndpointItIsAt(t *testing.
 		t.Errorf("prefill = %+v, want Acme's prices with its endpoint already the provider's", got)
 	}
 }
+
+func TestCatalogLookup_FillsTheAPIOfAnOfferingServedAtTheProvidersAddress(t *testing.T) {
+	// Acme's own endpoint is elsewhere, its Anthropic offering is at the
+	// provider's address: the model takes that API, the endpoint is
+	// already the provider's.
+	_, got := lookup(t, "id=haiku&provider=openai&base_url=https://acme.test/anthropic/v1")
+	if got.APIType != "anthropic" || got.APIBaseURL != "" {
+		t.Errorf("api = %q %q, want anthropic at the provider's own address", got.APIType, got.APIBaseURL)
+	}
+}
