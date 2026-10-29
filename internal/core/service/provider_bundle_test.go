@@ -406,7 +406,7 @@ func TestPlanProviderBundleImport_FreesTheNameARenamedModelLeaves(t *testing.T) 
 func TestApplyProviderBundle_GoesOnPastAModelTheStoreRefuses(t *testing.T) {
 	store := newMemoryProviderStore()
 	bundle := model.ProviderBundle{Kind: model.ProviderBundleKind, Version: model.ProviderBundleVersion,
-		Provider: model.ProviderBundleSettings{Type: "openai"},
+		Provider: model.ProviderBundleSettings{Type: "openai", Currency: "USD"},
 		Models:   []model.ProviderBundleModel{{RealModel: "a", ProxyName: "a"}, {RealModel: "b", ProxyName: "b"}}}
 	plan := PlanProviderBundleImport(bundle, nil, nil, takenNames{})
 	store.refuse = map[string]bool{"a": true}
@@ -600,5 +600,27 @@ func TestApplyProviderBundle_WritesTheOtherChangesOfAModelWithARefusedRename(t *
 	updated := mem.models[result.Skipped[0].Existing.ID()]
 	if updated.Description() != "Kimi K3" || updated.ProxyName() != "kimi-k3" {
 		t.Errorf("model = %q %q, want the new description under its kept name", updated.ProxyName(), updated.Description())
+	}
+}
+
+func TestApplyProviderBundle_ValidatesTheProviderLikeEveryWritePath(t *testing.T) {
+	// What the provider form and the provisioning API refuse, a bundle
+	// cannot write either: here, model budgets on a provider-wide limit,
+	// which the bundle's own validation leaves to the service.
+	mem := newMemoryProviderStore()
+	max := 2
+	bundle := model.ProviderBundle{Kind: model.ProviderBundleKind, Version: model.ProviderBundleVersion,
+		Provider: model.ProviderBundleSettings{Type: "openai", Currency: "USD", BillingMode: model.BillingModeSubscription,
+			SubscriptionPlan: &model.SubscriptionPlan{Label: "P", Constraints: []model.PlanConstraint{{
+				Kind: model.ConstraintConcurrency, Label: "c", MaxConcurrent: &max,
+				ModelBudgets: map[string]model.PlanBudget{"a": {}},
+			}}}}}
+	plan := PlanProviderBundleImport(bundle, nil, nil, takenNames{})
+	_, err := ApplyProviderBundle(context.Background(), mem, plan, selectAll(plan), &NewProviderTarget{OrgID: "org-a", Name: "P", APIKey: "k"})
+	if !errors.Is(err, port.ErrInvalid) {
+		t.Fatalf("err = %v, want the provider refused as invalid", err)
+	}
+	if mem.writes != 0 {
+		t.Errorf("%d writes, want none before the provider is valid", mem.writes)
 	}
 }

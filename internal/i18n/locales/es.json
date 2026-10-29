@@ -640,6 +640,7 @@
   "org.provider_bundle.applied_with_provider": "Configuración del proveedor guardada, %d modelo(s) creado(s), %d actualizado(s). Algunos cambios no se pudieron escribir:",
   "org.provider_bundle.change_not_applied": "%s: cambio de «%s» no aplicado: %s",
   "org.errors.provider_bundle.too_large": "El bundle es demasiado grande (4 MB como máximo).",
+  "org.errors.provider_bundle.invalid_settings": "La configuración del proveedor de este bundle no es válida (plan, moneda, reintentos o cabeceras): no se escribió nada.",
   "org.subscription.title": "Suscripciones",
   "org.subscription.my_share": "Mi parte",
   "org.subscription.personal_share": "%s - parte personal (reparto equitativo)",

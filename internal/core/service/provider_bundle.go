@@ -559,6 +559,9 @@ func applyProviderSettings(ctx context.Context, store port.ProviderStore, plan P
 			p.SetBillingMode(billingModeOrPayg(s.BillingMode))
 			p.SetSubscriptionPlan(s.SubscriptionPlan)
 		}
+		if err := validateBundleProvider(p); err != nil {
+			return nil, false, err
+		}
 		if err := store.CreateProvider(ctx, p); err != nil {
 			return nil, false, errors.Wrap(err, "could not create provider")
 		}
@@ -599,6 +602,9 @@ func applyProviderSettings(ctx context.Context, store port.ProviderStore, plan P
 		return t, false, nil
 	}
 	updated.SetUpdatedAt(time.Now())
+	if err := validateBundleProvider(updated); err != nil {
+		return nil, false, err
+	}
 	if err := store.SaveProvider(ctx, updated); err != nil {
 		return nil, false, errors.Wrap(err, "could not update provider")
 	}
@@ -612,4 +618,24 @@ func billingModeOrPayg(m model.BillingMode) model.BillingMode {
 		return model.BillingModePayg
 	}
 	return m
+}
+
+// validateBundleProvider checks the provider an import is about to write
+// with the rules of every other provider write path (validateProvider): the
+// store validates nothing of its own.
+func validateBundleProvider(p model.Provider) error {
+	err := validateProvider(model.ProviderSettings{
+		Name:             p.Name(),
+		Type:             p.Type(),
+		BaseURL:          p.BaseURL(),
+		Active:           p.Active(),
+		Currency:         p.Currency(),
+		CloudTier:        p.CloudTier(),
+		BillingMode:      p.BillingMode(),
+		SubscriptionPlan: p.SubscriptionPlan(),
+		RetryConfig:      p.RetryConfig(),
+		RateLimitConfig:  p.RateLimitConfig(),
+		RequestHeaders:   p.RequestHeaders(),
+	})
+	return errors.Wrap(err, "invalid provider settings")
 }
