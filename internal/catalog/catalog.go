@@ -318,13 +318,19 @@ func (c *Catalog) Bundle(providerID, planID string) (model.ProviderBundle, error
 		if err != nil {
 			return model.ProviderBundle{}, err
 		}
-		// A per-model budget is keyed by the model_id of an offering the
-		// bundle imports, the model Xolo's plans match on: under any other
-		// key it would apply to no model, in silence.
+		// A per-model budget is keyed by the model_id of an offering, the
+		// model Xolo's plans match on: under a key no offering has, the
+		// release is wrong. One of an offering the bundle leaves out applies
+		// to no model and goes, unless its constraint is shared: its
+		// smallest budget weighs the models the plan does not list.
 		for _, constraint := range sp.Constraints {
 			for key := range constraint.ModelBudgets {
-				if !slices.ContainsFunc(p.Offerings, func(o Offering) bool { return o.ModelID == key && o.Reachable(p) }) {
-					return model.ProviderBundle{}, errors.Wrapf(ErrInvalid, "plan %q of %q: model budget %q names no offering the bundle imports", planID, providerID, key)
+				i := slices.IndexFunc(p.Offerings, func(o Offering) bool { return o.ModelID == key })
+				if i < 0 {
+					return model.ProviderBundle{}, errors.Wrapf(ErrInvalid, "plan %q of %q: model budget %q names no offering", planID, providerID, key)
+				}
+				if !p.Offerings[i].Reachable(p) && !constraint.Shared() {
+					delete(constraint.ModelBudgets, key)
 				}
 			}
 		}

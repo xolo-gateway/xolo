@@ -312,12 +312,19 @@ func TestSource_NeverRefreshesMoreThanOnceAMinute(t *testing.T) {
 	}
 }
 
-func TestBundle_RefusesAModelBudgetOnAnOfferingItLeavesOut(t *testing.T) {
+func TestBundle_DropsTheModelBudgetOfAnOfferingItLeavesOut(t *testing.T) {
 	c := testCatalog()
 	acme := &c.Providers[0]
 	acme.Offerings = append(acme.Offerings, Offering{Model: "kimi", ModelID: "kimi-far", APIType: "gemini", Prices: Prices{Input: 1, Output: 2}})
 	acme.Plans[0].Constraints[0].ModelBudgets["kimi-far"] = Budget{}
-	if _, err := c.Bundle("acme", "pro"); !errors.Is(err, ErrInvalid) {
-		t.Errorf("err = %v, want refused: kimi-far is served through another API without its endpoint, and left out", err)
+	bundle, err := c.Bundle("acme", "pro")
+	if err != nil {
+		t.Fatalf("err = %v, want the plan imported: kimi-far is an offering, left out as unreachable", err)
+	}
+	if _, kept := bundle.Provider.SubscriptionPlan.Constraints[0].ModelBudgets["kimi-far"]; kept {
+		t.Error("the budget of kimi-far, which the bundle leaves out, should go")
+	}
+	if _, kept := acme.Plans[0].Constraints[0].ModelBudgets["kimi-far"]; !kept {
+		t.Error("the catalog's own plan should be left untouched")
 	}
 }
