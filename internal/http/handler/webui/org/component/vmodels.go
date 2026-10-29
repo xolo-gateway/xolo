@@ -405,4 +405,7 @@ type ProviderBundleImportVModel struct {
 	// Failures the models the store refused.
 	Notice   string
 	Failures []string
+	// OmittedHeaders names the credential-looking request headers the
+	// bundle left out, to configure again on the provider.
+	OmittedHeaders string
 }

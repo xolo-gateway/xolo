@@ -50,9 +50,16 @@ func (s *memoryProviderStore) CreateLLMModel(_ context.Context, m model.LLMModel
 }
 
 func (s *memoryProviderStore) SaveLLMModel(_ context.Context, m model.LLMModel) error {
+	if s.refuse[m.ProxyName()] {
+		return errors.New("refused")
+	}
 	s.writes++
 	s.models[m.ID()] = m
 	return nil
+}
+
+func (s *memoryProviderStore) ListLLMModels(_ context.Context, orgID model.OrgID) ([]model.LLMModel, error) {
+	return s.modelsOf(orgID), nil
 }
 
 func (s *memoryProviderStore) modelsOf(orgID model.OrgID) []model.LLMModel {
@@ -1061,5 +1068,71 @@ func TestPlanProviderBundleImport_RefusesAnAPIChangeThatLeavesTheKindUnserved(t 
 	}
 	if len(result.Skipped) != 1 || result.Skipped[0].RefusedField != BundleFieldAPI {
 		t.Errorf("skipped = %+v, want the API change reported", result.Skipped)
+	}
+}
+
+func TestApplyProviderBundle_RefusesToMergeABundleInAnotherCurrency(t *testing.T) {
+	mem := newMemoryProviderStore()
+	p := model.NewProvider("org-a", "P", "openai", "", "key", "EUR")
+	mem.providers[p.ID()] = p
+	bundle := model.ProviderBundle{Kind: model.ProviderBundleKind, Version: model.ProviderBundleVersion,
+		Provider: model.ProviderBundleSettings{Type: "openai", Currency: "USD"},
+		Models:   []model.ProviderBundleModel{{RealModel: "a", ProxyName: "a", Prices: model.ModelPrices{Input: 1}}}}
+	plan := PlanProviderBundleImport(bundle, p, nil, takenNames{})
+	for _, c := range plan.Settings {
+		if c.Field == BundleFieldCurrency {
+			t.Errorf("settings hold a currency change %+v, want the target's kept", c)
+		}
+	}
+
+	_, err := ApplyProviderBundle(context.Background(), mem, plan, selectAll(plan), nil)
+	if !errors.Is(err, port.ErrInvalid) {
+		t.Errorf("err = %v, want ErrInvalid: prices in USD would be read in EUR", err)
+	}
+	if len(mem.models) != 0 || mem.writes != 0 {
+		t.Errorf("writes = %d, want none", mem.writes)
+	}
+}
+
+func TestApplyProviderBundle_KeepsTheTypeAModelItFailedToWriteNeeds(t *testing.T) {
+	for _, refused := range []bool{false, true} {
+		mem := newMemoryProviderStore()
+		p := model.NewProvider("org-a", "P", "openai", "", "key", "USD")
+		mem.providers[p.ID()] = p
+		e := model.NewLLMModel(p.ID(), "org-a", "e", "model-e", "", 0, 0)
+		e.SetKind(model.ModelKindEmbeddings)
+		mem.models[e.ID()] = e
+		// The new API does not serve embeddings: the type change holds only
+		// with the kind change of e.
+		bundle := model.ProviderBundle{Kind: model.ProviderBundleKind, Version: model.ProviderBundleVersion,
+			Provider: model.ProviderBundleSettings{Type: "anthropic", Currency: "USD"},
+			Models:   []model.ProviderBundleModel{{RealModel: "model-e", ProxyName: "e", Kind: model.ModelKindCompletion}}}
+		sel := &BundleSelection{Settings: map[string]bool{BundleFieldType: true}, Fields: map[int]map[string]bool{0: {BundleFieldKind: true}}}
+		models := mem.modelsOf("org-a")
+		plan := PlanProviderBundleImportWith(bundle, p, models, namesOf(models), sel)
+		if refused {
+			mem.refuse = map[string]bool{"e": true}
+		}
+
+		result, err := ApplyProviderBundle(context.Background(), mem, plan, *sel, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got := mem.providers[p.ID()].Type()
+		if !refused {
+			if got != "anthropic" || result.Updated != 1 || result.Refused() {
+				t.Errorf("type = %q, result %+v; want the type and the kind written", got, result)
+			}
+			continue
+		}
+		if got != "openai" || result.ProviderChanged {
+			t.Errorf("type = %q, want openai kept: the embeddings model e is still one", got)
+		}
+		if len(result.SkippedSettings) != 1 || !slices.Equal(result.SkippedSettings[0].Unserved, []string{"e"}) {
+			t.Errorf("skipped settings = %+v, want the type change reported for e", result.SkippedSettings)
+		}
+		if len(result.Failed) != 1 || result.Failed[0].ModelID != e.ID() {
+			t.Errorf("failed = %+v, want the update of e", result.Failed)
+		}
 	}
 }

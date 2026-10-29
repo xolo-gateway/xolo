@@ -175,9 +175,7 @@ func (h *Handler) importProviderBundle(w http.ResponseWriter, r *http.Request) {
 		vmodel.Bundle = string(converted)
 	}
 	vmodel.Name = bundle.Provider.Name
-	if names := bundle.Provider.OmittedHeaders; len(names) > 0 {
-		vmodel.Notice = i18n.T(ctx, "org.provider_bundle.omitted_headers", strings.Join(names, ", "))
-	}
+	vmodel.OmittedHeaders = strings.Join(bundle.Provider.OmittedHeaders, ", ")
 
 	if !apply {
 		templ.Handler(component.ProviderBundleImportPage(vmodel)).ServeHTTP(w, r)
@@ -234,8 +232,9 @@ func (h *Handler) importProviderBundle(w http.ResponseWriter, r *http.Request) {
 	if result.ProviderChanged {
 		if p == nil {
 			name := vmodel.Name
+			omitted := vmodel.OmittedHeaders
 			vmodel = h.providerBundleImportVModel(ctx, org, result.Provider)
-			vmodel.Bundle, vmodel.Name = string(raw), name
+			vmodel.Bundle, vmodel.Name, vmodel.OmittedHeaders = string(raw), name, omitted
 		}
 		// The dry run is replanned against the provider as written: its type
 		// may have changed.
@@ -270,18 +269,21 @@ func (h *Handler) importProviderBundle(w http.ResponseWriter, r *http.Request) {
 }
 
 // bundleFailureReasons explains why the store refused each failed model:
-// its proxy name taken since the dry run, as by another admin, or a failure
-// a retry may get through.
+// its proxy name taken since the dry run by another model, as by another
+// admin, or a failure a retry may get through.
 func (h *Handler) bundleFailureReasons(ctx context.Context, org model.Organization, failed []service.BundleModelFailure) []string {
 	existing, err := h.providerStore.ListLLMModels(ctx, org.ID())
-	taken := map[string]bool{}
+	holders := map[string]model.LLMModelID{}
 	if err == nil {
-		taken = takenProxyNames(existing)
+		for _, m := range existing {
+			holders[m.ProxyName()] = m.ID()
+		}
 	}
 	reasons := make([]string, 0, len(failed))
 	for _, f := range failed {
 		slog.ErrorContext(ctx, "could not import bundle model", slog.String("model", f.ProxyName), slogx.Error(f.Err))
-		if taken[f.ProxyName] {
+		// An updated model that kept its name holds it itself.
+		if holder, taken := holders[f.ProxyName]; taken && holder != f.ModelID {
 			reasons = append(reasons, i18n.T(ctx, "org.errors.model_import.skip_conflict", f.ProxyName, i18n.T(ctx, "org.errors.model_import.name_taken", f.ProxyName)))
 			continue
 		}

@@ -42,6 +42,13 @@ templ ProviderBundleImportPage(vmodel ProviderBundleImportVModel) {
 					}
 				}
 			}
+			if vmodel.OmittedHeaders != "" {
+				@alert.Alert() {
+					@alert.Description() {
+						{ i18n.T(ctx, "org.provider_bundle.omitted_headers", vmodel.OmittedHeaders) }
+					}
+				}
+			}
 			if vmodel.Notice != "" {
 				@alert.Alert() {
 					@alert.Description() {
