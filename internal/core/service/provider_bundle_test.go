@@ -664,3 +664,30 @@ func TestApplyProviderBundle_KeepsTheTargetsCredentialHeaders(t *testing.T) {
 		t.Errorf("headers = %v, want the bundle's plus the target's credential header", headers)
 	}
 }
+
+func TestApplyProviderBundle_HeadersConvergeOnASecondImport(t *testing.T) {
+	mem := newMemoryProviderStore()
+	target := model.NewProvider("org-a", "Gateway", "openai", "https://gw.test/v1", "key", "USD")
+	target.SetRequestHeaders(&model.ProviderRequestHeaders{Headers: map[string]string{"Api-Key": "secret", "X-Old": "1"}})
+	bundle := model.ProviderBundle{Kind: model.ProviderBundleKind, Version: model.ProviderBundleVersion,
+		Provider: model.ProviderBundleSettings{Type: "openai", Currency: "USD", BaseURL: "https://gw.test/v1",
+			RequestHeaders: &model.ProviderRequestHeaders{Headers: map[string]string{"X-Title": "xolo"}}}}
+	plan := PlanProviderBundleImport(bundle, target, nil, takenNames{})
+	result, err := ApplyProviderBundle(context.Background(), mem, plan, BundleSelection{Settings: map[string]bool{BundleFieldRequestHeaders: true}}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	again := PlanProviderBundleImport(bundle, result.Provider, nil, takenNames{})
+	for _, c := range again.Settings {
+		if c.Field == BundleFieldRequestHeaders {
+			t.Errorf("second import still plans request headers: %q -> %q", c.From, c.To)
+		}
+	}
+}
+
+func TestParseProviderBundle_RefusesACredentialHeader(t *testing.T) {
+	doc := `{"kind":"xolo.provider","version":"1","provider":{"type":"openai","currency":"USD","request_headers":{"headers":{"Api-Key":"x"}}}}`
+	if _, err := model.ParseProviderBundle([]byte(doc)); err == nil {
+		t.Error("a bundle carrying a credential header was accepted")
+	}
+}
