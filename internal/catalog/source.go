@@ -73,8 +73,8 @@ func (s *Source) Catalog(ctx context.Context) *Catalog {
 	return s.current
 }
 
-// Refresh fetches the release now and waits for it, as a startup or a test
-// does. It keeps the current catalog when the fetch fails.
+// Refresh fetches the release now and waits for it, or for the fetch already
+// in progress. It keeps the current catalog when the fetch fails.
 func (s *Source) Refresh(ctx context.Context) {
 	s.mu.Lock()
 	if s.url == "" {

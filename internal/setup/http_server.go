@@ -355,7 +355,7 @@ func NewHTTPServerFromConfig(ctx context.Context, conf *config.Config) (*http.Se
 		// single server address: like the catalogue, it is left out of the
 		// per-IP limiter.
 		http.WithRoute("GET /api/v1/quota", apiAuthChain(apiHandler)),
-		http.WithRoute("GET /api/models-dev/lookup", rateLimiter(apiAuthChain(apiHandler))),
+		http.WithRoute("GET /api/catalog/lookup", rateLimiter(apiAuthChain(apiHandler))),
 		http.WithRoute("GET /api/exchange-rate", rateLimiter(apiAuthChain(apiHandler))),
 		// Plugin UI config sync
 		http.WithRoute("PUT /api/orgs/{orgSlug}/plugin-ui-config", rateLimiter(apiAuthChain(apiHandler))),

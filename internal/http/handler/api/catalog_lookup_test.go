@@ -86,3 +86,15 @@ func TestCatalogLookup_UnknownModel(t *testing.T) {
 		t.Errorf("status = %d, want 404", code)
 	}
 }
+
+func TestCatalogLookup_NeverFillsAnotherProvidersEndpoint(t *testing.T) {
+	// A local provider the catalog does not list: the prices and windows of
+	// the model help, the endpoint of Acme's offering must not be copied.
+	_, got := lookup(t, "id=haiku&provider=openai&base_url=http://localhost:11434/v1")
+	if got.APIType != "" || got.APIBaseURL != "" {
+		t.Errorf("api = %q %q, want no endpoint from another provider", got.APIType, got.APIBaseURL)
+	}
+	if got.PromptCost == nil {
+		t.Error("the prices should still be pre-filled")
+	}
+}

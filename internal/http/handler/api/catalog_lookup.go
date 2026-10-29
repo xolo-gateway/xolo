@@ -109,8 +109,10 @@ func catalogPrefill(c *catalog.Catalog, found catalog.Prefill, providerType, bas
 			out.TokensPerSecLow, out.TokensPerSecHigh = o.Throughput.Low, o.Throughput.High
 		}
 		// The API is pre-filled when it is not the provider's own, by the rule
-		// of the catalog import: the same model either way.
-		if o.Reachable(found.Provider) {
+		// of the catalog import: the same model either way. Only an offering
+		// of the provider being configured gives its endpoint: another
+		// provider's would send this provider's key elsewhere.
+		if found.Provider != nil && found.Provider == c.MatchProvider(baseURL) && o.Reachable(found.Provider) {
 			if o.APIType != "" && o.APIType != providerType {
 				out.APIType = o.APIType
 			}
