@@ -672,7 +672,7 @@ func validatePlanConstraint(c model.PlanConstraint) error {
 			return invalid
 		}
 	}
-	for _, ratio := range []*float64{c.ReserveRatio, c.PaceSlack, c.HappyHourStart} {
+	for _, ratio := range []*float64{c.ReserveRatio, c.PaceSlack, c.HappyHourStart, c.ShareThreshold} {
 		if ratio != nil && (math.IsNaN(*ratio) || *ratio < 0 || *ratio > 1) {
 			return invalid
 		}

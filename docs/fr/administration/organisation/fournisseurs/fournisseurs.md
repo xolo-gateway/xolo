@@ -266,7 +266,16 @@ Deux mécanismes complètent cette répartition :
   peut qu'élargir une part : si la répartition du reliquat donnait moins que la
   part courante, c'est la part courante qui s'applique.
 
-Ces quatre réglages sont facultatifs et se trouvent sous « Répartition entre
+Un **seuil de partage** peut enfin suspendre ces parts tant que le forfait a de
+la place pour tous : sous ce seuil de remplissage, chacun consomme librement,
+même au-delà de sa part, jusqu'à ce que le forfait l'atteigne ; au-delà, les
+parts s'appliquent comme décrit plus haut. Avec un seuil de 70 %, un forfait
+rempli à 40 % reste ouvert à tous ; un utilisateur qui a déjà dépassé sa part
+peut consommer jusqu'à ce que le forfait atteigne 70 %, puis il est arrêté et
+la marge restante revient aux autres. Laissé vide, ou à 0, les parts
+s'appliquent dès la première requête.
+
+Ces cinq réglages sont facultatifs et se trouvent sous « Répartition entre
 utilisateurs » dans le formulaire de la contrainte. Laissés vides, ils prennent
 leurs valeurs par défaut.
 
@@ -276,6 +285,7 @@ leurs valeurs par défaut.
 | **Tolérance de rythme**            | 15 %   | Avance de consommation tolérée avant que les parts ne se resserrent                           |
 | **Ouverture de fin de fenêtre**    | 90 %   | Fraction de la fenêtre au-delà de laquelle le reliquat est réparti entre les actifs ; 100 désactive |
 | **Avance maximale de l'ouverture** | 5 % de la fenêtre, entre 30 min et 4 h | Borne absolue de cette ouverture : 30 min avant le reset d'une fenêtre de 5 h, 4 h avant celui d'une fenêtre hebdomadaire |
+| **Seuil de partage**               | 0 %    | Remplissage du forfait sous lequel les parts ne s'appliquent pas ; 0 les applique dès la première requête |
 
 Une valeur illisible ou hors bornes est refusée à l'enregistrement, avec un
 message nommant la contrainte concernée : un réglage affiché doit être celui que
@@ -287,7 +297,8 @@ requête : elle peut donc varier au cours d'une même fenêtre, à la hausse com
 la baisse. Le tableau de bord affiche, sous chaque jauge d'abonnement, le nombre
 d'utilisateurs actifs sur lequel la part a été calculée, ainsi qu'une mention
 lorsque le rythme resserre la part, lorsque le forfait déjà consommé par les
-autres la plafonne, ou lorsque la fin de fenêtre l'élargit.
+autres la plafonne, lorsque la fin de fenêtre l'élargit, ou lorsque le forfait,
+sous son seuil de partage, est en accès libre.
 
 ### Plusieurs clés pour un même abonnement
 

@@ -981,6 +981,11 @@ func fairShareBadge(mode model.FairShareMode, budget string) templ.Component {
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
+				} else if mode == model.FairShareModeOpen {
+					templ_7745c5c3_Err = common.Badge(common.TonePositive, i18n.T(ctx, "org.subscription.share_open")).Render(ctx, templ_7745c5c3_Buffer)
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
 				} else if mode == model.FairShareModeCapped {
 					templ_7745c5c3_Err = common.Badge(common.ToneWarning, i18n.T(ctx, "org.subscription.share_capped")).Render(ctx, templ_7745c5c3_Buffer)
 					if templ_7745c5c3_Err != nil {
@@ -1064,7 +1069,7 @@ func subscriptionExplanation(text string) templ.Component {
 			var templ_7745c5c3_Var47 string
 			templ_7745c5c3_Var47, templ_7745c5c3_Err = templ.JoinStringErrs(text)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/subscription_usage_section.templ`, Line: 239, Col: 8}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/subscription_usage_section.templ`, Line: 241, Col: 8}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var47))
 			if templ_7745c5c3_Err != nil {
@@ -1210,6 +1215,8 @@ func fairShareNote(ctx context.Context, mode model.FairShareMode) string {
 		return i18n.T(ctx, "org.subscription.note_capped")
 	case model.FairShareModeHappyHour:
 		return i18n.T(ctx, "org.subscription.note_happy_hour")
+	case model.FairShareModeOpen:
+		return i18n.T(ctx, "org.subscription.note_open")
 	default:
 		return ""
 	}

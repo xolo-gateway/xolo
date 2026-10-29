@@ -675,6 +675,9 @@ func parseSubscriptionPlanFromForm(r *http.Request) (*model.SubscriptionPlan, er
 			if c.PaceSlack, err = parsePlanRatioField(r.FormValue(prefix + "pace_slack")); err != nil {
 				fail(errors.New(i18n.T(ctx, "org.errors.providers.constraint_pace_slack", c.Label, localizedError(ctx, err))))
 			}
+			if c.ShareThreshold, err = parsePlanRatioField(r.FormValue(prefix + "share_threshold")); err != nil {
+				fail(errors.New(i18n.T(ctx, "org.errors.providers.constraint_share_threshold", c.Label, localizedError(ctx, err))))
+			}
 			if c.HappyHourStart, err = parsePlanRatioField(r.FormValue(prefix + "happy_hour_start")); err != nil {
 				fail(errors.New(i18n.T(ctx, "org.errors.providers.constraint_happy_hour_start", c.Label, localizedError(ctx, err))))
 			}

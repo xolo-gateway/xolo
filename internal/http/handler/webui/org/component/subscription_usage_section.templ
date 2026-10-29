@@ -219,6 +219,8 @@ templ fairShareBadge(mode model.FairShareMode, budget string) {
 		@subscriptionExplanation(note) {
 			if mode == model.FairShareModeHappyHour {
 				@common.Badge(common.TonePositive, i18n.T(ctx, "org.subscription.share_happy_hour"))
+			} else if mode == model.FairShareModeOpen {
+				@common.Badge(common.TonePositive, i18n.T(ctx, "org.subscription.share_open"))
 			} else if mode == model.FairShareModeCapped {
 				@common.Badge(common.ToneWarning, i18n.T(ctx, "org.subscription.share_capped"))
 			} else if mode == model.FairShareModeThrottled {
@@ -345,6 +347,8 @@ func fairShareNote(ctx context.Context, mode model.FairShareMode) string {
 		return i18n.T(ctx, "org.subscription.note_capped")
 	case model.FairShareModeHappyHour:
 		return i18n.T(ctx, "org.subscription.note_happy_hour")
+	case model.FairShareModeOpen:
+		return i18n.T(ctx, "org.subscription.note_open")
 	default:
 		return ""
 	}

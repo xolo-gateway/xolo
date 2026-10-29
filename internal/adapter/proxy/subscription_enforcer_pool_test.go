@@ -429,3 +429,24 @@ func TestSubscriptionEnforcer_PoolHoldsKeysToABudgetSetPerModelOnly(t *testing.T
 		t.Error("alice kept on k2, want moved off it: kimi-k3's budget is used up there")
 	}
 }
+
+func TestSubscriptionEnforcer_ShareThresholdLetsAUserPastTheirShare(t *testing.T) {
+	f := newPoolFixture(t, 2)
+	f.consume("bob", "k3", 1_000_000)
+	f.consume("alice", model.PrimaryProviderKey, 8_000_000)
+	f.consume("alice", "k2", 8_000_000)
+
+	_, msg := f.check(t, "alice")
+	if !strings.Contains(msg, "fair-share") {
+		t.Fatalf("message = %q, want a fair-share denial: her 16$ are past her share of the 30$ pool", msg)
+	}
+
+	threshold := 0.7
+	plan := *f.provider.SubscriptionPlan()
+	plan.Constraints = slices.Clone(plan.Constraints)
+	plan.Constraints[0].ShareThreshold = &threshold
+	f.provider.SetSubscriptionPlan(&plan)
+	if _, msg := f.check(t, "alice"); msg != "" {
+		t.Errorf("alice denied (%q), want granted: the pool, at 17$ of 30$, is under its 70%% threshold", msg)
+	}
+}

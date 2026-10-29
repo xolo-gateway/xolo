@@ -246,5 +246,5 @@ func peakOf(groups []subscriptionConstraintGroup) (subscriptionPeak, bool) {
 // notableFairShare reports whether an allocation regime carries a badge: the
 // nominal one does not.
 func notableFairShare(mode model.FairShareMode) bool {
-	return mode == model.FairShareModeThrottled || mode == model.FairShareModeCapped || mode == model.FairShareModeHappyHour
+	return mode == model.FairShareModeThrottled || mode == model.FairShareModeCapped || mode == model.FairShareModeHappyHour || mode == model.FairShareModeOpen
 }
