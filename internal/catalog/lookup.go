@@ -11,7 +11,8 @@ type Prefill struct {
 }
 
 // Lookup finds what the catalog knows about the model a provider calls
-// realModel. It prefers the offering of the provider at baseURL, then the
+// realModel. It prefers the offering a provider at baseURL reaches, at its
+// catalog provider's endpoint or its own, then the
 // offering of any provider of type providerType, then any offering, and
 // falls back on the model of that ID with no prices. It returns false when
 // the catalog knows nothing about it.
@@ -25,7 +26,7 @@ func (c *Catalog) Lookup(realModel, baseURL, providerType string) (Prefill, bool
 			continue
 		}
 		s := 0
-		if baseURL != "" && p == c.MatchProvider(baseURL) {
+		if p.ServesAt(o, baseURL) {
 			s = 2
 		} else if providerType != "" && p.Xolo.Type == providerType {
 			s = 1

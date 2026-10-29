@@ -243,6 +243,13 @@ func (p *Provider) Offering(modelID string) *Offering {
 	return nil
 }
 
+// ServesAt reports whether a Xolo provider at baseURL reaches the offering o
+// of p: at p's own endpoint, or at the one o is served through.
+func (p *Provider) ServesAt(o *Offering, baseURL string) bool {
+	normalized := strings.TrimRight(baseURL, "/")
+	return normalized != "" && (strings.TrimRight(p.Xolo.BaseURL, "/") == normalized || strings.TrimRight(o.BaseURL, "/") == normalized)
+}
+
 // MatchProvider returns the catalog provider an existing provider most likely
 // is: the one with the same base URL, else none.
 func (c *Catalog) MatchProvider(baseURL string) *Provider {

@@ -133,3 +133,23 @@ func TestCatalogLookup_FillsTheModelKind(t *testing.T) {
 		t.Errorf("kind = %q, want the embeddings kind of the catalog model", got.Kind)
 	}
 }
+
+func TestCatalogLookup_PrefersTheProviderWhoseOfferingEndpointItIsAt(t *testing.T) {
+	c := lookupCatalog()
+	beta := catalog.Provider{ID: "beta", Name: "Beta", Currency: "USD", Offerings: []catalog.Offering{
+		{Model: "haiku", ModelID: "haiku", Prices: catalog.Prices{Input: 9, Output: 9}},
+	}}
+	beta.Xolo.Type, beta.Xolo.BaseURL = "anthropic", "https://beta.test/v1"
+	c.Providers = append(c.Providers, beta)
+	h := &Handler{catalog: catalog.NewStaticSource(c)}
+
+	// A provider configured on Acme's Anthropic endpoint: Acme's offering,
+	// not Beta's, though Beta's own type is anthropic.
+	rr := httptest.NewRecorder()
+	h.handleCatalogLookup(rr, httptest.NewRequest(http.MethodGet, "/api/catalog/lookup?id=haiku&provider=anthropic&base_url=https://acme.test/anthropic/v1", nil))
+	var got CatalogPrefill
+	_ = json.Unmarshal(rr.Body.Bytes(), &got)
+	if got.PromptCost == nil || *got.PromptCost != 1 || got.APIType != "" || got.APIBaseURL != "" {
+		t.Errorf("prefill = %+v, want Acme's prices with its endpoint already the provider's", got)
+	}
+}

@@ -366,6 +366,7 @@
       }
       var entry = await response.json();
       var noRate = false;
+      var noCurrency = false;
 
       if (entry.context_window) setValue("context_window", entry.context_window);
       if (entry.output_window) setValue("output_window", entry.output_window);
@@ -373,10 +374,14 @@
       if (entry.tokens_per_sec_low) setValue("tokens_per_sec_low", entry.tokens_per_sec_low);
       if (entry.tokens_per_sec_high) setValue("tokens_per_sec_high", entry.tokens_per_sec_high);
 
-      if (entry.prompt_cost != null || entry.completion_cost != null) {
+      if ((entry.prompt_cost != null || entry.completion_cost != null) && !button.dataset.currency) {
+        // Un fournisseur sans devise ne reçoit pas de prix : ils seraient
+        // lus dans celle qu'il prendra plus tard.
+        noCurrency = true;
+      } else if (entry.prompt_cost != null || entry.completion_cost != null) {
         // Le catalogue publie les prix dans la devise du fournisseur ;
         // l'organisation les stocke dans celle de son fournisseur.
-        var currency = button.dataset.currency || entry.currency;
+        var currency = button.dataset.currency;
         // Un prix sans devise n'est jamais rempli.
         var rate = entry.currency ? 1 : null;
         if (entry.currency && currency !== entry.currency) {
@@ -419,6 +424,7 @@
       }
 
       var notes = [];
+      if (noCurrency) notes.push(button.dataset.msgNoCurrency);
       if (noRate) notes.push(button.dataset.msgNoRate);
       if (entry.prices_vary) notes.push(button.dataset.msgPricesVary);
       if (entry.estimated && entry.estimated.length) {
