@@ -184,6 +184,12 @@ func (b ProviderBundle) Validate() error {
 	if r := b.Provider.RateLimit; r != nil && r.Enabled && (r.Interval <= 0 || r.MaxBurst < 1) {
 		return errors.Wrap(ErrInvalidProviderBundle, "rate_limit needs a positive interval and a burst of at least one")
 	}
+	if b.Provider.CloudTier < 0 || b.Provider.CloudTier > 2 {
+		return errors.Wrapf(ErrInvalidProviderBundle, "cloud_tier %d is not 0, 1 or 2", b.Provider.CloudTier)
+	}
+	if err := validateBundlePlan(b.Provider.SubscriptionPlan); err != nil {
+		return err
+	}
 	if !b.Provider.RequestHeaders.Valid() {
 		return errors.Wrap(ErrInvalidProviderBundle, "request_headers name a reserved header or exceed the limits")
 	}
@@ -270,4 +276,54 @@ func NewLLMModelFromBundle(id LLMModelID, providerID ProviderID, orgID OrgID, cr
 		apiType:                     bm.APIType,
 		baseURL:                     bm.BaseURL,
 	}
+}
+
+// validateBundlePlan applies to a bundle's subscription plan the rules of the
+// plan editor: known constraint kinds, a positive window, budgets and
+// fair-share ratios in range, per-model budgets on a per-model constraint
+// only, and at least one concurrent request.
+func validateBundlePlan(plan *SubscriptionPlan) error {
+	if plan == nil {
+		return nil
+	}
+	ratio := func(r *float64) bool { return r == nil || (!math.IsNaN(*r) && *r >= 0 && *r <= 1) }
+	budget := func(v *int64) bool { return v == nil || *v >= 0 }
+	for _, c := range plan.Constraints {
+		bad := func(what string) error {
+			return errors.Wrapf(ErrInvalidProviderBundle, "plan constraint %q: %s", c.Label, what)
+		}
+		switch c.Kind {
+		case ConstraintRollingWindow:
+			if c.Duration.Duration() <= 0 {
+				return bad("needs a positive duration")
+			}
+			if !budget(c.TokenBudget) || !budget(c.ValueBudget) {
+				return bad("has a negative budget")
+			}
+			if !ratio(c.ReserveRatio) || !ratio(c.PaceSlack) || !ratio(c.HappyHourStart) {
+				return bad("has a fair-share ratio out of 0..1")
+			}
+			if c.HappyHourStart != nil && *c.HappyHourStart <= 0 {
+				return bad("needs a positive happy hour start")
+			}
+			if c.HappyHourMaxLead != nil && c.HappyHourMaxLead.Duration() <= 0 {
+				return bad("needs a positive happy hour lead")
+			}
+			if len(c.ModelBudgets) > 0 && !c.PerModel() {
+				return bad("has per-model budgets but is not counted per model")
+			}
+			for _, mb := range c.ModelBudgets {
+				if !budget(mb.TokenBudget) || !budget(mb.ValueBudget) {
+					return bad("has a negative per-model budget")
+				}
+			}
+		case ConstraintConcurrency:
+			if c.MaxConcurrent == nil || *c.MaxConcurrent < 1 {
+				return bad("needs at least one concurrent request")
+			}
+		default:
+			return bad("has an unknown kind")
+		}
+	}
+	return nil
 }

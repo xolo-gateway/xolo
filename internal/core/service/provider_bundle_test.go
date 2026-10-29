@@ -423,6 +423,10 @@ func TestApplyProviderBundle_GoesOnPastAModelTheStoreRefuses(t *testing.T) {
 func TestParseProviderBundle_RefusesReservedHeadersAndAbsurdPrices(t *testing.T) {
 	for name, doc := range map[string]string{
 		"reserved header":  `{"kind":"xolo.provider","version":"1","provider":{"type":"openai","request_headers":{"headers":{"Authorization":"Bearer x"}}}}`,
+		"cloud tier":       `{"kind":"xolo.provider","version":"1","provider":{"type":"openai","cloud_tier":7}}`,
+		"nan-free ratio":   `{"kind":"xolo.provider","version":"1","provider":{"type":"openai","subscription_plan":{"label":"P","constraints":[{"kind":"rolling_window","label":"5h","duration":"5h","reserve_ratio":2}]}}}`,
+		"no duration":      `{"kind":"xolo.provider","version":"1","provider":{"type":"openai","subscription_plan":{"label":"P","constraints":[{"kind":"rolling_window","label":"5h"}]}}}`,
+		"zero concurrency": `{"kind":"xolo.provider","version":"1","provider":{"type":"openai","subscription_plan":{"label":"P","constraints":[{"kind":"concurrency","label":"c","max_concurrent":0}]}}}`,
 		"zero retry delay": `{"kind":"xolo.provider","version":"1","provider":{"type":"openai","retry":{"enabled":true,"max_attempts":3,"delay":0}}}`,
 		"zero rate burst":  `{"kind":"xolo.provider","version":"1","provider":{"type":"openai","rate_limit":{"enabled":true,"interval":1000000000,"max_burst":0}}}`,
 		"zero token limit": `{"kind":"xolo.provider","version":"1","provider":{"type":"openai"},"models":[{"real_model":"a","proxy_name":"a","token_limit":{"enabled":true,"max_tokens":10,"interval":0},"prices":{"input":1,"output":1}}]}`,
