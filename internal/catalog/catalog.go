@@ -250,6 +250,24 @@ func (p *Provider) ServesAt(o *Offering, baseURL string) bool {
 	return normalized != "" && (strings.TrimRight(p.Xolo.BaseURL, "/") == normalized || strings.TrimRight(o.BaseURL, "/") == normalized)
 }
 
+// ProviderAt returns the catalog provider a Xolo provider at baseURL most
+// likely is: the one at that endpoint, else the first with an offering
+// served there, by the rule of ServesAt. It returns nil when none is.
+func (c *Catalog) ProviderAt(baseURL string) *Provider {
+	if p := c.MatchProvider(baseURL); p != nil {
+		return p
+	}
+	for i := range c.Providers {
+		p := &c.Providers[i]
+		for j := range p.Offerings {
+			if p.ServesAt(&p.Offerings[j], baseURL) {
+				return p
+			}
+		}
+	}
+	return nil
+}
+
 // MatchProvider returns the catalog provider an existing provider most likely
 // is: the one with the same base URL, else none.
 func (c *Catalog) MatchProvider(baseURL string) *Provider {

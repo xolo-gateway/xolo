@@ -268,3 +268,17 @@ func TestSource_RetriesSoonWhileNoReleaseWasRead(t *testing.T) {
 	}
 	s.Refresh(context.Background())
 }
+
+func TestProviderAt_RecognizesAnOfferingsOwnEndpoint(t *testing.T) {
+	p := Provider{ID: "acme", Offerings: []Offering{{Model: "haiku", ModelID: "haiku", APIType: "anthropic", BaseURL: "https://acme.test/anthropic/v1"}}}
+	p.Xolo.Type, p.Xolo.BaseURL = "openai", "https://acme.test/v1"
+	c := &Catalog{Providers: []Provider{p}}
+	for _, baseURL := range []string{"https://acme.test/v1/", "https://acme.test/anthropic/v1"} {
+		if got := c.ProviderAt(baseURL); got == nil || got.ID != "acme" {
+			t.Errorf("%s: provider = %v, want acme", baseURL, got)
+		}
+	}
+	if got := c.ProviderAt("https://elsewhere.test/v1"); got != nil {
+		t.Errorf("provider = %s, want none", got.ID)
+	}
+}

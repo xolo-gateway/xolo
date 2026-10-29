@@ -9,6 +9,7 @@ import (
 	"github.com/bornholm/go-x/slogx"
 	"github.com/pkg/errors"
 	"github.com/xolo-gateway/xolo/internal/catalog"
+	"github.com/xolo-gateway/xolo/internal/core/service"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/org/component"
 	"github.com/xolo-gateway/xolo/internal/i18n"
 )
@@ -37,7 +38,7 @@ func (h *Handler) getCatalogImportPage(w http.ResponseWriter, r *http.Request) {
 		Catalog:         c,
 	}
 	if p != nil {
-		if match := c.MatchProvider(p.BaseURL()); match != nil {
+		if match := c.ProviderAt(p.BaseURL()); match != nil {
 			vmodel.Suggested = match.ID
 		}
 	}
@@ -100,9 +101,14 @@ func (h *Handler) previewCatalogImport(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	// The apply step parses the bundle posted back: a release it would
-	// refuse is refused here, before the operator chooses from it.
-	if err := bundle.Validate(); err != nil {
+	// The apply step parses the bundle posted back and checks its plan: a
+	// release it would refuse is refused here, before the operator chooses
+	// from it.
+	err = bundle.Validate()
+	if err == nil {
+		err = service.ValidateSubscriptionPlan(bundle.Provider.SubscriptionPlan)
+	}
+	if err != nil {
 		slog.ErrorContext(ctx, "the catalog provider gives an invalid bundle", slog.String("version", c.Version), slogx.Error(err))
 		h.renderProviderBundleError(w, r, vmodel, i18n.T(ctx, "org.errors.catalog_import.invalid", c.Version))
 		return

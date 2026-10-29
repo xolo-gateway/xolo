@@ -533,3 +533,20 @@ func TestProviderBundle_AsksForTheCurrencyOfAProviderWithoutOne(t *testing.T) {
 		t.Errorf("status = %d, want the currency asked for rather than a rate to no currency", rr.Code)
 	}
 }
+
+func TestCatalogImport_RefusesAReleasePlanThePlanEditorRefuses(t *testing.T) {
+	h, s, tenant := importFixture(t, "https://acme.test/v1", "sk")
+	p := catalog.Provider{ID: "acme", Name: "Acme", Currency: "USD",
+		Offerings: []catalog.Offering{{Model: "glm", ModelID: "glm", Prices: catalog.Prices{Input: 1, Output: 2}}},
+		// A window of over ten years, which the plan editor refuses.
+		Plans: []catalog.Plan{{ID: "pro", Name: "Pro", Constraints: []catalog.Constraint{{Kind: "rolling_window", Label: "forever", Duration: "100000h"}}}}}
+	p.Xolo.Type, p.Xolo.BaseURL = "openai", "https://acme.test/v1"
+	h.SetCatalog(catalog.NewStaticSource(&catalog.Catalog{Kind: catalog.Kind, Format: catalog.Format, Version: "v-long", Providers: []catalog.Provider{p}}))
+
+	fields := url.Values{"catalog_provider": {"acme"}, "plan": {"pro"}}
+	rr := httptest.NewRecorder()
+	h.previewCatalogImport(rr, bundleRequest(t, s, tenant, string(s.provider.ID()), bytes.NewBufferString(fields.Encode()), "application/x-www-form-urlencoded"))
+	if rr.Code != http.StatusUnprocessableEntity || !strings.Contains(stdhtml.UnescapeString(rr.Body.String()), "v-long") {
+		t.Errorf("status %d, want 422 naming the release rather than a dry run the apply would refuse", rr.Code)
+	}
+}
