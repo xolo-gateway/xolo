@@ -423,7 +423,7 @@
   "org.plan.happy_lead": "Maximum lead of the opening (default: 5%% of the window, between 30 min and 4 h)",
   "org.plan.happy_lead_help": "Absolute bound: on a long window, the fraction above would open hours before the reset. A 5 h window opens 30 min before, a weekly window 4 h before.",
   "org.plan.happy_lead_placeholder": "e.g. 1h, 2d",
-  "org.plan.share_threshold": "Share threshold (%)",
+  "org.plan.share_threshold": "Share threshold (%%)",
   "org.plan.share_threshold_help": "How full the plan may get before the shares apply. Below it anyone may consume, the plan having room for everyone. Empty or 0: shares from the first request.",
   "org.plan.max_concurrent": "Max number of simultaneous requests",
   "org.plan.max_concurrent_placeholder": "e.g. 4",

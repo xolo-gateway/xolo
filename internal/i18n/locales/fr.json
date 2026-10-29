@@ -423,7 +423,7 @@
   "org.plan.happy_lead": "Avance maximale de l'ouverture (défaut : 5 %% de la fenêtre, entre 30 min et 4 h)",
   "org.plan.happy_lead_help": "Borne absolue : sur une fenêtre longue, la fraction ci-dessus ouvrirait des heures avant le reset. Une fenêtre de 5 h s'ouvre 30 min avant, une fenêtre hebdomadaire 4 h avant.",
   "org.plan.happy_lead_placeholder": "ex : 1h, 2d",
-  "org.plan.share_threshold": "Seuil de partage (%)",
+  "org.plan.share_threshold": "Seuil de partage (%%)",
   "org.plan.share_threshold_help": "Remplissage du forfait à partir duquel les parts s'appliquent. En dessous, chacun peut consommer : le forfait a de la place pour tous. Vide ou 0 : parts dès la première requête.",
   "org.plan.max_concurrent": "Nombre max de requêtes simultanées",
   "org.plan.max_concurrent_placeholder": "ex : 4",

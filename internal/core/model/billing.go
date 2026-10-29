@@ -564,13 +564,16 @@ func ComputeFairShare(p FairShareParams) FairShareAllocation {
 
 // openAllowance lets the user consume until the plan reaches its share
 // threshold: what they already used, plus the room left under the threshold.
-// The threshold bounds the plan as a whole, so several users consuming at once
-// cannot take it past it together. Zero when the threshold is unset or reached.
+// The room is the plan's, not the user's: once the recorded usage reaches the
+// threshold, no user is let through it any more. Requests are decided on the
+// usage already recorded, so the ones in flight when it is crossed may take
+// the plan past it by what they consume; the shares then apply to everyone.
+// Zero when the threshold is unset or reached.
 func (p FairShareParams) openAllowance() int64 {
 	if p.ShareThreshold <= 0 || p.Budget <= 0 {
 		return 0
 	}
-	room := int64(clampUnit(p.ShareThreshold)*float64(p.Budget)) - p.UsedTotal
+	room := int64(math.Round(clampUnit(p.ShareThreshold)*float64(p.Budget))) - p.UsedTotal
 	if room <= 0 {
 		return 0
 	}

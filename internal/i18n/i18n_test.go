@@ -110,6 +110,30 @@ func TestCatalogsMatchTheSourceKeysAndVerbs(t *testing.T) {
 	}
 }
 
+// TestCatalogsEscapeTheirPercentSigns catches a literal "%" left unescaped:
+// T formats every message, so "(%)" renders as "%!)(MISSING)", and the verb
+// comparison above does not see it, matching verbs only.
+func TestCatalogsEscapeTheirPercentSigns(t *testing.T) {
+	for locale, messages := range readCatalogs(t) {
+		for key, value := range messages {
+			texts := []string{}
+			switch value := value.(type) {
+			case string:
+				texts = append(texts, value)
+			case map[string]string:
+				for _, text := range value {
+					texts = append(texts, text)
+				}
+			}
+			for _, text := range texts {
+				if rest := verbPattern.ReplaceAllString(text, ""); strings.Contains(rest, "%") {
+					t.Errorf("%s: key %q has an unescaped %%: %q", locale, key, text)
+				}
+			}
+		}
+	}
+}
+
 func TestCatalogFilesAreValidJSONWithoutDuplicateKeys(t *testing.T) {
 	paths, _ := fs.Glob(files, "locales/*.json")
 	for _, path := range paths {

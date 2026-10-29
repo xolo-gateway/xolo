@@ -423,7 +423,7 @@
   "org.plan.happy_lead": "Adelanto máximo de la apertura (predeterminado: 5 %% de la ventana, entre 30 min y 4 h)",
   "org.plan.happy_lead_help": "Límite absoluto: en una ventana larga, la fracción anterior abriría horas antes del reinicio. Una ventana de 5 h se abre 30 min antes, una ventana semanal 4 h antes.",
   "org.plan.happy_lead_placeholder": "p. ej.: 1h, 2d",
-  "org.plan.share_threshold": "Umbral de reparto (%)",
+  "org.plan.share_threshold": "Umbral de reparto (%%)",
   "org.plan.share_threshold_help": "Llenado del plan a partir del cual se aplican las partes. Por debajo, cualquiera puede consumir: el plan tiene sitio para todos. Vacío o 0: partes desde la primera solicitud.",
   "org.plan.max_concurrent": "Número máx. de solicitudes simultáneas",
   "org.plan.max_concurrent_placeholder": "p. ej.: 4",
