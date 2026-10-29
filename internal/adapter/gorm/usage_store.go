@@ -290,6 +290,36 @@ func planUsageQuery(db *gorm.DB, scope model.PlanUsageScope, since time.Time) *g
 	return query
 }
 
+// SumPlanUsageByKeySince implements port.UsageStore.
+func (s *Store) SumPlanUsageByKeySince(ctx context.Context, scope model.PlanUsageScope, since time.Time) (map[model.ProviderKeyID]map[model.LLMModelID]port.PlanUsageTotals, error) {
+	var rows []struct {
+		ProviderKeyID string
+		ModelID       string
+		Tokens        int64
+		ProviderValue int64
+	}
+
+	err := s.read(ctx, func(ctx context.Context, db *gorm.DB) error {
+		return errors.WithStack(planUsageQuery(db, scope, since).
+			Select("provider_key_id as provider_key_id, model_id as model_id, COALESCE(SUM(total_tokens), 0) as tokens, COALESCE(SUM(provider_cost), 0) as provider_value").
+			Group("provider_key_id, model_id").
+			Scan(&rows).Error)
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	result := make(map[model.ProviderKeyID]map[model.LLMModelID]port.PlanUsageTotals)
+	for _, r := range rows {
+		key := model.ProviderKeyID(r.ProviderKeyID)
+		if result[key] == nil {
+			result[key] = make(map[model.LLMModelID]port.PlanUsageTotals)
+		}
+		result[key][model.LLMModelID(r.ModelID)] = port.PlanUsageTotals{Tokens: r.Tokens, Value: r.ProviderValue}
+	}
+	return result, nil
+}
+
 // LastPlanUsageKey implements port.UsageStore.
 func (s *Store) LastPlanUsageKey(ctx context.Context, scope model.PlanUsageScope, userID model.UserID) (model.ProviderKeyID, bool, error) {
 	var keys []string

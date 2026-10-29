@@ -266,10 +266,20 @@ func (h *Handler) updateProvider(w http.ResponseWriter, r *http.Request) {
 		}
 		subscriptionPlan = plan
 	}
+	// The keys too are read before the other validations, so that a rejected
+	// form shows them as edited.
+	extraAPIKeys, err := parseProviderKeysFromForm(r, h.secretKey, existing.ExtraAPIKeys())
+	if err != nil {
+		h.renderProviderFormError(w, r, ctx, user, orgSlug, org,
+			submittedProvider(r, existing, billingMode, subscriptionPlan), false,
+			i18n.T(ctx, "org.errors.providers.api_keys", err.Error()))
+		return
+	}
 	formProvider := submittedProvider(r, existing, billingMode, subscriptionPlan)
 	if billingMode != model.BillingModeSubscription {
 		formProvider.plan = existing.SubscriptionPlan()
 	}
+	formProvider.extraKeys = redisplayedKeys(extraAPIKeys, existing.ExtraAPIKeys())
 
 	// --- Retry config ---
 	var retryConfig *model.RetryConfig
@@ -319,13 +329,6 @@ func (h *Handler) updateProvider(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		h.renderProviderFormError(w, r, ctx, user, orgSlug, org, formProvider, false,
 			i18n.T(ctx, "org.errors.providers.request_headers", err.Error()))
-		return
-	}
-
-	extraAPIKeys, err := parseProviderKeysFromForm(r, h.secretKey, existing.ExtraAPIKeys())
-	if err != nil {
-		h.renderProviderFormError(w, r, ctx, user, orgSlug, org, formProvider, false,
-			i18n.T(ctx, "org.errors.providers.api_keys", err.Error()))
 		return
 	}
 
@@ -951,6 +954,25 @@ func parseKeyValueRowsFromForm(r *http.Request, name string) (map[string]string,
 	return rows, nil
 }
 
+// maxProviderKeys bounds the keys a provider holds besides its own. The form
+// posts their count: it sizes what the parser allocates, so it is checked
+// against this bound first.
+const maxProviderKeys = 64
+
+// redisplayedKeys are the keys a rejected form is rendered back with: the ones
+// posted, a new key without id nor secret, which its value must be typed
+// again for, like the provider's own key on creation.
+func redisplayedKeys(posted, stored []model.ProviderKey) []model.ProviderKey {
+	keys := make([]model.ProviderKey, 0, len(posted))
+	for _, k := range posted {
+		if !slices.ContainsFunc(stored, func(s model.ProviderKey) bool { return s.ID == k.ID }) {
+			k.ID, k.APIKey = "", ""
+		}
+		keys = append(keys, k)
+	}
+	return keys
+}
+
 // parseProviderKeysFromForm reads the keys a provider holds besides its own
 // (provider_key_count + provider_key_k{i}_id / _label / _value). A row keeps
 // the id of the stored key it edits, and that key's secret when its value is
@@ -968,10 +990,13 @@ func parseProviderKeysFromForm(r *http.Request, secretKey string, stored []model
 	for _, k := range stored {
 		byID[k.ID] = k
 	}
-	count, _ := strconv.Atoi(r.FormValue("provider_key_count"))
-	keys := make([]model.ProviderKey, 0, max(count, 0))
-	labels := make(map[string]bool, max(count, 0))
-	for i := range max(count, 0) {
+	count, err := strconv.Atoi(r.FormValue("provider_key_count"))
+	if err != nil || count < 0 || count > maxProviderKeys {
+		return nil, errors.New(i18n.T(ctx, "org.errors.providers.api_keys_count", maxProviderKeys))
+	}
+	keys := make([]model.ProviderKey, 0, count)
+	labels := make(map[string]bool, count)
+	for i := range count {
 		prefix := fmt.Sprintf("provider_key_k%d_", i)
 		id := model.ProviderKeyID(strings.TrimSpace(r.FormValue(prefix + "id")))
 		label := strings.TrimSpace(r.FormValue(prefix + "label"))
@@ -1431,6 +1456,8 @@ type providerWithPlan struct {
 	active      bool
 	billingMode model.BillingMode
 	plan        *model.SubscriptionPlan
+	// extraKeys, when set, are the keys as posted, see redisplayedKeys.
+	extraKeys []model.ProviderKey
 }
 
 func (p providerWithPlan) Name() string                              { return firstNonEmpty(p.name, p.Provider.Name()) }
@@ -1441,6 +1468,12 @@ func (p providerWithPlan) CloudTier() int                            { return p.
 func (p providerWithPlan) Active() bool                              { return p.active }
 func (p providerWithPlan) BillingMode() model.BillingMode            { return p.billingMode }
 func (p providerWithPlan) SubscriptionPlan() *model.SubscriptionPlan { return p.plan }
+func (p providerWithPlan) ExtraAPIKeys() []model.ProviderKey {
+	if p.extraKeys != nil {
+		return p.extraKeys
+	}
+	return p.Provider.ExtraAPIKeys()
+}
 
 // submittedProvider builds the providerWithPlan for a rejected edit from the
 // posted form.

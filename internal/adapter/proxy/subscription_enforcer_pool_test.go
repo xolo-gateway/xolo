@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"cmp"
 	"context"
 	"net/http"
 	"slices"
@@ -22,6 +23,8 @@ type poolUsageStore struct {
 
 	value map[model.UserID]map[model.ProviderKeyID]int64
 	last  map[model.UserID]model.ProviderKeyID
+	// byKeyReads counts the reads of every key's usage at once.
+	byKeyReads int
 }
 
 func (s *poolUsageStore) sum(scope model.PlanUsageScope, user model.UserID) int64 {
@@ -60,6 +63,22 @@ func (s *poolUsageStore) CountActivePlanUsersSince(_ context.Context, _ model.Pl
 func (s *poolUsageStore) HasPlanUsageSince(_ context.Context, user model.UserID, _ model.PlanUsageScope, _ time.Time) (bool, error) {
 	_, ok := s.value[user]
 	return ok, nil
+}
+
+func (s *poolUsageStore) SumPlanUsageByKeySince(_ context.Context, _ model.PlanUsageScope, _ time.Time) (map[model.ProviderKeyID]map[model.LLMModelID]port.PlanUsageTotals, error) {
+	s.byKeyReads++
+	result := map[model.ProviderKeyID]map[model.LLMModelID]port.PlanUsageTotals{}
+	for _, byKey := range s.value {
+		for key, v := range byKey {
+			if result[key] == nil {
+				result[key] = map[model.LLMModelID]port.PlanUsageTotals{}
+			}
+			t := result[key]["kimi"]
+			t.Value += v
+			result[key]["kimi"] = t
+		}
+	}
+	return result, nil
 }
 
 func (s *poolUsageStore) LastPlanUsageKey(_ context.Context, _ model.PlanUsageScope, user model.UserID) (model.ProviderKeyID, bool, error) {
@@ -284,5 +303,46 @@ func TestSubscriptionEnforcer_PoolDeniesWithoutNamingKeysWhenNoKeyHasRoom(t *tes
 		if strings.Contains(msg, leak) {
 			t.Errorf("message = %q, want nothing about keys nor their budgets (%q)", msg, leak)
 		}
+	}
+}
+
+// rankKeys orders the keys of a pool for one user, the order keys with as
+// much room left are picked in.
+func rankKeys(userID model.UserID, keys []model.ProviderKeyID) []model.ProviderKeyID {
+	ranked := slices.Clone(keys)
+	slices.SortStableFunc(ranked, func(a, b model.ProviderKeyID) int {
+		return cmp.Compare(model.KeyAffinity(userID, a), model.KeyAffinity(userID, b))
+	})
+	return ranked
+}
+
+func TestSubscriptionEnforcer_PoolReadsEveryKeyAtOnce(t *testing.T) {
+	f := newPoolFixture(t, 0)
+	f.consume("alice", "k2", 10_000_000)
+
+	if _, msg := f.check(t, "alice"); msg != "" {
+		t.Fatalf("alice denied (%q), want granted on another key", msg)
+	}
+	if f.usage.byKeyReads != 1 {
+		t.Errorf("%d reads of the keys' usage, want 1 for the plan's one window whatever the number of keys", f.usage.byKeyReads)
+	}
+}
+
+func TestSubscriptionEnforcer_PoolLeavesFullKeysOutOfTheFallbacks(t *testing.T) {
+	f := newPoolFixture(t, 0)
+	f.consume("alice", "k2", 1_000_000)
+	f.consume("bob", model.PrimaryProviderKey, 10_000_000)
+	f.consume("carol", "k3", 3_000_000)
+
+	req, msg := f.check(t, "alice")
+	if msg != "" {
+		t.Fatalf("alice denied (%q), want granted", msg)
+	}
+	if key := chosenKey(t, req); key != "k2" {
+		t.Errorf("alice on %q, want kept on k2", key)
+	}
+	fallbacks, _ := req.Metadata[metaProviderKeyFallbacks].([]model.ProviderKeyID)
+	if !slices.Equal(fallbacks, []model.ProviderKeyID{"k3"}) {
+		t.Errorf("fallbacks = %q, want k3 alone: the provider's own key is used up", fallbacks)
 	}
 }

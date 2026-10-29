@@ -286,7 +286,11 @@ func TestParseProviderKeysFromForm(t *testing.T) {
 	})
 
 	for name, fields := range map[string]map[string]string{
-		"a key without label": {"provider_key_count": "1", "provider_key_k0_value": "sk"},
+		// The count sizes what the parser allocates.
+		"a count out of range": {"provider_key_count": "99999999999999999999"},
+		"too many keys":        {"provider_key_count": "100000000"},
+		"a negative count":     {"provider_key_count": "-1"},
+		"a key without label":  {"provider_key_count": "1", "provider_key_k0_value": "sk"},
 		"a label used twice": {
 			"provider_key_count": "2",
 			"provider_key_k0_id": "k2", "provider_key_k0_label": "member",
@@ -298,6 +302,21 @@ func TestParseProviderKeysFromForm(t *testing.T) {
 				t.Error("expected an error")
 			}
 		})
+	}
+}
+
+func TestRedisplayedKeysDropTheSecretOfNewKeys(t *testing.T) {
+	stored := []model.ProviderKey{{ID: "k2", Label: "member 2", APIKey: "encrypted-2"}}
+	posted := []model.ProviderKey{
+		{ID: "k2", Label: "member two", APIKey: "encrypted-2"},
+		{ID: "fresh", Label: "member 3", APIKey: "encrypted-3"},
+	}
+
+	got := redisplayedKeys(posted, stored)
+
+	want := []model.ProviderKey{{ID: "k2", Label: "member two", APIKey: "encrypted-2"}, {Label: "member 3"}}
+	if len(got) != 2 || got[0] != want[0] || got[1] != want[1] {
+		t.Errorf("got %+v, want %+v: a key never saved is shown as a new row whose value is typed again", got, want)
 	}
 }
 

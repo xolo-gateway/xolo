@@ -251,25 +251,43 @@ func budgetDenial(scope planScope, c model.PlanConstraint, name string, tokens, 
 	return nil
 }
 
-// fill returns how much of a constraint's budget the scope consumed in the
-// current window, as a fraction (the larger of tokens and value), with the
-// denial when it is used up. It ranks the keys of a pool by their room left.
-func (e *rollingWindowEvaluator) fill(ctx context.Context, scope planScope, c model.PlanConstraint) (float64, *planDenial, error) {
-	if c.Duration.Duration() <= 0 || (c.TokenBudget == nil && c.ValueBudget == nil) {
-		return 0, nil, nil
-	}
-	tokens, value, err := e.planUsage(ctx, scope, c, scope.usageScope(c), "", c.CurrentWindowStart(time.Now()))
+// keysUsage reads, in one aggregation, the consumption of a constraint in its
+// current window on every API key of a pool, weighed like planUsage for a
+// shared constraint. Keys without usage are absent.
+func (e *rollingWindowEvaluator) keysUsage(ctx context.Context, scope planScope, c model.PlanConstraint) (map[model.ProviderKeyID]service.PlanUsage, error) {
+	usage := scope.usageScope(c)
+	usage.ByKey, usage.KeyID = false, ""
+	byKey, err := e.usageStore.SumPlanUsageByKeySince(ctx, usage, c.CurrentWindowStart(time.Now()))
 	if err != nil {
-		return 0, nil, err
+		return nil, err
 	}
+	result := make(map[model.ProviderKeyID]service.PlanUsage, len(byKey))
+	for key, byModel := range byKey {
+		if c.Shared() {
+			result[key] = service.WeighSharedPlanUsage(c, scope.Models, byModel)
+			continue
+		}
+		var total service.PlanUsage
+		for _, t := range byModel {
+			total.Tokens += t.Tokens
+			total.Value += t.Value
+		}
+		result[key] = total
+	}
+	return result, nil
+}
+
+// fillRatio is how much of a constraint's budget a consumption fills, the
+// larger of tokens and value.
+func fillRatio(c model.PlanConstraint, usage service.PlanUsage) float64 {
 	ratio := 0.0
 	if c.TokenBudget != nil && *c.TokenBudget > 0 {
-		ratio = max(ratio, float64(tokens)/float64(*c.TokenBudget))
+		ratio = max(ratio, float64(usage.Tokens)/float64(*c.TokenBudget))
 	}
 	if c.ValueBudget != nil && *c.ValueBudget > 0 {
-		ratio = max(ratio, float64(value)/float64(*c.ValueBudget))
+		ratio = max(ratio, float64(usage.Value)/float64(*c.ValueBudget))
 	}
-	return ratio, budgetDenial(scope, c, scope.constraintName(c), tokens, value), nil
+	return ratio
 }
 
 // planUsage reads the consumption a constraint counts since the start of its

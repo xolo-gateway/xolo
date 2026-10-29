@@ -1048,6 +1048,7 @@
   "org.nav.providers_new_model": "Nouveau modèle",
   "org.errors.providers.api_key_required": "La clé API est obligatoire.",
   "org.errors.providers.api_keys": "Clés supplémentaires invalides : %s",
+  "org.errors.providers.api_keys_count": "Nombre de clés supplémentaires invalide (%d au plus).",
   "org.errors.providers.api_key_label": "chaque clé supplémentaire doit avoir un libellé",
   "org.errors.providers.api_key_duplicate": "le libellé %q est utilisé deux fois",
   "org.errors.providers.api_key_value": "la clé %q n'a pas de valeur",

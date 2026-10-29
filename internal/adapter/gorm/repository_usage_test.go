@@ -554,6 +554,19 @@ func scenarioUsageStorePlanUsageByKey(t *testing.T, store *xologorm.Store) {
 		}
 	}
 
+	byKey, err := store.SumPlanUsageByKeySince(ctx, provider, since)
+	if err != nil {
+		t.Fatalf("SumPlanUsageByKeySince: %v", err)
+	}
+	for key, want := range map[model.ProviderKeyID]int64{model.PrimaryProviderKey: 750, "k2": 1_000, "k3": 6_000} {
+		if got := byKey[key][f.modelID].Value; got != want {
+			t.Errorf("SumPlanUsageByKeySince[%q] = %d, want %d", key, got, want)
+		}
+	}
+	if len(byKey) != 3 {
+		t.Errorf("SumPlanUsageByKeySince returned %d keys, want 3", len(byKey))
+	}
+
 	_, userOnK3, err := store.SumUserPlanUsageSince(ctx, f.userA, model.PlanUsageScope{OrgID: f.orgID, ProviderID: f.providerID, ByKey: true, KeyID: "k3"}, since)
 	if err != nil {
 		t.Fatalf("SumUserPlanUsageSince: %v", err)

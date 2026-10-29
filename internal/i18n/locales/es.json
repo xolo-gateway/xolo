@@ -1048,6 +1048,7 @@
   "org.nav.providers_new_model": "Nuevo modelo",
   "org.errors.providers.api_key_required": "La clave de API es obligatoria.",
   "org.errors.providers.api_keys": "Claves adicionales no válidas: %s",
+  "org.errors.providers.api_keys_count": "Número de claves adicionales no válido (como máximo %d).",
   "org.errors.providers.api_key_label": "cada clave adicional necesita una etiqueta",
   "org.errors.providers.api_key_duplicate": "la etiqueta %q se usa dos veces",
   "org.errors.providers.api_key_value": "la clave %q no tiene valor",

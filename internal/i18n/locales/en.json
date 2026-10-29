@@ -1048,6 +1048,7 @@
   "org.nav.providers_new_model": "New model",
   "org.errors.providers.api_key_required": "The API key is required.",
   "org.errors.providers.api_keys": "Invalid additional keys: %s",
+  "org.errors.providers.api_keys_count": "Invalid number of additional keys (at most %d).",
   "org.errors.providers.api_key_label": "every additional key needs a label",
   "org.errors.providers.api_key_duplicate": "the label %q is used twice",
   "org.errors.providers.api_key_value": "the key %q has no value",

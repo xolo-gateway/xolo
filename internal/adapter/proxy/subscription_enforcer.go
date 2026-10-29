@@ -210,73 +210,54 @@ func (e *XoloSubscriptionEnforcer) pickKey(ctx context.Context, scope planScope,
 		sticky = last
 	}
 
-	type candidate struct {
-		key  model.ProviderKeyID
-		fill float64
-	}
-	var (
-		candidates []candidate
-		lastDenial *planDenial
-	)
-	if hasSticky {
-		_, denial, err := e.keyFill(ctx, scope.forKey(sticky), plan)
-		if err != nil {
-			return "", nil, nil, err
-		}
-		if denial == nil {
-			// The fallbacks are only read when the key fails upstream, which
-			// Xolo's own metering did not foresee: they are ranked without
-			// measuring each key, and the ones in cooldown left out.
-			var fallbacks []model.ProviderKeyID
-			for _, key := range rankKeys(scope.UserID, keys) {
-				if key != sticky && !e.keyInCooldown(scope.forKey(key), plan) {
-					fallbacks = append(fallbacks, key)
-				}
-			}
-			return sticky, fallbacks, nil, nil
-		}
-		lastDenial = denial
+	states, err := e.keyStates(ctx, scope, plan, keys)
+	if err != nil {
+		return "", nil, nil, err
 	}
 
+	open := make([]model.ProviderKeyID, 0, len(keys))
+	var lastDenial *planDenial
 	for _, key := range keys {
-		if hasSticky && key == sticky {
+		if states[key].denial != nil {
+			lastDenial = states[key].denial
 			continue
 		}
-		fill, denial, err := e.keyFill(ctx, scope.forKey(key), plan)
-		if err != nil {
-			return "", nil, nil, err
-		}
-		if denial != nil {
-			lastDenial = denial
-			continue
-		}
-		candidates = append(candidates, candidate{key: key, fill: fill})
+		open = append(open, key)
 	}
-	if len(candidates) == 0 {
+	if len(open) == 0 {
 		if lastDenial == nil {
 			lastDenial = &planDenial{Message: "plan quota exceeded: the plan's budget is used up"}
 		}
 		return "", nil, lastDenial, nil
 	}
 
-	slices.SortStableFunc(candidates, func(a, b candidate) int {
-		if c := cmp.Compare(a.fill, b.fill); c != 0 {
+	slices.SortStableFunc(open, func(a, b model.ProviderKeyID) int {
+		if c := cmp.Compare(states[a].fill, states[b].fill); c != 0 {
 			return c
 		}
-		return cmp.Compare(model.KeyAffinity(scope.UserID, a.key), model.KeyAffinity(scope.UserID, b.key))
+		return cmp.Compare(model.KeyAffinity(scope.UserID, a), model.KeyAffinity(scope.UserID, b))
 	})
-	fallbacks := make([]model.ProviderKeyID, 0, len(candidates)-1)
-	for _, c := range candidates[1:] {
-		fallbacks = append(fallbacks, c.key)
+	if hasSticky {
+		if i := slices.Index(open, sticky); i > 0 {
+			open = slices.Insert(slices.Delete(open, i, i+1), 0, sticky)
+		}
 	}
-	return candidates[0].key, fallbacks, nil, nil
+	return open[0], open[1:], nil, nil
 }
 
-// keyFill measures how much of the plan one key of a pool consumed: the
-// fullest of its rolling windows, with the denial when one of them is used up
-// or in cooldown. The concurrency constraints are held on the pool only.
-func (e *XoloSubscriptionEnforcer) keyFill(ctx context.Context, scope planScope, plan *model.SubscriptionPlan) (float64, *planDenial, error) {
-	fill := 0.0
+// keyState is how much of the plan one key of a pool consumed: the fullest of
+// its rolling windows, and the denial when one of them is used up or in
+// cooldown.
+type keyState struct {
+	fill   float64
+	denial *planDenial
+}
+
+// keyStates measures every key of a pool, with one read per rolling window
+// for all the keys together. The concurrency constraints are held on the pool
+// only.
+func (e *XoloSubscriptionEnforcer) keyStates(ctx context.Context, scope planScope, plan *model.SubscriptionPlan, keys []model.ProviderKeyID) (map[model.ProviderKeyID]keyState, error) {
+	states := make(map[model.ProviderKeyID]keyState, len(keys))
 	for _, c := range plan.Constraints {
 		if c.PerModel() {
 			if scope.UpstreamModel == "" {
@@ -284,42 +265,30 @@ func (e *XoloSubscriptionEnforcer) keyFill(ctx context.Context, scope planScope,
 			}
 			c = c.ForModel(scope.UpstreamModel)
 		}
-		if e.state.IsKeyExhausted(scope.OrgID, scope.ProviderID, scope.KeyID, c.Label, cooldownModel(c, scope.UpstreamModel)) {
-			return 0, &planDenial{Message: "plan quota in cooldown [" + scope.constraintName(c) + "]: upstream provider reported exhaustion"}, nil
+		var usage map[model.ProviderKeyID]service.PlanUsage
+		if c.Kind == model.ConstraintRollingWindow && c.Duration.Duration() > 0 && (c.TokenBudget != nil || c.ValueBudget != nil) {
+			var err error
+			if usage, err = e.rolling.keysUsage(ctx, scope, c); err != nil {
+				return nil, err
+			}
 		}
-		if c.Kind != model.ConstraintRollingWindow {
-			continue
-		}
-		ratio, denial, err := e.rolling.fill(ctx, scope, c)
-		if err != nil || denial != nil {
-			return 0, denial, err
-		}
-		fill = max(fill, ratio)
-	}
-	return fill, nil, nil
-}
-
-// keyInCooldown reports whether one of the plan's constraints is in cooldown
-// on one key of a pool.
-func (e *XoloSubscriptionEnforcer) keyInCooldown(scope planScope, plan *model.SubscriptionPlan) bool {
-	for _, c := range plan.Constraints {
-		if c.PerModel() && scope.UpstreamModel == "" {
-			continue
-		}
-		if e.state.IsKeyExhausted(scope.OrgID, scope.ProviderID, scope.KeyID, c.Label, cooldownModel(c, scope.UpstreamModel)) {
-			return true
+		for _, key := range keys {
+			state := states[key]
+			if state.denial != nil {
+				continue
+			}
+			keyScope := scope.forKey(key)
+			if e.state.IsKeyExhausted(scope.OrgID, scope.ProviderID, key, c.Label, cooldownModel(c, scope.UpstreamModel)) {
+				state.denial = &planDenial{Message: "plan quota in cooldown [" + keyScope.constraintName(c) + "]: upstream provider reported exhaustion"}
+			} else if usage != nil {
+				u := usage[key]
+				state.denial = budgetDenial(keyScope, c, keyScope.constraintName(c), u.Tokens, u.Value)
+				state.fill = max(state.fill, fillRatio(c, u))
+			}
+			states[key] = state
 		}
 	}
-	return false
-}
-
-// rankKeys orders the keys of a pool for one user, see model.KeyAffinity.
-func rankKeys(userID model.UserID, keys []model.ProviderKeyID) []model.ProviderKeyID {
-	ranked := slices.Clone(keys)
-	slices.SortStableFunc(ranked, func(a, b model.ProviderKeyID) int {
-		return cmp.Compare(model.KeyAffinity(userID, a), model.KeyAffinity(userID, b))
-	})
-	return ranked
+	return states, nil
 }
 
 // MarkKeyExhausted puts in cooldown an API key a request moved away from after

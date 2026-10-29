@@ -69,6 +69,11 @@ type UsageStore interface {
 	// starting at `since`, restricted to one user when userID is set. Used to display when
 	// the window will next free up. Returns a zero time when no such record exists.
 	EarliestPlanUsageSince(ctx context.Context, scope model.PlanUsageScope, userID model.UserID, since time.Time) (time.Time, error)
+	// SumPlanUsageByKeySince is SumPlanUsageByModelSince grouped by API key of the
+	// provider too: one read gives every key of a pool its consumption, each
+	// model apart so a shared constraint can weigh it. Keys without usage in the
+	// window are absent from the result.
+	SumPlanUsageByKeySince(ctx context.Context, scope model.PlanUsageScope, since time.Time) (map[model.ProviderKeyID]map[model.LLMModelID]PlanUsageTotals, error)
 	// LastPlanUsageKey returns the API key of the provider that the user's most
 	// recent subscription-covered (plan_covered=true) request on the plan scope
 	// went through, and false when the user has none. A provider spreading its
