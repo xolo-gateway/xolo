@@ -2,7 +2,7 @@
   "kind": "xolo.catalog",
   "format": "1",
   "version": "snapshot-2026-10-29",
-  "built_at": "2026-10-29T09:48:23Z",
+  "built_at": "2026-10-29T15:13:58Z",
   "license": "ODbL-1.0",
   "models": [
     {
@@ -81,6 +81,17 @@
         "date": "2026-10-29",
         "note": "Overview: 'Text and images -> text', adaptive thinking with effort. Tool use is not listed on the overview page itself but is a standard Claude API capability (https://platform.claude.com/docs/en/agents-and-tools/tool-use/overview)."
       }
+    },
+    {
+      "id": "codestral-2508",
+      "name": "Codestral",
+      "vendor": "Mistral AI"
+    },
+    {
+      "id": "codestral-embed-2505",
+      "name": "Codestral Embed",
+      "vendor": "Mistral AI",
+      "kind": "embeddings"
     },
     {
       "id": "deepseek-v4-pro",
@@ -962,6 +973,47 @@
       }
     },
     {
+      "id": "ministral-14b-2512",
+      "name": "Ministral 3 14B",
+      "vendor": "Mistral AI"
+    },
+    {
+      "id": "ministral-3b-2512",
+      "name": "Ministral 3 3B",
+      "vendor": "Mistral AI"
+    },
+    {
+      "id": "ministral-8b-2512",
+      "name": "Ministral 3 8B",
+      "vendor": "Mistral AI"
+    },
+    {
+      "id": "mistral-embed-2312",
+      "name": "Mistral Embed",
+      "vendor": "Mistral AI",
+      "kind": "embeddings"
+    },
+    {
+      "id": "mistral-large-2512",
+      "name": "Mistral Large 3",
+      "vendor": "Mistral AI"
+    },
+    {
+      "id": "mistral-large-4",
+      "name": "Mistral Large 4",
+      "vendor": "Mistral AI"
+    },
+    {
+      "id": "mistral-medium-3-5",
+      "name": "Mistral Medium 3.5",
+      "vendor": "Mistral AI"
+    },
+    {
+      "id": "mistral-small-2603",
+      "name": "Mistral Small 4",
+      "vendor": "Mistral AI"
+    },
+    {
       "id": "muse-spark-1.2",
       "name": "Muse Spark 1.2 Contributor",
       "family": "muse-spark",
@@ -1228,6 +1280,235 @@
   ],
   "providers": [
     {
+      "id": "mistral",
+      "name": "Mistral AI",
+      "website": "https://mistral.ai",
+      "currency": "USD",
+      "xolo": {
+        "type": "mistral",
+        "base_url": "https://api.mistral.ai/v1"
+      },
+      "offerings": [
+        {
+          "model": "codestral-2508",
+          "model_id": "codestral-2508",
+          "prices": {
+            "input": 0.3,
+            "output": 0.9,
+            "status": "published",
+            "source": "https://docs.mistral.ai/models",
+            "date": "2026-10-29"
+          }
+        },
+        {
+          "model": "codestral-embed-2505",
+          "model_id": "codestral-embed-2505",
+          "prices": {
+            "input": 0.15,
+            "output": 0.0,
+            "status": "published",
+            "source": "https://docs.mistral.ai/models",
+            "date": "2026-10-29"
+          }
+        },
+        {
+          "model": "deepseek-v4.1-flash",
+          "model_id": "deepseek-v4-1-flash-1017",
+          "prices": {
+            "input": 0.3,
+            "output": 1.2,
+            "cached_input": 0.007,
+            "status": "published",
+            "source": "https://docs.mistral.ai/models",
+            "date": "2026-10-29"
+          },
+          "context_window": {
+            "value": 1048576,
+            "status": "published",
+            "source": "https://docs.mistral.ai/models",
+            "date": "2026-10-29",
+            "note": "The card states the size in k tokens, read as multiples of 1024."
+          }
+        },
+        {
+          "model": "ministral-14b-2512",
+          "model_id": "ministral-14b-2512",
+          "prices": {
+            "input": 0.2,
+            "output": 0.2,
+            "status": "published",
+            "source": "https://docs.mistral.ai/models",
+            "date": "2026-10-29"
+          },
+          "context_window": {
+            "value": 262144,
+            "status": "published",
+            "source": "https://docs.mistral.ai/models",
+            "date": "2026-10-29",
+            "note": "The card states the size in k tokens, read as multiples of 1024."
+          }
+        },
+        {
+          "model": "ministral-3b-2512",
+          "model_id": "ministral-3b-2512",
+          "prices": {
+            "input": 0.1,
+            "output": 0.1,
+            "status": "published",
+            "source": "https://docs.mistral.ai/models",
+            "date": "2026-10-29"
+          },
+          "context_window": {
+            "value": 262144,
+            "status": "published",
+            "source": "https://docs.mistral.ai/models",
+            "date": "2026-10-29",
+            "note": "The card states the size in k tokens, read as multiples of 1024."
+          }
+        },
+        {
+          "model": "ministral-8b-2512",
+          "model_id": "ministral-8b-2512",
+          "prices": {
+            "input": 0.15,
+            "output": 0.15,
+            "status": "published",
+            "source": "https://docs.mistral.ai/models",
+            "date": "2026-10-29"
+          },
+          "context_window": {
+            "value": 262144,
+            "status": "published",
+            "source": "https://docs.mistral.ai/models",
+            "date": "2026-10-29",
+            "note": "The card states the size in k tokens, read as multiples of 1024."
+          }
+        },
+        {
+          "model": "mistral-embed-2312",
+          "model_id": "mistral-embed-2312",
+          "prices": {
+            "input": 0.1,
+            "output": 0.0,
+            "status": "published",
+            "source": "https://docs.mistral.ai/models",
+            "date": "2026-10-29"
+          }
+        },
+        {
+          "model": "mistral-large-2512",
+          "model_id": "mistral-large-2512",
+          "prices": {
+            "input": 0.5,
+            "output": 1.5,
+            "status": "published",
+            "source": "https://docs.mistral.ai/models",
+            "date": "2026-10-29"
+          },
+          "context_window": {
+            "value": 262144,
+            "status": "published",
+            "source": "https://docs.mistral.ai/models",
+            "date": "2026-10-29",
+            "note": "The card states the size in k tokens, read as multiples of 1024."
+          }
+        },
+        {
+          "model": "mistral-large-4",
+          "model_id": "mistral-large-4",
+          "prices": {
+            "input": 0.7,
+            "output": 2.1,
+            "cached_input": 0.07,
+            "status": "published",
+            "source": "https://docs.mistral.ai/models",
+            "date": "2026-10-29"
+          },
+          "context_window": {
+            "value": 1048576,
+            "status": "published",
+            "source": "https://docs.mistral.ai/models",
+            "date": "2026-10-29",
+            "note": "The card states the size in k tokens, read as multiples of 1024."
+          }
+        },
+        {
+          "model": "mistral-medium-3-5",
+          "model_id": "mistral-medium-3-5",
+          "prices": {
+            "input": 1.5,
+            "output": 7.5,
+            "status": "published",
+            "source": "https://docs.mistral.ai/models",
+            "date": "2026-10-29"
+          },
+          "context_window": {
+            "value": 262144,
+            "status": "published",
+            "source": "https://docs.mistral.ai/models",
+            "date": "2026-10-29",
+            "note": "The card states the size in k tokens, read as multiples of 1024."
+          }
+        },
+        {
+          "model": "mistral-small-2603",
+          "model_id": "mistral-small-2603",
+          "prices": {
+            "input": 0.15,
+            "output": 0.6,
+            "status": "published",
+            "source": "https://docs.mistral.ai/models",
+            "date": "2026-10-29"
+          },
+          "context_window": {
+            "value": 262144,
+            "status": "published",
+            "source": "https://docs.mistral.ai/models",
+            "date": "2026-10-29",
+            "note": "The card states the size in k tokens, read as multiples of 1024."
+          }
+        },
+        {
+          "model": "glm-5.3",
+          "model_id": "zai-glm-5-3",
+          "prices": {
+            "input": 1.4,
+            "output": 4.4,
+            "cached_input": 0.14,
+            "status": "published",
+            "source": "https://docs.mistral.ai/models",
+            "date": "2026-10-29"
+          },
+          "context_window": {
+            "value": 1048576,
+            "status": "published",
+            "source": "https://docs.mistral.ai/models",
+            "date": "2026-10-29",
+            "note": "The card states the size in k tokens, read as multiples of 1024."
+          }
+        },
+        {
+          "model": "glm-5.3-flash",
+          "model_id": "zai-glm-5-3-flash",
+          "prices": {
+            "input": 0.15,
+            "output": 0.5,
+            "cached_input": 0.03,
+            "status": "published",
+            "source": "https://docs.mistral.ai/models",
+            "date": "2026-10-29"
+          },
+          "context_window": {
+            "value": 1048576,
+            "status": "published",
+            "source": "https://docs.mistral.ai/models",
+            "date": "2026-10-29",
+            "note": "The card states the size in k tokens, read as multiples of 1024."
+          }
+        }
+      ]
+    },
+    {
       "id": "opencode-go",
       "name": "OpenCode Go",
       "website": "https://opencode.ai/go",
@@ -1245,7 +1526,8 @@
               "kind": "rolling_window",
               "label": "5h",
               "duration": "5h",
-              "scope": "model",
+              "scope": "shared",
+              "value_budget": 3.0,
               "model_budgets": {
                 "glm-5.3-flash": {
                   "value_budget": 12.0
@@ -1339,7 +1621,8 @@
               "kind": "rolling_window",
               "label": "weekly",
               "duration": "168h",
-              "scope": "model",
+              "scope": "shared",
+              "value_budget": 7.5,
               "model_budgets": {
                 "glm-5.3-flash": {
                   "value_budget": 30.0
@@ -1433,7 +1716,8 @@
               "kind": "rolling_window",
               "label": "monthly",
               "duration": "720h",
-              "scope": "model",
+              "scope": "shared",
+              "value_budget": 15.0,
               "model_budgets": {
                 "glm-5.3-flash": {
                   "value_budget": 60.0
@@ -1531,7 +1815,7 @@
           "status": "published",
           "source": "https://opencode.ai/docs/go/",
           "date": "2026-10-29",
-          "note": "The 5-hour, weekly and monthly budgets are 20%, 50% and 100% of each model's published monthly limit. The page does not say whether the windows slide or reset on a schedule, and \"monthly\" is approximated as 720 hours. A model listed with no budget is free for a limited time."
+          "note": "Each window is shared by every model, each weighing by its own budget: 20%, 50% and 100% of its published monthly limit for the 5-hour, weekly and monthly windows. The window's own budget is the plan's most common monthly limit, at the same share. The page does not say whether the windows slide or reset on a schedule, and \"monthly\" is approximated as 720 hours. A model listed with no budget is free for a limited time."
         },
         {
           "id": "go-plus",
@@ -1541,7 +1825,8 @@
               "kind": "rolling_window",
               "label": "5h",
               "duration": "5h",
-              "scope": "model",
+              "scope": "shared",
+              "value_budget": 12.0,
               "model_budgets": {
                 "glm-5.3-flash": {
                   "value_budget": 36.0
@@ -1635,7 +1920,8 @@
               "kind": "rolling_window",
               "label": "weekly",
               "duration": "168h",
-              "scope": "model",
+              "scope": "shared",
+              "value_budget": 30.0,
               "model_budgets": {
                 "glm-5.3-flash": {
                   "value_budget": 90.0
@@ -1729,7 +2015,8 @@
               "kind": "rolling_window",
               "label": "monthly",
               "duration": "720h",
-              "scope": "model",
+              "scope": "shared",
+              "value_budget": 60.0,
               "model_budgets": {
                 "glm-5.3-flash": {
                   "value_budget": 180.0
@@ -1827,7 +2114,7 @@
           "status": "published",
           "source": "https://opencode.ai/docs/go/",
           "date": "2026-10-29",
-          "note": "The 5-hour, weekly and monthly budgets are 20%, 50% and 100% of each model's published monthly limit. The page does not say whether the windows slide or reset on a schedule, and \"monthly\" is approximated as 720 hours. A model listed with no budget is free for a limited time."
+          "note": "Each window is shared by every model, each weighing by its own budget: 20%, 50% and 100% of its published monthly limit for the 5-hour, weekly and monthly windows. The window's own budget is the plan's most common monthly limit, at the same share. The page does not say whether the windows slide or reset on a schedule, and \"monthly\" is approximated as 720 hours. A model listed with no budget is free for a limited time."
         },
         {
           "id": "go-teams",
@@ -1837,7 +2124,8 @@
               "kind": "rolling_window",
               "label": "5h",
               "duration": "5h",
-              "scope": "model",
+              "scope": "shared",
+              "value_budget": 4.0,
               "model_budgets": {
                 "glm-5.3-flash": {
                   "value_budget": 13.0
@@ -1931,7 +2219,8 @@
               "kind": "rolling_window",
               "label": "weekly",
               "duration": "168h",
-              "scope": "model",
+              "scope": "shared",
+              "value_budget": 10.0,
               "model_budgets": {
                 "glm-5.3-flash": {
                   "value_budget": 32.5
@@ -2025,7 +2314,8 @@
               "kind": "rolling_window",
               "label": "monthly",
               "duration": "720h",
-              "scope": "model",
+              "scope": "shared",
+              "value_budget": 20.0,
               "model_budgets": {
                 "glm-5.3-flash": {
                   "value_budget": 65.0
@@ -2123,7 +2413,7 @@
           "status": "published",
           "source": "https://opencode.ai/docs/go/",
           "date": "2026-10-29",
-          "note": "The 5-hour, weekly and monthly budgets are 20%, 50% and 100% of each model's published monthly limit. The page does not say whether the windows slide or reset on a schedule, and \"monthly\" is approximated as 720 hours. A model listed with no budget is free for a limited time."
+          "note": "Each window is shared by every model, each weighing by its own budget: 20%, 50% and 100% of its published monthly limit for the 5-hour, weekly and monthly windows. The window's own budget is the plan's most common monthly limit, at the same share. The page does not say whether the windows slide or reset on a schedule, and \"monthly\" is approximated as 720 hours. A model listed with no budget is free for a limited time."
         }
       ],
       "offerings": [
@@ -2237,9 +2527,9 @@
           "api_type": "gemini",
           "base_url": "https://opencode.ai/inference/go/google/v1beta",
           "prices": {
-            "input": 4.0,
-            "output": 20.0,
-            "cached_input": 0.2,
+            "input": 2.0,
+            "output": 10.0,
+            "cached_input": 0.1,
             "status": "published",
             "source": "https://opencode.ai/docs/go/",
             "date": "2026-10-29"
@@ -2661,9 +2951,9 @@
           "model": "deepseek-v4-pro",
           "model_id": "deepseek/deepseek-v4-pro",
           "prices": {
-            "input": 0.95526,
-            "cached_input": 0.079605,
-            "output": 1.91052,
+            "input": 0.894012,
+            "cached_input": 0.074501,
+            "output": 1.788024,
             "status": "published",
             "source": "https://openrouter.ai/api/v1/models",
             "date": "2026-10-29"
