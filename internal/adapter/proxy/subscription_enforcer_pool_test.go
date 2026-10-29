@@ -3,6 +3,7 @@ package proxy
 import (
 	"cmp"
 	"context"
+	"fmt"
 	"net/http"
 	"slices"
 	"strings"
@@ -183,13 +184,73 @@ func TestSubscriptionEnforcer_PoolSpreadsNewcomersOverTheKeys(t *testing.T) {
 func TestSubscriptionEnforcer_PoolKeepsAUserOnTheirKey(t *testing.T) {
 	f := newPoolFixture(t, 0)
 	f.consume("alice", "k2", 9_000_000)
+	f.consume("bob", model.PrimaryProviderKey, 8_500_000)
+	f.consume("carol", "k3", 8_500_000)
 
 	req, msg := f.check(t, "alice")
 	if msg != "" {
 		t.Fatalf("alice denied (%q), want granted", msg)
 	}
 	if key := chosenKey(t, req); key != "k2" {
-		t.Errorf("alice moved to %q, want kept on k2: it has room left and holds her cache", key)
+		t.Errorf("alice moved to %q, want kept on k2: it has room left, is barely fuller than the others and holds her cache", key)
+	}
+}
+
+func TestSubscriptionEnforcer_PoolMovesAUserOffAKeyFarAhead(t *testing.T) {
+	f := newPoolFixture(t, 0)
+	f.consume("alice", model.PrimaryProviderKey, 6_000_000)
+	f.consume("bob", "k2", 2_000_000)
+
+	req, msg := f.check(t, "alice")
+	if msg != "" {
+		t.Fatalf("alice denied (%q), want granted", msg)
+	}
+	if key := chosenKey(t, req); key != "k3" {
+		t.Errorf("alice kept on %q, want moved to k3: her key is 60 points ahead of the idle one", key)
+	}
+	fallbacks, _ := req.Metadata[metaProviderKeyFallbacks].([]model.ProviderKeyID)
+	if !slices.Equal(fallbacks, []model.ProviderKeyID{"k2", model.PrimaryProviderKey}) {
+		t.Errorf("fallbacks = %q, want the other keys, emptiest first", fallbacks)
+	}
+}
+
+func TestSubscriptionEnforcer_PoolMovesUsersOffAKeyAFewAtATime(t *testing.T) {
+	f := newPoolFixture(t, 0)
+	f.provider.SetExtraAPIKeys([]model.ProviderKey{{ID: "k2", Label: "member 2", APIKey: "key2"}})
+	users := make([]model.UserID, 40)
+	for i := range users {
+		users[i] = model.UserID(fmt.Sprintf("u%d", i))
+		f.consume(users[i], model.PrimaryProviderKey, 0)
+	}
+	// The users' own key is 20 points ahead of the other: between the
+	// smallest and the largest margin.
+	f.consume("bob", model.PrimaryProviderKey, 2_000_000)
+
+	moved := 0
+	for _, user := range users {
+		req, msg := f.check(t, user)
+		if msg != "" {
+			t.Fatalf("%s denied (%q), want granted", user, msg)
+		}
+		key := chosenKey(t, req)
+		if want := rebalanceMargin(user, model.PrimaryProviderKey) < 0.2; (key == "k2") != want {
+			t.Errorf("%s on %q with a margin of %.2f, want moved = %v", user, key, rebalanceMargin(user, model.PrimaryProviderKey), want)
+		}
+		if key == "k2" {
+			moved++
+		}
+	}
+	if moved == 0 || moved == len(users) {
+		t.Errorf("%d of %d users moved, want some of them only", moved, len(users))
+	}
+}
+
+func TestRebalanceMarginStaysWithinItsBounds(t *testing.T) {
+	for i := range 1000 {
+		m := rebalanceMargin(model.UserID(fmt.Sprintf("u%d", i)), "k2")
+		if m < minRebalanceMargin || m > maxRebalanceMargin {
+			t.Fatalf("margin %.3f out of [%.2f, %.2f]", m, minRebalanceMargin, maxRebalanceMargin)
+		}
 	}
 }
 

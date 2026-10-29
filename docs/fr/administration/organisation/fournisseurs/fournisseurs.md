@@ -316,9 +316,16 @@ ses éventuels ajustements (voir plus bas) :
   sur 90 $ ; c'est ce que montrent les jauges ;
 - **chaque requête** passe par une seule clé, qui doit avoir de la marge sur
   toutes ses fenêtres. Un utilisateur reste sur la clé de sa requête précédente,
-  où vit le cache de ses conversations, tant qu'elle a de la marge. Sinon, il
-  passe sur la clé la moins remplie ; sur un forfait encore vide, les nouveaux
-  arrivants se répartissent entre les clés ;
+  où vit le cache de ses conversations, tant qu'elle a de la marge et qu'elle
+  n'a pas trop d'avance sur la clé la moins remplie. Sinon, il passe sur la clé
+  la moins remplie ; sur un forfait encore vide, les nouveaux arrivants se
+  répartissent entre les clés ;
+- **le rééquilibrage** se fait peu à peu : chaque utilisateur tolère sa propre
+  avance, entre 10 et 30 points du budget de sa clé. Quand une clé prend de
+  l'avance, ses utilisateurs la quittent quelques-uns à la fois plutôt que tous
+  ensemble, ce qui ne ferait que déplacer le déséquilibre. Une clé ajoutée à un
+  forfait déjà entamé reçoit ainsi une partie des utilisateurs en place, au
+  prix du cache de leurs conversations en cours ;
 - **un refus d'OpenCode** (429 de limite atteinte) met la clé en pause et la
   requête repart aussitôt, sans erreur, sur une autre clé qui a de la marge.
   Une saturation momentanée du fournisseur (`server_error`) ne change pas de
