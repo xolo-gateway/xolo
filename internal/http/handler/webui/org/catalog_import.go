@@ -106,7 +106,7 @@ func (h *Handler) previewCatalogImport(w http.ResponseWriter, r *http.Request) {
 	// from it.
 	err = bundle.Validate()
 	if err == nil {
-		err = service.ValidateSubscriptionPlan(bundle.Provider.SubscriptionPlan)
+		err = service.ValidateBundleSettings(bundle.Provider)
 	}
 	if err != nil {
 		slog.ErrorContext(ctx, "the catalog provider gives an invalid bundle", slog.String("version", c.Version), slogx.Error(err))

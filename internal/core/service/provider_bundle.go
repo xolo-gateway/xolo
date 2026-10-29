@@ -973,6 +973,27 @@ func applyProviderSettings(ctx context.Context, store port.ProviderStore, plan P
 	return t, updated, nil
 }
 
+// ValidateBundleSettings checks the provider settings of a bundle with the
+// rules of every provider write path (validateProvider), its name aside: the
+// importer names a new provider. A dry run checked with it offers nothing
+// the apply step refuses.
+func ValidateBundleSettings(s model.ProviderBundleSettings) error {
+	err := validateProvider(model.ProviderSettings{
+		Name:             "bundle",
+		Type:             s.Type,
+		BaseURL:          s.BaseURL,
+		Active:           true,
+		Currency:         s.Currency,
+		CloudTier:        s.CloudTier,
+		BillingMode:      billingModeOrPayg(s.BillingMode),
+		SubscriptionPlan: s.SubscriptionPlan,
+		RetryConfig:      s.Retry,
+		RateLimitConfig:  s.RateLimit,
+		RequestHeaders:   s.RequestHeaders,
+	})
+	return errors.Wrap(err, "invalid provider settings")
+}
+
 // billingModeOrPayg reads an empty billing mode as pay-as-you-go, the mode of
 // a provider created without one.
 func billingModeOrPayg(m model.BillingMode) model.BillingMode {

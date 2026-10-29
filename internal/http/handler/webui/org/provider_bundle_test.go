@@ -175,6 +175,18 @@ func TestProviderBundle_RefusesAtThePreviewAPlanThePlanEditorRefuses(t *testing.
 	}
 }
 
+func TestProviderBundle_RefusesAtThePreviewARetryTheProviderFormRefuses(t *testing.T) {
+	h, s, tenant := importFixture(t, "https://example.test/v1", "sk")
+	doc := `{"kind":"xolo.provider","version":"1","provider":{"type":"openai","currency":"USD",` +
+		`"retry":{"enabled":true,"max_attempts":500,"delay":1000000000}},"models":[]}`
+	fields := url.Values{"step": {"preview"}, "bundle": {doc}}
+	rr := httptest.NewRecorder()
+	h.importProviderBundle(rr, bundleRequest(t, s, tenant, string(s.provider.ID()), bytes.NewBufferString(fields.Encode()), "application/x-www-form-urlencoded"))
+	if rr.Code != http.StatusUnprocessableEntity || !strings.Contains(stdhtml.UnescapeString(rr.Body.String()), "retry_config") {
+		t.Errorf("status = %d, want 500 attempts refused at the preview, naming the setting", rr.Code)
+	}
+}
+
 // fixedRates serves the exchange rates it holds, as "FROM>TO".
 type fixedRates map[string]float64
 
