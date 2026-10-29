@@ -89,7 +89,7 @@ func (h *Handler) previewCatalogImport(w http.ResponseWriter, r *http.Request) {
 	// The catalog publishes in each provider's currency: imported into a
 	// provider billing in another one, its prices and budgets are converted,
 	// so that they never land under a currency they are not in.
-	if p != nil && p.Currency() != "" && bundle.Provider.Currency != p.Currency() {
+	if p != nil && bundle.Provider.Currency != p.Currency() {
 		if err := h.convertBundleCurrency(ctx, &bundle, p.Currency()); err != nil {
 			slog.WarnContext(ctx, "could not convert catalog prices", slogx.Error(err))
 			h.renderProviderBundleError(w, r, vmodel, i18n.T(ctx, "org.errors.catalog_import.no_rate", bundle.Provider.Currency, p.Currency()))

@@ -492,3 +492,18 @@ func TestCatalogImport_RefusesAReleaseWhoseBundleDoesNotValidate(t *testing.T) {
 		t.Errorf("status %d, want 422 naming the release rather than a dry run the apply would refuse", rr.Code)
 	}
 }
+
+func TestCatalogImport_RefusesAProviderWithoutCurrencyAtThePreview(t *testing.T) {
+	h, s, tenant := importFixture(t, "https://acme.test/v1", "sk")
+	s.provider.(*model.BaseProvider).SetCurrency("")
+	p := catalog.Provider{ID: "acme", Name: "Acme", Currency: "USD", Offerings: []catalog.Offering{{Model: "glm", ModelID: "glm", Prices: catalog.Prices{Input: 1, Output: 2}}}}
+	p.Xolo.Type, p.Xolo.BaseURL = "openai", "https://acme.test/v1"
+	h.SetCatalog(catalog.NewStaticSource(&catalog.Catalog{Kind: catalog.Kind, Format: catalog.Format, Version: "v1", Providers: []catalog.Provider{p}}))
+
+	fields := url.Values{"catalog_provider": {"acme"}, "plan": {"none"}}
+	rr := httptest.NewRecorder()
+	h.previewCatalogImport(rr, bundleRequest(t, s, tenant, string(s.provider.ID()), bytes.NewBufferString(fields.Encode()), "application/x-www-form-urlencoded"))
+	if rr.Code != http.StatusUnprocessableEntity {
+		t.Errorf("status %d, want 422 at the preview rather than a dry run the apply refuses", rr.Code)
+	}
+}
