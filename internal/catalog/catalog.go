@@ -311,6 +311,16 @@ func (c *Catalog) Bundle(providerID, planID string) (model.ProviderBundle, error
 		if err != nil {
 			return model.ProviderBundle{}, err
 		}
+		// A per-model budget is keyed by an offering's model_id, the model
+		// Xolo's plans match on: under any other key it would apply to no
+		// model, in silence.
+		for _, constraint := range sp.Constraints {
+			for key := range constraint.ModelBudgets {
+				if !slices.ContainsFunc(p.Offerings, func(o Offering) bool { return o.ModelID == key }) {
+					return model.ProviderBundle{}, errors.Wrapf(ErrInvalid, "plan %q of %q: model budget %q names no offering", planID, providerID, key)
+				}
+			}
+		}
 		bundle.Provider.BillingMode = model.BillingModeSubscription
 		bundle.Provider.SubscriptionPlan = sp
 	}

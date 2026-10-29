@@ -282,3 +282,15 @@ func TestProviderAt_RecognizesAnOfferingsOwnEndpoint(t *testing.T) {
 		t.Errorf("provider = %s, want none", got.ID)
 	}
 }
+
+func TestBundle_RefusesAModelBudgetThatNamesNoOffering(t *testing.T) {
+	c := testCatalog()
+	// Keyed by the catalog model rather than the offering's model_id.
+	c.Providers[0].Plans[0].Constraints[0].ModelBudgets["GLM 5"] = Budget{}
+	if _, err := c.Bundle("acme", "pro"); !errors.Is(err, ErrInvalid) {
+		t.Errorf("err = %v, want the release refused rather than a budget that applies to no model", err)
+	}
+	if _, err := c.Bundle("acme", ""); err != nil {
+		t.Errorf("without the plan: %v", err)
+	}
+}
