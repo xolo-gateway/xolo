@@ -358,7 +358,7 @@ Les modèles qu'OpenCode Go ne sert que par l'API Responses d'OpenAI (GPT, Grok)
 
 OpenCode Go refuse toute requête sans en-tête `x-opencode-session` et demande aux clients de s'identifier par leur `User-Agent`. Dans la section **En-têtes de requête** du fournisseur, renseignez `x-opencode-session` comme **En-tête de session** et ajoutez un en-tête fixe `User-Agent`, par exemple `xolo/1.0`. Les modèles marqués `contributor`, comme Gemini, exigent en plus d'accepter l'entraînement sur les requêtes dans les réglages de confidentialité du compte OpenCode.
 
-> **Astuce** : Cliquez sur **Pré-remplir depuis models.dev** pour importer automatiquement les informations d'un modèle depuis le catalogue.
+> **Astuce** : Cliquez sur **Pré-remplir depuis le catalogue** pour remplir les champs d'un modèle depuis le [catalogue ouvert de modèles](#importer-depuis-le-catalogue) : prix, fenêtres, capacités, paramètres actifs et, s'il passe par une autre API que celle du fournisseur, son type d'API et son URL. Les prix sont convertis dans la devise du fournisseur. Un message signale les valeurs estimées et les prix qui varient selon la taille du prompt ou l'heure (le formulaire prend le palier de base).
 
 ### Importer les modèles du fournisseur
 
@@ -374,6 +374,14 @@ Les modèles importés :
 - utilisent le type d'API et l'URL du fournisseur. Un modèle servi par une autre API, comme Qwen chez OpenCode Go, se règle ensuite dans son formulaire (voir [Accès à l'API](#acces-a-lapi)).
 
 Xolo relit la liste du fournisseur au moment de l'import. Un modèle qu'il ne liste plus, ou dont le nom proxy est déjà pris dans l'organisation (modèles désactivés et modèles virtuels compris), est laissé de côté, et la page indique pourquoi, comme pour un modèle que l'enregistrement n'a pas pu créer.
+
+### Importer depuis le catalogue
+
+Le [catalogue ouvert de modèles](https://github.com/xolo-gateway/catalog), maintenu par le projet, recense des fournisseurs avec leurs modèles, leurs prix, leurs fenêtres et leurs forfaits. Chaque chiffre y a une source, une date et un statut : publié, mesuré ou estimé. Les prix, les listes de modèles et les forfaits sont relus chaque jour sur les pages des fournisseurs.
+
+Cliquez sur **Importer depuis le catalogue**, sur la liste des fournisseurs pour créer un fournisseur, ou sur la page des modèles d'un fournisseur existant pour le mettre à jour. Le fournisseur du catalogue qui a la même URL de base est proposé en premier. Choisissez-le, et le forfait auquel vous êtes abonné s'il y en a un, puis **Prévisualiser les changements** : la suite est celle de l'import d'un bundle (voir ci-dessous), avec le même aperçu à cocher. Les prix importés sont ceux du palier de base.
+
+L'instance lit la dernière version du catalogue (`XOLO_CATALOG_URL`) et retombe sur l'instantané embarqué dans le binaire quand elle ne peut pas l'atteindre.
 
 ### Exporter et importer un fournisseur configuré
 

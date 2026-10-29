@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"github.com/xolo-gateway/xolo/internal/catalog"
 	"log/slog"
 	"net/http"
 	"slices"
@@ -79,6 +80,8 @@ type Handler struct {
 	exchangeRateService *service.ExchangeRateService
 	pluginManager       pluginManagerIface
 	modelCards          *service.ModelCardService
+	// catalog pre-fills the model form, see WithCatalog.
+	catalog *catalog.Source
 	// teamStore keeps team slugs and model names apart, see WithTeams.
 	teamStore port.TeamStore
 	// userQuotas, quotaSpend and now serve the caller's quota, see WithUserQuota.
@@ -104,7 +107,7 @@ func NewHandler(providerStore port.ProviderStore, orgStore port.OrgStore, virtua
 	}
 	h.modelCards = service.NewModelCardService(orgStore, providerStore, virtualModelStore, personalVMStore, plugin.ModelResolvers(pluginManager))
 	h.mux.HandleFunc("GET /api/v1/models", h.handleModels)
-	h.mux.HandleFunc("GET /api/models-dev/lookup", h.handleModelsDevLookup)
+	h.mux.HandleFunc("GET /api/catalog/lookup", h.handleCatalogLookup)
 	h.mux.HandleFunc("GET /api/exchange-rate", h.handleExchangeRate)
 	// Plugin UI config sync (seed before iframe open, read back after close)
 	h.mux.HandleFunc("PUT /api/orgs/{orgSlug}/plugin-ui-config", h.handleSeedPluginUIConfig)

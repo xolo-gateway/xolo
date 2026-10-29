@@ -2,6 +2,7 @@ package component
 
 import (
 	"context"
+	"github.com/xolo-gateway/xolo/internal/catalog"
 	"net/url"
 	"time"
 
@@ -393,4 +394,19 @@ type ProviderBundleImportVModel struct {
 	// Failures the models the store refused.
 	Notice   string
 	Failures []string
+}
+
+// CatalogImportVModel is the choice of a provider of the open model catalog
+// to import from, before the dry run of the bundle it converts into.
+type CatalogImportVModel struct {
+	common.AppLayoutVModel
+	Org model.Organization
+	// Provider is the provider the models go to, nil when the import creates
+	// a new provider.
+	Provider model.Provider
+	Catalog  *catalog.Catalog
+	// Suggested is the catalog provider the existing provider most likely
+	// is, listed first.
+	Suggested string
+	Error     string
 }

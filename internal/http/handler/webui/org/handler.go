@@ -1,6 +1,7 @@
 package org
 
 import (
+	"github.com/xolo-gateway/xolo/internal/catalog"
 	"net/http"
 
 	"github.com/xolo-gateway/xolo/internal/core/port"
@@ -43,6 +44,14 @@ type Handler struct {
 	eventsDefaultPerOrg int
 	// teamStore enables the team pages, see SetTeams.
 	teamStore port.TeamStore
+	// catalog is the open model catalog providers import from, see
+	// SetCatalog.
+	catalog *catalog.Source
+}
+
+// SetCatalog lets the provider pages import from the open model catalog.
+func (h *Handler) SetCatalog(source *catalog.Source) {
+	h.catalog = source
 }
 
 // ServeHTTP implements http.Handler.
@@ -175,6 +184,10 @@ func NewHandler(
 	h.mux.Handle("GET /{orgSlug}/admin/providers", assertPerm(rbac.PermProvidersRead)(http.HandlerFunc(h.getProvidersPage)))
 	h.mux.Handle("GET /{orgSlug}/admin/providers/new", assertPerm(rbac.PermProvidersWrite)(http.HandlerFunc(h.getNewProviderPage)))
 	h.mux.Handle("POST /{orgSlug}/admin/providers", assertPerm(rbac.PermProvidersWrite)(http.HandlerFunc(h.createProvider)))
+	h.mux.Handle("GET /{orgSlug}/admin/providers/catalog", assertPerm(rbac.PermProvidersWrite)(http.HandlerFunc(h.getCatalogImportPage)))
+	h.mux.Handle("POST /{orgSlug}/admin/providers/catalog", assertPerm(rbac.PermProvidersWrite)(http.HandlerFunc(h.previewCatalogImport)))
+	h.mux.Handle("GET /{orgSlug}/admin/providers/{providerID}/catalog", assertPerm(rbac.PermProvidersWrite)(http.HandlerFunc(h.getCatalogImportPage)))
+	h.mux.Handle("POST /{orgSlug}/admin/providers/{providerID}/catalog", assertPerm(rbac.PermProvidersWrite)(http.HandlerFunc(h.previewCatalogImport)))
 	h.mux.Handle("GET /{orgSlug}/admin/providers/import", assertPerm(rbac.PermProvidersWrite)(http.HandlerFunc(h.getProviderBundleImportPage)))
 	h.mux.Handle("POST /{orgSlug}/admin/providers/import", assertPerm(rbac.PermProvidersWrite)(http.HandlerFunc(h.importProviderBundle)))
 	h.mux.Handle("GET /{orgSlug}/admin/providers/{providerID}/export", assertPerm(rbac.PermProvidersRead)(http.HandlerFunc(h.exportProviderBundle)))

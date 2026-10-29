@@ -1,0 +1,3291 @@
+{
+  "kind": "xolo.catalog",
+  "format": "1",
+  "version": "snapshot-2026-10-29",
+  "built_at": "2026-10-29T09:48:23Z",
+  "license": "ODbL-1.0",
+  "models": [
+    {
+      "id": "beam",
+      "name": "Beam Free",
+      "family": "beam",
+      "vendor": "Reflection AI",
+      "open_weights": true,
+      "context_window": {
+        "value": 1048576,
+        "status": "estimated",
+        "source": "https://reflection.ai/blog/introducing-beam",
+        "date": "2026-10-29",
+        "note": "OpenCode does not name the underlying model; identification as Reflection Beam 1.0 (501B-A23B) rests on OpenCode's 'Beam ... 1M context' post and its selector metadata, as reported by https://www.orcarouter.ai/fr/blog/beam-1-0-free-opencode-1m-context. Reflection's blog says midtraining extends context to 1M."
+      },
+      "output_window": {
+        "value": 131072,
+        "status": "estimated",
+        "source": "https://www.orcarouter.ai/fr/blog/beam-1-0-free-opencode-1m-context",
+        "date": "2026-10-29",
+        "note": "Reported from OpenCode's model metadata by a third party; Reflection states no output limit."
+      },
+      "capabilities": {
+        "tools": true,
+        "vision": false,
+        "reasoning": true,
+        "audio": false,
+        "status": "estimated",
+        "source": "https://reflection.ai/blog/introducing-beam",
+        "date": "2026-10-29",
+        "note": "Values are published for Beam 1.0 (text-only, tool use, adjustable reasoning effort); estimated only because beam-free = Beam 1.0 is inferred."
+      },
+      "params": {
+        "total": {
+          "value": 501000000000,
+          "status": "estimated",
+          "source": "https://reflection.ai/blog/introducing-beam",
+          "date": "2026-10-29",
+          "note": "Reflection states 501B total for Beam 1.0; applying it to beam-free is an inference (see context_window note)."
+        },
+        "active": {
+          "value": 23000000000,
+          "status": "estimated",
+          "source": "https://reflection.ai/blog/introducing-beam",
+          "date": "2026-10-29",
+          "note": "Reflection states 23B active for Beam 1.0; same identity caveat."
+        }
+      }
+    },
+    {
+      "id": "claude-haiku-5-5",
+      "name": "Claude Haiku 5.5",
+      "family": "claude-5.5",
+      "vendor": "Anthropic",
+      "open_weights": false,
+      "context_window": {
+        "value": 1000000,
+        "status": "published",
+        "source": "https://platform.claude.com/docs/en/models/haiku-5-5/overview",
+        "date": "2026-10-29"
+      },
+      "output_window": {
+        "value": 128000,
+        "status": "published",
+        "source": "https://platform.claude.com/docs/en/models/haiku-5-5/overview",
+        "date": "2026-10-29",
+        "note": "Synchronous Messages API limit; up to 300K on the Message Batches API with the output-300k-2026-03-24 beta header."
+      },
+      "capabilities": {
+        "tools": true,
+        "vision": true,
+        "reasoning": true,
+        "audio": false,
+        "status": "published",
+        "source": "https://platform.claude.com/docs/en/models/haiku-5-5/overview",
+        "date": "2026-10-29",
+        "note": "Overview: 'Text and images -> text', adaptive thinking with effort. Tool use is not listed on the overview page itself but is a standard Claude API capability (https://platform.claude.com/docs/en/agents-and-tools/tool-use/overview)."
+      }
+    },
+    {
+      "id": "deepseek-v4-pro",
+      "name": "DeepSeek V4 Pro",
+      "family": "deepseek-v4",
+      "vendor": "DeepSeek",
+      "open_weights": true,
+      "context_window": {
+        "value": 1000000,
+        "status": "published",
+        "source": "https://api-docs.deepseek.com/quick_start/pricing/",
+        "date": "2026-10-29",
+        "note": "API docs list deepseek-v4-pro (DeepSeek-V4-Pro-0813) with context length '1M'; the V4-Pro HF card says 'a context length of one million tokens'."
+      },
+      "output_window": {
+        "value": 384000,
+        "status": "published",
+        "source": "https://api-docs.deepseek.com/quick_start/pricing/",
+        "date": "2026-10-29",
+        "note": "Docs state 'Maximum 384K'; the V4-Pro-0813 HF card also recommends a maximum output length of 384K."
+      },
+      "capabilities": {
+        "tools": true,
+        "vision": false,
+        "reasoning": true,
+        "audio": false,
+        "status": "published",
+        "source": "https://api-docs.deepseek.com/quick_start/pricing/",
+        "date": "2026-10-29",
+        "note": "API docs list tool calls yes, vision no, thinking and non-thinking modes; audio not mentioned."
+      },
+      "params": {
+        "total": {
+          "value": 1600000000000,
+          "status": "published",
+          "source": "https://huggingface.co/deepseek-ai/DeepSeek-V4-Pro",
+          "date": "2026-10-29",
+          "note": "V4-Pro card: '1.6T parameters (49B activated)'. The served 0813 checkpoint (https://huggingface.co/deepseek-ai/DeepSeek-V4-Pro-0813) keeps the V4-Pro structure plus a DSpark speculative module; HF metadata counts 1.7T."
+        },
+        "active": {
+          "value": 49000000000,
+          "status": "published",
+          "source": "https://huggingface.co/deepseek-ai/DeepSeek-V4-Pro",
+          "date": "2026-10-29"
+        }
+      }
+    },
+    {
+      "id": "deepseek-v4.1-flash",
+      "name": "DeepSeek V4.1 Flash",
+      "family": "deepseek-v4",
+      "vendor": "DeepSeek",
+      "open_weights": true,
+      "context_window": {
+        "value": 1000000,
+        "status": "published",
+        "source": "https://api-docs.deepseek.com/quick_start/pricing/",
+        "date": "2026-10-29",
+        "note": "API docs list deepseek-flash (served by DeepSeek-V4.1-Flash-1017) with context length '1M'; the exact token count may be 1,048,576 (third-party listings vary). The HF card also says up to one million tokens."
+      },
+      "output_window": {
+        "value": 384000,
+        "status": "published",
+        "source": "https://api-docs.deepseek.com/quick_start/pricing/",
+        "date": "2026-10-29",
+        "note": "Docs state 'Maximum 384K'; whether K = 1000 or 1024 is not specified."
+      },
+      "capabilities": {
+        "tools": true,
+        "vision": true,
+        "reasoning": true,
+        "audio": false,
+        "status": "published",
+        "source": "https://api-docs.deepseek.com/quick_start/pricing/",
+        "date": "2026-10-29",
+        "note": "Tool calls, vision and thinking mode listed in the API docs; the HF card (https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash) says it natively processes images and text; audio not mentioned anywhere."
+      },
+      "params": {
+        "total": {
+          "value": 552000000000,
+          "status": "published",
+          "source": "https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash",
+          "date": "2026-10-29",
+          "note": "Model card cites 552B backbone parameters; the HF safetensors metadata counts 763B (likely including the vision encoder and MTP/speculative modules). The API now serves the 1017 minor update, same 763B safetensors size."
+        },
+        "active": {
+          "value": 16000000000,
+          "status": "published",
+          "source": "https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash",
+          "date": "2026-10-29",
+          "note": "Card states 8B activated per token during prefill and 16B during decode; the decode figure is retained here."
+        }
+      }
+    },
+    {
+      "id": "gemini-4-argon",
+      "name": "Gemini 4 Argon",
+      "family": "gemini-4",
+      "vendor": "Google",
+      "open_weights": false,
+      "context_window": {
+        "value": 1048576,
+        "status": "published",
+        "source": "https://ai.google.dev/gemini-api/docs/models/gemini-4-argon",
+        "date": "2026-10-29",
+        "note": "Google gives a unified input+output token limit of 1,048,576."
+      },
+      "output_window": {
+        "value": 65536,
+        "status": "published",
+        "source": "https://ai.google.dev/gemini-api/docs/models/gemini-4-argon",
+        "date": "2026-10-29",
+        "note": "65,536 default synchronous; up to 1,048,576 with long decode."
+      },
+      "capabilities": {
+        "tools": true,
+        "vision": true,
+        "reasoning": true,
+        "audio": true,
+        "status": "published",
+        "source": "https://ai.google.dev/gemini-api/docs/models/gemini-4-argon",
+        "date": "2026-10-29",
+        "note": "Inputs: text, image, video, audio, PDF; output text; function calling supported; thinking low/medium/high. Facts are for Google's gemini-4-argon; the '-contributor' suffix is OpenCode's and not documented by Google."
+      }
+    },
+    {
+      "id": "glm-5.2",
+      "name": "GLM-5.2",
+      "family": "glm-5",
+      "vendor": "Z.ai (Zhipu AI)",
+      "open_weights": true,
+      "context_window": {
+        "value": 1048576,
+        "status": "published",
+        "source": "https://docs.z.ai/guides/llm/glm-5.2",
+        "date": "2026-10-29",
+        "note": "Docs: '1M'; config.json max_position_embeddings = 1048576."
+      },
+      "output_window": {
+        "value": 131072,
+        "status": "published",
+        "source": "https://docs.z.ai/guides/llm/glm-5.2",
+        "date": "2026-10-29",
+        "note": "Docs: '128K'."
+      },
+      "capabilities": {
+        "tools": true,
+        "vision": false,
+        "reasoning": true,
+        "audio": false,
+        "status": "published",
+        "source": "https://docs.z.ai/guides/llm/glm-5.2",
+        "date": "2026-10-29",
+        "note": "Text-only input; thinking can be enabled or disabled."
+      },
+      "params": {
+        "total": {
+          "value": 753000000000,
+          "status": "published",
+          "source": "https://huggingface.co/zai-org/GLM-5.2",
+          "date": "2026-10-29",
+          "note": "Safetensors size on the vendor's HF repo."
+        },
+        "active": {
+          "value": 40000000000,
+          "status": "estimated",
+          "source": "https://huggingface.co/zai-org/GLM-5.2/blob/main/config.json",
+          "date": "2026-10-29",
+          "note": "Z.ai does not state active parameters for this release. Its config.json has the same MoE layout as GLM-5 (78 layers, hidden 6144, 256 routed experts, 8 per token, 1 shared), for which Z.ai states 40B active (https://huggingface.co/zai-org/GLM-5)."
+        }
+      }
+    },
+    {
+      "id": "glm-5.3-flash",
+      "name": "GLM-5.3-Flash",
+      "family": "glm-5",
+      "vendor": "Z.ai (Zhipu AI)",
+      "open_weights": true,
+      "context_window": {
+        "value": 1048576,
+        "status": "published",
+        "source": "https://docs.z.ai/guides/llm/glm-5.3-flash",
+        "date": "2026-10-29",
+        "note": "Docs state '1M'; 1,048,576 assumed as the binary reading."
+      },
+      "output_window": {
+        "value": 131072,
+        "status": "published",
+        "source": "https://docs.z.ai/guides/llm/glm-5.3-flash",
+        "date": "2026-10-29",
+        "note": "Docs state '128K'."
+      },
+      "capabilities": {
+        "tools": true,
+        "vision": true,
+        "reasoning": true,
+        "audio": false,
+        "status": "published",
+        "source": "https://docs.z.ai/guides/llm/glm-5.3-flash",
+        "date": "2026-10-29",
+        "note": "Inputs: video, image, text, file. Thinking always on (cannot be disabled)."
+      },
+      "params": {
+        "total": {
+          "value": 320000000000,
+          "status": "published",
+          "source": "https://huggingface.co/zai-org/GLM-5.3-Flash",
+          "date": "2026-10-29",
+          "note": "Card text says 320B; safetensors metadata shows 321B."
+        },
+        "active": {
+          "value": 18000000000,
+          "status": "published",
+          "source": "https://huggingface.co/zai-org/GLM-5.3-Flash",
+          "date": "2026-10-29"
+        }
+      }
+    },
+    {
+      "id": "glm-5.3",
+      "name": "GLM-5.3",
+      "family": "glm-5",
+      "vendor": "Z.ai (Zhipu AI)",
+      "open_weights": true,
+      "context_window": {
+        "value": 1048576,
+        "status": "published",
+        "source": "https://docs.z.ai/guides/llm/glm-5.3",
+        "date": "2026-10-29",
+        "note": "Docs: '1M-token context window'; config.json max_position_embeddings = 1048576."
+      },
+      "output_window": {
+        "value": 131072,
+        "status": "published",
+        "source": "https://docs.z.ai/guides/llm/glm-5.3",
+        "date": "2026-10-29",
+        "note": "Docs: 'maximum output length of 128K tokens'."
+      },
+      "capabilities": {
+        "tools": true,
+        "vision": false,
+        "reasoning": true,
+        "audio": false,
+        "status": "published",
+        "source": "https://docs.z.ai/guides/llm/glm-5.3",
+        "date": "2026-10-29",
+        "note": "Text-only input; reasoning always enabled."
+      },
+      "params": {
+        "total": {
+          "value": 753000000000,
+          "status": "published",
+          "source": "https://huggingface.co/zai-org/GLM-5.3",
+          "date": "2026-10-29",
+          "note": "Safetensors size on the vendor's HF repo (753B, includes the MTP layer); some third parties say 744B."
+        },
+        "active": {
+          "value": 40000000000,
+          "status": "estimated",
+          "source": "https://huggingface.co/zai-org/GLM-5.3/blob/main/config.json",
+          "date": "2026-10-29",
+          "note": "Z.ai does not state active parameters for this release. Its config.json has the same MoE layout as GLM-5 (78 layers, hidden 6144, 256 routed experts, 8 per token, 1 shared), for which Z.ai states 40B active (https://huggingface.co/zai-org/GLM-5)."
+        }
+      }
+    },
+    {
+      "id": "gpt-5.6-luna",
+      "name": "GPT 5.6 Luna",
+      "family": "gpt-5",
+      "vendor": "OpenAI",
+      "open_weights": false,
+      "context_window": {
+        "value": 1050000,
+        "status": "published",
+        "source": "https://developers.openai.com/api/docs/models/gpt-5.6-luna",
+        "date": "2026-10-29"
+      },
+      "output_window": {
+        "value": 128000,
+        "status": "published",
+        "source": "https://developers.openai.com/api/docs/models/gpt-5.6-luna",
+        "date": "2026-10-29"
+      },
+      "capabilities": {
+        "tools": true,
+        "vision": true,
+        "reasoning": true,
+        "audio": false,
+        "status": "published",
+        "source": "https://developers.openai.com/api/docs/models/gpt-5.6-luna",
+        "date": "2026-10-29",
+        "note": "Input modalities text and image; function_calling listed; reasoning token support; no audio listed."
+      }
+    },
+    {
+      "id": "gpt-6-luna",
+      "name": "GPT 6 Luna",
+      "family": "gpt-6",
+      "vendor": "OpenAI",
+      "open_weights": false,
+      "context_window": {
+        "value": 1050000,
+        "status": "published",
+        "source": "https://developers.openai.com/api/docs/models/gpt-6-luna",
+        "date": "2026-10-29"
+      },
+      "output_window": {
+        "value": 128000,
+        "status": "published",
+        "source": "https://developers.openai.com/api/docs/models/gpt-6-luna",
+        "date": "2026-10-29"
+      },
+      "capabilities": {
+        "tools": true,
+        "vision": true,
+        "reasoning": true,
+        "audio": false,
+        "status": "published",
+        "source": "https://developers.openai.com/api/docs/models/gpt-6-luna",
+        "date": "2026-10-29",
+        "note": "Input modalities text and image; function calling (on Chat Completions only with reasoning_effort none); reasoning efforts none..max; no audio listed."
+      }
+    },
+    {
+      "id": "grok-4.7",
+      "name": "Grok 4.7",
+      "family": "grok-4",
+      "vendor": "xAI (SpaceXAI)",
+      "open_weights": false,
+      "context_window": {
+        "value": 500000,
+        "status": "published",
+        "source": "https://docs.x.ai/docs/models/grok-4.7",
+        "date": "2026-10-29"
+      },
+      "capabilities": {
+        "tools": true,
+        "vision": true,
+        "reasoning": true,
+        "audio": false,
+        "status": "published",
+        "source": "https://docs.x.ai/docs/models/grok-4.7",
+        "date": "2026-10-29",
+        "note": "xAI docs: function calling yes, reasoning yes, modalities 'text, image -> text'; audio not listed."
+      },
+      "params": {
+        "total": {
+          "value": 2100000000000,
+          "status": "estimated",
+          "source": "https://x.com/elonmusk/status/2082123925283041545",
+          "date": "2026-10-29",
+          "note": "Pre-release X post by xAI's CEO (2026-07-28, reported by https://tbreak.com/grok-4-6-4-7-xai-release-date-specs/): 'Grok 4.7 will be the 2.1T model'. Not in xAI's docs, and not stated whether total or active; assumed total (MoE)."
+        }
+      }
+    },
+    {
+      "id": "hy3",
+      "name": "Hy3",
+      "family": "hy-tencent-hunyuan",
+      "vendor": "Tencent",
+      "open_weights": true,
+      "context_window": {
+        "value": 262144,
+        "status": "published",
+        "source": "https://huggingface.co/tencent/Hy3",
+        "date": "2026-10-29",
+        "note": "Card states 256K tokens; 262,144 = 256 x 1024, consistent with Vercel AI Gateway's 262.1K listing."
+      },
+      "output_window": {
+        "value": 64000,
+        "status": "estimated",
+        "source": "https://docs.openclaw.ai/providers/tencent.md",
+        "date": "2026-10-29",
+        "note": "Not stated by Tencent's model card; OpenClaw provider docs and catalogs list 64,000 max output for Hy3 on TokenHub (cloudprice lists up to 128K). Unconfirmed on a Tencent page."
+      },
+      "capabilities": {
+        "tools": true,
+        "vision": false,
+        "reasoning": true,
+        "audio": false,
+        "status": "published",
+        "source": "https://huggingface.co/tencent/Hy3",
+        "date": "2026-10-29",
+        "note": "Card shows tool-call parser flags and reasoning_effort (no_think default, low, high); text-only."
+      },
+      "params": {
+        "total": {
+          "value": 295000000000,
+          "status": "published",
+          "source": "https://huggingface.co/tencent/Hy3",
+          "date": "2026-10-29"
+        },
+        "active": {
+          "value": 21000000000,
+          "status": "published",
+          "source": "https://huggingface.co/tencent/Hy3",
+          "date": "2026-10-29"
+        }
+      }
+    },
+    {
+      "id": "hy4-preview",
+      "name": "Hy4 preview",
+      "family": "hy-tencent-hunyuan",
+      "vendor": "Tencent",
+      "open_weights": true,
+      "context_window": {
+        "value": 1000000,
+        "status": "published",
+        "source": "https://huggingface.co/tencent/Hy4-preview",
+        "date": "2026-10-29",
+        "note": "Model card specification table gives 1M tokens; some catalogs list 1,024,000."
+      },
+      "output_window": {
+        "value": 64000,
+        "status": "estimated",
+        "source": "https://cloudprice.net/models/tencent/hy4-preview",
+        "date": "2026-10-29",
+        "note": "Not stated on Tencent's model card; third-party catalogs give 64,000 (cloudprice) or 65,536 (typingmind/LLM Gateway route for Tencent Cloud). Unconfirmed on a Tencent page."
+      },
+      "capabilities": {
+        "tools": true,
+        "vision": false,
+        "reasoning": true,
+        "audio": false,
+        "status": "published",
+        "source": "https://huggingface.co/tencent/Hy4-preview",
+        "date": "2026-10-29",
+        "note": "Card shows a tool-call parser (hy_v4) for vLLM/SGLang and reasoning_effort (default deep thinking, no_think available); describes text generation only, no image or audio input mentioned."
+      },
+      "params": {
+        "total": {
+          "value": 770000000000,
+          "status": "published",
+          "source": "https://huggingface.co/tencent/Hy4-preview",
+          "date": "2026-10-29",
+          "note": "Card: 770B total parameters; safetensors metadata shows 780B, likely including the MTP layer."
+        },
+        "active": {
+          "value": 49000000000,
+          "status": "published",
+          "source": "https://huggingface.co/tencent/Hy4-preview",
+          "date": "2026-10-29"
+        }
+      }
+    },
+    {
+      "id": "iceman-contributor",
+      "name": "Iceman Contributor Free",
+      "vendor": "Iceman"
+    },
+    {
+      "id": "kimi-k2.7-code",
+      "name": "Kimi K2.7 Code",
+      "family": "kimi-k2",
+      "vendor": "Moonshot AI",
+      "open_weights": true,
+      "context_window": {
+        "value": 262144,
+        "status": "published",
+        "source": "https://huggingface.co/moonshotai/Kimi-K2.7-Code",
+        "date": "2026-10-29",
+        "note": "Card and platform docs state '256K'."
+      },
+      "capabilities": {
+        "tools": true,
+        "vision": true,
+        "reasoning": true,
+        "audio": false,
+        "status": "published",
+        "source": "https://huggingface.co/moonshotai/Kimi-K2.7-Code",
+        "date": "2026-10-29",
+        "note": "Image and video input; thinking forced on. Modified MIT license."
+      },
+      "params": {
+        "total": {
+          "value": 1000000000000,
+          "status": "published",
+          "source": "https://huggingface.co/moonshotai/Kimi-K2.7-Code",
+          "date": "2026-10-29"
+        },
+        "active": {
+          "value": 32000000000,
+          "status": "published",
+          "source": "https://huggingface.co/moonshotai/Kimi-K2.7-Code",
+          "date": "2026-10-29"
+        }
+      }
+    },
+    {
+      "id": "kimi-k3.1-pro",
+      "name": "Kimi K3.1 Pro",
+      "vendor": "Moonshot AI"
+    },
+    {
+      "id": "kimi-k3",
+      "name": "Kimi K3",
+      "family": "kimi-k3",
+      "vendor": "Moonshot AI",
+      "open_weights": true,
+      "context_window": {
+        "value": 1048576,
+        "status": "published",
+        "source": "https://huggingface.co/moonshotai/Kimi-K3",
+        "date": "2026-10-29"
+      },
+      "output_window": {
+        "value": 1048576,
+        "status": "published",
+        "source": "https://platform.kimi.ai/docs/guide/kimi-k3-quickstart",
+        "date": "2026-10-29",
+        "note": "max_completion_tokens defaults to 131072 and can be set up to 1048576 (shared with the context window)."
+      },
+      "capabilities": {
+        "tools": true,
+        "vision": true,
+        "reasoning": true,
+        "audio": false,
+        "status": "published",
+        "source": "https://huggingface.co/moonshotai/Kimi-K3",
+        "date": "2026-10-29",
+        "note": "Text, image and video input; thinking always on. Weights under the custom 'Kimi K3 License'."
+      },
+      "params": {
+        "total": {
+          "value": 2800000000000,
+          "status": "published",
+          "source": "https://huggingface.co/moonshotai/Kimi-K3",
+          "date": "2026-10-29"
+        },
+        "active": {
+          "value": 104000000000,
+          "status": "published",
+          "source": "https://huggingface.co/moonshotai/Kimi-K3",
+          "date": "2026-10-29"
+        }
+      }
+    },
+    {
+      "id": "longcat-2.0",
+      "name": "LongCat-2.0",
+      "family": "longcat",
+      "vendor": "Meituan",
+      "open_weights": true,
+      "context_window": {
+        "value": 1048576,
+        "status": "published",
+        "source": "https://longcat.chat/platform/docs/",
+        "date": "2026-10-29",
+        "note": "Docs: '1M token context window'; binary reading assumed."
+      },
+      "output_window": {
+        "value": 131072,
+        "status": "published",
+        "source": "https://longcat.chat/platform/docs/",
+        "date": "2026-10-29",
+        "note": "Docs: 'maximum output length of 128K tokens'."
+      },
+      "capabilities": {
+        "tools": true,
+        "vision": false,
+        "reasoning": true,
+        "audio": false,
+        "status": "published",
+        "source": "https://huggingface.co/meituan-longcat/LongCat-2.0",
+        "date": "2026-10-29",
+        "note": "Tools and switchable thinking from the chat template; text-only per the card. MIT license."
+      },
+      "params": {
+        "total": {
+          "value": 1600000000000,
+          "status": "published",
+          "source": "https://huggingface.co/meituan-longcat/LongCat-2.0",
+          "date": "2026-10-29",
+          "note": "Card says 1.6T; safetensors metadata shows ~1.8T (includes a ~135B N-gram embedding component)."
+        },
+        "active": {
+          "value": 48000000000,
+          "status": "published",
+          "source": "https://huggingface.co/meituan-longcat/LongCat-2.0",
+          "date": "2026-10-29",
+          "note": "Card says '~48 billion activated per token' (dynamic, approximate)."
+        }
+      }
+    },
+    {
+      "id": "longcat-2.5-preview",
+      "name": "LongCat 2.5 Preview",
+      "family": "longcat",
+      "vendor": "Meituan",
+      "open_weights": false,
+      "context_window": {
+        "value": 1048576,
+        "status": "published",
+        "source": "https://longcat.chat/platform/docs/",
+        "date": "2026-10-29",
+        "note": "Docs list LongCat-2.5-Preview with '1M token context window'."
+      },
+      "output_window": {
+        "value": 131072,
+        "status": "published",
+        "source": "https://longcat.chat/platform/docs/",
+        "date": "2026-10-29",
+        "note": "Docs: 'maximum output length of 128K tokens'."
+      },
+      "capabilities": {
+        "tools": true,
+        "vision": true,
+        "reasoning": true,
+        "audio": false,
+        "status": "estimated",
+        "source": "https://www.nocode.mba/ai-release-tracker/releases/longcat-2.5-preview",
+        "date": "2026-10-29",
+        "note": "Vision from Meituan's announcement (https://x.com/Meituan_LongCat/status/2103488918788411728, relayed by this tracker; not fetched directly). Tools and reasoning inferred from LongCat-2.0 and the stated agent-harness compatibility; vendor docs do not list capabilities."
+      },
+      "params": {
+        "total": {
+          "value": 1600000000000,
+          "status": "estimated",
+          "source": "https://huggingface.co/meituan-longcat/LongCat-2.0",
+          "date": "2026-10-29",
+          "note": "Assumed to be the LongCat-2.0 base (1.6T); Meituan has not confirmed the size of 2.5 Preview."
+        },
+        "active": {
+          "value": 48000000000,
+          "status": "estimated",
+          "source": "https://huggingface.co/meituan-longcat/LongCat-2.0",
+          "date": "2026-10-29",
+          "note": "Assumed equal to LongCat-2.0 (~48B); not confirmed by Meituan."
+        }
+      }
+    },
+    {
+      "id": "mimo-v2.5-pro",
+      "name": "MiMo-V2.5-Pro",
+      "family": "mimo",
+      "vendor": "Xiaomi",
+      "open_weights": true,
+      "context_window": {
+        "value": 1048576,
+        "status": "published",
+        "source": "https://huggingface.co/XiaomiMiMo/MiMo-V2.5-Pro",
+        "date": "2026-10-29",
+        "note": "Card: 'up to 1M tokens context length'; config.json max_position_embeddings = 1048576; Alibaba Cloud Model Studio also lists 1,048,576."
+      },
+      "output_window": {
+        "value": 131072,
+        "status": "measured",
+        "source": "https://help.aliyun.com/en/model-studio/mimo-v2-5-pro",
+        "date": "2026-10-29",
+        "note": "Limit stated by Alibaba Cloud Model Studio for its hosted xiaomi/mimo-v2.5-pro (max output 131,072, same in thinking mode). It is a third-party host's limit, not Xiaomi's own API docs, which could not be retrieved (JS-only page)."
+      },
+      "capabilities": {
+        "tools": true,
+        "vision": false,
+        "reasoning": true,
+        "audio": false,
+        "status": "published",
+        "source": "https://huggingface.co/XiaomiMiMo/MiMo-V2.5-Pro",
+        "date": "2026-10-29",
+        "note": "Text-only model (no vision/audio config in config.json; Alibaba Cloud also lists text-only input). Card: 'sustains complex trajectories spanning thousands of tool calls'; recipe uses --reasoning-parser mimo and --tool-call-parser mimo."
+      },
+      "params": {
+        "total": {
+          "value": 1020000000000,
+          "status": "published",
+          "source": "https://huggingface.co/XiaomiMiMo/MiMo-V2.5-Pro",
+          "date": "2026-10-29",
+          "note": "'1.02T total parameters and 42B active parameters'."
+        },
+        "active": {
+          "value": 42000000000,
+          "status": "published",
+          "source": "https://huggingface.co/XiaomiMiMo/MiMo-V2.5-Pro",
+          "date": "2026-10-29"
+        }
+      }
+    },
+    {
+      "id": "mimo-v2.5",
+      "name": "MiMo-V2.5",
+      "family": "mimo",
+      "vendor": "Xiaomi",
+      "open_weights": true,
+      "context_window": {
+        "value": 1048576,
+        "status": "published",
+        "source": "https://huggingface.co/XiaomiMiMo/MiMo-V2.5",
+        "date": "2026-10-29",
+        "note": "Model card: 'Context Length: Up to 1M tokens'; config.json max_position_embeddings = 1048576."
+      },
+      "capabilities": {
+        "tools": true,
+        "vision": true,
+        "reasoning": true,
+        "audio": true,
+        "status": "published",
+        "source": "https://huggingface.co/XiaomiMiMo/MiMo-V2.5",
+        "date": "2026-10-29",
+        "note": "Card: 'native omnimodal model ... text, image, video, and audio understanding'; strong agentic capabilities; SGLang recipe uses --tool-call-parser mimo and --reasoning-parser qwen3. A dedicated reasoning toggle is not documented."
+      },
+      "params": {
+        "total": {
+          "value": 310000000000,
+          "status": "published",
+          "source": "https://huggingface.co/XiaomiMiMo/MiMo-V2.5",
+          "date": "2026-10-29",
+          "note": "'Sparse MoE, 310B total / 15B activated parameters', excluding the 729M ViT, 261M audio encoder and 329M MTP."
+        },
+        "active": {
+          "value": 15000000000,
+          "status": "published",
+          "source": "https://huggingface.co/XiaomiMiMo/MiMo-V2.5",
+          "date": "2026-10-29"
+        }
+      }
+    },
+    {
+      "id": "mimo-v2.6-flash",
+      "name": "MiMo-V2.6-Flash",
+      "family": "mimo-v2.6",
+      "vendor": "Xiaomi",
+      "open_weights": true,
+      "context_window": {
+        "value": 1048576,
+        "status": "published",
+        "source": "https://huggingface.co/XiaomiMiMo/MiMo-V2.6-Flash-RL",
+        "date": "2026-10-29",
+        "note": "Card: 'Context Length: 1M tokens'; binary reading assumed."
+      },
+      "output_window": {
+        "value": 131072,
+        "status": "estimated",
+        "source": "https://www.getmaxim.ai/bifrost/llm-cost-calculator/provider/xiaomi_mimo/model/mimo-v2.6-flash",
+        "date": "2026-10-29",
+        "note": "No Xiaomi page found stating max output; several provider/aggregator listings of Xiaomi's API agree on 131,072."
+      },
+      "capabilities": {
+        "tools": true,
+        "vision": true,
+        "reasoning": true,
+        "audio": true,
+        "status": "published",
+        "source": "https://huggingface.co/XiaomiMiMo/MiMo-V2.6-Flash-RL",
+        "date": "2026-10-29",
+        "note": "Card lists Text, Image, Video, Audio input. Tools and reasoning inferred from the vLLM tool-call and reasoning parsers in the card's deployment commands. MIT license."
+      },
+      "params": {
+        "total": {
+          "value": 309000000000,
+          "status": "published",
+          "source": "https://huggingface.co/XiaomiMiMo/MiMo-V2.6-Flash-RL",
+          "date": "2026-10-29",
+          "note": "Card says 309B; safetensors metadata 311B. Read from the -RL checkpoint card (the base repo returned 401)."
+        },
+        "active": {
+          "value": 15000000000,
+          "status": "published",
+          "source": "https://huggingface.co/XiaomiMiMo/MiMo-V2.6-Flash-RL",
+          "date": "2026-10-29"
+        }
+      }
+    },
+    {
+      "id": "mimo-v2.6-pro",
+      "name": "MiMo-V2.6-Pro",
+      "family": "mimo",
+      "vendor": "Xiaomi",
+      "open_weights": true,
+      "context_window": {
+        "value": 1048576,
+        "status": "published",
+        "source": "https://huggingface.co/XiaomiMiMo/MiMo-V2.6-Pro-RL",
+        "date": "2026-10-29",
+        "note": "Model card: 'Context Length: 1M tokens'; config.json max_position_embeddings = 1048576."
+      },
+      "capabilities": {
+        "tools": true,
+        "vision": true,
+        "reasoning": true,
+        "audio": true,
+        "status": "published",
+        "source": "https://huggingface.co/XiaomiMiMo/MiMo-V2.6-Pro-RL",
+        "date": "2026-10-29",
+        "note": "Model card lists modalities 'Text, Image, Video, Audio'; serving recipes use --reasoning-parser mimo and --tool-call-parser mimo. Open checkpoints are MiMo-V2.6-Pro-RL and -MOPD; the hosted API model is assumed to match them."
+      },
+      "params": {
+        "total": {
+          "value": 1020000000000,
+          "status": "published",
+          "source": "https://huggingface.co/XiaomiMiMo/MiMo-V2.6-Pro-RL",
+          "date": "2026-10-29",
+          "note": "'Sparse MoE, 1.02T total / 42B activated parameters' (LLM backbone; the 681M vision encoder and 308M+127M audio encoders are listed separately)."
+        },
+        "active": {
+          "value": 42000000000,
+          "status": "published",
+          "source": "https://huggingface.co/XiaomiMiMo/MiMo-V2.6-Pro-RL",
+          "date": "2026-10-29"
+        }
+      }
+    },
+    {
+      "id": "minimax-m3.1-flash",
+      "name": "MiniMax M3.1 Flash",
+      "family": "minimax-m",
+      "vendor": "MiniMax",
+      "open_weights": true,
+      "context_window": {
+        "value": 1000000,
+        "status": "published",
+        "source": "https://platform.minimax.io/docs/guides/text-generation",
+        "date": "2026-10-29",
+        "note": "MiniMax API docs list 'MiniMax-M3.1-Flash 1,000,000'; model card 'Up to 1,000,000 tokens'; config.json max_position_embeddings is 1048576."
+      },
+      "capabilities": {
+        "tools": true,
+        "vision": true,
+        "reasoning": true,
+        "audio": false,
+        "status": "published",
+        "source": "https://platform.minimax.io/docs/api-reference/text-anthropic-api",
+        "date": "2026-10-29",
+        "note": "API reference: M3.1-Flash and M3 'support text, image, video, tool use, tool result, and thinking blocks'. Thinking cannot be disabled (effort low..max). No audio input."
+      },
+      "params": {
+        "total": {
+          "value": 428000000000,
+          "status": "published",
+          "source": "https://huggingface.co/MiniMaxAI/MiniMax-M3.1-Flash",
+          "date": "2026-10-29",
+          "note": "Card: 'Approximately 428B total; 23B activated per token'. The '-free' suffix is an OpenCode Go pricing tier of the same model."
+        },
+        "active": {
+          "value": 23000000000,
+          "status": "published",
+          "source": "https://huggingface.co/MiniMaxAI/MiniMax-M3.1-Flash",
+          "date": "2026-10-29"
+        }
+      }
+    },
+    {
+      "id": "minimax-m3",
+      "name": "MiniMax M3",
+      "family": "minimax-m",
+      "vendor": "MiniMax",
+      "open_weights": true,
+      "context_window": {
+        "value": 1000000,
+        "status": "published",
+        "source": "https://platform.minimax.io/docs/guides/text-generation",
+        "date": "2026-10-29",
+        "note": "MiniMax API docs list 'MiniMax-M3 1,000,000'; model card '1M context'; config.json max_position_embeddings = 1048576."
+      },
+      "capabilities": {
+        "tools": true,
+        "vision": true,
+        "reasoning": true,
+        "audio": false,
+        "status": "published",
+        "source": "https://platform.minimax.io/docs/api-reference/text-anthropic-api",
+        "date": "2026-10-29",
+        "note": "API reference: M3 supports image, video, tool use and thinking blocks; model card lists thinking modes enabled/adaptive/disabled. No audio input. Weights under the 'minimax-community' licence."
+      },
+      "params": {
+        "total": {
+          "value": 428000000000,
+          "status": "published",
+          "source": "https://huggingface.co/MiniMaxAI/MiniMax-M3",
+          "date": "2026-10-29",
+          "note": "Card: '~428B parameters and ~23B activated parameters'. An NYU RITS blog figure of 229.9B/9.8B contradicts the vendor card and is ignored."
+        },
+        "active": {
+          "value": 23000000000,
+          "status": "published",
+          "source": "https://huggingface.co/MiniMaxAI/MiniMax-M3",
+          "date": "2026-10-29"
+        }
+      }
+    },
+    {
+      "id": "muse-spark-1.2",
+      "name": "Muse Spark 1.2 Contributor",
+      "family": "muse-spark",
+      "vendor": "Meta",
+      "open_weights": false,
+      "context_window": {
+        "value": 1048576,
+        "status": "published",
+        "source": "https://dev.meta.ai/docs/models",
+        "date": "2026-10-29",
+        "note": "Meta Model API docs: Muse Spark 1.1, 1.2 and 1.3 'take text, image, video, audio, and PDF input, return text, and have a 1,048,576-token context window'."
+      },
+      "capabilities": {
+        "tools": true,
+        "vision": true,
+        "reasoning": true,
+        "audio": true,
+        "status": "published",
+        "source": "https://dev.meta.ai/docs/models",
+        "date": "2026-10-29",
+        "note": "Input modalities stated for 1.2, and the docs recommend 1.2 for audio. Tool calling and reasoning are documented for the Muse Spark family, not stated per version for 1.2."
+      },
+      "params": {
+        "total": {
+          "value": 816000000000,
+          "status": "estimated",
+          "source": "https://huggingface.co/meta-models/Muse-Spark-Open-816B-A42B",
+          "date": "2026-10-29",
+          "note": "Meta has not published the hosted Muse Spark's size. Muse Spark Open's model card (816B total / 42B active, 1M context) calls itself 'this open weights version' with extra safety post-training, suggesting it shares the Muse Spark architecture; assuming the hosted Muse Spark 1.2 is the same size is an inference, and later point releases may differ."
+        },
+        "active": {
+          "value": 42000000000,
+          "status": "estimated",
+          "source": "https://huggingface.co/meta-models/Muse-Spark-Open-816B-A42B",
+          "date": "2026-10-29",
+          "note": "Meta has not published the hosted Muse Spark's size. Muse Spark Open's model card (816B total / 42B active, 1M context) calls itself 'this open weights version' with extra safety post-training, suggesting it shares the Muse Spark architecture; assuming the hosted Muse Spark 1.2 is the same size is an inference, and later point releases may differ."
+        }
+      }
+    },
+    {
+      "id": "muse-spark-1.3",
+      "name": "Muse Spark 1.3 Contributor",
+      "family": "muse-spark",
+      "vendor": "Meta",
+      "open_weights": false,
+      "context_window": {
+        "value": 1048576,
+        "status": "published",
+        "source": "https://dev.meta.ai/docs/models",
+        "date": "2026-10-29",
+        "note": "Meta Model API docs: Muse Spark versions 'have a 1,048,576-token context window'. The contributor variant is the same model at a lower price, with Meta allowed to use the content for training."
+      },
+      "capabilities": {
+        "tools": true,
+        "vision": true,
+        "reasoning": true,
+        "audio": true,
+        "status": "published",
+        "source": "https://dev.meta.ai/docs/models",
+        "date": "2026-10-29",
+        "note": "Docs: text, image, video, audio and PDF input; agentic multi-step tool loops; all reasoning effort levels except 'max' on the contributor variant. Docs say audio understanding in 1.3 'is not fully supported' and responses with audio may be degraded."
+      },
+      "params": {
+        "total": {
+          "value": 816000000000,
+          "status": "estimated",
+          "source": "https://huggingface.co/meta-models/Muse-Spark-Open-816B-A42B",
+          "date": "2026-10-29",
+          "note": "Meta has not published the hosted Muse Spark's size. Muse Spark Open's model card (816B total / 42B active, 1M context) calls itself 'this open weights version' with extra safety post-training, suggesting it shares the Muse Spark architecture; assuming the hosted Muse Spark 1.3 is the same size is an inference, and later point releases may differ."
+        },
+        "active": {
+          "value": 42000000000,
+          "status": "estimated",
+          "source": "https://huggingface.co/meta-models/Muse-Spark-Open-816B-A42B",
+          "date": "2026-10-29",
+          "note": "Meta has not published the hosted Muse Spark's size. Muse Spark Open's model card (816B total / 42B active, 1M context) calls itself 'this open weights version' with extra safety post-training, suggesting it shares the Muse Spark architecture; assuming the hosted Muse Spark 1.3 is the same size is an inference, and later point releases may differ."
+        }
+      }
+    },
+    {
+      "id": "qwen3.7-plus",
+      "name": "Qwen3.7 Plus",
+      "family": "qwen3.7",
+      "vendor": "Alibaba (Qwen)",
+      "open_weights": false,
+      "context_window": {
+        "value": 1000000,
+        "status": "published",
+        "source": "https://www.qwencloud.com/models/qwen3.7-plus",
+        "date": "2026-10-29",
+        "note": "Qwen Cloud model page displays '1M' context and '131K' max output (thinking and non-thinking), max reasoning 262K; 131K read as 131,072 and 1M as 1,000,000 (display rounding)."
+      },
+      "output_window": {
+        "value": 131072,
+        "status": "published",
+        "source": "https://www.qwencloud.com/models/qwen3.7-plus",
+        "date": "2026-10-29",
+        "note": "Qwen Cloud model page displays '1M' context and '131K' max output (thinking and non-thinking), max reasoning 262K; 131K read as 131,072 and 1M as 1,000,000 (display rounding)."
+      },
+      "capabilities": {
+        "tools": true,
+        "vision": true,
+        "reasoning": true,
+        "audio": false,
+        "status": "published",
+        "source": "https://www.qwencloud.com/models/qwen3.7-plus",
+        "date": "2026-10-29",
+        "note": "Qwen Cloud: image, text and video input, function calling, thinking mode."
+      },
+      "params": {
+        "total": {
+          "value": 397000000000,
+          "status": "published",
+          "source": "https://huggingface.co/Qwen/Qwen3.8-Flash-Next",
+          "date": "2026-10-29",
+          "note": "Stated by Qwen in the comparison table of the Qwen3.8-Flash-Next model card: Qwen3.7-Plus '# Params 397B', '# Activated params 17B'."
+        },
+        "active": {
+          "value": 17000000000,
+          "status": "published",
+          "source": "https://huggingface.co/Qwen/Qwen3.8-Flash-Next",
+          "date": "2026-10-29"
+        }
+      }
+    },
+    {
+      "id": "qwen3.8-flash",
+      "name": "Qwen3.8 Flash",
+      "family": "qwen3.8",
+      "vendor": "Alibaba (Qwen)",
+      "open_weights": true,
+      "context_window": {
+        "value": 1000000,
+        "status": "published",
+        "source": "https://www.qwencloud.com/models/qwen3.8-flash",
+        "date": "2026-10-29",
+        "note": "Qwen Cloud model page displays '1M' context and '131K' max output (thinking and non-thinking), max reasoning 262K; 131K read as 131,072 and 1M as 1,000,000 (display rounding). HF card of Qwen3.8-Flash-Next: 262,144 native, extensible to 1,000,000."
+      },
+      "output_window": {
+        "value": 131072,
+        "status": "published",
+        "source": "https://www.qwencloud.com/models/qwen3.8-flash",
+        "date": "2026-10-29",
+        "note": "Qwen Cloud model page displays '1M' context and '131K' max output (thinking and non-thinking), max reasoning 262K; 131K read as 131,072 and 1M as 1,000,000 (display rounding)."
+      },
+      "capabilities": {
+        "tools": true,
+        "vision": true,
+        "reasoning": true,
+        "audio": false,
+        "status": "published",
+        "source": "https://www.qwencloud.com/models/qwen3.8-flash",
+        "date": "2026-10-29",
+        "note": "Qwen Cloud: image, text and video input, function calling, thinking mode (Flash-Next also supports non-thinking)."
+      },
+      "params": {
+        "total": {
+          "value": 125000000000,
+          "status": "published",
+          "source": "https://huggingface.co/Qwen/Qwen3.8-Flash-Next",
+          "date": "2026-10-29",
+          "note": "Card: Qwen3.8-Flash 'is the official version based on Qwen3.8-Flash-Next'; '125B with 6B activated, plus 51B n-gram embedding and 4B MTP' (about 180B if n-gram embeddings and MTP are counted, hence the 180B figure in some press)."
+        },
+        "active": {
+          "value": 6000000000,
+          "status": "published",
+          "source": "https://huggingface.co/Qwen/Qwen3.8-Flash-Next",
+          "date": "2026-10-29"
+        }
+      }
+    },
+    {
+      "id": "qwen3.8-max",
+      "name": "Qwen3.8 Max",
+      "family": "qwen3.8",
+      "vendor": "Alibaba (Qwen)",
+      "open_weights": true,
+      "context_window": {
+        "value": 1000000,
+        "status": "published",
+        "source": "https://www.qwencloud.com/models/qwen3.8-max",
+        "date": "2026-10-29",
+        "note": "Qwen Cloud model page displays '1M' context and '131K' max output (thinking and non-thinking), max reasoning 262K; 131K read as 131,072 and 1M as 1,000,000 (display rounding). HF card of the base: 262,144 native, extensible to 1,010,000."
+      },
+      "output_window": {
+        "value": 131072,
+        "status": "published",
+        "source": "https://www.qwencloud.com/models/qwen3.8-max",
+        "date": "2026-10-29",
+        "note": "Qwen Cloud model page displays '1M' context and '131K' max output (thinking and non-thinking), max reasoning 262K; 131K read as 131,072 and 1M as 1,000,000 (display rounding)."
+      },
+      "capabilities": {
+        "tools": true,
+        "vision": true,
+        "reasoning": true,
+        "audio": false,
+        "status": "published",
+        "source": "https://www.qwencloud.com/models/qwen3.8-max",
+        "date": "2026-10-29",
+        "note": "Qwen Cloud: image, text and video input, function calling, thinking mode. The open Qwen3.8-2.4T-A95B checkpoint is text-only with thinking always on; vision and non-thinking are hosted-only features of Qwen3.8-Max."
+      },
+      "params": {
+        "total": {
+          "value": 2400000000000,
+          "status": "published",
+          "source": "https://huggingface.co/Qwen/Qwen3.8-2.4T-A95B",
+          "date": "2026-10-29",
+          "note": "Card: Qwen3.8-Max 'is the official version based on Qwen3.8-2.4T-A95B'; 'Number of Parameters: 2.4T in total and 95B activated'. Any vision encoder in the hosted version is not counted."
+        },
+        "active": {
+          "value": 95000000000,
+          "status": "published",
+          "source": "https://huggingface.co/Qwen/Qwen3.8-2.4T-A95B",
+          "date": "2026-10-29"
+        }
+      }
+    },
+    {
+      "id": "step-5-preview",
+      "name": "Step 5 Preview",
+      "family": "step-5",
+      "vendor": "StepFun",
+      "open_weights": true,
+      "context_window": {
+        "value": 1048576,
+        "status": "published",
+        "source": "https://huggingface.co/stepfun-ai/Step-5-Preview-BF16",
+        "date": "2026-10-29",
+        "note": "Card: 'Up to 1M tokens'; binary reading assumed. One third-party listing gives 1,024,000."
+      },
+      "output_window": {
+        "value": 1048576,
+        "status": "published",
+        "source": "https://huggingface.co/stepfun-ai/Step-5-Preview-BF16",
+        "date": "2026-10-29",
+        "note": "Card: maximum output 'Up to 1M tokens'. Third-party API listings report 64K-65,536 on StepFun's hosted preview; not confirmed on a StepFun page."
+      },
+      "capabilities": {
+        "tools": true,
+        "vision": true,
+        "reasoning": true,
+        "audio": false,
+        "status": "published",
+        "source": "https://huggingface.co/stepfun-ai/Step-5-Preview-BF16",
+        "date": "2026-10-29",
+        "note": "Text and image input (intro also mentions video); tool-call and reasoning parsers in the serving commands. StepFun Model License 1.0."
+      },
+      "params": {
+        "total": {
+          "value": 600000000000,
+          "status": "published",
+          "source": "https://huggingface.co/stepfun-ai/Step-5-Preview-BF16",
+          "date": "2026-10-29",
+          "note": "Card says 600B; safetensors metadata 604B."
+        },
+        "active": {
+          "value": 27000000000,
+          "status": "published",
+          "source": "https://huggingface.co/stepfun-ai/Step-5-Preview-BF16",
+          "date": "2026-10-29"
+        }
+      }
+    }
+  ],
+  "providers": [
+    {
+      "id": "opencode-go",
+      "name": "OpenCode Go",
+      "website": "https://opencode.ai/go",
+      "currency": "USD",
+      "xolo": {
+        "type": "openai",
+        "base_url": "https://opencode.ai/inference/go/v1"
+      },
+      "plans": [
+        {
+          "id": "go",
+          "name": "Go",
+          "constraints": [
+            {
+              "kind": "rolling_window",
+              "label": "5h",
+              "duration": "5h",
+              "scope": "model",
+              "model_budgets": {
+                "glm-5.3-flash": {
+                  "value_budget": 12.0
+                },
+                "glm-5.3": {
+                  "value_budget": 3.0
+                },
+                "glm-5.2": {
+                  "value_budget": 12.0
+                },
+                "kimi-k3.1-pro": {
+                  "value_budget": 3.0
+                },
+                "kimi-k3": {
+                  "value_budget": 3.0
+                },
+                "kimi-k2.7-code": {
+                  "value_budget": 12.0
+                },
+                "longcat-2.0": {
+                  "value_budget": 12.0
+                },
+                "step-5-preview": {
+                  "value_budget": 3.0
+                },
+                "beam-free": {},
+                "iceman-contributor-free": {},
+                "mimo-v2.6-flash": {
+                  "value_budget": 12.0
+                },
+                "mimo-v2.6-pro": {
+                  "value_budget": 3.0
+                },
+                "mimo-v2.5": {
+                  "value_budget": 12.0
+                },
+                "mimo-v2.5-pro": {
+                  "value_budget": 3.0
+                },
+                "minimax-m3.1-flash": {
+                  "value_budget": 4.0
+                },
+                "minimax-m3": {
+                  "value_budget": 12.0
+                },
+                "muse-spark-1.3-contributor": {
+                  "value_budget": 12.0
+                },
+                "muse-spark-1.2-contributor": {
+                  "value_budget": 12.0
+                },
+                "qwen3.8-max": {
+                  "value_budget": 3.0
+                },
+                "qwen3.8-flash": {
+                  "value_budget": 6.0
+                },
+                "qwen3.7-plus": {
+                  "value_budget": 12.0
+                },
+                "deepseek-v4.1-flash": {
+                  "value_budget": 16.0
+                },
+                "deepseek-v4-pro": {
+                  "value_budget": 3.0
+                },
+                "hy4-preview": {
+                  "value_budget": 6.0
+                },
+                "hy3": {
+                  "value_budget": 12.0
+                },
+                "grok-4.7": {
+                  "value_budget": 3.0
+                },
+                "gpt-6-luna": {
+                  "value_budget": 3.0
+                },
+                "gpt-5.6-luna": {
+                  "value_budget": 3.0
+                },
+                "claude-haiku-5-5": {
+                  "value_budget": 3.0
+                },
+                "gemini-4-argon": {
+                  "value_budget": 6.0
+                }
+              }
+            },
+            {
+              "kind": "rolling_window",
+              "label": "weekly",
+              "duration": "168h",
+              "scope": "model",
+              "model_budgets": {
+                "glm-5.3-flash": {
+                  "value_budget": 30.0
+                },
+                "glm-5.3": {
+                  "value_budget": 7.5
+                },
+                "glm-5.2": {
+                  "value_budget": 30.0
+                },
+                "kimi-k3.1-pro": {
+                  "value_budget": 7.5
+                },
+                "kimi-k3": {
+                  "value_budget": 7.5
+                },
+                "kimi-k2.7-code": {
+                  "value_budget": 30.0
+                },
+                "longcat-2.0": {
+                  "value_budget": 30.0
+                },
+                "step-5-preview": {
+                  "value_budget": 7.5
+                },
+                "beam-free": {},
+                "iceman-contributor-free": {},
+                "mimo-v2.6-flash": {
+                  "value_budget": 30.0
+                },
+                "mimo-v2.6-pro": {
+                  "value_budget": 7.5
+                },
+                "mimo-v2.5": {
+                  "value_budget": 30.0
+                },
+                "mimo-v2.5-pro": {
+                  "value_budget": 7.5
+                },
+                "minimax-m3.1-flash": {
+                  "value_budget": 10.0
+                },
+                "minimax-m3": {
+                  "value_budget": 30.0
+                },
+                "muse-spark-1.3-contributor": {
+                  "value_budget": 30.0
+                },
+                "muse-spark-1.2-contributor": {
+                  "value_budget": 30.0
+                },
+                "qwen3.8-max": {
+                  "value_budget": 7.5
+                },
+                "qwen3.8-flash": {
+                  "value_budget": 15.0
+                },
+                "qwen3.7-plus": {
+                  "value_budget": 30.0
+                },
+                "deepseek-v4.1-flash": {
+                  "value_budget": 40.0
+                },
+                "deepseek-v4-pro": {
+                  "value_budget": 7.5
+                },
+                "hy4-preview": {
+                  "value_budget": 15.0
+                },
+                "hy3": {
+                  "value_budget": 30.0
+                },
+                "grok-4.7": {
+                  "value_budget": 7.5
+                },
+                "gpt-6-luna": {
+                  "value_budget": 7.5
+                },
+                "gpt-5.6-luna": {
+                  "value_budget": 7.5
+                },
+                "claude-haiku-5-5": {
+                  "value_budget": 7.5
+                },
+                "gemini-4-argon": {
+                  "value_budget": 15.0
+                }
+              }
+            },
+            {
+              "kind": "rolling_window",
+              "label": "monthly",
+              "duration": "720h",
+              "scope": "model",
+              "model_budgets": {
+                "glm-5.3-flash": {
+                  "value_budget": 60.0
+                },
+                "glm-5.3": {
+                  "value_budget": 15.0
+                },
+                "glm-5.2": {
+                  "value_budget": 60.0
+                },
+                "kimi-k3.1-pro": {
+                  "value_budget": 15.0
+                },
+                "kimi-k3": {
+                  "value_budget": 15.0
+                },
+                "kimi-k2.7-code": {
+                  "value_budget": 60.0
+                },
+                "longcat-2.0": {
+                  "value_budget": 60.0
+                },
+                "step-5-preview": {
+                  "value_budget": 15.0
+                },
+                "beam-free": {},
+                "iceman-contributor-free": {},
+                "mimo-v2.6-flash": {
+                  "value_budget": 60.0
+                },
+                "mimo-v2.6-pro": {
+                  "value_budget": 15.0
+                },
+                "mimo-v2.5": {
+                  "value_budget": 60.0
+                },
+                "mimo-v2.5-pro": {
+                  "value_budget": 15.0
+                },
+                "minimax-m3.1-flash": {
+                  "value_budget": 20.0
+                },
+                "minimax-m3": {
+                  "value_budget": 60.0
+                },
+                "muse-spark-1.3-contributor": {
+                  "value_budget": 60.0
+                },
+                "muse-spark-1.2-contributor": {
+                  "value_budget": 60.0
+                },
+                "qwen3.8-max": {
+                  "value_budget": 15.0
+                },
+                "qwen3.8-flash": {
+                  "value_budget": 30.0
+                },
+                "qwen3.7-plus": {
+                  "value_budget": 60.0
+                },
+                "deepseek-v4.1-flash": {
+                  "value_budget": 80.0
+                },
+                "deepseek-v4-pro": {
+                  "value_budget": 15.0
+                },
+                "hy4-preview": {
+                  "value_budget": 30.0
+                },
+                "hy3": {
+                  "value_budget": 60.0
+                },
+                "grok-4.7": {
+                  "value_budget": 15.0
+                },
+                "gpt-6-luna": {
+                  "value_budget": 15.0
+                },
+                "gpt-5.6-luna": {
+                  "value_budget": 15.0
+                },
+                "claude-haiku-5-5": {
+                  "value_budget": 15.0
+                },
+                "gemini-4-argon": {
+                  "value_budget": 30.0
+                }
+              }
+            }
+          ],
+          "price": {
+            "amount": 10.0,
+            "period": "month"
+          },
+          "status": "published",
+          "source": "https://opencode.ai/docs/go/",
+          "date": "2026-10-29",
+          "note": "The 5-hour, weekly and monthly budgets are 20%, 50% and 100% of each model's published monthly limit. The page does not say whether the windows slide or reset on a schedule, and \"monthly\" is approximated as 720 hours. A model listed with no budget is free for a limited time."
+        },
+        {
+          "id": "go-plus",
+          "name": "Go Plus",
+          "constraints": [
+            {
+              "kind": "rolling_window",
+              "label": "5h",
+              "duration": "5h",
+              "scope": "model",
+              "model_budgets": {
+                "glm-5.3-flash": {
+                  "value_budget": 36.0
+                },
+                "glm-5.3": {
+                  "value_budget": 24.0
+                },
+                "glm-5.2": {
+                  "value_budget": 36.0
+                },
+                "kimi-k3.1-pro": {
+                  "value_budget": 12.0
+                },
+                "kimi-k3": {
+                  "value_budget": 12.0
+                },
+                "kimi-k2.7-code": {
+                  "value_budget": 36.0
+                },
+                "longcat-2.0": {
+                  "value_budget": 48.0
+                },
+                "step-5-preview": {
+                  "value_budget": 12.0
+                },
+                "beam-free": {},
+                "iceman-contributor-free": {},
+                "mimo-v2.6-flash": {
+                  "value_budget": 24.0
+                },
+                "mimo-v2.6-pro": {
+                  "value_budget": 12.0
+                },
+                "mimo-v2.5": {
+                  "value_budget": 24.0
+                },
+                "mimo-v2.5-pro": {
+                  "value_budget": 12.0
+                },
+                "minimax-m3.1-flash": {
+                  "value_budget": 16.0
+                },
+                "minimax-m3": {
+                  "value_budget": 36.0
+                },
+                "muse-spark-1.3-contributor": {
+                  "value_budget": 24.0
+                },
+                "muse-spark-1.2-contributor": {
+                  "value_budget": 24.0
+                },
+                "qwen3.8-max": {
+                  "value_budget": 12.0
+                },
+                "qwen3.8-flash": {
+                  "value_budget": 18.0
+                },
+                "qwen3.7-plus": {
+                  "value_budget": 36.0
+                },
+                "deepseek-v4.1-flash": {
+                  "value_budget": 32.0
+                },
+                "deepseek-v4-pro": {
+                  "value_budget": 12.0
+                },
+                "hy4-preview": {
+                  "value_budget": 24.0
+                },
+                "hy3": {
+                  "value_budget": 48.0
+                },
+                "grok-4.7": {
+                  "value_budget": 12.0
+                },
+                "gpt-6-luna": {
+                  "value_budget": 12.0
+                },
+                "gpt-5.6-luna": {
+                  "value_budget": 12.0
+                },
+                "claude-haiku-5-5": {
+                  "value_budget": 12.0
+                },
+                "gemini-4-argon": {
+                  "value_budget": 24.0
+                }
+              }
+            },
+            {
+              "kind": "rolling_window",
+              "label": "weekly",
+              "duration": "168h",
+              "scope": "model",
+              "model_budgets": {
+                "glm-5.3-flash": {
+                  "value_budget": 90.0
+                },
+                "glm-5.3": {
+                  "value_budget": 60.0
+                },
+                "glm-5.2": {
+                  "value_budget": 90.0
+                },
+                "kimi-k3.1-pro": {
+                  "value_budget": 30.0
+                },
+                "kimi-k3": {
+                  "value_budget": 30.0
+                },
+                "kimi-k2.7-code": {
+                  "value_budget": 90.0
+                },
+                "longcat-2.0": {
+                  "value_budget": 120.0
+                },
+                "step-5-preview": {
+                  "value_budget": 30.0
+                },
+                "beam-free": {},
+                "iceman-contributor-free": {},
+                "mimo-v2.6-flash": {
+                  "value_budget": 60.0
+                },
+                "mimo-v2.6-pro": {
+                  "value_budget": 30.0
+                },
+                "mimo-v2.5": {
+                  "value_budget": 60.0
+                },
+                "mimo-v2.5-pro": {
+                  "value_budget": 30.0
+                },
+                "minimax-m3.1-flash": {
+                  "value_budget": 40.0
+                },
+                "minimax-m3": {
+                  "value_budget": 90.0
+                },
+                "muse-spark-1.3-contributor": {
+                  "value_budget": 60.0
+                },
+                "muse-spark-1.2-contributor": {
+                  "value_budget": 60.0
+                },
+                "qwen3.8-max": {
+                  "value_budget": 30.0
+                },
+                "qwen3.8-flash": {
+                  "value_budget": 45.0
+                },
+                "qwen3.7-plus": {
+                  "value_budget": 90.0
+                },
+                "deepseek-v4.1-flash": {
+                  "value_budget": 80.0
+                },
+                "deepseek-v4-pro": {
+                  "value_budget": 30.0
+                },
+                "hy4-preview": {
+                  "value_budget": 60.0
+                },
+                "hy3": {
+                  "value_budget": 120.0
+                },
+                "grok-4.7": {
+                  "value_budget": 30.0
+                },
+                "gpt-6-luna": {
+                  "value_budget": 30.0
+                },
+                "gpt-5.6-luna": {
+                  "value_budget": 30.0
+                },
+                "claude-haiku-5-5": {
+                  "value_budget": 30.0
+                },
+                "gemini-4-argon": {
+                  "value_budget": 60.0
+                }
+              }
+            },
+            {
+              "kind": "rolling_window",
+              "label": "monthly",
+              "duration": "720h",
+              "scope": "model",
+              "model_budgets": {
+                "glm-5.3-flash": {
+                  "value_budget": 180.0
+                },
+                "glm-5.3": {
+                  "value_budget": 120.0
+                },
+                "glm-5.2": {
+                  "value_budget": 180.0
+                },
+                "kimi-k3.1-pro": {
+                  "value_budget": 60.0
+                },
+                "kimi-k3": {
+                  "value_budget": 60.0
+                },
+                "kimi-k2.7-code": {
+                  "value_budget": 180.0
+                },
+                "longcat-2.0": {
+                  "value_budget": 240.0
+                },
+                "step-5-preview": {
+                  "value_budget": 60.0
+                },
+                "beam-free": {},
+                "iceman-contributor-free": {},
+                "mimo-v2.6-flash": {
+                  "value_budget": 120.0
+                },
+                "mimo-v2.6-pro": {
+                  "value_budget": 60.0
+                },
+                "mimo-v2.5": {
+                  "value_budget": 120.0
+                },
+                "mimo-v2.5-pro": {
+                  "value_budget": 60.0
+                },
+                "minimax-m3.1-flash": {
+                  "value_budget": 80.0
+                },
+                "minimax-m3": {
+                  "value_budget": 180.0
+                },
+                "muse-spark-1.3-contributor": {
+                  "value_budget": 120.0
+                },
+                "muse-spark-1.2-contributor": {
+                  "value_budget": 120.0
+                },
+                "qwen3.8-max": {
+                  "value_budget": 60.0
+                },
+                "qwen3.8-flash": {
+                  "value_budget": 90.0
+                },
+                "qwen3.7-plus": {
+                  "value_budget": 180.0
+                },
+                "deepseek-v4.1-flash": {
+                  "value_budget": 160.0
+                },
+                "deepseek-v4-pro": {
+                  "value_budget": 60.0
+                },
+                "hy4-preview": {
+                  "value_budget": 120.0
+                },
+                "hy3": {
+                  "value_budget": 240.0
+                },
+                "grok-4.7": {
+                  "value_budget": 60.0
+                },
+                "gpt-6-luna": {
+                  "value_budget": 60.0
+                },
+                "gpt-5.6-luna": {
+                  "value_budget": 60.0
+                },
+                "claude-haiku-5-5": {
+                  "value_budget": 60.0
+                },
+                "gemini-4-argon": {
+                  "value_budget": 120.0
+                }
+              }
+            }
+          ],
+          "price": {
+            "amount": 40.0,
+            "period": "month"
+          },
+          "status": "published",
+          "source": "https://opencode.ai/docs/go/",
+          "date": "2026-10-29",
+          "note": "The 5-hour, weekly and monthly budgets are 20%, 50% and 100% of each model's published monthly limit. The page does not say whether the windows slide or reset on a schedule, and \"monthly\" is approximated as 720 hours. A model listed with no budget is free for a limited time."
+        },
+        {
+          "id": "go-teams",
+          "name": "Go Teams",
+          "constraints": [
+            {
+              "kind": "rolling_window",
+              "label": "5h",
+              "duration": "5h",
+              "scope": "model",
+              "model_budgets": {
+                "glm-5.3-flash": {
+                  "value_budget": 13.0
+                },
+                "glm-5.3": {
+                  "value_budget": 4.0
+                },
+                "glm-5.2": {
+                  "value_budget": 13.0
+                },
+                "kimi-k3.1-pro": {
+                  "value_budget": 4.0
+                },
+                "kimi-k3": {
+                  "value_budget": 4.0
+                },
+                "kimi-k2.7-code": {
+                  "value_budget": 13.0
+                },
+                "longcat-2.0": {
+                  "value_budget": 13.0
+                },
+                "step-5-preview": {
+                  "value_budget": 4.0
+                },
+                "beam-free": {},
+                "iceman-contributor-free": {},
+                "mimo-v2.6-flash": {
+                  "value_budget": 13.0
+                },
+                "mimo-v2.6-pro": {
+                  "value_budget": 4.0
+                },
+                "mimo-v2.5": {
+                  "value_budget": 13.0
+                },
+                "mimo-v2.5-pro": {
+                  "value_budget": 4.0
+                },
+                "minimax-m3.1-flash": {
+                  "value_budget": 5.0
+                },
+                "minimax-m3": {
+                  "value_budget": 13.0
+                },
+                "muse-spark-1.3-contributor": {
+                  "value_budget": 13.0
+                },
+                "muse-spark-1.2-contributor": {
+                  "value_budget": 13.0
+                },
+                "qwen3.8-max": {
+                  "value_budget": 4.0
+                },
+                "qwen3.8-flash": {
+                  "value_budget": 7.0
+                },
+                "qwen3.7-plus": {
+                  "value_budget": 13.0
+                },
+                "deepseek-v4.1-flash": {
+                  "value_budget": 17.0
+                },
+                "deepseek-v4-pro": {
+                  "value_budget": 4.0
+                },
+                "hy4-preview": {
+                  "value_budget": 7.0
+                },
+                "hy3": {
+                  "value_budget": 13.0
+                },
+                "grok-4.7": {
+                  "value_budget": 4.0
+                },
+                "gpt-6-luna": {
+                  "value_budget": 4.0
+                },
+                "gpt-5.6-luna": {
+                  "value_budget": 4.0
+                },
+                "claude-haiku-5-5": {
+                  "value_budget": 4.0
+                },
+                "gemini-4-argon": {
+                  "value_budget": 7.0
+                }
+              }
+            },
+            {
+              "kind": "rolling_window",
+              "label": "weekly",
+              "duration": "168h",
+              "scope": "model",
+              "model_budgets": {
+                "glm-5.3-flash": {
+                  "value_budget": 32.5
+                },
+                "glm-5.3": {
+                  "value_budget": 10.0
+                },
+                "glm-5.2": {
+                  "value_budget": 32.5
+                },
+                "kimi-k3.1-pro": {
+                  "value_budget": 10.0
+                },
+                "kimi-k3": {
+                  "value_budget": 10.0
+                },
+                "kimi-k2.7-code": {
+                  "value_budget": 32.5
+                },
+                "longcat-2.0": {
+                  "value_budget": 32.5
+                },
+                "step-5-preview": {
+                  "value_budget": 10.0
+                },
+                "beam-free": {},
+                "iceman-contributor-free": {},
+                "mimo-v2.6-flash": {
+                  "value_budget": 32.5
+                },
+                "mimo-v2.6-pro": {
+                  "value_budget": 10.0
+                },
+                "mimo-v2.5": {
+                  "value_budget": 32.5
+                },
+                "mimo-v2.5-pro": {
+                  "value_budget": 10.0
+                },
+                "minimax-m3.1-flash": {
+                  "value_budget": 12.5
+                },
+                "minimax-m3": {
+                  "value_budget": 32.5
+                },
+                "muse-spark-1.3-contributor": {
+                  "value_budget": 32.5
+                },
+                "muse-spark-1.2-contributor": {
+                  "value_budget": 32.5
+                },
+                "qwen3.8-max": {
+                  "value_budget": 10.0
+                },
+                "qwen3.8-flash": {
+                  "value_budget": 17.5
+                },
+                "qwen3.7-plus": {
+                  "value_budget": 32.5
+                },
+                "deepseek-v4.1-flash": {
+                  "value_budget": 42.5
+                },
+                "deepseek-v4-pro": {
+                  "value_budget": 10.0
+                },
+                "hy4-preview": {
+                  "value_budget": 17.5
+                },
+                "hy3": {
+                  "value_budget": 32.5
+                },
+                "grok-4.7": {
+                  "value_budget": 10.0
+                },
+                "gpt-6-luna": {
+                  "value_budget": 10.0
+                },
+                "gpt-5.6-luna": {
+                  "value_budget": 10.0
+                },
+                "claude-haiku-5-5": {
+                  "value_budget": 10.0
+                },
+                "gemini-4-argon": {
+                  "value_budget": 17.5
+                }
+              }
+            },
+            {
+              "kind": "rolling_window",
+              "label": "monthly",
+              "duration": "720h",
+              "scope": "model",
+              "model_budgets": {
+                "glm-5.3-flash": {
+                  "value_budget": 65.0
+                },
+                "glm-5.3": {
+                  "value_budget": 20.0
+                },
+                "glm-5.2": {
+                  "value_budget": 65.0
+                },
+                "kimi-k3.1-pro": {
+                  "value_budget": 20.0
+                },
+                "kimi-k3": {
+                  "value_budget": 20.0
+                },
+                "kimi-k2.7-code": {
+                  "value_budget": 65.0
+                },
+                "longcat-2.0": {
+                  "value_budget": 65.0
+                },
+                "step-5-preview": {
+                  "value_budget": 20.0
+                },
+                "beam-free": {},
+                "iceman-contributor-free": {},
+                "mimo-v2.6-flash": {
+                  "value_budget": 65.0
+                },
+                "mimo-v2.6-pro": {
+                  "value_budget": 20.0
+                },
+                "mimo-v2.5": {
+                  "value_budget": 65.0
+                },
+                "mimo-v2.5-pro": {
+                  "value_budget": 20.0
+                },
+                "minimax-m3.1-flash": {
+                  "value_budget": 25.0
+                },
+                "minimax-m3": {
+                  "value_budget": 65.0
+                },
+                "muse-spark-1.3-contributor": {
+                  "value_budget": 65.0
+                },
+                "muse-spark-1.2-contributor": {
+                  "value_budget": 65.0
+                },
+                "qwen3.8-max": {
+                  "value_budget": 20.0
+                },
+                "qwen3.8-flash": {
+                  "value_budget": 35.0
+                },
+                "qwen3.7-plus": {
+                  "value_budget": 65.0
+                },
+                "deepseek-v4.1-flash": {
+                  "value_budget": 85.0
+                },
+                "deepseek-v4-pro": {
+                  "value_budget": 20.0
+                },
+                "hy4-preview": {
+                  "value_budget": 35.0
+                },
+                "hy3": {
+                  "value_budget": 65.0
+                },
+                "grok-4.7": {
+                  "value_budget": 20.0
+                },
+                "gpt-6-luna": {
+                  "value_budget": 20.0
+                },
+                "gpt-5.6-luna": {
+                  "value_budget": 20.0
+                },
+                "claude-haiku-5-5": {
+                  "value_budget": 20.0
+                },
+                "gemini-4-argon": {
+                  "value_budget": 35.0
+                }
+              }
+            }
+          ],
+          "price": {
+            "amount": 20.0,
+            "period": "month"
+          },
+          "status": "published",
+          "source": "https://opencode.ai/docs/go/",
+          "date": "2026-10-29",
+          "note": "The 5-hour, weekly and monthly budgets are 20%, 50% and 100% of each model's published monthly limit. The page does not say whether the windows slide or reset on a schedule, and \"monthly\" is approximated as 720 hours. A model listed with no budget is free for a limited time."
+        }
+      ],
+      "offerings": [
+        {
+          "model": "beam",
+          "model_id": "beam-free",
+          "api_type": "openai",
+          "base_url": "https://opencode.ai/inference/go/openai/v1",
+          "prices": {
+            "input": 0.0,
+            "output": 0.0,
+            "cached_input": 0.0,
+            "status": "published",
+            "source": "https://opencode.ai/docs/go/",
+            "date": "2026-10-29"
+          }
+        },
+        {
+          "model": "claude-haiku-5-5",
+          "model_id": "claude-haiku-5-5",
+          "api_type": "anthropic",
+          "base_url": "https://opencode.ai/inference/go/anthropic/v1",
+          "prices": {
+            "input": 0.1,
+            "output": 0.5,
+            "cached_input": 0.01,
+            "cache_write": 0.125,
+            "tiers": [
+              {
+                "above_input_tokens": 100000,
+                "input": 0.5,
+                "output": 2.5,
+                "cached_input": 0.05,
+                "cache_write": 0.625
+              }
+            ],
+            "status": "published",
+            "source": "https://opencode.ai/docs/go/",
+            "date": "2026-10-29"
+          }
+        },
+        {
+          "model": "deepseek-v4-pro",
+          "model_id": "deepseek-v4-pro",
+          "api_type": "openai",
+          "base_url": "https://opencode.ai/inference/go/openai/v1",
+          "prices": {
+            "input": 0.66,
+            "output": 1.98,
+            "cached_input": 0.022,
+            "peak": [
+              {
+                "hours": [
+                  "01:00-04:00",
+                  "06:00-10:00"
+                ],
+                "timezone": "UTC",
+                "days": [
+                  "mon",
+                  "tue",
+                  "wed",
+                  "thu",
+                  "fri"
+                ],
+                "input": 1.32,
+                "output": 3.96,
+                "cached_input": 0.044
+              }
+            ],
+            "status": "published",
+            "source": "https://opencode.ai/docs/go/",
+            "date": "2026-10-29"
+          }
+        },
+        {
+          "model": "deepseek-v4.1-flash",
+          "model_id": "deepseek-v4.1-flash",
+          "api_type": "openai",
+          "base_url": "https://opencode.ai/inference/go/openai/v1",
+          "prices": {
+            "input": 0.15,
+            "output": 0.6,
+            "cached_input": 0.003,
+            "peak": [
+              {
+                "hours": [
+                  "01:00-04:00",
+                  "06:00-10:00"
+                ],
+                "timezone": "UTC",
+                "days": [
+                  "mon",
+                  "tue",
+                  "wed",
+                  "thu",
+                  "fri"
+                ],
+                "input": 0.3,
+                "output": 1.2,
+                "cached_input": 0.006
+              }
+            ],
+            "status": "published",
+            "source": "https://opencode.ai/docs/go/",
+            "date": "2026-10-29"
+          }
+        },
+        {
+          "model": "gemini-4-argon",
+          "model_id": "gemini-4-argon",
+          "api_type": "gemini",
+          "base_url": "https://opencode.ai/inference/go/google/v1beta",
+          "prices": {
+            "input": 4.0,
+            "output": 20.0,
+            "cached_input": 0.2,
+            "status": "published",
+            "source": "https://opencode.ai/docs/go/",
+            "date": "2026-10-29"
+          }
+        },
+        {
+          "model": "glm-5.2",
+          "model_id": "glm-5.2",
+          "api_type": "openai",
+          "base_url": "https://opencode.ai/inference/go/openai/v1",
+          "prices": {
+            "input": 1.4,
+            "output": 4.4,
+            "cached_input": 0.26,
+            "status": "published",
+            "source": "https://opencode.ai/docs/go/",
+            "date": "2026-10-29"
+          }
+        },
+        {
+          "model": "glm-5.3",
+          "model_id": "glm-5.3",
+          "api_type": "openai",
+          "base_url": "https://opencode.ai/inference/go/openai/v1",
+          "prices": {
+            "input": 1.4,
+            "output": 4.4,
+            "cached_input": 0.26,
+            "status": "published",
+            "source": "https://opencode.ai/docs/go/",
+            "date": "2026-10-29"
+          }
+        },
+        {
+          "model": "glm-5.3-flash",
+          "model_id": "glm-5.3-flash",
+          "api_type": "openai",
+          "base_url": "https://opencode.ai/inference/go/openai/v1",
+          "prices": {
+            "input": 0.15,
+            "output": 0.5,
+            "cached_input": 0.03,
+            "status": "published",
+            "source": "https://opencode.ai/docs/go/",
+            "date": "2026-10-29"
+          }
+        },
+        {
+          "model": "gpt-5.6-luna",
+          "model_id": "gpt-5.6-luna",
+          "api_type": "openai-responses",
+          "base_url": "https://opencode.ai/inference/go/openai/v1",
+          "prices": {
+            "input": 0.2,
+            "output": 1.2,
+            "cached_input": 0.02,
+            "cache_write": 0.25,
+            "tiers": [
+              {
+                "above_input_tokens": 272000,
+                "input": 0.4,
+                "output": 1.8,
+                "cached_input": 0.04,
+                "cache_write": 0.5
+              }
+            ],
+            "status": "published",
+            "source": "https://opencode.ai/docs/go/",
+            "date": "2026-10-29"
+          }
+        },
+        {
+          "model": "gpt-6-luna",
+          "model_id": "gpt-6-luna",
+          "api_type": "openai-responses",
+          "base_url": "https://opencode.ai/inference/go/openai/v1",
+          "prices": {
+            "input": 0.1,
+            "output": 0.5,
+            "cached_input": 0.01,
+            "cache_write": 0.125,
+            "tiers": [
+              {
+                "above_input_tokens": 272000,
+                "input": 0.2,
+                "output": 0.75,
+                "cached_input": 0.02,
+                "cache_write": 0.25
+              }
+            ],
+            "status": "published",
+            "source": "https://opencode.ai/docs/go/",
+            "date": "2026-10-29"
+          }
+        },
+        {
+          "model": "grok-4.7",
+          "model_id": "grok-4.7",
+          "api_type": "openai-responses",
+          "base_url": "https://opencode.ai/inference/go/openai/v1",
+          "prices": {
+            "input": 2.0,
+            "output": 6.0,
+            "cached_input": 0.5,
+            "tiers": [
+              {
+                "above_input_tokens": 200000,
+                "input": 4.0,
+                "output": 12.0,
+                "cached_input": 1.0
+              }
+            ],
+            "status": "published",
+            "source": "https://opencode.ai/docs/go/",
+            "date": "2026-10-29"
+          }
+        },
+        {
+          "model": "hy3",
+          "model_id": "hy3",
+          "api_type": "openai",
+          "base_url": "https://opencode.ai/inference/go/openai/v1",
+          "prices": {
+            "input": 0.14,
+            "output": 0.58,
+            "cached_input": 0.035,
+            "status": "published",
+            "source": "https://opencode.ai/docs/go/",
+            "date": "2026-10-29"
+          }
+        },
+        {
+          "model": "hy4-preview",
+          "model_id": "hy4-preview",
+          "api_type": "openai",
+          "base_url": "https://opencode.ai/inference/go/openai/v1",
+          "prices": {
+            "input": 0.834,
+            "output": 2.501,
+            "cached_input": 0.042,
+            "status": "published",
+            "source": "https://opencode.ai/docs/go/",
+            "date": "2026-10-29"
+          }
+        },
+        {
+          "model": "iceman-contributor",
+          "model_id": "iceman-contributor-free",
+          "api_type": "openai",
+          "base_url": "https://opencode.ai/inference/go/openai/v1",
+          "prices": {
+            "input": 0.0,
+            "output": 0.0,
+            "cached_input": 0.0,
+            "status": "published",
+            "source": "https://opencode.ai/docs/go/",
+            "date": "2026-10-29"
+          }
+        },
+        {
+          "model": "kimi-k2.7-code",
+          "model_id": "kimi-k2.7-code",
+          "api_type": "openai",
+          "base_url": "https://opencode.ai/inference/go/openai/v1",
+          "prices": {
+            "input": 0.95,
+            "output": 4.0,
+            "cached_input": 0.19,
+            "status": "published",
+            "source": "https://opencode.ai/docs/go/",
+            "date": "2026-10-29"
+          }
+        },
+        {
+          "model": "kimi-k3",
+          "model_id": "kimi-k3",
+          "api_type": "openai",
+          "base_url": "https://opencode.ai/inference/go/openai/v1",
+          "prices": {
+            "input": 3.0,
+            "output": 15.0,
+            "cached_input": 0.3,
+            "cache_write": 3.0,
+            "status": "published",
+            "source": "https://opencode.ai/docs/go/",
+            "date": "2026-10-29"
+          }
+        },
+        {
+          "model": "kimi-k3.1-pro",
+          "model_id": "kimi-k3.1-pro",
+          "api_type": "openai",
+          "base_url": "https://opencode.ai/inference/go/openai/v1",
+          "prices": {
+            "input": 2.0,
+            "output": 10.0,
+            "cached_input": 0.2,
+            "cache_write": 2.0,
+            "status": "published",
+            "source": "https://opencode.ai/docs/go/",
+            "date": "2026-10-29"
+          }
+        },
+        {
+          "model": "longcat-2.0",
+          "model_id": "longcat-2.0",
+          "api_type": "openai",
+          "base_url": "https://opencode.ai/inference/go/openai/v1",
+          "prices": {
+            "input": 0.3,
+            "output": 1.2,
+            "cached_input": 0.006,
+            "status": "published",
+            "source": "https://opencode.ai/docs/go/",
+            "date": "2026-10-29"
+          }
+        },
+        {
+          "model": "mimo-v2.5",
+          "model_id": "mimo-v2.5",
+          "api_type": "openai",
+          "base_url": "https://opencode.ai/inference/go/openai/v1",
+          "prices": {
+            "input": 0.14,
+            "output": 0.28,
+            "cached_input": 0.0028,
+            "status": "published",
+            "source": "https://opencode.ai/docs/go/",
+            "date": "2026-10-29"
+          }
+        },
+        {
+          "model": "mimo-v2.5-pro",
+          "model_id": "mimo-v2.5-pro",
+          "api_type": "openai",
+          "base_url": "https://opencode.ai/inference/go/openai/v1",
+          "prices": {
+            "input": 0.435,
+            "output": 0.87,
+            "cached_input": 0.003625,
+            "status": "published",
+            "source": "https://opencode.ai/docs/go/",
+            "date": "2026-10-29"
+          }
+        },
+        {
+          "model": "mimo-v2.6-flash",
+          "model_id": "mimo-v2.6-flash",
+          "api_type": "openai",
+          "base_url": "https://opencode.ai/inference/go/openai/v1",
+          "prices": {
+            "input": 0.14,
+            "output": 0.28,
+            "cached_input": 0.0028,
+            "status": "published",
+            "source": "https://opencode.ai/docs/go/",
+            "date": "2026-10-29"
+          }
+        },
+        {
+          "model": "mimo-v2.6-pro",
+          "model_id": "mimo-v2.6-pro",
+          "api_type": "openai",
+          "base_url": "https://opencode.ai/inference/go/openai/v1",
+          "prices": {
+            "input": 0.435,
+            "output": 0.87,
+            "cached_input": 0.003625,
+            "status": "published",
+            "source": "https://opencode.ai/docs/go/",
+            "date": "2026-10-29"
+          }
+        },
+        {
+          "model": "minimax-m3",
+          "model_id": "minimax-m3",
+          "api_type": "anthropic",
+          "base_url": "https://opencode.ai/inference/go/anthropic/v1",
+          "prices": {
+            "input": 0.3,
+            "output": 1.2,
+            "cached_input": 0.06,
+            "tiers": [
+              {
+                "above_input_tokens": 512000,
+                "input": 0.6,
+                "output": 2.4,
+                "cached_input": 0.12
+              }
+            ],
+            "status": "published",
+            "source": "https://opencode.ai/docs/go/",
+            "date": "2026-10-29"
+          }
+        },
+        {
+          "model": "minimax-m3.1-flash",
+          "model_id": "minimax-m3.1-flash",
+          "api_type": "openai",
+          "base_url": "https://opencode.ai/inference/go/openai/v1",
+          "prices": {
+            "input": 0.15,
+            "output": 0.6,
+            "cached_input": 0.015,
+            "status": "published",
+            "source": "https://opencode.ai/docs/go/",
+            "date": "2026-10-29"
+          }
+        },
+        {
+          "model": "muse-spark-1.2",
+          "model_id": "muse-spark-1.2-contributor",
+          "api_type": "openai-responses",
+          "base_url": "https://opencode.ai/inference/go/openai/v1",
+          "prices": {
+            "input": 0.1,
+            "output": 0.2,
+            "cached_input": 0.002,
+            "status": "published",
+            "source": "https://opencode.ai/docs/go/",
+            "date": "2026-10-29"
+          }
+        },
+        {
+          "model": "muse-spark-1.3",
+          "model_id": "muse-spark-1.3-contributor",
+          "api_type": "openai-responses",
+          "base_url": "https://opencode.ai/inference/go/openai/v1",
+          "prices": {
+            "input": 0.1,
+            "output": 0.2,
+            "cached_input": 0.002,
+            "status": "published",
+            "source": "https://opencode.ai/docs/go/",
+            "date": "2026-10-29"
+          }
+        },
+        {
+          "model": "qwen3.7-plus",
+          "model_id": "qwen3.7-plus",
+          "api_type": "anthropic",
+          "base_url": "https://opencode.ai/inference/go/anthropic/v1",
+          "prices": {
+            "input": 0.4,
+            "output": 1.6,
+            "cached_input": 0.04,
+            "cache_write": 0.5,
+            "tiers": [
+              {
+                "above_input_tokens": 256000,
+                "input": 1.2,
+                "output": 4.8,
+                "cached_input": 0.12,
+                "cache_write": 1.5
+              }
+            ],
+            "status": "published",
+            "source": "https://opencode.ai/docs/go/",
+            "date": "2026-10-29"
+          }
+        },
+        {
+          "model": "qwen3.8-flash",
+          "model_id": "qwen3.8-flash",
+          "api_type": "anthropic",
+          "base_url": "https://opencode.ai/inference/go/anthropic/v1",
+          "prices": {
+            "input": 0.15,
+            "output": 0.47,
+            "cached_input": 0.016,
+            "cache_write": 0.2,
+            "status": "published",
+            "source": "https://opencode.ai/docs/go/",
+            "date": "2026-10-29"
+          }
+        },
+        {
+          "model": "qwen3.8-max",
+          "model_id": "qwen3.8-max",
+          "api_type": "anthropic",
+          "base_url": "https://opencode.ai/inference/go/anthropic/v1",
+          "prices": {
+            "input": 2.0,
+            "output": 6.0,
+            "cached_input": 0.25,
+            "cache_write": 2.5,
+            "status": "published",
+            "source": "https://opencode.ai/docs/go/",
+            "date": "2026-10-29"
+          }
+        },
+        {
+          "model": "step-5-preview",
+          "model_id": "step-5-preview",
+          "api_type": "openai",
+          "base_url": "https://opencode.ai/inference/go/openai/v1",
+          "prices": {
+            "input": 1.0,
+            "output": 2.7,
+            "cached_input": 0.1,
+            "status": "published",
+            "source": "https://opencode.ai/docs/go/",
+            "date": "2026-10-29"
+          }
+        }
+      ]
+    },
+    {
+      "id": "openrouter",
+      "name": "OpenRouter",
+      "website": "https://openrouter.ai",
+      "currency": "USD",
+      "xolo": {
+        "type": "openrouter",
+        "base_url": "https://openrouter.ai/api/v1"
+      },
+      "offerings": [
+        {
+          "model": "deepseek-v4-pro",
+          "model_id": "deepseek/deepseek-v4-pro",
+          "prices": {
+            "input": 0.95526,
+            "cached_input": 0.079605,
+            "output": 1.91052,
+            "status": "published",
+            "source": "https://openrouter.ai/api/v1/models",
+            "date": "2026-10-29"
+          },
+          "context_window": {
+            "value": 1048576,
+            "status": "published",
+            "source": "https://openrouter.ai/api/v1/models",
+            "date": "2026-10-29"
+          },
+          "output_window": {
+            "value": 384000,
+            "status": "published",
+            "source": "https://openrouter.ai/api/v1/models",
+            "date": "2026-10-29"
+          }
+        },
+        {
+          "model": "deepseek-v4.1-flash",
+          "model_id": "deepseek/deepseek-v4.1-flash",
+          "prices": {
+            "input": 0.045,
+            "cached_input": 0.006,
+            "output": 0.5,
+            "status": "published",
+            "source": "https://openrouter.ai/api/v1/models",
+            "date": "2026-10-29"
+          },
+          "context_window": {
+            "value": 1048576,
+            "status": "published",
+            "source": "https://openrouter.ai/api/v1/models",
+            "date": "2026-10-29"
+          },
+          "output_window": {
+            "value": 943718,
+            "status": "published",
+            "source": "https://openrouter.ai/api/v1/models",
+            "date": "2026-10-29"
+          }
+        },
+        {
+          "model": "gemini-4-argon",
+          "model_id": "google/gemini-4-argon",
+          "prices": {
+            "input": 2.0,
+            "cached_input": 0.1,
+            "cache_write": 0.1875,
+            "output": 10.0,
+            "status": "published",
+            "source": "https://openrouter.ai/api/v1/models",
+            "date": "2026-10-29"
+          },
+          "context_window": {
+            "value": 1048576,
+            "status": "published",
+            "source": "https://openrouter.ai/api/v1/models",
+            "date": "2026-10-29"
+          },
+          "output_window": {
+            "value": 943718,
+            "status": "published",
+            "source": "https://openrouter.ai/api/v1/models",
+            "date": "2026-10-29"
+          }
+        },
+        {
+          "model": "longcat-2.0",
+          "model_id": "meituan/longcat-2.0",
+          "prices": {
+            "input": 0.3,
+            "cached_input": 0.006,
+            "output": 1.2,
+            "status": "published",
+            "source": "https://openrouter.ai/api/v1/models",
+            "date": "2026-10-29"
+          },
+          "context_window": {
+            "value": 1048756,
+            "status": "published",
+            "source": "https://openrouter.ai/api/v1/models",
+            "date": "2026-10-29"
+          },
+          "output_window": {
+            "value": 262144,
+            "status": "published",
+            "source": "https://openrouter.ai/api/v1/models",
+            "date": "2026-10-29"
+          }
+        },
+        {
+          "model": "muse-spark-1.2",
+          "model_id": "meta/muse-spark-1.2",
+          "prices": {
+            "input": 1.25,
+            "cached_input": 0.15,
+            "output": 4.25,
+            "status": "published",
+            "source": "https://openrouter.ai/api/v1/models",
+            "date": "2026-10-29"
+          },
+          "context_window": {
+            "value": 1048576,
+            "status": "published",
+            "source": "https://openrouter.ai/api/v1/models",
+            "date": "2026-10-29"
+          },
+          "output_window": {
+            "value": 943718,
+            "status": "published",
+            "source": "https://openrouter.ai/api/v1/models",
+            "date": "2026-10-29"
+          }
+        },
+        {
+          "model": "muse-spark-1.3",
+          "model_id": "meta/muse-spark-1.3",
+          "prices": {
+            "input": 1.25,
+            "cached_input": 0.15,
+            "output": 4.25,
+            "status": "published",
+            "source": "https://openrouter.ai/api/v1/models",
+            "date": "2026-10-29"
+          },
+          "context_window": {
+            "value": 1048576,
+            "status": "published",
+            "source": "https://openrouter.ai/api/v1/models",
+            "date": "2026-10-29"
+          },
+          "output_window": {
+            "value": 943718,
+            "status": "published",
+            "source": "https://openrouter.ai/api/v1/models",
+            "date": "2026-10-29"
+          }
+        },
+        {
+          "model": "minimax-m3",
+          "model_id": "minimax/minimax-m3",
+          "prices": {
+            "input": 0.3,
+            "cached_input": 0.06,
+            "output": 1.2,
+            "status": "published",
+            "source": "https://openrouter.ai/api/v1/models",
+            "date": "2026-10-29"
+          },
+          "context_window": {
+            "value": 1048576,
+            "status": "published",
+            "source": "https://openrouter.ai/api/v1/models",
+            "date": "2026-10-29"
+          },
+          "output_window": {
+            "value": 512000,
+            "status": "published",
+            "source": "https://openrouter.ai/api/v1/models",
+            "date": "2026-10-29"
+          }
+        },
+        {
+          "model": "minimax-m3.1-flash",
+          "model_id": "minimax/minimax-m3.1-flash",
+          "prices": {
+            "input": 0.15,
+            "cached_input": 0.015,
+            "output": 0.6,
+            "status": "published",
+            "source": "https://openrouter.ai/api/v1/models",
+            "date": "2026-10-29"
+          },
+          "context_window": {
+            "value": 1048576,
+            "status": "published",
+            "source": "https://openrouter.ai/api/v1/models",
+            "date": "2026-10-29"
+          },
+          "output_window": {
+            "value": 524288,
+            "status": "published",
+            "source": "https://openrouter.ai/api/v1/models",
+            "date": "2026-10-29"
+          }
+        },
+        {
+          "model": "kimi-k2.7-code",
+          "model_id": "moonshotai/kimi-k2.7-code",
+          "prices": {
+            "input": 0.56,
+            "cached_input": 0.15,
+            "output": 3.1,
+            "status": "published",
+            "source": "https://openrouter.ai/api/v1/models",
+            "date": "2026-10-29"
+          },
+          "context_window": {
+            "value": 262144,
+            "status": "published",
+            "source": "https://openrouter.ai/api/v1/models",
+            "date": "2026-10-29"
+          },
+          "output_window": {
+            "value": 235929,
+            "status": "published",
+            "source": "https://openrouter.ai/api/v1/models",
+            "date": "2026-10-29"
+          }
+        },
+        {
+          "model": "kimi-k3",
+          "model_id": "moonshotai/kimi-k3",
+          "prices": {
+            "input": 0.239,
+            "cached_input": 0.21,
+            "output": 10.8,
+            "status": "published",
+            "source": "https://openrouter.ai/api/v1/models",
+            "date": "2026-10-29"
+          },
+          "context_window": {
+            "value": 1048576,
+            "status": "published",
+            "source": "https://openrouter.ai/api/v1/models",
+            "date": "2026-10-29"
+          },
+          "output_window": {
+            "value": 943718,
+            "status": "published",
+            "source": "https://openrouter.ai/api/v1/models",
+            "date": "2026-10-29"
+          }
+        },
+        {
+          "model": "kimi-k3.1-pro",
+          "model_id": "moonshotai/kimi-k3.1-pro",
+          "prices": {
+            "input": 2.0,
+            "cached_input": 0.2,
+            "output": 10.0,
+            "status": "published",
+            "source": "https://openrouter.ai/api/v1/models",
+            "date": "2026-10-29"
+          },
+          "context_window": {
+            "value": 1048576,
+            "status": "published",
+            "source": "https://openrouter.ai/api/v1/models",
+            "date": "2026-10-29"
+          },
+          "output_window": {
+            "value": 943718,
+            "status": "published",
+            "source": "https://openrouter.ai/api/v1/models",
+            "date": "2026-10-29"
+          }
+        },
+        {
+          "model": "gpt-5.6-luna",
+          "model_id": "openai/gpt-5.6-luna",
+          "prices": {
+            "input": 0.2,
+            "cached_input": 0.02,
+            "cache_write": 0.25,
+            "output": 1.2,
+            "status": "published",
+            "source": "https://openrouter.ai/api/v1/models",
+            "date": "2026-10-29"
+          },
+          "context_window": {
+            "value": 1050000,
+            "status": "published",
+            "source": "https://openrouter.ai/api/v1/models",
+            "date": "2026-10-29"
+          },
+          "output_window": {
+            "value": 128000,
+            "status": "published",
+            "source": "https://openrouter.ai/api/v1/models",
+            "date": "2026-10-29"
+          }
+        },
+        {
+          "model": "gpt-6-luna",
+          "model_id": "openai/gpt-6-luna",
+          "prices": {
+            "input": 0.1,
+            "cached_input": 0.01,
+            "cache_write": 0.125,
+            "output": 0.5,
+            "status": "published",
+            "source": "https://openrouter.ai/api/v1/models",
+            "date": "2026-10-29"
+          },
+          "context_window": {
+            "value": 1050000,
+            "status": "published",
+            "source": "https://openrouter.ai/api/v1/models",
+            "date": "2026-10-29"
+          },
+          "output_window": {
+            "value": 128000,
+            "status": "published",
+            "source": "https://openrouter.ai/api/v1/models",
+            "date": "2026-10-29"
+          }
+        },
+        {
+          "model": "qwen3.7-plus",
+          "model_id": "qwen/qwen3.7-plus",
+          "prices": {
+            "input": 0.32,
+            "cached_input": 0.064,
+            "cache_write": 0.4,
+            "output": 1.28,
+            "status": "published",
+            "source": "https://openrouter.ai/api/v1/models",
+            "date": "2026-10-29"
+          },
+          "context_window": {
+            "value": 1000000,
+            "status": "published",
+            "source": "https://openrouter.ai/api/v1/models",
+            "date": "2026-10-29"
+          },
+          "output_window": {
+            "value": 131072,
+            "status": "published",
+            "source": "https://openrouter.ai/api/v1/models",
+            "date": "2026-10-29"
+          }
+        },
+        {
+          "model": "qwen3.8-flash",
+          "model_id": "qwen/qwen3.8-flash",
+          "prices": {
+            "input": 0.15,
+            "cached_input": 0.016,
+            "output": 0.47,
+            "status": "published",
+            "source": "https://openrouter.ai/api/v1/models",
+            "date": "2026-10-29"
+          },
+          "context_window": {
+            "value": 1000000,
+            "status": "published",
+            "source": "https://openrouter.ai/api/v1/models",
+            "date": "2026-10-29"
+          },
+          "output_window": {
+            "value": 131072,
+            "status": "published",
+            "source": "https://openrouter.ai/api/v1/models",
+            "date": "2026-10-29"
+          }
+        },
+        {
+          "model": "step-5-preview",
+          "model_id": "stepfun/step-5-preview",
+          "prices": {
+            "input": 1.0,
+            "cached_input": 0.1,
+            "output": 2.7,
+            "status": "published",
+            "source": "https://openrouter.ai/api/v1/models",
+            "date": "2026-10-29"
+          },
+          "context_window": {
+            "value": 1000000,
+            "status": "published",
+            "source": "https://openrouter.ai/api/v1/models",
+            "date": "2026-10-29"
+          },
+          "output_window": {
+            "value": 64000,
+            "status": "published",
+            "source": "https://openrouter.ai/api/v1/models",
+            "date": "2026-10-29"
+          }
+        },
+        {
+          "model": "hy3",
+          "model_id": "tencent/hy3",
+          "prices": {
+            "input": 0.132,
+            "cached_input": 0.033,
+            "output": 0.528,
+            "status": "published",
+            "source": "https://openrouter.ai/api/v1/models",
+            "date": "2026-10-29"
+          },
+          "context_window": {
+            "value": 262144,
+            "status": "published",
+            "source": "https://openrouter.ai/api/v1/models",
+            "date": "2026-10-29"
+          },
+          "output_window": {
+            "value": 128000,
+            "status": "published",
+            "source": "https://openrouter.ai/api/v1/models",
+            "date": "2026-10-29"
+          }
+        },
+        {
+          "model": "hy4-preview",
+          "model_id": "tencent/hy4-preview",
+          "prices": {
+            "input": 0.834,
+            "cached_input": 0.042,
+            "output": 2.501,
+            "status": "published",
+            "source": "https://openrouter.ai/api/v1/models",
+            "date": "2026-10-29"
+          },
+          "context_window": {
+            "value": 1048576,
+            "status": "published",
+            "source": "https://openrouter.ai/api/v1/models",
+            "date": "2026-10-29"
+          },
+          "output_window": {
+            "value": 64000,
+            "status": "published",
+            "source": "https://openrouter.ai/api/v1/models",
+            "date": "2026-10-29"
+          }
+        },
+        {
+          "model": "grok-4.7",
+          "model_id": "x-ai/grok-4.7",
+          "prices": {
+            "input": 2.0,
+            "cached_input": 0.5,
+            "output": 6.0,
+            "status": "published",
+            "source": "https://openrouter.ai/api/v1/models",
+            "date": "2026-10-29"
+          },
+          "context_window": {
+            "value": 500000,
+            "status": "published",
+            "source": "https://openrouter.ai/api/v1/models",
+            "date": "2026-10-29"
+          },
+          "output_window": {
+            "value": 450000,
+            "status": "published",
+            "source": "https://openrouter.ai/api/v1/models",
+            "date": "2026-10-29"
+          }
+        },
+        {
+          "model": "mimo-v2.5",
+          "model_id": "xiaomi/mimo-v2.5",
+          "prices": {
+            "input": 0.4,
+            "cached_input": 0.08,
+            "output": 2.0,
+            "status": "published",
+            "source": "https://openrouter.ai/api/v1/models",
+            "date": "2026-10-29"
+          },
+          "context_window": {
+            "value": 1050000,
+            "status": "published",
+            "source": "https://openrouter.ai/api/v1/models",
+            "date": "2026-10-29"
+          },
+          "output_window": {
+            "value": 65536,
+            "status": "published",
+            "source": "https://openrouter.ai/api/v1/models",
+            "date": "2026-10-29"
+          }
+        },
+        {
+          "model": "mimo-v2.5-pro",
+          "model_id": "xiaomi/mimo-v2.5-pro",
+          "prices": {
+            "input": 0.48,
+            "cached_input": 0.096,
+            "output": 1.8,
+            "status": "published",
+            "source": "https://openrouter.ai/api/v1/models",
+            "date": "2026-10-29"
+          },
+          "context_window": {
+            "value": 1050000,
+            "status": "published",
+            "source": "https://openrouter.ai/api/v1/models",
+            "date": "2026-10-29"
+          },
+          "output_window": {
+            "value": 235929,
+            "status": "published",
+            "source": "https://openrouter.ai/api/v1/models",
+            "date": "2026-10-29"
+          }
+        },
+        {
+          "model": "mimo-v2.6-flash",
+          "model_id": "xiaomi/mimo-v2.6-flash",
+          "prices": {
+            "input": 0.14,
+            "cached_input": 0.0028,
+            "output": 0.28,
+            "status": "published",
+            "source": "https://openrouter.ai/api/v1/models",
+            "date": "2026-10-29"
+          },
+          "context_window": {
+            "value": 1050000,
+            "status": "published",
+            "source": "https://openrouter.ai/api/v1/models",
+            "date": "2026-10-29"
+          },
+          "output_window": {
+            "value": 131072,
+            "status": "published",
+            "source": "https://openrouter.ai/api/v1/models",
+            "date": "2026-10-29"
+          }
+        },
+        {
+          "model": "mimo-v2.6-pro",
+          "model_id": "xiaomi/mimo-v2.6-pro",
+          "prices": {
+            "input": 0.435,
+            "cached_input": 0.0036,
+            "output": 0.87,
+            "status": "published",
+            "source": "https://openrouter.ai/api/v1/models",
+            "date": "2026-10-29"
+          },
+          "context_window": {
+            "value": 1050000,
+            "status": "published",
+            "source": "https://openrouter.ai/api/v1/models",
+            "date": "2026-10-29"
+          },
+          "output_window": {
+            "value": 131072,
+            "status": "published",
+            "source": "https://openrouter.ai/api/v1/models",
+            "date": "2026-10-29"
+          }
+        },
+        {
+          "model": "glm-5.2",
+          "model_id": "z-ai/glm-5.2",
+          "prices": {
+            "input": 0.006,
+            "cached_input": 0.005,
+            "output": 7.0,
+            "status": "published",
+            "source": "https://openrouter.ai/api/v1/models",
+            "date": "2026-10-29"
+          },
+          "context_window": {
+            "value": 1048576,
+            "status": "published",
+            "source": "https://openrouter.ai/api/v1/models",
+            "date": "2026-10-29"
+          },
+          "output_window": {
+            "value": 943718,
+            "status": "published",
+            "source": "https://openrouter.ai/api/v1/models",
+            "date": "2026-10-29"
+          }
+        },
+        {
+          "model": "glm-5.3",
+          "model_id": "z-ai/glm-5.3",
+          "prices": {
+            "input": 0.0699,
+            "cached_input": 0.0689,
+            "output": 1.4,
+            "status": "published",
+            "source": "https://openrouter.ai/api/v1/models",
+            "date": "2026-10-29"
+          },
+          "context_window": {
+            "value": 1048576,
+            "status": "published",
+            "source": "https://openrouter.ai/api/v1/models",
+            "date": "2026-10-29"
+          },
+          "output_window": {
+            "value": 943718,
+            "status": "published",
+            "source": "https://openrouter.ai/api/v1/models",
+            "date": "2026-10-29"
+          }
+        },
+        {
+          "model": "glm-5.3-flash",
+          "model_id": "z-ai/glm-5.3-flash",
+          "prices": {
+            "input": 0.0457,
+            "cached_input": 0.03,
+            "output": 0.0742,
+            "status": "published",
+            "source": "https://openrouter.ai/api/v1/models",
+            "date": "2026-10-29"
+          },
+          "context_window": {
+            "value": 1048576,
+            "status": "published",
+            "source": "https://openrouter.ai/api/v1/models",
+            "date": "2026-10-29"
+          },
+          "output_window": {
+            "value": 131072,
+            "status": "published",
+            "source": "https://openrouter.ai/api/v1/models",
+            "date": "2026-10-29"
+          }
+        }
+      ]
+    }
+  ]
+}

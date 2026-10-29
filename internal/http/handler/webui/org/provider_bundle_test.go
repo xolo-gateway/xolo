@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/xolo-gateway/xolo/internal/catalog"
 	"github.com/xolo-gateway/xolo/internal/core/model"
 	httpCtx "github.com/xolo-gateway/xolo/internal/http/context"
 )
@@ -134,5 +135,24 @@ func TestProviderBundle_SaysWhenNothingWasApplied(t *testing.T) {
 	}
 	if !strings.Contains(rr.Body.String(), "Rien n&#39;a été appliqué") {
 		t.Error("the page should say nothing was applied")
+	}
+}
+
+func TestCatalogImport_PreviewsTheCatalogProviderAsABundle(t *testing.T) {
+	h, s, tenant := importFixture(t, "https://opencode.ai/inference/go/v1", "sk")
+	h.SetCatalog(catalog.NewSource("", 0))
+
+	fields := url.Values{"catalog_provider": {"opencode-go"}, "plan": {"go"}}
+	rr := httptest.NewRecorder()
+	h.previewCatalogImport(rr, bundleRequest(t, s, tenant, string(s.provider.ID()), bytes.NewBufferString(fields.Encode()), "application/x-www-form-urlencoded"))
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d: %s", rr.Code, rr.Body.String())
+	}
+	page := rr.Body.String()
+	if !strings.Contains(page, `name="create"`) || !strings.Contains(page, `name="billing"`) || !strings.Contains(page, `name="bundle"`) {
+		t.Error("the preview should offer the models, the plan apart, and carry the bundle to apply")
+	}
+	if len(s.created) != 0 {
+		t.Error("the preview wrote to the store")
 	}
 }

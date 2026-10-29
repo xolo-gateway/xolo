@@ -28,6 +28,15 @@ templ ModelsPage(vmodel ModelsPageVModel) {
 			@providerBundleExportMenu(vmodel)
 			if common.HasPermission(ctx, vmodel.Org.ID(), rbac.PermProvidersWrite) {
 				@button.Button(button.Props{
+					Href:    common.BaseURLString(ctx, common.WithPath("/orgs/", vmodel.Org.Slug(), "/admin/providers/", string(vmodel.Provider.ID()), "/catalog")),
+					Variant: button.VariantOutline,
+					Size:    button.SizeSm,
+					Class:   "gap-1.5",
+				}) {
+					@icon.LibraryBig(icon.Props{Class: "size-3.5"})
+					{ i18n.T(ctx, "org.catalog_import.from_catalog") }
+				}
+				@button.Button(button.Props{
 					Href:    common.BaseURLString(ctx, common.WithPath("/orgs/", vmodel.Org.Slug(), "/admin/providers/", string(vmodel.Provider.ID()), "/import")),
 					Variant: button.VariantOutline,
 					Size:    button.SizeSm,

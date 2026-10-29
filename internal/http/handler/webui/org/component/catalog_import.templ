@@ -1,0 +1,99 @@
+package component
+
+import (
+	"strconv"
+
+	"github.com/xolo-gateway/xolo/internal/catalog"
+	common "github.com/xolo-gateway/xolo/internal/http/handler/webui/common/component"
+	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/alert"
+	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/button"
+	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/icon"
+	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/label"
+	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/radio"
+	"github.com/xolo-gateway/xolo/internal/i18n"
+)
+
+// CatalogImportPage lists the providers of the open model catalog, the one
+// the provider most likely is first, each with the plans it sells.
+templ CatalogImportPage(vmodel CatalogImportVModel) {
+	{{ backURL := common.BaseURLString(ctx, common.WithPath("/orgs/", vmodel.Org.Slug(), "/admin/providers")) }}
+	{{ actionURL := common.BaseURLString(ctx, common.WithPath("/orgs/", vmodel.Org.Slug(), "/admin/providers/catalog")) }}
+	{{ subtitle := i18n.T(ctx, "org.catalog_import.new_subtitle") }}
+	if vmodel.Provider != nil {
+		{{ backURL = common.BaseURLString(ctx, common.WithPath("/orgs/", vmodel.Org.Slug(), "/admin/providers/", string(vmodel.Provider.ID()), "/models")) }}
+		{{ actionURL = common.BaseURLString(ctx, common.WithPath("/orgs/", vmodel.Org.Slug(), "/admin/providers/", string(vmodel.Provider.ID()), "/catalog")) }}
+		{{ subtitle = i18n.T(ctx, "org.catalog_import.subtitle", vmodel.Provider.Name()) }}
+	}
+	@common.AppLayout(vmodel.AppLayoutVModel, common.WithTitle(i18n.T(ctx, "org.catalog_import.title"))) {
+		@common.PageHeader(common.PageHeaderProps{Title: i18n.T(ctx, "org.catalog_import.title"), Subtitle: subtitle}) {
+			@button.Button(button.Props{Href: backURL, Variant: button.VariantOutline, Size: button.SizeSm}) {
+				{ i18n.T(ctx, "org.provider_bundle.back") }
+			}
+		}
+		<div class="space-y-4">
+			if vmodel.Error != "" {
+				@alert.Alert(alert.Props{Variant: alert.VariantDestructive}) {
+					@alert.Description() {
+						{ vmodel.Error }
+					}
+				}
+			}
+			@common.SectionNote() {
+				{ i18n.T(ctx, "org.catalog_import.help", vmodel.Catalog.Version) }
+			}
+			for _, p := range catalogProvidersSuggestedFirst(vmodel.Catalog, vmodel.Suggested) {
+				@catalogProviderCard(vmodel, p, actionURL)
+			}
+		</div>
+	}
+}
+
+templ catalogProviderCard(vmodel CatalogImportVModel, p catalog.Provider, actionURL string) {
+	<form method="POST" action={ templ.SafeURL(actionURL) }>
+		<input type="hidden" name="catalog_provider" value={ p.ID }/>
+		@common.Section() {
+			@common.SectionHeader() {
+				@common.SectionTitle() {
+					{ p.Name }
+				}
+				if p.ID == vmodel.Suggested {
+					@common.Badge(common.TonePositive, i18n.T(ctx, "org.catalog_import.suggested"))
+				}
+				<span class="ml-auto text-xs text-muted-foreground">
+					{ i18n.T(ctx, "org.catalog_import.offerings", len(p.Offerings)) } · { p.Currency }
+				</span>
+			}
+			@common.SectionBody(common.SectionBodyProps{Class: "space-y-3"}) {
+				<p class="font-mono text-xs text-muted-foreground">{ p.Xolo.Type } · { p.Xolo.BaseURL }</p>
+				if len(p.Plans) > 0 {
+					<fieldset class="space-y-1.5">
+						<legend class="text-xs font-medium">{ i18n.T(ctx, "org.catalog_import.plan") }</legend>
+						{{ noneID := "plan-" + p.ID + "-none" }}
+						<div class="flex items-center gap-2">
+							@radio.Radio(radio.Props{ID: noneID, Name: "plan", Value: "none", Checked: true})
+							@label.Label(label.Props{For: noneID, Class: "font-normal"}) {
+								{ i18n.T(ctx, "org.catalog_import.no_plan") }
+							}
+						</div>
+						for _, plan := range p.Plans {
+							{{ id := "plan-" + p.ID + "-" + plan.ID }}
+							<div class="flex items-center gap-2">
+								@radio.Radio(radio.Props{ID: id, Name: "plan", Value: plan.ID})
+								@label.Label(label.Props{For: id, Class: "font-normal"}) {
+									{ plan.Name }
+									if plan.Price != nil {
+										<span class="text-muted-foreground">{ " · " }{ strconv.FormatFloat(plan.Price.Amount, 'f', -1, 64) } { p.Currency }</span>
+									}
+								}
+							</div>
+						}
+					</fieldset>
+				}
+				@button.Button(button.Props{Type: button.TypeSubmit, Size: button.SizeSm, Class: "gap-1.5"}) {
+					@icon.Eye(icon.Props{Class: "size-3.5"})
+					{ i18n.T(ctx, "org.provider_bundle.preview") }
+				}
+			}
+		}
+	</form>
+}

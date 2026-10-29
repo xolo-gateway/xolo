@@ -86,14 +86,19 @@ templ ModelForm(vmodel ModelFormVModel) {
 											Class:   "text-xs h-auto p-0",
 											Attributes: templ.Attributes{
 												"type":                   "button",
-												"data-lookup-url":        common.BaseURLString(ctx, common.WithPath("/api/models-dev/lookup")),
+												"data-lookup-url":        common.BaseURLString(ctx, common.WithPath("/api/catalog/lookup")),
 												"data-exchange-rate-url": common.BaseURLString(ctx, common.WithPath("/api/exchange-rate")),
 												"data-currency":          vmodel.Provider.Currency(),
 												"data-provider-type":     vmodel.Provider.Type(),
-												"data-xolo-models-dev":   "",
+												"data-provider-base-url": vmodel.Provider.BaseURL(),
+												"data-msg-missing":       i18n.T(ctx, "org.model.prefill_missing_real_model"),
+												"data-msg-not-found":     i18n.T(ctx, "org.model.prefill_not_found"),
+												"data-msg-prices-vary":   i18n.T(ctx, "org.model.prefill_prices_vary"),
+												"data-msg-estimated":     i18n.T(ctx, "org.model.prefill_estimated"),
+												"data-xolo-catalog":      "",
 											},
 										}) {
-											{ i18n.T(ctx, "org.model.prefill_models_dev") }
+											{ i18n.T(ctx, "org.model.prefill_catalog") }
 										}
 									</div>
 									if !vmodel.IsNew && vmodel.Model != nil {

@@ -18,6 +18,7 @@ type Config struct {
 	Storage          Storage            `envPrefix:"STORAGE_"`
 	TaskRunner       TaskRunner         `envPrefix:"TASK_RUNNER_"`
 	ExchangeRate     ExchangeRateConfig `envPrefix:"EXCHANGE_RATE_"`
+	Catalog          CatalogConfig      `envPrefix:"CATALOG_"`
 	Plugins          PluginsConfig      `envPrefix:"PLUGINS_"`
 	Proxy            ProxyConfig        `envPrefix:"PROXY_"`
 	Events           EventsConfig       `envPrefix:"EVENTS_"`

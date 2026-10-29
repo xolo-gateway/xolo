@@ -313,13 +313,14 @@
     initRows(event.target);
   });
 
-  // ── Pré-remplissage depuis le catalogue models.dev ────────────────────────
+  // ── Pré-remplissage depuis le catalogue de modèles ───────────────────────
   //
-  // Le bouton interroge le catalogue public et remplit une dizaine de champs du
+  // Le bouton interroge le catalogue ouvert du projet et remplit les champs du
   // formulaire de modèle. Le faire côté serveur voudrait dire soumettre puis
-  // re-rendre le formulaire, en perdant la saisie déjà en cours.
+  // re-rendre le formulaire, en perdant la saisie déjà en cours. Les messages
+  // viennent du bouton, traduits par le serveur.
   document.addEventListener("click", async function (event) {
-    var button = event.target.closest("[data-xolo-models-dev]");
+    var button = event.target.closest("[data-xolo-catalog]");
     if (!button) return;
 
     var form = button.closest("form");
@@ -334,55 +335,71 @@
 
     var realModel = form.querySelector("[name=real_model]").value.trim();
     if (!realModel) {
-      window.alert("Renseignez d'abord le nom du modèle réel.");
+      window.alert(button.dataset.msgMissing);
       return;
     }
 
     button.disabled = true;
     try {
-      var url = button.dataset.lookupUrl + "?id=" + encodeURIComponent(realModel);
-      if (button.dataset.providerType) {
-        url += "&provider=" + encodeURIComponent(button.dataset.providerType);
-      }
+      var url =
+        button.dataset.lookupUrl +
+        "?id=" + encodeURIComponent(realModel) +
+        "&provider=" + encodeURIComponent(button.dataset.providerType || "") +
+        "&base_url=" + encodeURIComponent(button.dataset.providerBaseUrl || "");
 
       var response = await fetch(url);
       if (!response.ok) {
-        window.alert("Modèle non trouvé dans le catalogue models.dev.");
+        window.alert(button.dataset.msgNotFound);
         return;
       }
-      var catalog = await response.json();
+      var entry = await response.json();
 
-      if (catalog.context_window) setValue("context_window", catalog.context_window);
-      if (catalog.output_window) setValue("output_window", catalog.output_window);
+      if (entry.context_window) setValue("context_window", entry.context_window);
+      if (entry.output_window) setValue("output_window", entry.output_window);
+      if (entry.active_params) setValue("active_params", entry.active_params);
+      if (entry.tokens_per_sec_low) setValue("tokens_per_sec_low", entry.tokens_per_sec_low);
+      if (entry.tokens_per_sec_high) setValue("tokens_per_sec_high", entry.tokens_per_sec_high);
 
-      if (catalog.prompt_cost || catalog.completion_cost) {
-        // Le catalogue publie ses tarifs en USD ; l'organisation les stocke dans
-        // sa propre devise.
-        var currency = button.dataset.currency || "USD";
+      if (entry.prompt_cost != null || entry.completion_cost != null) {
+        // Le catalogue publie les prix dans la devise du fournisseur ;
+        // l'organisation les stocke dans celle de son fournisseur.
+        var currency = button.dataset.currency || entry.currency;
         var rate = 1;
-        if (currency !== "USD") {
+        if (entry.currency && currency !== entry.currency) {
           var rateResponse = await fetch(
-            button.dataset.exchangeRateUrl + "?from=USD&to=" + encodeURIComponent(currency)
+            button.dataset.exchangeRateUrl +
+              "?from=" + encodeURIComponent(entry.currency) +
+              "&to=" + encodeURIComponent(currency)
           );
           if (rateResponse.ok) rate = (await rateResponse.json()).rate;
         }
-        if (catalog.prompt_cost) {
-          setValue("prompt_cost", ((catalog.prompt_cost / 1000) * rate).toFixed(6));
-        }
-        if (catalog.completion_cost) {
-          setValue("completion_cost", ((catalog.completion_cost / 1000) * rate).toFixed(6));
-        }
+        var price = function (name, value) {
+          if (value != null) setValue(name, (value * rate).toFixed(6));
+        };
+        price("prompt_cost", entry.prompt_cost);
+        price("cached_prompt_cost", entry.cached_prompt_cost);
+        price("completion_cost", entry.completion_cost);
       }
 
-      setChecked("cap_tools", !!catalog.cap_tools);
-      setChecked("cap_vision", !!catalog.cap_vision);
-      setChecked("cap_reasoning", !!catalog.cap_reasoning);
-      setChecked("cap_audio", !!catalog.cap_audio);
+      if (entry.cap_tools != null) setChecked("cap_tools", entry.cap_tools);
+      if (entry.cap_vision != null) setChecked("cap_vision", entry.cap_vision);
+      if (entry.cap_reasoning != null) setChecked("cap_reasoning", entry.cap_reasoning);
+      if (entry.cap_audio != null) setChecked("cap_audio", entry.cap_audio);
 
-      if (catalog.name) {
-        var proxyName = form.querySelector("[name=proxy_name]");
-        if (proxyName && !proxyName.value) proxyName.value = catalog.name;
+      if (entry.api_type) setValue("api_type", entry.api_type);
+      if (entry.api_base_url) setValue("api_base_url", entry.api_base_url);
+
+      if (entry.name) {
+        var description = form.querySelector("[name=description]");
+        if (description && !description.value) description.value = entry.name;
       }
+
+      var notes = [];
+      if (entry.prices_vary) notes.push(button.dataset.msgPricesVary);
+      if (entry.estimated && entry.estimated.length) {
+        notes.push(button.dataset.msgEstimated + " " + entry.estimated.join(", "));
+      }
+      if (notes.length) window.alert(notes.join("\n\n"));
     } finally {
       button.disabled = false;
     }

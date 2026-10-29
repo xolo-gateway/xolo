@@ -23,6 +23,15 @@ templ ProvidersPage(vmodel ProvidersPageVModel) {
 					Variant: button.VariantOutline,
 					Size:    button.SizeSm,
 					Class:   "gap-1.5",
+					Href:    common.BaseURLString(ctx, common.WithPath("/orgs/", vmodel.Org.Slug(), "/admin/providers/catalog")),
+				}) {
+					@icon.LibraryBig(icon.Props{Class: "size-3.5"})
+					{ i18n.T(ctx, "org.catalog_import.from_catalog") }
+				}
+				@button.Button(button.Props{
+					Variant: button.VariantOutline,
+					Size:    button.SizeSm,
+					Class:   "gap-1.5",
 					Href:    common.BaseURLString(ctx, common.WithPath("/orgs/", vmodel.Org.Slug(), "/admin/providers/import")),
 				}) {
 					@icon.FileUp(icon.Props{Class: "size-3.5"})
