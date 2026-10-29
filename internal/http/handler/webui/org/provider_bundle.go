@@ -132,7 +132,16 @@ func (h *Handler) importProviderBundle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	plan, err := h.planProviderBundleImport(ctx, org, p, bundle)
+	// The apply step plans with the selection it applies, which may change
+	// the API the models are served by.
+	apply := r.FormValue("step") == "apply"
+	var sel *service.BundleSelection
+	if apply {
+		selection := providerBundleSelection(r)
+		sel = &selection
+	}
+
+	plan, err := h.planProviderBundleImport(ctx, org, p, bundle, sel)
 	if err != nil {
 		slog.ErrorContext(ctx, "could not plan provider bundle import", slogx.Error(err))
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
@@ -142,12 +151,11 @@ func (h *Handler) importProviderBundle(w http.ResponseWriter, r *http.Request) {
 	vmodel.Bundle = string(raw)
 	vmodel.Name = bundle.Provider.Name
 
-	if r.FormValue("step") != "apply" {
+	if !apply {
 		templ.Handler(component.ProviderBundleImportPage(vmodel)).ServeHTTP(w, r)
 		return
 	}
 
-	sel := providerBundleSelection(r)
 	var newProvider *service.NewProviderTarget
 	if p == nil {
 		name := strings.TrimSpace(r.FormValue("name"))
@@ -170,7 +178,7 @@ func (h *Handler) importProviderBundle(w http.ResponseWriter, r *http.Request) {
 		newProvider = &service.NewProviderTarget{OrgID: org.ID(), Name: name, APIKey: encryptedKey}
 	}
 
-	result, err := service.ApplyProviderBundle(ctx, h.providerStore, plan, sel, newProvider)
+	result, err := service.ApplyProviderBundle(ctx, h.providerStore, plan, *sel, newProvider)
 	if err != nil {
 		if webcommon.RejectLocked(w, r, err) {
 			return
@@ -189,10 +197,11 @@ func (h *Handler) importProviderBundle(w http.ResponseWriter, r *http.Request) {
 	// the dry run of the bundle against the state the import left.
 	if p == nil && result.ProviderChanged {
 		p = result.Provider
+		name := vmodel.Name
 		vmodel = h.providerBundleImportVModel(ctx, org, p)
-		vmodel.Bundle = string(raw)
+		vmodel.Bundle, vmodel.Name = string(raw), name
 	}
-	replan, err := h.planProviderBundleImport(ctx, org, p, bundle)
+	replan, err := h.planProviderBundleImport(ctx, org, p, bundle, nil)
 	if err != nil {
 		slog.ErrorContext(ctx, "could not plan provider bundle import", slogx.Error(err))
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
@@ -263,7 +272,7 @@ func (h *Handler) resolveProviderBundleTarget(w http.ResponseWriter, r *http.Req
 
 // planProviderBundleImport compares bundle with the provider p of org, or
 // with nothing when the import creates a provider.
-func (h *Handler) planProviderBundleImport(ctx context.Context, org model.Organization, p model.Provider, bundle model.ProviderBundle) (service.ProviderBundlePlan, error) {
+func (h *Handler) planProviderBundleImport(ctx context.Context, org model.Organization, p model.Provider, bundle model.ProviderBundle, sel *service.BundleSelection) (service.ProviderBundlePlan, error) {
 	existing, err := h.providerStore.ListLLMModels(ctx, org.ID())
 	if err != nil {
 		return service.ProviderBundlePlan{}, errors.WithStack(err)
@@ -272,7 +281,7 @@ func (h *Handler) planProviderBundleImport(ctx context.Context, org model.Organi
 	if err != nil {
 		return service.ProviderBundlePlan{}, errors.WithStack(err)
 	}
-	return service.PlanProviderBundleImport(bundle, p, existing, &bundleProxyNames{ctx: ctx, names: names}), nil
+	return service.PlanProviderBundleImportWith(bundle, p, existing, &bundleProxyNames{ctx: ctx, names: names}, sel), nil
 }
 
 // bundleProxyNames checks the proxy names of a bundle import with the rules

@@ -442,3 +442,69 @@ func TestPlanProviderBundleImport_ShowsAbsentSettingsAsEmpty(t *testing.T) {
 		}
 	}
 }
+
+// uniqueNamesStore refuses a model whose proxy name another model of the
+// organization holds, as the unique index on (org_id, proxy_name) does.
+type uniqueNamesStore struct{ *memoryProviderStore }
+
+func (s uniqueNamesStore) taken(m model.LLMModel) bool {
+	for _, other := range s.models {
+		if other.ID() != m.ID() && other.OrgID() == m.OrgID() && other.ProxyName() == m.ProxyName() {
+			return true
+		}
+	}
+	return false
+}
+
+func (s uniqueNamesStore) CreateLLMModel(ctx context.Context, m model.LLMModel) error {
+	if s.taken(m) {
+		return errors.New("unique index")
+	}
+	return s.memoryProviderStore.CreateLLMModel(ctx, m)
+}
+
+func (s uniqueNamesStore) SaveLLMModel(ctx context.Context, m model.LLMModel) error {
+	if s.taken(m) {
+		return errors.New("unique index")
+	}
+	return s.memoryProviderStore.SaveLLMModel(ctx, m)
+}
+
+func TestApplyProviderBundle_RenamesBeforeItCreatesUnderTheFreedName(t *testing.T) {
+	mem := newMemoryProviderStore()
+	p := configuredProvider(t, mem, "org-a")
+	models := mem.modelsOf("org-a")
+
+	bundle := model.NewProviderBundle(p, models, false, time.Now())
+	for i := range bundle.Models {
+		if bundle.Models[i].RealModel == "kimi-k3" {
+			bundle.Models[i].ProxyName = "go/kimi-k3"
+		}
+	}
+	bundle.Models = append([]model.ProviderBundleModel{{RealModel: "kimi-k3.1", ProxyName: "kimi-k3", Enabled: true}}, bundle.Models...)
+	plan := PlanProviderBundleImport(bundle, p, models, namesOf(models))
+
+	result, err := ApplyProviderBundle(context.Background(), uniqueNamesStore{mem}, plan, selectAll(plan), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Failed) != 0 || result.Created != 1 || result.Updated != 1 {
+		t.Errorf("result = created %d updated %d failed %+v; want the rename then the creation", result.Created, result.Updated, result.Failed)
+	}
+}
+
+func TestPlanProviderBundleImportWith_ChecksKindsAgainstTheImportedType(t *testing.T) {
+	bundle := model.ProviderBundle{Kind: model.ProviderBundleKind, Version: model.ProviderBundleVersion,
+		Provider: model.ProviderBundleSettings{Type: "typesafe"},
+		Models:   []model.ProviderBundleModel{{RealModel: "judge", ProxyName: "judge"}}}
+	target := model.NewProvider("org-a", "P", "openai", "", "key", "USD")
+
+	kept := PlanProviderBundleImport(bundle, target, nil, takenNames{})
+	if m := kept.Models[0]; m.Model.Kind != model.ModelKindCompletion {
+		t.Errorf("kind = %q, want the default of the openai type it keeps", m.Model.Kind)
+	}
+	changed := PlanProviderBundleImportWith(bundle, target, nil, takenNames{}, &BundleSelection{Settings: map[string]bool{BundleFieldType: true}})
+	if m := changed.Models[0]; m.Action != BundleModelCreate || m.Model.Kind != model.ModelKindDecision {
+		t.Errorf("kind = %s %q, want the default of the typesafe type it takes", m.Action, m.Model.Kind)
+	}
+}

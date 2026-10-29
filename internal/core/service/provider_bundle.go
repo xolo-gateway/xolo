@@ -242,6 +242,13 @@ func formatFloat(f float64) string {
 // import creates a new provider, and targetModels are then empty. names
 // checks the proxy names of the models to create or rename.
 func PlanProviderBundleImport(bundle model.ProviderBundle, target model.Provider, targetModels []model.LLMModel, names ProxyNames) ProviderBundlePlan {
+	return PlanProviderBundleImportWith(bundle, target, targetModels, names, nil)
+}
+
+// PlanProviderBundleImportWith plans the import knowing the selection it is
+// about to apply: when it changes the type of the target, the models without
+// an API of their own are checked against the type they will be served by.
+func PlanProviderBundleImportWith(bundle model.ProviderBundle, target model.Provider, targetModels []model.LLMModel, names ProxyNames, sel *BundleSelection) ProviderBundlePlan {
 	plan := ProviderBundlePlan{Bundle: bundle, Target: target}
 	plan.Settings, plan.Billing = planProviderSettings(bundle.Provider, target)
 
@@ -287,6 +294,14 @@ func PlanProviderBundleImport(bundle model.ProviderBundle, target model.Provider
 		}
 	}
 
+	// The API a model without one of its own is served by: the target's,
+	// or the bundle's when the import creates the provider or changes its
+	// type.
+	servedType := bundle.Provider.Type
+	if target != nil && (sel == nil || !sel.Settings[BundleFieldType]) {
+		servedType = target.Type()
+	}
+
 	// The models to update are planned first, so that a name one of them
 	// leaves is free for a model to create.
 	plans := make([]BundleModelPlan, len(bundle.Models))
@@ -295,7 +310,7 @@ func PlanProviderBundleImport(bundle model.ProviderBundle, target model.Provider
 			if (existing[i] != nil) != updates {
 				continue
 			}
-			plans[i] = planBundleModel(i, bm, existing[i], target, bundle.Provider.Type, names)
+			plans[i] = planBundleModel(i, bm, existing[i], servedType, names)
 		}
 	}
 	plan.Models = plans
@@ -304,18 +319,15 @@ func PlanProviderBundleImport(bundle model.ProviderBundle, target model.Provider
 
 // planBundleModel plans the import of the bundle model bm, at index i, into
 // the target model existing (nil to create it).
-func planBundleModel(i int, bm model.ProviderBundleModel, existing model.LLMModel, target model.Provider, bundleType string, names ProxyNames) BundleModelPlan {
+func planBundleModel(i int, bm model.ProviderBundleModel, existing model.LLMModel, servedType string, names ProxyNames) BundleModelPlan {
 	mp := BundleModelPlan{Index: i, Model: bm, Existing: existing}
 
 	// The kind must be one the API serving the model serves, as the model
-	// form requires: the target's own API when the bundle sets none. An
-	// unset kind is the default kind of that API.
+	// form requires: the provider's API when the bundle sets none. An unset
+	// kind is the default kind of that API.
 	served := bm.APIType
 	if served == "" {
-		served = bundleType
-		if target != nil {
-			served = target.Type()
-		}
+		served = servedType
 	}
 	if mp.Model.Kind == "" {
 		mp.Model.Kind = model.DefaultProviderTypeKind(served)
@@ -458,42 +470,49 @@ func ApplyProviderBundle(ctx context.Context, store port.ProviderStore, plan Pro
 	}
 	result.Provider, result.ProviderChanged = target, changed
 
-	for _, mp := range plan.Models {
-		switch mp.Action {
-		case BundleModelCreate:
-			if !sel.Models[mp.Index] {
+	// Updates go first, as the plan orders them: a model to create may take
+	// the name a renamed model leaves.
+	for _, action := range []BundleModelAction{BundleModelUpdate, BundleModelCreate} {
+		for _, mp := range plan.Models {
+			if mp.Action != action {
 				continue
 			}
-			m := model.NewLLMModelFromBundle(model.NewLLMModelID(), target.ID(), target.OrgID(), time.Now(), mp.Model)
-			if err := store.CreateLLMModel(ctx, m); err != nil {
-				result.Failed = append(result.Failed, BundleModelFailure{Index: mp.Index, ProxyName: m.ProxyName(), Err: errors.WithStack(err)})
-				continue
-			}
-			result.Created++
-		case BundleModelUpdate:
-			fields := sel.Fields[mp.Index]
-			updated := model.BundleModelOf(mp.Existing)
-			changed := false
-			for _, change := range mp.Changes {
-				if !fields[change.Field] || change.Conflict != "" {
+			switch mp.Action {
+			case BundleModelCreate:
+				if !sel.Models[mp.Index] {
 					continue
 				}
-				for _, f := range bundleModelFields {
-					if f.name == change.Field {
-						f.set(&updated, mp.Model)
-						changed = true
+				m := model.NewLLMModelFromBundle(model.NewLLMModelID(), target.ID(), target.OrgID(), time.Now(), mp.Model)
+				if err := store.CreateLLMModel(ctx, m); err != nil {
+					result.Failed = append(result.Failed, BundleModelFailure{Index: mp.Index, ProxyName: m.ProxyName(), Err: errors.WithStack(err)})
+					continue
+				}
+				result.Created++
+			case BundleModelUpdate:
+				fields := sel.Fields[mp.Index]
+				updated := model.BundleModelOf(mp.Existing)
+				changed := false
+				for _, change := range mp.Changes {
+					if !fields[change.Field] || change.Conflict != "" {
+						continue
+					}
+					for _, f := range bundleModelFields {
+						if f.name == change.Field {
+							f.set(&updated, mp.Model)
+							changed = true
+						}
 					}
 				}
+				if !changed {
+					continue
+				}
+				m := model.NewLLMModelFromBundle(mp.Existing.ID(), mp.Existing.ProviderID(), mp.Existing.OrgID(), mp.Existing.CreatedAt(), updated)
+				if err := store.SaveLLMModel(ctx, m); err != nil {
+					result.Failed = append(result.Failed, BundleModelFailure{Index: mp.Index, ProxyName: m.ProxyName(), Err: errors.WithStack(err)})
+					continue
+				}
+				result.Updated++
 			}
-			if !changed {
-				continue
-			}
-			m := model.NewLLMModelFromBundle(mp.Existing.ID(), mp.Existing.ProviderID(), mp.Existing.OrgID(), mp.Existing.CreatedAt(), updated)
-			if err := store.SaveLLMModel(ctx, m); err != nil {
-				result.Failed = append(result.Failed, BundleModelFailure{Index: mp.Index, ProxyName: m.ProxyName(), Err: errors.WithStack(err)})
-				continue
-			}
-			result.Updated++
 		}
 	}
 	return result, nil
