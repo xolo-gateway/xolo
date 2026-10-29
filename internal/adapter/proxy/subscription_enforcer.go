@@ -96,14 +96,17 @@ func (e *XoloSubscriptionEnforcer) PreRequest(ctx context.Context, req *genaiPro
 		MemberCount: memberCount,
 		Currency:    p.Currency(),
 	}
-	if plan.HasPerModelConstraint() {
-		scope.UpstreamModel = m.RealModel()
-		scope.ModelIDs = e.upstreamModelIDs(ctx, m)
-	}
-	if plan.HasSharedConstraint() {
+	if plan.HasPerModelConstraint() || plan.HasSharedConstraint() {
+		// Read once for both: a failure is not cached, and reading it twice
+		// would double both the load on a struggling store and the metric.
+		models, ok := e.orgModels(ctx, orgID)
+		if plan.HasPerModelConstraint() {
+			scope.UpstreamModel = m.RealModel()
+			scope.ModelIDs = upstreamModelIDs(models, ok, m)
+		}
 		// On a failure the usage is weighed without the models, each at the
 		// constraint's highest rate: the plan closes early rather than late.
-		scope.Models, _ = e.orgModels(ctx, orgID)
+		scope.Models = models
 	}
 
 	// Check cooldowns first (fast path, no DB).
@@ -266,10 +269,9 @@ func cooldownModel(c model.PlanConstraint, upstreamModel string) string {
 
 // upstreamModelIDs lists the models of the provider that target the same
 // upstream model as m: the provider meters them as one, whatever proxy name
-// they are published under. When the models cannot be listed it falls back to
-// m alone, which undercounts only when the model has aliases.
-func (e *XoloSubscriptionEnforcer) upstreamModelIDs(ctx context.Context, m model.LLMModel) []model.LLMModelID {
-	models, ok := e.orgModels(ctx, m.OrgID())
+// they are published under. When the models could not be listed (ok false) it
+// falls back to m alone, which undercounts only when the model has aliases.
+func upstreamModelIDs(models []model.LLMModel, ok bool, m model.LLMModel) []model.LLMModelID {
 	if !ok {
 		return []model.LLMModelID{m.ID()}
 	}

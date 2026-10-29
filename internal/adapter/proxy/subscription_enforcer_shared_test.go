@@ -215,3 +215,13 @@ func TestSubscriptionEnforcer_Upstream429LeavesASharedWindowOpenInAPerModelPlan(
 		t.Errorf("kimi message = %q, want a cooldown", msg)
 	}
 }
+
+func TestSubscriptionEnforcer_MixedPlanListsTheModelsOnce(t *testing.T) {
+	f := newSharedFixture(t, 0, perModelConstraint("5h", 3_000_000, nil), sharedConstraint(nil))
+	f.providers.listErr = errors.New("store down")
+
+	f.denialFor(t, "", f.kimi)
+	if f.providers.listCalls != 1 {
+		t.Errorf("ListLLMModels called %d times, want 1: per-model and shared constraints share the read", f.providers.listCalls)
+	}
+}
