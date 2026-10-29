@@ -328,3 +328,24 @@ func TestBundle_DropsTheModelBudgetOfAnOfferingItLeavesOut(t *testing.T) {
 		t.Error("the catalog's own plan should be left untouched")
 	}
 }
+
+func TestBundle_KeepsTheSharedBudgetOfAnOfferingItLeavesOut(t *testing.T) {
+	c := testCatalog()
+	acme := &c.Providers[0]
+	acme.Offerings = append(acme.Offerings, Offering{Model: "kimi", ModelID: "kimi-far", APIType: "gemini", Prices: Prices{Input: 1, Output: 2}})
+	tokens := int64(1000)
+	acme.Plans = append(acme.Plans, Plan{ID: "shared", Name: "Shared", Constraints: []Constraint{{
+		Kind: "rolling_window", Label: "5h", Duration: "5h", Scope: "shared", TokenBudget: &tokens,
+		ModelBudgets: map[string]Budget{"glm-5": {TokenBudget: &tokens}, "kimi-far": {TokenBudget: &tokens}},
+	}}})
+	bundle, err := c.Bundle("acme", "shared")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, kept := bundle.Provider.SubscriptionPlan.Constraints[0].ModelBudgets["kimi-far"]; !kept {
+		t.Error("a shared constraint keeps the budget: its smallest one weighs the models it does not list")
+	}
+	if err := bundle.Validate(); err != nil {
+		t.Errorf("the bundle does not validate: %v", err)
+	}
+}

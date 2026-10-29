@@ -86,8 +86,9 @@ func (h *Handler) previewCatalogImport(w http.ResponseWriter, r *http.Request) {
 			h.renderProviderBundleError(w, r, vmodel, i18n.T(ctx, "org.errors.catalog_import.unknown"))
 			return
 		}
+		// The entry at fault is named, for the operator to report it.
 		slog.ErrorContext(ctx, "could not convert the catalog provider", slog.String("version", c.Version), slogx.Error(err))
-		h.renderProviderBundleError(w, r, vmodel, i18n.T(ctx, "org.errors.catalog_import.invalid", c.Version))
+		h.renderProviderBundleError(w, r, vmodel, i18n.T(ctx, "org.errors.catalog_import.invalid_entry", c.Version, err.Error()))
 		return
 	}
 	// Imported into a provider at another endpoint than its own, a catalog

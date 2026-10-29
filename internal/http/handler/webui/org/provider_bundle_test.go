@@ -736,3 +736,21 @@ func TestCatalogImport_KeepsTheSettingsTheCatalogDoesNotDescribe(t *testing.T) {
 		}
 	}
 }
+
+func TestCatalogImport_NamesTheBudgetThatNamesNoOffering(t *testing.T) {
+	h, s, tenant := importFixture(t, "https://acme.test/v1", "sk")
+	acme := catalog.Provider{ID: "acme", Name: "Acme", Currency: "USD",
+		Offerings: []catalog.Offering{{Model: "glm", ModelID: "glm", Prices: catalog.Prices{Input: 1, Output: 2}}},
+		Plans: []catalog.Plan{{ID: "pro", Name: "Pro", Constraints: []catalog.Constraint{{
+			Kind: "rolling_window", Label: "5h", Duration: "5h", Scope: "model", ModelBudgets: map[string]catalog.Budget{"ghost": {}},
+		}}}}}
+	acme.Xolo.Type, acme.Xolo.BaseURL = "openai", "https://acme.test/v1"
+	h.SetCatalog(catalog.NewStaticSource(&catalog.Catalog{Kind: catalog.Kind, Format: catalog.Format, Version: "v-ghost", Providers: []catalog.Provider{acme}}))
+
+	fields := url.Values{"catalog_provider": {"acme"}, "plan": {"pro"}}
+	rr := httptest.NewRecorder()
+	h.previewCatalogImport(rr, bundleRequest(t, s, tenant, string(s.provider.ID()), bytes.NewBufferString(fields.Encode()), "application/x-www-form-urlencoded"))
+	if page := stdhtml.UnescapeString(rr.Body.String()); rr.Code != http.StatusUnprocessableEntity || !strings.Contains(page, "v-ghost") || !strings.Contains(page, `"ghost"`) {
+		t.Errorf("status %d, want 422 naming the release and the budget at fault", rr.Code)
+	}
+}

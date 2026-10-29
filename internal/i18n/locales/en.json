@@ -689,6 +689,7 @@
   "org.errors.catalog_import.unavailable": "The model catalog cannot be read at the moment: try again later.",
   "org.errors.catalog_import.unknown": "This provider or plan is not in the model catalog.",
   "org.errors.catalog_import.invalid": "The catalog release %s cannot be imported: one of its entries is malformed. Try again once a corrected release is published.",
+  "org.errors.catalog_import.invalid_entry": "The catalog release %s cannot be imported: %s. Try again once a corrected release is published.",
   "org.model.prefill_no_rate": "The prices were not filled: no exchange rate is available to convert them into the provider's currency.",
   "org.errors.catalog_import.no_rate": "The catalog publishes these prices in %s and no exchange rate to %s is available: try again later.",
   "org.errors.provider_bundle.no_rate": "This bundle is priced in %s and no exchange rate to %s is available: try again later.",
