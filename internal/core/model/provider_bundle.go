@@ -158,6 +158,38 @@ func omittedHeaders(h *ProviderRequestHeaders) []string {
 	return names
 }
 
+// MergeImportedHeaders returns the headers a provider gets when it takes the
+// imported ones: those of the bundle, plus its own headers a bundle never
+// carries (those portableHeaders leaves out), which the import must not
+// erase.
+func MergeImportedHeaders(current, imported *ProviderRequestHeaders) *ProviderRequestHeaders {
+	merged := &ProviderRequestHeaders{}
+	if imported != nil {
+		merged.SessionHeader = imported.SessionHeader
+		for name, value := range imported.Headers {
+			if merged.Headers == nil {
+				merged.Headers = map[string]string{}
+			}
+			merged.Headers[name] = value
+		}
+	}
+	if current != nil {
+		for name, value := range current.Headers {
+			if !credentialHeader(name) {
+				continue
+			}
+			if merged.Headers == nil {
+				merged.Headers = map[string]string{}
+			}
+			merged.Headers[name] = value
+		}
+	}
+	if merged.Empty() {
+		return nil
+	}
+	return merged
+}
+
 // portableHeaders returns the request headers that can travel in a bundle:
 // those whose name does not look like a credential's. The session header,
 // a name rather than a value, is kept.

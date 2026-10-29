@@ -646,3 +646,21 @@ func TestNewProviderBundle_LeavesOutHeadersThatLookLikeCredentials(t *testing.T)
 		t.Errorf("the export should name the headers it left out: %s", doc)
 	}
 }
+
+func TestApplyProviderBundle_KeepsTheTargetsCredentialHeaders(t *testing.T) {
+	mem := newMemoryProviderStore()
+	target := model.NewProvider("org-a", "Gateway", "openai", "https://gw.test/v1", "key", "USD")
+	target.SetRequestHeaders(&model.ProviderRequestHeaders{Headers: map[string]string{"Api-Key": "secret", "X-Old": "1"}})
+	bundle := model.ProviderBundle{Kind: model.ProviderBundleKind, Version: model.ProviderBundleVersion,
+		Provider: model.ProviderBundleSettings{Type: "openai", Currency: "USD", BaseURL: "https://gw.test/v1",
+			RequestHeaders: &model.ProviderRequestHeaders{Headers: map[string]string{"X-Title": "xolo"}}}}
+	plan := PlanProviderBundleImport(bundle, target, nil, takenNames{})
+	result, err := ApplyProviderBundle(context.Background(), mem, plan, BundleSelection{Settings: map[string]bool{BundleFieldRequestHeaders: true}}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	headers := result.Provider.RequestHeaders().Headers
+	if headers["Api-Key"] != "secret" || headers["X-Title"] != "xolo" || headers["X-Old"] != "" {
+		t.Errorf("headers = %v, want the bundle's plus the target's credential header", headers)
+	}
+}

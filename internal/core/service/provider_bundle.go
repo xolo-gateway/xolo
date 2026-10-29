@@ -590,7 +590,7 @@ func applyProviderSettings(ctx context.Context, store port.ProviderStore, plan P
 		case BundleFieldRateLimit:
 			updated.SetRateLimitConfig(s.RateLimit)
 		case BundleFieldRequestHeaders:
-			updated.SetRequestHeaders(s.RequestHeaders)
+			updated.SetRequestHeaders(model.MergeImportedHeaders(t.RequestHeaders(), s.RequestHeaders))
 		}
 	}
 	if sel.Billing && plan.Billing != nil {
