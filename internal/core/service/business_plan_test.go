@@ -7,6 +7,39 @@ import (
 	"github.com/xolo-gateway/xolo/internal/core/model"
 )
 
+func TestValidatePlanConstraint_Shared(t *testing.T) {
+	value := func(v int64) *int64 { return &v }
+	shared := model.PlanConstraint{
+		Kind:         model.ConstraintRollingWindow,
+		Label:        "month",
+		Duration:     model.PlanDuration(720 * time.Hour),
+		ValueBudget:  value(60_000_000),
+		Scope:        model.PlanScopeShared,
+		ModelBudgets: map[string]model.PlanBudget{"deepseek-v4.1-flash": {ValueBudget: value(160_000_000)}, "free": {}},
+	}
+	if err := validatePlanConstraint(shared); err != nil {
+		t.Errorf("shared constraint rejected: %v", err)
+	}
+
+	// A zero budget would weigh infinitely.
+	shared.ModelBudgets = map[string]model.PlanBudget{"deepseek-v4.1-flash": {ValueBudget: value(0)}}
+	if err := validatePlanConstraint(shared); err == nil {
+		t.Error("shared constraint with a zero model budget accepted, want rejected")
+	}
+
+	// Nor a kind the constraint does not limit: it would weigh nothing.
+	shared.ModelBudgets = map[string]model.PlanBudget{"deepseek-v4.1-flash": {TokenBudget: value(50_000_000)}}
+	if err := validatePlanConstraint(shared); err == nil {
+		t.Error("shared constraint with a token model budget and no token budget accepted, want rejected")
+	}
+
+	concurrency := model.PlanConstraint{Kind: model.ConstraintConcurrency, Label: "c", MaxConcurrent: new(int), Scope: model.PlanScopeShared}
+	*concurrency.MaxConcurrent = 2
+	if err := validatePlanConstraint(concurrency); err == nil {
+		t.Error("shared concurrency constraint accepted, want rejected")
+	}
+}
+
 func TestValidatePlanConstraint_PerModel(t *testing.T) {
 	value := func(v int64) *int64 { return &v }
 	window := func() model.PlanConstraint {

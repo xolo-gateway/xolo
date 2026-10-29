@@ -3,6 +3,7 @@ package component
 import (
 	"fmt"
 
+	"github.com/xolo-gateway/xolo/internal/core/model"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/button"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/input"
 	"github.com/xolo-gateway/xolo/internal/i18n"
@@ -141,4 +142,91 @@ templ ProviderHeadersEditor(rows []ExtraBodyRow, readonly bool) {
 		AddLabel:         i18n.T(ctx, "org.models.extra_body.header_add"),
 		RemoveTitle:      i18n.T(ctx, "org.models.extra_body.header_remove"),
 	}, rows, readonly)
+}
+
+// ── Provider Keys Editor ──────────────────────────────────────────────────────
+
+// ProviderKeysEditor renders the keys a provider holds besides its own. A
+// stored key keeps its id in a hidden field and never shows its secret: a
+// blank value keeps it. Its form fields are prefixed with provider_key (see
+// parseProviderKeysFromForm).
+templ ProviderKeysEditor(keys []model.ProviderKey, readonly bool) {
+	<div class="space-y-3">
+		<div
+			id="provider-key-rows"
+			class="space-y-2"
+			data-xolo-rows
+			data-rows-template="provider-key-tpl"
+			data-rows-count="provider-key-count"
+		>
+			for i, k := range keys {
+				@providerKeyRow(i, k, readonly)
+			}
+		</div>
+		<input type="hidden" id="provider-key-count" name="provider_key_count" value={ fmt.Sprintf("%d", len(keys)) }/>
+		if !readonly {
+			@button.Button(button.Props{
+				Type:       "button",
+				Variant:    button.VariantOutline,
+				Class:      "w-full",
+				Attributes: templ.Attributes{"data-xolo-row-add": "provider-key-rows"},
+			}) {
+				{ i18n.T(ctx, "org.provider.api_keys_add") }
+			}
+		}
+	</div>
+	if !readonly {
+		<template id="provider-key-tpl">
+			@providerKeyRow(-1, model.ProviderKey{}, false)
+		</template>
+	}
+}
+
+// providerKeyRow renders one key. idx = -1 → template row.
+templ providerKeyRow(idx int, k model.ProviderKey, readonly bool) {
+	{{ idxKey := fmt.Sprintf("%d", idx) }}
+	if idx == -1 {
+		{{ idxKey = "{i}" }}
+	}
+	{{ valuePlaceholder := i18n.T(ctx, "org.provider.api_keys_value_placeholder") }}
+	if k.ID != "" {
+		{{ valuePlaceholder = i18n.T(ctx, "org.provider.api_keys_value_keep") }}
+	}
+	<div data-xolo-row class="flex items-start gap-2">
+		// Hidden input: the id of the stored key the row edits, empty for a
+		// new one. It carries a value, it is not a control.
+		<input type="hidden" name={ "provider_key_k" + idxKey + "_id" } value={ string(k.ID) } data-xolo-name="provider_key_k{i}_id"/>
+		<div class="w-48">
+			@input.Input(input.Props{
+				Name:        "provider_key_k" + idxKey + "_label",
+				Value:       k.Label,
+				Placeholder: i18n.T(ctx, "org.provider.api_keys_label_placeholder"),
+				Disabled:    readonly,
+				Attributes:  templ.Attributes{"data-xolo-name": "provider_key_k{i}_label"},
+			})
+		</div>
+		<div class="flex-1">
+			@input.Input(input.Props{
+				Name:        "provider_key_k" + idxKey + "_value",
+				Type:        input.TypePassword,
+				Placeholder: valuePlaceholder,
+				Class:       "font-mono",
+				Disabled:    readonly,
+				Attributes:  templ.Attributes{"data-xolo-name": "provider_key_k{i}_value", "autocomplete": "off"},
+			})
+		</div>
+		if !readonly {
+			@button.Button(button.Props{
+				Type:    "button",
+				Variant: button.VariantOutline,
+				Size:    button.SizeIcon,
+				Attributes: templ.Attributes{
+					"data-xolo-row-remove": "",
+					"title":                i18n.T(ctx, "org.provider.api_keys_remove"),
+				},
+			}) {
+				✕
+			}
+		}
+	</div>
 }

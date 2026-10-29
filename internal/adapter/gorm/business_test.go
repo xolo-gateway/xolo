@@ -290,6 +290,14 @@ func TestBusinessSecrets(t *testing.T) {
 		require.NoError(t, err)
 		require.NotEqual(t, firstCiphertext, stored.APIKey())
 
+		// The extra keys, set in the web UI, are neither projected nor
+		// dropped by provisioning.
+		withKeys := model.NewProvider(fixture.org, stored.Name(), stored.Type(), stored.BaseURL(), stored.APIKey(), stored.Currency())
+		withKeys.SetID(stored.ID())
+		withKeys.SetActive(stored.Active())
+		withKeys.SetExtraAPIKeys([]model.ProviderKey{{ID: "k2", Label: "member 2", APIKey: "encrypted-member-2"}})
+		require.NoError(t, store.SaveProvider(ctx, withKeys))
+
 		// A change of the representation without key keeps the key.
 		renamed, err := svc.PutProvider(ctx, testTenantID, fixture.org, key, noCondition, providerSettings("Renamed", nil))
 		require.NoError(t, err)
@@ -297,6 +305,7 @@ func TestBusinessSecrets(t *testing.T) {
 		kept2, err := store.GetProviderByID(ctx, model.ProviderID(key))
 		require.NoError(t, err)
 		require.Equal(t, stored.APIKey(), kept2.APIKey())
+		require.Equal(t, withKeys.ExtraAPIKeys(), kept2.ExtraAPIKeys())
 
 		var texts []string
 		for _, table := range []struct{ name, column string }{
@@ -307,7 +316,7 @@ func TestBusinessSecrets(t *testing.T) {
 			texts = append(texts, values...)
 		}
 		all := strings.Join(texts, "\n")
-		for _, secret := range []string{"sk-first-secret", "sk-second-secret", firstCiphertext, stored.APIKey(), "api_key\""} {
+		for _, secret := range []string{"sk-first-secret", "sk-second-secret", firstCiphertext, stored.APIKey(), "api_key\"", "encrypted-member-2", "api_keys"} {
 			require.NotContains(t, all, secret)
 		}
 		require.Contains(t, all, "api_key_fingerprint")

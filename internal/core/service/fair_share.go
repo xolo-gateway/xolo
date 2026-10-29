@@ -35,6 +35,11 @@ type FairShareRequest struct {
 	// allocating pass it so the window is aggregated once per request instead of
 	// twice — this runs on the proxy hot path, per constraint.
 	PlanUsage *PlanUsage
+	// UserUsage, when set, is the user's consumption of the window as the
+	// caller already read it. A shared constraint weighs each model by its own
+	// budget, which a plain sum of the window cannot do: its callers weigh both
+	// figures themselves and hand them over.
+	UserUsage *PlanUsage
 }
 
 func (r FairShareRequest) usageScope() model.PlanUsageScope {
@@ -294,9 +299,15 @@ func (s *FairShareService) Resolve(ctx context.Context, req FairShareRequest) (*
 		}
 	}
 
-	userTokens, userValue, err := s.usageReader.SumUserPlanUsageSince(ctx, req.UserID, req.usageScope(), since)
-	if err != nil {
-		return nil, errors.WithStack(err)
+	var userTokens, userValue int64
+	if req.UserUsage != nil {
+		userTokens, userValue = req.UserUsage.Tokens, req.UserUsage.Value
+	} else {
+		var err error
+		userTokens, userValue, err = s.usageReader.SumUserPlanUsageSince(ctx, req.UserID, req.usageScope(), since)
+		if err != nil {
+			return nil, errors.WithStack(err)
+		}
 	}
 
 	res := &FairShareResult{

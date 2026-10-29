@@ -47,14 +47,16 @@ var FairShareDegradedShares = promauto.NewCounterVec(
 	[]string{LabelOrg},
 )
 
-// PlanModelGroupingFailures counts the requests to a per-model subscription
-// plan for which the models sharing the requested upstream model could not be
-// listed. The request is then metered on the requested model alone, which
-// undercounts an upstream model published under several proxy names.
+// PlanModelGroupingFailures counts the requests to a per-model or shared
+// subscription plan for which the organization's models could not be listed.
+// A per-model constraint then meters the requested model alone, which
+// undercounts an upstream model published under several proxy names; a shared
+// one weighs every model at the constraint's highest rate, which closes the
+// window early.
 var PlanModelGroupingFailures = promauto.NewCounterVec(
 	prometheus.CounterOpts{
 		Name:      NamePlanModelGroupingFailures,
-		Help:      "Total number of per-model plan checks metered on the requested model alone because the model list could not be read",
+		Help:      "Total number of per-model or shared plan checks metered without the model list because it could not be read",
 		Namespace: Namespace,
 	},
 	[]string{LabelOrg},

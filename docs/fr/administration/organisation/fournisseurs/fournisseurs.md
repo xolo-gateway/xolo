@@ -137,18 +137,18 @@ Le champ « Reset dans » se recopie depuis l'écran du fournisseur (par exemple
 `4h29m`) : Xolo le convertit en un ancrage absolu, de sorte que ses fenêtres
 coïncident avec les réinitialisations réelles du forfait.
 
-### Limites par modèle
+### Décompte par modèle
 
-Certains forfaits ne limitent pas le fournisseur dans son ensemble, mais chaque
-modèle séparément. C'est le cas d'OpenCode Go : chaque modèle dispose de son
-propre budget mensuel, dont 20 % sur 5 heures et 50 % sur une semaine. Cocher
-**Décompter par modèle** sur une fenêtre lui donne ce comportement : chaque
-modèle amont a sa propre fenêtre et ses propres budgets, et épuiser un modèle ne
-bloque pas les autres.
+Une fenêtre se décompte de trois façons, au choix dans son champ **Décompte** :
 
-Les budgets de la contrainte s'appliquent alors à chaque modèle. Le champ
-**Budgets propres à certains modèles** les remplace pour les modèles qu'il
-liste, un par ligne, sous leur nom amont (le « modèle réel ») :
+| Décompte                       | Ce que compte la fenêtre                                                         |
+| ------------------------------ | -------------------------------------------------------------------------------- |
+| **Fournisseur entier**         | Tous les modèles consomment les mêmes budgets, chacun pour ce qu'il coûte        |
+| **Par modèle**                 | Chaque modèle a sa propre fenêtre et ses propres budgets                         |
+| **Commun, pondéré par modèle** | Tous les modèles consomment les mêmes budgets, chacun à son propre rythme        |
+
+Le champ **Budgets propres à certains modèles** donne un budget à part aux
+modèles qu'il liste, un par ligne, sous leur nom amont (le « modèle réel ») :
 
 ```
 kimi-k3 = 3
@@ -159,28 +159,79 @@ longcat-2.5-preview-free = illimité
 Une valeur s'exprime dans la devise du fournisseur, un budget tokens porte le
 suffixe `tokens`, et `illimité` lève toute limite pour ce modèle. Un modèle listé
 remplace les deux budgets de la contrainte : `kimi-k3 = 3` ne garde pas le
-budget tokens de la contrainte pour `kimi-k3`.
+budget tokens de la contrainte pour `kimi-k3`. Un modèle absent de la liste
+prend les budgets de la contrainte. Ce champ n'a de sens qu'avec un décompte
+par modèle ou commun.
+
+#### Par modèle
+
+Pour les forfaits qui limitent chaque modèle séparément : chaque modèle amont a
+sa propre fenêtre et ses propres budgets, et épuiser un modèle ne bloque pas les
+autres. La répartition entre utilisateurs s'applique modèle par modèle : un
+utilisateur actif sur un modèle n'entame pas la part des autres modèles.
+
+Quand le fournisseur répond `429`, seul le modèle demandé est mis en pause.
+
+#### Commun, pondéré par modèle
+
+Pour les forfaits qui publient une limite par modèle mais ne décomptent qu'une
+seule fenêtre. C'est le cas d'OpenCode Go : sa page de limites indique, pour
+chaque modèle, l'usage mensuel que permet le forfait s'il n'est consommé
+qu'avec ce modèle (160 $ pour DeepSeek V4.1 Flash, 60 $ pour MiMo-V2.6-Pro en
+Go Plus), mais son tableau de bord n'affiche qu'une jauge par fenêtre, tous
+modèles confondus.
+
+Le budget de la contrainte est celui de la fenêtre, et le budget propre d'un
+modèle fixe son rythme : un modèle consomme `coût × budget de la contrainte /
+budget du modèle`. Avec une fenêtre de 60 $ et DeepSeek à 160 $, 16 $ de
+DeepSeek remplissent 6 $ de la fenêtre. Un modèle déclaré `illimité` ne la
+remplit pas. Un budget propre doit être positif, et d'un type que la contrainte
+possède : un budget tokens n'a pas de rythme à fixer sur une contrainte sans
+budget tokens.
+
+La fenêtre, sa jauge et la répartition entre utilisateurs sont communes à tous
+les modèles : un `429` du fournisseur met la fenêtre en pause pour tous, sauf
+si le plan décompte aussi une fenêtre par modèle (voir
+[Mise en pause et jauges](#mise-en-pause-et-jauges)). Pour
+OpenCode Go, déclarez les trois fenêtres en décompte commun, avec les limites de
+la page du forfait :
+
+| Fenêtre | Budget de la contrainte | Budget d'un modèle         |
+| ------- | ----------------------- | -------------------------- |
+| 5h      | 20 % de l'usage mensuel | 20 % de sa limite mensuelle |
+| Semaine | 50 % de l'usage mensuel | 50 % de sa limite mensuelle |
+| Mois    | usage mensuel           | sa limite mensuelle        |
+
+La semaine d'OpenCode Go se réinitialise le lundi à 00:00 UTC : recopiez le
+« Reset dans » de son tableau de bord pour en faire une fenêtre fixe.
+
+#### Modèles publiés sous plusieurs noms
 
 Deux modèles Xolo qui pointent vers le même modèle amont, par exemple deux noms
 publiés avec des réglages différents, sont décomptés ensemble, comme le fait le
-fournisseur. Xolo garde ce regroupement 30 secondes : un modèle créé ou modifié
-compte avec ses homonymes après ce délai. Si la liste des modèles ne peut pas
-être lue, la requête est décomptée sur le seul modèle demandé, et le compteur
-`xolo_plan_model_grouping_failures_total` s'incrémente. La répartition entre
-utilisateurs s'applique modèle par modèle : un
-utilisateur actif sur un modèle n'entame pas la part des autres modèles.
+fournisseur, et prennent le même rythme. Xolo garde la liste des modèles 30
+secondes : un modèle créé ou modifié compte avec ses homonymes après ce délai.
+Si la liste ne peut pas être lue, une fenêtre par modèle décompte le seul
+modèle demandé, une fenêtre commune compte chaque modèle au rythme le plus
+élevé de la contrainte, ce qui la ferme plus tôt, et le compteur
+`xolo_plan_model_grouping_failures_total` s'incrémente. L'usage d'un modèle
+supprimé depuis compte lui aussi à ce rythme.
 
-Un plan peut mêler les deux portées : une fenêtre décomptée par modèle et une
+#### Mise en pause et jauges
+
+Un plan peut mêler les portées : une fenêtre décomptée par modèle et une
 autre sur l'ensemble du fournisseur s'appliquent toutes les deux. Quand un plan
 décompte par modèle et que le fournisseur répond `429`, seul le modèle demandé
 est mis en pause, pour la durée indiquée par l'en-tête `Retry-After`, ou cinq
-minutes à défaut.
+minutes à défaut : ses fenêtres sur l'ensemble du fournisseur et ses fenêtres
+communes restent ouvertes, le `429` ne pouvant pas leur être attribué.
 Un `429` dont l'erreur est de type `server_error`, par exemple un fournisseur
 saturé qui demande de réessayer dans quelques secondes, ne dit rien du forfait :
 il est transmis au client sans mise en pause.
 
 Sur la page d'usage et le tableau de bord, une contrainte par modèle affiche une
-jauge par modèle consommé dans la fenêtre en cours.
+jauge par modèle consommé dans la fenêtre en cours ; une contrainte commune
+affiche une seule jauge, sa consommation pondérée.
 
 ### Répartition entre utilisateurs
 
@@ -237,6 +288,44 @@ la baisse. Le tableau de bord affiche, sous chaque jauge d'abonnement, le nombre
 d'utilisateurs actifs sur lequel la part a été calculée, ainsi qu'une mention
 lorsque le rythme resserre la part, lorsque le forfait déjà consommé par les
 autres la plafonne, ou lorsque la fin de fenêtre l'élargit.
+
+### Plusieurs clés pour un même abonnement
+
+Un forfait d'équipe, comme OpenCode Go Teams, donne à chaque membre sa propre
+clé et ses propres limites. Pour en faire profiter plus d'utilisateurs Xolo qu'il
+n'y a de membres, ajoutez les clés des membres sous **Clés API supplémentaires**,
+dans le formulaire d'un fournisseur en abonnement. La clé du fournisseur reste la
+première du lot.
+
+Le plan décrit les limites d'**une** clé. Xolo l'applique à chacune :
+
+- **les parts des utilisateurs** se calculent sur l'ensemble des clés. Avec
+  trois clés et une fenêtre de 30 $, la répartition entre utilisateurs porte
+  sur 90 $ ; c'est ce que montrent les jauges ;
+- **chaque requête** passe par une seule clé, qui doit avoir de la marge sur
+  toutes ses fenêtres. Un utilisateur reste sur la clé de sa requête précédente,
+  où vit le cache de ses conversations, tant qu'elle a de la marge. Sinon, il
+  passe sur la clé la moins remplie ; sur un forfait encore vide, les nouveaux
+  arrivants se répartissent entre les clés ;
+- **un refus d'OpenCode** (429 de limite atteinte) met la clé en pause et la
+  requête repart aussitôt, sans erreur, sur une autre clé qui a de la marge.
+  Une saturation momentanée du fournisseur (`server_error`) ne change pas de
+  clé.
+
+Les clés restent invisibles pour les utilisateurs : ni leur tableau de bord, ni
+les messages de refus ne les mentionnent. La page d'usage de l'organisation
+détaille la consommation clé par clé, sous la carte du fournisseur, pour les
+personnes autorisées à consulter les fournisseurs.
+
+Les fenêtres se calent pour toutes les clés sur la même ancre : réservez ce
+fonctionnement à des membres dont les forfaits se renouvellent ensemble.
+Désactivez par ailleurs le dépassement payant du forfait (« Extra Usage » chez
+OpenCode) : une clé qui continue de répondre au-delà de ses limites n'est
+jamais vue saturée, et le dépassement est facturé.
+
+Les requêtes passées par la clé du fournisseur avant l'ajout d'autres clés
+restent comptées sur celle-ci. Retirer une clé efface ses jauges, pas son
+historique d'usage.
 
 ## Configurer la résilience
 

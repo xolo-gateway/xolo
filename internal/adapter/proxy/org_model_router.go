@@ -45,10 +45,21 @@ type OrgModelRouter struct {
 	// wrappers (rate limiters, token buckets) are shared across requests
 	// instead of being recreated — and thus reset — on every call.
 	clientsMu sync.Mutex
-	clients   *expirable.LRU[model.LLMModelID, *cachedClient]
+	clients   *expirable.LRU[clientKey, *cachedClient]
 
 	// upstreamTimeout bounds each provider call; zero leaves it unbounded.
 	upstreamTimeout time.Duration
+
+	// keyExhausted is told of the keys a request moved away from after an
+	// upstream exhaustion, see keyFailoverClient.
+	keyExhausted KeyExhaustionHandler
+}
+
+// clientKey identifies a cached client: a model, through one API key of its
+// provider.
+type clientKey struct {
+	model model.LLMModelID
+	key   model.ProviderKeyID
 }
 
 // cachedClient associates a built client with a fingerprint of the model and
@@ -69,12 +80,20 @@ func WithUpstreamTimeout(timeout time.Duration) OrgModelRouterOption {
 	}
 }
 
+// WithKeyExhaustionHandler sets what is told of the API keys a request moved
+// away from after an upstream exhaustion.
+func WithKeyExhaustionHandler(handler KeyExhaustionHandler) OrgModelRouterOption {
+	return func(r *OrgModelRouter) {
+		r.keyExhausted = handler
+	}
+}
+
 func NewOrgModelRouter(providerStore port.ProviderStore, orgStore port.OrgStore, secretKey string, funcs ...OrgModelRouterOption) *OrgModelRouter {
 	r := &OrgModelRouter{
 		providerStore: providerStore,
 		orgStore:      orgStore,
 		secretKey:     secretKey,
-		clients:       expirable.NewLRU[model.LLMModelID, *cachedClient](256, nil, time.Hour),
+		clients:       expirable.NewLRU[clientKey, *cachedClient](256, nil, time.Hour),
 	}
 	for _, fn := range funcs {
 		fn(r)
@@ -160,12 +179,42 @@ func (r *OrgModelRouter) ResolveModel(ctx context.Context, req *genaiProxy.Proxy
 	// Store model ID in metadata for UsageTracker
 	req.Metadata[MetaModelID] = string(llmModel.ID())
 
-	client, err := r.clientForProvider(ctx, llmModel, p)
+	client, err := r.keyedClient(ctx, req, llmModel, p)
 	if err != nil {
 		return nil, "", errors.WithStack(err)
 	}
 
 	return client, llmModel.RealModel(), nil
+}
+
+// keyedClient returns the client of the API key the subscription enforcer
+// chose for the request, failing over to the other keys it allowed. A request
+// the enforcer chose no key for goes through the provider's own.
+func (r *OrgModelRouter) keyedClient(ctx context.Context, req *genaiProxy.ProxyRequest, llmModel model.LLMModel, p model.Provider) (llm.Client, error) {
+	chosen, _ := req.Metadata[MetaProviderKey].(model.ProviderKeyID)
+	fallbacks, _ := req.Metadata[metaProviderKeyFallbacks].([]model.ProviderKeyID)
+	req.Metadata[MetaProviderKeyUsed] = chosen
+
+	clients := make([]keyedClient, 0, 1+len(fallbacks))
+	for _, key := range append([]model.ProviderKeyID{chosen}, fallbacks...) {
+		client, err := r.clientForProvider(ctx, llmModel, p, key)
+		if err != nil {
+			if len(clients) == 0 {
+				return nil, errors.WithStack(err)
+			}
+			// A fallback that cannot be built is skipped: the chosen key can
+			// still serve the request.
+			slog.WarnContext(ctx, "could not build the client of a fallback provider key", slog.Any("error", err))
+			continue
+		}
+		clients = append(clients, keyedClient{key: key, client: client})
+	}
+	// A decision model answers through its own client, which offers no
+	// completion to fail over: it stays on the chosen key.
+	if llmModel.Kind() == model.ModelKindDecision {
+		return clients[0].client, nil
+	}
+	return newKeyFailoverClient(clients, req.Metadata, r.keyExhausted), nil
 }
 
 // clientForModel returns the wrapped LLM client for the given model, building
@@ -177,27 +226,33 @@ func (r *OrgModelRouter) clientForModel(ctx context.Context, llmModel model.LLMM
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
-	return r.clientForProvider(ctx, llmModel, p)
+	return r.clientForProvider(ctx, llmModel, p, model.PrimaryProviderKey)
 }
 
 // clientForProvider is clientForModel for a caller that already holds the
-// model's provider, sparing a second lookup per request.
-func (r *OrgModelRouter) clientForProvider(ctx context.Context, llmModel model.LLMModel, p model.Provider) (llm.Client, error) {
+// model's provider, sparing a second lookup per request, through one API key
+// of the provider.
+func (r *OrgModelRouter) clientForProvider(ctx context.Context, llmModel model.LLMModel, p model.Provider, keyID model.ProviderKeyID) (llm.Client, error) {
 	if !p.Active() {
 		return nil, errors.Errorf("provider '%s' is not active", p.Name())
 	}
+	key, ok := model.ProviderKeyByID(p, keyID)
+	if !ok {
+		return nil, errors.Errorf("provider '%s' has no such API key", p.Name())
+	}
 
 	fingerprint := fmt.Sprintf("%d/%d", llmModel.UpdatedAt().UnixNano(), p.UpdatedAt().UnixNano())
+	cacheKey := clientKey{model: llmModel.ID(), key: keyID}
 
 	r.clientsMu.Lock()
 	defer r.clientsMu.Unlock()
 
-	if cached, ok := r.clients.Get(llmModel.ID()); ok && cached.fingerprint == fingerprint {
+	if cached, ok := r.clients.Get(cacheKey); ok && cached.fingerprint == fingerprint {
 		return cached.client, nil
 	}
 
 	// Decrypt the API key
-	decryptedKey, err := crypto.Decrypt(r.secretKey, p.APIKey())
+	decryptedKey, err := crypto.Decrypt(r.secretKey, key.APIKey)
 	if err != nil {
 		slog.ErrorContext(ctx, "could not decrypt provider API key", slog.Any("error", err))
 		return nil, errors.New("provider configuration error")
@@ -214,7 +269,7 @@ func (r *OrgModelRouter) clientForProvider(ctx context.Context, llmModel model.L
 		if err != nil {
 			return nil, errors.WithStack(err)
 		}
-		r.clients.Add(llmModel.ID(), &cachedClient{client: client, fingerprint: fingerprint})
+		r.clients.Add(cacheKey, &cachedClient{client: client, fingerprint: fingerprint})
 		return client, nil
 	}
 
@@ -272,7 +327,7 @@ func (r *OrgModelRouter) clientForProvider(ctx context.Context, llmModel model.L
 	// timeout is never retried.
 	client = newTimeoutClient(client, r.upstreamTimeout)
 
-	r.clients.Add(llmModel.ID(), &cachedClient{client: client, fingerprint: fingerprint})
+	r.clients.Add(cacheKey, &cachedClient{client: client, fingerprint: fingerprint})
 
 	return client, nil
 }

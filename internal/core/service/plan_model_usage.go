@@ -67,3 +67,29 @@ func hasUsage(ids []model.LLMModelID, usage map[model.LLMModelID]port.PlanUsageT
 	}
 	return false
 }
+
+// WeighSharedPlanUsage sums a per-model usage breakdown of one provider into
+// the units of a shared constraint's budgets, each model weighted by its own
+// budget (model.PlanConstraint.Weigh). The weight follows the upstream model,
+// so the models published under several proxy names weigh the same. Usage of
+// a model no longer listed, or of every model when models is empty because
+// they could not be read, counts at the highest rate of the constraint
+// (WeighUnknown): dropping it would hand its share of the window back to the
+// members, and a lower rate could let the window close late.
+func WeighSharedPlanUsage(c model.PlanConstraint, models []model.LLMModel, usage map[model.LLMModelID]port.PlanUsageTotals) PlanUsage {
+	upstream := make(map[model.LLMModelID]string, len(models))
+	for _, m := range models {
+		upstream[m.ID()] = m.RealModel()
+	}
+	var total PlanUsage
+	for id, totals := range usage {
+		realModel, known := upstream[id]
+		tokens, value := c.Weigh(realModel, totals.Tokens, totals.Value)
+		if !known {
+			tokens, value = c.WeighUnknown(totals.Tokens, totals.Value)
+		}
+		total.Tokens += tokens
+		total.Value += value
+	}
+	return total
+}

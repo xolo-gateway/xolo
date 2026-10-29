@@ -197,6 +197,14 @@ func (t *XoloUsageTracker) PostResponse(ctx context.Context, req *genaiProxy.Pro
 	record.SetPlanCovered(planCovered)
 	record.SetProviderCost(providerCost)
 	record.SetStatus(status)
+	// The key the request went through, which a plan spread over several keys
+	// is metered on. Checked against the provider: the metadata describes the
+	// requested model, which a pipeline may have replaced.
+	if key := usedKey(req); key != model.PrimaryProviderKey {
+		if _, ok := model.ProviderKeyByID(p, key); ok {
+			record.SetProviderKeyID(key)
+		}
+	}
 
 	if err := t.usageStore.RecordUsage(ctx, record); err != nil {
 		slog.ErrorContext(ctx, "usage tracker: could not record usage", slog.Any("error", errors.WithStack(err)))

@@ -402,7 +402,7 @@ func validateBundlePlan(plan *SubscriptionPlan) error {
 		bad := func(what string) error {
 			return errors.Wrapf(ErrInvalidProviderBundle, "plan constraint %q: %s", c.Label, what)
 		}
-		if c.Scope != "" && c.Scope != PlanScopeProvider && c.Scope != PlanScopeModel {
+		if c.Scope != "" && c.Scope != PlanScopeProvider && c.Scope != PlanScopeModel && c.Scope != PlanScopeShared {
 			return bad("has an unknown scope")
 		}
 		switch c.Kind {
@@ -422,12 +422,22 @@ func validateBundlePlan(plan *SubscriptionPlan) error {
 			if c.HappyHourMaxLead != nil && c.HappyHourMaxLead.Duration() <= 0 {
 				return bad("needs a positive happy hour lead")
 			}
-			if len(c.ModelBudgets) > 0 && !c.PerModel() {
-				return bad("has per-model budgets but is not counted per model")
+			if len(c.ModelBudgets) > 0 && !c.PerModel() && !c.Shared() {
+				return bad("has per-model budgets but is not counted per model nor shared")
 			}
 			for _, mb := range c.ModelBudgets {
 				if !budget(mb.TokenBudget) || !budget(mb.ValueBudget) {
 					return bad("has a negative per-model budget")
+				}
+				if c.Shared() {
+					// A shared window divides by each model's budget, and only
+					// weighs the kinds it limits itself.
+					if (mb.TokenBudget != nil && *mb.TokenBudget == 0) || (mb.ValueBudget != nil && *mb.ValueBudget == 0) {
+						return bad("has a zero model budget, which a shared window cannot weigh")
+					}
+					if (mb.TokenBudget != nil && c.TokenBudget == nil) || (mb.ValueBudget != nil && c.ValueBudget == nil) {
+						return bad("has a model budget of a kind the shared window does not limit")
+					}
 				}
 			}
 		case ConstraintConcurrency:
@@ -435,7 +445,7 @@ func validateBundlePlan(plan *SubscriptionPlan) error {
 				return bad("needs at least one concurrent request")
 			}
 			// A concurrency limit is always provider-wide.
-			if c.Scope == PlanScopeModel {
+			if c.Scope == PlanScopeModel || c.Scope == PlanScopeShared {
 				return bad("is a concurrency limit, which cannot be counted per model")
 			}
 		default:

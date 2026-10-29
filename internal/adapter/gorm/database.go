@@ -704,6 +704,22 @@ func schemaMigrations(artifact *RecoveryArtifact) []*gormigrate.Migration {
 				return errors.New("model projections migration cannot be rolled back: consumers rely on their revisions")
 			},
 		},
+		{
+			// Add api_keys to providers, the keys a provider holds besides its
+			// own, and provider_key_id to usage_records, the key each request
+			// went through: a subscription plan spread over several keys is
+			// metered on each of them.
+			ID: providerKeyPoolMigrationID,
+			Migrate: func(tx *gorm.DB) error {
+				return errors.WithStack(tx.AutoMigrate(&Provider{}, &UsageRecord{}))
+			},
+			Rollback: func(tx *gorm.DB) error {
+				if err := tx.Migrator().DropColumn(&Provider{}, "api_keys"); err != nil {
+					return errors.WithStack(err)
+				}
+				return errors.WithStack(tx.Migrator().DropColumn(&UsageRecord{}, "provider_key_id"))
+			},
+		},
 	}
 }
 
@@ -712,4 +728,5 @@ const (
 	modelAPIOverrideMigrationID       = "202610210001"
 	providerRequestHeadersMigrationID = "202610220001"
 	modelKindMigrationID              = "202610220002"
+	providerKeyPoolMigrationID        = "202610290001"
 )

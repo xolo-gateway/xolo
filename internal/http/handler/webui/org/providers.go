@@ -4,8 +4,10 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"maps"
 	"math"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -253,18 +255,34 @@ func (h *Handler) updateProvider(w http.ResponseWriter, r *http.Request) {
 	// stored configuration on every error path, as they always were. Parsing
 	// the plan first at least keeps the plan itself whole when one of those
 	// sections is what fails.
+	// The keys too are read before the other validations, the plan's included,
+	// so that a rejected form shows them as edited. A rejection of the keys
+	// themselves shows the stored ones.
+	extraAPIKeys, keysErr := parseProviderKeysFromForm(r, h.secretKey, existing.ExtraAPIKeys())
+	rejected := func(plan *model.SubscriptionPlan) providerWithPlan {
+		p := submittedProvider(r, existing, billingMode, plan)
+		if keysErr == nil {
+			p.extraKeys = redisplayedKeys(extraAPIKeys, existing.ExtraAPIKeys())
+		}
+		return p
+	}
+
 	var subscriptionPlan *model.SubscriptionPlan
 	if billingMode == model.BillingModeSubscription {
 		plan, err := parseSubscriptionPlanFromForm(r)
 		if err != nil {
-			h.renderProviderFormError(w, r, ctx, user, orgSlug, org,
-				submittedProvider(r, existing, billingMode, plan), false,
+			h.renderProviderFormError(w, r, ctx, user, orgSlug, org, rejected(plan), false,
 				i18n.T(ctx, "org.errors.providers.plan", err.Error()))
 			return
 		}
 		subscriptionPlan = plan
 	}
-	formProvider := submittedProvider(r, existing, billingMode, subscriptionPlan)
+	if keysErr != nil {
+		h.renderProviderFormError(w, r, ctx, user, orgSlug, org, rejected(subscriptionPlan), false,
+			i18n.T(ctx, "org.errors.providers.api_keys", keysErr.Error()))
+		return
+	}
+	formProvider := rejected(subscriptionPlan)
 	if billingMode != model.BillingModeSubscription {
 		formProvider.plan = existing.SubscriptionPlan()
 	}
@@ -333,6 +351,7 @@ func (h *Handler) updateProvider(w http.ResponseWriter, r *http.Request) {
 		pType:            r.FormValue("provider_type"),
 		baseURL:          strings.TrimSpace(r.FormValue("base_url")),
 		apiKey:           apiKey,
+		extraAPIKeys:     extraAPIKeys,
 		active:           r.FormValue("active") == "on",
 		currency:         currency,
 		cloudTier:        cloudTier,
@@ -667,15 +686,21 @@ func parseSubscriptionPlanFromForm(r *http.Request) (*model.SubscriptionPlan, er
 			}
 			// Per-model metering: the budgets above become those of every
 			// upstream model, each with its own window, and the overrides
-			// below give some models a budget of their own.
-			if r.FormValue(prefix+"scope") == string(model.PlanScopeModel) {
-				c.Scope = model.PlanScopeModel
+			// below give some models a budget of their own. Shared metering
+			// keeps a single window, the overrides setting the rate at which
+			// each model fills it.
+			switch scope := model.PlanConstraintScope(r.FormValue(prefix + "scope")); scope {
+			case model.PlanScopeModel, model.PlanScopeShared:
+				c.Scope = scope
 			}
 			if budgets, err := parsePlanModelBudgets(r.FormValue(prefix + "model_budgets")); err != nil {
 				fail(errors.New(i18n.T(ctx, "org.errors.providers.constraint_model_budgets", c.Label, localizedError(ctx, err))))
 			} else if len(budgets) > 0 {
-				if c.Scope != model.PlanScopeModel {
+				if c.Scope != model.PlanScopeModel && c.Scope != model.PlanScopeShared {
 					fail(errors.New(i18n.T(ctx, "org.errors.providers.constraint_model_budgets_scope", c.Label)))
+				}
+				if c.Scope == model.PlanScopeShared {
+					checkSharedModelBudgets(ctx, c, budgets, fail)
 				}
 				c.ModelBudgets = budgets
 			}
@@ -702,6 +727,25 @@ func parseSubscriptionPlanFromForm(r *http.Request) (*model.SubscriptionPlan, er
 		return nil, nil
 	}
 	return &model.SubscriptionPlan{Label: label, Constraints: constraints}, firstErr
+}
+
+// checkSharedModelBudgets reports the model budgets a shared constraint cannot
+// weigh: a zero one would weigh infinitely, and one of a kind the constraint
+// has no budget of would weigh nothing, both silently. Models are reported in
+// name order so the first error shown does not change between two saves.
+func checkSharedModelBudgets(ctx context.Context, c model.PlanConstraint, budgets map[string]model.PlanBudget, fail func(error)) {
+	for _, name := range slices.Sorted(maps.Keys(budgets)) {
+		b := budgets[name]
+		for _, kind := range []struct{ model, constraint *int64 }{{b.TokenBudget, c.TokenBudget}, {b.ValueBudget, c.ValueBudget}} {
+			switch {
+			case kind.model == nil:
+			case *kind.model == 0:
+				fail(errors.New(i18n.T(ctx, "org.errors.providers.constraint_shared_zero", c.Label, name)))
+			case kind.constraint == nil:
+				fail(errors.New(i18n.T(ctx, "org.errors.providers.constraint_shared_missing", c.Label, name)))
+			}
+		}
+	}
 }
 
 // computeWindowAnchor turns a "reset dans" countdown (e.g. "4h29m", "4d13h") into an
@@ -914,6 +958,96 @@ func parseKeyValueRowsFromForm(r *http.Request, name string) (map[string]string,
 		rows[key] = r.FormValue(prefix + "value")
 	}
 	return rows, nil
+}
+
+// maxProviderKeys bounds the keys a provider holds besides its own. The form
+// posts their count: it sizes what the parser allocates, so it is checked
+// against this bound first.
+const maxProviderKeys = 64
+
+// redisplayedKeys are the keys a rejected form is rendered back with: the ones
+// posted, a new key without id nor secret, which its value must be typed
+// again for, like the provider's own key on creation.
+func redisplayedKeys(posted, stored []model.ProviderKey) []model.ProviderKey {
+	keys := make([]model.ProviderKey, 0, len(posted))
+	for _, k := range posted {
+		if !slices.ContainsFunc(stored, func(s model.ProviderKey) bool { return s.ID == k.ID }) {
+			k.ID, k.APIKey = "", ""
+		}
+		keys = append(keys, k)
+	}
+	return keys
+}
+
+// parseProviderKeysFromForm reads the keys a provider holds besides its own
+// (provider_key_count + provider_key_k{i}_id / _label / _value). A row keeps
+// the id of the stored key it edits, and that key's secret when its value is
+// left blank; a row without id is a new key, whose value is required. A row
+// with neither label nor value is skipped, so an added row left empty is not
+// an error. A form that does not carry the section keeps the stored keys.
+func parseProviderKeysFromForm(r *http.Request, secretKey string, stored []model.ProviderKey) ([]model.ProviderKey, error) {
+	ctx := r.Context()
+	if _, posted := r.Form["provider_key_count"]; !posted {
+		// The keys section is shown for a subscription provider only: a form
+		// without it keeps the stored keys.
+		return stored, nil
+	}
+	byID := make(map[model.ProviderKeyID]model.ProviderKey, len(stored))
+	for _, k := range stored {
+		byID[k.ID] = k
+	}
+	count, err := strconv.Atoi(r.FormValue("provider_key_count"))
+	if err != nil || count < 0 || count > maxProviderKeys {
+		return nil, errors.New(i18n.T(ctx, "org.errors.providers.api_keys_count", maxProviderKeys))
+	}
+	keys := make([]model.ProviderKey, 0, count)
+	labels := make(map[string]bool, count)
+	seenIDs := make(map[model.ProviderKeyID]bool, count)
+	for i := range count {
+		prefix := fmt.Sprintf("provider_key_k%d_", i)
+		id := model.ProviderKeyID(strings.TrimSpace(r.FormValue(prefix + "id")))
+		label := strings.TrimSpace(r.FormValue(prefix + "label"))
+		value := strings.TrimSpace(r.FormValue(prefix + "value"))
+
+		current, known := byID[id]
+		if id != "" && (!known || seenIDs[id]) {
+			// A key removed meanwhile, an id that never was one or one posted
+			// twice: the row is read as a new key, which must then carry its
+			// value. A stored key is never kept twice.
+			id = ""
+		}
+		seenIDs[id] = true
+		if id == "" && label == "" && value == "" {
+			continue
+		}
+		if label == "" {
+			return nil, errors.New(i18n.T(ctx, "org.errors.providers.api_key_label"))
+		}
+		if labels[label] {
+			return nil, errors.New(i18n.T(ctx, "org.errors.providers.api_key_duplicate", label))
+		}
+		labels[label] = true
+
+		key := model.ProviderKey{ID: id, Label: label, APIKey: current.APIKey}
+		if id == "" {
+			if value == "" {
+				return nil, errors.New(i18n.T(ctx, "org.errors.providers.api_key_value", label))
+			}
+			key.ID = model.NewProviderKeyID()
+		}
+		if value != "" {
+			encrypted, err := crypto.Encrypt(secretKey, value)
+			if err != nil {
+				return nil, errors.WithStack(err)
+			}
+			key.APIKey = encrypted
+		}
+		keys = append(keys, key)
+	}
+	if len(keys) == 0 {
+		return nil, nil
+	}
+	return keys, nil
 }
 
 // parseRequestHeadersFromForm reads the session header and the fixed headers
@@ -1331,6 +1465,8 @@ type providerWithPlan struct {
 	active      bool
 	billingMode model.BillingMode
 	plan        *model.SubscriptionPlan
+	// extraKeys, when set, are the keys as posted, see redisplayedKeys.
+	extraKeys []model.ProviderKey
 }
 
 func (p providerWithPlan) Name() string                              { return firstNonEmpty(p.name, p.Provider.Name()) }
@@ -1341,6 +1477,12 @@ func (p providerWithPlan) CloudTier() int                            { return p.
 func (p providerWithPlan) Active() bool                              { return p.active }
 func (p providerWithPlan) BillingMode() model.BillingMode            { return p.billingMode }
 func (p providerWithPlan) SubscriptionPlan() *model.SubscriptionPlan { return p.plan }
+func (p providerWithPlan) ExtraAPIKeys() []model.ProviderKey {
+	if p.extraKeys != nil {
+		return p.extraKeys
+	}
+	return p.Provider.ExtraAPIKeys()
+}
 
 // submittedProvider builds the providerWithPlan for a rejected edit from the
 // posted form.

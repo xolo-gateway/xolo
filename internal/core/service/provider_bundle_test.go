@@ -883,3 +883,40 @@ func TestPlanProviderBundleImport_RefusesOnlyTheRenamesOfACycle(t *testing.T) {
 		t.Errorf("refused = %v, want the swap refused and the unrelated rename kept", refused)
 	}
 }
+
+func TestParseProviderBundle_AcceptsASharedWindowAndChecksItsBudgets(t *testing.T) {
+	ok := `{"kind":"xolo.provider","version":"1","provider":{"type":"openai","currency":"USD","billing_mode":"subscription","subscription_plan":{"label":"Go","constraints":[` +
+		`{"kind":"rolling_window","label":"month","duration":"720h","scope":"shared","value_budget":60000000,"model_budgets":{"a":{"value_budget":120000000},"free":{}}}]}}}`
+	if _, err := model.ParseProviderBundle([]byte(ok)); err != nil {
+		t.Errorf("a shared window was refused: %v", err)
+	}
+	for name, doc := range map[string]string{
+		"zero model budget": `{"kind":"xolo.provider","version":"1","provider":{"type":"openai","currency":"USD","subscription_plan":{"label":"Go","constraints":[` +
+			`{"kind":"rolling_window","label":"month","duration":"720h","scope":"shared","value_budget":60000000,"model_budgets":{"a":{"value_budget":0}}}]}}}`,
+		"unlimited kind": `{"kind":"xolo.provider","version":"1","provider":{"type":"openai","currency":"USD","subscription_plan":{"label":"Go","constraints":[` +
+			`{"kind":"rolling_window","label":"month","duration":"720h","scope":"shared","value_budget":60000000,"model_budgets":{"a":{"token_budget":5}}}]}}}`,
+	} {
+		if _, err := model.ParseProviderBundle([]byte(doc)); err == nil {
+			t.Errorf("%s: parsed, want refused", name)
+		}
+	}
+}
+
+func TestApplyProviderBundle_KeepsTheTargetsExtraKeys(t *testing.T) {
+	mem := newMemoryProviderStore()
+	target := model.NewProvider("org-a", "Go", "openai", "https://go.test/v1", "key", "USD")
+	target.SetExtraAPIKeys([]model.ProviderKey{{ID: "k2", Label: "member 2", APIKey: "encrypted-2"}})
+	bundle := model.NewProviderBundle(target, nil, false, time.Now())
+	if data, _ := json.Marshal(bundle); strings.Contains(string(data), "encrypted-2") {
+		t.Fatal("the export carries an extra key")
+	}
+	bundle.Provider.CloudTier = 2
+	plan := PlanProviderBundleImport(bundle, target, nil, takenNames{})
+	result, err := ApplyProviderBundle(context.Background(), mem, plan, BundleSelection{Settings: map[string]bool{BundleFieldCloudTier: true}}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if keys := result.Provider.ExtraAPIKeys(); len(keys) != 1 || keys[0].APIKey != "encrypted-2" {
+		t.Errorf("extra keys = %+v, want the target's kept", keys)
+	}
+}
