@@ -74,6 +74,10 @@ type ModelPrices struct {
 	Output      float64 `json:"output"`
 }
 
+// MaxPricePerMillion bounds a price per million tokens in a bundle: far above
+// any real price, far below what the storage in microcents could overflow.
+const MaxPricePerMillion = 1_000_000
+
 // PricePerMillion converts a cost in microcents per 1K tokens, the unit Xolo
 // stores, into a price per million tokens.
 func PricePerMillion(microcentsPer1K int64) float64 {
@@ -172,6 +176,9 @@ func (b ProviderBundle) Validate() error {
 	if !IsKnownProviderType(b.Provider.Type) {
 		return errors.Wrapf(ErrInvalidProviderBundle, "unknown provider type %q", b.Provider.Type)
 	}
+	if !b.Provider.RequestHeaders.Valid() {
+		return errors.Wrap(ErrInvalidProviderBundle, "request_headers name a reserved header or exceed the limits")
+	}
 	if b.Provider.BaseURL != "" && !IsValidBaseURL(b.Provider.BaseURL) {
 		return errors.Wrapf(ErrInvalidProviderBundle, "invalid base_url %q", b.Provider.BaseURL)
 	}
@@ -201,8 +208,10 @@ func (b ProviderBundle) Validate() error {
 		if m.Kind != "" && !ProviderTypeServes(served, m.Kind) {
 			return errors.Wrapf(ErrInvalidProviderBundle, "model %q is of kind %q, which %q does not serve", m.RealModel, m.Kind, served)
 		}
-		if m.Prices.Input < 0 || m.Prices.CachedInput < 0 || m.Prices.Output < 0 {
-			return errors.Wrapf(ErrInvalidProviderBundle, "model %q has a negative price", m.RealModel)
+		for _, price := range []float64{m.Prices.Input, m.Prices.CachedInput, m.Prices.Output} {
+			if price < 0 || price > MaxPricePerMillion || math.IsNaN(price) {
+				return errors.Wrapf(ErrInvalidProviderBundle, "model %q has a price out of range", m.RealModel)
+			}
 		}
 	}
 	return nil

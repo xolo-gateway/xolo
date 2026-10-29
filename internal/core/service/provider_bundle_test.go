@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -18,6 +19,8 @@ type memoryProviderStore struct {
 	providers map[model.ProviderID]model.Provider
 	models    map[model.LLMModelID]model.LLMModel
 	writes    int
+	// refuse, when set, fails the writes of the models it names.
+	refuse map[string]bool
 }
 
 func newMemoryProviderStore() *memoryProviderStore {
@@ -37,6 +40,9 @@ func (s *memoryProviderStore) SaveProvider(_ context.Context, p model.Provider) 
 }
 
 func (s *memoryProviderStore) CreateLLMModel(_ context.Context, m model.LLMModel) error {
+	if s.refuse[m.ProxyName()] {
+		return errors.New("refused")
+	}
 	s.writes++
 	s.models[m.ID()] = m
 	return nil
@@ -69,6 +75,8 @@ func (n takenNames) Conflict(name string) string {
 }
 
 func (n takenNames) Declare(name string) { n[name] = true }
+
+func (n takenNames) Release(name string) { delete(n, name) }
 
 func namesOf(models []model.LLMModel) takenNames {
 	n := takenNames{}
@@ -354,4 +362,83 @@ func sortedLike(want, got []model.ProviderBundleModel) []model.ProviderBundleMod
 		}
 	}
 	return sorted
+}
+
+func TestPlanProviderBundleImport_SkipsAKindTheTargetDoesNotServe(t *testing.T) {
+	// A bundle of an openai provider, imported into a typesafe one: a
+	// completion model without an API of its own would be served by the
+	// target's API, which serves decisions only.
+	bundle := model.ProviderBundle{Kind: model.ProviderBundleKind, Version: model.ProviderBundleVersion,
+		Provider: model.ProviderBundleSettings{Type: "openai"},
+		Models:   []model.ProviderBundleModel{{RealModel: "gpt", ProxyName: "gpt", Kind: model.ModelKindCompletion}, {RealModel: "gpt-2", ProxyName: "gpt-2", APIType: "openai"}}}
+	target := model.NewProvider("org-a", "TypeSafe", "typesafe", "", "key", "USD")
+
+	plan := PlanProviderBundleImport(bundle, target, nil, takenNames{})
+	if m := plan.Models[0]; m.Action != BundleModelSkip || m.KindNotServed != "typesafe" {
+		t.Errorf("gpt = %s (%q), want skipped as typesafe serves no completion", m.Action, m.KindNotServed)
+	}
+	if m := plan.Models[1]; m.Action != BundleModelCreate || m.Model.Kind != model.ModelKindCompletion {
+		t.Errorf("gpt-2 = %s %q, want created as a completion served by its own openai API", m.Action, m.Model.Kind)
+	}
+}
+
+func TestPlanProviderBundleImport_FreesTheNameARenamedModelLeaves(t *testing.T) {
+	store := newMemoryProviderStore()
+	p := configuredProvider(t, store, "org-a")
+	models := store.modelsOf("org-a")
+
+	// kimi-k3 moves to go/kimi-k3, and a new model takes its former name,
+	// listed first in the bundle.
+	bundle := model.NewProviderBundle(p, models, false, time.Now())
+	for i := range bundle.Models {
+		if bundle.Models[i].RealModel == "kimi-k3" {
+			bundle.Models[i].ProxyName = "go/kimi-k3"
+		}
+	}
+	bundle.Models = append([]model.ProviderBundleModel{{RealModel: "kimi-k3.1", ProxyName: "kimi-k3", Enabled: true}}, bundle.Models...)
+
+	plan := PlanProviderBundleImport(bundle, p, models, namesOf(models))
+	if m := plan.Models[0]; m.Action != BundleModelCreate {
+		t.Errorf("kimi-k3.1 = %s %q, want created under the name kimi-k3 leaves", m.Action, m.Conflict)
+	}
+}
+
+func TestApplyProviderBundle_GoesOnPastAModelTheStoreRefuses(t *testing.T) {
+	store := newMemoryProviderStore()
+	bundle := model.ProviderBundle{Kind: model.ProviderBundleKind, Version: model.ProviderBundleVersion,
+		Provider: model.ProviderBundleSettings{Type: "openai"},
+		Models:   []model.ProviderBundleModel{{RealModel: "a", ProxyName: "a"}, {RealModel: "b", ProxyName: "b"}}}
+	plan := PlanProviderBundleImport(bundle, nil, nil, takenNames{})
+	store.refuse = map[string]bool{"a": true}
+
+	result, err := ApplyProviderBundle(context.Background(), store, plan, selectAll(plan), &NewProviderTarget{OrgID: "org-a", Name: "P", APIKey: "k"})
+	if err != nil {
+		t.Fatalf("apply: %v", err)
+	}
+	if result.Created != 1 || len(result.Failed) != 1 || result.Failed[0].ProxyName != "a" {
+		t.Errorf("result = created %d, failed %+v; want b created and a reported", result.Created, result.Failed)
+	}
+}
+
+func TestParseProviderBundle_RefusesReservedHeadersAndAbsurdPrices(t *testing.T) {
+	for name, doc := range map[string]string{
+		"reserved header": `{"kind":"xolo.provider","version":"1","provider":{"type":"openai","request_headers":{"headers":{"Authorization":"Bearer x"}}}}`,
+		"absurd price":    `{"kind":"xolo.provider","version":"1","provider":{"type":"openai"},"models":[{"real_model":"a","proxy_name":"a","prices":{"input":1e300,"output":1}}]}`,
+	} {
+		if _, err := model.ParseProviderBundle([]byte(doc)); err == nil {
+			t.Errorf("%s: parsed, want refused", name)
+		}
+	}
+}
+
+func TestPlanProviderBundleImport_ShowsAbsentSettingsAsEmpty(t *testing.T) {
+	target := model.NewProvider("org-a", "P", "openai", "", "key", "USD")
+	bundle := model.ProviderBundle{Kind: model.ProviderBundleKind, Version: model.ProviderBundleVersion,
+		Provider: model.ProviderBundleSettings{Type: "openai", Retry: &model.RetryConfig{Enabled: true, MaxAttempts: 2}}}
+	plan := PlanProviderBundleImport(bundle, target, nil, takenNames{})
+	for _, c := range plan.Settings {
+		if c.From == "null" || c.To == "null" {
+			t.Errorf("%s shows %q → %q, want an absent value empty", c.Field, c.From, c.To)
+		}
+	}
 }

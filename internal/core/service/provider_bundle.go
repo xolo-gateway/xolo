@@ -43,8 +43,11 @@ type BundleModelPlan struct {
 	Action   BundleModelAction
 	// Changes lists the fields an update would change.
 	Changes []BundleFieldChange
-	// Conflict explains a skip.
+	// Conflict explains a skip on the proxy name.
 	Conflict string
+	// KindNotServed, when set, is the provider type whose API does not serve
+	// the model's kind: the model is skipped, as the model form refuses it.
+	KindNotServed string
 }
 
 // ProviderBundlePlan is the dry run of a provider bundle import: nothing is
@@ -85,6 +88,8 @@ func (p ProviderBundlePlan) Changed() bool {
 type ProxyNames interface {
 	Conflict(proxyName string) string
 	Declare(proxyName string)
+	// Release frees the name a renamed model leaves.
+	Release(proxyName string)
 }
 
 // Provider settings fields.
@@ -180,7 +185,11 @@ func enabledTokenLimit(c *model.TokenLimitConfig) any {
 // jsonValue renders v as compact JSON, empty for an empty value, so that a
 // nil map and an empty one compare equal.
 func jsonValue(v any) string {
-	if v == nil || (reflect.ValueOf(v).Kind() == reflect.Map && reflect.ValueOf(v).Len() == 0) {
+	if v == nil {
+		return ""
+	}
+	// A nil pointer or an empty map is an absent value, not "null".
+	if rv := reflect.ValueOf(v); (rv.Kind() == reflect.Pointer && rv.IsNil()) || (rv.Kind() == reflect.Map && rv.Len() == 0) {
 		return ""
 	}
 	data, err := json.Marshal(v)
@@ -278,42 +287,76 @@ func PlanProviderBundleImport(bundle model.ProviderBundle, target model.Provider
 		}
 	}
 
-	for i, bm := range bundle.Models {
-		mp := BundleModelPlan{Index: i, Model: bm, Existing: existing[i]}
-		if mp.Existing == nil {
-			mp.Action = BundleModelCreate
-			if conflict := names.Conflict(bm.ProxyName); conflict != "" {
-				mp.Action, mp.Conflict = BundleModelSkip, conflict
-			} else {
-				names.Declare(bm.ProxyName)
-			}
-			plan.Models = append(plan.Models, mp)
-			continue
-		}
-
-		current := model.BundleModelOf(mp.Existing)
-		for _, f := range bundleModelFields {
-			from, to := f.get(current), f.get(bm)
-			if reflect.DeepEqual(from, to) {
+	// The models to update are planned first, so that a name one of them
+	// leaves is free for a model to create.
+	plans := make([]BundleModelPlan, len(bundle.Models))
+	for _, updates := range []bool{true, false} {
+		for i, bm := range bundle.Models {
+			if (existing[i] != nil) != updates {
 				continue
 			}
-			change := BundleFieldChange{Field: f.name, From: displayValue(from), To: displayValue(to)}
-			if f.name == BundleFieldProxyName {
-				if conflict := names.Conflict(bm.ProxyName); conflict != "" {
-					change.Conflict = conflict
-				} else {
-					names.Declare(bm.ProxyName)
-				}
-			}
-			mp.Changes = append(mp.Changes, change)
+			plans[i] = planBundleModel(i, bm, existing[i], target, bundle.Provider.Type, names)
 		}
-		mp.Action = BundleModelUpdate
-		if len(mp.Changes) == 0 {
-			mp.Action = BundleModelUnchanged
-		}
-		plan.Models = append(plan.Models, mp)
 	}
+	plan.Models = plans
 	return plan
+}
+
+// planBundleModel plans the import of the bundle model bm, at index i, into
+// the target model existing (nil to create it).
+func planBundleModel(i int, bm model.ProviderBundleModel, existing model.LLMModel, target model.Provider, bundleType string, names ProxyNames) BundleModelPlan {
+	mp := BundleModelPlan{Index: i, Model: bm, Existing: existing}
+
+	// The kind must be one the API serving the model serves, as the model
+	// form requires: the target's own API when the bundle sets none. An
+	// unset kind is the default kind of that API.
+	served := bm.APIType
+	if served == "" {
+		served = bundleType
+		if target != nil {
+			served = target.Type()
+		}
+	}
+	if mp.Model.Kind == "" {
+		mp.Model.Kind = model.DefaultProviderTypeKind(served)
+	}
+	if !model.ProviderTypeServes(served, mp.Model.Kind) {
+		mp.Action, mp.KindNotServed = BundleModelSkip, served
+		return mp
+	}
+
+	if existing == nil {
+		mp.Action = BundleModelCreate
+		if conflict := names.Conflict(bm.ProxyName); conflict != "" {
+			mp.Action, mp.Conflict = BundleModelSkip, conflict
+		} else {
+			names.Declare(bm.ProxyName)
+		}
+		return mp
+	}
+
+	current := model.BundleModelOf(existing)
+	for _, f := range bundleModelFields {
+		from, to := f.get(current), f.get(mp.Model)
+		if reflect.DeepEqual(from, to) {
+			continue
+		}
+		change := BundleFieldChange{Field: f.name, From: displayValue(from), To: displayValue(to)}
+		if f.name == BundleFieldProxyName {
+			if conflict := names.Conflict(bm.ProxyName); conflict != "" {
+				change.Conflict = conflict
+			} else {
+				names.Declare(bm.ProxyName)
+				names.Release(existing.ProxyName())
+			}
+		}
+		mp.Changes = append(mp.Changes, change)
+	}
+	mp.Action = BundleModelUpdate
+	if len(mp.Changes) == 0 {
+		mp.Action = BundleModelUnchanged
+	}
+	return mp
 }
 
 func planProviderSettings(s model.ProviderBundleSettings, target model.Provider) ([]BundleFieldChange, *BundleFieldChange) {
@@ -379,8 +422,25 @@ type NewProviderTarget struct {
 // BundleApplyResult counts what an import wrote.
 type BundleApplyResult struct {
 	Provider model.Provider
-	Created  int
-	Updated  int
+	// ProviderChanged reports that the provider was created or updated.
+	ProviderChanged bool
+	Created         int
+	Updated         int
+	// Failed lists the models the store refused, the import going on with
+	// the others.
+	Failed []BundleModelFailure
+}
+
+// Wrote reports whether the import wrote anything.
+func (r BundleApplyResult) Wrote() bool {
+	return r.ProviderChanged || r.Created > 0 || r.Updated > 0
+}
+
+// BundleModelFailure is a model of the bundle the store refused to write.
+type BundleModelFailure struct {
+	Index     int
+	ProxyName string
+	Err       error
 }
 
 // ApplyProviderBundle writes the selected part of plan through store. When
@@ -392,11 +452,11 @@ type BundleApplyResult struct {
 func ApplyProviderBundle(ctx context.Context, store port.ProviderStore, plan ProviderBundlePlan, sel BundleSelection, newProvider *NewProviderTarget) (BundleApplyResult, error) {
 	var result BundleApplyResult
 
-	target, err := applyProviderSettings(ctx, store, plan, sel, newProvider)
+	target, changed, err := applyProviderSettings(ctx, store, plan, sel, newProvider)
 	if err != nil {
 		return result, err
 	}
-	result.Provider = target
+	result.Provider, result.ProviderChanged = target, changed
 
 	for _, mp := range plan.Models {
 		switch mp.Action {
@@ -406,7 +466,8 @@ func ApplyProviderBundle(ctx context.Context, store port.ProviderStore, plan Pro
 			}
 			m := model.NewLLMModelFromBundle(model.NewLLMModelID(), target.ID(), target.OrgID(), time.Now(), mp.Model)
 			if err := store.CreateLLMModel(ctx, m); err != nil {
-				return result, errors.Wrapf(err, "could not create model %q", mp.Model.RealModel)
+				result.Failed = append(result.Failed, BundleModelFailure{Index: mp.Index, ProxyName: m.ProxyName(), Err: errors.WithStack(err)})
+				continue
 			}
 			result.Created++
 		case BundleModelUpdate:
@@ -429,7 +490,8 @@ func ApplyProviderBundle(ctx context.Context, store port.ProviderStore, plan Pro
 			}
 			m := model.NewLLMModelFromBundle(mp.Existing.ID(), mp.Existing.ProviderID(), mp.Existing.OrgID(), mp.Existing.CreatedAt(), updated)
 			if err := store.SaveLLMModel(ctx, m); err != nil {
-				return result, errors.Wrapf(err, "could not update model %q", mp.Model.RealModel)
+				result.Failed = append(result.Failed, BundleModelFailure{Index: mp.Index, ProxyName: m.ProxyName(), Err: errors.WithStack(err)})
+				continue
 			}
 			result.Updated++
 		}
@@ -437,11 +499,11 @@ func ApplyProviderBundle(ctx context.Context, store port.ProviderStore, plan Pro
 	return result, nil
 }
 
-func applyProviderSettings(ctx context.Context, store port.ProviderStore, plan ProviderBundlePlan, sel BundleSelection, newProvider *NewProviderTarget) (model.Provider, error) {
+func applyProviderSettings(ctx context.Context, store port.ProviderStore, plan ProviderBundlePlan, sel BundleSelection, newProvider *NewProviderTarget) (model.Provider, bool, error) {
 	s := plan.Bundle.Provider
 	if plan.Target == nil {
 		if newProvider == nil {
-			return nil, errors.New("no provider to import into")
+			return nil, false, errors.New("no provider to import into")
 		}
 		p := model.NewProvider(newProvider.OrgID, newProvider.Name, s.Type, s.BaseURL, newProvider.APIKey, s.Currency)
 		p.SetCloudTier(s.CloudTier)
@@ -453,9 +515,9 @@ func applyProviderSettings(ctx context.Context, store port.ProviderStore, plan P
 			p.SetSubscriptionPlan(s.SubscriptionPlan)
 		}
 		if err := store.CreateProvider(ctx, p); err != nil {
-			return nil, errors.Wrap(err, "could not create provider")
+			return nil, false, errors.Wrap(err, "could not create provider")
 		}
-		return p, nil
+		return p, true, nil
 	}
 
 	t := plan.Target
@@ -489,13 +551,13 @@ func applyProviderSettings(ctx context.Context, store port.ProviderStore, plan P
 		updated.SetSubscriptionPlan(s.SubscriptionPlan)
 	}
 	if !changed {
-		return t, nil
+		return t, false, nil
 	}
 	updated.SetUpdatedAt(time.Now())
 	if err := store.SaveProvider(ctx, updated); err != nil {
-		return nil, errors.Wrap(err, "could not update provider")
+		return nil, false, errors.Wrap(err, "could not update provider")
 	}
-	return updated, nil
+	return updated, true, nil
 }
 
 // billingModeOrPayg reads an empty billing mode as pay-as-you-go, the mode of

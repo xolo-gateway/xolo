@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/xolo-gateway/xolo/internal/core/model"
 	httpCtx "github.com/xolo-gateway/xolo/internal/http/context"
@@ -117,5 +118,21 @@ func TestProviderBundle_RefusesAFileThatIsNoBundle(t *testing.T) {
 	}
 	if len(s.saved) != 0 || len(s.created) != 0 {
 		t.Error("an invalid bundle wrote to the store")
+	}
+}
+
+func TestProviderBundle_SaysWhenNothingWasApplied(t *testing.T) {
+	h, s, tenant := importFixture(t, "https://example.test/v1", "sk")
+	s.created = append(s.created, model.NewLLMModel(s.provider.ID(), s.org.ID(), "glm", "glm-5", "", 600, 2200))
+	doc, _ := json.Marshal(model.NewProviderBundle(s.provider, s.created, false, time.Now()))
+
+	fields := url.Values{"step": {"apply"}, "bundle": {string(doc)}}
+	rr := httptest.NewRecorder()
+	h.importProviderBundle(rr, bundleRequest(t, s, tenant, string(s.provider.ID()), bytes.NewBufferString(fields.Encode()), "application/x-www-form-urlencoded"))
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want the page rather than a success redirect", rr.Code)
+	}
+	if !strings.Contains(rr.Body.String(), "Rien n&#39;a été appliqué") {
+		t.Error("the page should say nothing was applied")
 	}
 }

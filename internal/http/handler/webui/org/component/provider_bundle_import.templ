@@ -41,6 +41,20 @@ templ ProviderBundleImportPage(vmodel ProviderBundleImportVModel) {
 					}
 				}
 			}
+			if vmodel.Notice != "" {
+				@alert.Alert() {
+					@alert.Description() {
+						<p class="font-medium">{ vmodel.Notice }</p>
+						if len(vmodel.Failures) > 0 {
+							<ul class="mt-1 list-disc pl-5 text-sm">
+								for _, reason := range vmodel.Failures {
+									<li>{ reason }</li>
+								}
+							</ul>
+						}
+					}
+				}
+			}
 			if vmodel.Plan == nil {
 				@providerBundleUpload(importURL)
 			} else {
@@ -244,7 +258,9 @@ templ providerBundleModelRow(m service.BundleModelPlan) {
 			}
 		}
 		@table.Cell() {
-			if m.Action == service.BundleModelSkip {
+			if m.KindNotServed != "" {
+				<p class="max-w-md text-xs text-destructive">{ i18n.T(ctx, "org.errors.providers.kind_not_served", m.KindNotServed, common.ModelKindLabel(ctx, m.Model.Kind)) }</p>
+			} else if m.Action == service.BundleModelSkip {
 				<p class="max-w-md text-xs text-destructive">{ m.Conflict }</p>
 			}
 			if len(m.Changes) > 0 {

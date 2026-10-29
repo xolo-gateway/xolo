@@ -389,4 +389,8 @@ type ProviderBundleImportVModel struct {
 	// Name is the name of the provider to create.
 	Name  string
 	Error string
+	// Notice reports what the last apply did when it did not redirect, and
+	// Failures the models the store refused.
+	Notice   string
+	Failures []string
 }

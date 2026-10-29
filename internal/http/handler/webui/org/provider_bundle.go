@@ -28,6 +28,10 @@ import (
 // hundred models stays well under it.
 const maxProviderBundleSize = 4 << 20
 
+// maxProviderBundleFormSize bounds the form that posts the bundle back with
+// the selection: URL encoding can triple its size.
+const maxProviderBundleFormSize = 3*maxProviderBundleSize + 1<<20
+
 // exportProviderBundle downloads the provider and its models as a bundle.
 // The API key and the internal IDs stay out of it.
 func (h *Handler) exportProviderBundle(w http.ResponseWriter, r *http.Request) {
@@ -88,13 +92,13 @@ func (h *Handler) importProviderBundle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	r.Body = http.MaxBytesReader(w, r.Body, maxProviderBundleSize+1<<16)
 	vmodel := h.providerBundleImportVModel(ctx, org, p)
 
 	var raw []byte
 	if strings.HasPrefix(r.Header.Get("Content-Type"), "multipart/form-data") {
+		r.Body = http.MaxBytesReader(w, r.Body, maxProviderBundleSize+1<<20)
 		if err := r.ParseMultipartForm(maxProviderBundleSize); err != nil {
-			h.renderProviderBundleError(w, r, vmodel, i18n.T(ctx, "org.errors.provider_bundle.unreadable"))
+			h.renderProviderBundleError(w, r, vmodel, bundleReadError(ctx, err))
 			return
 		}
 		file, _, err := r.FormFile("bundle_file")
@@ -103,14 +107,20 @@ func (h *Handler) importProviderBundle(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		defer file.Close()
-		raw, err = io.ReadAll(io.LimitReader(file, maxProviderBundleSize))
+		// One byte over the limit tells a file too large from a truncated one.
+		raw, err = io.ReadAll(io.LimitReader(file, maxProviderBundleSize+1))
 		if err != nil {
 			h.renderProviderBundleError(w, r, vmodel, i18n.T(ctx, "org.errors.provider_bundle.unreadable"))
 			return
 		}
+		if len(raw) > maxProviderBundleSize {
+			h.renderProviderBundleError(w, r, vmodel, i18n.T(ctx, "org.errors.provider_bundle.too_large"))
+			return
+		}
 	} else {
+		r.Body = http.MaxBytesReader(w, r.Body, maxProviderBundleFormSize)
 		if err := r.ParseForm(); err != nil {
-			http.Error(w, "Invalid form", http.StatusBadRequest)
+			h.renderProviderBundleError(w, r, vmodel, bundleReadError(ctx, err))
 			return
 		}
 		raw = []byte(r.FormValue("bundle"))
@@ -170,7 +180,62 @@ func (h *Handler) importProviderBundle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	http.Redirect(w, r, "/orgs/"+org.Slug()+"/admin/providers/"+string(result.Provider.ID())+"/models?success=imported", http.StatusSeeOther)
+	if len(result.Failed) == 0 && result.Wrote() {
+		http.Redirect(w, r, "/orgs/"+org.Slug()+"/admin/providers/"+string(result.Provider.ID())+"/models?success=imported", http.StatusSeeOther)
+		return
+	}
+
+	// Some models were refused, or nothing was left to apply: show it on
+	// the dry run of the bundle against the state the import left.
+	if p == nil && result.ProviderChanged {
+		p = result.Provider
+		vmodel = h.providerBundleImportVModel(ctx, org, p)
+		vmodel.Bundle = string(raw)
+	}
+	replan, err := h.planProviderBundleImport(ctx, org, p, bundle)
+	if err != nil {
+		slog.ErrorContext(ctx, "could not plan provider bundle import", slogx.Error(err))
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+	vmodel.Plan = &replan
+	if len(result.Failed) == 0 {
+		vmodel.Notice = i18n.T(ctx, "org.provider_bundle.nothing_applied")
+	} else {
+		vmodel.Notice = i18n.T(ctx, "org.provider_bundle.applied", result.Created, result.Updated)
+		vmodel.Failures = h.bundleFailureReasons(ctx, org, result.Failed)
+	}
+	templ.Handler(component.ProviderBundleImportPage(vmodel)).ServeHTTP(w, r)
+}
+
+// bundleFailureReasons explains why the store refused each failed model:
+// its proxy name taken since the dry run, as by another admin, or a failure
+// a retry may get through.
+func (h *Handler) bundleFailureReasons(ctx context.Context, org model.Organization, failed []service.BundleModelFailure) []string {
+	existing, err := h.providerStore.ListLLMModels(ctx, org.ID())
+	taken := map[string]bool{}
+	if err == nil {
+		taken = takenProxyNames(existing)
+	}
+	reasons := make([]string, 0, len(failed))
+	for _, f := range failed {
+		slog.ErrorContext(ctx, "could not import bundle model", slog.String("model", f.ProxyName), slogx.Error(f.Err))
+		if taken[f.ProxyName] {
+			reasons = append(reasons, i18n.T(ctx, "org.errors.model_import.skip_conflict", f.ProxyName, i18n.T(ctx, "org.errors.model_import.name_taken", f.ProxyName)))
+			continue
+		}
+		reasons = append(reasons, i18n.T(ctx, "org.errors.model_import.skip_failed", f.ProxyName))
+	}
+	return reasons
+}
+
+// bundleReadError explains why the posted bundle could not be read.
+func bundleReadError(ctx context.Context, err error) string {
+	var tooLarge *http.MaxBytesError
+	if errors.As(err, &tooLarge) {
+		return i18n.T(ctx, "org.errors.provider_bundle.too_large")
+	}
+	return i18n.T(ctx, "org.errors.provider_bundle.unreadable")
 }
 
 // resolveProviderBundleTarget resolves the organization and, on the import of
@@ -221,6 +286,7 @@ func (n *bundleProxyNames) Conflict(proxyName string) string {
 	return n.names.conflict(n.ctx, proxyName)
 }
 func (n *bundleProxyNames) Declare(proxyName string) { n.names.models[proxyName] = true }
+func (n *bundleProxyNames) Release(proxyName string) { delete(n.names.models, proxyName) }
 
 // providerBundleSelection reads the changes the operator selected.
 func providerBundleSelection(r *http.Request) service.BundleSelection {
