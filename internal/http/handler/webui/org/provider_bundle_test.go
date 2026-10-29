@@ -666,3 +666,21 @@ func TestCatalogImport_DecidesTheAPIOfAnotherProvidersOfferingsOneByOne(t *testi
 		t.Error("haiku should keep the Anthropic API served at the provider's address, and argon be counted out")
 	}
 }
+
+func TestCatalogImport_KeepsTheCatalogProvidersAPIForAnOfferingAtTheTarget(t *testing.T) {
+	// The provider is declared openai, at an address where Beta serves its
+	// own Anthropic API: the model takes that API, as the pre-fill gives it.
+	h, s, tenant := importFixture(t, "https://acme.test/v1", "sk")
+	beta := catalog.Provider{ID: "beta", Name: "Beta", Currency: "USD", Offerings: []catalog.Offering{
+		{Model: "haiku", ModelID: "haiku", APIType: "anthropic", BaseURL: "https://acme.test/v1", Prices: catalog.Prices{Input: 1, Output: 5}},
+	}}
+	beta.Xolo.Type, beta.Xolo.BaseURL = "anthropic", "https://beta.test/v1"
+	h.SetCatalog(catalog.NewStaticSource(&catalog.Catalog{Kind: catalog.Kind, Format: catalog.Format, Version: "v1", Providers: []catalog.Provider{beta}}))
+
+	fields := url.Values{"catalog_provider": {"beta"}, "plan": {"none"}}
+	rr := httptest.NewRecorder()
+	h.previewCatalogImport(rr, bundleRequest(t, s, tenant, string(s.provider.ID()), bytes.NewBufferString(fields.Encode()), "application/x-www-form-urlencoded"))
+	if page := stdhtml.UnescapeString(rr.Body.String()); rr.Code != http.StatusOK || !strings.Contains(page, `"api_type":"anthropic"`) {
+		t.Errorf("status %d, want haiku on the Anthropic API served at the provider's address", rr.Code)
+	}
+}

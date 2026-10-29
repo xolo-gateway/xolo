@@ -100,13 +100,18 @@ func (h *Handler) previewCatalogImport(w http.ResponseWriter, r *http.Request) {
 	otherEndpoint := p != nil && strings.TrimRight(c.Provider(r.FormValue("catalog_provider")).Xolo.BaseURL, "/") != strings.TrimRight(p.BaseURL(), "/")
 	leftOut := 0
 	if otherEndpoint {
-		target := strings.TrimRight(p.BaseURL(), "/")
+		target, catalogType := strings.TrimRight(p.BaseURL(), "/"), bundle.Provider.Type
 		bundle.Provider.Type, bundle.Provider.BaseURL = p.Type(), p.BaseURL()
 		models := bundle.Models[:0]
 		for _, bm := range bundle.Models {
 			api := bm.APIType
 			switch {
 			case bm.BaseURL != "" && strings.TrimRight(bm.BaseURL, "/") == target:
+				// The API served there: the offering's, else its catalog
+				// provider's, which a bundle model leaves implicit.
+				if api == "" {
+					api = catalogType
+				}
 				bm.BaseURL = ""
 			case api != "" && api != p.Type():
 				leftOut++
