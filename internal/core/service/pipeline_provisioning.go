@@ -348,7 +348,7 @@ func (s *ProvisioningService) PutPipelineNode(ctx context.Context, scope model.C
 		if name == "" || strings.TrimSpace(name) != name || len(name) > maxNodeSecretKeyLength {
 			return model.PipelineNodeItem{}, "", errors.Wrapf(port.ErrInvalid, "invalid secret key %q", name)
 		}
-		if value != nil && len(*value) > maxProviderKeyLength {
+		if value != nil && len(*value) > MaxProviderKeyLength {
 			return model.PipelineNodeItem{}, "", errors.Wrapf(port.ErrInvalid, "secret %q is too long", name)
 		}
 	}
