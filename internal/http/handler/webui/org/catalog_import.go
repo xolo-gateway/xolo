@@ -96,6 +96,13 @@ func (h *Handler) previewCatalogImport(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	// The apply step parses the bundle posted back: a release it would
+	// refuse is refused here, before the operator chooses from it.
+	if err := bundle.Validate(); err != nil {
+		slog.ErrorContext(ctx, "the catalog provider gives an invalid bundle", slog.String("version", c.Version), slogx.Error(err))
+		h.renderProviderBundleError(w, r, vmodel, i18n.T(ctx, "org.errors.catalog_import.invalid", c.Version))
+		return
+	}
 	raw, err := json.Marshal(bundle)
 	if err != nil {
 		slog.ErrorContext(ctx, "could not encode catalog bundle", slogx.Error(err))

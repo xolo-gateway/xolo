@@ -12,6 +12,7 @@ import (
 // fields whose catalog value is an estimate rather than a published figure.
 type CatalogPrefill struct {
 	Name             string   `json:"name,omitempty"`
+	Kind             string   `json:"kind,omitempty"`
 	Currency         string   `json:"currency,omitempty"`
 	PromptCost       *float64 `json:"prompt_cost,omitempty"`
 	CachedPromptCost *float64 `json:"cached_prompt_cost,omitempty"`
@@ -79,7 +80,7 @@ func catalogPrefill(c *catalog.Catalog, found catalog.Prefill, providerType, bas
 	// own provenance.
 	contextWindow, outputWindow := (*catalog.Count)(nil), (*catalog.Count)(nil)
 	if m := found.Model; m != nil {
-		out.Name = m.Name
+		out.Name, out.Kind = m.Name, m.Kind
 		contextWindow, outputWindow = m.ContextWindow, m.OutputWindow
 		if caps := m.Capabilities; caps != nil {
 			out.CapTools, out.CapVision, out.CapReasoning, out.CapAudio = &caps.Tools, &caps.Vision, &caps.Reasoning, &caps.Audio

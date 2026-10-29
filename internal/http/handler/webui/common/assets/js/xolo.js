@@ -328,6 +328,18 @@
       var field = form.querySelector("[name=" + name + "]");
       if (field) field.value = value;
     };
+    // Une liste templui ne prend qu'une valeur qu'elle propose, et pas
+    // désactivée : écrire son champ caché suffit, elle en suit la valeur.
+    var setSelected = function (name, value) {
+      var field = form.querySelector("[name=" + name + "]");
+      var trigger = field && field.closest(".select-trigger");
+      if (!trigger || trigger.disabled) return;
+      var content = document.getElementById(trigger.dataset.tuiSelectboxContentId);
+      var offered = content && Array.prototype.some.call(content.querySelectorAll(".select-item"), function (item) {
+        return item.dataset.tuiSelectboxValue === value;
+      });
+      if (offered) field.value = value;
+    };
     var setChecked = function (name, value) {
       var field = form.querySelector("[name=" + name + "]");
       if (field) field.checked = value;
@@ -397,7 +409,8 @@
       if (entry.cap_reasoning != null) setChecked("cap_reasoning", entry.cap_reasoning);
       if (entry.cap_audio != null) setChecked("cap_audio", entry.cap_audio);
 
-      if (entry.api_type) setValue("api_type", entry.api_type);
+      if (entry.kind) setSelected("kind", entry.kind);
+      if (entry.api_type) setSelected("api_type", entry.api_type);
       if (entry.api_base_url) setValue("api_base_url", entry.api_base_url);
 
       if (entry.name) {

@@ -478,3 +478,17 @@ func TestProviderBundle_ReportsAFailedUpdateAsAFailureNotAConflict(t *testing.T)
 		t.Error("the report page should still name the header left out of the bundle")
 	}
 }
+
+func TestCatalogImport_RefusesAReleaseWhoseBundleDoesNotValidate(t *testing.T) {
+	h, s, tenant := importFixture(t, "https://acme.test/v1", "sk")
+	p := catalog.Provider{ID: "acme", Name: "Acme", Currency: "USD", Offerings: []catalog.Offering{{Model: "glm", ModelID: "glm", Prices: catalog.Prices{Input: 1, Output: 2}}}}
+	p.Xolo.Type, p.Xolo.BaseURL = "no-such-type", "https://acme.test/v1"
+	h.SetCatalog(catalog.NewStaticSource(&catalog.Catalog{Kind: catalog.Kind, Format: catalog.Format, Version: "v-invalid", Providers: []catalog.Provider{p}}))
+
+	fields := url.Values{"catalog_provider": {"acme"}, "plan": {"none"}}
+	rr := httptest.NewRecorder()
+	h.previewCatalogImport(rr, bundleRequest(t, s, tenant, string(s.provider.ID()), bytes.NewBufferString(fields.Encode()), "application/x-www-form-urlencoded"))
+	if rr.Code != http.StatusUnprocessableEntity || !strings.Contains(stdhtml.UnescapeString(rr.Body.String()), "v-invalid") {
+		t.Errorf("status %d, want 422 naming the release rather than a dry run the apply would refuse", rr.Code)
+	}
+}

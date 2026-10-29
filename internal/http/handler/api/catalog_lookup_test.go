@@ -19,6 +19,7 @@ func lookupCatalog() *catalog.Catalog {
 	estimated := catalog.Provenance{Status: catalog.StatusEstimated, Source: "https://example.test", Date: "2026-10-29", Note: "inferred"}
 	p := catalog.Provider{ID: "acme", Name: "Acme", Currency: "USD", Offerings: []catalog.Offering{
 		{Model: "glm", ModelID: "glm", APIType: "openai", BaseURL: "https://acme.test/openai/v1", Prices: catalog.Prices{Input: 1, Output: 2, Provenance: published}},
+		{Model: "embed", ModelID: "embed", Prices: catalog.Prices{Input: 0.1, Provenance: published}},
 		{Model: "haiku", ModelID: "haiku", APIType: "anthropic", BaseURL: "https://acme.test/anthropic/v1", Prices: catalog.Prices{Input: 1, Output: 5, Provenance: published}},
 		{Model: "glm", ModelID: "glm-cheap", Prices: catalog.Prices{Input: 0.1, CachedInput: 0.01, Output: 0.2, Provenance: estimated},
 			ContextWindow: &catalog.Count{Value: 64_000, Provenance: published},
@@ -30,6 +31,7 @@ func lookupCatalog() *catalog.Catalog {
 			{ID: "glm", Name: "GLM", Vendor: "Z.ai", ContextWindow: &catalog.Count{Value: 200_000, Provenance: estimated},
 				Params: &catalog.Params{Active: &catalog.Count{Value: 40_000_000_000, Provenance: estimated}}},
 			{ID: "haiku", Name: "Haiku", Vendor: "Anthropic"},
+			{ID: "embed", Name: "Embed", Vendor: "Acme", Kind: "embeddings"},
 		},
 		Providers: []catalog.Provider{p},
 	}
@@ -122,5 +124,12 @@ func TestCatalogLookup_DisabledOrUnavailable(t *testing.T) {
 	(&Handler{catalog: source}).handleCatalogLookup(rr, httptest.NewRequest(http.MethodGet, "/api/catalog/lookup?id=glm", nil))
 	if rr.Code != http.StatusServiceUnavailable {
 		t.Errorf("unavailable: status = %d, want 503", rr.Code)
+	}
+}
+
+func TestCatalogLookup_FillsTheModelKind(t *testing.T) {
+	_, got := lookup(t, "id=embed&provider=openai&base_url=https://acme.test/v1")
+	if got.Kind != "embeddings" {
+		t.Errorf("kind = %q, want the embeddings kind of the catalog model", got.Kind)
 	}
 }

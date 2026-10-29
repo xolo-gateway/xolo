@@ -35,10 +35,10 @@ type ProvidersPageVModel struct {
 	// CatalogEnabled offers the import from, or pre-fill by, the model
 	// catalog: false when it is disabled.
 	CatalogEnabled bool
-	Org         model.Organization
-	Providers   []model.Provider
-	ModelCounts map[model.ProviderID]int
-	Success     string
+	Org            model.Organization
+	Providers      []model.Provider
+	ModelCounts    map[model.ProviderID]int
+	Success        string
 }
 
 type ProviderFormVModel struct {
@@ -58,10 +58,10 @@ type ModelsPageVModel struct {
 	// CatalogEnabled offers the import from, or pre-fill by, the model
 	// catalog: false when it is disabled.
 	CatalogEnabled bool
-	Org      model.Organization
-	Provider model.Provider
-	Models   []model.LLMModel
-	Success  string
+	Org            model.Organization
+	Provider       model.Provider
+	Models         []model.LLMModel
+	Success        string
 }
 
 // ModelImportVModel is the page listing the models a provider serves, to
@@ -101,11 +101,11 @@ type ModelFormVModel struct {
 	// CatalogEnabled offers the import from, or pre-fill by, the model
 	// catalog: false when it is disabled.
 	CatalogEnabled bool
-	Org      model.Organization
-	Provider model.Provider
-	Model    model.LLMModel
-	IsNew    bool
-	Error    string
+	Org            model.Organization
+	Provider       model.Provider
+	Model          model.LLMModel
+	IsNew          bool
+	Error          string
 }
 
 type QuotaPageVModel struct {
