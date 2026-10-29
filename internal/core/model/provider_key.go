@@ -158,9 +158,13 @@ func PooledPlan(p Provider) *SubscriptionPlan {
 
 // poolConstraint sums the budgets of one constraint over the keys of a pool.
 // A model budget is summed the same way, a key that does not list the model
-// counting at its constraint's own budget, the rate such a model fills it at.
-// A key leaving a model unlimited adds nothing to its budget: the model then
-// fills the pool at the rate of the keys that do limit it.
+// counting at its constraint's own budget. That is the budget such a model
+// holds on that key, whether the window is per model (it takes the window's
+// budget) or shared (it fills the window at the window's own rate, the weight
+// of a model budget equal to it): the pooled figure is what the keys hold
+// together, so a model listed on one key only counts the other keys' whole
+// windows. A key leaving a model unlimited adds nothing to its budget: the
+// model then fills the pool at the rate of the keys that do limit it.
 func poolConstraint(c PlanConstraint, perKey []PlanConstraint) PlanConstraint {
 	var tokens, values []*int64
 	for _, k := range perKey {

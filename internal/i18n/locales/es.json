@@ -447,7 +447,7 @@
   "org.provider.api_keys_value_keep": "Dejar vacío para conservar la clave actual",
   "org.provider.api_keys_overrides": "Ajustar el plan para esta clave",
   "org.provider.api_keys_overrides_help": "Para un miembro cuya suscripción tiene otros presupuestos o se renueva otro día. Un campo vacío conserva el valor del plan.",
-  "org.provider.api_keys_override_value": "Presupuesto ($), plan: %s",
+  "org.provider.api_keys_override_value": "Presupuesto en valor (moneda del proveedor), plan: %s",
   "org.provider.api_keys_override_tokens": "Tokens, plan: %d",
   "org.provider.api_keys_override_reset_in": "Reinicio en, p. ej. 9d4h",
   "org.provider.api_keys_override_models": "Presupuestos por modelo que sustituyen a los del plan, p. ej. kimi-k3 = 3",
