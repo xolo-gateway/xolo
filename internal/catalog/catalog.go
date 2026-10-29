@@ -121,12 +121,14 @@ type Offering struct {
 // CachedInput and Output are the base tier; the prices that vary with the
 // prompt size or the time of day are kept as published in Tiers and Peak.
 type Prices struct {
-	Input       float64         `json:"input"`
-	CachedInput float64         `json:"cached_input,omitempty"`
-	CacheWrite  float64         `json:"cache_write,omitempty"`
-	Output      float64         `json:"output"`
-	Tiers       json.RawMessage `json:"tiers,omitempty"`
-	Peak        json.RawMessage `json:"peak,omitempty"`
+	Input       float64 `json:"input"`
+	CachedInput float64 `json:"cached_input,omitempty"`
+	// CacheWrite is read for completeness: Xolo bills no cache write, so it
+	// is not imported.
+	CacheWrite float64         `json:"cache_write,omitempty"`
+	Output     float64         `json:"output"`
+	Tiers      json.RawMessage `json:"tiers,omitempty"`
+	Peak       json.RawMessage `json:"peak,omitempty"`
 	Provenance
 }
 
@@ -167,8 +169,9 @@ type Constraint struct {
 	ModelBudgets  map[string]Budget `json:"model_budgets,omitempty"`
 }
 
-// Budget overrides the budgets of a constraint for one model. Both nil means
-// unlimited.
+// Budget overrides the budgets of a constraint for one model, keyed by the
+// offering's model_id: the provider's model ID, which Xolo's plans match on.
+// Both nil means unlimited.
 type Budget struct {
 	TokenBudget *int64   `json:"token_budget,omitempty"`
 	ValueBudget *float64 `json:"value_budget,omitempty"`
@@ -273,9 +276,20 @@ func (c *Catalog) Bundle(providerID, planID string) (model.ProviderBundle, error
 		bundle.Provider.SubscriptionPlan = sp
 	}
 	for _, o := range p.Offerings {
+		if !o.Reachable(p) {
+			continue
+		}
 		bundle.Models = append(bundle.Models, c.BundleModel(p, o))
 	}
 	return bundle, nil
+}
+
+// Reachable reports whether Xolo can call the offering: an offering served
+// through another API than its provider's needs that API's base URL, the
+// provider's own being of no use to it. The catalog schema requires it; an
+// entry without one is left out rather than imported at a wrong endpoint.
+func (o Offering) Reachable(p *Provider) bool {
+	return o.APIType == "" || o.APIType == p.Xolo.Type || o.BaseURL != ""
 }
 
 // BundleModel describes the offering o of p as a bundle model.
@@ -289,13 +303,14 @@ func (c *Catalog) BundleModel(p *Provider, o Offering) model.ProviderBundleModel
 			CachedInput: o.Prices.CachedInput,
 			Output:      o.Prices.Output,
 		},
-		BaseURL: o.BaseURL,
 	}
-	// The API type is only kept when it is not the provider's own.
+	// The API type and base URL are kept when they are not the provider's
+	// own.
 	if o.APIType != p.Xolo.Type {
 		bm.APIType = o.APIType
-	} else if o.BaseURL == p.Xolo.BaseURL {
-		bm.BaseURL = ""
+	}
+	if strings.TrimRight(o.BaseURL, "/") != strings.TrimRight(p.Xolo.BaseURL, "/") {
+		bm.BaseURL = o.BaseURL
 	}
 	if m := c.Model(o.Model); m != nil {
 		bm.Description = m.Name

@@ -2,10 +2,10 @@ package component
 
 import (
 	"context"
-	"github.com/xolo-gateway/xolo/internal/catalog"
 	"net/url"
 	"time"
 
+	"github.com/xolo-gateway/xolo/internal/catalog"
 	"github.com/xolo-gateway/xolo/internal/core/model"
 	"github.com/xolo-gateway/xolo/internal/core/port"
 	"github.com/xolo-gateway/xolo/internal/core/service"

@@ -71,16 +71,12 @@ func catalogPrefill(c *catalog.Catalog, found catalog.Prefill, providerType, bas
 			out.Estimated = append(out.Estimated, field)
 		}
 	}
+	// The offering's own windows, when it narrows the model's, carry their
+	// own provenance.
+	contextWindow, outputWindow := (*catalog.Count)(nil), (*catalog.Count)(nil)
 	if m := found.Model; m != nil {
 		out.Name = m.Name
-		if m.ContextWindow != nil {
-			out.ContextWindow = m.ContextWindow.Value
-			estimated("context_window", m.ContextWindow.Provenance)
-		}
-		if m.OutputWindow != nil {
-			out.OutputWindow = m.OutputWindow.Value
-			estimated("output_window", m.OutputWindow.Provenance)
-		}
+		contextWindow, outputWindow = m.ContextWindow, m.OutputWindow
 		if caps := m.Capabilities; caps != nil {
 			out.CapTools, out.CapVision, out.CapReasoning, out.CapAudio = &caps.Tools, &caps.Vision, &caps.Reasoning, &caps.Audio
 		}
@@ -99,22 +95,37 @@ func catalogPrefill(c *catalog.Catalog, found catalog.Prefill, providerType, bas
 		}
 		out.PricesVary = o.Prices.Varies()
 		estimated("prompt_cost", o.Prices.Provenance)
+		estimated("completion_cost", o.Prices.Provenance)
+		if out.CachedPromptCost != nil {
+			estimated("cached_prompt_cost", o.Prices.Provenance)
+		}
 		if o.ContextWindow != nil {
-			out.ContextWindow = o.ContextWindow.Value
+			contextWindow = o.ContextWindow
 		}
 		if o.OutputWindow != nil {
-			out.OutputWindow = o.OutputWindow.Value
+			outputWindow = o.OutputWindow
 		}
 		if o.Throughput != nil {
 			out.TokensPerSecLow, out.TokensPerSecHigh = o.Throughput.Low, o.Throughput.High
 		}
-		// The API is only pre-filled when it is not the provider's own.
-		if o.APIType != "" && o.APIType != providerType {
-			out.APIType = o.APIType
+		// The API is pre-filled when it is not the provider's own, by the rule
+		// of the catalog import: the same model either way.
+		if o.Reachable(found.Provider) {
+			if o.APIType != "" && o.APIType != providerType {
+				out.APIType = o.APIType
+			}
+			if o.BaseURL != "" && strings.TrimRight(o.BaseURL, "/") != strings.TrimRight(baseURL, "/") {
+				out.APIBaseURL = o.BaseURL
+			}
 		}
-		if o.BaseURL != "" && strings.TrimRight(o.BaseURL, "/") != strings.TrimRight(baseURL, "/") && out.APIType != "" {
-			out.APIBaseURL = o.BaseURL
-		}
+	}
+	if contextWindow != nil {
+		out.ContextWindow = contextWindow.Value
+		estimated("context_window", contextWindow.Provenance)
+	}
+	if outputWindow != nil {
+		out.OutputWindow = outputWindow.Value
+		estimated("output_window", outputWindow.Provenance)
 	}
 	return out
 }

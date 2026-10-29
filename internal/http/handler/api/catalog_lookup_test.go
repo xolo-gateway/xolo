@@ -9,50 +9,80 @@ import (
 	"github.com/xolo-gateway/xolo/internal/catalog"
 )
 
-func TestCatalogLookup_PrefillsFromTheSnapshot(t *testing.T) {
-	h := &Handler{catalog: catalog.NewSource("", 0)}
+// lookupCatalog is a fixed catalog: one provider serving a model through its
+// own API at another endpoint, another through the Anthropic API, a third
+// with estimated prices and a narrower window than the model's.
+func lookupCatalog() *catalog.Catalog {
+	published := catalog.Provenance{Status: catalog.StatusPublished, Source: "https://example.test", Date: "2026-10-29"}
+	estimated := catalog.Provenance{Status: catalog.StatusEstimated, Source: "https://example.test", Date: "2026-10-29", Note: "inferred"}
+	p := catalog.Provider{ID: "acme", Name: "Acme", Currency: "USD", Offerings: []catalog.Offering{
+		{Model: "glm", ModelID: "glm", APIType: "openai", BaseURL: "https://acme.test/openai/v1", Prices: catalog.Prices{Input: 1, Output: 2, Provenance: published}},
+		{Model: "haiku", ModelID: "haiku", APIType: "anthropic", BaseURL: "https://acme.test/anthropic/v1", Prices: catalog.Prices{Input: 1, Output: 5, Provenance: published}},
+		{Model: "glm", ModelID: "glm-cheap", Prices: catalog.Prices{Input: 0.1, CachedInput: 0.01, Output: 0.2, Provenance: estimated},
+			ContextWindow: &catalog.Count{Value: 64_000, Provenance: published}},
+	}}
+	p.Xolo.Type, p.Xolo.BaseURL = "openai", "https://acme.test/v1"
+	return &catalog.Catalog{Kind: catalog.Kind, Format: catalog.Format, Version: "test",
+		Models: []catalog.Model{
+			{ID: "glm", Name: "GLM", Vendor: "Z.ai", ContextWindow: &catalog.Count{Value: 200_000, Provenance: estimated},
+				Params: &catalog.Params{Active: &catalog.Count{Value: 40_000_000_000, Provenance: estimated}}},
+			{ID: "haiku", Name: "Haiku", Vendor: "Anthropic"},
+		},
+		Providers: []catalog.Provider{p},
+	}
+}
 
-	// GLM-5.3 at OpenCode Go: published prices, an estimated active
-	// parameter count.
-	req := httptest.NewRequest(http.MethodGet, "/api/catalog/lookup?id=glm-5.3&provider=openai&base_url=https://opencode.ai/inference/go/v1", nil)
+func lookup(t *testing.T, query string) (int, CatalogPrefill) {
+	t.Helper()
+	h := &Handler{catalog: catalog.NewStaticSource(lookupCatalog())}
 	rr := httptest.NewRecorder()
-	h.handleCatalogLookup(rr, req)
-	if rr.Code != http.StatusOK {
-		t.Fatalf("status = %d: %s", rr.Code, rr.Body.String())
-	}
+	h.handleCatalogLookup(rr, httptest.NewRequest(http.MethodGet, "/api/catalog/lookup?"+query, nil))
 	var got CatalogPrefill
-	if err := json.Unmarshal(rr.Body.Bytes(), &got); err != nil {
-		t.Fatal(err)
-	}
-	if got.PromptCost == nil || got.CompletionCost == nil || got.Currency != "USD" || got.ContextWindow == 0 {
-		t.Errorf("prefill = %+v, want the offering's prices and the model's window", got)
-	}
-	if got.APIType != "" {
-		t.Errorf("api type = %q, want none for a model served by the provider's own API", got.APIType)
-	}
-	estimated := map[string]bool{}
-	for _, f := range got.Estimated {
-		estimated[f] = true
-	}
-	if !estimated["active_params"] || estimated["prompt_cost"] {
-		t.Errorf("estimated = %v, want the active parameters only", got.Estimated)
-	}
+	_ = json.Unmarshal(rr.Body.Bytes(), &got)
+	return rr.Code, got
+}
 
-	rr = httptest.NewRecorder()
-	h.handleCatalogLookup(rr, httptest.NewRequest(http.MethodGet, "/api/catalog/lookup?id=unknown-model", nil))
-	if rr.Code != http.StatusNotFound {
-		t.Errorf("unknown model: status = %d, want 404", rr.Code)
+func estimatedFields(p CatalogPrefill) map[string]bool {
+	fields := map[string]bool{}
+	for _, f := range p.Estimated {
+		fields[f] = true
+	}
+	return fields
+}
+
+func TestCatalogLookup_FillsTheEndpointOfTheProvidersOwnAPI(t *testing.T) {
+	code, got := lookup(t, "id=glm&provider=openai&base_url=https://acme.test/v1")
+	if code != http.StatusOK {
+		t.Fatalf("status = %d", code)
+	}
+	if got.APIType != "" || got.APIBaseURL != "https://acme.test/openai/v1" {
+		t.Errorf("api = %q %q, want the provider's own type at the offering's endpoint", got.APIType, got.APIBaseURL)
+	}
+	if fields := estimatedFields(got); !fields["active_params"] || !fields["context_window"] || fields["prompt_cost"] {
+		t.Errorf("estimated = %v, want the model's estimates only", got.Estimated)
 	}
 }
 
 func TestCatalogLookup_FillsTheAPIOfAModelServedThroughAnother(t *testing.T) {
-	h := &Handler{catalog: catalog.NewSource("", 0)}
-	req := httptest.NewRequest(http.MethodGet, "/api/catalog/lookup?id=claude-haiku-5-5&provider=openai&base_url=https://opencode.ai/inference/go/v1", nil)
-	rr := httptest.NewRecorder()
-	h.handleCatalogLookup(rr, req)
-	var got CatalogPrefill
-	_ = json.Unmarshal(rr.Body.Bytes(), &got)
-	if got.APIType != "anthropic" || got.APIBaseURL == "" {
-		t.Errorf("api = %q %q, want the Anthropic API OpenCode Go serves it through", got.APIType, got.APIBaseURL)
+	_, got := lookup(t, "id=haiku&provider=openai&base_url=https://acme.test/v1")
+	if got.APIType != "anthropic" || got.APIBaseURL != "https://acme.test/anthropic/v1" {
+		t.Errorf("api = %q %q, want the Anthropic API the provider serves it through", got.APIType, got.APIBaseURL)
+	}
+}
+
+func TestCatalogLookup_FlagsEveryEstimatedPriceAndTheOfferingsWindow(t *testing.T) {
+	_, got := lookup(t, "id=glm-cheap&provider=openai&base_url=https://acme.test/v1")
+	fields := estimatedFields(got)
+	if !fields["prompt_cost"] || !fields["completion_cost"] || !fields["cached_prompt_cost"] {
+		t.Errorf("estimated = %v, want every price", got.Estimated)
+	}
+	if got.ContextWindow != 64_000 || fields["context_window"] {
+		t.Errorf("window = %d estimated=%v, want the offering's published window", got.ContextWindow, fields["context_window"])
+	}
+}
+
+func TestCatalogLookup_UnknownModel(t *testing.T) {
+	if code, _ := lookup(t, "id=unknown"); code != http.StatusNotFound {
+		t.Errorf("status = %d, want 404", code)
 	}
 }

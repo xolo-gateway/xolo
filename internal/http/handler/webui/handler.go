@@ -1,10 +1,10 @@
 package webui
 
 import (
-	"github.com/xolo-gateway/xolo/internal/catalog"
 	"net/http"
 	"strings"
 
+	"github.com/xolo-gateway/xolo/internal/catalog"
 	"github.com/xolo-gateway/xolo/internal/core/port"
 	"github.com/xolo-gateway/xolo/internal/core/service"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/admin"

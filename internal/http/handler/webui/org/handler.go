@@ -1,9 +1,9 @@
 package org
 
 import (
-	"github.com/xolo-gateway/xolo/internal/catalog"
 	"net/http"
 
+	"github.com/xolo-gateway/xolo/internal/catalog"
 	"github.com/xolo-gateway/xolo/internal/core/port"
 	"github.com/xolo-gateway/xolo/internal/core/rbac"
 	"github.com/xolo-gateway/xolo/internal/core/service"

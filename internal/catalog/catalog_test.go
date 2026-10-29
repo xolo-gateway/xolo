@@ -95,6 +95,7 @@ func TestSource_FallsBackOnTheSnapshot(t *testing.T) {
 	}))
 	defer server.Close()
 	s := NewSource(server.URL, time.Hour)
+	s.Refresh(context.Background())
 	if c := s.Catalog(context.Background()); c == nil || c.Version != Snapshot().Version {
 		t.Errorf("catalog = %v, want the embedded snapshot", c)
 	}
@@ -106,6 +107,11 @@ func TestSource_ServesTheFetchedRelease(t *testing.T) {
 	}))
 	defer server.Close()
 	s := NewSource(server.URL, time.Hour)
+	// A first call never waits for the network.
+	if c := s.Catalog(context.Background()); c.Version != Snapshot().Version {
+		t.Errorf("version = %q, want the snapshot while the release is fetched", c.Version)
+	}
+	s.Refresh(context.Background())
 	if c := s.Catalog(context.Background()); c.Version != "v2026.11.01" {
 		t.Errorf("version = %q, want the fetched release", c.Version)
 	}
@@ -144,5 +150,42 @@ func testCatalog() *Catalog {
 				return p
 			}(),
 		},
+	}
+}
+
+func TestBundle_LeavesOutAnOfferingItCannotReach(t *testing.T) {
+	c := testCatalog()
+	p := c.Provider("acme")
+	p.Offerings = append(p.Offerings, Offering{Model: "kimi", ModelID: "kimi-anthropic", APIType: "anthropic", Prices: Prices{Input: 1, Output: 2}})
+	bundle, err := c.Bundle("acme", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, m := range bundle.Models {
+		if m.RealModel == "kimi-anthropic" {
+			t.Error("an offering through another API without its base URL was imported at the provider's endpoint")
+		}
+	}
+}
+
+func TestBundle_KeysPlanBudgetsByTheProvidersModelID(t *testing.T) {
+	// The catalog keys budgets by the offering's model_id, which Xolo's
+	// plans match against the model's real model.
+	c := testCatalog()
+	p := c.Provider("acme")
+	p.Offerings = append(p.Offerings, Offering{Model: "kimi", ModelID: "kimi-free", Prices: Prices{}})
+	p.Plans[0].Constraints[0].ModelBudgets["kimi-free"] = Budget{}
+	bundle, err := c.Bundle("acme", "pro")
+	if err != nil {
+		t.Fatal(err)
+	}
+	constraint := bundle.Provider.SubscriptionPlan.Constraints[0]
+	for _, m := range bundle.Models {
+		if m.RealModel != "kimi-free" {
+			continue
+		}
+		if _, ok := constraint.ModelBudgets[m.RealModel]; !ok {
+			t.Errorf("no budget for %q, the real model the enforcer looks up", m.RealModel)
+		}
 	}
 }

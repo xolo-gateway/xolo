@@ -209,7 +209,7 @@ Prévoyez enfin le DNS et les certificats TLS de chaque domaine — un joker (`*
 | --- | --- | --- |
 | `XOLO_EXCHANGE_RATE_PROVIDER` | `frankfurter` | Source des taux de change (`frankfurter` ou `file`). |
 | `XOLO_EXCHANGE_RATE_TTL` / `_REFRESH_INTERVAL` | `24h` | Fraîcheur et fréquence de rafraîchissement des taux. |
-| `XOLO_CATALOG_URL` | `https://github.com/xolo-gateway/catalog/releases/latest/download/catalog.json` | Release du [catalogue ouvert de modèles](https://github.com/xolo-gateway/catalog) que les fournisseurs et le formulaire de modèle importent. Une instance sans accès réseau utilise l'instantané embarqué dans le binaire ; une valeur vide n'utilise que lui. |
+| `XOLO_CATALOG_URL` | `https://github.com/xolo-gateway/catalog/releases/latest/download/catalog.json` | Release du [catalogue ouvert de modèles](https://github.com/xolo-gateway/catalog) que les fournisseurs et le formulaire de modèle importent. L'instance part de l'instantané embarqué dans le binaire et lit la release en arrière-plan : une instance sans accès réseau, ou une URL qui ne répond pas, garde l'instantané ou la dernière release lue. Une valeur vide n'utilise que l'instantané. |
 | `XOLO_CATALOG_REFRESH_INTERVAL` | `24h` | Fréquence de relecture du catalogue. |
 | `XOLO_TASK_RUNNER_URI` | `memory://taskrunner?parallelism=5&cleanupInterval=10m&cleanupDelay=1h` | Configuration du planificateur de tâches de fond. |
 | `XOLO_LOGGER_LEVEL` | `0` | Niveau de log (`slog`, valeurs négatives = debug). Au niveau `0` (info) seules les requêtes SQL en erreur ou lentes sont journalisées ; le niveau debug (`-4`) trace chaque requête SQL. |
