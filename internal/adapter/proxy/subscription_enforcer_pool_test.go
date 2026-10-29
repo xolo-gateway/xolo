@@ -410,3 +410,22 @@ func TestSubscriptionEnforcer_PoolSkipsTheKeysUsageOfAWindowWithoutBudget(t *tes
 		t.Errorf("%d reads of the keys' usage, want none: no key holds a budget on the window", f.usage.byKeyReads)
 	}
 }
+
+func TestSubscriptionEnforcer_PoolHoldsKeysToABudgetSetPerModelOnly(t *testing.T) {
+	// A per-model window whose budget lives in its model budgets alone.
+	f := newPoolFixture(t, 0)
+	kimi := int64(10_000_000)
+	f.provider.SetSubscriptionPlan(&model.SubscriptionPlan{Label: "Go", Constraints: []model.PlanConstraint{{
+		Kind: model.ConstraintRollingWindow, Label: "5h", Duration: model.PlanDuration(5 * time.Hour),
+		Scope: model.PlanScopeModel, ModelBudgets: map[string]model.PlanBudget{"kimi-k3": {ValueBudget: &kimi}},
+	}}})
+	f.consume("alice", "k2", 10_000_000)
+
+	req, msg := f.check(t, "alice")
+	if msg != "" {
+		t.Fatalf("alice denied (%q), want granted on another key", msg)
+	}
+	if key := chosenKey(t, req); key == "k2" {
+		t.Error("alice kept on k2, want moved off it: kimi-k3's budget is used up there")
+	}
+}

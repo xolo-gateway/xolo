@@ -278,7 +278,7 @@ func (e *XoloSubscriptionEnforcer) keyStates(ctx context.Context, scope planScop
 			continue
 		}
 		var usage map[model.ProviderKeyID]map[model.LLMModelID]port.PlanUsageTotals
-		if c.Kind == model.ConstraintRollingWindow && c.Duration.Duration() > 0 && anyBudget(plans, i) {
+		if c.Kind == model.ConstraintRollingWindow && c.Duration.Duration() > 0 && anyBudget(plans, i, scope.UpstreamModel) {
 			var err error
 			if usage, err = e.rolling.keysUsage(ctx, scope, c.ForModel(scope.UpstreamModel)); err != nil {
 				return nil, err
@@ -308,10 +308,16 @@ func (e *XoloSubscriptionEnforcer) keyStates(ctx context.Context, scope planScop
 }
 
 // anyBudget reports whether one of the keys' plans holds a budget on its i-th
-// constraint, without which its usage is not worth reading.
-func anyBudget(plans map[model.ProviderKeyID]*model.SubscriptionPlan, i int) bool {
+// constraint, as it applies to the requested upstream model, without which
+// its usage is not worth reading. A per-model window may hold its budgets in
+// its model budgets alone.
+func anyBudget(plans map[model.ProviderKeyID]*model.SubscriptionPlan, i int, upstreamModel string) bool {
 	for _, plan := range plans {
-		if c := plan.Constraints[i]; c.TokenBudget != nil || c.ValueBudget != nil {
+		c := plan.Constraints[i]
+		if c.PerModel() {
+			c = c.ForModel(upstreamModel)
+		}
+		if c.TokenBudget != nil || c.ValueBudget != nil {
 			return true
 		}
 	}
