@@ -4,11 +4,13 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"strings"
 
 	"github.com/a-h/templ"
 	"github.com/bornholm/go-x/slogx"
 	"github.com/pkg/errors"
 	"github.com/xolo-gateway/xolo/internal/catalog"
+	"github.com/xolo-gateway/xolo/internal/core/model"
 	"github.com/xolo-gateway/xolo/internal/core/service"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/org/component"
 	"github.com/xolo-gateway/xolo/internal/i18n"
@@ -87,15 +89,25 @@ func (h *Handler) previewCatalogImport(w http.ResponseWriter, r *http.Request) {
 		h.renderProviderBundleError(w, r, vmodel, i18n.T(ctx, "org.errors.catalog_import.invalid", c.Version))
 		return
 	}
-	// Imported into a provider at another endpoint, a catalog provider gives
-	// its models, prices and plan, not its API nor its endpoints: they would
-	// receive this provider's key. The model form's pre-fill does the same.
-	otherEndpoint := p != nil && !c.Provider(r.FormValue("catalog_provider")).ReachedAt(p.BaseURL())
+	// Imported into a provider at another endpoint than its own, a catalog
+	// provider gives its models, prices and plan, not its API nor its
+	// endpoints: they would receive this provider's key. The model form's
+	// pre-fill does the same. The models the provider's own API does not
+	// serve are then left out.
+	otherEndpoint := p != nil && strings.TrimRight(c.Provider(r.FormValue("catalog_provider")).Xolo.BaseURL, "/") != strings.TrimRight(p.BaseURL(), "/")
+	leftOut := 0
 	if otherEndpoint {
 		bundle.Provider.Type, bundle.Provider.BaseURL = p.Type(), p.BaseURL()
-		for i := range bundle.Models {
-			bundle.Models[i].APIType, bundle.Models[i].BaseURL = "", ""
+		models := bundle.Models[:0]
+		for _, bm := range bundle.Models {
+			if bm.Kind != "" && !model.ProviderTypeServes(p.Type(), bm.Kind) {
+				leftOut++
+				continue
+			}
+			bm.APIType, bm.BaseURL = "", ""
+			models = append(models, bm)
 		}
+		bundle.Models = models
 	}
 	// The catalog publishes in each provider's currency: imported into a
 	// provider billing in another one, its prices and budgets are converted,
@@ -141,6 +153,9 @@ func (h *Handler) previewCatalogImport(w http.ResponseWriter, r *http.Request) {
 	vmodel.Notice = i18n.T(ctx, "org.catalog_import.from", c.Version)
 	if otherEndpoint {
 		vmodel.Notice += " " + i18n.T(ctx, "org.catalog_import.other_endpoint", p.Name())
+	}
+	if leftOut > 0 {
+		vmodel.Notice += " " + i18n.T(ctx, "org.catalog_import.unserved_left_out", p.Type(), leftOut)
 	}
 	templ.Handler(component.ProviderBundleImportPage(vmodel)).ServeHTTP(w, r)
 }

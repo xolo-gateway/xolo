@@ -583,3 +583,43 @@ func TestCatalogImport_KeepsTheEndpointsOfAnotherProviderOut(t *testing.T) {
 		t.Error("the page should say Beta's endpoints are left out")
 	}
 }
+
+func TestCatalogImport_KeepsOutTheEndpointsOfAProviderWithAnOfferingAtTheTarget(t *testing.T) {
+	h, s, tenant := importFixture(t, "https://acme.test/v1", "sk")
+	// Beta serves one model at the target's address, its own endpoint is
+	// elsewhere: the target is not Beta.
+	beta := catalog.Provider{ID: "beta", Name: "Beta", Currency: "USD", Offerings: []catalog.Offering{
+		{Model: "glm", ModelID: "glm", APIType: "openai", BaseURL: "https://acme.test/v1", Prices: catalog.Prices{Input: 1, Output: 2}},
+		{Model: "haiku", ModelID: "haiku", Prices: catalog.Prices{Input: 1, Output: 5}},
+	}}
+	beta.Xolo.Type, beta.Xolo.BaseURL = "openrouter", "https://beta.test/v1"
+	h.SetCatalog(catalog.NewStaticSource(&catalog.Catalog{Kind: catalog.Kind, Format: catalog.Format, Version: "v1", Providers: []catalog.Provider{beta}}))
+
+	fields := url.Values{"catalog_provider": {"beta"}, "plan": {"none"}}
+	rr := httptest.NewRecorder()
+	h.previewCatalogImport(rr, bundleRequest(t, s, tenant, string(s.provider.ID()), bytes.NewBufferString(fields.Encode()), "application/x-www-form-urlencoded"))
+	if page := stdhtml.UnescapeString(rr.Body.String()); rr.Code != http.StatusOK || strings.Contains(page, "beta.test") || strings.Contains(page, "openrouter") {
+		t.Errorf("status %d: Beta's endpoint or API is offered to the provider at acme.test", rr.Code)
+	}
+}
+
+func TestCatalogImport_LeavesOutTheModelsTheTargetAPIDoesNotServe(t *testing.T) {
+	h, s, tenant := importFixture(t, "https://acme.test/v1", "sk")
+	s.provider.(*model.BaseProvider).SetType("anthropic")
+	beta := catalog.Provider{ID: "beta", Name: "Beta", Currency: "USD", Offerings: []catalog.Offering{
+		{Model: "chat", ModelID: "chat", Prices: catalog.Prices{Input: 1, Output: 2}},
+		{Model: "embed", ModelID: "embed", Prices: catalog.Prices{Input: 1}},
+	}}
+	beta.Xolo.Type, beta.Xolo.BaseURL = "openai", "https://beta.test/v1"
+	h.SetCatalog(catalog.NewStaticSource(&catalog.Catalog{Kind: catalog.Kind, Format: catalog.Format, Version: "v1",
+		Models:    []catalog.Model{{ID: "chat", Name: "Chat"}, {ID: "embed", Name: "Embed", Kind: "embeddings"}},
+		Providers: []catalog.Provider{beta}}))
+
+	fields := url.Values{"catalog_provider": {"beta"}, "plan": {"none"}}
+	rr := httptest.NewRecorder()
+	h.previewCatalogImport(rr, bundleRequest(t, s, tenant, string(s.provider.ID()), bytes.NewBufferString(fields.Encode()), "application/x-www-form-urlencoded"))
+	page := stdhtml.UnescapeString(rr.Body.String())
+	if rr.Code != http.StatusOK || !strings.Contains(page, "Modèles laissés de côté, d'un type que l'API anthropic ne sert pas : 1.") {
+		t.Errorf("status %d, want the dry run with the embeddings model left out and said so", rr.Code)
+	}
+}
