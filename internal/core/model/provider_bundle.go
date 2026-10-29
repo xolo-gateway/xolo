@@ -331,6 +331,10 @@ func validateBundlePlan(plan *SubscriptionPlan) error {
 			if c.MaxConcurrent == nil || *c.MaxConcurrent < 1 {
 				return bad("needs at least one concurrent request")
 			}
+			// A concurrency limit is always provider-wide.
+			if c.Scope == PlanScopeModel {
+				return bad("is a concurrency limit, which cannot be counted per model")
+			}
 		default:
 			return bad("has an unknown kind")
 		}
