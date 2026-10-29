@@ -342,9 +342,10 @@ func PlanProviderBundleImportWith(bundle model.ProviderBundle, target model.Prov
 // the bundle; a rename whose new name is still held (outside the bundle, by
 // a model that keeps its name, or by an earlier rename to the same name) is
 // refused and its model takes its own name back, which may refuse others in
-// turn, until nothing moves. The accepted renames then take their new
-// names. It returns, by bundle index, the conflict of each selected rename,
-// empty when accepted.
+// turn, until nothing moves. A cycle of renames (a swap) cannot be written
+// without a temporary name: its last rename is refused too, which refuses
+// the rest of the cycle. It returns, by bundle index, the conflict of each
+// selected rename, empty when accepted.
 func resolveRenames(bundle model.ProviderBundle, existing []model.LLMModel, selected func(int, string) bool, names ProxyNames) map[int]string {
 	var renames []int
 	for i, bm := range bundle.Models {
@@ -353,43 +354,96 @@ func resolveRenames(bundle model.ProviderBundle, existing []model.LLMModel, sele
 			names.Release(m.ProxyName())
 		}
 	}
-	// Each round claims the new names in bundle order; a refusal gives the
+	target := func(i int) string { return bundle.Models[i].ProxyName }
+	old := func(i int) string { return existing[i].ProxyName() }
+
+	refused := map[int]bool{}
+	var claimed []string
+	// settle claims the new names in bundle order; a refusal gives the
 	// model its own name back and starts a new round, as it may refuse
-	// renames planned earlier. Refusals only grow, so the rounds end.
-	conflicts := make(map[int]string, len(renames))
-	for {
-		var claimed []string
-		refusedThisRound := false
-		for _, i := range renames {
-			if _, refused := conflicts[i]; refused {
-				continue
+	// renames claimed earlier. Refusals only grow, so the rounds end.
+	settle := func() {
+		for {
+			for _, name := range claimed {
+				names.Release(name)
 			}
-			target := bundle.Models[i].ProxyName
-			if conflict := names.Conflict(target); conflict != "" {
-				conflicts[i] = conflict
-				names.Declare(existing[i].ProxyName())
-				refusedThisRound = true
-				continue
+			claimed = claimed[:0]
+			for i := range refused {
+				names.Declare(old(i))
 			}
-			names.Declare(target)
-			claimed = append(claimed, target)
-		}
-		if !refusedThisRound {
-			break
-		}
-		for _, name := range claimed {
-			names.Release(name)
-		}
-		// A name claimed this round may be the one a refused model took
-		// back: every refused model holds its own name again.
-		for i := range conflicts {
-			names.Declare(existing[i].ProxyName())
+			again := false
+			for _, i := range renames {
+				if refused[i] {
+					continue
+				}
+				if names.Conflict(target(i)) != "" {
+					refused[i] = true
+					names.Declare(old(i))
+					again = true
+					continue
+				}
+				names.Declare(target(i))
+				claimed = append(claimed, target(i))
+			}
+			if !again {
+				return
+			}
 		}
 	}
-	for _, i := range renames {
-		if _, refused := conflicts[i]; !refused {
-			conflicts[i] = ""
+
+	for {
+		settle()
+		// A cycle among the accepted renames: each takes the name the next
+		// one leaves. Refusing its last rename refuses the others in turn.
+		leaving := map[string]int{}
+		for _, i := range renames {
+			if !refused[i] {
+				leaving[old(i)] = i
+			}
 		}
+		cycle := -1
+		for _, start := range renames {
+			if refused[start] {
+				continue
+			}
+			// Follow the chain of names from start; a rename met twice
+			// closes a cycle, made of the renames from its first visit on.
+			var path []int
+			at := map[int]int{}
+			for i, ok := start, true; ok; i, ok = leaving[target(i)] {
+				if first, seen := at[i]; seen {
+					cycle = slices.Max(path[first:])
+					break
+				}
+				at[i] = len(path)
+				path = append(path, i)
+			}
+			if cycle >= 0 {
+				break
+			}
+		}
+		if cycle < 0 {
+			break
+		}
+		refused[cycle] = true
+	}
+
+	conflicts := make(map[int]string, len(renames))
+	for _, i := range renames {
+		if !refused[i] {
+			conflicts[i] = ""
+			continue
+		}
+		// The name it would take stays held, by a model of the bundle or
+		// outside it: that holder is the reason. A name freed since the
+		// refusal (its holder refused in turn) is taken after all.
+		if conflict := names.Conflict(target(i)); conflict != "" {
+			conflicts[i] = conflict
+			continue
+		}
+		names.Release(old(i))
+		names.Declare(target(i))
+		conflicts[i] = ""
 	}
 	return conflicts
 }
