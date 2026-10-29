@@ -454,7 +454,7 @@ templ providerKeysSection(vmodel ProviderFormVModel, readonly bool) {
 				@form.Description() {
 					@templ.Raw(i18n.T(ctx, "org.provider.api_keys_help"))
 				}
-				@ProviderKeysEditor(vmodel.Provider.ExtraAPIKeys(), readonly)
+				@ProviderKeysEditor(vmodel.Provider.ExtraAPIKeys(), vmodel.Provider.SubscriptionPlan(), readonly)
 			}
 		}
 	</div>

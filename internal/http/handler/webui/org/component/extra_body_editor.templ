@@ -2,8 +2,12 @@ package component
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/xolo-gateway/xolo/internal/core/model"
+	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/collapsible"
+	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/form"
+	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/textarea"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/button"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/input"
 	"github.com/xolo-gateway/xolo/internal/i18n"
@@ -148,9 +152,10 @@ templ ProviderHeadersEditor(rows []ExtraBodyRow, readonly bool) {
 
 // ProviderKeysEditor renders the keys a provider holds besides its own. A
 // stored key keeps its id in a hidden field and never shows its secret: a
-// blank value keeps it. Its form fields are prefixed with provider_key (see
-// parseProviderKeysFromForm).
-templ ProviderKeysEditor(keys []model.ProviderKey, readonly bool) {
+// blank value keeps it. Each key may adjust the plan's rolling windows for
+// itself (see model.PlanConstraintOverride). Its form fields are prefixed with
+// provider_key (see parseProviderKeysFromForm).
+templ ProviderKeysEditor(keys []model.ProviderKey, plan *model.SubscriptionPlan, readonly bool) {
 	<div class="space-y-3">
 		<div
 			id="provider-key-rows"
@@ -160,7 +165,7 @@ templ ProviderKeysEditor(keys []model.ProviderKey, readonly bool) {
 			data-rows-count="provider-key-count"
 		>
 			for i, k := range keys {
-				@providerKeyRow(i, k, readonly)
+				@providerKeyRow(i, k, plan, readonly)
 			}
 		</div>
 		<input type="hidden" id="provider-key-count" name="provider_key_count" value={ fmt.Sprintf("%d", len(keys)) }/>
@@ -177,13 +182,13 @@ templ ProviderKeysEditor(keys []model.ProviderKey, readonly bool) {
 	</div>
 	if !readonly {
 		<template id="provider-key-tpl">
-			@providerKeyRow(-1, model.ProviderKey{}, false)
+			@providerKeyRow(-1, model.ProviderKey{}, plan, false)
 		</template>
 	}
 }
 
 // providerKeyRow renders one key. idx = -1 → template row.
-templ providerKeyRow(idx int, k model.ProviderKey, readonly bool) {
+templ providerKeyRow(idx int, k model.ProviderKey, plan *model.SubscriptionPlan, readonly bool) {
 	{{ idxKey := fmt.Sprintf("%d", idx) }}
 	if idx == -1 {
 		{{ idxKey = "{i}" }}
@@ -192,41 +197,158 @@ templ providerKeyRow(idx int, k model.ProviderKey, readonly bool) {
 	if k.ID != "" {
 		{{ valuePlaceholder = i18n.T(ctx, "org.provider.api_keys_value_keep") }}
 	}
-	<div data-xolo-row class="flex items-start gap-2">
-		// Hidden input: the id of the stored key the row edits, empty for a
-		// new one. It carries a value, it is not a control.
-		<input type="hidden" name={ "provider_key_k" + idxKey + "_id" } value={ string(k.ID) } data-xolo-name="provider_key_k{i}_id"/>
-		<div class="w-48">
-			@input.Input(input.Props{
-				Name:        "provider_key_k" + idxKey + "_label",
-				Value:       k.Label,
-				Placeholder: i18n.T(ctx, "org.provider.api_keys_label_placeholder"),
-				Disabled:    readonly,
-				Attributes:  templ.Attributes{"data-xolo-name": "provider_key_k{i}_label"},
-			})
+	{{ windows := keyOverrideConstraints(plan) }}
+	<div data-xolo-row class="space-y-2 rounded-md border p-3">
+		<div class="flex items-start gap-2">
+			// Hidden input: the id of the stored key the row edits, empty for a
+			// new one. It carries a value, it is not a control.
+			<input type="hidden" name={ "provider_key_k" + idxKey + "_id" } value={ string(k.ID) } data-xolo-name="provider_key_k{i}_id"/>
+			<div class="w-48">
+				@input.Input(input.Props{
+					Name:        "provider_key_k" + idxKey + "_label",
+					Value:       k.Label,
+					Placeholder: i18n.T(ctx, "org.provider.api_keys_label_placeholder"),
+					Disabled:    readonly,
+					Attributes:  templ.Attributes{"data-xolo-name": "provider_key_k{i}_label"},
+				})
+			</div>
+			<div class="flex-1">
+				@input.Input(input.Props{
+					Name:        "provider_key_k" + idxKey + "_value",
+					Type:        input.TypePassword,
+					Placeholder: valuePlaceholder,
+					Class:       "font-mono",
+					Disabled:    readonly,
+					Attributes:  templ.Attributes{"data-xolo-name": "provider_key_k{i}_value", "autocomplete": "off"},
+				})
+			</div>
+			if !readonly {
+				@button.Button(button.Props{
+					Type:    "button",
+					Variant: button.VariantOutline,
+					Size:    button.SizeIcon,
+					Attributes: templ.Attributes{
+						"data-xolo-row-remove": "",
+						"title":                i18n.T(ctx, "org.provider.api_keys_remove"),
+					},
+				}) {
+					✕
+				}
+			}
 		</div>
-		<div class="flex-1">
-			@input.Input(input.Props{
-				Name:        "provider_key_k" + idxKey + "_value",
-				Type:        input.TypePassword,
-				Placeholder: valuePlaceholder,
-				Class:       "font-mono",
-				Disabled:    readonly,
-				Attributes:  templ.Attributes{"data-xolo-name": "provider_key_k{i}_value", "autocomplete": "off"},
-			})
-		</div>
-		if !readonly {
-			@button.Button(button.Props{
-				Type:    "button",
-				Variant: button.VariantOutline,
-				Size:    button.SizeIcon,
-				Attributes: templ.Attributes{
-					"data-xolo-row-remove": "",
-					"title":                i18n.T(ctx, "org.provider.api_keys_remove"),
-				},
-			}) {
-				✕
+		if len(windows) > 0 {
+			@collapsible.Collapsible(collapsible.Props{Open: keyHasOverrides(k)}) {
+				@collapsible.Trigger(collapsible.TriggerProps{Class: "cursor-pointer text-xs text-muted-foreground hover:text-foreground"}) {
+					{ i18n.T(ctx, "org.provider.api_keys_overrides") }
+				}
+				@collapsible.Content(collapsible.ContentProps{Class: "mt-2 space-y-3"}) {
+					@form.Description() {
+						{ i18n.T(ctx, "org.provider.api_keys_overrides_help") }
+					}
+					for j, c := range windows {
+						@providerKeyOverride(idxKey, j, c, k.Overrides[c.Label], readonly)
+					}
+				}
 			}
 		}
 	</div>
+}
+
+// providerKeyOverride renders the adjustments of one rolling window for one
+// key. Every field left empty keeps the plan's.
+templ providerKeyOverride(idxKey string, j int, c model.PlanConstraint, o model.PlanConstraintOverride, readonly bool) {
+	{{ prefix := fmt.Sprintf("provider_key_k%s_o%d_", idxKey, j) }}
+	{{ pattern := fmt.Sprintf("provider_key_k{i}_o%d_", j) }}
+	<div class="space-y-2 border-l-2 border-border pl-3">
+		<input type="hidden" name={ prefix + "label" } value={ c.Label } data-xolo-name={ pattern + "label" }/>
+		<p class="text-xs font-medium">{ c.Label }</p>
+		<div class="grid grid-cols-1 gap-2 sm:grid-cols-3">
+			if c.ValueBudget != nil {
+				@input.Input(input.Props{
+					Name:        prefix + "value_budget",
+					Type:        input.TypeNumber,
+					Value:       overrideValueBudget(o),
+					Placeholder: i18n.T(ctx, "org.provider.api_keys_override_value", formatBudgetField(*c.ValueBudget)),
+					Disabled:    readonly,
+					Attributes:  templ.Attributes{"data-xolo-name": pattern + "value_budget", "min": "0", "step": "any"},
+				})
+			}
+			if c.TokenBudget != nil {
+				@input.Input(input.Props{
+					Name:        prefix + "token_budget",
+					Type:        input.TypeNumber,
+					Value:       overrideTokenBudget(o),
+					Placeholder: i18n.T(ctx, "org.provider.api_keys_override_tokens", *c.TokenBudget),
+					Disabled:    readonly,
+					Attributes:  templ.Attributes{"data-xolo-name": pattern + "token_budget", "min": "0"},
+				})
+			}
+			@input.Input(input.Props{
+				Name:        prefix + "reset_in",
+				Value:       overrideResetIn(c, o),
+				Placeholder: i18n.T(ctx, "org.provider.api_keys_override_reset_in"),
+				Disabled:    readonly,
+				Attributes:  templ.Attributes{"data-xolo-name": pattern + "reset_in"},
+			})
+		</div>
+		if c.Scope == model.PlanScopeModel || c.Scope == model.PlanScopeShared {
+			@textarea.Textarea(textarea.Props{
+				Name:        prefix + "model_budgets",
+				Value:       formatModelBudgets(o.ModelBudgets),
+				Rows:        2,
+				Placeholder: i18n.T(ctx, "org.provider.api_keys_override_models"),
+				Disabled:    readonly,
+				Class:       "font-mono text-xs",
+				Attributes:  templ.Attributes{"data-xolo-name": pattern + "model_budgets"},
+			})
+		}
+	</div>
+}
+
+// keyOverrideConstraints are the constraints of a plan a key may adjust: its
+// rolling windows.
+func keyOverrideConstraints(plan *model.SubscriptionPlan) []model.PlanConstraint {
+	if plan == nil {
+		return nil
+	}
+	var windows []model.PlanConstraint
+	for _, c := range plan.Constraints {
+		if c.Kind == model.ConstraintRollingWindow && c.Duration.Duration() > 0 {
+			windows = append(windows, c)
+		}
+	}
+	return windows
+}
+
+func keyHasOverrides(k model.ProviderKey) bool {
+	for _, o := range k.Overrides {
+		if !o.Empty() {
+			return true
+		}
+	}
+	return false
+}
+
+func overrideValueBudget(o model.PlanConstraintOverride) string {
+	if o.ValueBudget == nil {
+		return ""
+	}
+	return formatBudgetField(*o.ValueBudget)
+}
+
+func overrideTokenBudget(o model.PlanConstraintOverride) string {
+	if o.TokenBudget == nil {
+		return ""
+	}
+	return fmt.Sprintf("%d", *o.TokenBudget)
+}
+
+// overrideResetIn renders a moved window from its anchor, as the plan editor
+// does, so that re-saving keeps it.
+func overrideResetIn(c model.PlanConstraint, o model.PlanConstraintOverride) string {
+	if o.WindowAnchor == nil {
+		return ""
+	}
+	c = o.Apply(c)
+	return formatResetIn(time.Until(c.NextResetAt(time.Now())))
 }

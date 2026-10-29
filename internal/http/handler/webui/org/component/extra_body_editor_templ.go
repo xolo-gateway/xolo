@@ -10,10 +10,14 @@ import templruntime "github.com/a-h/templ/runtime"
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/xolo-gateway/xolo/internal/core/model"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/button"
+	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/collapsible"
+	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/form"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/input"
+	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/textarea"
 	"github.com/xolo-gateway/xolo/internal/i18n"
 )
 
@@ -65,7 +69,7 @@ func KeyValueEditor(props KeyValueEditorProps, rows []ExtraBodyRow, readonly boo
 		var templ_7745c5c3_Var2 string
 		templ_7745c5c3_Var2, templ_7745c5c3_Err = templ.JoinStringErrs(props.ID + "-rows")
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/extra_body_editor.templ`, Line: 35, Col: 26}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/extra_body_editor.templ`, Line: 39, Col: 26}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var2))
 		if templ_7745c5c3_Err != nil {
@@ -78,7 +82,7 @@ func KeyValueEditor(props KeyValueEditorProps, rows []ExtraBodyRow, readonly boo
 		var templ_7745c5c3_Var3 string
 		templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.JoinStringErrs(props.ID + "-tpl")
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/extra_body_editor.templ`, Line: 38, Col: 41}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/extra_body_editor.templ`, Line: 42, Col: 41}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var3))
 		if templ_7745c5c3_Err != nil {
@@ -91,7 +95,7 @@ func KeyValueEditor(props KeyValueEditorProps, rows []ExtraBodyRow, readonly boo
 		var templ_7745c5c3_Var4 string
 		templ_7745c5c3_Var4, templ_7745c5c3_Err = templ.JoinStringErrs(props.ID + "-count")
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/extra_body_editor.templ`, Line: 39, Col: 40}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/extra_body_editor.templ`, Line: 43, Col: 40}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var4))
 		if templ_7745c5c3_Err != nil {
@@ -114,7 +118,7 @@ func KeyValueEditor(props KeyValueEditorProps, rows []ExtraBodyRow, readonly boo
 		var templ_7745c5c3_Var5 string
 		templ_7745c5c3_Var5, templ_7745c5c3_Err = templ.JoinStringErrs(props.ID + "-count")
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/extra_body_editor.templ`, Line: 48, Col: 47}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/extra_body_editor.templ`, Line: 52, Col: 47}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var5))
 		if templ_7745c5c3_Err != nil {
@@ -127,7 +131,7 @@ func KeyValueEditor(props KeyValueEditorProps, rows []ExtraBodyRow, readonly boo
 		var templ_7745c5c3_Var6 string
 		templ_7745c5c3_Var6, templ_7745c5c3_Err = templ.JoinStringErrs(props.Name + "_count")
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/extra_body_editor.templ`, Line: 48, Col: 78}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/extra_body_editor.templ`, Line: 52, Col: 78}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var6))
 		if templ_7745c5c3_Err != nil {
@@ -140,7 +144,7 @@ func KeyValueEditor(props KeyValueEditorProps, rows []ExtraBodyRow, readonly boo
 		var templ_7745c5c3_Var7 string
 		templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("%d", len(rows)))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/extra_body_editor.templ`, Line: 48, Col: 117}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/extra_body_editor.templ`, Line: 52, Col: 117}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var7))
 		if templ_7745c5c3_Err != nil {
@@ -166,7 +170,7 @@ func KeyValueEditor(props KeyValueEditorProps, rows []ExtraBodyRow, readonly boo
 				var templ_7745c5c3_Var9 string
 				templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.JoinStringErrs(props.AddLabel)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/extra_body_editor.templ`, Line: 56, Col: 20}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/extra_body_editor.templ`, Line: 60, Col: 20}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var9))
 				if templ_7745c5c3_Err != nil {
@@ -196,7 +200,7 @@ func KeyValueEditor(props KeyValueEditorProps, rows []ExtraBodyRow, readonly boo
 			var templ_7745c5c3_Var10 string
 			templ_7745c5c3_Var10, templ_7745c5c3_Err = templ.JoinStringErrs(props.ID + "-tpl")
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/extra_body_editor.templ`, Line: 63, Col: 34}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/extra_body_editor.templ`, Line: 67, Col: 34}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var10))
 			if templ_7745c5c3_Err != nil {
@@ -408,9 +412,10 @@ func ProviderHeadersEditor(rows []ExtraBodyRow, readonly bool) templ.Component {
 
 // ProviderKeysEditor renders the keys a provider holds besides its own. A
 // stored key keeps its id in a hidden field and never shows its secret: a
-// blank value keeps it. Its form fields are prefixed with provider_key (see
-// parseProviderKeysFromForm).
-func ProviderKeysEditor(keys []model.ProviderKey, readonly bool) templ.Component {
+// blank value keeps it. Each key may adjust the plan's rolling windows for
+// itself (see model.PlanConstraintOverride). Its form fields are prefixed with
+// provider_key (see parseProviderKeysFromForm).
+func ProviderKeysEditor(keys []model.ProviderKey, plan *model.SubscriptionPlan, readonly bool) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
@@ -436,7 +441,7 @@ func ProviderKeysEditor(keys []model.ProviderKey, readonly bool) templ.Component
 			return templ_7745c5c3_Err
 		}
 		for i, k := range keys {
-			templ_7745c5c3_Err = providerKeyRow(i, k, readonly).Render(ctx, templ_7745c5c3_Buffer)
+			templ_7745c5c3_Err = providerKeyRow(i, k, plan, readonly).Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -448,7 +453,7 @@ func ProviderKeysEditor(keys []model.ProviderKey, readonly bool) templ.Component
 		var templ_7745c5c3_Var16 string
 		templ_7745c5c3_Var16, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("%d", len(keys)))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/extra_body_editor.templ`, Line: 166, Col: 109}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/extra_body_editor.templ`, Line: 171, Col: 109}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var16))
 		if templ_7745c5c3_Err != nil {
@@ -474,7 +479,7 @@ func ProviderKeysEditor(keys []model.ProviderKey, readonly bool) templ.Component
 				var templ_7745c5c3_Var18 string
 				templ_7745c5c3_Var18, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.provider.api_keys_add"))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/extra_body_editor.templ`, Line: 174, Col: 46}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/extra_body_editor.templ`, Line: 179, Col: 46}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var18))
 				if templ_7745c5c3_Err != nil {
@@ -501,7 +506,7 @@ func ProviderKeysEditor(keys []model.ProviderKey, readonly bool) templ.Component
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = providerKeyRow(-1, model.ProviderKey{}, false).Render(ctx, templ_7745c5c3_Buffer)
+			templ_7745c5c3_Err = providerKeyRow(-1, model.ProviderKey{}, plan, false).Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -515,7 +520,7 @@ func ProviderKeysEditor(keys []model.ProviderKey, readonly bool) templ.Component
 }
 
 // providerKeyRow renders one key. idx = -1 → template row.
-func providerKeyRow(idx int, k model.ProviderKey, readonly bool) templ.Component {
+func providerKeyRow(idx int, k model.ProviderKey, plan *model.SubscriptionPlan, readonly bool) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
@@ -544,14 +549,15 @@ func providerKeyRow(idx int, k model.ProviderKey, readonly bool) templ.Component
 		if k.ID != "" {
 			valuePlaceholder = i18n.T(ctx, "org.provider.api_keys_value_keep")
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 24, "<div data-xolo-row class=\"flex items-start gap-2\"><input type=\"hidden\" name=\"")
+		windows := keyOverrideConstraints(plan)
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 24, "<div data-xolo-row class=\"space-y-2 rounded-md border p-3\"><div class=\"flex items-start gap-2\"><input type=\"hidden\" name=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var20 string
 		templ_7745c5c3_Var20, templ_7745c5c3_Err = templ.JoinStringErrs("provider_key_k" + idxKey + "_id")
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/extra_body_editor.templ`, Line: 198, Col: 63}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/extra_body_editor.templ`, Line: 205, Col: 64}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var20))
 		if templ_7745c5c3_Err != nil {
@@ -564,7 +570,7 @@ func providerKeyRow(idx int, k model.ProviderKey, readonly bool) templ.Component
 		var templ_7745c5c3_Var21 string
 		templ_7745c5c3_Var21, templ_7745c5c3_Err = templ.JoinStringErrs(string(k.ID))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/extra_body_editor.templ`, Line: 198, Col: 86}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/extra_body_editor.templ`, Line: 205, Col: 87}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var21))
 		if templ_7745c5c3_Err != nil {
@@ -639,8 +645,305 @@ func providerKeyRow(idx int, k model.ProviderKey, readonly bool) templ.Component
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
+		if len(windows) > 0 {
+			templ_7745c5c3_Var23 := templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
+				templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
+				templ_7745c5c3_Buffer, templ_7745c5c3_IsBuffer := templruntime.GetBuffer(templ_7745c5c3_W)
+				if !templ_7745c5c3_IsBuffer {
+					defer func() {
+						templ_7745c5c3_BufErr := templruntime.ReleaseBuffer(templ_7745c5c3_Buffer)
+						if templ_7745c5c3_Err == nil {
+							templ_7745c5c3_Err = templ_7745c5c3_BufErr
+						}
+					}()
+				}
+				ctx = templ.InitializeContext(ctx)
+				templ_7745c5c3_Var24 := templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
+					templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
+					templ_7745c5c3_Buffer, templ_7745c5c3_IsBuffer := templruntime.GetBuffer(templ_7745c5c3_W)
+					if !templ_7745c5c3_IsBuffer {
+						defer func() {
+							templ_7745c5c3_BufErr := templruntime.ReleaseBuffer(templ_7745c5c3_Buffer)
+							if templ_7745c5c3_Err == nil {
+								templ_7745c5c3_Err = templ_7745c5c3_BufErr
+							}
+						}()
+					}
+					ctx = templ.InitializeContext(ctx)
+					var templ_7745c5c3_Var25 string
+					templ_7745c5c3_Var25, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.provider.api_keys_overrides"))
+					if templ_7745c5c3_Err != nil {
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/extra_body_editor.templ`, Line: 242, Col: 53}
+					}
+					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var25))
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+					return nil
+				})
+				templ_7745c5c3_Err = collapsible.Trigger(collapsible.TriggerProps{Class: "cursor-pointer text-xs text-muted-foreground hover:text-foreground"}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var24), templ_7745c5c3_Buffer)
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 31, " ")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				templ_7745c5c3_Var26 := templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
+					templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
+					templ_7745c5c3_Buffer, templ_7745c5c3_IsBuffer := templruntime.GetBuffer(templ_7745c5c3_W)
+					if !templ_7745c5c3_IsBuffer {
+						defer func() {
+							templ_7745c5c3_BufErr := templruntime.ReleaseBuffer(templ_7745c5c3_Buffer)
+							if templ_7745c5c3_Err == nil {
+								templ_7745c5c3_Err = templ_7745c5c3_BufErr
+							}
+						}()
+					}
+					ctx = templ.InitializeContext(ctx)
+					templ_7745c5c3_Var27 := templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
+						templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
+						templ_7745c5c3_Buffer, templ_7745c5c3_IsBuffer := templruntime.GetBuffer(templ_7745c5c3_W)
+						if !templ_7745c5c3_IsBuffer {
+							defer func() {
+								templ_7745c5c3_BufErr := templruntime.ReleaseBuffer(templ_7745c5c3_Buffer)
+								if templ_7745c5c3_Err == nil {
+									templ_7745c5c3_Err = templ_7745c5c3_BufErr
+								}
+							}()
+						}
+						ctx = templ.InitializeContext(ctx)
+						var templ_7745c5c3_Var28 string
+						templ_7745c5c3_Var28, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.provider.api_keys_overrides_help"))
+						if templ_7745c5c3_Err != nil {
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/extra_body_editor.templ`, Line: 246, Col: 59}
+						}
+						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var28))
+						if templ_7745c5c3_Err != nil {
+							return templ_7745c5c3_Err
+						}
+						return nil
+					})
+					templ_7745c5c3_Err = form.Description().Render(templ.WithChildren(ctx, templ_7745c5c3_Var27), templ_7745c5c3_Buffer)
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+					for j, c := range windows {
+						templ_7745c5c3_Err = providerKeyOverride(idxKey, j, c, k.Overrides[c.Label], readonly).Render(ctx, templ_7745c5c3_Buffer)
+						if templ_7745c5c3_Err != nil {
+							return templ_7745c5c3_Err
+						}
+					}
+					return nil
+				})
+				templ_7745c5c3_Err = collapsible.Content(collapsible.ContentProps{Class: "mt-2 space-y-3"}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var26), templ_7745c5c3_Buffer)
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				return nil
+			})
+			templ_7745c5c3_Err = collapsible.Collapsible(collapsible.Props{Open: keyHasOverrides(k)}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var23), templ_7745c5c3_Buffer)
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 32, "</div>")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
 		return nil
 	})
+}
+
+// providerKeyOverride renders the adjustments of one rolling window for one
+// key. Every field left empty keeps the plan's.
+func providerKeyOverride(idxKey string, j int, c model.PlanConstraint, o model.PlanConstraintOverride, readonly bool) templ.Component {
+	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
+		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
+		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
+			return templ_7745c5c3_CtxErr
+		}
+		templ_7745c5c3_Buffer, templ_7745c5c3_IsBuffer := templruntime.GetBuffer(templ_7745c5c3_W)
+		if !templ_7745c5c3_IsBuffer {
+			defer func() {
+				templ_7745c5c3_BufErr := templruntime.ReleaseBuffer(templ_7745c5c3_Buffer)
+				if templ_7745c5c3_Err == nil {
+					templ_7745c5c3_Err = templ_7745c5c3_BufErr
+				}
+			}()
+		}
+		ctx = templ.InitializeContext(ctx)
+		templ_7745c5c3_Var29 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var29 == nil {
+			templ_7745c5c3_Var29 = templ.NopComponent
+		}
+		ctx = templ.ClearChildren(ctx)
+		prefix := fmt.Sprintf("provider_key_k%s_o%d_", idxKey, j)
+		pattern := fmt.Sprintf("provider_key_k{i}_o%d_", j)
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 33, "<div class=\"space-y-2 border-l-2 border-border pl-3\"><input type=\"hidden\" name=\"")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var30 string
+		templ_7745c5c3_Var30, templ_7745c5c3_Err = templ.JoinStringErrs(prefix + "label")
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/extra_body_editor.templ`, Line: 263, Col: 46}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var30))
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 34, "\" value=\"")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var31 string
+		templ_7745c5c3_Var31, templ_7745c5c3_Err = templ.JoinStringErrs(c.Label)
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/extra_body_editor.templ`, Line: 263, Col: 64}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var31))
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 35, "\" data-xolo-name=\"")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var32 string
+		templ_7745c5c3_Var32, templ_7745c5c3_Err = templ.JoinStringErrs(pattern + "label")
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/extra_body_editor.templ`, Line: 263, Col: 101}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var32))
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 36, "\"><p class=\"text-xs font-medium\">")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var33 string
+		templ_7745c5c3_Var33, templ_7745c5c3_Err = templ.JoinStringErrs(c.Label)
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/extra_body_editor.templ`, Line: 264, Col: 42}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var33))
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 37, "</p><div class=\"grid grid-cols-1 gap-2 sm:grid-cols-3\">")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		if c.ValueBudget != nil {
+			templ_7745c5c3_Err = input.Input(input.Props{
+				Name:        prefix + "value_budget",
+				Type:        input.TypeNumber,
+				Value:       overrideValueBudget(o),
+				Placeholder: i18n.T(ctx, "org.provider.api_keys_override_value", formatBudgetField(*c.ValueBudget)),
+				Disabled:    readonly,
+				Attributes:  templ.Attributes{"data-xolo-name": pattern + "value_budget", "min": "0", "step": "any"},
+			}).Render(ctx, templ_7745c5c3_Buffer)
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+		}
+		if c.TokenBudget != nil {
+			templ_7745c5c3_Err = input.Input(input.Props{
+				Name:        prefix + "token_budget",
+				Type:        input.TypeNumber,
+				Value:       overrideTokenBudget(o),
+				Placeholder: i18n.T(ctx, "org.provider.api_keys_override_tokens", *c.TokenBudget),
+				Disabled:    readonly,
+				Attributes:  templ.Attributes{"data-xolo-name": pattern + "token_budget", "min": "0"},
+			}).Render(ctx, templ_7745c5c3_Buffer)
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+		}
+		templ_7745c5c3_Err = input.Input(input.Props{
+			Name:        prefix + "reset_in",
+			Value:       overrideResetIn(c, o),
+			Placeholder: i18n.T(ctx, "org.provider.api_keys_override_reset_in"),
+			Disabled:    readonly,
+			Attributes:  templ.Attributes{"data-xolo-name": pattern + "reset_in"},
+		}).Render(ctx, templ_7745c5c3_Buffer)
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 38, "</div>")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		if c.Scope == model.PlanScopeModel || c.Scope == model.PlanScopeShared {
+			templ_7745c5c3_Err = textarea.Textarea(textarea.Props{
+				Name:        prefix + "model_budgets",
+				Value:       formatModelBudgets(o.ModelBudgets),
+				Rows:        2,
+				Placeholder: i18n.T(ctx, "org.provider.api_keys_override_models"),
+				Disabled:    readonly,
+				Class:       "font-mono text-xs",
+				Attributes:  templ.Attributes{"data-xolo-name": pattern + "model_budgets"},
+			}).Render(ctx, templ_7745c5c3_Buffer)
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 39, "</div>")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		return nil
+	})
+}
+
+// keyOverrideConstraints are the constraints of a plan a key may adjust: its
+// rolling windows.
+func keyOverrideConstraints(plan *model.SubscriptionPlan) []model.PlanConstraint {
+	if plan == nil {
+		return nil
+	}
+	var windows []model.PlanConstraint
+	for _, c := range plan.Constraints {
+		if c.Kind == model.ConstraintRollingWindow && c.Duration.Duration() > 0 {
+			windows = append(windows, c)
+		}
+	}
+	return windows
+}
+
+func keyHasOverrides(k model.ProviderKey) bool {
+	for _, o := range k.Overrides {
+		if !o.Empty() {
+			return true
+		}
+	}
+	return false
+}
+
+func overrideValueBudget(o model.PlanConstraintOverride) string {
+	if o.ValueBudget == nil {
+		return ""
+	}
+	return formatBudgetField(*o.ValueBudget)
+}
+
+func overrideTokenBudget(o model.PlanConstraintOverride) string {
+	if o.TokenBudget == nil {
+		return ""
+	}
+	return fmt.Sprintf("%d", *o.TokenBudget)
+}
+
+// overrideResetIn renders a moved window from its anchor, as the plan editor
+// does, so that re-saving keeps it.
+func overrideResetIn(c model.PlanConstraint, o model.PlanConstraintOverride) string {
+	if o.WindowAnchor == nil {
+		return ""
+	}
+	c = o.Apply(c)
+	return formatResetIn(time.Until(c.NextResetAt(time.Now())))
 }
 
 var _ = templruntime.GeneratedTemplate

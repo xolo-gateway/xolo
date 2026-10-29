@@ -567,6 +567,22 @@ func scenarioUsageStorePlanUsageByKey(t *testing.T, store *xologorm.Store) {
 		t.Errorf("SumPlanUsageByKeySince returned %d keys, want 3", len(byKey))
 	}
 
+	// k3 renews after its first record: from its own window, only the later
+	// one counts, while the other keys keep the window asked for.
+	time.Sleep(2 * time.Millisecond)
+	k3Window := time.Now()
+	record(f.userB, "k3", 8_000)
+	moved := model.PlanUsageScope{OrgID: f.orgID, ProviderID: f.providerID, KeyWindows: map[model.ProviderKeyID]time.Time{"k3": k3Window}}
+	if _, value, err := store.SumPlanUsageSince(ctx, moved, since); err != nil || value != 750+1_000+8_000 {
+		t.Errorf("SumPlanUsageSince (k3 moved) = %d, %v; want 9750", value, err)
+	}
+	if byKey, err := store.SumPlanUsageByKeySince(ctx, moved, since); err != nil || byKey["k3"][f.modelID].Value != 8_000 || byKey["k2"][f.modelID].Value != 1_000 {
+		t.Errorf("SumPlanUsageByKeySince (k3 moved) = %v, %v; want k3 at 8000 and k2 at 1000", byKey, err)
+	}
+	if _, value, err := store.SumUserPlanUsageSince(ctx, f.userA, moved, since); err != nil || value != 750+1_000 {
+		t.Errorf("SumUserPlanUsageSince (k3 moved) = %d, %v; want user A's k3 record out of k3's window", value, err)
+	}
+
 	_, userOnK3, err := store.SumUserPlanUsageSince(ctx, f.userA, model.PlanUsageScope{OrgID: f.orgID, ProviderID: f.providerID, ByKey: true, KeyID: "k3"}, since)
 	if err != nil {
 		t.Fatalf("SumUserPlanUsageSince: %v", err)

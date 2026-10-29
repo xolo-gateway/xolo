@@ -297,7 +297,8 @@ n'y a de membres, ajoutez les clés des membres sous **Clés API supplémentaire
 dans le formulaire d'un fournisseur en abonnement. La clé du fournisseur reste la
 première du lot.
 
-Le plan décrit les limites d'**une** clé. Xolo l'applique à chacune :
+Le plan décrit les limites d'**une** clé. Xolo l'applique à chacune, avec
+ses éventuels ajustements (voir plus bas) :
 
 - **les parts des utilisateurs** se calculent sur l'ensemble des clés. Avec
   trois clés et une fenêtre de 30 $, la répartition entre utilisateurs porte
@@ -317,8 +318,29 @@ les messages de refus ne les mentionnent. La page d'usage de l'organisation
 détaille la consommation clé par clé, sous la carte du fournisseur, pour les
 personnes autorisées à consulter les fournisseurs.
 
-Les fenêtres se calent pour toutes les clés sur la même ancre : réservez ce
-fonctionnement à des membres dont les forfaits se renouvellent ensemble.
+#### Ajuster le plan pour une clé
+
+Une clé peut s'écarter du plan, fenêtre par fenêtre, sous **Ajuster le plan
+pour cette clé** : un membre dont l'abonnement a d'autres budgets, ou qui se
+renouvelle un autre jour. Chaque champ laissé vide garde la valeur du plan.
+
+- **Budget** (en valeur ou en tokens) : remplace celui de la fenêtre pour
+  cette clé ;
+- **Budgets par modèle** : remplacent, modèle par modèle, ceux de la fenêtre,
+  les modèles non cités gardant ceux du plan ;
+- **Reset dans** : cale la fenêtre de la clé sur son propre renouvellement,
+  par exemple le 29 quand le plan se renouvelle le 19.
+
+Chaque clé est alors mesurée sur ses propres budgets et dans sa propre
+fenêtre : le choix de clé ne retient que celles qui ont de la marge selon
+leur propre plan. Les parts des utilisateurs portent sur la somme des budgets
+des clés, l'usage de chaque clé compté dans sa fenêtre. Le rythme, la fin de
+fenêtre et le « réinitialisation dans » des jauges personnelles suivent la
+fenêtre du plan. Sur une fenêtre commune pondérée, les budgets par modèle
+s'additionnent aussi : une clé qui ne cite pas un modèle y compte pour le
+budget de sa fenêtre, et un modèle illimité sur une clé n'ajoute rien au
+budget commun.
+
 Désactivez par ailleurs le dépassement payant du forfait (« Extra Usage » chez
 OpenCode) : une clé qui continue de répondre au-delà de ses limites n'est
 jamais vue saturée, et le dépassement est facturé.
