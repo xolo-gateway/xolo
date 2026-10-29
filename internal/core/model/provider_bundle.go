@@ -35,16 +35,20 @@ type ProviderBundle struct {
 
 // ProviderBundleSettings are the settings of the exported provider.
 type ProviderBundleSettings struct {
-	Name             string                  `json:"name"`
-	Type             string                  `json:"type"`
-	BaseURL          string                  `json:"base_url,omitempty"`
-	Currency         string                  `json:"currency,omitempty"`
-	CloudTier        int                     `json:"cloud_tier"`
-	Retry            *RetryConfig            `json:"retry,omitempty"`
-	RateLimit        *RateLimitConfig        `json:"rate_limit,omitempty"`
-	RequestHeaders   *ProviderRequestHeaders `json:"request_headers,omitempty"`
-	BillingMode      BillingMode             `json:"billing_mode,omitempty"`
-	SubscriptionPlan *SubscriptionPlan       `json:"subscription_plan,omitempty"`
+	Name           string                  `json:"name"`
+	Type           string                  `json:"type"`
+	BaseURL        string                  `json:"base_url,omitempty"`
+	Currency       string                  `json:"currency,omitempty"`
+	CloudTier      int                     `json:"cloud_tier"`
+	Retry          *RetryConfig            `json:"retry,omitempty"`
+	RateLimit      *RateLimitConfig        `json:"rate_limit,omitempty"`
+	RequestHeaders *ProviderRequestHeaders `json:"request_headers,omitempty"`
+	// OmittedHeaders names the request headers left out of the export
+	// because their name looks like a credential's: they must be configured
+	// again on the target. Names only, never values.
+	OmittedHeaders   []string          `json:"omitted_request_headers,omitempty"`
+	BillingMode      BillingMode       `json:"billing_mode,omitempty"`
+	SubscriptionPlan *SubscriptionPlan `json:"subscription_plan,omitempty"`
 }
 
 // ProviderBundleModel is one model of a provider bundle. Its prices are in
@@ -108,6 +112,7 @@ func NewProviderBundle(p Provider, models []LLMModel, enabledOnly bool, now time
 			Retry:            p.RetryConfig(),
 			RateLimit:        p.RateLimitConfig(),
 			RequestHeaders:   portableHeaders(p.RequestHeaders()),
+			OmittedHeaders:   omittedHeaders(p.RequestHeaders()),
 			BillingMode:      p.BillingMode(),
 			SubscriptionPlan: p.SubscriptionPlan(),
 		},
@@ -128,6 +133,31 @@ func NewProviderBundle(p Provider, models []LLMModel, enabledOnly bool, now time
 // own, such as Api-Key or Ocp-Apim-Subscription-Key.
 var credentialHeaderWords = []string{"key", "token", "auth", "secret", "password", "signature", "session", "cookie", "credential"}
 
+// The word list is a safety net, not a guarantee: a credential under a name
+// with none of these words is exported, and a plain header whose name holds
+// one is left out. The export names what it left out (OmittedHeaders) so
+// that the import can say what to configure again.
+func credentialHeader(name string) bool {
+	lower := strings.ToLower(name)
+	return slices.ContainsFunc(credentialHeaderWords, func(w string) bool { return strings.Contains(lower, w) })
+}
+
+// omittedHeaders names, sorted, the request headers portableHeaders leaves
+// out.
+func omittedHeaders(h *ProviderRequestHeaders) []string {
+	if h == nil {
+		return nil
+	}
+	var names []string
+	for name := range h.Headers {
+		if credentialHeader(name) {
+			names = append(names, name)
+		}
+	}
+	slices.Sort(names)
+	return names
+}
+
 // portableHeaders returns the request headers that can travel in a bundle:
 // those whose name does not look like a credential's. The session header,
 // a name rather than a value, is kept.
@@ -137,8 +167,7 @@ func portableHeaders(h *ProviderRequestHeaders) *ProviderRequestHeaders {
 	}
 	portable := &ProviderRequestHeaders{SessionHeader: h.SessionHeader}
 	for name, value := range h.Headers {
-		lower := strings.ToLower(name)
-		if slices.ContainsFunc(credentialHeaderWords, func(w string) bool { return strings.Contains(lower, w) }) {
+		if credentialHeader(name) {
 			continue
 		}
 		if portable.Headers == nil {

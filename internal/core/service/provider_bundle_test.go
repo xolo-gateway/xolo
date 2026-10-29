@@ -642,4 +642,7 @@ func TestNewProviderBundle_LeavesOutHeadersThatLookLikeCredentials(t *testing.T)
 	if !strings.Contains(doc, "X-Title") || !strings.Contains(doc, "X-Session-Affinity") {
 		t.Error("the export should keep the plain headers and the session header name")
 	}
+	if !strings.Contains(doc, `"omitted_request_headers":["Ocp-Apim-Subscription-Key","X-Auth-Token"]`) {
+		t.Errorf("the export should name the headers it left out: %s", doc)
+	}
 }

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"time"
 )
 
 const defaultFrankfurterBaseURL = "https://api.frankfurter.app"
@@ -15,10 +16,14 @@ type FrankfurterProvider struct {
 	client  *http.Client
 }
 
+// fetchTimeout bounds a rate fetch: conversions run in requests, which a
+// silent upstream must not hold.
+const fetchTimeout = 10 * time.Second
+
 func NewFrankfurterProvider() *FrankfurterProvider {
 	return &FrankfurterProvider{
 		baseURL: defaultFrankfurterBaseURL,
-		client:  &http.Client{},
+		client:  &http.Client{Timeout: fetchTimeout},
 	}
 }
 
@@ -50,4 +55,6 @@ func (p *FrankfurterProvider) FetchRates(ctx context.Context, base string) (map[
 	return payload.Rates, nil
 }
 
-var _ interface{ FetchRates(context.Context, string) (map[string]float64, error) } = &FrankfurterProvider{}
+var _ interface {
+	FetchRates(context.Context, string) (map[string]float64, error)
+} = &FrankfurterProvider{}

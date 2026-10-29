@@ -133,6 +133,7 @@ func (h *Handler) importProviderBundle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	parsedCurrency := bundle.Provider.Currency
 	// A bundle priced in another currency than the provider it is imported
 	// into is converted, so that its prices and budgets never land under a
 	// currency they are not in.
@@ -161,7 +162,22 @@ func (h *Handler) importProviderBundle(w http.ResponseWriter, r *http.Request) {
 	}
 	vmodel.Plan = &plan
 	vmodel.Bundle = string(raw)
+	if bundle.Provider.Currency != parsedCurrency {
+		// The apply step writes what this dry run shows: it posts back the
+		// converted bundle, not the file, so a rate that moves in between
+		// changes nothing.
+		converted, err := json.Marshal(bundle)
+		if err != nil {
+			slog.ErrorContext(ctx, "could not encode converted bundle", slogx.Error(err))
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
+		vmodel.Bundle = string(converted)
+	}
 	vmodel.Name = bundle.Provider.Name
+	if names := bundle.Provider.OmittedHeaders; len(names) > 0 {
+		vmodel.Notice = i18n.T(ctx, "org.provider_bundle.omitted_headers", strings.Join(names, ", "))
+	}
 
 	if !apply {
 		templ.Handler(component.ProviderBundleImportPage(vmodel)).ServeHTTP(w, r)

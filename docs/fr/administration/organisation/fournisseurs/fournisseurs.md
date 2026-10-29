@@ -379,7 +379,7 @@ Xolo relit la liste du fournisseur au moment de l'import. Un modèle qu'il ne li
 
 Un bundle reprend un fournisseur et la configuration de ses modèles dans un fichier JSON, pour la copier dans une autre organisation sans tout ressaisir.
 
-**Exporter.** Sur la page des modèles, ouvrez **Exporter** et choisissez **Tous les modèles** ou **Modèles actifs seulement**. Le fichier contient les paramètres du fournisseur (type, URL de base, devise, niveau d'infrastructure, retry, rate limit, en-têtes de requête, mode de facturation et plan) et chaque modèle avec tous ses champs : nom proxy, prix par million de tokens, fenêtres, capacités, type d'API et URL, paramètres actifs, débit, limite de tokens et corps additionnel. Il ne contient jamais la clé API ni les identifiants internes de Xolo. Les modèles y sont repérés par leur identifiant chez le fournisseur (`real_model`).
+**Exporter.** Sur la page des modèles, ouvrez **Exporter** et choisissez **Tous les modèles** ou **Modèles actifs seulement**. Le fichier contient les paramètres du fournisseur (type, URL de base, devise, niveau d'infrastructure, retry, rate limit, en-têtes de requête, mode de facturation et plan) et chaque modèle avec tous ses champs : nom proxy, prix par million de tokens, fenêtres, capacités, type d'API et URL, paramètres actifs, débit, limite de tokens et corps additionnel. Il ne contient jamais la clé API ni les identifiants internes de Xolo. Les en-têtes de requête dont le nom évoque un identifiant (`key`, `token`, `auth`, `secret`…) n'y figurent pas non plus : le bundle n'en garde que les noms, et l'import rappelle de les reconfigurer. Un identifiant placé sous un autre nom d'en-tête, lui, serait exporté. Les modèles y sont repérés par leur identifiant chez le fournisseur (`real_model`).
 
 **Importer.** Deux cibles sont possibles :
 
@@ -391,6 +391,8 @@ L'import se fait en deux temps. Après le choix du fichier, Xolo affiche ce qu'i
 - chaque modèle est marqué **Création**, **Mise à jour** avec la liste des champs modifiés (valeur actuelle et valeur importée), **Inchangé**, ou **Ignoré** quand son nom proxy est déjà pris dans l'organisation ;
 - les paramètres du fournisseur existant qui diffèrent sont listés, décochés par défaut ;
 - le mode de facturation et le plan d'abonnement forment une ligne à part, toujours décochée : deux organisations qui partagent un compte amont en répartissent généralement les budgets plutôt que de les copier.
+
+Un bundle tarifé dans une autre devise que le fournisseur cible est converti au taux du jour : prix et budgets du forfait apparaissent dans l'aperçu dans la devise du fournisseur, et c'est ce qui est écrit. La devise du fournisseur, elle, ne change pas. Sans taux de change disponible, l'import est refusé. Réimporter plus tard le même fichier peut proposer une mise à jour des prix si le taux a bougé.
 
 Cochez les modèles et les champs à appliquer, puis cliquez sur **Appliquer les changements sélectionnés**. Xolo relit l'état de l'organisation à ce moment-là et n'applique que ce qui diffère encore. Importer deux fois le même bundle ne change donc rien la seconde fois. Si l'import s'interrompt en cours de route, relancez-le : il reprend ce qui reste à appliquer.
 

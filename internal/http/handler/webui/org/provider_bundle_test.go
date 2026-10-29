@@ -218,3 +218,32 @@ func TestProviderBundle_RefusesABundleItCannotConvert(t *testing.T) {
 		t.Errorf("status = %d, want the import refused rather than EUR prices under USD", rr.Code)
 	}
 }
+
+func TestProviderBundle_PreviewPostsBackTheConvertedBundle(t *testing.T) {
+	h, s, tenant := importFixture(t, "https://example.test/v1", "sk")
+	h.exchangeRateService = service.NewExchangeRateService(fixedRates{"EUR>USD": 2}, &memoryRates{rates: map[string]model.ExchangeRate{}}, time.Hour)
+	doc := `{"kind":"xolo.provider","version":"1","provider":{"type":"openai","currency":"EUR","omitted_request_headers":["Api-Key"]},` +
+		`"models":[{"real_model":"m","proxy_name":"m","enabled":true,"prices":{"input":1,"output":3}}]}`
+	fields := url.Values{"step": {"preview"}, "bundle": {doc}}
+	rr := httptest.NewRecorder()
+	h.importProviderBundle(rr, bundleRequest(t, s, tenant, string(s.provider.ID()), bytes.NewBufferString(fields.Encode()), "application/x-www-form-urlencoded"))
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d: %s", rr.Code, rr.Body.String())
+	}
+	page := rr.Body.String()
+	i := strings.Index(page, `name="bundle" value="`)
+	if i < 0 {
+		t.Fatal("no bundle in the page")
+	}
+	raw := page[i+len(`name="bundle" value="`):]
+	posted, err := model.ParseProviderBundle([]byte(stdhtml.UnescapeString(raw[:strings.Index(raw, `"`)])))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if posted.Provider.Currency != "USD" || posted.Models[0].Prices.Output != 6 {
+		t.Errorf("posted bundle = %s %v, want the dry run's converted prices", posted.Provider.Currency, posted.Models[0].Prices)
+	}
+	if !strings.Contains(stdhtml.UnescapeString(page), "Api-Key") {
+		t.Error("the preview should name the header to configure again")
+	}
+}

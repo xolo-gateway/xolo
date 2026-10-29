@@ -636,6 +636,7 @@
   "org.errors.provider_bundle.invalid": "This file is not a provider bundle: %s",
   "org.errors.provider_bundle.name_required": "The provider needs a name.",
   "org.provider_bundle.nothing_applied": "Nothing was applied: the organization already matches the selected changes.",
+  "org.provider_bundle.omitted_headers": "These request headers were left out of the export as their name looks like a credential: %s. Configure them again on this provider if it needs them.",
   "org.provider_bundle.applied": "%d model(s) created, %d updated. Some models could not be written:",
   "org.provider_bundle.applied_with_provider": "Provider settings saved, %d model(s) created, %d updated. Some changes could not be written:",
   "org.provider_bundle.change_not_applied": "%s: change of \"%s\" not applied: %s",
