@@ -719,6 +719,9 @@ type BundleApplyResult struct {
 	// SettingsFailed is the store's refusal of the provider settings of an
 	// existing target, written after its models.
 	SettingsFailed error
+	// TypeUnchecked is the failure to read the models back, which leaves
+	// the selected type change unapplied: it could not be checked.
+	TypeUnchecked error
 	// Stranded lists the models written for a provider type the provider
 	// did not take, which its own type does not serve.
 	Stranded []string
@@ -735,7 +738,7 @@ func (r *BundleApplyResult) wrote(m model.LLMModel) {
 
 // Refused reports whether a selected change could not be written.
 func (r BundleApplyResult) Refused() bool {
-	return len(r.Failed) > 0 || len(r.Skipped) > 0 || len(r.SkippedSettings) > 0 || r.SettingsFailed != nil || len(r.Stranded) > 0
+	return len(r.Failed) > 0 || len(r.Skipped) > 0 || len(r.SkippedSettings) > 0 || r.SettingsFailed != nil || r.TypeUnchecked != nil || len(r.Stranded) > 0
 }
 
 // Wrote reports whether the import wrote anything.
@@ -860,14 +863,14 @@ func saveProviderSettings(ctx context.Context, store port.ProviderStore, plan Pr
 	if updated.Type() != t.Type() {
 		all, err := store.ListLLMModels(ctx, t.OrgID())
 		if err != nil {
-			// The models are written: the settings, whose type change
-			// could not be checked, are reported unsaved rather than lost
-			// in an error.
-			result.SettingsFailed = errors.Wrap(err, "could not list provider models")
-			return nil
+			// The type change cannot be checked against the models as
+			// written: it waits for a new import, the other settings do
+			// not.
+			result.TypeUnchecked = errors.Wrap(err, "could not list provider models")
+			updated.SetType(t.Type())
 		}
 		models = all
-		if unserved := unservedModels(models, t.ID(), updated.Type()); len(unserved) > 0 {
+		if unserved := unservedModels(models, t.ID(), updated.Type()); err == nil && len(unserved) > 0 {
 			result.SkippedSettings = append(result.SkippedSettings, BundleFieldChange{
 				Field: BundleFieldType, From: t.Type(), To: updated.Type(), Unserved: unserved,
 			})
@@ -881,11 +884,8 @@ func saveProviderSettings(ctx context.Context, store port.ProviderStore, plan Pr
 	if updated.Type() != t.Type() || others {
 		updated.SetUpdatedAt(time.Now())
 		if err := store.SaveProvider(ctx, updated); err != nil {
-			// A provider the ownership policy or a deletion locks is
-			// answered as such: importing again would not get through.
-			if errors.Is(err, port.ErrOwnershipDenied) || errors.Is(err, port.ErrResourceDeleted) {
-				return errors.Wrap(err, "could not update provider")
-			}
+			// Reported next to the models written, a lock included: the
+			// report says which one.
 			result.SettingsFailed = errors.Wrap(err, "could not update provider")
 		} else {
 			result.Provider, result.ProviderChanged = updated, true

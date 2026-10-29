@@ -319,3 +319,15 @@ func TestProviderBundle_ReportsAFailedUpdateAsAFailureNotAConflict(t *testing.T)
 		t.Error("the report page should still name the header left out of the bundle")
 	}
 }
+
+func TestProviderBundle_AsksForTheCurrencyOfAProviderWithoutOne(t *testing.T) {
+	h, s, tenant := importFixture(t, "https://example.test/v1", "sk")
+	s.provider.(*model.BaseProvider).SetCurrency("")
+	doc := `{"kind":"xolo.provider","version":"1","provider":{"type":"openai","currency":"EUR"},"models":[]}`
+	fields := url.Values{"step": {"preview"}, "bundle": {doc}}
+	rr := httptest.NewRecorder()
+	h.importProviderBundle(rr, bundleRequest(t, s, tenant, string(s.provider.ID()), bytes.NewBufferString(fields.Encode()), "application/x-www-form-urlencoded"))
+	if rr.Code != http.StatusUnprocessableEntity || !strings.Contains(stdhtml.UnescapeString(rr.Body.String()), "Renseignez la devise du fournisseur") {
+		t.Errorf("status = %d, want the currency asked for rather than a rate to no currency", rr.Code)
+	}
+}

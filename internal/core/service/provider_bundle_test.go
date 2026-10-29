@@ -1206,25 +1206,30 @@ func TestApplyProviderBundle_ReportsAProviderSaveItFailedAfterTheModels(t *testi
 	}
 }
 
-func TestApplyProviderBundle_ReportsTheSettingsItCouldNotCheckAfterTheModels(t *testing.T) {
+func TestApplyProviderBundle_WritesTheOtherSettingsWhenItCannotCheckTheType(t *testing.T) {
 	mem, p, plan, sel := typeMoveFixture(t)
 	mem.listErr = errors.New("unavailable")
+	plan.Bundle.Provider.BaseURL = "https://other.test/v1"
+	plan.Settings = append(plan.Settings, BundleFieldChange{Field: BundleFieldBaseURL, To: "https://other.test/v1"})
+	sel.Settings[BundleFieldBaseURL] = true
 
 	result, err := ApplyProviderBundle(context.Background(), mem, plan, sel, nil)
 	if err != nil {
 		t.Fatalf("apply: %v, want the failure reported next to the models written", err)
 	}
-	if result.SettingsFailed == nil || result.Updated != 2 || mem.providers[p.ID()].Type() != "openai" {
-		t.Errorf("result = %+v, want both models written and the settings reported unsaved", result)
+	got := mem.providers[p.ID()]
+	if result.TypeUnchecked == nil || result.Updated != 2 || got.Type() != "openai" || got.BaseURL() != "https://other.test/v1" {
+		t.Errorf("type %q base URL %q, result %+v; want the type change held back and the base URL written", got.Type(), got.BaseURL(), result)
 	}
 }
 
-func TestApplyProviderBundle_AnswersALockedProviderAsLocked(t *testing.T) {
+func TestApplyProviderBundle_ReportsALockedProviderNextToTheModelsWritten(t *testing.T) {
 	for _, lock := range []error{port.ErrOwnershipDenied, port.ErrResourceDeleted} {
 		mem, _, plan, sel := typeMoveFixture(t)
 		mem.providerErr = lock
-		if _, err := ApplyProviderBundle(context.Background(), mem, plan, sel, nil); !errors.Is(err, lock) {
-			t.Errorf("err = %v, want %v for the handler to answer it", err, lock)
+		result, err := ApplyProviderBundle(context.Background(), mem, plan, sel, nil)
+		if err != nil || !errors.Is(result.SettingsFailed, lock) || result.Updated != 2 {
+			t.Errorf("err = %v, result %+v; want %v reported with the two models written", err, result, lock)
 		}
 	}
 }
