@@ -625,7 +625,7 @@ func TestCatalogImport_LeavesOutTheModelsTheTargetAPIDoesNotServe(t *testing.T) 
 	if strings.Contains(page, `"embed"`) {
 		t.Error("the plan posted back keeps a budget for the embeddings model left out")
 	}
-	if rr.Code != http.StatusOK || !strings.Contains(page, "Modèles laissés de côté, d'un type que l'API anthropic ne sert pas : 1.") {
+	if rr.Code != http.StatusOK || !strings.Contains(page, "Modèles laissés de côté, que l'API anthropic ne sert pas ici : 1.") {
 		t.Errorf("status %d, want the dry run with the embeddings model left out and said so", rr.Code)
 	}
 }
@@ -640,5 +640,29 @@ func TestProviderBundle_RefusesAtThePreviewAPriceTheConversionTakesOutOfBounds(t
 	h.importProviderBundle(rr, bundleRequest(t, s, tenant, string(s.provider.ID()), bytes.NewBufferString(fields.Encode()), "application/x-www-form-urlencoded"))
 	if rr.Code != http.StatusUnprocessableEntity || !strings.Contains(stdhtml.UnescapeString(rr.Body.String()), "Converti en USD") {
 		t.Errorf("status = %d, want 5000000 USD refused at the preview, the conversion named", rr.Code)
+	}
+}
+
+func TestCatalogImport_DecidesTheAPIOfAnotherProvidersOfferingsOneByOne(t *testing.T) {
+	h, s, tenant := importFixture(t, "https://acme.test/v1", "sk")
+	beta := catalog.Provider{ID: "beta", Name: "Beta", Currency: "USD", Offerings: []catalog.Offering{
+		{Model: "glm", ModelID: "glm", Prices: catalog.Prices{Input: 1, Output: 2}},
+		// Served at the target's address through the Anthropic API.
+		{Model: "haiku", ModelID: "haiku", APIType: "anthropic", BaseURL: "https://acme.test/v1", Prices: catalog.Prices{Input: 1, Output: 5}},
+		// Served elsewhere through the Gemini API only.
+		{Model: "argon", ModelID: "argon", APIType: "gemini", BaseURL: "https://beta.test/gemini", Prices: catalog.Prices{Input: 1, Output: 4}},
+	}}
+	beta.Xolo.Type, beta.Xolo.BaseURL = "openai", "https://beta.test/v1"
+	h.SetCatalog(catalog.NewStaticSource(&catalog.Catalog{Kind: catalog.Kind, Format: catalog.Format, Version: "v1", Providers: []catalog.Provider{beta}}))
+
+	fields := url.Values{"catalog_provider": {"beta"}, "plan": {"none"}}
+	rr := httptest.NewRecorder()
+	h.previewCatalogImport(rr, bundleRequest(t, s, tenant, string(s.provider.ID()), bytes.NewBufferString(fields.Encode()), "application/x-www-form-urlencoded"))
+	page := stdhtml.UnescapeString(rr.Body.String())
+	if rr.Code != http.StatusOK || strings.Contains(page, "beta.test") || strings.Contains(page, `"real_model":"argon"`) {
+		t.Errorf("status %d: argon, only served through Gemini at Beta's, should be left out", rr.Code)
+	}
+	if !strings.Contains(page, `"api_type":"anthropic"`) || !strings.Contains(page, "que l'API openai ne sert pas ici : 1.") {
+		t.Error("haiku should keep the Anthropic API served at the provider's address, and argon be counted out")
 	}
 }

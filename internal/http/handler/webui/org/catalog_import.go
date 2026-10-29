@@ -92,20 +92,40 @@ func (h *Handler) previewCatalogImport(w http.ResponseWriter, r *http.Request) {
 	}
 	// Imported into a provider at another endpoint than its own, a catalog
 	// provider gives its models, prices and plan, not its API nor its
-	// endpoints: they would receive this provider's key. The model form's
-	// pre-fill does the same. The models the provider's own API does not
-	// serve are then left out.
+	// endpoints: they would receive this provider's key. Per offering, by
+	// the rule of the model form's pre-fill: one served at the provider's
+	// address keeps the API served there, one served elsewhere through
+	// another API is left out, the others give their figures. So is a model
+	// of a kind the API it ends on does not serve.
 	otherEndpoint := p != nil && strings.TrimRight(c.Provider(r.FormValue("catalog_provider")).Xolo.BaseURL, "/") != strings.TrimRight(p.BaseURL(), "/")
 	leftOut := 0
 	if otherEndpoint {
+		target := strings.TrimRight(p.BaseURL(), "/")
 		bundle.Provider.Type, bundle.Provider.BaseURL = p.Type(), p.BaseURL()
 		models := bundle.Models[:0]
 		for _, bm := range bundle.Models {
-			if bm.Kind != "" && !model.ProviderTypeServes(p.Type(), bm.Kind) {
+			api := bm.APIType
+			switch {
+			case bm.BaseURL != "" && strings.TrimRight(bm.BaseURL, "/") == target:
+				bm.BaseURL = ""
+			case api != "" && api != p.Type():
+				leftOut++
+				continue
+			default:
+				api, bm.BaseURL = "", ""
+			}
+			if api == p.Type() {
+				api = ""
+			}
+			served := api
+			if served == "" {
+				served = p.Type()
+			}
+			if bm.Kind != "" && !model.ProviderTypeServes(served, bm.Kind) {
 				leftOut++
 				continue
 			}
-			bm.APIType, bm.BaseURL = "", ""
+			bm.APIType = api
 			models = append(models, bm)
 		}
 		bundle.Models = models

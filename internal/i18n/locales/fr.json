@@ -684,7 +684,7 @@
   "org.catalog_import.from_catalog": "Importer depuis le catalogue",
   "org.catalog_import.from": "Changements proposés par le catalogue de modèles, version %s. Les prix sont ceux du palier de base : un fournisseur qui tarifie selon la taille du prompt ou l'heure publie les autres paliers dans le catalogue.",
   "org.catalog_import.other_endpoint": "Ce fournisseur du catalogue n'est pas à l'adresse de %s : ses modèles, prix et forfait sont importés, pas son API ni ses points d'entrée.",
-  "org.catalog_import.unserved_left_out": "Modèles laissés de côté, d'un type que l'API %s ne sert pas : %d.",
+  "org.catalog_import.unserved_left_out": "Modèles laissés de côté, que l'API %s ne sert pas ici : %d.",
   "org.errors.catalog_import.unavailable": "Le catalogue de modèles ne peut pas être lu pour le moment : réessayez plus tard.",
   "org.errors.catalog_import.unknown": "Ce fournisseur ou ce forfait n'est pas dans le catalogue de modèles.",
   "org.errors.catalog_import.invalid": "La version %s du catalogue ne peut pas être importée : une de ses entrées est mal formée. Réessayez une fois une version corrigée publiée.",
