@@ -507,3 +507,15 @@ func TestCatalogImport_RefusesAProviderWithoutCurrencyAtThePreview(t *testing.T)
 		t.Errorf("status %d, want 422 at the preview rather than a dry run the apply refuses", rr.Code)
 	}
 }
+
+func TestProviderBundle_AsksForTheCurrencyOfAProviderWithoutOne(t *testing.T) {
+	h, s, tenant := importFixture(t, "https://example.test/v1", "sk")
+	s.provider.(*model.BaseProvider).SetCurrency("")
+	doc := `{"kind":"xolo.provider","version":"1","provider":{"type":"openai","currency":"EUR"},"models":[]}`
+	fields := url.Values{"step": {"preview"}, "bundle": {doc}}
+	rr := httptest.NewRecorder()
+	h.importProviderBundle(rr, bundleRequest(t, s, tenant, string(s.provider.ID()), bytes.NewBufferString(fields.Encode()), "application/x-www-form-urlencoded"))
+	if rr.Code != http.StatusUnprocessableEntity || !strings.Contains(stdhtml.UnescapeString(rr.Body.String()), "Renseignez la devise du fournisseur") {
+		t.Errorf("status = %d, want the currency asked for rather than a rate to no currency", rr.Code)
+	}
+}

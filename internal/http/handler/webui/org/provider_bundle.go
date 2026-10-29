@@ -137,6 +137,10 @@ func (h *Handler) importProviderBundle(w http.ResponseWriter, r *http.Request) {
 	// A bundle priced in another currency than the provider it is imported
 	// into is converted, so that its prices and budgets never land under a
 	// currency they are not in.
+	if p != nil && p.Currency() == "" {
+		h.renderProviderBundleError(w, r, vmodel, i18n.T(ctx, "org.errors.providers.no_currency"))
+		return
+	}
 	if p != nil && bundle.Provider.Currency != p.Currency() {
 		if err := h.convertBundleCurrency(ctx, &bundle, p.Currency()); err != nil {
 			slog.WarnContext(ctx, "could not convert bundle prices", slogx.Error(err))
@@ -264,7 +268,15 @@ func (h *Handler) importProviderBundle(w http.ResponseWriter, r *http.Request) {
 				vmodel.Failures = append(vmodel.Failures, i18n.T(ctx, "org.provider_bundle.type_not_applied", strings.Join(change.Unserved, ", ")))
 			}
 		}
-		if result.SettingsFailed != nil {
+		if result.TypeUnchecked != nil {
+			slog.ErrorContext(ctx, "could not check the imported provider type", slogx.Error(result.TypeUnchecked))
+			vmodel.Failures = append(vmodel.Failures, i18n.T(ctx, "org.provider_bundle.type_not_checked"))
+		}
+		switch {
+		case result.SettingsFailed == nil:
+		case errors.Is(result.SettingsFailed, port.ErrOwnershipDenied) || errors.Is(result.SettingsFailed, port.ErrResourceDeleted):
+			vmodel.Failures = append(vmodel.Failures, i18n.T(ctx, "org.provider_bundle.settings_locked"))
+		default:
 			slog.ErrorContext(ctx, "could not save imported provider settings", slogx.Error(result.SettingsFailed))
 			vmodel.Failures = append(vmodel.Failures, i18n.T(ctx, "org.provider_bundle.settings_not_saved"))
 		}
