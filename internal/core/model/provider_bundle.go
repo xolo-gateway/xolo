@@ -245,8 +245,8 @@ func BundleModelOf(m LLMModel) ProviderBundleModel {
 }
 
 // ParseProviderBundle reads a provider bundle and checks its structure. The
-// plan editor's limits on its plan are checked by the service
-// (ValidateSubscriptionPlan), which the importer calls before planning.
+// limits of every provider write path are checked by the service
+// (ValidateBundleSettings), which the importer calls before planning.
 func ParseProviderBundle(data []byte) (ProviderBundle, error) {
 	var bundle ProviderBundle
 	if err := json.Unmarshal(data, &bundle); err != nil {
@@ -393,9 +393,9 @@ func NewLLMModelFromBundle(id LLMModelID, providerID ProviderID, orgID OrgID, cr
 // validateBundlePlan checks the structure of a bundle's subscription plan:
 // known constraint kinds, a positive window, budgets and fair-share ratios
 // in range, per-model budgets on a per-model constraint only, and at least
-// one concurrent request. The plan editor's limits (counts, lengths, window
-// bound) are service.ValidateSubscriptionPlan's, which an importer calls
-// next.
+// one concurrent request. The limits of every provider write path (counts,
+// lengths, bounds) are service.ValidateBundleSettings', which an importer
+// calls next.
 func validateBundlePlan(plan *SubscriptionPlan) error {
 	if plan == nil {
 		return nil

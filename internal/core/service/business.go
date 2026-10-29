@@ -605,12 +605,11 @@ func validateProvider(v model.ProviderSettings) error {
 	if !v.RequestHeaders.Valid() {
 		return errors.Wrap(port.ErrInvalid, "invalid request_headers")
 	}
-	return ValidateSubscriptionPlan(v.SubscriptionPlan)
+	return validateSubscriptionPlan(v.SubscriptionPlan)
 }
 
-// ValidateSubscriptionPlan checks plan with the rules of the plan editor:
-// an import validates the plan it previews with them.
-func ValidateSubscriptionPlan(plan *model.SubscriptionPlan) error {
+// validateSubscriptionPlan checks plan with the rules of the plan editor.
+func validateSubscriptionPlan(plan *model.SubscriptionPlan) error {
 	if plan == nil {
 		return nil
 	}

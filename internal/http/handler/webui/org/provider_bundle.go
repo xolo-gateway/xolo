@@ -129,9 +129,9 @@ func (h *Handler) importProviderBundle(w http.ResponseWriter, r *http.Request) {
 
 	bundle, err := model.ParseProviderBundle(raw)
 	if err == nil {
-		// The plan editor's rules, which the apply step checks: the dry
-		// run offers no plan the apply would refuse.
-		err = service.ValidateSubscriptionPlan(bundle.Provider.SubscriptionPlan)
+		// The rules of every provider write path, which the apply step
+		// checks: the dry run offers nothing the apply would refuse.
+		err = service.ValidateBundleSettings(bundle.Provider)
 	}
 	if err != nil {
 		h.renderProviderBundleError(w, r, vmodel, i18n.T(ctx, "org.errors.provider_bundle.invalid", err.Error()))
