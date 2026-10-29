@@ -656,6 +656,7 @@
   "org.provider_bundle.nothing_applied": "No se aplicó nada: la organización ya coincide con los cambios seleccionados.",
   "org.provider_bundle.omitted_headers": "Estas cabeceras de petición no se exportaron porque su nombre parece una credencial: %s. Vuelva a configurarlas en este proveedor si las necesita.",
   "org.provider_bundle.type_unserved": "No aplicable: la API de este tipo no sirve estos modelos del proveedor, que la importación deja tal cual: %s.",
+  "org.provider_bundle.type_not_applied": "El tipo del proveedor no se cambió: su API no sirve estos modelos del proveedor: %s.",
   "org.provider_bundle.applied": "%d modelo(s) creado(s), %d actualizado(s). Algunos modelos no se pudieron escribir:",
   "org.provider_bundle.applied_with_provider": "Configuración del proveedor guardada, %d modelo(s) creado(s), %d actualizado(s). Algunos cambios no se pudieron escribir:",
   "org.provider_bundle.change_not_applied": "%s: cambio de «%s» no aplicado: %s",

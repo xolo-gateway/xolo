@@ -257,6 +257,11 @@ func (h *Handler) importProviderBundle(w http.ResponseWriter, r *http.Request) {
 		}
 		vmodel.Notice = i18n.T(ctx, notice, result.Created, result.Updated)
 		vmodel.Failures = append(h.bundleFailureReasons(ctx, org, result.Failed), bundleSkipReasons(ctx, result.Skipped)...)
+		for _, change := range result.SkippedSettings {
+			if len(change.Unserved) > 0 {
+				vmodel.Failures = append(vmodel.Failures, i18n.T(ctx, "org.provider_bundle.type_not_applied", strings.Join(change.Unserved, ", ")))
+			}
+		}
 	}
 	templ.Handler(component.ProviderBundleImportPage(vmodel)).ServeHTTP(w, r)
 }
@@ -291,7 +296,7 @@ func bundleSkipReasons(ctx context.Context, skipped []service.BundleModelPlan) [
 			// name it still has.
 			reason := mp.Conflict
 			if mp.KindNotServed != "" {
-				reason = i18n.T(ctx, "org.errors.providers.kind_not_served", mp.KindNotServed, common.ModelKindLabel(ctx, mp.Model.Kind))
+				reason = i18n.T(ctx, "org.errors.providers.kind_not_served", mp.KindNotServed, common.ModelKindLabel(ctx, mp.UnservedKind))
 			}
 			reasons = append(reasons, i18n.T(ctx, "org.provider_bundle.change_not_applied", mp.Existing.ProxyName(), component.ProviderBundleFieldLabel(ctx, mp.RefusedField), reason))
 			continue

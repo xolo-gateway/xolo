@@ -292,7 +292,7 @@ templ providerBundleModelRow(m service.BundleModelPlan) {
 									<p class="text-destructive">{ c.Conflict }</p>
 								}
 								if c.KindNotServed != "" {
-									<p class="text-destructive">{ i18n.T(ctx, "org.errors.providers.kind_not_served", c.KindNotServed, common.ModelKindLabel(ctx, m.Model.Kind)) }</p>
+									<p class="text-destructive">{ i18n.T(ctx, "org.errors.providers.kind_not_served", c.KindNotServed, common.ModelKindLabel(ctx, c.UnservedKind)) }</p>
 								}
 							</div>
 						</li>
