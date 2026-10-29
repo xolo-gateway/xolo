@@ -208,6 +208,14 @@ func (b ProviderBundle) Validate() error {
 		if m.Kind != "" && !ProviderTypeServes(served, m.Kind) {
 			return errors.Wrapf(ErrInvalidProviderBundle, "model %q is of kind %q, which %q does not serve", m.RealModel, m.Kind, served)
 		}
+		if m.ContextWindow < 0 || m.OutputWindow < 0 || m.ActiveParams < 0 {
+			return errors.Wrapf(ErrInvalidProviderBundle, "model %q has a negative window or parameter count", m.RealModel)
+		}
+		for _, tps := range []float64{m.TokensPerSecLow, m.TokensPerSecHigh} {
+			if tps < 0 || math.IsNaN(tps) || math.IsInf(tps, 0) {
+				return errors.Wrapf(ErrInvalidProviderBundle, "model %q has a throughput out of range", m.RealModel)
+			}
+		}
 		for _, price := range []float64{m.Prices.Input, m.Prices.CachedInput, m.Prices.Output} {
 			if price < 0 || price > MaxPricePerMillion || math.IsNaN(price) {
 				return errors.Wrapf(ErrInvalidProviderBundle, "model %q has a price out of range", m.RealModel)

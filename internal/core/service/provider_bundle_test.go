@@ -423,6 +423,8 @@ func TestApplyProviderBundle_GoesOnPastAModelTheStoreRefuses(t *testing.T) {
 func TestParseProviderBundle_RefusesReservedHeadersAndAbsurdPrices(t *testing.T) {
 	for name, doc := range map[string]string{
 		"reserved header": `{"kind":"xolo.provider","version":"1","provider":{"type":"openai","request_headers":{"headers":{"Authorization":"Bearer x"}}}}`,
+		"negative window": `{"kind":"xolo.provider","version":"1","provider":{"type":"openai"},"models":[{"real_model":"a","proxy_name":"a","context_window":-1,"prices":{"input":1,"output":1}}]}`,
+		"negative speed":  `{"kind":"xolo.provider","version":"1","provider":{"type":"openai"},"models":[{"real_model":"a","proxy_name":"a","tokens_per_sec_low":-5,"prices":{"input":1,"output":1}}]}`,
 		"absurd price":    `{"kind":"xolo.provider","version":"1","provider":{"type":"openai"},"models":[{"real_model":"a","proxy_name":"a","prices":{"input":1e300,"output":1}}]}`,
 	} {
 		if _, err := model.ParseProviderBundle([]byte(doc)); err == nil {
@@ -556,5 +558,36 @@ func TestApplyProviderBundle_ReportsASelectedRenameItCannotApply(t *testing.T) {
 	}
 	if len(result.Skipped) != 1 || result.Skipped[0].Conflict == "" || result.Skipped[0].RefusedField != BundleFieldProxyName {
 		t.Errorf("skipped = %+v, want the refused rename reported as that one change", result.Skipped)
+	}
+}
+
+func TestApplyProviderBundle_WritesTheOtherChangesOfAModelWithARefusedRename(t *testing.T) {
+	mem := newMemoryProviderStore()
+	p := configuredProvider(t, mem, "org-a")
+	models := mem.modelsOf("org-a")
+
+	// kimi-k3 moves to the name glm-5 keeps and gets a description: the
+	// rename is refused, the description written.
+	bundle := model.NewProviderBundle(p, models, false, time.Now())
+	index := -1
+	for i := range bundle.Models {
+		if bundle.Models[i].RealModel == "kimi-k3" {
+			bundle.Models[i].ProxyName = "glm-5"
+			bundle.Models[i].Description = "Kimi K3"
+			index = i
+		}
+	}
+	sel := BundleSelection{Fields: map[int]map[string]bool{index: {BundleFieldProxyName: true, BundleFieldDescription: true}}}
+	plan := PlanProviderBundleImportWith(bundle, p, models, namesOf(models), &sel)
+	result, err := ApplyProviderBundle(context.Background(), mem, plan, sel, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Updated != 1 || len(result.Skipped) != 1 || result.Skipped[0].RefusedField != BundleFieldProxyName {
+		t.Fatalf("result = updated %d skipped %+v; want the description written and the rename reported", result.Updated, result.Skipped)
+	}
+	updated := mem.models[result.Skipped[0].Existing.ID()]
+	if updated.Description() != "Kimi K3" || updated.ProxyName() != "kimi-k3" {
+		t.Errorf("model = %q %q, want the new description under its kept name", updated.ProxyName(), updated.Description())
 	}
 }
