@@ -781,3 +781,44 @@ func TestPlanProviderBundleImportWith_ChecksTheKindAgainstTheKeptAPI(t *testing.
 		t.Error("the model was given a kind its API does not serve")
 	}
 }
+
+func TestPlanProviderBundleImport_NeverOffersTheNameARefusedRenameKeeps(t *testing.T) {
+	// X(x) moves to h, H(h) to y, but y is held by Y, which the bundle does
+	// not touch: H keeps h, so X cannot take it.
+	mem := newMemoryProviderStore()
+	p := model.NewProvider("org-a", "P", "openai", "https://p.test/v1", "key", "USD")
+	x := model.NewLLMModel(p.ID(), "org-a", "x", "model-x", "", 100, 200)
+	h := model.NewLLMModel(p.ID(), "org-a", "h", "model-h", "", 100, 200)
+	y := model.NewLLMModel("other", "org-a", "y", "model-y", "", 100, 200)
+	for _, m := range []model.LLMModel{x, h, y} {
+		if err := mem.CreateLLMModel(context.Background(), m); err != nil {
+			t.Fatal(err)
+		}
+	}
+	models := mem.modelsOf("org-a")
+	bundle := model.ProviderBundle{Kind: model.ProviderBundleKind, Version: model.ProviderBundleVersion,
+		Provider: model.ProviderBundleSettings{Type: "openai", Currency: "USD", BaseURL: "https://p.test/v1"},
+		Models: []model.ProviderBundleModel{
+			{RealModel: "model-x", ProxyName: "h", Enabled: true, Prices: model.ModelPrices{Input: 0.1, Output: 0.2}},
+			{RealModel: "model-h", ProxyName: "y", Enabled: true, Prices: model.ModelPrices{Input: 0.1, Output: 0.2}},
+		}}
+	plan := PlanProviderBundleImport(bundle, p, models, namesOf(models))
+	for _, m := range plan.Models {
+		refused := false
+		for _, c := range m.Changes {
+			if c.Field == BundleFieldProxyName && c.Refused() {
+				refused = true
+			}
+		}
+		if !refused {
+			t.Errorf("%s: rename offered, want it refused (the name it needs stays taken)", m.Model.RealModel)
+		}
+	}
+	result, err := ApplyProviderBundle(context.Background(), uniqueNamesStore{mem}, plan, selectAll(plan), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Failed) != 0 {
+		t.Errorf("failed = %+v, want nothing the dry run did not announce", result.Failed)
+	}
+}
