@@ -188,8 +188,9 @@ func (b ProviderBundle) Validate() error {
 	if m := b.Provider.BillingMode; m != "" && m != BillingModePayg && m != BillingModeSubscription {
 		return errors.Wrapf(ErrInvalidProviderBundle, "unknown billing_mode %q", m)
 	}
-	if c := b.Provider.Currency; c != "" && !slices.Contains(SupportedCurrencies, c) {
-		return errors.Wrapf(ErrInvalidProviderBundle, "unsupported currency %q", c)
+	// Prices only mean something in their currency.
+	if c := b.Provider.Currency; !slices.Contains(SupportedCurrencies, c) {
+		return errors.Wrapf(ErrInvalidProviderBundle, "unsupported or missing currency %q", c)
 	}
 	if b.Provider.CloudTier < 0 || b.Provider.CloudTier > 2 {
 		return errors.Wrapf(ErrInvalidProviderBundle, "cloud_tier %d is not 0, 1 or 2", b.Provider.CloudTier)

@@ -333,7 +333,7 @@ func TestParseProviderBundle_RefusesAnotherKindOrVersion(t *testing.T) {
 		`{"kind":"xolo.pipeline","version":"1","provider":{"type":"openai"}}`,
 		`{"kind":"xolo.provider","version":"2","provider":{"type":"openai"}}`,
 		`{"kind":"xolo.provider","version":"1","provider":{"type":"nope"}}`,
-		`{"kind":"xolo.provider","version":"1","provider":{"type":"openai"},"models":[{"real_model":"a"}]}`,
+		`{"kind":"xolo.provider","version":"1","provider":{"type":"openai","currency":"USD"},"models":[{"real_model":"a"}]}`,
 		`not json`,
 	} {
 		if _, err := model.ParseProviderBundle([]byte(doc)); err == nil {
@@ -369,7 +369,7 @@ func TestPlanProviderBundleImport_SkipsAKindTheTargetDoesNotServe(t *testing.T) 
 	// completion model without an API of its own would be served by the
 	// target's API, which serves decisions only.
 	bundle := model.ProviderBundle{Kind: model.ProviderBundleKind, Version: model.ProviderBundleVersion,
-		Provider: model.ProviderBundleSettings{Type: "openai"},
+		Provider: model.ProviderBundleSettings{Type: "openai", Currency: "USD"},
 		Models:   []model.ProviderBundleModel{{RealModel: "gpt", ProxyName: "gpt", Kind: model.ModelKindCompletion}, {RealModel: "gpt-2", ProxyName: "gpt-2", APIType: "openai"}}}
 	target := model.NewProvider("org-a", "TypeSafe", "typesafe", "", "key", "USD")
 
@@ -422,21 +422,21 @@ func TestApplyProviderBundle_GoesOnPastAModelTheStoreRefuses(t *testing.T) {
 
 func TestParseProviderBundle_RefusesReservedHeadersAndAbsurdPrices(t *testing.T) {
 	for name, doc := range map[string]string{
-		"reserved header":   `{"kind":"xolo.provider","version":"1","provider":{"type":"openai","request_headers":{"headers":{"Authorization":"Bearer x"}}}}`,
-		"billing mode":      `{"kind":"xolo.provider","version":"1","provider":{"type":"openai","billing_mode":"free"}}`,
-		"currency":          `{"kind":"xolo.provider","version":"1","provider":{"type":"openai","currency":"XXX"}}`,
-		"scope":             `{"kind":"xolo.provider","version":"1","provider":{"type":"openai","subscription_plan":{"label":"P","constraints":[{"kind":"rolling_window","label":"5h","duration":"5h","scope":"modle"}]}}}`,
-		"model concurrency": `{"kind":"xolo.provider","version":"1","provider":{"type":"openai","subscription_plan":{"label":"P","constraints":[{"kind":"concurrency","label":"c","max_concurrent":2,"scope":"model"}]}}}`,
-		"cloud tier":        `{"kind":"xolo.provider","version":"1","provider":{"type":"openai","cloud_tier":7}}`,
-		"nan-free ratio":    `{"kind":"xolo.provider","version":"1","provider":{"type":"openai","subscription_plan":{"label":"P","constraints":[{"kind":"rolling_window","label":"5h","duration":"5h","reserve_ratio":2}]}}}`,
-		"no duration":       `{"kind":"xolo.provider","version":"1","provider":{"type":"openai","subscription_plan":{"label":"P","constraints":[{"kind":"rolling_window","label":"5h"}]}}}`,
-		"zero concurrency":  `{"kind":"xolo.provider","version":"1","provider":{"type":"openai","subscription_plan":{"label":"P","constraints":[{"kind":"concurrency","label":"c","max_concurrent":0}]}}}`,
-		"zero retry delay":  `{"kind":"xolo.provider","version":"1","provider":{"type":"openai","retry":{"enabled":true,"max_attempts":3,"delay":0}}}`,
-		"zero rate burst":   `{"kind":"xolo.provider","version":"1","provider":{"type":"openai","rate_limit":{"enabled":true,"interval":1000000000,"max_burst":0}}}`,
-		"zero token limit":  `{"kind":"xolo.provider","version":"1","provider":{"type":"openai"},"models":[{"real_model":"a","proxy_name":"a","token_limit":{"enabled":true,"max_tokens":10,"interval":0},"prices":{"input":1,"output":1}}]}`,
-		"negative window":   `{"kind":"xolo.provider","version":"1","provider":{"type":"openai"},"models":[{"real_model":"a","proxy_name":"a","context_window":-1,"prices":{"input":1,"output":1}}]}`,
-		"negative speed":    `{"kind":"xolo.provider","version":"1","provider":{"type":"openai"},"models":[{"real_model":"a","proxy_name":"a","tokens_per_sec_low":-5,"prices":{"input":1,"output":1}}]}`,
-		"absurd price":      `{"kind":"xolo.provider","version":"1","provider":{"type":"openai"},"models":[{"real_model":"a","proxy_name":"a","prices":{"input":1e300,"output":1}}]}`,
+		"reserved header":   `{"kind":"xolo.provider","version":"1","provider":{"type":"openai","currency":"USD","request_headers":{"headers":{"Authorization":"Bearer x"}}}}`,
+		"billing mode":      `{"kind":"xolo.provider","version":"1","provider":{"type":"openai","currency":"USD","billing_mode":"free"}}`,
+		"currency":          `{"kind":"xolo.provider","version":"1","provider":{"type":"openai","currency":"USD","currency":"XXX"}}`,
+		"scope":             `{"kind":"xolo.provider","version":"1","provider":{"type":"openai","currency":"USD","subscription_plan":{"label":"P","constraints":[{"kind":"rolling_window","label":"5h","duration":"5h","scope":"modle"}]}}}`,
+		"model concurrency": `{"kind":"xolo.provider","version":"1","provider":{"type":"openai","currency":"USD","subscription_plan":{"label":"P","constraints":[{"kind":"concurrency","label":"c","max_concurrent":2,"scope":"model"}]}}}`,
+		"cloud tier":        `{"kind":"xolo.provider","version":"1","provider":{"type":"openai","currency":"USD","cloud_tier":7}}`,
+		"nan-free ratio":    `{"kind":"xolo.provider","version":"1","provider":{"type":"openai","currency":"USD","subscription_plan":{"label":"P","constraints":[{"kind":"rolling_window","label":"5h","duration":"5h","reserve_ratio":2}]}}}`,
+		"no duration":       `{"kind":"xolo.provider","version":"1","provider":{"type":"openai","currency":"USD","subscription_plan":{"label":"P","constraints":[{"kind":"rolling_window","label":"5h"}]}}}`,
+		"zero concurrency":  `{"kind":"xolo.provider","version":"1","provider":{"type":"openai","currency":"USD","subscription_plan":{"label":"P","constraints":[{"kind":"concurrency","label":"c","max_concurrent":0}]}}}`,
+		"zero retry delay":  `{"kind":"xolo.provider","version":"1","provider":{"type":"openai","currency":"USD","retry":{"enabled":true,"max_attempts":3,"delay":0}}}`,
+		"zero rate burst":   `{"kind":"xolo.provider","version":"1","provider":{"type":"openai","currency":"USD","rate_limit":{"enabled":true,"interval":1000000000,"max_burst":0}}}`,
+		"zero token limit":  `{"kind":"xolo.provider","version":"1","provider":{"type":"openai","currency":"USD"},"models":[{"real_model":"a","proxy_name":"a","token_limit":{"enabled":true,"max_tokens":10,"interval":0},"prices":{"input":1,"output":1}}]}`,
+		"negative window":   `{"kind":"xolo.provider","version":"1","provider":{"type":"openai","currency":"USD"},"models":[{"real_model":"a","proxy_name":"a","context_window":-1,"prices":{"input":1,"output":1}}]}`,
+		"negative speed":    `{"kind":"xolo.provider","version":"1","provider":{"type":"openai","currency":"USD"},"models":[{"real_model":"a","proxy_name":"a","tokens_per_sec_low":-5,"prices":{"input":1,"output":1}}]}`,
+		"absurd price":      `{"kind":"xolo.provider","version":"1","provider":{"type":"openai","currency":"USD"},"models":[{"real_model":"a","proxy_name":"a","prices":{"input":1e300,"output":1}}]}`,
 	} {
 		if _, err := model.ParseProviderBundle([]byte(doc)); err == nil {
 			t.Errorf("%s: parsed, want refused", name)
@@ -447,7 +447,7 @@ func TestParseProviderBundle_RefusesReservedHeadersAndAbsurdPrices(t *testing.T)
 func TestPlanProviderBundleImport_ShowsAbsentSettingsAsEmpty(t *testing.T) {
 	target := model.NewProvider("org-a", "P", "openai", "", "key", "USD")
 	bundle := model.ProviderBundle{Kind: model.ProviderBundleKind, Version: model.ProviderBundleVersion,
-		Provider: model.ProviderBundleSettings{Type: "openai", Retry: &model.RetryConfig{Enabled: true, MaxAttempts: 2}}}
+		Provider: model.ProviderBundleSettings{Type: "openai", Currency: "USD", Retry: &model.RetryConfig{Enabled: true, MaxAttempts: 2}}}
 	plan := PlanProviderBundleImport(bundle, target, nil, takenNames{})
 	for _, c := range plan.Settings {
 		if c.From == "null" || c.To == "null" {
@@ -508,7 +508,7 @@ func TestApplyProviderBundle_RenamesBeforeItCreatesUnderTheFreedName(t *testing.
 
 func TestPlanProviderBundleImportWith_ChecksKindsAgainstTheImportedType(t *testing.T) {
 	bundle := model.ProviderBundle{Kind: model.ProviderBundleKind, Version: model.ProviderBundleVersion,
-		Provider: model.ProviderBundleSettings{Type: "typesafe"},
+		Provider: model.ProviderBundleSettings{Type: "typesafe", Currency: "USD"},
 		Models:   []model.ProviderBundleModel{{RealModel: "judge", ProxyName: "judge"}}}
 	target := model.NewProvider("org-a", "P", "openai", "", "key", "USD")
 

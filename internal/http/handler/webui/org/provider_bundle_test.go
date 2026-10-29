@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	stdhtml "html"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
@@ -134,5 +135,24 @@ func TestProviderBundle_SaysWhenNothingWasApplied(t *testing.T) {
 	}
 	if !strings.Contains(rr.Body.String(), "Rien n&#39;a été appliqué") {
 		t.Error("the page should say nothing was applied")
+	}
+}
+
+func TestProviderBundle_AnswersInvalidSettingsWithThePage(t *testing.T) {
+	h, s, tenant := importFixture(t, "https://example.test/v1", "sk")
+	store := &bundleStore{modelFormStore: s}
+	h.providerStore = store
+	// Model budgets on a provider-wide limit: the bundle parses, the
+	// provider validation every write path applies refuses it.
+	doc := `{"kind":"xolo.provider","version":"1","provider":{"type":"openai","currency":"USD","billing_mode":"subscription",` +
+		`"subscription_plan":{"label":"P","constraints":[{"kind":"concurrency","label":"c","max_concurrent":2,"model_budgets":{"a":{}}}]}},"models":[]}`
+	fields := url.Values{"step": {"apply"}, "bundle": {doc}, "billing": {"on"}, "name": {"P"}, "api_key": {"k"}}
+	rr := httptest.NewRecorder()
+	h.importProviderBundle(rr, bundleRequest(t, s, tenant, "", bytes.NewBufferString(fields.Encode()), "application/x-www-form-urlencoded"))
+	if rr.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("status = %d, want 422: %s", rr.Code, rr.Body.String())
+	}
+	if !strings.Contains(stdhtml.UnescapeString(rr.Body.String()), "rien n'a été écrit") || len(store.providers) != 0 {
+		t.Error("the page should say nothing was written, and nothing should be")
 	}
 }
