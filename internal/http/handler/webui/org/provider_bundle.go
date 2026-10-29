@@ -248,14 +248,17 @@ func (h *Handler) importProviderBundle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	vmodel.Plan = &replan
-	if !result.Refused() {
+	switch {
+	case !result.Refused():
 		vmodel.Notice = i18n.T(ctx, "org.provider_bundle.nothing_applied")
-	} else {
-		notice := "org.provider_bundle.applied"
-		if result.ProviderChanged {
-			notice = "org.provider_bundle.applied_with_provider"
-		}
-		vmodel.Notice = i18n.T(ctx, notice, result.Created, result.Updated)
+	case !result.Wrote():
+		vmodel.Notice = i18n.T(ctx, "org.provider_bundle.nothing_written")
+	case result.ProviderChanged:
+		vmodel.Notice = i18n.T(ctx, "org.provider_bundle.applied_with_provider", result.Created, result.Updated)
+	default:
+		vmodel.Notice = i18n.T(ctx, "org.provider_bundle.applied", result.Created, result.Updated)
+	}
+	if result.Refused() {
 		vmodel.Failures = append(h.bundleFailureReasons(ctx, org, result.Failed), bundleSkipReasons(ctx, result.Skipped)...)
 		for _, change := range result.SkippedSettings {
 			if len(change.Unserved) > 0 {

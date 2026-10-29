@@ -436,3 +436,22 @@ func TestProviderBundle_ReportsARefusedTypeChangeNextToWrittenModels(t *testing.
 		t.Errorf("created %d models, want the selected one written next to the refusal", len(s.created)-1)
 	}
 }
+
+func TestProviderBundle_SaysNothingWasWrittenWhenTheOnlyChangeIsRefused(t *testing.T) {
+	h, s, tenant := importFixture(t, "https://example.test/v1", "sk")
+	e := model.NewLLMModel(s.provider.ID(), s.org.ID(), "e", "embed-1", "", 10, 0)
+	e.SetKind(model.ModelKindEmbeddings)
+	s.created = append(s.created, e)
+	bundle := model.NewProviderBundle(s.provider, s.created, false, time.Now())
+	bundle.Provider.Type = "anthropic"
+	bundle.Models[0].Kind = model.ModelKindCompletion
+	doc, _ := json.Marshal(bundle)
+
+	fields := url.Values{"step": {"apply"}, "bundle": {string(doc)}, "setting": {service.BundleFieldType}}
+	rr := httptest.NewRecorder()
+	h.importProviderBundle(rr, bundleRequest(t, s, tenant, string(s.provider.ID()), bytes.NewBufferString(fields.Encode()), "application/x-www-form-urlencoded"))
+	page := stdhtml.UnescapeString(rr.Body.String())
+	if rr.Code != http.StatusOK || !strings.Contains(page, "Rien n'a été écrit") || !strings.Contains(page, "Le type du fournisseur n'a pas été changé") {
+		t.Errorf("status = %d, want the page saying nothing was written and why", rr.Code)
+	}
+}
