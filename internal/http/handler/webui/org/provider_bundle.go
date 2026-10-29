@@ -264,6 +264,13 @@ func (h *Handler) importProviderBundle(w http.ResponseWriter, r *http.Request) {
 				vmodel.Failures = append(vmodel.Failures, i18n.T(ctx, "org.provider_bundle.type_not_applied", strings.Join(change.Unserved, ", ")))
 			}
 		}
+		if result.SettingsFailed != nil {
+			slog.ErrorContext(ctx, "could not save imported provider settings", slogx.Error(result.SettingsFailed))
+			vmodel.Failures = append(vmodel.Failures, i18n.T(ctx, "org.provider_bundle.settings_not_saved"))
+		}
+		if len(result.Stranded) > 0 {
+			vmodel.Failures = append(vmodel.Failures, i18n.T(ctx, "org.provider_bundle.models_stranded", strings.Join(result.Stranded, ", ")))
+		}
 	}
 	templ.Handler(component.ProviderBundleImportPage(vmodel)).ServeHTTP(w, r)
 }

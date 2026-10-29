@@ -20,8 +20,10 @@ type memoryProviderStore struct {
 	providers map[model.ProviderID]model.Provider
 	models    map[model.LLMModelID]model.LLMModel
 	writes    int
-	// refuse, when set, fails the writes of the models it names.
-	refuse map[string]bool
+	// refuse, when set, fails the writes of the models it names, and
+	// refuseProvider every SaveProvider.
+	refuse         map[string]bool
+	refuseProvider bool
 }
 
 func newMemoryProviderStore() *memoryProviderStore {
@@ -35,6 +37,9 @@ func (s *memoryProviderStore) CreateProvider(_ context.Context, p model.Provider
 }
 
 func (s *memoryProviderStore) SaveProvider(_ context.Context, p model.Provider) error {
+	if s.refuseProvider {
+		return errors.New("refused")
+	}
 	s.writes++
 	s.providers[p.ID()] = p
 	return nil
@@ -1134,5 +1139,61 @@ func TestApplyProviderBundle_KeepsTheTypeAModelItFailedToWriteNeeds(t *testing.T
 		if len(result.Failed) != 1 || result.Failed[0].ModelID != e.ID() {
 			t.Errorf("failed = %+v, want the update of e", result.Failed)
 		}
+	}
+}
+
+// typeMoveFixture is an openai provider with two embeddings models, a and b,
+// and a bundle moving it to the typesafe API with both turned into decision
+// models, which openai does not serve, every change selected.
+func typeMoveFixture(t *testing.T) (*memoryProviderStore, model.Provider, ProviderBundlePlan, BundleSelection) {
+	t.Helper()
+	mem := newMemoryProviderStore()
+	p := model.NewProvider("org-a", "P", "openai", "", "key", "USD")
+	mem.providers[p.ID()] = p
+	bundle := model.ProviderBundle{Kind: model.ProviderBundleKind, Version: model.ProviderBundleVersion,
+		Provider: model.ProviderBundleSettings{Type: "typesafe", Currency: "USD"}}
+	for _, name := range []string{"a", "b"} {
+		m := model.NewLLMModel(p.ID(), "org-a", name, "model-"+name, "", 0, 0)
+		m.SetKind(model.ModelKindEmbeddings)
+		mem.models[m.ID()] = m
+	}
+	sel := BundleSelection{Settings: map[string]bool{BundleFieldType: true}, Fields: map[int]map[string]bool{}}
+	for i, name := range []string{"a", "b"} {
+		bundle.Models = append(bundle.Models, model.ProviderBundleModel{RealModel: "model-" + name, ProxyName: name, Kind: model.ModelKindDecision})
+		sel.Fields[i] = map[string]bool{BundleFieldKind: true}
+	}
+	models := mem.modelsOf("org-a")
+	return mem, p, PlanProviderBundleImportWith(bundle, p, models, namesOf(models), &sel), sel
+}
+
+func TestApplyProviderBundle_NamesTheModelsWrittenForATypeItKeptBack(t *testing.T) {
+	mem, p, plan, sel := typeMoveFixture(t)
+	mem.refuse = map[string]bool{"b": true}
+
+	result, err := ApplyProviderBundle(context.Background(), mem, plan, sel, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := mem.providers[p.ID()].Type(); got != "openai" {
+		t.Errorf("type = %q, want openai kept for b", got)
+	}
+	if !slices.Equal(result.Stranded, []string{"a"}) || !result.Refused() {
+		t.Errorf("stranded = %v, want a: written as a decision model the openai type it keeps does not serve", result.Stranded)
+	}
+}
+
+func TestApplyProviderBundle_ReportsAProviderSaveItFailedAfterTheModels(t *testing.T) {
+	mem, p, plan, sel := typeMoveFixture(t)
+	mem.refuseProvider = true
+
+	result, err := ApplyProviderBundle(context.Background(), mem, plan, sel, nil)
+	if err != nil {
+		t.Fatalf("apply: %v, want the failure reported next to the models written", err)
+	}
+	if result.SettingsFailed == nil || result.ProviderChanged || result.Updated != 2 {
+		t.Errorf("result = %+v, want both models written and the settings reported failed", result)
+	}
+	if got := mem.providers[p.ID()].Type(); got != "openai" || !slices.Equal(result.Stranded, []string{"a", "b"}) {
+		t.Errorf("type = %q, stranded = %v; want a and b named", got, result.Stranded)
 	}
 }
