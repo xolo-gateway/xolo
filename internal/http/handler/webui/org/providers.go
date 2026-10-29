@@ -255,31 +255,37 @@ func (h *Handler) updateProvider(w http.ResponseWriter, r *http.Request) {
 	// stored configuration on every error path, as they always were. Parsing
 	// the plan first at least keeps the plan itself whole when one of those
 	// sections is what fails.
+	// The keys too are read before the other validations, the plan's included,
+	// so that a rejected form shows them as edited. A rejection of the keys
+	// themselves shows the stored ones.
+	extraAPIKeys, keysErr := parseProviderKeysFromForm(r, h.secretKey, existing.ExtraAPIKeys())
+	rejected := func(plan *model.SubscriptionPlan) providerWithPlan {
+		p := submittedProvider(r, existing, billingMode, plan)
+		if keysErr == nil {
+			p.extraKeys = redisplayedKeys(extraAPIKeys, existing.ExtraAPIKeys())
+		}
+		return p
+	}
+
 	var subscriptionPlan *model.SubscriptionPlan
 	if billingMode == model.BillingModeSubscription {
 		plan, err := parseSubscriptionPlanFromForm(r)
 		if err != nil {
-			h.renderProviderFormError(w, r, ctx, user, orgSlug, org,
-				submittedProvider(r, existing, billingMode, plan), false,
+			h.renderProviderFormError(w, r, ctx, user, orgSlug, org, rejected(plan), false,
 				i18n.T(ctx, "org.errors.providers.plan", err.Error()))
 			return
 		}
 		subscriptionPlan = plan
 	}
-	// The keys too are read before the other validations, so that a rejected
-	// form shows them as edited.
-	extraAPIKeys, err := parseProviderKeysFromForm(r, h.secretKey, existing.ExtraAPIKeys())
-	if err != nil {
-		h.renderProviderFormError(w, r, ctx, user, orgSlug, org,
-			submittedProvider(r, existing, billingMode, subscriptionPlan), false,
-			i18n.T(ctx, "org.errors.providers.api_keys", err.Error()))
+	if keysErr != nil {
+		h.renderProviderFormError(w, r, ctx, user, orgSlug, org, rejected(subscriptionPlan), false,
+			i18n.T(ctx, "org.errors.providers.api_keys", keysErr.Error()))
 		return
 	}
-	formProvider := submittedProvider(r, existing, billingMode, subscriptionPlan)
+	formProvider := rejected(subscriptionPlan)
 	if billingMode != model.BillingModeSubscription {
 		formProvider.plan = existing.SubscriptionPlan()
 	}
-	formProvider.extraKeys = redisplayedKeys(extraAPIKeys, existing.ExtraAPIKeys())
 
 	// --- Retry config ---
 	var retryConfig *model.RetryConfig
@@ -996,6 +1002,7 @@ func parseProviderKeysFromForm(r *http.Request, secretKey string, stored []model
 	}
 	keys := make([]model.ProviderKey, 0, count)
 	labels := make(map[string]bool, count)
+	seenIDs := make(map[model.ProviderKeyID]bool, count)
 	for i := range count {
 		prefix := fmt.Sprintf("provider_key_k%d_", i)
 		id := model.ProviderKeyID(strings.TrimSpace(r.FormValue(prefix + "id")))
@@ -1003,11 +1010,13 @@ func parseProviderKeysFromForm(r *http.Request, secretKey string, stored []model
 		value := strings.TrimSpace(r.FormValue(prefix + "value"))
 
 		current, known := byID[id]
-		if id != "" && !known {
-			// A key removed meanwhile, or an id that never was one: the row is
-			// read as a new key, which must then carry its value.
+		if id != "" && (!known || seenIDs[id]) {
+			// A key removed meanwhile, an id that never was one or one posted
+			// twice: the row is read as a new key, which must then carry its
+			// value. A stored key is never kept twice.
 			id = ""
 		}
+		seenIDs[id] = true
 		if id == "" && label == "" && value == "" {
 			continue
 		}

@@ -285,6 +285,23 @@ func TestParseProviderKeysFromForm(t *testing.T) {
 		}
 	})
 
+	t.Run("a stored key posted twice is kept once", func(t *testing.T) {
+		keys, err := parseProviderKeysFromForm(makeRequest(map[string]string{
+			"provider_key_count":    "2",
+			"provider_key_k0_id":    "k2",
+			"provider_key_k0_label": "member 2",
+			"provider_key_k1_id":    "k2",
+			"provider_key_k1_label": "member 2 bis",
+			"provider_key_k1_value": "sk-bis",
+		}), secret, stored)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(keys) != 2 || keys[0].ID != "k2" || keys[1].ID == "k2" || keys[1].ID == "" {
+			t.Errorf("got %+v, want k2 once and the second row as a new key", keys)
+		}
+	})
+
 	for name, fields := range map[string]map[string]string{
 		// The count sizes what the parser allocates.
 		"a count out of range": {"provider_key_count": "99999999999999999999"},
