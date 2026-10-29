@@ -554,7 +554,7 @@ func TestApplyProviderBundle_ReportsASelectedRenameItCannotApply(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(result.Skipped) != 1 || result.Skipped[0].Conflict == "" {
-		t.Errorf("skipped = %+v, want the refused rename reported", result.Skipped)
+	if len(result.Skipped) != 1 || result.Skipped[0].Conflict == "" || result.Skipped[0].RefusedField != BundleFieldProxyName {
+		t.Errorf("skipped = %+v, want the refused rename reported as that one change", result.Skipped)
 	}
 }

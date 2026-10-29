@@ -637,6 +637,7 @@
   "org.errors.provider_bundle.name_required": "Le fournisseur doit avoir un nom.",
   "org.provider_bundle.nothing_applied": "Rien n'a été appliqué : l'organisation correspond déjà aux changements sélectionnés.",
   "org.provider_bundle.applied": "%d modèle(s) créé(s), %d mis à jour. Certains modèles n'ont pas pu être écrits :",
+  "org.provider_bundle.change_not_applied": "%s : changement « %s » non appliqué : %s",
   "org.errors.provider_bundle.too_large": "Le bundle est trop volumineux (4 Mo au plus).",
   "org.subscription.title": "Abonnements",
   "org.subscription.my_share": "Ma part",

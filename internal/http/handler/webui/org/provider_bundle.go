@@ -246,6 +246,12 @@ func (h *Handler) bundleFailureReasons(ctx context.Context, org model.Organizati
 func bundleSkipReasons(ctx context.Context, skipped []service.BundleModelPlan) []string {
 	reasons := make([]string, 0, len(skipped))
 	for _, mp := range skipped {
+		if mp.RefusedField != "" && mp.Existing != nil {
+			// One change of a model otherwise updated: it is named under the
+			// name it still has.
+			reasons = append(reasons, i18n.T(ctx, "org.provider_bundle.change_not_applied", mp.Existing.ProxyName(), component.ProviderBundleFieldLabel(ctx, mp.RefusedField), mp.Conflict))
+			continue
+		}
 		reason := mp.Conflict
 		if mp.KindNotServed != "" {
 			reason = i18n.T(ctx, "org.errors.providers.kind_not_served", mp.KindNotServed, common.ModelKindLabel(ctx, mp.Model.Kind))

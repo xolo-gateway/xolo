@@ -48,6 +48,9 @@ type BundleModelPlan struct {
 	// KindNotServed, when set, is the provider type whose API does not serve
 	// the model's kind: the model is skipped, as the model form refuses it.
 	KindNotServed string
+	// RefusedField, in a result's Skipped, names the one change of an
+	// updated model that could not be applied, its other changes written.
+	RefusedField string
 }
 
 // ProviderBundlePlan is the dry run of a provider bundle import: nothing is
@@ -487,7 +490,7 @@ func ApplyProviderBundle(ctx context.Context, store port.ProviderStore, plan Pro
 		for _, change := range mp.Changes {
 			if change.Conflict != "" && sel.Fields[mp.Index][change.Field] {
 				skipped := mp
-				skipped.Conflict = change.Conflict
+				skipped.Conflict, skipped.RefusedField = change.Conflict, change.Field
 				result.Skipped = append(result.Skipped, skipped)
 			}
 		}
