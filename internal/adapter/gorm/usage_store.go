@@ -284,7 +284,33 @@ func planUsageQuery(db *gorm.DB, scope model.PlanUsageScope, since time.Time) *g
 		}
 		query = query.Where("model_id IN ?", ids)
 	}
+	if scope.ByKey {
+		query = query.Where("provider_key_id = ?", string(scope.KeyID))
+	}
 	return query
+}
+
+// LastPlanUsageKey implements port.UsageStore.
+func (s *Store) LastPlanUsageKey(ctx context.Context, scope model.PlanUsageScope, userID model.UserID) (model.ProviderKeyID, bool, error) {
+	var keys []string
+
+	err := s.read(ctx, func(ctx context.Context, db *gorm.DB) error {
+		// Walks idx_usage_org_prov_user backwards from the user's newest entry
+		// and stops there.
+		return errors.WithStack(db.Model(&UsageRecord{}).
+			Where("org_id = ? AND provider_id = ? AND plan_covered = 1 AND user_id = ?",
+				string(scope.OrgID), string(scope.ProviderID), string(userID)).
+			Order("created_at DESC").
+			Limit(1).
+			Pluck("provider_key_id", &keys).Error)
+	})
+	if err != nil {
+		return "", false, err
+	}
+	if len(keys) == 0 {
+		return "", false, nil
+	}
+	return model.ProviderKeyID(keys[0]), true, nil
 }
 
 // SumPlanUsageSince implements port.UsageStore.

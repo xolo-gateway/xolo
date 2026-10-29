@@ -100,6 +100,9 @@ type UsageRecord interface {
 	// ProviderCost is the raw equivalent PAYG cost in the provider's own currency (microcents).
 	// Used to measure rolling-window value budgets on subscription plans.
 	ProviderCost() int64
+	// ProviderKeyID is the API key of the provider the request went through,
+	// PrimaryProviderKey for the provider's own.
+	ProviderKeyID() ProviderKeyID
 	// Status tells whether the call completed or was cut short. Interrupted
 	// records count toward quotas and costs like any other: the tokens were
 	// produced and billed.
@@ -127,6 +130,7 @@ type BaseUsageRecord struct {
 	createdAt         time.Time
 	planCovered       bool
 	providerCost      int64
+	providerKeyID     ProviderKeyID
 	status            UsageStatus
 }
 
@@ -149,14 +153,16 @@ func (r *BaseUsageRecord) CostSource() CostSource       { return r.costSource }
 func (r *BaseUsageRecord) ResolvedModelName() string    { return r.resolvedModelName }
 func (r *BaseUsageRecord) CreatedAt() time.Time         { return r.createdAt }
 
-func (r *BaseUsageRecord) PlanCovered() bool   { return r.planCovered }
-func (r *BaseUsageRecord) ProviderCost() int64 { return r.providerCost }
-func (r *BaseUsageRecord) Status() UsageStatus { return r.status }
+func (r *BaseUsageRecord) PlanCovered() bool            { return r.planCovered }
+func (r *BaseUsageRecord) ProviderCost() int64          { return r.providerCost }
+func (r *BaseUsageRecord) ProviderKeyID() ProviderKeyID { return r.providerKeyID }
+func (r *BaseUsageRecord) Status() UsageStatus          { return r.status }
 
-func (r *BaseUsageRecord) SetResolvedModelName(v string) { r.resolvedModelName = v }
-func (r *BaseUsageRecord) SetPlanCovered(v bool)         { r.planCovered = v }
-func (r *BaseUsageRecord) SetProviderCost(v int64)       { r.providerCost = v }
-func (r *BaseUsageRecord) SetStatus(v UsageStatus)       { r.status = v }
+func (r *BaseUsageRecord) SetResolvedModelName(v string)    { r.resolvedModelName = v }
+func (r *BaseUsageRecord) SetPlanCovered(v bool)            { r.planCovered = v }
+func (r *BaseUsageRecord) SetProviderCost(v int64)          { r.providerCost = v }
+func (r *BaseUsageRecord) SetStatus(v UsageStatus)          { r.status = v }
+func (r *BaseUsageRecord) SetProviderKeyID(v ProviderKeyID) { r.providerKeyID = v }
 
 var _ UsageRecord = &BaseUsageRecord{}
 

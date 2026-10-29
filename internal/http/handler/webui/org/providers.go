@@ -322,6 +322,13 @@ func (h *Handler) updateProvider(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	extraAPIKeys, err := parseProviderKeysFromForm(r, h.secretKey, existing.ExtraAPIKeys())
+	if err != nil {
+		h.renderProviderFormError(w, r, ctx, user, orgSlug, org, formProvider, false,
+			i18n.T(ctx, "org.errors.providers.api_keys", err.Error()))
+		return
+	}
+
 	if providerType := r.FormValue("provider_type"); !model.IsKnownProviderType(providerType) {
 		h.renderProviderFormError(w, r, ctx, user, orgSlug, org, formProvider, false, unknownProviderTypeMessage(ctx, providerType))
 		return
@@ -335,6 +342,7 @@ func (h *Handler) updateProvider(w http.ResponseWriter, r *http.Request) {
 		pType:            r.FormValue("provider_type"),
 		baseURL:          strings.TrimSpace(r.FormValue("base_url")),
 		apiKey:           apiKey,
+		extraAPIKeys:     extraAPIKeys,
 		active:           r.FormValue("active") == "on",
 		currency:         currency,
 		cloudTier:        cloudTier,
@@ -941,6 +949,71 @@ func parseKeyValueRowsFromForm(r *http.Request, name string) (map[string]string,
 		rows[key] = r.FormValue(prefix + "value")
 	}
 	return rows, nil
+}
+
+// parseProviderKeysFromForm reads the keys a provider holds besides its own
+// (provider_key_count + provider_key_k{i}_id / _label / _value). A row keeps
+// the id of the stored key it edits, and that key's secret when its value is
+// left blank; a row without id is a new key, whose value is required. A row
+// with neither label nor value is skipped, so an added row left empty is not
+// an error. A form that does not carry the section keeps the stored keys.
+func parseProviderKeysFromForm(r *http.Request, secretKey string, stored []model.ProviderKey) ([]model.ProviderKey, error) {
+	ctx := r.Context()
+	if _, posted := r.Form["provider_key_count"]; !posted {
+		// The keys section is shown for a subscription provider only: a form
+		// without it keeps the stored keys.
+		return stored, nil
+	}
+	byID := make(map[model.ProviderKeyID]model.ProviderKey, len(stored))
+	for _, k := range stored {
+		byID[k.ID] = k
+	}
+	count, _ := strconv.Atoi(r.FormValue("provider_key_count"))
+	keys := make([]model.ProviderKey, 0, max(count, 0))
+	labels := make(map[string]bool, max(count, 0))
+	for i := range max(count, 0) {
+		prefix := fmt.Sprintf("provider_key_k%d_", i)
+		id := model.ProviderKeyID(strings.TrimSpace(r.FormValue(prefix + "id")))
+		label := strings.TrimSpace(r.FormValue(prefix + "label"))
+		value := strings.TrimSpace(r.FormValue(prefix + "value"))
+
+		current, known := byID[id]
+		if id != "" && !known {
+			// A key removed meanwhile, or an id that never was one: the row is
+			// read as a new key, which must then carry its value.
+			id = ""
+		}
+		if id == "" && label == "" && value == "" {
+			continue
+		}
+		if label == "" {
+			return nil, errors.New(i18n.T(ctx, "org.errors.providers.api_key_label"))
+		}
+		if labels[label] {
+			return nil, errors.New(i18n.T(ctx, "org.errors.providers.api_key_duplicate", label))
+		}
+		labels[label] = true
+
+		key := model.ProviderKey{ID: id, Label: label, APIKey: current.APIKey}
+		if id == "" {
+			if value == "" {
+				return nil, errors.New(i18n.T(ctx, "org.errors.providers.api_key_value", label))
+			}
+			key.ID = model.NewProviderKeyID()
+		}
+		if value != "" {
+			encrypted, err := crypto.Encrypt(secretKey, value)
+			if err != nil {
+				return nil, errors.WithStack(err)
+			}
+			key.APIKey = encrypted
+		}
+		keys = append(keys, key)
+	}
+	if len(keys) == 0 {
+		return nil, nil
+	}
+	return keys, nil
 }
 
 // parseRequestHeadersFromForm reads the session header and the fixed headers

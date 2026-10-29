@@ -566,10 +566,13 @@ func (h *Handler) buildDashboardSubscriptionUsage(ctx context.Context, orgID mod
 		if p.BillingMode() != model.BillingModeSubscription {
 			continue
 		}
-		plan := p.SubscriptionPlan()
-		if plan == nil {
+		if p.SubscriptionPlan() == nil {
 			continue
 		}
+		// A provider spreading its plan over several keys is shown as the pool
+		// its users share: the keys are not the users' business.
+		plan := model.PooledPlan(p)
+		keys := model.ProviderKeyIDs(p)
 
 		pu := orgcomponent.SubscriptionProviderUsage{
 			Provider:    p,
@@ -588,7 +591,7 @@ func (h *Handler) buildDashboardSubscriptionUsage(ctx context.Context, orgID mod
 
 		for _, c := range plan.Constraints {
 			if c.PerModel() {
-				pu.Constraints = append(pu.Constraints, h.perModelDashboardUsage(ctx, c, providerScope, models, userID, memberCount, now)...)
+				pu.Constraints = append(pu.Constraints, h.perModelDashboardUsage(ctx, c, providerScope, keys, models, userID, memberCount, now)...)
 				continue
 			}
 
@@ -604,7 +607,7 @@ func (h *Handler) buildDashboardSubscriptionUsage(ctx context.Context, orgID mod
 				if h.subscriptionMonitor != nil {
 					cu.InFlight = h.subscriptionMonitor.CurrentUserInFlight(orgID, p.ID(), userID)
 					if c.MaxConcurrent != nil {
-						cu.Exhausted = h.subscriptionMonitor.IsExhausted(orgID, p.ID(), c.Label, "")
+						cu.Exhausted = h.subscriptionMonitor.IsExhausted(orgID, p.ID(), keys, c.Label, "")
 					}
 				}
 			}
@@ -730,6 +733,7 @@ func (h *Handler) perModelDashboardUsage(
 	ctx context.Context,
 	c model.PlanConstraint,
 	providerScope model.PlanUsageScope,
+	keys []model.ProviderKeyID,
 	models []model.LLMModel,
 	userID model.UserID,
 	memberCount int64,
@@ -759,7 +763,7 @@ func (h *Handler) perModelDashboardUsage(
 		scope.ModelIDs = um.ModelIDs
 		h.fillDashboardRollingWindowUsage(ctx, &cu, mc, scope, models, userID, memberCount, now)
 		if h.subscriptionMonitor != nil {
-			cu.Exhausted = h.subscriptionMonitor.IsExhausted(providerScope.OrgID, providerScope.ProviderID, c.Label, um.UpstreamModel)
+			cu.Exhausted = h.subscriptionMonitor.IsExhausted(providerScope.OrgID, providerScope.ProviderID, keys, c.Label, um.UpstreamModel)
 		}
 		result = append(result, cu)
 	}

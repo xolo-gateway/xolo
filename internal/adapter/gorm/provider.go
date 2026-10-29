@@ -15,6 +15,9 @@ type Provider struct {
 	Type      string `gorm:"not null"`
 	BaseURL   string
 	APIKey    string `gorm:"not null"` // AES-GCM encrypted hex
+	// APIKeys holds the provider's other keys, each encrypted like APIKey.
+	// A secret: kept out of the projection and of the lifecycle exports.
+	APIKeys JSONColumn[[]model.ProviderKey] `gorm:"type:text"`
 	// See the note on Organization.Active: no `default` here on purpose.
 	Active           int
 	Currency         string                                   `gorm:"default:'USD'"`
@@ -32,13 +35,19 @@ type wrappedProvider struct {
 	p *Provider
 }
 
-func (w *wrappedProvider) ID() model.ProviderID                    { return model.ProviderID(w.p.ID) }
-func (w *wrappedProvider) OrgID() model.OrgID                      { return model.OrgID(w.p.OrgID) }
-func (w *wrappedProvider) Name() string                            { return w.p.Name }
-func (w *wrappedProvider) Type() string                            { return w.p.Type }
-func (w *wrappedProvider) BaseURL() string                         { return w.p.BaseURL }
-func (w *wrappedProvider) APIKey() string                          { return w.p.APIKey }
-func (w *wrappedProvider) Active() bool                            { return w.p.Active != 0 }
+func (w *wrappedProvider) ID() model.ProviderID { return model.ProviderID(w.p.ID) }
+func (w *wrappedProvider) OrgID() model.OrgID   { return model.OrgID(w.p.OrgID) }
+func (w *wrappedProvider) Name() string         { return w.p.Name }
+func (w *wrappedProvider) Type() string         { return w.p.Type }
+func (w *wrappedProvider) BaseURL() string      { return w.p.BaseURL }
+func (w *wrappedProvider) APIKey() string       { return w.p.APIKey }
+func (w *wrappedProvider) Active() bool         { return w.p.Active != 0 }
+func (w *wrappedProvider) ExtraAPIKeys() []model.ProviderKey {
+	if w.p.APIKeys.Val == nil {
+		return nil
+	}
+	return *w.p.APIKeys.Val
+}
 func (w *wrappedProvider) Currency() string                        { return w.p.Currency }
 func (w *wrappedProvider) CloudTier() int                          { return w.p.CloudTier }
 func (w *wrappedProvider) CreatedAt() time.Time                    { return w.p.CreatedAt }
@@ -70,6 +79,7 @@ func fromProvider(p model.Provider) *Provider {
 		Type:             p.Type(),
 		BaseURL:          p.BaseURL(),
 		APIKey:           p.APIKey(),
+		APIKeys:          extraAPIKeysColumn(p.ExtraAPIKeys()),
 		Active:           boolToInt(p.Active()),
 		Currency:         p.Currency(),
 		CloudTier:        p.CloudTier(),
@@ -79,4 +89,13 @@ func fromProvider(p model.Provider) *Provider {
 		SubscriptionPlan: JSONColumn[model.SubscriptionPlan]{Val: p.SubscriptionPlan()},
 		RequestHeaders:   JSONColumn[model.ProviderRequestHeaders]{Val: p.RequestHeaders()},
 	}
+}
+
+// extraAPIKeysColumn stores no keys as NULL, the value of the column on the
+// providers that existed before it.
+func extraAPIKeysColumn(keys []model.ProviderKey) JSONColumn[[]model.ProviderKey] {
+	if len(keys) == 0 {
+		return JSONColumn[[]model.ProviderKey]{}
+	}
+	return JSONColumn[[]model.ProviderKey]{Val: &keys}
 }

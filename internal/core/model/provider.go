@@ -20,6 +20,9 @@ type Provider interface {
 	Type() string   // one of ProviderTypes()
 	BaseURL() string
 	APIKey() string // encrypted at rest, decrypted on use
+	// ExtraAPIKeys are the keys the provider holds besides its own, see
+	// ProviderKey. Empty for most providers.
+	ExtraAPIKeys() []ProviderKey
 	Active() bool
 	Currency() string
 	// CloudTier indicates the infrastructure tier (0=Hyperscaler, 1=MajorCloud, 2=SmallProvider).
@@ -41,6 +44,7 @@ type BaseProvider struct {
 	pType            string
 	baseURL          string
 	apiKey           string
+	extraAPIKeys     []ProviderKey
 	active           bool
 	currency         string
 	cloudTier        int
@@ -59,6 +63,7 @@ func (p *BaseProvider) Name() string                        { return p.name }
 func (p *BaseProvider) Type() string                        { return p.pType }
 func (p *BaseProvider) BaseURL() string                     { return p.baseURL }
 func (p *BaseProvider) APIKey() string                      { return p.apiKey }
+func (p *BaseProvider) ExtraAPIKeys() []ProviderKey          { return p.extraAPIKeys }
 func (p *BaseProvider) Active() bool                        { return p.active }
 func (p *BaseProvider) Currency() string                    { return p.currency }
 func (p *BaseProvider) CloudTier() int                      { return p.cloudTier }
@@ -83,6 +88,7 @@ func (p *BaseProvider) SetRateLimitConfig(c *RateLimitConfig)             { p.ra
 func (p *BaseProvider) SetCloudTier(t int)                                { p.cloudTier = t }
 func (p *BaseProvider) SetBillingMode(m BillingMode)                      { p.billingMode = m }
 func (p *BaseProvider) SetSubscriptionPlan(plan *SubscriptionPlan)        { p.subscriptionPlan = plan }
+func (p *BaseProvider) SetExtraAPIKeys(keys []ProviderKey)                { p.extraAPIKeys = keys }
 
 // SetRequestHeaders sets the headers sent to the provider; an empty
 // configuration is stored as none.

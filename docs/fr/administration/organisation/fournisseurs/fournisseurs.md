@@ -289,6 +289,44 @@ d'utilisateurs actifs sur lequel la part a été calculée, ainsi qu'une mention
 lorsque le rythme resserre la part, lorsque le forfait déjà consommé par les
 autres la plafonne, ou lorsque la fin de fenêtre l'élargit.
 
+### Plusieurs clés pour un même abonnement
+
+Un forfait d'équipe, comme OpenCode Go Teams, donne à chaque membre sa propre
+clé et ses propres limites. Pour en faire profiter plus d'utilisateurs Xolo qu'il
+n'y a de membres, ajoutez les clés des membres sous **Clés API supplémentaires**,
+dans le formulaire d'un fournisseur en abonnement. La clé du fournisseur reste la
+première du lot.
+
+Le plan décrit les limites d'**une** clé. Xolo l'applique à chacune :
+
+- **les parts des utilisateurs** se calculent sur l'ensemble des clés. Avec
+  trois clés et une fenêtre de 30 $, la répartition entre utilisateurs porte
+  sur 90 $ ; c'est ce que montrent les jauges ;
+- **chaque requête** passe par une seule clé, qui doit avoir de la marge sur
+  toutes ses fenêtres. Un utilisateur reste sur la clé de sa requête précédente,
+  où vit le cache de ses conversations, tant qu'elle a de la marge. Sinon, il
+  passe sur la clé la moins remplie ; sur un forfait encore vide, les nouveaux
+  arrivants se répartissent entre les clés ;
+- **un refus d'OpenCode** (429 de limite atteinte) met la clé en pause et la
+  requête repart aussitôt, sans erreur, sur une autre clé qui a de la marge.
+  Une saturation momentanée du fournisseur (`server_error`) ne change pas de
+  clé.
+
+Les clés restent invisibles pour les utilisateurs : ni leur tableau de bord, ni
+les messages de refus ne les mentionnent. La page d'usage de l'organisation
+détaille la consommation clé par clé, sous la carte du fournisseur, pour les
+personnes autorisées à consulter les fournisseurs.
+
+Les fenêtres se calent pour toutes les clés sur la même ancre : réservez ce
+fonctionnement à des membres dont les forfaits se renouvellent ensemble.
+Désactivez par ailleurs le dépassement payant du forfait (« Extra Usage » chez
+OpenCode) : une clé qui continue de répondre au-delà de ses limites n'est
+jamais vue saturée, et le dépassement est facturé.
+
+Les requêtes passées par la clé du fournisseur avant l'ajout d'autres clés
+restent comptées sur celle-ci. Retirer une clé efface ses jauges, pas son
+historique d'usage.
+
 ## Configurer la résilience
 
 Dans les paramètres avancés du fournisseur :

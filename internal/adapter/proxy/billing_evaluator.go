@@ -32,16 +32,29 @@ type planScope struct {
 	// reads the upstream model, hence the weight, of each model consumed.
 	// Unused by the other constraints.
 	Models []model.LLMModel
+	// ByKey narrows the scope to one API key of the provider, KeyID, when the
+	// provider spreads its plan over several keys. A constraint is then checked
+	// against that key's usage and budget alone: the users' shares are decided
+	// on the whole pool, never per key.
+	ByKey bool
+	KeyID model.ProviderKeyID
 }
 
 // usageScope is the usage a constraint counts: the whole provider, or the
-// requested upstream model alone for a per-model constraint.
+// requested upstream model alone for a per-model constraint, narrowed to one
+// API key of the provider when the scope is.
 func (s planScope) usageScope(c model.PlanConstraint) model.PlanUsageScope {
-	scope := model.PlanUsageScope{OrgID: s.OrgID, ProviderID: s.ProviderID}
+	scope := model.PlanUsageScope{OrgID: s.OrgID, ProviderID: s.ProviderID, ByKey: s.ByKey, KeyID: s.KeyID}
 	if c.PerModel() {
 		scope.ModelIDs = s.ModelIDs
 	}
 	return scope
+}
+
+// forKey returns the scope narrowed to one API key of the provider.
+func (s planScope) forKey(key model.ProviderKeyID) planScope {
+	s.ByKey, s.KeyID = true, key
+	return s
 }
 
 // constraintName names a constraint in denial messages, with the upstream
@@ -151,22 +164,12 @@ func (e *rollingWindowEvaluator) Acquire(ctx context.Context, scope planScope, c
 		return nil, nil, err
 	}
 
-	if c.TokenBudget != nil && tokens >= *c.TokenBudget {
-		return nil, &planDenial{
-			Message: fmt.Sprintf("plan quota exceeded [%s]: %d / %d tokens used in the last %s",
-				name, tokens, *c.TokenBudget, formatDuration(dur)),
-		}, nil
+	if denial := budgetDenial(scope, c, name, tokens, providerValue); denial != nil {
+		return nil, denial, nil
 	}
 
-	if c.ValueBudget != nil && providerValue >= *c.ValueBudget {
-		return nil, &planDenial{
-			Message: fmt.Sprintf("plan quota exceeded [%s]: value budget of %s reached in the last %s",
-				name, formatMicrocents(providerValue, scope.Currency), formatDuration(dur)),
-		}, nil
-	}
-
-	// Per-user fair-share check.
-	if scope.UserID != "" && scope.MemberCount > 0 {
+	// Per-user fair-share check, decided on the whole pool of keys.
+	if scope.UserID != "" && scope.MemberCount > 0 && !scope.ByKey {
 		// A shared constraint weighs the user's consumption the way it weighed
 		// the plan's, which the allocator's own plain sum cannot.
 		var userUsage *service.PlanUsage
@@ -220,6 +223,53 @@ func (e *rollingWindowEvaluator) Acquire(ctx context.Context, scope planScope, c
 	}
 
 	return noopReservation{}, nil, nil
+}
+
+// budgetDenial checks the window's usage against the constraint's budgets.
+// On one key of a pool the message gives no amount: the request was refused
+// because no key had room left, and the user is not told about keys.
+func budgetDenial(scope planScope, c model.PlanConstraint, name string, tokens, value int64) *planDenial {
+	dur := c.Duration.Duration()
+	tokensOut := c.TokenBudget != nil && tokens >= *c.TokenBudget
+	valueOut := c.ValueBudget != nil && value >= *c.ValueBudget
+	switch {
+	case (tokensOut || valueOut) && scope.ByKey:
+		return &planDenial{
+			Message: fmt.Sprintf("plan quota exceeded [%s]: the plan's budget is used up for the last %s", name, formatDuration(dur)),
+		}
+	case tokensOut:
+		return &planDenial{
+			Message: fmt.Sprintf("plan quota exceeded [%s]: %d / %d tokens used in the last %s",
+				name, tokens, *c.TokenBudget, formatDuration(dur)),
+		}
+	case valueOut:
+		return &planDenial{
+			Message: fmt.Sprintf("plan quota exceeded [%s]: value budget of %s reached in the last %s",
+				name, formatMicrocents(value, scope.Currency), formatDuration(dur)),
+		}
+	}
+	return nil
+}
+
+// fill returns how much of a constraint's budget the scope consumed in the
+// current window, as a fraction (the larger of tokens and value), with the
+// denial when it is used up. It ranks the keys of a pool by their room left.
+func (e *rollingWindowEvaluator) fill(ctx context.Context, scope planScope, c model.PlanConstraint) (float64, *planDenial, error) {
+	if c.Duration.Duration() <= 0 || (c.TokenBudget == nil && c.ValueBudget == nil) {
+		return 0, nil, nil
+	}
+	tokens, value, err := e.planUsage(ctx, scope, c, scope.usageScope(c), "", c.CurrentWindowStart(time.Now()))
+	if err != nil {
+		return 0, nil, err
+	}
+	ratio := 0.0
+	if c.TokenBudget != nil && *c.TokenBudget > 0 {
+		ratio = max(ratio, float64(tokens)/float64(*c.TokenBudget))
+	}
+	if c.ValueBudget != nil && *c.ValueBudget > 0 {
+		ratio = max(ratio, float64(value)/float64(*c.ValueBudget))
+	}
+	return ratio, budgetDenial(scope, c, scope.constraintName(c), tokens, value), nil
 }
 
 // planUsage reads the consumption a constraint counts since the start of its

@@ -55,6 +55,10 @@ type UsageRecord struct {
 	CostSource        string // "provider" or "computed", see model.CostSource
 	PlanCovered       int    `gorm:"index;default:0;index:idx_usage_org_payg_cost,priority:2;index:idx_usage_org_prov_plan,priority:3;index:idx_usage_org_prov_user,priority:3;index:idx_usage_org_prov_model_plan,priority:4"` // 1 if served by a subscription provider
 	ProviderCost      int64  // equivalent PAYG cost in provider currency (microcents), for plan value budgets
+	// ProviderKeyID is the API key of the provider the request went through,
+	// empty for the provider's own. A plan spread over several keys is metered
+	// on each of them through it.
+	ProviderKeyID string `gorm:"not null;default:''"`
 	// Status is "ok", "interrupted", "client_gone", "write_failed" or
 	// "truncated", see model.UsageStatus for what each one means and
 	// usageStatus for the genai cause each maps from. It is indexed so usage
@@ -89,6 +93,9 @@ func (w *wrappedUsageRecord) ResolvedModelName() string    { return w.r.Resolved
 func (w *wrappedUsageRecord) CreatedAt() time.Time         { return w.r.CreatedAt }
 func (w *wrappedUsageRecord) PlanCovered() bool            { return w.r.PlanCovered != 0 }
 func (w *wrappedUsageRecord) ProviderCost() int64          { return w.r.ProviderCost }
+func (w *wrappedUsageRecord) ProviderKeyID() model.ProviderKeyID {
+	return model.ProviderKeyID(w.r.ProviderKeyID)
+}
 
 // Status defaults to model.UsageStatusOK for rows written before the column
 // existed: they are all completed calls, the only ones recorded back then.
@@ -122,6 +129,7 @@ func fromUsageRecord(r model.UsageRecord) *UsageRecord {
 		CostSource:        string(r.CostSource()),
 		PlanCovered:       boolToInt(r.PlanCovered()),
 		ProviderCost:      r.ProviderCost(),
+		ProviderKeyID:     string(r.ProviderKeyID()),
 		Status:            string(r.Status()),
 	}
 }

@@ -232,6 +232,11 @@ type PlanUsageScope struct {
 	// provider. A per-model constraint lists every model of the provider that
 	// targets the same upstream model, since the provider meters them as one.
 	ModelIDs []LLMModelID
+	// ByKey narrows the count to the usage of one API key of the provider,
+	// KeyID, when the provider spreads its plan over several keys. Without it
+	// the count covers every key.
+	ByKey bool
+	KeyID ProviderKeyID
 }
 
 // UpstreamModelIDs returns the ids of the models, among models, that m's
@@ -255,7 +260,11 @@ func (s PlanUsageScope) Key() string {
 		ids[i] = string(id)
 	}
 	slices.Sort(ids)
-	return string(s.OrgID) + "|" + string(s.ProviderID) + "|" + strings.Join(ids, ",")
+	key := string(s.OrgID) + "|" + string(s.ProviderID) + "|" + strings.Join(ids, ",")
+	if s.ByKey {
+		key += "|key:" + string(s.KeyID)
+	}
+	return key
 }
 
 // IsAnchored reports whether the constraint uses a fixed (tumbling) window aligned on a

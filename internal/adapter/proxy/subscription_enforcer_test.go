@@ -251,7 +251,7 @@ func TestSubscriptionEnforcer_Upstream429WithoutRetryAfterUsesTheDefaultCooldown
 		t.Fatalf("OnError: %v", err)
 	}
 
-	until, ok := f.state.exhaustedUntil[constraintKey{scopeKey{"org-1", f.kimi.ProviderID()}, "5h", "kimi-k3"}]
+	until, ok := f.state.exhaustedUntil[constraintKey{scopeKey{"org-1", f.kimi.ProviderID()}, model.PrimaryProviderKey, "5h", "kimi-k3"}]
 	if !ok {
 		t.Fatal("no cooldown recorded for kimi-k3")
 	}
@@ -355,14 +355,14 @@ func TestSubscriptionState_SweepsExpiredCooldowns(t *testing.T) {
 	s := NewSubscriptionState()
 	past := time.Now().Add(-time.Minute)
 	for i := range minPurgeAt {
-		s.MarkExhausted("org", "prov", "5h", strconv.Itoa(i), past)
+		s.MarkExhausted("org", "prov", model.PrimaryProviderKey, "5h", strconv.Itoa(i), past)
 	}
-	s.MarkExhausted("org", "prov", "5h", "live", time.Now().Add(time.Hour))
+	s.MarkExhausted("org", "prov", model.PrimaryProviderKey, "5h", "live", time.Now().Add(time.Hour))
 
 	if len(s.exhaustedUntil) != 1 {
 		t.Errorf("%d cooldowns kept, want only the live one", len(s.exhaustedUntil))
 	}
-	if !s.IsExhausted("org", "prov", "5h", "live") {
+	if !s.IsKeyExhausted("org", "prov", model.PrimaryProviderKey, "5h", "live") {
 		t.Error("the live cooldown was swept")
 	}
 }

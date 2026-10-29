@@ -241,6 +241,18 @@ type SubscriptionProviderUsage struct {
 	// PerUser is true when the figures represent the viewer's personal fair-share
 	// (usage and budgets divided by the org member count) rather than the org-wide total.
 	PerUser bool
+	// Keys break the plan down by API key, for a provider spreading it over
+	// several. Filled for the viewers who may read the providers only: the
+	// keys are never shown to the users.
+	Keys []SubscriptionKeyUsage
+}
+
+// SubscriptionKeyUsage is the consumption of a plan on one API key of its
+// provider.
+type SubscriptionKeyUsage struct {
+	// Label is the key's label, empty for the provider's own key.
+	Label       string
+	Constraints []SubscriptionConstraintUsage
 }
 
 type OrgUsagePageVModel struct {

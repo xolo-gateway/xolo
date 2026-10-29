@@ -815,7 +815,7 @@ func (h *Handler) sharedPlanUsage(ctx context.Context, c model.PlanConstraint, s
 // upstream model consumed in the current window. A plan metering a few dozen
 // models would bury the page under idle gauges; when none is in use a single
 // row says so.
-func (h *Handler) perModelConstraintUsage(ctx context.Context, c model.PlanConstraint, providerScope model.PlanUsageScope, models []model.LLMModel, now time.Time) []component.SubscriptionConstraintUsage {
+func (h *Handler) perModelConstraintUsage(ctx context.Context, c model.PlanConstraint, providerScope model.PlanUsageScope, keys []model.ProviderKeyID, models []model.LLMModel, now time.Time) []component.SubscriptionConstraintUsage {
 	idle := component.SubscriptionConstraintUsage{Constraint: c, Anchored: c.IsAnchored(), ResetAt: c.NextResetAt(now)}
 	if c.Duration.Duration() <= 0 {
 		return []component.SubscriptionConstraintUsage{idle}
@@ -840,7 +840,7 @@ func (h *Handler) perModelConstraintUsage(ctx context.Context, c model.PlanConst
 		scope.ModelIDs = um.ModelIDs
 		h.fillRollingWindowUsage(ctx, &cu, mc, scope, now, &port.PlanUsageTotals{Tokens: um.Tokens, Value: um.Value})
 		if h.subscriptionMonitor != nil {
-			cu.Exhausted = h.subscriptionMonitor.IsExhausted(providerScope.OrgID, providerScope.ProviderID, c.Label, um.UpstreamModel)
+			cu.Exhausted = h.subscriptionMonitor.IsExhausted(providerScope.OrgID, providerScope.ProviderID, keys, c.Label, um.UpstreamModel)
 		}
 		result = append(result, cu)
 	}
@@ -848,7 +848,9 @@ func (h *Handler) perModelConstraintUsage(ctx context.Context, c model.PlanConst
 }
 
 // buildSubscriptionProviderUsage collects runtime plan consumption for every
-// subscription provider belonging to the org.
+// subscription provider belonging to the org. A provider spreading its plan
+// over several keys is shown as the pool its users share, and, to whoever
+// may read the providers, key by key.
 func (h *Handler) buildSubscriptionProviderUsage(ctx context.Context, orgID model.OrgID) []component.SubscriptionProviderUsage {
 	providers, err := h.providerStore.ListProviders(ctx, orgID)
 	if err != nil {
@@ -868,10 +870,11 @@ func (h *Handler) buildSubscriptionProviderUsage(ctx context.Context, orgID mode
 			continue
 		}
 
+		keys := model.ProviderKeyIDs(p)
+		pooled := model.PooledPlan(p)
 		pu := component.SubscriptionProviderUsage{
-			Provider:    p,
-			Plan:        *plan,
-			Constraints: make([]component.SubscriptionConstraintUsage, 0, len(plan.Constraints)),
+			Provider: p,
+			Plan:     *pooled,
 		}
 
 		providerScope := model.PlanUsageScope{OrgID: orgID, ProviderID: p.ID()}
@@ -882,38 +885,58 @@ func (h *Handler) buildSubscriptionProviderUsage(ctx context.Context, orgID mode
 			}
 		}
 
-		for _, c := range plan.Constraints {
-			if c.PerModel() {
-				pu.Constraints = append(pu.Constraints, h.perModelConstraintUsage(ctx, c, providerScope, models, now)...)
-				continue
+		pu.Constraints = h.planConstraintsUsage(ctx, pooled, providerScope, keys, models, now)
+		if len(keys) > 1 && common.HasPermission(ctx, orgID, rbac.PermProvidersRead) {
+			for _, k := range model.ProviderKeys(p) {
+				scope := providerScope
+				scope.ByKey, scope.KeyID = true, k.ID
+				pu.Keys = append(pu.Keys, component.SubscriptionKeyUsage{
+					Label:       k.Label,
+					Constraints: h.planConstraintsUsage(ctx, plan, scope, []model.ProviderKeyID{k.ID}, models, now),
+				})
 			}
-
-			cu := component.SubscriptionConstraintUsage{Constraint: c}
-
-			switch c.Kind {
-			case model.ConstraintRollingWindow:
-				var totals *port.PlanUsageTotals
-				if c.Shared() {
-					totals = h.sharedPlanUsage(ctx, c, providerScope, models, now)
-				}
-				h.fillRollingWindowUsage(ctx, &cu, c, providerScope, now, totals)
-
-			case model.ConstraintConcurrency:
-				if h.subscriptionMonitor != nil {
-					cu.InFlight = h.subscriptionMonitor.CurrentInFlight(orgID, p.ID())
-					if c.MaxConcurrent != nil {
-						cu.Exhausted = h.subscriptionMonitor.IsExhausted(orgID, p.ID(), c.Label, "")
-					}
-				}
-			}
-
-			pu.Constraints = append(pu.Constraints, cu)
 		}
 
 		result = append(result, pu)
 	}
 
 	return result
+}
+
+// planConstraintsUsage reads the consumption of every constraint of a plan on
+// a plan scope: the whole provider, or one of its keys. keys are the keys the
+// scope covers, whose cooldowns the gauges report.
+func (h *Handler) planConstraintsUsage(ctx context.Context, plan *model.SubscriptionPlan, providerScope model.PlanUsageScope, keys []model.ProviderKeyID, models []model.LLMModel, now time.Time) []component.SubscriptionConstraintUsage {
+	usage := make([]component.SubscriptionConstraintUsage, 0, len(plan.Constraints))
+	for _, c := range plan.Constraints {
+		if c.PerModel() {
+			usage = append(usage, h.perModelConstraintUsage(ctx, c, providerScope, keys, models, now)...)
+			continue
+		}
+
+		cu := component.SubscriptionConstraintUsage{Constraint: c}
+
+		switch c.Kind {
+		case model.ConstraintRollingWindow:
+			var totals *port.PlanUsageTotals
+			if c.Shared() {
+				totals = h.sharedPlanUsage(ctx, c, providerScope, models, now)
+			}
+			h.fillRollingWindowUsage(ctx, &cu, c, providerScope, now, totals)
+
+		case model.ConstraintConcurrency:
+			// In-flight requests are counted on the whole provider.
+			if h.subscriptionMonitor != nil && !providerScope.ByKey {
+				cu.InFlight = h.subscriptionMonitor.CurrentInFlight(providerScope.OrgID, providerScope.ProviderID)
+				if c.MaxConcurrent != nil {
+					cu.Exhausted = h.subscriptionMonitor.IsExhausted(providerScope.OrgID, providerScope.ProviderID, keys, c.Label, "")
+				}
+			}
+		}
+
+		usage = append(usage, cu)
+	}
+	return usage
 }
 
 // usageScope is what the usage page shows: the organization, or one team.

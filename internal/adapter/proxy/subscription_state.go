@@ -22,9 +22,11 @@ type SubscriptionState struct {
 
 // constraintKey identifies one constraint's cooldown. upstreamModel is set for
 // a per-model constraint, whose models are exhausted one by one, and empty for
-// a provider-wide one.
+// a provider-wide one. key is the API key of the provider the cooldown applies
+// to: each key of a provider holds a plan of its own.
 type constraintKey struct {
 	scope         scopeKey
+	key           model.ProviderKeyID
 	label         string
 	upstreamModel string
 }
@@ -106,10 +108,10 @@ func (s *SubscriptionStateDetailed) CurrentUserInFlight(orgID model.OrgID, provi
 	return s.userInFlight[userScopeKey{orgID, providerID, userID}]
 }
 
-// MarkExhausted sets a cooldown for a specific constraint label until the given
-// time. upstreamModel names the model of a per-model constraint, empty for a
-// provider-wide one.
-func (s *SubscriptionStateDetailed) MarkExhausted(orgID model.OrgID, providerID model.ProviderID, label, upstreamModel string, until time.Time) {
+// MarkExhausted sets a cooldown for a specific constraint label of one API key
+// of the provider until the given time. upstreamModel names the model of a
+// per-model constraint, empty for a provider-wide one.
+func (s *SubscriptionStateDetailed) MarkExhausted(orgID model.OrgID, providerID model.ProviderID, key model.ProviderKeyID, label, upstreamModel string, until time.Time) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	// An expired cooldown is otherwise only dropped when its key is checked
@@ -125,15 +127,36 @@ func (s *SubscriptionStateDetailed) MarkExhausted(orgID model.OrgID, providerID 
 		}
 		s.exhaustedPurgeAt = max(2*len(s.exhaustedUntil), minPurgeAt)
 	}
-	s.exhaustedUntil[constraintKey{scopeKey{orgID, providerID}, label, upstreamModel}] = until
+	s.exhaustedUntil[constraintKey{scopeKey{orgID, providerID}, key, label, upstreamModel}] = until
 }
 
-// IsExhausted reports whether a constraint is currently in cooldown, for one
-// upstream model when the constraint is per model.
-func (s *SubscriptionStateDetailed) IsExhausted(orgID model.OrgID, providerID model.ProviderID, label, upstreamModel string) bool {
+// IsKeyExhausted reports whether a constraint of one API key of the provider
+// is currently in cooldown, for one upstream model when the constraint is per
+// model.
+func (s *SubscriptionStateDetailed) IsKeyExhausted(orgID model.OrgID, providerID model.ProviderID, key model.ProviderKeyID, label, upstreamModel string) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	key := constraintKey{scopeKey{orgID, providerID}, label, upstreamModel}
+	return s.exhaustedLocked(constraintKey{scopeKey{orgID, providerID}, key, label, upstreamModel})
+}
+
+// IsExhausted reports whether a constraint is in cooldown on every one of the
+// given keys of the provider: a request can still be served while one of them
+// is not.
+func (s *SubscriptionStateDetailed) IsExhausted(orgID model.OrgID, providerID model.ProviderID, keys []model.ProviderKeyID, label, upstreamModel string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if len(keys) == 0 {
+		keys = []model.ProviderKeyID{model.PrimaryProviderKey}
+	}
+	for _, key := range keys {
+		if !s.exhaustedLocked(constraintKey{scopeKey{orgID, providerID}, key, label, upstreamModel}) {
+			return false
+		}
+	}
+	return true
+}
+
+func (s *SubscriptionStateDetailed) exhaustedLocked(key constraintKey) bool {
 	until, ok := s.exhaustedUntil[key]
 	if !ok {
 		return false

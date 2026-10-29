@@ -358,3 +358,31 @@ func TestEstimatePromptTokens(t *testing.T) {
 		t.Errorf("unparseable body: got %d, want 10", got)
 	}
 }
+
+func TestUsageTrackerRecordsTheProviderKeyUsed(t *testing.T) {
+	orgID := model.OrgID("org-1")
+	provider := model.NewProvider(orgID, "OpenCode", "openai", "https://opencode.ai/zen/go/v1", "key", "USD")
+	provider.SetBillingMode(model.BillingModeSubscription)
+	provider.SetExtraAPIKeys([]model.ProviderKey{{ID: "k2", Label: "member 2", APIKey: "key2"}})
+	llmModel := model.NewLLMModel(provider.ID(), orgID, "kimi", "kimi-k3", "", 1000, 2000)
+	org := model.NewOrganization(testTenantID, "org-1", "Org 1", "", "USD")
+
+	for key, want := range map[model.ProviderKeyID]model.ProviderKeyID{
+		"k2": "k2",
+		// A key the provider does not hold, such as one set for the model a
+		// pipeline replaced, is not recorded.
+		"elsewhere":              model.PrimaryProviderKey,
+		model.PrimaryProviderKey: model.PrimaryProviderKey,
+	} {
+		tracker, usageStore := newTestTracker(&fakeProviderStore{provider: provider, llmModel: llmModel}, &fakeOrgStore{org: org})
+		req, res := newTestRequestResponse(llmModel.ID(), orgID, &genaiProxy.TokenUsage{PromptTokens: 10, CompletionTokens: 5, TotalTokens: 15})
+		req.Metadata[MetaProviderKeyUsed] = key
+
+		if _, err := tracker.PostResponse(context.Background(), req, res); err != nil {
+			t.Fatalf("PostResponse() error = %v", err)
+		}
+		if got := usageStore.recorded.ProviderKeyID(); got != want {
+			t.Errorf("key %q recorded as %q, want %q", key, got, want)
+		}
+	}
+}

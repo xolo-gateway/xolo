@@ -1,10 +1,12 @@
 package proxy
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -28,9 +30,11 @@ const metaPlanReservations = "xolo.plan.reservations"
 // State is in-memory (not shared across replicas): the upstream 429 resync acts as the safety net.
 type XoloSubscriptionEnforcer struct {
 	providerStore port.ProviderStore
+	usageStore    port.UsageStore
 	orgStore      port.OrgStore
 	state         *SubscriptionStateDetailed
 	evaluators    map[model.PlanConstraintKind]constraintEvaluator
+	rolling       *rollingWindowEvaluator
 	models        *orgModelCache
 }
 
@@ -41,15 +45,18 @@ func NewXoloSubscriptionEnforcer(
 	state *SubscriptionStateDetailed,
 	orgStore port.OrgStore,
 ) *XoloSubscriptionEnforcer {
+	rolling := newRollingWindowEvaluator(usageStore, fairShare)
 	return &XoloSubscriptionEnforcer{
 		providerStore: providerStore,
+		usageStore:    usageStore,
 		orgStore:      orgStore,
 		state:         state,
 		evaluators: map[model.PlanConstraintKind]constraintEvaluator{
-			model.ConstraintRollingWindow: newRollingWindowEvaluator(usageStore, fairShare),
+			model.ConstraintRollingWindow: rolling,
 			model.ConstraintConcurrency:   &concurrencyEvaluator{state: state},
 		},
-		models: newOrgModelCache(upstreamModelsCacheTTL),
+		rolling: rolling,
+		models:  newOrgModelCache(upstreamModelsCacheTTL),
 	}
 }
 
@@ -109,21 +116,31 @@ func (e *XoloSubscriptionEnforcer) PreRequest(ctx context.Context, req *genaiPro
 		scope.Models = models
 	}
 
-	// Check cooldowns first (fast path, no DB).
-	for _, c := range plan.Constraints {
-		if c.PerModel() && scope.UpstreamModel == "" {
-			continue
-		}
-		if e.state.IsExhausted(orgID, p.ID(), c.Label, cooldownModel(c, scope.UpstreamModel)) {
-			return &genaiProxy.HookResult{Response: planExhaustedResponse(
-				"plan quota in cooldown [" + scope.constraintName(c) + "]: upstream provider reported exhaustion",
-			)}, nil
+	// A provider holding several keys holds a whole plan on each: the users
+	// share the pool, and each request then goes through one key with room
+	// left (see pickKey).
+	keys := model.ProviderKeyIDs(p)
+	pooled := len(keys) > 1
+	shared := plan.Pooled(len(keys))
+
+	// Check cooldowns first (fast path, no DB). The keys of a pool are checked
+	// one by one when one is picked.
+	if !pooled {
+		for _, c := range plan.Constraints {
+			if c.PerModel() && scope.UpstreamModel == "" {
+				continue
+			}
+			if e.state.IsKeyExhausted(orgID, p.ID(), model.PrimaryProviderKey, c.Label, cooldownModel(c, scope.UpstreamModel)) {
+				return &genaiProxy.HookResult{Response: planExhaustedResponse(
+					"plan quota in cooldown [" + scope.constraintName(c) + "]: upstream provider reported exhaustion",
+				)}, nil
+			}
 		}
 	}
 
 	// Acquire each constraint in order; release all on denial.
-	reservations := make([]planReservation, 0, len(plan.Constraints))
-	for _, c := range plan.Constraints {
+	reservations := make([]planReservation, 0, len(shared.Constraints))
+	for _, c := range shared.Constraints {
 		if c.PerModel() {
 			// A model with no upstream name has nothing to meter a per-model
 			// constraint against; the provider-wide ones still apply.
@@ -148,9 +165,167 @@ func (e *XoloSubscriptionEnforcer) PreRequest(ctx context.Context, req *genaiPro
 		reservations = append(reservations, res)
 	}
 
+	if pooled {
+		chosen, fallbacks, denial, err := e.pickKey(ctx, scope, plan, keys)
+		if err != nil {
+			releaseAll(ctx, reservations)
+			return nil, errors.WithStack(err)
+		}
+		if denial != nil {
+			releaseAll(ctx, reservations)
+			return &genaiProxy.HookResult{Response: planExhaustedResponse(denial.Message)}, nil
+		}
+		req.Metadata[MetaProviderKey] = chosen
+		req.Metadata[metaProviderKeyFallbacks] = fallbacks
+	}
+
 	// Stash reservations for release in PostResponse/OnError.
 	req.Metadata[metaPlanReservations] = reservations
 	return nil, nil
+}
+
+// pickKey chooses the API key a request of a pooled provider goes through,
+// and the keys it may move to when that one turns out exhausted upstream.
+//
+// A user stays on the key their last request went through, where the upstream
+// prompt cache of their conversations lives, as long as it has room left. A
+// user without one, or whose key ran out, is moved to the key with the most
+// room left; keys with as much room are ranked per user (model.KeyAffinity),
+// so the users arriving on an idle plan spread over the keys. The fallbacks
+// are the other keys with room left, in the same order.
+//
+// The plan is the provider's own, applied to each key; the users' shares were
+// already decided on the pool.
+func (e *XoloSubscriptionEnforcer) pickKey(ctx context.Context, scope planScope, plan *model.SubscriptionPlan, keys []model.ProviderKeyID) (model.ProviderKeyID, []model.ProviderKeyID, *planDenial, error) {
+	sticky, hasSticky := model.ProviderKeyID(""), false
+	if scope.UserID != "" {
+		last, ok, err := e.usageStore.LastPlanUsageKey(ctx, model.PlanUsageScope{OrgID: scope.OrgID, ProviderID: scope.ProviderID}, scope.UserID)
+		if err != nil {
+			// Not fatal: the user is placed as a newcomer, at worst on a key
+			// whose cache holds none of their conversations.
+			slog.WarnContext(ctx, "subscription enforcer: could not read the user's last provider key",
+				slog.Any("error", err), slog.String("provider", string(scope.ProviderID)))
+		}
+		hasSticky = ok && err == nil && slices.Contains(keys, last)
+		sticky = last
+	}
+
+	type candidate struct {
+		key  model.ProviderKeyID
+		fill float64
+	}
+	var (
+		candidates []candidate
+		lastDenial *planDenial
+	)
+	if hasSticky {
+		_, denial, err := e.keyFill(ctx, scope.forKey(sticky), plan)
+		if err != nil {
+			return "", nil, nil, err
+		}
+		if denial == nil {
+			// The fallbacks are only read when the key fails upstream, which
+			// Xolo's own metering did not foresee: they are ranked without
+			// measuring each key, and the ones in cooldown left out.
+			var fallbacks []model.ProviderKeyID
+			for _, key := range rankKeys(scope.UserID, keys) {
+				if key != sticky && !e.keyInCooldown(scope.forKey(key), plan) {
+					fallbacks = append(fallbacks, key)
+				}
+			}
+			return sticky, fallbacks, nil, nil
+		}
+		lastDenial = denial
+	}
+
+	for _, key := range keys {
+		if hasSticky && key == sticky {
+			continue
+		}
+		fill, denial, err := e.keyFill(ctx, scope.forKey(key), plan)
+		if err != nil {
+			return "", nil, nil, err
+		}
+		if denial != nil {
+			lastDenial = denial
+			continue
+		}
+		candidates = append(candidates, candidate{key: key, fill: fill})
+	}
+	if len(candidates) == 0 {
+		if lastDenial == nil {
+			lastDenial = &planDenial{Message: "plan quota exceeded: the plan's budget is used up"}
+		}
+		return "", nil, lastDenial, nil
+	}
+
+	slices.SortStableFunc(candidates, func(a, b candidate) int {
+		if c := cmp.Compare(a.fill, b.fill); c != 0 {
+			return c
+		}
+		return cmp.Compare(model.KeyAffinity(scope.UserID, a.key), model.KeyAffinity(scope.UserID, b.key))
+	})
+	fallbacks := make([]model.ProviderKeyID, 0, len(candidates)-1)
+	for _, c := range candidates[1:] {
+		fallbacks = append(fallbacks, c.key)
+	}
+	return candidates[0].key, fallbacks, nil, nil
+}
+
+// keyFill measures how much of the plan one key of a pool consumed: the
+// fullest of its rolling windows, with the denial when one of them is used up
+// or in cooldown. The concurrency constraints are held on the pool only.
+func (e *XoloSubscriptionEnforcer) keyFill(ctx context.Context, scope planScope, plan *model.SubscriptionPlan) (float64, *planDenial, error) {
+	fill := 0.0
+	for _, c := range plan.Constraints {
+		if c.PerModel() {
+			if scope.UpstreamModel == "" {
+				continue
+			}
+			c = c.ForModel(scope.UpstreamModel)
+		}
+		if e.state.IsKeyExhausted(scope.OrgID, scope.ProviderID, scope.KeyID, c.Label, cooldownModel(c, scope.UpstreamModel)) {
+			return 0, &planDenial{Message: "plan quota in cooldown [" + scope.constraintName(c) + "]: upstream provider reported exhaustion"}, nil
+		}
+		if c.Kind != model.ConstraintRollingWindow {
+			continue
+		}
+		ratio, denial, err := e.rolling.fill(ctx, scope, c)
+		if err != nil || denial != nil {
+			return 0, denial, err
+		}
+		fill = max(fill, ratio)
+	}
+	return fill, nil, nil
+}
+
+// keyInCooldown reports whether one of the plan's constraints is in cooldown
+// on one key of a pool.
+func (e *XoloSubscriptionEnforcer) keyInCooldown(scope planScope, plan *model.SubscriptionPlan) bool {
+	for _, c := range plan.Constraints {
+		if c.PerModel() && scope.UpstreamModel == "" {
+			continue
+		}
+		if e.state.IsKeyExhausted(scope.OrgID, scope.ProviderID, scope.KeyID, c.Label, cooldownModel(c, scope.UpstreamModel)) {
+			return true
+		}
+	}
+	return false
+}
+
+// rankKeys orders the keys of a pool for one user, see model.KeyAffinity.
+func rankKeys(userID model.UserID, keys []model.ProviderKeyID) []model.ProviderKeyID {
+	ranked := slices.Clone(keys)
+	slices.SortStableFunc(ranked, func(a, b model.ProviderKeyID) int {
+		return cmp.Compare(model.KeyAffinity(userID, a), model.KeyAffinity(userID, b))
+	})
+	return ranked
+}
+
+// MarkKeyExhausted puts in cooldown an API key a request moved away from after
+// an upstream 429, see keyFailoverClient.
+func (e *XoloSubscriptionEnforcer) MarkKeyExhausted(ctx context.Context, metadata map[string]any, key model.ProviderKeyID, header http.Header) {
+	e.markExhausted(ctx, &genaiProxy.ProxyRequest{Metadata: metadata}, key, header)
 }
 
 // PostResponse implements genaiProxy.PostResponseHook.
@@ -160,7 +335,7 @@ func (e *XoloSubscriptionEnforcer) PostResponse(ctx context.Context, req *genaiP
 	// A 429 the proxy answers with is either one of ours, or an upstream one a
 	// relay passed through as is.
 	if res != nil && res.StatusCode == http.StatusTooManyRequests && !isOwnResponse(res) && !isUpstreamCapacityError(res.Body) {
-		e.markExhausted(ctx, req, res.Headers)
+		e.markExhausted(ctx, req, usedKey(req), res.Headers)
 	}
 
 	return nil, nil
@@ -174,7 +349,7 @@ func (e *XoloSubscriptionEnforcer) OnError(ctx context.Context, req *genaiProxy.
 	// for a cooldown so the provider is not hammered before its window resets.
 	var httpErr *llm.HTTPError
 	if errors.As(err, &httpErr) && httpErr.StatusCode == http.StatusTooManyRequests && !isUpstreamCapacityError(httpErr.Body) {
-		e.markExhausted(ctx, req, httpErr.Header)
+		e.markExhausted(ctx, req, usedKey(req), httpErr.Header)
 	}
 
 	return nil, nil
@@ -184,6 +359,12 @@ func (e *XoloSubscriptionEnforcer) releaseReservations(ctx context.Context, req 
 	reservations, _ := req.Metadata[metaPlanReservations].([]planReservation)
 	releaseAll(ctx, reservations)
 	delete(req.Metadata, metaPlanReservations)
+}
+
+// usedKey is the API key of the provider a request last went through.
+func usedKey(req *genaiProxy.ProxyRequest) model.ProviderKeyID {
+	key, _ := req.Metadata[MetaProviderKeyUsed].(model.ProviderKeyID)
+	return key
 }
 
 // defaultExhaustionCooldown is how long a constraint stays exhausted after an
@@ -202,7 +383,10 @@ const defaultExhaustionCooldown = 5 * time.Minute
 // thing the 429 can be pinned on. A shared constraint is provider-wide in this
 // respect: it goes into cooldown for every model, unless the plan also meters
 // per model, where it stays open like the other provider-wide ones.
-func (e *XoloSubscriptionEnforcer) markExhausted(ctx context.Context, req *genaiProxy.ProxyRequest, header http.Header) {
+//
+// The cooldown applies to the API key the 429 came from: the other keys of a
+// pool hold plans of their own.
+func (e *XoloSubscriptionEnforcer) markExhausted(ctx context.Context, req *genaiProxy.ProxyRequest, key model.ProviderKeyID, header http.Header) {
 	orgID := OrgIDFromMeta(req.Metadata)
 	m, p := e.resolveTarget(ctx, req)
 	if p == nil || p.BillingMode() != model.BillingModeSubscription {
@@ -234,9 +418,10 @@ func (e *XoloSubscriptionEnforcer) markExhausted(ctx context.Context, req *genai
 			slog.String("org", string(orgID)),
 			slog.String("constraint", c.Label),
 			slog.String("upstream_model", upstreamModel),
+			slog.String("provider_key", string(key)),
 			slog.Duration("cooldown", cooldown),
 		)
-		e.state.MarkExhausted(orgID, p.ID(), c.Label, upstreamModel, until)
+		e.state.MarkExhausted(orgID, p.ID(), key, c.Label, upstreamModel, until)
 	}
 }
 

@@ -298,6 +298,11 @@ func (s *ProvisioningService) PutProvider(ctx context.Context, tenantID model.Te
 		provider.SetRetryConfig(v.RetryConfig)
 		provider.SetRateLimitConfig(v.RateLimitConfig)
 		provider.SetRequestHeaders(v.RequestHeaders)
+		if current != nil {
+			// The extra keys are managed in the web UI only: provisioning
+			// keeps them as they are.
+			provider.SetExtraAPIKeys(current.ExtraAPIKeys())
+		}
 		if target.exists {
 			return errors.WithStack(tx.tx.SaveProvider(ctx, provider))
 		}

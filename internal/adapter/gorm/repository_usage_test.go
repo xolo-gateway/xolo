@@ -502,3 +502,80 @@ func scenarioUsageStoreCountActivePlanUsers(t *testing.T, store *xologorm.Store)
 		t.Errorf("expected no active plan user outside the window, got %d", count)
 	}
 }
+
+func TestUsageStore_PlanUsageByKey(t *testing.T) {
+	eachBackend(t, scenarioUsageStorePlanUsageByKey)
+}
+
+// scenarioUsageStorePlanUsageByKey meters a plan spread over several keys:
+// each key's usage on its own, every key together, and the key of each
+// user's last request.
+func scenarioUsageStorePlanUsageByKey(t *testing.T, store *xologorm.Store) {
+	ctx := context.Background()
+	f := seedUsage(t, store)
+	since := time.Now().Add(-time.Hour)
+	provider := model.PlanUsageScope{OrgID: f.orgID, ProviderID: f.providerID}
+
+	record := func(user model.UserID, key model.ProviderKeyID, value int64) {
+		t.Helper()
+		// Past the precision of every backend's timestamps, so the records
+		// keep their order.
+		time.Sleep(2 * time.Millisecond)
+		r := model.NewUsageRecord(user, "", f.orgID, "", f.providerID, f.modelID,
+			"fast", "", 100, 10, 50, 0, "USD", model.CostSourceComputed, "")
+		r.SetPlanCovered(true)
+		r.SetProviderCost(value)
+		r.SetProviderKeyID(key)
+		if err := store.RecordUsage(ctx, r); err != nil {
+			t.Fatalf("RecordUsage: %v", err)
+		}
+	}
+	record(f.userA, "k2", 1_000)
+	record(f.userB, "k3", 2_000)
+	record(f.userA, "k3", 4_000)
+
+	for _, tc := range []struct {
+		name  string
+		scope model.PlanUsageScope
+		want  int64
+	}{
+		// The seeded record went through the provider's own key.
+		{"every key", provider, 750 + 7_000},
+		{"own key", model.PlanUsageScope{OrgID: f.orgID, ProviderID: f.providerID, ByKey: true, KeyID: model.PrimaryProviderKey}, 750},
+		{"k2", model.PlanUsageScope{OrgID: f.orgID, ProviderID: f.providerID, ByKey: true, KeyID: "k2"}, 1_000},
+		{"k3", model.PlanUsageScope{OrgID: f.orgID, ProviderID: f.providerID, ByKey: true, KeyID: "k3"}, 6_000},
+	} {
+		_, value, err := store.SumPlanUsageSince(ctx, tc.scope, since)
+		if err != nil {
+			t.Fatalf("SumPlanUsageSince (%s): %v", tc.name, err)
+		}
+		if value != tc.want {
+			t.Errorf("SumPlanUsageSince (%s) = %d, want %d", tc.name, value, tc.want)
+		}
+	}
+
+	_, userOnK3, err := store.SumUserPlanUsageSince(ctx, f.userA, model.PlanUsageScope{OrgID: f.orgID, ProviderID: f.providerID, ByKey: true, KeyID: "k3"}, since)
+	if err != nil {
+		t.Fatalf("SumUserPlanUsageSince: %v", err)
+	}
+	if userOnK3 != 4_000 {
+		t.Errorf("user A on k3 = %d, want 4000", userOnK3)
+	}
+
+	for user, want := range map[model.UserID]model.ProviderKeyID{f.userA: "k3", f.userB: "k3"} {
+		key, ok, err := store.LastPlanUsageKey(ctx, provider, user)
+		if err != nil {
+			t.Fatalf("LastPlanUsageKey: %v", err)
+		}
+		if !ok || key != want {
+			t.Errorf("LastPlanUsageKey = (%q, %v), want (%q, true)", key, ok, want)
+		}
+	}
+	if _, ok, err := store.LastPlanUsageKey(ctx, provider, model.NewUserID()); err != nil || ok {
+		t.Errorf("LastPlanUsageKey (no usage) = (%v, %v), want none", ok, err)
+	}
+	// Another provider's usage is not the user's key on this one.
+	if _, ok, err := store.LastPlanUsageKey(ctx, model.PlanUsageScope{OrgID: f.orgID, ProviderID: f.otherProvID}, f.userA); err != nil || ok {
+		t.Errorf("LastPlanUsageKey (other provider) = (%v, %v), want none", ok, err)
+	}
+}

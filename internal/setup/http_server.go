@@ -169,8 +169,11 @@ func NewHTTPServerFromConfig(ctx context.Context, conf *config.Config) (*http.Se
 		return nil, errors.WithStack(err)
 	}
 
+	subscriptionEnforcer := proxyAdapter.NewXoloSubscriptionEnforcer(providerStore, usageStore, fairShareService, subscriptionState, orgStore)
+
 	orgModelRouter := proxyAdapter.NewOrgModelRouter(providerStore, orgStore, conf.SecretKey,
 		proxyAdapter.WithUpstreamTimeout(conf.Proxy.UpstreamTimeout),
+		proxyAdapter.WithKeyExhaustionHandler(subscriptionEnforcer.MarkKeyExhausted),
 	)
 
 	teamStore, err := getTeamStoreFromConfig(ctx, conf)
@@ -267,7 +270,7 @@ func NewHTTPServerFromConfig(ctx context.Context, conf *config.Config) (*http.Se
 		proxy.WithHook(pipelineHookAdapter),
 		proxy.WithHook(orgModelRouter),
 		proxy.WithHook(proxyAdapter.NewXoloQuotaEnforcer(quotaService, usageStore, providerStore)),
-		proxy.WithHook(proxyAdapter.NewXoloSubscriptionEnforcer(providerStore, usageStore, fairShareService, subscriptionState, orgStore)),
+		proxy.WithHook(subscriptionEnforcer),
 		proxy.WithHook(proxyAdapter.NewXoloUsageTracker(usageStore, providerStore, orgStore, exchangeRateService)),
 		proxy.WithHook(proxyAdapter.NewXoloEventEmitterHook(eventEmitter)),
 	)

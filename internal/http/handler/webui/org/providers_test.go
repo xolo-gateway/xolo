@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/xolo-gateway/xolo/internal/core/model"
+	"github.com/xolo-gateway/xolo/internal/crypto"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/org/component"
 )
 
@@ -229,6 +230,75 @@ func TestParseRequestHeadersFromForm(t *testing.T) {
 			t.Error("expected an error for a reserved header")
 		}
 	})
+}
+
+func TestParseProviderKeysFromForm(t *testing.T) {
+	const secret = "0123456789abcdef0123456789abcdef"
+	stored := []model.ProviderKey{
+		{ID: "k2", Label: "member 2", APIKey: "encrypted-2"},
+		{ID: "k3", Label: "member 3", APIKey: "encrypted-3"},
+	}
+
+	t.Run("a form without the section keeps the stored keys", func(t *testing.T) {
+		keys, err := parseProviderKeysFromForm(makeRequest(map[string]string{"name": "OpenCode"}), secret, stored)
+		if err != nil || len(keys) != 2 {
+			t.Errorf("got %+v, %v; want the stored keys", keys, err)
+		}
+	})
+
+	t.Run("edits, removes and adds", func(t *testing.T) {
+		keys, err := parseProviderKeysFromForm(makeRequest(map[string]string{
+			"provider_key_count":    "3",
+			"provider_key_k0_id":    "k2",
+			"provider_key_k0_label": " member two ",
+			"provider_key_k1_id":    "",
+			"provider_key_k1_label": "member 4",
+			"provider_key_k1_value": " sk-4 ",
+			// An added row left empty.
+			"provider_key_k2_id": "",
+		}), secret, stored)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(keys) != 2 {
+			t.Fatalf("got %d keys, want 2: k3 was removed, the empty row skipped", len(keys))
+		}
+		if keys[0] != (model.ProviderKey{ID: "k2", Label: "member two", APIKey: "encrypted-2"}) {
+			t.Errorf("k2 = %+v, want relabelled with its secret kept", keys[0])
+		}
+		if keys[1].ID == "" || keys[1].Label != "member 4" {
+			t.Errorf("new key = %+v, want an id and its label", keys[1])
+		}
+		if plain, err := crypto.Decrypt(secret, keys[1].APIKey); err != nil || plain != "sk-4" {
+			t.Errorf("new key decrypts to %q, %v; want sk-4", plain, err)
+		}
+	})
+
+	t.Run("an unknown id is a new key", func(t *testing.T) {
+		_, err := parseProviderKeysFromForm(makeRequest(map[string]string{
+			"provider_key_count":    "1",
+			"provider_key_k0_id":    "forged",
+			"provider_key_k0_label": "member 5",
+		}), secret, stored)
+		if err == nil {
+			t.Error("expected an error: a new key needs its value")
+		}
+	})
+
+	for name, fields := range map[string]map[string]string{
+		"a key without label": {"provider_key_count": "1", "provider_key_k0_value": "sk"},
+		"a label used twice": {
+			"provider_key_count": "2",
+			"provider_key_k0_id": "k2", "provider_key_k0_label": "member",
+			"provider_key_k1_id": "k3", "provider_key_k1_label": "member",
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if _, err := parseProviderKeysFromForm(makeRequest(fields), secret, stored); err == nil {
+				t.Error("expected an error")
+			}
+		})
+	}
 }
 
 func TestParseSubscriptionPlanFromForm_FairShareTuning(t *testing.T) {

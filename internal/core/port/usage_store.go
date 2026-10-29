@@ -69,6 +69,12 @@ type UsageStore interface {
 	// starting at `since`, restricted to one user when userID is set. Used to display when
 	// the window will next free up. Returns a zero time when no such record exists.
 	EarliestPlanUsageSince(ctx context.Context, scope model.PlanUsageScope, userID model.UserID, since time.Time) (time.Time, error)
+	// LastPlanUsageKey returns the API key of the provider that the user's most
+	// recent subscription-covered (plan_covered=true) request on the plan scope
+	// went through, and false when the user has none. A provider spreading its
+	// plan over several keys keeps each user on that key, where the upstream
+	// prompt cache of their conversations lives.
+	LastPlanUsageKey(ctx context.Context, scope model.PlanUsageScope, userID model.UserID) (model.ProviderKeyID, bool, error)
 	// AggregateCostByDimension returns cost sub-totals grouped by the given dimension, the
 	// record's org, currency and billing arrangement, honoring the filter. It lets the
 	// usage/dashboard charts bucket costs in SQL instead of loading every record into memory.

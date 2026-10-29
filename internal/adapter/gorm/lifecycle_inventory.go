@@ -60,7 +60,7 @@ var lifecycleTables = []lifecycleTable{
 	{table: "application_roles", org: "(SELECT org_id FROM applications WHERE id = r.application_id)", key: []string{"application_id", "role_id"}},
 	{table: "auth_tokens", org: "r.org_id", member: "r.owner_id", secret: []string{"value"}},
 	{table: "invite_tokens", org: "r.org_id"},
-	{table: "providers", org: "r.org_id", family: model.FamilyProvider, secret: []string{"api_key"}},
+	{table: "providers", org: "r.org_id", family: model.FamilyProvider, secret: []string{"api_key", "api_keys"}},
 	{table: "llm_models", org: "r.org_id"},
 	{table: "virtual_models", org: "r.org_id", family: model.FamilyVirtualModel},
 	{table: "middlewares", org: "r.org_id", family: model.FamilyMiddleware},

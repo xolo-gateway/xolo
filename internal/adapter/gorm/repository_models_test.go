@@ -47,6 +47,7 @@ func scenarioProviderStoreProviders(t *testing.T, store *xologorm.Store) {
 	provider.SetRetryConfig(&model.RetryConfig{Enabled: true, MaxAttempts: 3, Delay: 250 * time.Millisecond})
 	provider.SetBillingMode(model.BillingModeSubscription)
 	provider.SetSubscriptionPlan(&model.SubscriptionPlan{Label: "Pro"})
+	provider.SetExtraAPIKeys([]model.ProviderKey{{ID: "k2", Label: "member 2", APIKey: "encrypted-key-2"}})
 	if err := store.CreateProvider(ctx, provider); err != nil {
 		t.Fatalf("CreateProvider: %v", err)
 	}
@@ -75,6 +76,9 @@ func scenarioProviderStoreProviders(t *testing.T, store *xologorm.Store) {
 	}
 	if loaded.BillingMode() != model.BillingModeSubscription {
 		t.Errorf("expected billing mode %q, got %q", model.BillingModeSubscription, loaded.BillingMode())
+	}
+	if keys := loaded.ExtraAPIKeys(); len(keys) != 1 || keys[0] != (model.ProviderKey{ID: "k2", Label: "member 2", APIKey: "encrypted-key-2"}) {
+		t.Errorf("expected the extra API keys to round-trip, got %+v", keys)
 	}
 
 	if _, err := store.GetProviderByID(ctx, model.NewProviderID()); !errors.Is(err, port.ErrNotFound) {

@@ -214,6 +214,7 @@ templ ProviderForm(vmodel ProviderFormVModel) {
 					<div class="mt-3.5">
 						@SubscriptionPlanEditor(vmodel.Provider.SubscriptionPlan(), readonly, vmodel.Submitted)
 					</div>
+					@providerKeysSection(vmodel, readonly)
 				}
 				if !vmodel.IsNew && vmodel.Provider != nil {
 					@providerResilienceSection(vmodel, readonly)
@@ -432,6 +433,28 @@ templ providerHeadersSection(vmodel ProviderFormVModel, readonly bool) {
 						@templ.Raw(i18n.T(ctx, "org.provider.fixed_headers_help"))
 					}
 				</div>
+			}
+		}
+	</div>
+}
+
+// providerKeysSection lists the keys a subscription provider holds besides
+// its own, such as the keys of the members of a team subscription. The plan
+// applies to each key; users are spread over the keys without ever seeing
+// them.
+templ providerKeysSection(vmodel ProviderFormVModel, readonly bool) {
+	<div class="mt-3.5">
+		@common.Section() {
+			@common.SectionHeader() {
+				@common.SectionTitle() {
+					{ i18n.T(ctx, "org.provider.api_keys") }
+				}
+			}
+			@common.SectionBody(common.SectionBodyProps{Class: "flex flex-col gap-3"}) {
+				@form.Description() {
+					@templ.Raw(i18n.T(ctx, "org.provider.api_keys_help"))
+				}
+				@ProviderKeysEditor(vmodel.Provider.ExtraAPIKeys(), readonly)
 			}
 		}
 	</div>
