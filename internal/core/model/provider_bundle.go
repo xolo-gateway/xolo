@@ -161,7 +161,8 @@ func omittedHeaders(h *ProviderRequestHeaders) []string {
 // MergeImportedHeaders returns the headers a provider gets when it takes the
 // imported ones: those of the bundle, plus its own headers a bundle never
 // carries (those portableHeaders leaves out), which the import must not
-// erase.
+// erase. The session header is portable, an export carries it: a bundle
+// without one clears it, as it does the other portable headers.
 func MergeImportedHeaders(current, imported *ProviderRequestHeaders) *ProviderRequestHeaders {
 	merged := &ProviderRequestHeaders{}
 	if imported != nil {
