@@ -391,8 +391,14 @@ func providerBundleSelection(r *http.Request) service.BundleSelection {
 }
 
 func (h *Handler) renderProviderBundleError(w http.ResponseWriter, r *http.Request, vmodel component.ProviderBundleImportVModel, msg string) {
+	h.renderProviderBundleErrorStatus(w, r, vmodel, msg, http.StatusUnprocessableEntity)
+}
+
+// renderProviderBundleErrorStatus renders the import page with an error
+// answered under status.
+func (h *Handler) renderProviderBundleErrorStatus(w http.ResponseWriter, r *http.Request, vmodel component.ProviderBundleImportVModel, msg string, status int) {
 	vmodel.Error = msg
-	w.WriteHeader(http.StatusUnprocessableEntity)
+	w.WriteHeader(status)
 	templ.Handler(component.ProviderBundleImportPage(vmodel)).ServeHTTP(w, r)
 }
 

@@ -68,7 +68,7 @@ var env struct {
 	// catalogURL serves the test release of the model catalog: Xolo embeds
 	// none and reads it from its URL.
 	catalogURL string
-	logPath  string
+	logPath    string
 
 	// serverBin and pluginsDir let a test start another server process with
 	// its own configuration.

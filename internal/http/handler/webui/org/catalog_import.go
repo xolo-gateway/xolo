@@ -27,7 +27,7 @@ func (h *Handler) getCatalogImportPage(w http.ResponseWriter, r *http.Request) {
 	}
 	c, err := h.catalog.Catalog(ctx)
 	if err != nil {
-		h.renderProviderBundleError(w, r, h.providerBundleImportVModel(ctx, org, p), i18n.T(ctx, "org.errors.catalog_import.unavailable"))
+		h.renderProviderBundleErrorStatus(w, r, h.providerBundleImportVModel(ctx, org, p), i18n.T(ctx, "org.errors.catalog_import.unavailable"), http.StatusServiceUnavailable)
 		return
 	}
 	vmodel := component.CatalogImportVModel{
@@ -71,7 +71,7 @@ func (h *Handler) previewCatalogImport(w http.ResponseWriter, r *http.Request) {
 
 	c, err := h.catalog.Catalog(ctx)
 	if err != nil {
-		h.renderProviderBundleError(w, r, vmodel, i18n.T(ctx, "org.errors.catalog_import.unavailable"))
+		h.renderProviderBundleErrorStatus(w, r, vmodel, i18n.T(ctx, "org.errors.catalog_import.unavailable"), http.StatusServiceUnavailable)
 		return
 	}
 	bundle, err := c.Bundle(r.FormValue("catalog_provider"), plan)

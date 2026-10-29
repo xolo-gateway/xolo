@@ -18,6 +18,11 @@ var ErrUnavailable = errors.New("model catalog unavailable")
 // maxCatalogSize bounds a downloaded release.
 const maxCatalogSize = 32 << 20
 
+// unavailableRetry bounds the wait before trying again while no release has
+// been read: the refresh interval (a day by default) is for keeping a release
+// fresh, not for leaving the catalog unavailable.
+const unavailableRetry = time.Minute
+
 // Source serves the catalog published at its URL: the last release it read,
 // fetched again at most once per refresh interval. Xolo embeds no copy of
 // the catalog: until a first release is read, the catalog is unavailable. A
@@ -52,7 +57,11 @@ func NewStaticSource(c *Catalog) *Source {
 func (s *Source) Catalog(ctx context.Context) (*Catalog, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.url != "" && s.inflight == nil && time.Since(s.fetchedAt) >= s.interval {
+	wait := s.interval
+	if s.current == nil {
+		wait = min(wait, unavailableRetry)
+	}
+	if s.url != "" && s.inflight == nil && time.Since(s.fetchedAt) >= wait {
 		s.inflight = make(chan struct{})
 		go s.refresh(context.WithoutCancel(ctx), s.inflight)
 	}

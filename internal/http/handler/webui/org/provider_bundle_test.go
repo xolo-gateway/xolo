@@ -402,7 +402,7 @@ func TestCatalogImport_SaysWhenTheCatalogCannotBeRead(t *testing.T) {
 
 	rr := httptest.NewRecorder()
 	h.getCatalogImportPage(rr, bundleRequest(t, s, tenant, string(s.provider.ID()), bytes.NewBufferString(""), "text/plain"))
-	if rr.Code != http.StatusUnprocessableEntity || !strings.Contains(stdhtml.UnescapeString(rr.Body.String()), "ne peut pas être lu") {
-		t.Errorf("status = %d, want the page saying the catalog cannot be read", rr.Code)
+	if rr.Code != http.StatusServiceUnavailable || !strings.Contains(stdhtml.UnescapeString(rr.Body.String()), "ne peut pas être lu") {
+		t.Errorf("status = %d, want 503 and the page saying the catalog cannot be read", rr.Code)
 	}
 }

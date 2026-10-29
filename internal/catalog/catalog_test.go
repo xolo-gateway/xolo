@@ -252,3 +252,19 @@ func TestPlan_ConvertsASharedWindow(t *testing.T) {
 		t.Errorf("constraint = %+v, want a shared 60$ window weighing glm at 120$", c)
 	}
 }
+
+func TestSource_RetriesSoonWhileNoReleaseWasRead(t *testing.T) {
+	s := NewSource("http://127.0.0.1:1", 24*time.Hour)
+	s.Refresh(context.Background())
+	s.mu.Lock()
+	s.fetchedAt = time.Now().Add(-2 * unavailableRetry)
+	s.mu.Unlock()
+	_, _ = s.Catalog(context.Background())
+	s.mu.Lock()
+	started := s.inflight != nil
+	s.mu.Unlock()
+	if !started {
+		t.Error("no new fetch a minute after a failed one, want a retry well before the refresh interval")
+	}
+	s.Refresh(context.Background())
+}
