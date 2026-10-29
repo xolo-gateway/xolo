@@ -3,6 +3,7 @@ package model
 import (
 	"encoding/json"
 	"math"
+	"slices"
 	"time"
 
 	"github.com/pkg/errors"
@@ -184,6 +185,12 @@ func (b ProviderBundle) Validate() error {
 	if r := b.Provider.RateLimit; r != nil && r.Enabled && (r.Interval <= 0 || r.MaxBurst < 1) {
 		return errors.Wrap(ErrInvalidProviderBundle, "rate_limit needs a positive interval and a burst of at least one")
 	}
+	if m := b.Provider.BillingMode; m != "" && m != BillingModePayg && m != BillingModeSubscription {
+		return errors.Wrapf(ErrInvalidProviderBundle, "unknown billing_mode %q", m)
+	}
+	if c := b.Provider.Currency; c != "" && !slices.Contains(SupportedCurrencies, c) {
+		return errors.Wrapf(ErrInvalidProviderBundle, "unsupported currency %q", c)
+	}
 	if b.Provider.CloudTier < 0 || b.Provider.CloudTier > 2 {
 		return errors.Wrapf(ErrInvalidProviderBundle, "cloud_tier %d is not 0, 1 or 2", b.Provider.CloudTier)
 	}
@@ -291,6 +298,9 @@ func validateBundlePlan(plan *SubscriptionPlan) error {
 	for _, c := range plan.Constraints {
 		bad := func(what string) error {
 			return errors.Wrapf(ErrInvalidProviderBundle, "plan constraint %q: %s", c.Label, what)
+		}
+		if c.Scope != "" && c.Scope != PlanScopeProvider && c.Scope != PlanScopeModel {
+			return bad("has an unknown scope")
 		}
 		switch c.Kind {
 		case ConstraintRollingWindow:

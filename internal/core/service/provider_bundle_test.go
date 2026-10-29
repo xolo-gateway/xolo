@@ -423,6 +423,9 @@ func TestApplyProviderBundle_GoesOnPastAModelTheStoreRefuses(t *testing.T) {
 func TestParseProviderBundle_RefusesReservedHeadersAndAbsurdPrices(t *testing.T) {
 	for name, doc := range map[string]string{
 		"reserved header":  `{"kind":"xolo.provider","version":"1","provider":{"type":"openai","request_headers":{"headers":{"Authorization":"Bearer x"}}}}`,
+		"billing mode":     `{"kind":"xolo.provider","version":"1","provider":{"type":"openai","billing_mode":"free"}}`,
+		"currency":         `{"kind":"xolo.provider","version":"1","provider":{"type":"openai","currency":"XXX"}}`,
+		"scope":            `{"kind":"xolo.provider","version":"1","provider":{"type":"openai","subscription_plan":{"label":"P","constraints":[{"kind":"rolling_window","label":"5h","duration":"5h","scope":"modle"}]}}}`,
 		"cloud tier":       `{"kind":"xolo.provider","version":"1","provider":{"type":"openai","cloud_tier":7}}`,
 		"nan-free ratio":   `{"kind":"xolo.provider","version":"1","provider":{"type":"openai","subscription_plan":{"label":"P","constraints":[{"kind":"rolling_window","label":"5h","duration":"5h","reserve_ratio":2}]}}}`,
 		"no duration":      `{"kind":"xolo.provider","version":"1","provider":{"type":"openai","subscription_plan":{"label":"P","constraints":[{"kind":"rolling_window","label":"5h"}]}}}`,
