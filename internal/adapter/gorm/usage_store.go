@@ -518,15 +518,18 @@ func (s *Store) AggregateRequestSizes(ctx context.Context, filter port.UsageFilt
 }
 
 // EarliestPlanUsageSince implements port.UsageStore.
-func (s *Store) EarliestPlanUsageSince(ctx context.Context, scope model.PlanUsageScope, since time.Time) (time.Time, error) {
+func (s *Store) EarliestPlanUsageSince(ctx context.Context, scope model.PlanUsageScope, userID model.UserID, since time.Time) (time.Time, error) {
 	var row struct {
 		Earliest *time.Time
 	}
 
 	err := s.read(ctx, func(ctx context.Context, db *gorm.DB) error {
-		return errors.WithStack(planUsageQuery(db, scope, since).
-			Select("MIN(created_at) as earliest").
-			Scan(&row).Error)
+		query := planUsageQuery(db, scope, since).
+			Select("MIN(created_at) as earliest")
+		if userID != "" {
+			query = query.Where("user_id = ?", string(userID))
+		}
+		return errors.WithStack(query.Scan(&row).Error)
 	})
 	if err != nil {
 		return time.Time{}, err

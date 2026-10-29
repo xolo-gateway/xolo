@@ -66,9 +66,9 @@ type UsageStore interface {
 	HasPlanUsageSince(ctx context.Context, userID model.UserID, scope model.PlanUsageScope, since time.Time) (bool, error)
 	// EarliestPlanUsageSince returns the creation time of the oldest subscription-covered
 	// (plan_covered=true) usage record of a plan scope still inside the rolling window
-	// starting at `since`. Used to display when the window will next free up. Returns a zero
-	// time when no such record exists.
-	EarliestPlanUsageSince(ctx context.Context, scope model.PlanUsageScope, since time.Time) (time.Time, error)
+	// starting at `since`, restricted to one user when userID is set. Used to display when
+	// the window will next free up. Returns a zero time when no such record exists.
+	EarliestPlanUsageSince(ctx context.Context, scope model.PlanUsageScope, userID model.UserID, since time.Time) (time.Time, error)
 	// AggregateCostByDimension returns cost sub-totals grouped by the given dimension, the
 	// record's org, currency and billing arrangement, honoring the filter. It lets the
 	// usage/dashboard charts bucket costs in SQL instead of loading every record into memory.

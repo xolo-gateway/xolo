@@ -541,8 +541,9 @@ func (h *Handler) serveUserUsageCSV(w http.ResponseWriter, r *http.Request, user
 // scoped to a single user's personal share, and usage figures reflect only this
 // user. Rolling-window budgets go through the same allocator as the enforcer, so
 // the denominators shown are the ones a request is actually decided against;
-// concurrency limits keep the static division by the member count. Window timing
-// (reset countdowns) is a window-level property and stays org-wide.
+// concurrency limits keep the static division by the member count. Reset
+// countdowns of anchored windows are window-level and stay org-wide; the
+// free-up hint of a sliding window follows the viewer's own records.
 func (h *Handler) buildDashboardSubscriptionUsage(ctx context.Context, orgID model.OrgID, userID model.UserID) []orgcomponent.SubscriptionProviderUsage {
 	providers, err := h.providerStore.ListProviders(ctx, orgID)
 	if err != nil {
@@ -684,9 +685,11 @@ func (h *Handler) fillDashboardRollingWindowUsage(
 			cu.TokensUsed, cu.ValueUsed = userUsage.Tokens, userUsage.Value
 		}
 	}
-	// Window free-up hint is a window-level property → org-wide oldest record.
-	if oldest, oldestErr := h.usageStore.EarliestPlanUsageSince(ctx, scope, since); oldestErr != nil {
-		slog.WarnContext(ctx, "could not get earliest plan usage", slogx.Error(oldestErr))
+	// The free-up hint is read on the viewer's own records: the gauge counts
+	// only their consumption, so another member's oldest record leaving the
+	// window frees none of it.
+	if oldest, oldestErr := h.usageStore.EarliestPlanUsageSince(ctx, scope, userID, since); oldestErr != nil {
+		slog.WarnContext(ctx, "could not get earliest user plan usage", slogx.Error(oldestErr))
 	} else {
 		cu.OldestUsage = oldest
 	}

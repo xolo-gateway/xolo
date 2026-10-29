@@ -331,7 +331,7 @@ func scenarioUsageStorePlanUsage(t *testing.T, store *xologorm.Store) {
 		t.Errorf("expected no subscription usage for user B, got tokens=%d value=%d", userTokens, userValue)
 	}
 
-	earliest, err := store.EarliestPlanUsageSince(ctx, model.PlanUsageScope{OrgID: f.orgID, ProviderID: f.providerID}, since)
+	earliest, err := store.EarliestPlanUsageSince(ctx, model.PlanUsageScope{OrgID: f.orgID, ProviderID: f.providerID}, "", since)
 	if err != nil {
 		t.Fatalf("EarliestPlanUsageSince: %v", err)
 	}
@@ -339,8 +339,17 @@ func scenarioUsageStorePlanUsage(t *testing.T, store *xologorm.Store) {
 		t.Error("expected a non-zero earliest subscription usage")
 	}
 
+	// Restricted to a user, only their records count: user B has none.
+	earliest, err = store.EarliestPlanUsageSince(ctx, model.PlanUsageScope{OrgID: f.orgID, ProviderID: f.providerID}, f.userB, since)
+	if err != nil {
+		t.Fatalf("EarliestPlanUsageSince (user B): %v", err)
+	}
+	if !earliest.IsZero() {
+		t.Errorf("expected a zero time for user B, got %v", earliest)
+	}
+
 	// No subscription usage in the window: a zero time, not an error.
-	earliest, err = store.EarliestPlanUsageSince(ctx, model.PlanUsageScope{OrgID: f.orgID, ProviderID: f.providerID}, time.Now().Add(time.Hour))
+	earliest, err = store.EarliestPlanUsageSince(ctx, model.PlanUsageScope{OrgID: f.orgID, ProviderID: f.providerID}, "", time.Now().Add(time.Hour))
 	if err != nil {
 		t.Fatalf("EarliestPlanUsageSince (future): %v", err)
 	}

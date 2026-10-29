@@ -65,7 +65,7 @@ func scenarioUsageStorePerModelPlanUsage(t *testing.T, store *xologorm.Store) {
 		t.Errorf("HasPlanUsageSince(user B, glm) = %v, %v; want false", present, err)
 	}
 
-	if earliest, err := store.EarliestPlanUsageSince(ctx, glmScope, since); err != nil || earliest.IsZero() {
+	if earliest, err := store.EarliestPlanUsageSince(ctx, glmScope, "", since); err != nil || earliest.IsZero() {
 		t.Errorf("EarliestPlanUsageSince(glm) = %v, %v; want a usage time", earliest, err)
 	}
 

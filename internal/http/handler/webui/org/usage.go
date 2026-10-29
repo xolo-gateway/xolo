@@ -790,7 +790,7 @@ func (h *Handler) fillRollingWindowUsage(ctx context.Context, cu *component.Subs
 		cu.TokensUsed = tokens
 		cu.ValueUsed = value
 	}
-	if oldest, err := h.usageStore.EarliestPlanUsageSince(ctx, scope, since); err != nil {
+	if oldest, err := h.usageStore.EarliestPlanUsageSince(ctx, scope, "", since); err != nil {
 		slog.WarnContext(ctx, "could not get earliest plan usage", slogx.Error(err))
 	} else {
 		cu.OldestUsage = oldest
