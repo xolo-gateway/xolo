@@ -653,6 +653,8 @@
   "org.catalog_import.from_catalog": "Import from the catalog",
   "org.catalog_import.from": "Changes proposed by the model catalog, release %s. Prices are the base tier: a provider pricing by prompt size or time of day publishes the other tiers in the catalog.",
   "org.errors.catalog_import.unknown": "This provider or plan is not in the model catalog.",
+  "org.model.prefill_no_rate": "The prices were not filled: no exchange rate is available to convert them into the provider's currency.",
+  "org.errors.catalog_import.no_rate": "The catalog publishes these prices in %s and no exchange rate to %s is available: try again later.",
   "org.subscription.title": "Subscriptions",
   "org.subscription.my_share": "My share",
   "org.subscription.personal_share": "%s - personal share (fair split)",

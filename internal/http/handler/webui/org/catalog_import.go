@@ -1,12 +1,15 @@
 package org
 
 import (
+	"context"
 	"encoding/json"
 	"log/slog"
 	"net/http"
 
 	"github.com/a-h/templ"
 	"github.com/bornholm/go-x/slogx"
+	"github.com/pkg/errors"
+	"github.com/xolo-gateway/xolo/internal/core/model"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/org/component"
 	"github.com/xolo-gateway/xolo/internal/i18n"
 )
@@ -67,6 +70,16 @@ func (h *Handler) previewCatalogImport(w http.ResponseWriter, r *http.Request) {
 		h.renderProviderBundleError(w, r, vmodel, i18n.T(ctx, "org.errors.catalog_import.unknown"))
 		return
 	}
+	// The catalog publishes in each provider's currency: imported into a
+	// provider billing in another one, its prices and budgets are converted,
+	// so that they never land under a currency they are not in.
+	if p != nil && p.Currency() != "" && bundle.Provider.Currency != p.Currency() {
+		if err := h.convertBundleCurrency(ctx, &bundle, p.Currency()); err != nil {
+			slog.WarnContext(ctx, "could not convert catalog prices", slogx.Error(err))
+			h.renderProviderBundleError(w, r, vmodel, i18n.T(ctx, "org.errors.catalog_import.no_rate", bundle.Provider.Currency, p.Currency()))
+			return
+		}
+	}
 	raw, err := json.Marshal(bundle)
 	if err != nil {
 		slog.ErrorContext(ctx, "could not encode catalog bundle", slogx.Error(err))
@@ -84,4 +97,51 @@ func (h *Handler) previewCatalogImport(w http.ResponseWriter, r *http.Request) {
 	vmodel.Name = bundle.Provider.Name
 	vmodel.Notice = i18n.T(ctx, "org.catalog_import.from", c.Version)
 	templ.Handler(component.ProviderBundleImportPage(vmodel)).ServeHTTP(w, r)
+}
+
+// convertBundleCurrency converts the prices and the plan's value budgets of
+// bundle into the currency to, which becomes the bundle's.
+func (h *Handler) convertBundleCurrency(ctx context.Context, bundle *model.ProviderBundle, to string) error {
+	if h.exchangeRateService == nil {
+		return errors.New("no exchange rate service")
+	}
+	from := bundle.Provider.Currency
+	convert := func(microcents int64) (int64, error) {
+		return h.exchangeRateService.Convert(ctx, microcents, from, to)
+	}
+	for i := range bundle.Models {
+		prices := &bundle.Models[i].Prices
+		for _, p := range []*float64{&prices.Input, &prices.CachedInput, &prices.Output} {
+			v, err := convert(model.MicrocentsPer1K(*p))
+			if err != nil {
+				return errors.WithStack(err)
+			}
+			*p = model.PricePerMillion(v)
+		}
+	}
+	if plan := bundle.Provider.SubscriptionPlan; plan != nil {
+		for ci := range plan.Constraints {
+			c := &plan.Constraints[ci]
+			if c.ValueBudget != nil {
+				v, err := convert(*c.ValueBudget)
+				if err != nil {
+					return errors.WithStack(err)
+				}
+				c.ValueBudget = &v
+			}
+			for id, b := range c.ModelBudgets {
+				if b.ValueBudget == nil {
+					continue
+				}
+				v, err := convert(*b.ValueBudget)
+				if err != nil {
+					return errors.WithStack(err)
+				}
+				b.ValueBudget = &v
+				c.ModelBudgets[id] = b
+			}
+		}
+	}
+	bundle.Provider.Currency = to
+	return nil
 }

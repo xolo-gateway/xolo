@@ -26,8 +26,8 @@ func catalogProvidersSuggestedFirst(c *catalog.Catalog, suggested string) []cata
 // the catalog lookup reports as estimated.
 func catalogFieldLabels(ctx context.Context, currency string) string {
 	labels := map[string]string{
-		"context_window":     i18n.T(ctx, "org.model.context_output"),
-		"output_window":      i18n.T(ctx, "org.model.context_output"),
+		"context_window":     i18n.T(ctx, "common.catalog.context_window"),
+		"output_window":      i18n.T(ctx, "common.catalog.max_output"),
 		"active_params":      i18n.T(ctx, "org.model.active_params"),
 		"prompt_cost":        i18n.T(ctx, "org.model.prompt_cost", currency),
 		"cached_prompt_cost": i18n.T(ctx, "org.model.cached_prompt_cost", currency),

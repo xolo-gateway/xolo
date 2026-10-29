@@ -353,6 +353,7 @@
         return;
       }
       var entry = await response.json();
+      var noRate = false;
 
       if (entry.context_window) setValue("context_window", entry.context_window);
       if (entry.output_window) setValue("output_window", entry.output_window);
@@ -366,19 +367,28 @@
         var currency = button.dataset.currency || entry.currency;
         var rate = 1;
         if (entry.currency && currency !== entry.currency) {
-          var rateResponse = await fetch(
-            button.dataset.exchangeRateUrl +
-              "?from=" + encodeURIComponent(entry.currency) +
-              "&to=" + encodeURIComponent(currency)
-          );
-          if (rateResponse.ok) rate = (await rateResponse.json()).rate;
+          // Sans taux, les prix ne sont pas remplis : un montant dans une
+          // autre devise serait facturé comme s'il était dans la bonne.
+          rate = null;
+          try {
+            var rateResponse = await fetch(
+              button.dataset.exchangeRateUrl +
+                "?from=" + encodeURIComponent(entry.currency) +
+                "&to=" + encodeURIComponent(currency)
+            );
+            if (rateResponse.ok) rate = (await rateResponse.json()).rate || null;
+          } catch (e) {}
         }
-        var price = function (name, value) {
-          if (value != null) setValue(name, (value * rate).toFixed(6));
-        };
-        price("prompt_cost", entry.prompt_cost);
-        price("cached_prompt_cost", entry.cached_prompt_cost);
-        price("completion_cost", entry.completion_cost);
+        if (rate) {
+          var price = function (name, value) {
+            if (value != null) setValue(name, (value * rate).toFixed(6));
+          };
+          price("prompt_cost", entry.prompt_cost);
+          price("cached_prompt_cost", entry.cached_prompt_cost);
+          price("completion_cost", entry.completion_cost);
+        } else {
+          noRate = true;
+        }
       }
 
       if (entry.cap_tools != null) setChecked("cap_tools", entry.cap_tools);
@@ -395,6 +405,7 @@
       }
 
       var notes = [];
+      if (noRate) notes.push(button.dataset.msgNoRate);
       if (entry.prices_vary) notes.push(button.dataset.msgPricesVary);
       if (entry.estimated && entry.estimated.length) {
         var labels = {};

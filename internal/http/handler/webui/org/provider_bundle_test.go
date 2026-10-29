@@ -4,6 +4,9 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
+	"github.com/xolo-gateway/xolo/internal/core/service"
+	stdhtml "html"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
@@ -154,5 +157,81 @@ func TestCatalogImport_PreviewsTheCatalogProviderAsABundle(t *testing.T) {
 	}
 	if len(s.created) != 0 {
 		t.Error("the preview wrote to the store")
+	}
+}
+
+// fixedRates serves one exchange rate.
+type fixedRates map[string]float64
+
+func (f fixedRates) FetchRates(_ context.Context, base string) (map[string]float64, error) {
+	rates := map[string]float64{}
+	for pair, rate := range f {
+		if from, to, _ := strings.Cut(pair, ">"); from == base {
+			rates[to] = rate
+		}
+	}
+	return rates, nil
+}
+
+type memoryRates struct{ rates map[string]model.ExchangeRate }
+
+func (m *memoryRates) GetRate(_ context.Context, from, to string) (*model.ExchangeRate, error) {
+	if r, ok := m.rates[from+">"+to]; ok {
+		return &r, nil
+	}
+	return nil, errors.New("no rate")
+}
+
+func (m *memoryRates) UpsertRate(_ context.Context, r model.ExchangeRate) error {
+	m.rates[r.FromCurrency+">"+r.ToCurrency] = r
+	return nil
+}
+
+func (m *memoryRates) ListRates(context.Context) ([]model.ExchangeRate, error) { return nil, nil }
+
+func TestCatalogImport_ConvertsPricesIntoTheProvidersCurrency(t *testing.T) {
+	h, s, tenant := importFixture(t, "https://opencode.ai/inference/go/v1", "sk")
+	s.provider = model.NewProvider(s.org.ID(), "OpenCode Go", "openai", "https://opencode.ai/inference/go/v1", s.provider.APIKey(), "EUR")
+	h.SetCatalog(catalog.NewStaticSource(catalog.Snapshot()))
+	h.exchangeRateService = service.NewExchangeRateService(fixedRates{"USD>EUR": 0.5}, &memoryRates{rates: map[string]model.ExchangeRate{}}, time.Hour)
+
+	fields := url.Values{"catalog_provider": {"opencode-go"}, "plan": {"go"}}
+	rr := httptest.NewRecorder()
+	h.previewCatalogImport(rr, bundleRequest(t, s, tenant, string(s.provider.ID()), bytes.NewBufferString(fields.Encode()), "application/x-www-form-urlencoded"))
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d: %s", rr.Code, rr.Body.String())
+	}
+	// The attribute value is read escaped: its JSON quotes are entities.
+	page := rr.Body.String()
+	i := strings.Index(page, `name="bundle" value="`)
+	if i < 0 {
+		t.Fatal("no bundle in the page")
+	}
+	raw := page[i+len(`name="bundle" value="`):]
+	raw = stdhtml.UnescapeString(raw[:strings.Index(raw, `"`)])
+	bundle, err := model.ParseProviderBundle([]byte(raw))
+	if err != nil {
+		t.Fatalf("bundle: %v", err)
+	}
+	if bundle.Provider.Currency != "EUR" {
+		t.Errorf("currency = %q, want the provider's", bundle.Provider.Currency)
+	}
+	snapshot := catalog.Snapshot()
+	original, _ := snapshot.Bundle("opencode-go", "go")
+	if got, want := bundle.Models[0].Prices.Output, original.Models[0].Prices.Output/2; got != model.PricePerMillion(model.MicrocentsPer1K(want)) {
+		t.Errorf("output price = %v, want %v converted at 0.5", got, want)
+	}
+}
+
+func TestCatalogImport_RefusesWithoutAnExchangeRate(t *testing.T) {
+	h, s, tenant := importFixture(t, "https://opencode.ai/inference/go/v1", "sk")
+	s.provider = model.NewProvider(s.org.ID(), "OpenCode Go", "openai", "https://opencode.ai/inference/go/v1", s.provider.APIKey(), "EUR")
+	h.SetCatalog(catalog.NewStaticSource(catalog.Snapshot()))
+
+	fields := url.Values{"catalog_provider": {"opencode-go"}, "plan": {"none"}}
+	rr := httptest.NewRecorder()
+	h.previewCatalogImport(rr, bundleRequest(t, s, tenant, string(s.provider.ID()), bytes.NewBufferString(fields.Encode()), "application/x-www-form-urlencoded"))
+	if rr.Code != http.StatusUnprocessableEntity {
+		t.Errorf("status = %d, want the import refused rather than prices left in USD", rr.Code)
 	}
 }
