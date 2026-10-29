@@ -26,7 +26,9 @@ import (
 )
 
 // maxProviderBundleSize bounds an uploaded bundle. A provider with a few
-// hundred models stays well under it.
+// hundred models stays well under it. It is the only bound on the number of
+// models and the size of their extra_body, as the model form has none: a
+// bundle holds nothing the form could not write one model at a time.
 const maxProviderBundleSize = 4 << 20
 
 // maxProviderBundleFormSize bounds the form that posts the bundle back with
