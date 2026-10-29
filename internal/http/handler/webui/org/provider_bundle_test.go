@@ -503,8 +503,8 @@ func TestCatalogImport_RefusesAProviderWithoutCurrencyAtThePreview(t *testing.T)
 	fields := url.Values{"catalog_provider": {"acme"}, "plan": {"none"}}
 	rr := httptest.NewRecorder()
 	h.previewCatalogImport(rr, bundleRequest(t, s, tenant, string(s.provider.ID()), bytes.NewBufferString(fields.Encode()), "application/x-www-form-urlencoded"))
-	if rr.Code != http.StatusUnprocessableEntity {
-		t.Errorf("status %d, want 422 at the preview rather than a dry run the apply refuses", rr.Code)
+	if rr.Code != http.StatusUnprocessableEntity || !strings.Contains(stdhtml.UnescapeString(rr.Body.String()), "Renseignez la devise du fournisseur") {
+		t.Errorf("status %d, want 422 asking for the currency at the preview rather than a dry run the apply refuses", rr.Code)
 	}
 }
 
