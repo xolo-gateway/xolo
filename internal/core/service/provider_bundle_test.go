@@ -20,10 +20,11 @@ type memoryProviderStore struct {
 	providers map[model.ProviderID]model.Provider
 	models    map[model.LLMModelID]model.LLMModel
 	writes    int
-	// refuse, when set, fails the writes of the models it names, and
-	// refuseProvider every SaveProvider.
-	refuse         map[string]bool
-	refuseProvider bool
+	// refuse, when set, fails the writes of the models it names;
+	// providerErr fails every SaveProvider and listErr every ListLLMModels.
+	refuse      map[string]bool
+	providerErr error
+	listErr     error
 }
 
 func newMemoryProviderStore() *memoryProviderStore {
@@ -37,8 +38,8 @@ func (s *memoryProviderStore) CreateProvider(_ context.Context, p model.Provider
 }
 
 func (s *memoryProviderStore) SaveProvider(_ context.Context, p model.Provider) error {
-	if s.refuseProvider {
-		return errors.New("refused")
+	if s.providerErr != nil {
+		return s.providerErr
 	}
 	s.writes++
 	s.providers[p.ID()] = p
@@ -64,6 +65,9 @@ func (s *memoryProviderStore) SaveLLMModel(_ context.Context, m model.LLMModel) 
 }
 
 func (s *memoryProviderStore) ListLLMModels(_ context.Context, orgID model.OrgID) ([]model.LLMModel, error) {
+	if s.listErr != nil {
+		return nil, s.listErr
+	}
 	return s.modelsOf(orgID), nil
 }
 
@@ -1169,6 +1173,10 @@ func typeMoveFixture(t *testing.T) (*memoryProviderStore, model.Provider, Provid
 func TestApplyProviderBundle_NamesTheModelsWrittenForATypeItKeptBack(t *testing.T) {
 	mem, p, plan, sel := typeMoveFixture(t)
 	mem.refuse = map[string]bool{"b": true}
+	// c, which the bundle does not hold, is no model the import wrote.
+	c := model.NewLLMModel(p.ID(), "org-a", "c", "model-c", "", 0, 0)
+	c.SetKind(model.ModelKindDecision)
+	mem.models[c.ID()] = c
 
 	result, err := ApplyProviderBundle(context.Background(), mem, plan, sel, nil)
 	if err != nil {
@@ -1184,7 +1192,7 @@ func TestApplyProviderBundle_NamesTheModelsWrittenForATypeItKeptBack(t *testing.
 
 func TestApplyProviderBundle_ReportsAProviderSaveItFailedAfterTheModels(t *testing.T) {
 	mem, p, plan, sel := typeMoveFixture(t)
-	mem.refuseProvider = true
+	mem.providerErr = errors.New("refused")
 
 	result, err := ApplyProviderBundle(context.Background(), mem, plan, sel, nil)
 	if err != nil {
@@ -1195,5 +1203,28 @@ func TestApplyProviderBundle_ReportsAProviderSaveItFailedAfterTheModels(t *testi
 	}
 	if got := mem.providers[p.ID()].Type(); got != "openai" || !slices.Equal(result.Stranded, []string{"a", "b"}) {
 		t.Errorf("type = %q, stranded = %v; want a and b named", got, result.Stranded)
+	}
+}
+
+func TestApplyProviderBundle_ReportsTheSettingsItCouldNotCheckAfterTheModels(t *testing.T) {
+	mem, p, plan, sel := typeMoveFixture(t)
+	mem.listErr = errors.New("unavailable")
+
+	result, err := ApplyProviderBundle(context.Background(), mem, plan, sel, nil)
+	if err != nil {
+		t.Fatalf("apply: %v, want the failure reported next to the models written", err)
+	}
+	if result.SettingsFailed == nil || result.Updated != 2 || mem.providers[p.ID()].Type() != "openai" {
+		t.Errorf("result = %+v, want both models written and the settings reported unsaved", result)
+	}
+}
+
+func TestApplyProviderBundle_AnswersALockedProviderAsLocked(t *testing.T) {
+	for _, lock := range []error{port.ErrOwnershipDenied, port.ErrResourceDeleted} {
+		mem, _, plan, sel := typeMoveFixture(t)
+		mem.providerErr = lock
+		if _, err := ApplyProviderBundle(context.Background(), mem, plan, sel, nil); !errors.Is(err, lock) {
+			t.Errorf("err = %v, want %v for the handler to answer it", err, lock)
+		}
 	}
 }
