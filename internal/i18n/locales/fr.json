@@ -621,7 +621,7 @@
   "org.subscription.share_basis_short": "%s/%s actifs",
   "org.subscription.more_models": "+ %d autres modèles, jusqu'à %s",
   "org.subscription.more_models_unlimited": "+ %d autres modèles sans limite",
-  "org.subscription.more_models_mixed": "+ %d autres modèles, jusqu'à %s, et %d sans limite",
+  "org.subscription.more_models_mixed": "+ %d modèle(s) de plus, jusqu'à %s, et %d sans limite",
   "org.subscription.peak": "Pic : %s",
   "org.subscription.no_usage": "aucune consommation en cours",
   "org.middlewares.page_title": "Middlewares — %s",

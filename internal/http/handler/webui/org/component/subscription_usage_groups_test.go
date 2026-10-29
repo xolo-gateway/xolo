@@ -272,7 +272,7 @@ func TestSubscriptionFoldLabel_DoesNotSumUpUnlimitedRowsAsZeroPercent(t *testing
 		want  string
 	}{
 		{"only unlimited", []SubscriptionConstraintUsage{unlimitedUsage("5h", "free1", 900_000_000), unlimitedUsage("5h", "free2", 1)}, "+ 2 autres modèles sans limite"},
-		{"mixed", []SubscriptionConstraintUsage{perModelUsage("5h", 100, "m4", 4), unlimitedUsage("5h", "free1", 900_000_000)}, "+ 1 autres modèles, jusqu'à 4%, et 1 sans limite"},
+		{"mixed", []SubscriptionConstraintUsage{perModelUsage("5h", 100, "m4", 4), unlimitedUsage("5h", "free1", 900_000_000)}, "+ 1 modèle(s) de plus, jusqu'à 4%, et 1 sans limite"},
 		{"only gauged", []SubscriptionConstraintUsage{perModelUsage("5h", 100, "m4", 4), perModelUsage("5h", 100, "m5", 2)}, "+ 2 autres modèles, jusqu'à 4%"},
 	}
 	for _, tc := range cases {
