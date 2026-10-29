@@ -579,7 +579,7 @@ func (h *Handler) buildDashboardSubscriptionUsage(ctx context.Context, orgID mod
 
 		providerScope := model.PlanUsageScope{OrgID: orgID, ProviderID: p.ID()}
 		var models []model.LLMModel
-		if plan.HasPerModelConstraint() {
+		if plan.HasPerModelConstraint() || plan.HasSharedConstraint() {
 			if models, err = h.providerStore.ListLLMModels(ctx, orgID); err != nil {
 				slog.WarnContext(ctx, "could not list models for per-model plan usage", slogx.Error(err))
 			}
@@ -597,7 +597,7 @@ func (h *Handler) buildDashboardSubscriptionUsage(ctx context.Context, orgID mod
 
 			switch c.Kind {
 			case model.ConstraintRollingWindow:
-				h.fillDashboardRollingWindowUsage(ctx, &cu, c, providerScope, userID, memberCount, now)
+				h.fillDashboardRollingWindowUsage(ctx, &cu, c, providerScope, models, userID, memberCount, now)
 
 			case model.ConstraintConcurrency:
 				if h.subscriptionMonitor != nil {
@@ -619,11 +619,14 @@ func (h *Handler) buildDashboardSubscriptionUsage(ctx context.Context, orgID mod
 
 // fillDashboardRollingWindowUsage fills the viewer's gauge of a rolling-window
 // constraint on a plan scope: the whole provider, or one upstream model.
+// models are the organization's, from which a shared constraint weighs each
+// model consumed.
 func (h *Handler) fillDashboardRollingWindowUsage(
 	ctx context.Context,
 	cu *orgcomponent.SubscriptionConstraintUsage,
 	c model.PlanConstraint,
 	scope model.PlanUsageScope,
+	models []model.LLMModel,
 	userID model.UserID,
 	memberCount int64,
 	now time.Time,
@@ -642,11 +645,22 @@ func (h *Handler) fillDashboardRollingWindowUsage(
 	var planUsage *service.PlanUsage
 	planUsageFailed := false
 	if fairShareApplies(h.fairShare, c, userID, memberCount) {
-		if planTokens, planValue, sumErr := h.usageStore.SumPlanUsageSince(ctx, scope, since); sumErr != nil {
+		if usage, sumErr := h.dashboardPlanUsage(ctx, c, scope, models, "", since); sumErr != nil {
 			slog.WarnContext(ctx, "could not sum org plan usage", slogx.Error(sumErr))
 			planUsageFailed = true
 		} else {
-			planUsage = &service.PlanUsage{Tokens: planTokens, Value: planValue}
+			planUsage = usage
+		}
+	}
+	// A shared constraint weighs each model by its own budget, which the
+	// allocator's plain sum cannot: the viewer's figures are weighed here and
+	// handed to it.
+	var userUsage *service.PlanUsage
+	if c.Shared() {
+		if usage, sumErr := h.dashboardPlanUsage(ctx, c, scope, models, userID, since); sumErr != nil {
+			slog.WarnContext(ctx, "could not sum user plan usage", slogx.Error(sumErr))
+		} else {
+			userUsage = usage
 		}
 	}
 	// Show the same denominators the enforcer decides against, so a varying
@@ -655,13 +669,19 @@ func (h *Handler) fillDashboardRollingWindowUsage(
 	// than summed a second time. When the plan-wide sum already failed, the
 	// allocator would only run the same aggregation against the same
 	// struggling store.
-	if planUsageFailed || !applyFairShare(ctx, h.fairShare, cu, c, scope, userID, memberCount, now, planUsage) {
-		tokens, value, sumErr := h.usageStore.SumUserPlanUsageSince(ctx, userID, scope, since)
-		if sumErr != nil {
-			slog.WarnContext(ctx, "could not sum user plan usage", slogx.Error(sumErr))
-		} else {
-			cu.TokensUsed = tokens
-			cu.ValueUsed = value
+	sharedFailed := c.Shared() && userUsage == nil
+	if planUsageFailed || sharedFailed || !applyFairShare(ctx, h.fairShare, cu, c, scope, userID, memberCount, now, planUsage, userUsage) {
+		// A shared constraint whose weighed read failed shows nothing: the
+		// plain sum would show figures the constraint does not count.
+		if !c.Shared() {
+			if usage, sumErr := h.dashboardPlanUsage(ctx, c, scope, models, userID, since); sumErr != nil {
+				slog.WarnContext(ctx, "could not sum user plan usage", slogx.Error(sumErr))
+			} else {
+				userUsage = usage
+			}
+		}
+		if userUsage != nil {
+			cu.TokensUsed, cu.ValueUsed = userUsage.Tokens, userUsage.Value
 		}
 	}
 	// Window free-up hint is a window-level property → org-wide oldest record.
@@ -670,6 +690,33 @@ func (h *Handler) fillDashboardRollingWindowUsage(
 	} else {
 		cu.OldestUsage = oldest
 	}
+}
+
+// dashboardPlanUsage reads the consumption a constraint counts since the start
+// of its window, for the whole plan or, when userID is set, for one user. A
+// shared constraint reads it per model to weigh each by its own budget.
+func (h *Handler) dashboardPlanUsage(ctx context.Context, c model.PlanConstraint, scope model.PlanUsageScope, models []model.LLMModel, userID model.UserID, since time.Time) (*service.PlanUsage, error) {
+	if !c.Shared() {
+		var (
+			tokens, value int64
+			err           error
+		)
+		if userID == "" {
+			tokens, value, err = h.usageStore.SumPlanUsageSince(ctx, scope, since)
+		} else {
+			tokens, value, err = h.usageStore.SumUserPlanUsageSince(ctx, userID, scope, since)
+		}
+		if err != nil {
+			return nil, err
+		}
+		return &service.PlanUsage{Tokens: tokens, Value: value}, nil
+	}
+	byModel, err := h.usageStore.SumPlanUsageByModelSince(ctx, scope, userID, since)
+	if err != nil {
+		return nil, err
+	}
+	weighed := service.WeighSharedPlanUsage(c, models, byModel)
+	return &weighed, nil
 }
 
 // perModelDashboardUsage expands a per-model constraint into one gauge per
@@ -707,7 +754,7 @@ func (h *Handler) perModelDashboardUsage(
 		cu := orgcomponent.SubscriptionConstraintUsage{Constraint: fairShareConstraint(mc, memberCount), UpstreamModel: um.UpstreamModel}
 		scope := providerScope
 		scope.ModelIDs = um.ModelIDs
-		h.fillDashboardRollingWindowUsage(ctx, &cu, mc, scope, userID, memberCount, now)
+		h.fillDashboardRollingWindowUsage(ctx, &cu, mc, scope, models, userID, memberCount, now)
 		if h.subscriptionMonitor != nil {
 			cu.Exhausted = h.subscriptionMonitor.IsExhausted(providerScope.OrgID, providerScope.ProviderID, c.Label, um.UpstreamModel)
 		}
@@ -739,6 +786,7 @@ func applyFairShare(
 	memberCount int64,
 	now time.Time,
 	planUsage *service.PlanUsage,
+	userUsage *service.PlanUsage,
 ) bool {
 	if !fairShareApplies(fairShare, c, userID, memberCount) {
 		return false
@@ -753,6 +801,7 @@ func applyFairShare(
 		Constraint:  c,
 		Now:         now,
 		PlanUsage:   planUsage,
+		UserUsage:   userUsage,
 	})
 	if err != nil {
 		slog.WarnContext(ctx, "could not resolve fair-share denominators", slogx.Error(err))

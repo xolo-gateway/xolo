@@ -4,8 +4,10 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"maps"
 	"math"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -667,15 +669,21 @@ func parseSubscriptionPlanFromForm(r *http.Request) (*model.SubscriptionPlan, er
 			}
 			// Per-model metering: the budgets above become those of every
 			// upstream model, each with its own window, and the overrides
-			// below give some models a budget of their own.
-			if r.FormValue(prefix+"scope") == string(model.PlanScopeModel) {
-				c.Scope = model.PlanScopeModel
+			// below give some models a budget of their own. Shared metering
+			// keeps a single window, the overrides setting the rate at which
+			// each model fills it.
+			switch scope := model.PlanConstraintScope(r.FormValue(prefix + "scope")); scope {
+			case model.PlanScopeModel, model.PlanScopeShared:
+				c.Scope = scope
 			}
 			if budgets, err := parsePlanModelBudgets(r.FormValue(prefix + "model_budgets")); err != nil {
 				fail(errors.New(i18n.T(ctx, "org.errors.providers.constraint_model_budgets", c.Label, localizedError(ctx, err))))
 			} else if len(budgets) > 0 {
-				if c.Scope != model.PlanScopeModel {
+				if c.Scope != model.PlanScopeModel && c.Scope != model.PlanScopeShared {
 					fail(errors.New(i18n.T(ctx, "org.errors.providers.constraint_model_budgets_scope", c.Label)))
+				}
+				if c.Scope == model.PlanScopeShared {
+					checkSharedModelBudgets(ctx, c, budgets, fail)
 				}
 				c.ModelBudgets = budgets
 			}
@@ -702,6 +710,25 @@ func parseSubscriptionPlanFromForm(r *http.Request) (*model.SubscriptionPlan, er
 		return nil, nil
 	}
 	return &model.SubscriptionPlan{Label: label, Constraints: constraints}, firstErr
+}
+
+// checkSharedModelBudgets reports the model budgets a shared constraint cannot
+// weigh: a zero one would weigh infinitely, and one of a kind the constraint
+// has no budget of would weigh nothing, both silently. Models are reported in
+// name order so the first error shown does not change between two saves.
+func checkSharedModelBudgets(ctx context.Context, c model.PlanConstraint, budgets map[string]model.PlanBudget, fail func(error)) {
+	for _, name := range slices.Sorted(maps.Keys(budgets)) {
+		b := budgets[name]
+		for _, kind := range []struct{ model, constraint *int64 }{{b.TokenBudget, c.TokenBudget}, {b.ValueBudget, c.ValueBudget}} {
+			switch {
+			case kind.model == nil:
+			case *kind.model == 0:
+				fail(errors.New(i18n.T(ctx, "org.errors.providers.constraint_shared_zero", c.Label, name)))
+			case kind.constraint == nil:
+				fail(errors.New(i18n.T(ctx, "org.errors.providers.constraint_shared_missing", c.Label, name)))
+			}
+		}
+	}
 }
 
 // computeWindowAnchor turns a "reset dans" countdown (e.g. "4h29m", "4d13h") into an

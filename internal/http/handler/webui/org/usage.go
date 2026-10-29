@@ -797,6 +797,20 @@ func (h *Handler) fillRollingWindowUsage(ctx context.Context, cu *component.Subs
 	}
 }
 
+// sharedPlanUsage reads the consumption of a shared constraint, each model
+// weighed by its own budget. A failed read counts nothing, as a failed sum does
+// for the other constraints: the plain sum would show figures the constraint
+// does not count.
+func (h *Handler) sharedPlanUsage(ctx context.Context, c model.PlanConstraint, scope model.PlanUsageScope, models []model.LLMModel, now time.Time) *port.PlanUsageTotals {
+	byModel, err := h.usageStore.SumPlanUsageByModelSince(ctx, scope, "", c.CurrentWindowStart(now))
+	if err != nil {
+		slog.WarnContext(ctx, "could not sum shared plan usage", slogx.Error(err))
+		return &port.PlanUsageTotals{}
+	}
+	weighed := service.WeighSharedPlanUsage(c, models, byModel)
+	return &port.PlanUsageTotals{Tokens: weighed.Tokens, Value: weighed.Value}
+}
+
 // perModelConstraintUsage expands a per-model constraint into one gauge per
 // upstream model consumed in the current window. A plan metering a few dozen
 // models would bury the page under idle gauges; when none is in use a single
@@ -862,7 +876,7 @@ func (h *Handler) buildSubscriptionProviderUsage(ctx context.Context, orgID mode
 
 		providerScope := model.PlanUsageScope{OrgID: orgID, ProviderID: p.ID()}
 		var models []model.LLMModel
-		if plan.HasPerModelConstraint() {
+		if plan.HasPerModelConstraint() || plan.HasSharedConstraint() {
 			if models, err = h.providerStore.ListLLMModels(ctx, orgID); err != nil {
 				slog.WarnContext(ctx, "could not list models for per-model plan usage", slogx.Error(err))
 			}
@@ -878,7 +892,11 @@ func (h *Handler) buildSubscriptionProviderUsage(ctx context.Context, orgID mode
 
 			switch c.Kind {
 			case model.ConstraintRollingWindow:
-				h.fillRollingWindowUsage(ctx, &cu, c, providerScope, now, nil)
+				var totals *port.PlanUsageTotals
+				if c.Shared() {
+					totals = h.sharedPlanUsage(ctx, c, providerScope, models, now)
+				}
+				h.fillRollingWindowUsage(ctx, &cu, c, providerScope, now, totals)
 
 			case model.ConstraintConcurrency:
 				if h.subscriptionMonitor != nil {

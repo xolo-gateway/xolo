@@ -639,7 +639,7 @@ func validatePlanConstraint(c model.PlanConstraint) error {
 		if len(c.ModelBudgets) > 0 {
 			return invalid
 		}
-	case model.PlanScopeModel:
+	case model.PlanScopeModel, model.PlanScopeShared:
 		if c.Kind != model.ConstraintRollingWindow || len(c.ModelBudgets) > maxPlanModelBudgets {
 			return invalid
 		}
@@ -652,6 +652,11 @@ func validatePlanConstraint(c model.PlanConstraint) error {
 		}
 		for _, budget := range []*int64{b.TokenBudget, b.ValueBudget} {
 			if budget != nil && *budget < 0 {
+				return invalid
+			}
+			// A shared constraint divides by the model's budget: a zero one
+			// would weigh infinitely.
+			if budget != nil && *budget == 0 && c.Scope == model.PlanScopeShared {
 				return invalid
 			}
 		}

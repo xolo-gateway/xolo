@@ -28,6 +28,10 @@ type planScope struct {
 	// constraints.
 	UpstreamModel string
 	ModelIDs      []model.LLMModelID
+	// Models are the organization's models, from which a shared constraint
+	// reads the upstream model, hence the weight, of each model consumed.
+	// Unused by the other constraints.
+	Models []model.LLMModel
 }
 
 // usageScope is the usage a constraint counts: the whole provider, or the
@@ -142,7 +146,7 @@ func (e *rollingWindowEvaluator) Acquire(ctx context.Context, scope planScope, c
 	since := c.CurrentWindowStart(now)
 	usage := scope.usageScope(c)
 	name := scope.constraintName(c)
-	tokens, providerValue, err := e.usageStore.SumPlanUsageSince(ctx, usage, since)
+	tokens, providerValue, err := e.planUsage(ctx, scope, c, usage, "", since)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -163,6 +167,16 @@ func (e *rollingWindowEvaluator) Acquire(ctx context.Context, scope planScope, c
 
 	// Per-user fair-share check.
 	if scope.UserID != "" && scope.MemberCount > 0 {
+		// A shared constraint weighs the user's consumption the way it weighed
+		// the plan's, which the allocator's own plain sum cannot.
+		var userUsage *service.PlanUsage
+		if c.Shared() {
+			userTokens, userValue, err := e.planUsage(ctx, scope, c, usage, scope.UserID, since)
+			if err != nil {
+				return nil, nil, err
+			}
+			userUsage = &service.PlanUsage{Tokens: userTokens, Value: userValue}
+		}
 		// The plan-wide totals were just read for the check above; handing them to
 		// the allocator keeps this to one aggregation of the window per request.
 		share, err := e.fairShare.Resolve(ctx, service.FairShareRequest{
@@ -174,6 +188,7 @@ func (e *rollingWindowEvaluator) Acquire(ctx context.Context, scope planScope, c
 			Constraint:  c,
 			Now:         now,
 			PlanUsage:   &service.PlanUsage{Tokens: tokens, Value: providerValue},
+			UserUsage:   userUsage,
 		})
 		if err != nil {
 			return nil, nil, err
@@ -205,6 +220,25 @@ func (e *rollingWindowEvaluator) Acquire(ctx context.Context, scope planScope, c
 	}
 
 	return noopReservation{}, nil, nil
+}
+
+// planUsage reads the consumption a constraint counts since the start of its
+// window, for the whole plan or, when userID is set, for one user. A shared
+// constraint reads it per model to weigh each by its own budget; the others
+// read the plain sum.
+func (e *rollingWindowEvaluator) planUsage(ctx context.Context, scope planScope, c model.PlanConstraint, usage model.PlanUsageScope, userID model.UserID, since time.Time) (tokens, value int64, err error) {
+	if !c.Shared() {
+		if userID == "" {
+			return e.usageStore.SumPlanUsageSince(ctx, usage, since)
+		}
+		return e.usageStore.SumUserPlanUsageSince(ctx, userID, usage, since)
+	}
+	byModel, err := e.usageStore.SumPlanUsageByModelSince(ctx, usage, userID, since)
+	if err != nil {
+		return 0, 0, err
+	}
+	weighed := service.WeighSharedPlanUsage(c, scope.Models, byModel)
+	return weighed.Tokens, weighed.Value, nil
 }
 
 // shareBasis spells out what the allowance was computed from, so a share that

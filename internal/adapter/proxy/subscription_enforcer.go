@@ -31,7 +31,7 @@ type XoloSubscriptionEnforcer struct {
 	orgStore      port.OrgStore
 	state         *SubscriptionStateDetailed
 	evaluators    map[model.PlanConstraintKind]constraintEvaluator
-	upstream      *upstreamModelCache
+	models        *orgModelCache
 }
 
 func NewXoloSubscriptionEnforcer(
@@ -49,7 +49,7 @@ func NewXoloSubscriptionEnforcer(
 			model.ConstraintRollingWindow: newRollingWindowEvaluator(usageStore, fairShare),
 			model.ConstraintConcurrency:   &concurrencyEvaluator{state: state},
 		},
-		upstream: newUpstreamModelCache(upstreamModelsCacheTTL),
+		models: newOrgModelCache(upstreamModelsCacheTTL),
 	}
 }
 
@@ -99,6 +99,11 @@ func (e *XoloSubscriptionEnforcer) PreRequest(ctx context.Context, req *genaiPro
 	if plan.HasPerModelConstraint() {
 		scope.UpstreamModel = m.RealModel()
 		scope.ModelIDs = e.upstreamModelIDs(ctx, m)
+	}
+	if plan.HasSharedConstraint() {
+		// On a failure the usage is weighed without the models, each at the
+		// constraint's own rate: the plan closes early rather than late.
+		scope.Models, _ = e.orgModels(ctx, orgID)
 	}
 
 	// Check cooldowns first (fast path, no DB).
@@ -259,24 +264,33 @@ func cooldownModel(c model.PlanConstraint, upstreamModel string) string {
 
 // upstreamModelIDs lists the models of the provider that target the same
 // upstream model as m: the provider meters them as one, whatever proxy name
-// they are published under. The grouping is cached for upstreamModelsCacheTTL.
-// On a store error it falls back to m alone, uncached, which undercounts only
-// when the model has aliases; PlanModelGroupingFailures counts those requests.
+// they are published under. When the models cannot be listed it falls back to
+// m alone, which undercounts only when the model has aliases.
 func (e *XoloSubscriptionEnforcer) upstreamModelIDs(ctx context.Context, m model.LLMModel) []model.LLMModelID {
-	now := time.Now()
-	if ids, ok := e.upstream.get(m.ID(), now); ok {
-		return ids
-	}
-	models, err := e.providerStore.ListLLMModels(ctx, m.OrgID())
-	if err != nil {
-		metrics.PlanModelGroupingFailures.With(prometheus.Labels{metrics.LabelOrg: string(m.OrgID())}).Inc()
-		slog.WarnContext(ctx, "subscription enforcer: could not list models, metering the requested model alone",
-			slog.Any("error", err), slog.String("model", string(m.ID())))
+	models, ok := e.orgModels(ctx, m.OrgID())
+	if !ok {
 		return []model.LLMModelID{m.ID()}
 	}
-	ids := model.UpstreamModelIDs(models, m)
-	e.upstream.put(m.ID(), ids, now)
-	return ids
+	return model.UpstreamModelIDs(models, m)
+}
+
+// orgModels lists the models of an organization, cached for
+// upstreamModelsCacheTTL. A store error is not cached and reports false;
+// PlanModelGroupingFailures counts the requests it affects.
+func (e *XoloSubscriptionEnforcer) orgModels(ctx context.Context, orgID model.OrgID) ([]model.LLMModel, bool) {
+	now := time.Now()
+	if models, ok := e.models.get(orgID, now); ok {
+		return models, true
+	}
+	models, err := e.providerStore.ListLLMModels(ctx, orgID)
+	if err != nil {
+		metrics.PlanModelGroupingFailures.With(prometheus.Labels{metrics.LabelOrg: string(orgID)}).Inc()
+		slog.WarnContext(ctx, "subscription enforcer: could not list models, metering without them",
+			slog.Any("error", err), slog.String("org", string(orgID)))
+		return nil, false
+	}
+	e.models.put(orgID, models, now)
+	return models, true
 }
 
 // resolveTarget returns the model a request targets and its provider, or nils

@@ -73,3 +73,71 @@ func TestUpstreamModelIDs(t *testing.T) {
 		t.Errorf("UpstreamModelIDs = %v, want kimi and its alias on the same provider", got)
 	}
 }
+
+func TestPlanConstraint_Weigh(t *testing.T) {
+	value := func(v int64) *int64 { return &v }
+	c := PlanConstraint{
+		Kind:        ConstraintRollingWindow,
+		Label:       "month",
+		Duration:    PlanDuration(720 * time.Hour),
+		TokenBudget: value(1_000),
+		ValueBudget: value(60_000_000),
+		Scope:       PlanScopeShared,
+		ModelBudgets: map[string]PlanBudget{
+			"deepseek-v4.1-flash": {ValueBudget: value(160_000_000)},
+			"glm-5.3":             {TokenBudget: value(4_000), ValueBudget: value(120_000_000)},
+			"beam-free":           {},
+		},
+	}
+
+	tests := []struct {
+		model         string
+		tokens, value int64
+		wantTokens    int64
+		wantValue     int64
+	}{
+		// A budget of 160$ against the window's 60$: 16$ weigh 6$. The model
+		// lists no token budget, so its tokens weigh nothing.
+		{"deepseek-v4.1-flash", 800, 16_000_000, 0, 6_000_000},
+		{"glm-5.3", 800, 12_000_000, 200, 6_000_000},
+		// Not listed: the constraint's own rate.
+		{"kimi-k3", 800, 12_000_000, 800, 12_000_000},
+		// Listed without budget: unlimited, weighs nothing.
+		{"beam-free", 800, 12_000_000, 0, 0},
+	}
+	for _, tt := range tests {
+		tokens, value := c.Weigh(tt.model, tt.tokens, tt.value)
+		if tokens != tt.wantTokens || value != tt.wantValue {
+			t.Errorf("Weigh(%s) = (%d, %d), want (%d, %d)", tt.model, tokens, value, tt.wantTokens, tt.wantValue)
+		}
+	}
+
+	// A dimension the constraint does not limit is left as is.
+	c.TokenBudget = nil
+	if tokens, _ := c.Weigh("glm-5.3", 800, 0); tokens != 800 {
+		t.Errorf("tokens = %d without a token budget on the constraint, want 800", tokens)
+	}
+
+	// Only a shared constraint weighs.
+	c.Scope = PlanScopeModel
+	if _, value := c.Weigh("deepseek-v4.1-flash", 0, 16_000_000); value != 16_000_000 {
+		t.Errorf("per-model Weigh = %d, want the figure unchanged", value)
+	}
+}
+
+func TestSubscriptionPlan_HasSharedConstraint(t *testing.T) {
+	plan := &SubscriptionPlan{Constraints: []PlanConstraint{
+		{Kind: ConstraintRollingWindow, Scope: PlanScopeModel},
+		{Kind: ConstraintConcurrency, Scope: PlanScopeShared},
+	}}
+	if plan.HasSharedConstraint() {
+		t.Error("HasSharedConstraint = true, want false: only a rolling window can be shared")
+	}
+	plan.Constraints = append(plan.Constraints, PlanConstraint{Kind: ConstraintRollingWindow, Scope: PlanScopeShared})
+	if !plan.HasSharedConstraint() {
+		t.Error("HasSharedConstraint = false, want true")
+	}
+	if (*SubscriptionPlan)(nil).HasSharedConstraint() {
+		t.Error("a nil plan has no shared constraint")
+	}
+}

@@ -7,46 +7,46 @@ import (
 	"github.com/xolo-gateway/xolo/internal/core/model"
 )
 
-// upstreamModelsCacheTTL is how long the models sharing an upstream model are
-// reused. The grouping only changes when a model is created, deleted or
-// pointed at another upstream model, so a plan check may meter on a grouping
-// up to this old after such an edit.
+// upstreamModelsCacheTTL is how long an organization's models are reused. The
+// plan checks read from them which models share an upstream model and at which
+// rate each fills a shared budget, which only change when a model is created,
+// deleted or pointed at another upstream model: a plan check may meter on a
+// list up to this old after such an edit.
 const upstreamModelsCacheTTL = 30 * time.Second
 
-// upstreamModelCache keeps, per requested model, the models of its provider
-// that target the same upstream model. Without it a per-model plan would list
-// every model of the organization on each proxied request, a read the provider
-// store cache passes through.
-type upstreamModelCache struct {
+// orgModelCache keeps the models of each organization. Without it a per-model
+// or shared plan would list every model of the organization on each proxied
+// request, a read the provider store cache passes through.
+type orgModelCache struct {
 	ttl time.Duration
 
 	mu      sync.Mutex
-	entries map[model.LLMModelID]upstreamModelEntry
+	entries map[model.OrgID]orgModelEntry
 	purgeAt int
 }
 
-type upstreamModelEntry struct {
-	ids       []model.LLMModelID
+type orgModelEntry struct {
+	models    []model.LLMModel
 	expiresAt time.Time
 }
 
-func newUpstreamModelCache(ttl time.Duration) *upstreamModelCache {
-	return &upstreamModelCache{ttl: ttl, entries: make(map[model.LLMModelID]upstreamModelEntry), purgeAt: minPurgeAt}
+func newOrgModelCache(ttl time.Duration) *orgModelCache {
+	return &orgModelCache{ttl: ttl, entries: make(map[model.OrgID]orgModelEntry), purgeAt: minPurgeAt}
 }
 
-func (c *upstreamModelCache) get(id model.LLMModelID, now time.Time) ([]model.LLMModelID, bool) {
+func (c *orgModelCache) get(orgID model.OrgID, now time.Time) ([]model.LLMModel, bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	entry, ok := c.entries[id]
+	entry, ok := c.entries[orgID]
 	if !ok || now.After(entry.expiresAt) {
 		return nil, false
 	}
-	return entry.ids, true
+	return entry.models, true
 }
 
-// put stores a grouping. Expired entries are swept once the map outgrows its
-// last sweep, so deleted models do not accumulate.
-func (c *upstreamModelCache) put(id model.LLMModelID, ids []model.LLMModelID, now time.Time) {
+// put stores a list. Expired entries are swept once the map outgrows its last
+// sweep, so deleted organizations do not accumulate.
+func (c *orgModelCache) put(orgID model.OrgID, models []model.LLMModel, now time.Time) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if len(c.entries) >= c.purgeAt {
@@ -57,7 +57,7 @@ func (c *upstreamModelCache) put(id model.LLMModelID, ids []model.LLMModelID, no
 		}
 		c.purgeAt = max(2*len(c.entries), minPurgeAt)
 	}
-	c.entries[id] = upstreamModelEntry{ids: ids, expiresAt: now.Add(c.ttl)}
+	c.entries[orgID] = orgModelEntry{models: models, expiresAt: now.Add(c.ttl)}
 }
 
 // minPurgeAt is the size below which the in-memory maps of this package are
