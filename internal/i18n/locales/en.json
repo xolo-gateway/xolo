@@ -640,6 +640,7 @@
   "org.provider_bundle.applied_with_provider": "Provider settings saved, %d model(s) created, %d updated. Some changes could not be written:",
   "org.provider_bundle.change_not_applied": "%s: change of \"%s\" not applied: %s",
   "org.errors.provider_bundle.too_large": "The bundle is too large (4 MB at most).",
+  "org.errors.provider_bundle.no_rate": "This bundle is priced in %s and no exchange rate to %s is available: try again later.",
   "org.errors.provider_bundle.invalid_settings": "The provider settings of this bundle are invalid (plan, currency, retries or headers): nothing was written.",
   "org.subscription.title": "Subscriptions",
   "org.subscription.my_share": "My share",

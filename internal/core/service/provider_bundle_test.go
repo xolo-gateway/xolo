@@ -424,7 +424,8 @@ func TestParseProviderBundle_RefusesReservedHeadersAndAbsurdPrices(t *testing.T)
 	for name, doc := range map[string]string{
 		"reserved header":   `{"kind":"xolo.provider","version":"1","provider":{"type":"openai","currency":"USD","request_headers":{"headers":{"Authorization":"Bearer x"}}}}`,
 		"billing mode":      `{"kind":"xolo.provider","version":"1","provider":{"type":"openai","currency":"USD","billing_mode":"free"}}`,
-		"currency":          `{"kind":"xolo.provider","version":"1","provider":{"type":"openai","currency":"USD","currency":"XXX"}}`,
+		"currency":          `{"kind":"xolo.provider","version":"1","provider":{"type":"openai","currency":"XXX"}}`,
+		"no currency":       `{"kind":"xolo.provider","version":"1","provider":{"type":"openai"}}`,
 		"scope":             `{"kind":"xolo.provider","version":"1","provider":{"type":"openai","currency":"USD","subscription_plan":{"label":"P","constraints":[{"kind":"rolling_window","label":"5h","duration":"5h","scope":"modle"}]}}}`,
 		"model concurrency": `{"kind":"xolo.provider","version":"1","provider":{"type":"openai","currency":"USD","subscription_plan":{"label":"P","constraints":[{"kind":"concurrency","label":"c","max_concurrent":2,"scope":"model"}]}}}`,
 		"cloud tier":        `{"kind":"xolo.provider","version":"1","provider":{"type":"openai","currency":"USD","cloud_tier":7}}`,
@@ -622,5 +623,23 @@ func TestApplyProviderBundle_ValidatesTheProviderLikeEveryWritePath(t *testing.T
 	}
 	if mem.writes != 0 {
 		t.Errorf("%d writes, want none before the provider is valid", mem.writes)
+	}
+}
+
+func TestNewProviderBundle_LeavesOutHeadersThatLookLikeCredentials(t *testing.T) {
+	p := model.NewProvider("org-a", "Gateway", "openai", "https://gw.test/v1", "key", "USD")
+	p.SetRequestHeaders(&model.ProviderRequestHeaders{Headers: map[string]string{
+		"X-Title": "xolo", "Ocp-Apim-Subscription-Key": "secret-1", "X-Auth-Token": "secret-2",
+	}, SessionHeader: "X-Session-Affinity"})
+	data, err := json.Marshal(model.NewProviderBundle(p, nil, false, time.Now()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	doc := string(data)
+	if strings.Contains(doc, "secret-1") || strings.Contains(doc, "secret-2") {
+		t.Error("the export carries a credential header")
+	}
+	if !strings.Contains(doc, "X-Title") || !strings.Contains(doc, "X-Session-Affinity") {
+		t.Error("the export should keep the plain headers and the session header name")
 	}
 }

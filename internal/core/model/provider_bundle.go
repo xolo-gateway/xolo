@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"math"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/pkg/errors"
@@ -106,7 +107,7 @@ func NewProviderBundle(p Provider, models []LLMModel, enabledOnly bool, now time
 			CloudTier:        p.CloudTier(),
 			Retry:            p.RetryConfig(),
 			RateLimit:        p.RateLimitConfig(),
-			RequestHeaders:   p.RequestHeaders(),
+			RequestHeaders:   portableHeaders(p.RequestHeaders()),
 			BillingMode:      p.BillingMode(),
 			SubscriptionPlan: p.SubscriptionPlan(),
 		},
@@ -119,6 +120,36 @@ func NewProviderBundle(p Provider, models []LLMModel, enabledOnly bool, now time
 		bundle.Models = append(bundle.Models, BundleModelOf(m))
 	}
 	return bundle
+}
+
+// credentialHeaderWords mark a header name that likely carries a credential.
+// The reserved headers (Authorization, X-Api-Key, Cookie…) cannot be
+// configured at all; a gateway may still take its key in a header of its
+// own, such as Api-Key or Ocp-Apim-Subscription-Key.
+var credentialHeaderWords = []string{"key", "token", "auth", "secret", "password", "signature", "session", "cookie", "credential"}
+
+// portableHeaders returns the request headers that can travel in a bundle:
+// those whose name does not look like a credential's. The session header,
+// a name rather than a value, is kept.
+func portableHeaders(h *ProviderRequestHeaders) *ProviderRequestHeaders {
+	if h == nil {
+		return nil
+	}
+	portable := &ProviderRequestHeaders{SessionHeader: h.SessionHeader}
+	for name, value := range h.Headers {
+		lower := strings.ToLower(name)
+		if slices.ContainsFunc(credentialHeaderWords, func(w string) bool { return strings.Contains(lower, w) }) {
+			continue
+		}
+		if portable.Headers == nil {
+			portable.Headers = map[string]string{}
+		}
+		portable.Headers[name] = value
+	}
+	if portable.Empty() {
+		return nil
+	}
+	return portable
 }
 
 // BundleModelOf describes m as a bundle model.

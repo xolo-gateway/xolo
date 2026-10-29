@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
+	"github.com/xolo-gateway/xolo/internal/core/service"
 	stdhtml "html"
 	"mime/multipart"
 	"net/http"
@@ -154,5 +156,65 @@ func TestProviderBundle_AnswersInvalidSettingsWithThePage(t *testing.T) {
 	}
 	if !strings.Contains(stdhtml.UnescapeString(rr.Body.String()), "rien n'a été écrit") || len(store.providers) != 0 {
 		t.Error("the page should say nothing was written, and nothing should be")
+	}
+}
+
+// fixedRates serves the exchange rates it holds, as "FROM>TO".
+type fixedRates map[string]float64
+
+func (f fixedRates) FetchRates(_ context.Context, base string) (map[string]float64, error) {
+	rates := map[string]float64{}
+	for pair, rate := range f {
+		if from, to, _ := strings.Cut(pair, ">"); from == base {
+			rates[to] = rate
+		}
+	}
+	return rates, nil
+}
+
+type memoryRates struct{ rates map[string]model.ExchangeRate }
+
+func (m *memoryRates) GetRate(_ context.Context, from, to string) (*model.ExchangeRate, error) {
+	if r, ok := m.rates[from+">"+to]; ok {
+		return &r, nil
+	}
+	return nil, errors.New("no rate")
+}
+
+func (m *memoryRates) UpsertRate(_ context.Context, r model.ExchangeRate) error {
+	m.rates[r.FromCurrency+">"+r.ToCurrency] = r
+	return nil
+}
+
+func (m *memoryRates) ListRates(context.Context) ([]model.ExchangeRate, error) { return nil, nil }
+
+func TestProviderBundle_ConvertsABundleInAnotherCurrency(t *testing.T) {
+	h, s, tenant := importFixture(t, "https://example.test/v1", "sk")
+	h.exchangeRateService = service.NewExchangeRateService(fixedRates{"EUR>USD": 2}, &memoryRates{rates: map[string]model.ExchangeRate{}}, time.Hour)
+	doc := `{"kind":"xolo.provider","version":"1","provider":{"type":"openai","currency":"EUR"},` +
+		`"models":[{"real_model":"m","proxy_name":"m","enabled":true,"prices":{"input":1,"output":3}}]}`
+
+	fields := url.Values{"step": {"apply"}, "bundle": {doc}, "create": {"0"}}
+	rr := httptest.NewRecorder()
+	h.importProviderBundle(rr, bundleRequest(t, s, tenant, string(s.provider.ID()), bytes.NewBufferString(fields.Encode()), "application/x-www-form-urlencoded"))
+	if rr.Code != http.StatusSeeOther {
+		t.Fatalf("status = %d: %s", rr.Code, rr.Body.String())
+	}
+	if len(s.created) != 1 {
+		t.Fatalf("created %d models, want 1", len(s.created))
+	}
+	if m := s.created[0]; m.PromptCostPer1KTokens() != 2000 || m.CompletionCostPer1KTokens() != 6000 {
+		t.Errorf("prices = %d / %d microcents per 1K, want the EUR prices converted to USD at 2", m.PromptCostPer1KTokens(), m.CompletionCostPer1KTokens())
+	}
+}
+
+func TestProviderBundle_RefusesABundleItCannotConvert(t *testing.T) {
+	h, s, tenant := importFixture(t, "https://example.test/v1", "sk")
+	doc := `{"kind":"xolo.provider","version":"1","provider":{"type":"openai","currency":"EUR"},"models":[]}`
+	fields := url.Values{"step": {"preview"}, "bundle": {doc}}
+	rr := httptest.NewRecorder()
+	h.importProviderBundle(rr, bundleRequest(t, s, tenant, string(s.provider.ID()), bytes.NewBufferString(fields.Encode()), "application/x-www-form-urlencoded"))
+	if rr.Code != http.StatusUnprocessableEntity {
+		t.Errorf("status = %d, want the import refused rather than EUR prices under USD", rr.Code)
 	}
 }
