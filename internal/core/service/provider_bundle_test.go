@@ -533,3 +533,28 @@ func TestApplyProviderBundle_ReportsWhatTheSelectionMadeInapplicable(t *testing.
 		t.Errorf("result = created %d failed %+v skipped %+v; want the creation reported as blocked by the kept name", result.Created, result.Failed, result.Skipped)
 	}
 }
+
+func TestApplyProviderBundle_ReportsASelectedRenameItCannotApply(t *testing.T) {
+	mem := newMemoryProviderStore()
+	p := configuredProvider(t, mem, "org-a")
+	models := mem.modelsOf("org-a")
+
+	// kimi-k3 moves to the name glm-5 keeps: the operator checked the rename.
+	bundle := model.NewProviderBundle(p, models, false, time.Now())
+	index := -1
+	for i := range bundle.Models {
+		if bundle.Models[i].RealModel == "kimi-k3" {
+			bundle.Models[i].ProxyName = "glm-5"
+			index = i
+		}
+	}
+	sel := BundleSelection{Fields: map[int]map[string]bool{index: {BundleFieldProxyName: true}}}
+	plan := PlanProviderBundleImportWith(bundle, p, models, namesOf(models), &sel)
+	result, err := ApplyProviderBundle(context.Background(), mem, plan, sel, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Skipped) != 1 || result.Skipped[0].Conflict == "" {
+		t.Errorf("skipped = %+v, want the refused rename reported", result.Skipped)
+	}
+}

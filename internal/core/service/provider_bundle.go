@@ -480,6 +480,16 @@ func ApplyProviderBundle(ctx context.Context, store port.ProviderStore, plan Pro
 	for _, mp := range plan.Models {
 		if mp.Action == BundleModelSkip && (sel.Models[mp.Index] || len(sel.Fields[mp.Index]) > 0) {
 			result.Skipped = append(result.Skipped, mp)
+			continue
+		}
+		// A selected change the apply plan finds in conflict, such as a
+		// rename onto a name another model still holds, is reported too.
+		for _, change := range mp.Changes {
+			if change.Conflict != "" && sel.Fields[mp.Index][change.Field] {
+				skipped := mp
+				skipped.Conflict = change.Conflict
+				result.Skipped = append(result.Skipped, skipped)
+			}
 		}
 	}
 
