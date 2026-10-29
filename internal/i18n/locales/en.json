@@ -615,7 +615,7 @@
   "org.subscription.duration_hours": "%sh",
   "org.subscription.duration_minutes": "%sm",
   "org.subscription.all_models": "All models",
-  "org.subscription.tokens_count": "%s tokens",
+  "org.subscription.tokens_count": "%s tok",
   "org.subscription.other_gauge": "%s %s",
   "org.subscription.share_note_of": "%s: %s",
   "org.subscription.share_basis_short": "%s/%s active",
