@@ -27,6 +27,12 @@ func TestValidatePlanConstraint_Shared(t *testing.T) {
 		t.Error("shared constraint with a zero model budget accepted, want rejected")
 	}
 
+	// Nor a kind the constraint does not limit: it would weigh nothing.
+	shared.ModelBudgets = map[string]model.PlanBudget{"deepseek-v4.1-flash": {TokenBudget: value(50_000_000)}}
+	if err := validatePlanConstraint(shared); err == nil {
+		t.Error("shared constraint with a token model budget and no token budget accepted, want rejected")
+	}
+
 	concurrency := model.PlanConstraint{Kind: model.ConstraintConcurrency, Label: "c", MaxConcurrent: new(int), Scope: model.PlanScopeShared}
 	*concurrency.MaxConcurrent = 2
 	if err := validatePlanConstraint(concurrency); err == nil {

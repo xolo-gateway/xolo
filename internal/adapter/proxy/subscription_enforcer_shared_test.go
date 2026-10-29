@@ -169,15 +169,18 @@ func TestSubscriptionEnforcer_SharedConstraintWeighsTheUserShare(t *testing.T) {
 	}
 }
 
-func TestSubscriptionEnforcer_SharedConstraintWithoutModelsWeighsAtTheConstraintRate(t *testing.T) {
+func TestSubscriptionEnforcer_SharedConstraintWithoutModelsWeighsAtTheHighestRate(t *testing.T) {
 	f := newSharedFixture(t, 0, sharedConstraint(map[string]model.PlanBudget{
 		"glm-5.3-flash": {ValueBudget: int64Ptr(180_000_000)},
+		"kimi-k3":       {ValueBudget: int64Ptr(30_000_000)},
 	}))
 	f.providers.listErr = errors.New("store down")
-	f.consume("", f.glm, 60_000_000)
+	// 30$ of glm weigh 10$ when the models are known; without them they weigh
+	// at kimi's rate, 60$/30$: 60$, the whole window.
+	f.consume("", f.glm, 30_000_000)
 
-	if msg := f.denialFor(t, "", f.kimi); msg == "" {
-		t.Error("kimi granted, want denied: without the models every usage counts at the window's own rate, closing early rather than late")
+	if msg := f.denialFor(t, "", f.glm); msg == "" {
+		t.Error("glm granted, want denied: without the models every usage counts at the highest rate, closing early rather than late")
 	}
 }
 
@@ -191,5 +194,24 @@ func TestSubscriptionEnforcer_Upstream429CoolsDownASharedWindowForEveryModel(t *
 
 	if msg := f.denialFor(t, "", f.glm); !strings.Contains(msg, "cooldown") {
 		t.Errorf("glm message = %q, want a cooldown: the window is shared by every model", msg)
+	}
+}
+
+func TestSubscriptionEnforcer_Upstream429LeavesASharedWindowOpenInAPerModelPlan(t *testing.T) {
+	// The 429 is attributed to the requested model, as for the provider-wide
+	// constraints of such a plan: it cannot be told apart from that model's
+	// own exhaustion.
+	f := newSharedFixture(t, 0, perModelConstraint("5h", 3_000_000, nil), sharedConstraint(nil))
+
+	upstream := &llm.HTTPError{StatusCode: http.StatusTooManyRequests}
+	if _, err := f.enforcer.OnError(context.Background(), f.request(f.kimi), upstream); err != nil {
+		t.Fatalf("OnError: %v", err)
+	}
+
+	if msg := f.denialFor(t, "", f.glm); msg != "" {
+		t.Errorf("glm denied (%q), want granted: only kimi's per-model window is in cooldown", msg)
+	}
+	if msg := f.denialFor(t, "", f.kimi); !strings.Contains(msg, "cooldown") {
+		t.Errorf("kimi message = %q, want a cooldown", msg)
 	}
 }

@@ -141,3 +141,31 @@ func TestSubscriptionPlan_HasSharedConstraint(t *testing.T) {
 		t.Error("a nil plan has no shared constraint")
 	}
 }
+
+func TestPlanConstraint_WeighUnknown(t *testing.T) {
+	value := func(v int64) *int64 { return &v }
+	c := PlanConstraint{
+		Kind:        ConstraintRollingWindow,
+		TokenBudget: value(1_000),
+		ValueBudget: value(60_000_000),
+		Scope:       PlanScopeShared,
+		ModelBudgets: map[string]PlanBudget{
+			"deepseek-v4.1-flash": {ValueBudget: value(160_000_000)},
+			"kimi-k3.1-pro":       {ValueBudget: value(15_000_000)},
+			"beam-free":           {},
+		},
+	}
+
+	// The smallest value budget, 15$ against 60$, weighs four times; no model
+	// has a token budget below the constraint's, so tokens keep its rate.
+	tokens, weighed := c.WeighUnknown(800, 2_000_000)
+	if tokens != 800 || weighed != 8_000_000 {
+		t.Errorf("WeighUnknown = (%d, %d), want (800, 8000000)", tokens, weighed)
+	}
+
+	// Without a smaller budget, the constraint's own rate.
+	delete(c.ModelBudgets, "kimi-k3.1-pro")
+	if _, value := c.WeighUnknown(0, 2_000_000); value != 2_000_000 {
+		t.Errorf("value = %d, want 2000000: a larger model budget never lowers the rate below the constraint's", value)
+	}
+}

@@ -45,6 +45,7 @@ func TestWeighSharedPlanUsage(t *testing.T) {
 		Scope:       model.PlanScopeShared,
 		ModelBudgets: map[string]model.PlanBudget{
 			"deepseek-v4.1-flash": {ValueBudget: value(160_000_000)},
+			"kimi-k3.1-pro":       {ValueBudget: value(15_000_000)},
 			"beam-free":           {},
 		},
 	}
@@ -58,12 +59,13 @@ func TestWeighSharedPlanUsage(t *testing.T) {
 		alias.ID():    {Tokens: 100, Value: 8_000_000}, // same upstream model, same rate
 		kimi.ID():     {Tokens: 10, Value: 1_000_000},
 		free.ID():     {Tokens: 1_000, Value: 50_000_000},
-		"deleted":     {Tokens: 5, Value: 2_000_000}, // no longer listed: the window's own rate
+		"deleted":     {Tokens: 5, Value: 2_000_000}, // no longer listed: the highest rate
 	})
 
-	// 16$ of deepseek weigh 6$, plus 1$ of kimi and 2$ of a deleted model.
-	if got.Value != 9_000_000 {
-		t.Errorf("value = %d, want 9000000", got.Value)
+	// 16$ of deepseek weigh 6$, plus 1$ of kimi, and 2$ of a deleted model at
+	// the rate of the smallest budget, 60$/15$: 8$.
+	if got.Value != 15_000_000 {
+		t.Errorf("value = %d, want 15000000", got.Value)
 	}
 	// The constraint limits no tokens: they are summed as they are.
 	if got.Tokens != 1_215 {

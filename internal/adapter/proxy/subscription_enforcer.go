@@ -102,7 +102,7 @@ func (e *XoloSubscriptionEnforcer) PreRequest(ctx context.Context, req *genaiPro
 	}
 	if plan.HasSharedConstraint() {
 		// On a failure the usage is weighed without the models, each at the
-		// constraint's own rate: the plan closes early rather than late.
+		// constraint's highest rate: the plan closes early rather than late.
 		scope.Models, _ = e.orgModels(ctx, orgID)
 	}
 
@@ -196,7 +196,9 @@ const defaultExhaustionCooldown = 5 * time.Minute
 // constraints of such a plan stay open: a 429 there cannot be told apart from
 // one model's exhaustion, and closing them would lock every model out for it.
 // Otherwise every constraint of the plan does, the provider being the only
-// thing the 429 can be pinned on.
+// thing the 429 can be pinned on. A shared constraint is provider-wide in this
+// respect: it goes into cooldown for every model, unless the plan also meters
+// per model, where it stays open like the other provider-wide ones.
 func (e *XoloSubscriptionEnforcer) markExhausted(ctx context.Context, req *genaiProxy.ProxyRequest, header http.Header) {
 	orgID := OrgIDFromMeta(req.Metadata)
 	m, p := e.resolveTarget(ctx, req)

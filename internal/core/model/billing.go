@@ -142,6 +142,34 @@ func (c PlanConstraint) Weigh(realModel string, tokens, value int64) (int64, int
 	return weighUsage(tokens, c.TokenBudget, b.TokenBudget), weighUsage(value, c.ValueBudget, b.ValueBudget)
 }
 
+// WeighUnknown converts the consumption of a model whose upstream model is
+// unknown, deleted since or not listed, into the units of a shared
+// constraint's budgets. It takes the highest rate among the listed models, and
+// at least the constraint's own: the window then closes early rather than
+// late, whichever model it was.
+func (c PlanConstraint) WeighUnknown(tokens, value int64) (int64, int64) {
+	if !c.Shared() {
+		return tokens, value
+	}
+	return weighUnknown(tokens, c.TokenBudget, c.ModelBudgets, func(b PlanBudget) *int64 { return b.TokenBudget }),
+		weighUnknown(value, c.ValueBudget, c.ModelBudgets, func(b PlanBudget) *int64 { return b.ValueBudget })
+}
+
+func weighUnknown(used int64, budget *int64, budgets map[string]PlanBudget, of func(PlanBudget) *int64) int64 {
+	if budget == nil {
+		return used
+	}
+	// The smallest model budget weighs the most; the constraint's own budget
+	// bounds it, so the rate is never below 1.
+	smallest := *budget
+	for _, b := range budgets {
+		if mb := of(b); mb != nil && *mb > 0 && *mb < smallest {
+			smallest = *mb
+		}
+	}
+	return weighUsage(used, budget, &smallest)
+}
+
 func weighUsage(used int64, budget, modelBudget *int64) int64 {
 	switch {
 	case budget == nil:

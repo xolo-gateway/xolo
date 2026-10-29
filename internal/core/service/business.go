@@ -660,6 +660,12 @@ func validatePlanConstraint(c model.PlanConstraint) error {
 				return invalid
 			}
 		}
+		// Nor can it weigh a kind it does not limit: such a budget would be
+		// stored and silently ignored.
+		if c.Scope == model.PlanScopeShared &&
+			((b.TokenBudget != nil && c.TokenBudget == nil) || (b.ValueBudget != nil && c.ValueBudget == nil)) {
+			return invalid
+		}
 	}
 	for _, ratio := range []*float64{c.ReserveRatio, c.PaceSlack, c.HappyHourStart} {
 		if ratio != nil && (math.IsNaN(*ratio) || *ratio < 0 || *ratio > 1) {

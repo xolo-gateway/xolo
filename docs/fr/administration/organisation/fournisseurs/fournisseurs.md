@@ -190,7 +190,9 @@ possède : un budget tokens n'a pas de rythme à fixer sur une contrainte sans
 budget tokens.
 
 La fenêtre, sa jauge et la répartition entre utilisateurs sont communes à tous
-les modèles : un `429` du fournisseur met la fenêtre en pause pour tous. Pour
+les modèles : un `429` du fournisseur met la fenêtre en pause pour tous, sauf
+si le plan décompte aussi une fenêtre par modèle (voir
+[Mise en pause et jauges](#mise-en-pause-et-jauges)). Pour
 OpenCode Go, déclarez les trois fenêtres en décompte commun, avec les limites de
 la page du forfait :
 
@@ -210,9 +212,10 @@ publiés avec des réglages différents, sont décomptés ensemble, comme le fai
 fournisseur, et prennent le même rythme. Xolo garde la liste des modèles 30
 secondes : un modèle créé ou modifié compte avec ses homonymes après ce délai.
 Si la liste ne peut pas être lue, une fenêtre par modèle décompte le seul
-modèle demandé, une fenêtre commune compte chaque modèle au rythme de la
-contrainte, ce qui la ferme plus tôt, et le compteur
-`xolo_plan_model_grouping_failures_total` s'incrémente.
+modèle demandé, une fenêtre commune compte chaque modèle au rythme le plus
+élevé de la contrainte, ce qui la ferme plus tôt, et le compteur
+`xolo_plan_model_grouping_failures_total` s'incrémente. L'usage d'un modèle
+supprimé depuis compte lui aussi à ce rythme.
 
 #### Mise en pause et jauges
 
@@ -220,7 +223,8 @@ Un plan peut mêler les portées : une fenêtre décomptée par modèle et une
 autre sur l'ensemble du fournisseur s'appliquent toutes les deux. Quand un plan
 décompte par modèle et que le fournisseur répond `429`, seul le modèle demandé
 est mis en pause, pour la durée indiquée par l'en-tête `Retry-After`, ou cinq
-minutes à défaut.
+minutes à défaut : ses fenêtres sur l'ensemble du fournisseur et ses fenêtres
+communes restent ouvertes, le `429` ne pouvant pas leur être attribué.
 Un `429` dont l'erreur est de type `server_error`, par exemple un fournisseur
 saturé qui demande de réessayer dans quelques secondes, ne dit rien du forfait :
 il est transmis au client sans mise en pause.

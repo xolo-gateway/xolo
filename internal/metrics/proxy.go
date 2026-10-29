@@ -51,8 +51,8 @@ var FairShareDegradedShares = promauto.NewCounterVec(
 // subscription plan for which the organization's models could not be listed.
 // A per-model constraint then meters the requested model alone, which
 // undercounts an upstream model published under several proxy names; a shared
-// one weighs every model at the constraint's own rate, which closes the window
-// early.
+// one weighs every model at the constraint's highest rate, which closes the
+// window early.
 var PlanModelGroupingFailures = promauto.NewCounterVec(
 	prometheus.CounterOpts{
 		Name:      NamePlanModelGroupingFailures,
