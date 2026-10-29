@@ -20,6 +20,15 @@ templ ProvidersPage(vmodel ProvidersPageVModel) {
 		}) {
 			if common.HasPermission(ctx, vmodel.Org.ID(), rbac.PermProvidersWrite) {
 				@button.Button(button.Props{
+					Variant: button.VariantOutline,
+					Size:    button.SizeSm,
+					Class:   "gap-1.5",
+					Href:    common.BaseURLString(ctx, common.WithPath("/orgs/", vmodel.Org.Slug(), "/admin/providers/import")),
+				}) {
+					@icon.FileUp(icon.Props{Class: "size-3.5"})
+					{ i18n.T(ctx, "org.provider_bundle.import_provider") }
+				}
+				@button.Button(button.Props{
 					Size:  button.SizeSm,
 					Class: "gap-1.5",
 					Href:  common.BaseURLString(ctx, common.WithPath("/orgs/", vmodel.Org.Slug(), "/admin/providers/new")),

@@ -2092,6 +2092,9 @@
   .tnum {
     font-variant-numeric: tabular-nums;
   }
+  .line-through {
+    text-decoration-line: line-through;
+  }
   .underline {
     text-decoration-line: underline;
   }

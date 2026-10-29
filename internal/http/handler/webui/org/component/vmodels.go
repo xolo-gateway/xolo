@@ -7,6 +7,7 @@ import (
 
 	"github.com/xolo-gateway/xolo/internal/core/model"
 	"github.com/xolo-gateway/xolo/internal/core/port"
+	"github.com/xolo-gateway/xolo/internal/core/service"
 	common "github.com/xolo-gateway/xolo/internal/http/handler/webui/common/component"
 	"github.com/xolo-gateway/xolo/internal/i18n"
 )
@@ -370,4 +371,22 @@ func BuiltinRoleLabel(ctx context.Context, kind string) string {
 	default:
 		return i18n.T(ctx, "org.members.builtin_role.user")
 	}
+}
+
+// ProviderBundleImportVModel is the import of a provider bundle: the upload
+// of the file, then the dry run of what it would change, to select from.
+type ProviderBundleImportVModel struct {
+	common.AppLayoutVModel
+	Org model.Organization
+	// Provider is the provider the models go to, nil when the import creates
+	// a new provider.
+	Provider model.Provider
+	// Plan is nil until a bundle is uploaded.
+	Plan *service.ProviderBundlePlan
+	// Bundle is the uploaded bundle, posted again with the selection so that
+	// the import is planned once more against the current state.
+	Bundle string
+	// Name is the name of the provider to create.
+	Name  string
+	Error string
 }

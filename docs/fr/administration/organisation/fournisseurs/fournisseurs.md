@@ -375,6 +375,25 @@ Les modèles importés :
 
 Xolo relit la liste du fournisseur au moment de l'import. Un modèle qu'il ne liste plus, ou dont le nom proxy est déjà pris dans l'organisation (modèles désactivés et modèles virtuels compris), est laissé de côté, et la page indique pourquoi, comme pour un modèle que l'enregistrement n'a pas pu créer.
 
+### Exporter et importer un fournisseur configuré
+
+Un bundle reprend un fournisseur et la configuration de ses modèles dans un fichier JSON, pour la copier dans une autre organisation sans tout ressaisir.
+
+**Exporter.** Sur la page des modèles, ouvrez **Exporter** et choisissez **Tous les modèles** ou **Modèles actifs seulement**. Le fichier contient les paramètres du fournisseur (type, URL de base, devise, niveau d'infrastructure, retry, rate limit, en-têtes de requête, mode de facturation et plan) et chaque modèle avec tous ses champs : nom proxy, prix par million de tokens, fenêtres, capacités, type d'API et URL, paramètres actifs, débit, limite de tokens et corps additionnel. Il ne contient jamais la clé API ni les identifiants internes de Xolo. Les modèles y sont repérés par leur identifiant chez le fournisseur (`real_model`).
+
+**Importer.** Deux cibles sont possibles :
+
+- **Importer un bundle**, sur la page des modèles d'un fournisseur existant : les modèles du bundle sont rapprochés de ceux du fournisseur par leur identifiant chez le fournisseur ;
+- **Importer un fournisseur**, sur la liste des fournisseurs : l'import crée le fournisseur et demande son nom et sa clé API.
+
+L'import se fait en deux temps. Après le choix du fichier, Xolo affiche ce qu'il ferait, sans rien écrire :
+
+- chaque modèle est marqué **Création**, **Mise à jour** avec la liste des champs modifiés (valeur actuelle et valeur importée), **Inchangé**, ou **Ignoré** quand son nom proxy est déjà pris dans l'organisation ;
+- les paramètres du fournisseur existant qui diffèrent sont listés, décochés par défaut ;
+- le mode de facturation et le plan d'abonnement forment une ligne à part, toujours décochée : deux organisations qui partagent un compte amont en répartissent généralement les budgets plutôt que de les copier.
+
+Cochez les modèles et les champs à appliquer, puis cliquez sur **Appliquer les changements sélectionnés**. Xolo relit l'état de l'organisation à ce moment-là et n'applique que ce qui diffère encore. Importer deux fois le même bundle ne change donc rien la seconde fois. Si l'import s'interrompt en cours de route, relancez-le : il reprend ce qui reste à appliquer.
+
 ### Activer ou désactiver un modèle
 
 Lors de l'édition d'un modèle, utilisez le commutateur **Activé** pour rendre le modèle accessible ou indisponible sans le supprimer.

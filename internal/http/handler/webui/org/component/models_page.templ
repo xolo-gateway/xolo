@@ -5,6 +5,7 @@ import (
 	"github.com/xolo-gateway/xolo/internal/core/rbac"
 	common "github.com/xolo-gateway/xolo/internal/http/handler/webui/common/component"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/button"
+	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/dropdown"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/icon"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/table"
 	"github.com/xolo-gateway/xolo/internal/i18n"
@@ -24,7 +25,17 @@ templ ModelsPage(vmodel ModelsPageVModel) {
 			}) {
 				{ i18n.T(ctx, "org.models.back_to_providers") }
 			}
+			@providerBundleExportMenu(vmodel)
 			if common.HasPermission(ctx, vmodel.Org.ID(), rbac.PermProvidersWrite) {
+				@button.Button(button.Props{
+					Href:    common.BaseURLString(ctx, common.WithPath("/orgs/", vmodel.Org.Slug(), "/admin/providers/", string(vmodel.Provider.ID()), "/import")),
+					Variant: button.VariantOutline,
+					Size:    button.SizeSm,
+					Class:   "gap-1.5",
+				}) {
+					@icon.FileUp(icon.Props{Class: "size-3.5"})
+					{ i18n.T(ctx, "org.provider_bundle.import_bundle") }
+				}
 				@button.Button(button.Props{
 					Href:    common.BaseURLString(ctx, common.WithPath("/orgs/", vmodel.Org.Slug(), "/admin/providers/", string(vmodel.Provider.ID()), "/models/import")),
 					Variant: button.VariantOutline,
@@ -189,4 +200,27 @@ templ modelCapabilities(kind model.ModelKind, caps model.ModelCapabilities) {
 			@common.Badge(common.ToneNeutral, i18n.T(ctx, "org.models.cap.audio"))
 		}
 	</div>
+}
+
+// providerBundleExportMenu downloads the provider and its models as a bundle,
+// with every model or the enabled ones only.
+templ providerBundleExportMenu(vmodel ModelsPageVModel) {
+	{{ exportURL := common.BaseURLString(ctx, common.WithPath("/orgs/", vmodel.Org.Slug(), "/admin/providers/", string(vmodel.Provider.ID()), "/export")) }}
+	{{ download := templ.Attributes{"download": "", "hx-boost": "false"} }}
+	@dropdown.Dropdown(dropdown.Props{ID: "provider-export"}) {
+		@dropdown.Trigger() {
+			@button.Button(button.Props{Variant: button.VariantOutline, Size: button.SizeSm, Class: "gap-1.5", Attributes: templ.Attributes{"type": "button"}}) {
+				@icon.FileDown(icon.Props{Class: "size-3.5"})
+				{ i18n.T(ctx, "org.provider_bundle.export") }
+			}
+		}
+		@dropdown.Content(dropdown.ContentProps{Class: "w-56"}) {
+			@dropdown.Item(dropdown.ItemProps{Href: exportURL, Attributes: download}) {
+				{ i18n.T(ctx, "org.provider_bundle.export_all") }
+			}
+			@dropdown.Item(dropdown.ItemProps{Href: exportURL + "?enabled_only=1", Attributes: download}) {
+				{ i18n.T(ctx, "org.provider_bundle.export_enabled") }
+			}
+		}
+	}
 }

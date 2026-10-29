@@ -17,7 +17,7 @@ type Provider interface {
 
 	OrgID() OrgID
 	Name() string
-	Type() string   // one of ProviderTypes()
+	Type() string // one of ProviderTypes()
 	BaseURL() string
 	APIKey() string // encrypted at rest, decrypted on use
 	Active() bool
@@ -78,11 +78,11 @@ func (p *BaseProvider) SetID(id ProviderID) { p.id = id }
 // SetActive enables or disables the provider.
 func (p *BaseProvider) SetActive(active bool) { p.active = active }
 
-func (p *BaseProvider) SetRetryConfig(c *RetryConfig)                   { p.retryConfig = c }
-func (p *BaseProvider) SetRateLimitConfig(c *RateLimitConfig)             { p.rateLimitConfig = c }
-func (p *BaseProvider) SetCloudTier(t int)                                { p.cloudTier = t }
-func (p *BaseProvider) SetBillingMode(m BillingMode)                      { p.billingMode = m }
-func (p *BaseProvider) SetSubscriptionPlan(plan *SubscriptionPlan)        { p.subscriptionPlan = plan }
+func (p *BaseProvider) SetRetryConfig(c *RetryConfig)              { p.retryConfig = c }
+func (p *BaseProvider) SetRateLimitConfig(c *RateLimitConfig)      { p.rateLimitConfig = c }
+func (p *BaseProvider) SetCloudTier(t int)                         { p.cloudTier = t }
+func (p *BaseProvider) SetBillingMode(m BillingMode)               { p.billingMode = m }
+func (p *BaseProvider) SetSubscriptionPlan(plan *SubscriptionPlan) { p.subscriptionPlan = plan }
 
 // SetRequestHeaders sets the headers sent to the provider; an empty
 // configuration is stored as none.
@@ -92,6 +92,28 @@ func (p *BaseProvider) SetRequestHeaders(h *ProviderRequestHeaders) {
 	}
 	p.requestHeaders = h
 }
+
+// CopyProvider returns a modifiable copy of p, under the same identity.
+func CopyProvider(p Provider) *BaseProvider {
+	c := NewProvider(p.OrgID(), p.Name(), p.Type(), p.BaseURL(), p.APIKey(), p.Currency())
+	c.id = p.ID()
+	c.active = p.Active()
+	c.cloudTier = p.CloudTier()
+	c.createdAt = p.CreatedAt()
+	c.updatedAt = p.UpdatedAt()
+	c.retryConfig = p.RetryConfig()
+	c.rateLimitConfig = p.RateLimitConfig()
+	c.billingMode = p.BillingMode()
+	c.subscriptionPlan = p.SubscriptionPlan()
+	c.requestHeaders = p.RequestHeaders()
+	return c
+}
+
+// SetType, SetBaseURL and SetCurrency change the connection settings.
+func (p *BaseProvider) SetType(t string)         { p.pType = t }
+func (p *BaseProvider) SetBaseURL(u string)      { p.baseURL = u }
+func (p *BaseProvider) SetCurrency(c string)     { p.currency = c }
+func (p *BaseProvider) SetUpdatedAt(t time.Time) { p.updatedAt = t }
 
 var _ Provider = &BaseProvider{}
 

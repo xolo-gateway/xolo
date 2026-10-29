@@ -1,0 +1,279 @@
+package component
+
+import (
+	"strconv"
+
+	"github.com/xolo-gateway/xolo/internal/core/service"
+	common "github.com/xolo-gateway/xolo/internal/http/handler/webui/common/component"
+	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/alert"
+	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/button"
+	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/checkbox"
+	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/form"
+	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/icon"
+	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/input"
+	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/label"
+	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/table"
+	"github.com/xolo-gateway/xolo/internal/i18n"
+)
+
+templ ProviderBundleImportPage(vmodel ProviderBundleImportVModel) {
+	{{ backURL := common.BaseURLString(ctx, common.WithPath("/orgs/", vmodel.Org.Slug(), "/admin/providers")) }}
+	{{ title := i18n.T(ctx, "org.provider_bundle.new_title") }}
+	{{ subtitle := i18n.T(ctx, "org.provider_bundle.new_subtitle") }}
+	{{ importURL := common.BaseURLString(ctx, common.WithPath("/orgs/", vmodel.Org.Slug(), "/admin/providers/import")) }}
+	if vmodel.Provider != nil {
+		{{ backURL = common.BaseURLString(ctx, common.WithPath("/orgs/", vmodel.Org.Slug(), "/admin/providers/", string(vmodel.Provider.ID()), "/models")) }}
+		{{ title = i18n.T(ctx, "org.provider_bundle.title") }}
+		{{ subtitle = i18n.T(ctx, "org.provider_bundle.subtitle", vmodel.Provider.Name()) }}
+		{{ importURL = common.BaseURLString(ctx, common.WithPath("/orgs/", vmodel.Org.Slug(), "/admin/providers/", string(vmodel.Provider.ID()), "/import")) }}
+	}
+	@common.AppLayout(vmodel.AppLayoutVModel, common.WithTitle(title)) {
+		@common.PageHeader(common.PageHeaderProps{Title: title, Subtitle: subtitle}) {
+			@button.Button(button.Props{Href: backURL, Variant: button.VariantOutline, Size: button.SizeSm}) {
+				{ i18n.T(ctx, "org.provider_bundle.back") }
+			}
+		}
+		<div class="space-y-4">
+			if vmodel.Error != "" {
+				@alert.Alert(alert.Props{Variant: alert.VariantDestructive}) {
+					@alert.Description() {
+						{ vmodel.Error }
+					}
+				}
+			}
+			if vmodel.Plan == nil {
+				@providerBundleUpload(importURL)
+			} else {
+				@providerBundlePlan(vmodel, importURL)
+			}
+		</div>
+	}
+}
+
+// providerBundleUpload is the first step: the choice of the bundle file.
+templ providerBundleUpload(importURL string) {
+	<form method="POST" action={ templ.SafeURL(importURL) } enctype="multipart/form-data" class="space-y-4">
+		<input type="hidden" name="step" value="preview"/>
+		@common.Section() {
+			@common.SectionBody(common.SectionBodyProps{Class: "space-y-2"}) {
+				@form.Label(form.LabelProps{For: "bundle_file"}) {
+					{ i18n.T(ctx, "org.provider_bundle.file_label") }
+				}
+				@input.Input(input.Props{
+					ID:         "bundle_file",
+					Name:       "bundle_file",
+					Type:       input.TypeFile,
+					FileAccept: ".json,application/json",
+					Class:      "max-w-sm",
+					Attributes: templ.Attributes{"required": "required"},
+				})
+				@form.Description() {
+					{ i18n.T(ctx, "org.provider_bundle.file_help") }
+				}
+			}
+		}
+		@button.Button(button.Props{Type: button.TypeSubmit, Size: button.SizeSm, Class: "gap-1.5"}) {
+			@icon.Eye(icon.Props{Class: "size-3.5"})
+			{ i18n.T(ctx, "org.provider_bundle.preview") }
+		}
+	</form>
+}
+
+// providerBundlePlan is the second step: the dry run, each change with a box
+// to apply it. Nothing is written before it is submitted.
+templ providerBundlePlan(vmodel ProviderBundleImportVModel, importURL string) {
+	{{ plan := vmodel.Plan }}
+	<form method="POST" action={ templ.SafeURL(importURL) } class="space-y-4">
+		<input type="hidden" name="step" value="apply"/>
+		<input type="hidden" name="bundle" value={ vmodel.Bundle }/>
+		if plan.Target == nil {
+			@common.Section() {
+				@common.SectionBody(common.SectionBodyProps{Class: "space-y-3"}) {
+					<div class="space-y-1.5">
+						@form.Label(form.LabelProps{For: "name"}) {
+							{ i18n.T(ctx, "org.provider_bundle.name_label") }
+						}
+						@input.Input(input.Props{ID: "name", Name: "name", Value: vmodel.Name, Class: "max-w-sm", Attributes: templ.Attributes{"required": "required"}})
+					</div>
+					<div class="space-y-1.5">
+						@form.Label(form.LabelProps{For: "api_key"}) {
+							{ i18n.T(ctx, "org.provider_bundle.api_key_label") }
+						}
+						@input.Input(input.Props{ID: "api_key", Name: "api_key", Type: input.TypePassword, Class: "max-w-sm", Attributes: templ.Attributes{"required": "required", "autocomplete": "off"}})
+						@form.Description() {
+							{ i18n.T(ctx, "org.provider_bundle.api_key_help") }
+						}
+					</div>
+				}
+			}
+		}
+		if len(plan.Settings) > 0 || plan.Billing != nil {
+			@common.Section() {
+				@common.SectionHeader() {
+					@common.SectionTitle() {
+						{ i18n.T(ctx, "org.provider_bundle.settings_title") }
+					}
+				}
+				<div class="overflow-x-auto">
+					@table.Table() {
+						@table.Header() {
+							@table.Head(table.HeadProps{Class: "w-8"})
+							@table.Head() {
+								{ i18n.T(ctx, "org.provider_bundle.col_field") }
+							}
+							if plan.Target != nil {
+								@table.Head() {
+									{ i18n.T(ctx, "org.provider_bundle.col_current") }
+								}
+							}
+							@table.Head() {
+								{ i18n.T(ctx, "org.provider_bundle.col_imported") }
+							}
+						}
+						@table.Body() {
+							for _, c := range plan.Settings {
+								{{ id := "setting-" + c.Field }}
+								@table.Row() {
+									@table.Cell() {
+										// A new provider takes every setting: only the
+										// settings of an existing one are chosen.
+										if plan.Target != nil {
+											@checkbox.Checkbox(checkbox.Props{ID: id, Name: "setting", Value: c.Field})
+										}
+									}
+									@providerBundleFieldCells(id, c, plan.Target != nil)
+								}
+							}
+							if plan.Billing != nil {
+								@table.Row() {
+									@table.Cell() {
+										@checkbox.Checkbox(checkbox.Props{ID: "setting-billing", Name: "billing", Value: "on"})
+									}
+									@providerBundleFieldCells("setting-billing", *plan.Billing, plan.Target != nil)
+								}
+							}
+						}
+					}
+				</div>
+				if plan.Billing != nil {
+					@common.SectionNote() {
+						{ i18n.T(ctx, "org.provider_bundle.billing_help") }
+					}
+				}
+			}
+		}
+		@common.Section() {
+			@common.SectionHeader() {
+				@common.SectionTitle() {
+					{ i18n.T(ctx, "org.provider_bundle.models_title", len(plan.Models)) }
+				}
+			}
+			<div class="overflow-x-auto">
+				@table.Table() {
+					@table.Header() {
+						@table.Head(table.HeadProps{Class: "w-8"})
+						@table.Head() {
+							{ i18n.T(ctx, "org.provider_bundle.col_model") }
+						}
+						@table.Head() {
+							{ i18n.T(ctx, "org.provider_bundle.col_action") }
+						}
+						@table.Head() {
+							{ i18n.T(ctx, "org.provider_bundle.col_changes") }
+						}
+					}
+					@table.Body() {
+						for _, m := range plan.Models {
+							@providerBundleModelRow(m)
+						}
+					}
+				}
+			</div>
+		}
+		@button.Button(button.Props{Type: button.TypeSubmit, Size: button.SizeSm, Class: "gap-1.5"}) {
+			@icon.Import(icon.Props{Class: "size-3.5"})
+			{ i18n.T(ctx, "org.provider_bundle.apply") }
+		}
+	</form>
+}
+
+// providerBundleFieldCells renders the name and values of one settings
+// change.
+templ providerBundleFieldCells(id string, c service.BundleFieldChange, withCurrent bool) {
+	@table.Cell() {
+		@label.Label(label.Props{For: id, Class: "font-normal"}) {
+			{ providerBundleFieldLabel(ctx, c.Field) }
+		}
+	}
+	if withCurrent {
+		@table.Cell(table.CellProps{Class: "font-mono text-xs text-muted-foreground break-all"}) {
+			{ c.From }
+		}
+	}
+	@table.Cell(table.CellProps{Class: "font-mono text-xs break-all"}) {
+		{ c.To }
+	}
+}
+
+templ providerBundleModelRow(m service.BundleModelPlan) {
+	{{ index := strconv.Itoa(m.Index) }}
+	@table.Row() {
+		@table.Cell() {
+			if m.Action == service.BundleModelCreate {
+				@checkbox.Checkbox(checkbox.Props{ID: "model-" + index, Name: "create", Value: index, Checked: true})
+			}
+		}
+		@table.Cell() {
+			<div class="space-y-0.5">
+				<span class="font-mono text-xs">{ m.Model.ProxyName }</span>
+				if m.Model.RealModel != m.Model.ProxyName {
+					<p class="font-mono text-xs text-muted-foreground">{ m.Model.RealModel }</p>
+				}
+			</div>
+		}
+		@table.Cell() {
+			switch m.Action {
+				case service.BundleModelCreate:
+					@common.Badge(common.TonePositive, i18n.T(ctx, "org.provider_bundle.action_create"))
+				case service.BundleModelUpdate:
+					@common.Badge(common.ToneWarning, i18n.T(ctx, "org.provider_bundle.action_update"))
+				case service.BundleModelUnchanged:
+					@common.Badge(common.ToneNeutral, i18n.T(ctx, "org.provider_bundle.action_unchanged"))
+				case service.BundleModelSkip:
+					@common.Badge(common.ToneNegative, i18n.T(ctx, "org.provider_bundle.action_skip"))
+			}
+		}
+		@table.Cell() {
+			if m.Action == service.BundleModelSkip {
+				<p class="max-w-md text-xs text-destructive">{ m.Conflict }</p>
+			}
+			if len(m.Changes) > 0 {
+				<ul class="space-y-1">
+					for _, c := range m.Changes {
+						{{ id := "field-" + index + "-" + c.Field }}
+						<li class="flex items-start gap-2 text-xs">
+							if c.Conflict == "" {
+								@checkbox.Checkbox(checkbox.Props{ID: id, Name: "field", Value: index + ":" + c.Field, Checked: true})
+							} else {
+								@checkbox.Checkbox(checkbox.Props{ID: id, Disabled: true})
+							}
+							<div class="min-w-0 space-y-0.5">
+								@label.Label(label.Props{For: id, Class: "text-xs font-medium"}) {
+									{ providerBundleFieldLabel(ctx, c.Field) }
+								}
+								<p class="font-mono break-all text-muted-foreground">
+									<span class="line-through">{ c.From }</span>
+									{ " → " }
+									<span class="text-foreground">{ c.To }</span>
+								</p>
+								if c.Conflict != "" {
+									<p class="text-destructive">{ c.Conflict }</p>
+								}
+							</div>
+						</li>
+					}
+				</ul>
+			}
+		}
+	}
+}
