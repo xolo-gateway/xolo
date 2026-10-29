@@ -32,9 +32,11 @@ type BundleFieldChange struct {
 	From     string
 	To       string
 	Conflict string
-	// KindNotServed, on a kind change, is the provider type whose API, kept
-	// by the model, does not serve the new kind.
+	// KindNotServed, on a kind or API change, is the provider type whose
+	// API would not serve the model's kind, UnservedKind: the model form
+	// refuses that pair.
 	KindNotServed string
+	UnservedKind  model.ModelKind
 	// Unserved, on a provider type change, lists the proxy names of the
 	// target's models the new API would not serve: models the bundle does
 	// not contain, or keeps on the provider's API with the same kind.
@@ -59,8 +61,10 @@ type BundleModelPlan struct {
 	// Conflict explains a skip on the proxy name.
 	Conflict string
 	// KindNotServed, when set, is the provider type whose API does not serve
-	// the model's kind: the model is skipped, as the model form refuses it.
+	// the model's kind, UnservedKind: the model is skipped, as the model form
+	// refuses it.
 	KindNotServed string
+	UnservedKind  model.ModelKind
 	// RefusedField, in a result's Skipped, names the one change of an
 	// updated model that could not be applied, its other changes written.
 	RefusedField string
@@ -310,6 +314,10 @@ func PlanProviderBundleImportWith(bundle model.ProviderBundle, target model.Prov
 		}
 	}
 
+	// Without a selection, the dry run assumes every change applies; at
+	// apply time, only the selected ones count.
+	selected := func(i int, field string) bool { return sel == nil || sel.Fields[i][field] }
+
 	// A type change is refused while it would leave a model of the target
 	// on an API that does not serve its kind, as the model form refuses.
 	typeRefused := false
@@ -318,7 +326,7 @@ func PlanProviderBundleImportWith(bundle model.ProviderBundle, target model.Prov
 			if plan.Settings[i].Field != BundleFieldType {
 				continue
 			}
-			plan.Settings[i].Unserved = unservedByType(bundle, existing, own, matched, bundle.Provider.Type)
+			plan.Settings[i].Unserved = unservedByType(bundle, existing, own, matched, bundle.Provider.Type, selected)
 			typeRefused = plan.Settings[i].Refused()
 		}
 	}
@@ -331,10 +339,6 @@ func PlanProviderBundleImportWith(bundle model.ProviderBundle, target model.Prov
 		servedType = target.Type()
 	}
 
-	// Without a selection, the dry run assumes every change applies; at
-	// apply time, only the selected ones count.
-	selected := func(i int, field string) bool { return sel == nil || sel.Fields[i][field] }
-
 	renameConflicts := resolveRenames(bundle, existing, selected, names)
 
 	// The models to update are planned first, so that a name one of them
@@ -346,7 +350,7 @@ func PlanProviderBundleImportWith(bundle model.ProviderBundle, target model.Prov
 				continue
 			}
 			conflict, decided := renameConflicts[i]
-			plans[i] = planBundleModel(i, bm, existing[i], servedType, decided, conflict, selected(i, BundleFieldAPI), names)
+			plans[i] = planBundleModel(i, bm, existing[i], servedType, decided, conflict, selected(i, BundleFieldAPI), selected(i, BundleFieldKind), names)
 		}
 	}
 	plan.Models = plans
@@ -355,10 +359,9 @@ func PlanProviderBundleImportWith(bundle model.ProviderBundle, target model.Prov
 
 // unservedByType returns the proxy names of the target's models that would
 // be left on the API of providerType, which does not serve their kind: the
-// models of own that no bundle model updates, and those the bundle keeps on
-// the provider's API with their kind. The bundle models that change the API
-// or the kind are checked by planBundleModel.
-func unservedByType(bundle model.ProviderBundle, existing, own []model.LLMModel, matched map[model.LLMModelID]bool, providerType string) []string {
+// models of own that no bundle model updates, and those the selected changes
+// of their bundle entry leave on the provider's API with such a kind.
+func unservedByType(bundle model.ProviderBundle, existing, own []model.LLMModel, matched map[model.LLMModelID]bool, providerType string, selected func(int, string) bool) []string {
 	var names []string
 	for _, m := range own {
 		if !matched[m.ID()] && m.APIType() == "" && !model.ProviderTypeServes(providerType, m.Kind()) {
@@ -366,13 +369,84 @@ func unservedByType(bundle model.ProviderBundle, existing, own []model.LLMModel,
 		}
 	}
 	for i, m := range existing {
+		if m == nil {
+			continue
+		}
+		apiSel, kindSel := selected(i, BundleFieldAPI), selected(i, BundleFieldKind)
 		bm := bundle.Models[i]
-		if m != nil && m.APIType() == "" && bm.APIType == "" && bm.Kind == m.Kind() && !model.ProviderTypeServes(providerType, m.Kind()) {
+		api, kind, _, _ := settleAPIAndKind(bm, bundleModelKind(bm, m, providerType, apiSel), m, providerType, apiSel, kindSel)
+		if api == "" && !model.ProviderTypeServes(providerType, kind) {
 			names = append(names, m.ProxyName())
 		}
 	}
 	slices.Sort(names)
 	return names
+}
+
+// bundleModelKind is the kind a bundle model sets: its own, or the default
+// kind of the API serving it when it sets none. existing is nil for a model
+// to create.
+func bundleModelKind(bm model.ProviderBundleModel, existing model.LLMModel, servedType string, apiSel bool) model.ModelKind {
+	if bm.Kind != "" {
+		return bm.Kind
+	}
+	served := bm.APIType
+	if existing != nil && !apiSel {
+		served = existing.APIType()
+	}
+	if served == "" {
+		served = servedType
+	}
+	return model.DefaultProviderTypeKind(served)
+}
+
+// settleAPIAndKind returns the API (empty for the provider's) and the kind
+// an existing model ends with once the selected changes of its bundle entry
+// are written, and which of these changes are refused because they would
+// leave it on an API that does not serve its kind, as the model form
+// refuses: the API change, else the kind change, else both.
+func settleAPIAndKind(bm model.ProviderBundleModel, bundleKind model.ModelKind, existing model.LLMModel, servedType string, apiSel, kindSel bool) (api string, kind model.ModelKind, apiRefused, kindRefused bool) {
+	apiChange := apiSel && bm.APIType != existing.APIType()
+	kindChange := kindSel && bundleKind != existing.Kind()
+	serves := func(withAPI, withKind bool) bool {
+		a, k := existing.APIType(), existing.Kind()
+		if withAPI {
+			a = bm.APIType
+		}
+		if withKind {
+			k = bundleKind
+		}
+		if a == "" {
+			a = servedType
+		}
+		return model.ProviderTypeServes(a, k)
+	}
+	switch {
+	case serves(apiChange, kindChange):
+	case serves(false, kindChange):
+		apiRefused = apiChange
+	case serves(apiChange, false):
+		kindRefused = kindChange
+	default:
+		apiRefused, kindRefused = apiChange, kindChange
+	}
+	api, kind = existing.APIType(), existing.Kind()
+	if apiChange && !apiRefused {
+		api = bm.APIType
+	}
+	if kindChange && !kindRefused {
+		kind = bundleKind
+	}
+	return api, kind, apiRefused, kindRefused
+}
+
+// orProviderType is the type whose API serves a model with api: its own, or
+// the provider's when it has none.
+func orProviderType(api, providerType string) string {
+	if api == "" {
+		return providerType
+	}
+	return api
 }
 
 // resolveRenames settles, before any model is planned, the final name of
@@ -489,26 +563,22 @@ func resolveRenames(bundle model.ProviderBundle, existing []model.LLMModel, sele
 
 // planBundleModel plans the import of the bundle model bm, at index i, into
 // the target model existing (nil to create it).
-func planBundleModel(i int, bm model.ProviderBundleModel, existing model.LLMModel, servedType string, renameDecided bool, renameConflict string, apiChanges bool, names ProxyNames) BundleModelPlan {
+func planBundleModel(i int, bm model.ProviderBundleModel, existing model.LLMModel, servedType string, renameDecided bool, renameConflict string, apiSel, kindSel bool, names ProxyNames) BundleModelPlan {
 	mp := BundleModelPlan{Index: i, Model: bm, Existing: existing}
+	mp.Model.Kind = bundleModelKind(bm, existing, servedType, apiSel)
 
 	// The kind must be one the API serving the model serves, as the model
 	// form requires: the bundle's API, or the provider's when it sets none.
-	// An existing model whose API change is not applied keeps its own. An
-	// unset kind is the default kind of that API.
-	served := bm.APIType
-	if existing != nil && !apiChanges {
-		served = existing.APIType()
+	if existing == nil {
+		served := bm.APIType
+		if served == "" {
+			served = servedType
+		}
+		if !model.ProviderTypeServes(served, mp.Model.Kind) {
+			mp.Action, mp.KindNotServed, mp.UnservedKind = BundleModelSkip, served, mp.Model.Kind
+		}
 	}
-	if served == "" {
-		served = servedType
-	}
-	if mp.Model.Kind == "" {
-		mp.Model.Kind = model.DefaultProviderTypeKind(served)
-	}
-	kindServed := model.ProviderTypeServes(served, mp.Model.Kind)
-	if !kindServed && existing == nil {
-		mp.Action, mp.KindNotServed = BundleModelSkip, served
+	if mp.Action == BundleModelSkip {
 		return mp
 	}
 
@@ -522,6 +592,9 @@ func planBundleModel(i int, bm model.ProviderBundleModel, existing model.LLMMode
 		return mp
 	}
 
+	// An existing model takes only the API and kind changes that leave it
+	// served.
+	api, kind, apiRefused, kindRefused := settleAPIAndKind(bm, mp.Model.Kind, existing, servedType, apiSel, kindSel)
 	current := model.BundleModelOf(existing)
 	for _, f := range bundleModelFields {
 		from, to := f.get(current), f.get(mp.Model)
@@ -529,8 +602,12 @@ func planBundleModel(i int, bm model.ProviderBundleModel, existing model.LLMMode
 			continue
 		}
 		change := BundleFieldChange{Field: f.name, From: displayValue(from), To: displayValue(to)}
-		if f.name == BundleFieldKind && !kindServed {
-			change.KindNotServed = served
+		// The API that would not serve, and the kind it would not serve.
+		if f.name == BundleFieldKind && kindRefused {
+			change.KindNotServed, change.UnservedKind = orProviderType(api, servedType), mp.Model.Kind
+		}
+		if f.name == BundleFieldAPI && apiRefused {
+			change.KindNotServed, change.UnservedKind = orProviderType(bm.APIType, servedType), kind
 		}
 		if f.name == BundleFieldProxyName {
 			if renameDecided {
@@ -625,6 +702,9 @@ type BundleApplyResult struct {
 	// the selection changed what they are served by or the names they can
 	// take since the dry run the operator chose from.
 	Skipped []BundleModelPlan
+	// SkippedSettings lists the selected provider settings the plan applied
+	// refused, such as a type change that would leave a model unserved.
+	SkippedSettings []BundleFieldChange
 }
 
 // Wrote reports whether the import wrote anything.
@@ -653,6 +733,11 @@ func ApplyProviderBundle(ctx context.Context, store port.ProviderStore, plan Pro
 		return result, err
 	}
 	result.Provider, result.ProviderChanged = target, changed
+	for _, change := range plan.Settings {
+		if change.Refused() && sel.Settings[change.Field] {
+			result.SkippedSettings = append(result.SkippedSettings, change)
+		}
+	}
 
 	for _, mp := range plan.Models {
 		if mp.Action == BundleModelSkip && (sel.Models[mp.Index] || len(sel.Fields[mp.Index]) > 0) {
@@ -664,7 +749,8 @@ func ApplyProviderBundle(ctx context.Context, store port.ProviderStore, plan Pro
 		for _, change := range mp.Changes {
 			if change.Refused() && sel.Fields[mp.Index][change.Field] {
 				skipped := mp
-				skipped.Conflict, skipped.RefusedField, skipped.KindNotServed = change.Conflict, change.Field, change.KindNotServed
+				skipped.Conflict, skipped.RefusedField = change.Conflict, change.Field
+				skipped.KindNotServed, skipped.UnservedKind = change.KindNotServed, change.UnservedKind
 				result.Skipped = append(result.Skipped, skipped)
 			}
 		}

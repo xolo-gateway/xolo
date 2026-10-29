@@ -957,3 +957,80 @@ func TestPlanProviderBundleImport_RefusesATypeChangeThatLeavesAModelUnserved(t *
 		t.Errorf("type = %q, want the refused change left unapplied", got.Type())
 	}
 }
+
+func TestApplyProviderBundle_RefusesATypeChangeTheSelectionLeavesAModelUnservedBy(t *testing.T) {
+	mem, p, _, _ := renameFixture(t)
+	e := model.NewLLMModel(p.ID(), "org-a", "e", "model-e", "", 100, 0)
+	e.SetKind(model.ModelKindEmbeddings)
+	if err := mem.CreateLLMModel(context.Background(), e); err != nil {
+		t.Fatal(err)
+	}
+	models := mem.modelsOf("org-a")
+	// The bundle turns e into a completion model, which the new API serves:
+	// the dry run offers the type change, but the operator selects it
+	// without the kind change, which would leave e unserved.
+	bundle := model.ProviderBundle{Kind: model.ProviderBundleKind, Version: model.ProviderBundleVersion,
+		Provider: model.ProviderBundleSettings{Type: "anthropic", Currency: "USD", BaseURL: "https://p.test/v1"},
+		Models: []model.ProviderBundleModel{
+			{RealModel: "model-a", ProxyName: "a", Enabled: true, Prices: model.ModelPrices{Input: 0.1, Output: 0.2}},
+			{RealModel: "model-b", ProxyName: "b", Enabled: true, Prices: model.ModelPrices{Input: 0.1, Output: 0.2}},
+			{RealModel: "model-e", ProxyName: "e", Kind: model.ModelKindCompletion, Enabled: true, Prices: model.ModelPrices{Input: 0.1, Output: 0.2}},
+		}}
+	for _, c := range PlanProviderBundleImport(bundle, p, models, namesOf(models)).Settings {
+		if c.Field == BundleFieldType && c.Refused() {
+			t.Fatalf("type change refused in the dry run (%v), want it offered with the kind change", c.Unserved)
+		}
+	}
+
+	sel := BundleSelection{Settings: map[string]bool{BundleFieldType: true}, Models: map[int]bool{}, Fields: map[int]map[string]bool{}}
+	plan := PlanProviderBundleImportWith(bundle, p, models, namesOf(models), &sel)
+	result, err := ApplyProviderBundle(context.Background(), mem, plan, sel, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.SkippedSettings) != 1 || !slices.Equal(result.SkippedSettings[0].Unserved, []string{"e"}) {
+		t.Errorf("skipped settings = %+v, want the type change reported for e", result.SkippedSettings)
+	}
+	if got := mem.providers[p.ID()]; got != nil && got.Type() != "openai" {
+		t.Errorf("type = %q, want the refused change left unapplied", got.Type())
+	}
+}
+
+func TestPlanProviderBundleImport_RefusesAnAPIChangeThatLeavesTheKindUnserved(t *testing.T) {
+	mem, p, _, _ := renameFixture(t)
+	e := model.NewLLMModel(p.ID(), "org-a", "e", "model-e", "", 100, 0)
+	e.SetKind(model.ModelKindEmbeddings)
+	e.SetAPIType("openai")
+	if err := mem.CreateLLMModel(context.Background(), e); err != nil {
+		t.Fatal(err)
+	}
+	models := mem.modelsOf("org-a")
+	bundle := model.ProviderBundle{Kind: model.ProviderBundleKind, Version: model.ProviderBundleVersion,
+		Provider: model.ProviderBundleSettings{Type: "openai", Currency: "USD", BaseURL: "https://p.test/v1"},
+		Models: []model.ProviderBundleModel{
+			{RealModel: "model-e", ProxyName: "e", Kind: model.ModelKindEmbeddings, APIType: "anthropic", Enabled: true, Prices: model.ModelPrices{Input: 0.1}},
+		}}
+	plan := PlanProviderBundleImport(bundle, p, models, namesOf(models))
+	var api *BundleFieldChange
+	for i, c := range plan.Models[0].Changes {
+		if c.Field == BundleFieldAPI {
+			api = &plan.Models[0].Changes[i]
+		}
+	}
+	if api == nil || api.KindNotServed != "anthropic" || api.UnservedKind != model.ModelKindEmbeddings {
+		t.Fatalf("API change = %+v, want it refused: anthropic does not serve embeddings", api)
+	}
+
+	result, err := ApplyProviderBundle(context.Background(), mem, plan, selectAll(plan), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, m := range mem.modelsOf("org-a") {
+		if m.ProxyName() == "e" && m.APIType() != "openai" {
+			t.Errorf("API = %q, want the refused change left unapplied", m.APIType())
+		}
+	}
+	if len(result.Skipped) != 1 || result.Skipped[0].RefusedField != BundleFieldAPI {
+		t.Errorf("skipped = %+v, want the API change reported", result.Skipped)
+	}
+}
