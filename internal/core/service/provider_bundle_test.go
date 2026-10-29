@@ -905,7 +905,9 @@ func TestParseProviderBundle_AcceptsASharedWindowAndChecksItsBudgets(t *testing.
 func TestApplyProviderBundle_KeepsTheTargetsExtraKeys(t *testing.T) {
 	mem := newMemoryProviderStore()
 	target := model.NewProvider("org-a", "Go", "openai", "https://go.test/v1", "key", "USD")
-	target.SetExtraAPIKeys([]model.ProviderKey{{ID: "k2", Label: "member 2", APIKey: "encrypted-2"}})
+	budget := int64(30_000_000)
+	target.SetExtraAPIKeys([]model.ProviderKey{{ID: "k2", Label: "member 2", APIKey: "encrypted-2",
+		Overrides: map[string]model.PlanConstraintOverride{"5h": {ValueBudget: &budget}}}})
 	bundle := model.NewProviderBundle(target, nil, false, time.Now())
 	if data, _ := json.Marshal(bundle); strings.Contains(string(data), "encrypted-2") {
 		t.Fatal("the export carries an extra key")
@@ -916,7 +918,7 @@ func TestApplyProviderBundle_KeepsTheTargetsExtraKeys(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if keys := result.Provider.ExtraAPIKeys(); len(keys) != 1 || keys[0].APIKey != "encrypted-2" {
-		t.Errorf("extra keys = %+v, want the target's kept", keys)
+	if keys := result.Provider.ExtraAPIKeys(); len(keys) != 1 || keys[0].APIKey != "encrypted-2" || keys[0].Overrides["5h"].ValueBudget == nil {
+		t.Errorf("extra keys = %+v, want the target's kept with their plan overrides", keys)
 	}
 }
