@@ -616,6 +616,8 @@
   "org.provider_bundle.col_current": "Actuel",
   "org.provider_bundle.col_imported": "Importé",
   "org.provider_bundle.billing_help": "Le mode de facturation et le forfait ne sont appliqués que si la case est cochée : des organisations qui partagent un compte amont en répartissent généralement les budgets plutôt que de les copier.",
+  "org.provider_bundle.key_overrides_dropped": "Appliquer ce forfait retire ces ajustements des clés du fournisseur, faute de la fenêtre ou du budget qu'ils ajustent : %s.",
+  "org.provider_bundle.key_override_ref": "clé « %s », fenêtre « %s »",
   "org.provider_bundle.models_title": "Modèles (%d)",
   "org.provider_bundle.col_model": "Modèle",
   "org.provider_bundle.col_action": "Action",

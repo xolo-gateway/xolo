@@ -501,7 +501,7 @@ L'import se fait en deux temps. Après le choix du fichier, Xolo affiche ce qu'i
 
 - chaque modèle est marqué **Création**, **Mise à jour** avec la liste des champs modifiés (valeur actuelle et valeur importée), **Inchangé**, ou **Ignoré** quand son nom proxy est déjà pris dans l'organisation ;
 - les paramètres du fournisseur existant qui diffèrent sont listés, décochés par défaut ;
-- le mode de facturation et le plan d'abonnement forment une ligne à part, toujours décochée : deux organisations qui partagent un compte amont en répartissent généralement les budgets plutôt que de les copier.
+- le mode de facturation et le plan d'abonnement forment une ligne à part, toujours décochée : deux organisations qui partagent un compte amont en répartissent généralement les budgets plutôt que de les copier. Les clés supplémentaires du fournisseur et leurs ajustements sont conservés ; un ajustement suit sa fenêtre par son libellé, comme dans le formulaire, et l'aperçu signale ceux que le forfait importé retirerait faute de la fenêtre ou du budget qu'ils ajustent.
 
 Un bundle tarifé dans une autre devise que le fournisseur cible est converti au taux du jour : prix et budgets du forfait apparaissent dans l'aperçu dans la devise du fournisseur, et c'est ce qui est écrit. La devise du fournisseur, elle, ne change pas. Sans taux de change disponible, l'import est refusé. Réimporter plus tard le même fichier peut proposer une mise à jour des prix si le taux a bougé.
 

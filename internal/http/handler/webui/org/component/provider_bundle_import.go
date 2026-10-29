@@ -2,7 +2,9 @@ package component
 
 import (
 	"context"
+	"strings"
 
+	"github.com/xolo-gateway/xolo/internal/core/model"
 	"github.com/xolo-gateway/xolo/internal/core/service"
 	"github.com/xolo-gateway/xolo/internal/i18n"
 )
@@ -41,4 +43,13 @@ func providerBundleFieldLabel(ctx context.Context, field string) string {
 		return i18n.T(ctx, key)
 	}
 	return field
+}
+
+// providerBundleKeyOverrides lists the adjustments of keys an import removes.
+func providerBundleKeyOverrides(ctx context.Context, refs []model.KeyOverrideRef) string {
+	items := make([]string, len(refs))
+	for i, r := range refs {
+		items[i] = i18n.T(ctx, "org.provider_bundle.key_override_ref", r.Key, r.Window)
+	}
+	return strings.Join(items, "; ")
 }

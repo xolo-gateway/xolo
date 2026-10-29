@@ -2,6 +2,8 @@ package model
 
 import (
 	"hash/fnv"
+	"maps"
+	"reflect"
 	"slices"
 	"time"
 
@@ -254,4 +256,68 @@ func KeyAffinity(userID UserID, key ProviderKeyID) uint64 {
 	_, _ = h.Write([]byte{0})
 	_, _ = h.Write([]byte(key))
 	return h.Sum64()
+}
+
+// KeyOverrideRef names the adjustment of one key for one window of the plan.
+type KeyOverrideRef struct {
+	Key    string
+	Window string
+}
+
+// FitKeyOverrides returns keys with their overrides fitted to plan, as the
+// provider form reads them: an override follows its window by label and only
+// adjusts a rolling window, its value and token budgets only where the
+// window holds one, its model budgets only on a per-model or shared window.
+// It also returns the adjustments it removed or cut, so that replacing the
+// plan of a provider leaves no override behind that no longer applies.
+func FitKeyOverrides(keys []ProviderKey, plan *SubscriptionPlan) ([]ProviderKey, []KeyOverrideRef) {
+	var dropped []KeyOverrideRef
+	fitted := make([]ProviderKey, len(keys))
+	for i, k := range keys {
+		fitted[i] = k
+		if len(k.Overrides) == 0 {
+			continue
+		}
+		var overrides map[string]PlanConstraintOverride
+		for _, label := range slices.Sorted(maps.Keys(k.Overrides)) {
+			o := k.Overrides[label]
+			fit := fitKeyOverride(o, plan, label)
+			if !reflect.DeepEqual(fit, o) {
+				dropped = append(dropped, KeyOverrideRef{Key: k.Label, Window: label})
+			}
+			if fit.Empty() {
+				continue
+			}
+			if overrides == nil {
+				overrides = map[string]PlanConstraintOverride{}
+			}
+			overrides[label] = fit
+		}
+		fitted[i].Overrides = overrides
+	}
+	if len(dropped) == 0 {
+		return keys, nil
+	}
+	return fitted, dropped
+}
+
+func fitKeyOverride(o PlanConstraintOverride, plan *SubscriptionPlan, label string) PlanConstraintOverride {
+	if plan == nil {
+		return PlanConstraintOverride{}
+	}
+	i := slices.IndexFunc(plan.Constraints, func(c PlanConstraint) bool { return c.Label == label })
+	if i < 0 || plan.Constraints[i].Kind != ConstraintRollingWindow {
+		return PlanConstraintOverride{}
+	}
+	c := plan.Constraints[i]
+	if c.ValueBudget == nil {
+		o.ValueBudget = nil
+	}
+	if c.TokenBudget == nil {
+		o.TokenBudget = nil
+	}
+	if c.Scope != PlanScopeModel && c.Scope != PlanScopeShared {
+		o.ModelBudgets = nil
+	}
+	return o
 }

@@ -616,6 +616,8 @@
   "org.provider_bundle.col_current": "Current",
   "org.provider_bundle.col_imported": "Imported",
   "org.provider_bundle.billing_help": "The billing mode and subscription plan are only applied when checked: organizations sharing one upstream account usually split its budgets rather than copy them.",
+  "org.provider_bundle.key_overrides_dropped": "Applying this plan removes these adjustments of the provider's keys, as it no longer has their window or the budget they adjust: %s.",
+  "org.provider_bundle.key_override_ref": "key \"%s\", window \"%s\"",
   "org.provider_bundle.models_title": "Models (%d)",
   "org.provider_bundle.col_model": "Model",
   "org.provider_bundle.col_action": "Action",

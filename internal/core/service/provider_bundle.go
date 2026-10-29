@@ -41,6 +41,10 @@ type BundleFieldChange struct {
 	// target's models the new API would not serve: models the bundle does
 	// not contain, or keeps on the provider's API with the same kind.
 	Unserved []string
+	// DroppedOverrides, on the billing change, lists the adjustments of the
+	// target's extra keys the imported plan no longer has a window for, or
+	// a budget to adjust: they are removed with the plan they applied to.
+	DroppedOverrides []model.KeyOverrideRef
 }
 
 // Refused reports whether the change cannot be applied.
@@ -271,6 +275,9 @@ func PlanProviderBundleImport(bundle model.ProviderBundle, target model.Provider
 func PlanProviderBundleImportWith(bundle model.ProviderBundle, target model.Provider, targetModels []model.LLMModel, names ProxyNames, sel *BundleSelection) ProviderBundlePlan {
 	plan := ProviderBundlePlan{Bundle: bundle, Target: target}
 	plan.Settings, plan.Billing = planProviderSettings(bundle.Provider, target)
+	if target != nil && plan.Billing != nil {
+		_, plan.Billing.DroppedOverrides = model.FitKeyOverrides(target.ExtraAPIKeys(), bundle.Provider.SubscriptionPlan)
+	}
 
 	// A bundle model updates the target model with the same real model and
 	// proxy name, else the only remaining target model with its real model.
@@ -862,6 +869,10 @@ func applyProviderSettings(ctx context.Context, store port.ProviderStore, plan P
 		changed = true
 		updated.SetBillingMode(billingModeOrPayg(s.BillingMode))
 		updated.SetSubscriptionPlan(s.SubscriptionPlan)
+		// The keys' adjustments follow their window by label: those the new
+		// plan has no window for go with the old plan.
+		keys, _ := model.FitKeyOverrides(updated.ExtraAPIKeys(), s.SubscriptionPlan)
+		updated.SetExtraAPIKeys(keys)
 	}
 	if !changed {
 		return t, false, nil

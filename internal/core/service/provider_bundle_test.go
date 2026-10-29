@@ -924,6 +924,35 @@ func TestApplyProviderBundle_KeepsTheTargetsExtraKeys(t *testing.T) {
 	}
 }
 
+func TestApplyProviderBundle_RemovesTheKeyOverridesTheImportedPlanHasNoWindowFor(t *testing.T) {
+	mem := newMemoryProviderStore()
+	target := model.NewProvider("org-a", "Go", "openai", "https://go.test/v1", "key", "USD")
+	budget := int64(30_000_000)
+	window := func(label string) model.PlanConstraint {
+		return model.PlanConstraint{Kind: model.ConstraintRollingWindow, Label: label, Duration: model.PlanDuration(5 * time.Hour), ValueBudget: &budget}
+	}
+	target.SetBillingMode(model.BillingModeSubscription)
+	target.SetSubscriptionPlan(&model.SubscriptionPlan{Label: "Go", Constraints: []model.PlanConstraint{window("5h"), window("week")}})
+	target.SetExtraAPIKeys([]model.ProviderKey{{ID: "k2", Label: "member 2", APIKey: "encrypted-2",
+		Overrides: map[string]model.PlanConstraintOverride{"5h": {ValueBudget: &budget}, "week": {ValueBudget: &budget}}}})
+	// The imported plan renames the 5h window: its adjustment cannot follow.
+	bundle := model.NewProviderBundle(target, nil, false, time.Now())
+	bundle.Provider.SubscriptionPlan = &model.SubscriptionPlan{Label: "Go", Constraints: []model.PlanConstraint{window("five hours"), window("week")}}
+
+	plan := PlanProviderBundleImport(bundle, target, nil, takenNames{})
+	if plan.Billing == nil || len(plan.Billing.DroppedOverrides) != 1 || plan.Billing.DroppedOverrides[0] != (model.KeyOverrideRef{Key: "member 2", Window: "5h"}) {
+		t.Fatalf("billing change = %+v, want the 5h adjustment of member 2 announced", plan.Billing)
+	}
+	result, err := ApplyProviderBundle(context.Background(), mem, plan, BundleSelection{Billing: true}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	keys := result.Provider.ExtraAPIKeys()
+	if len(keys) != 1 || keys[0].APIKey != "encrypted-2" || len(keys[0].Overrides) != 1 || keys[0].Overrides["week"].ValueBudget == nil {
+		t.Errorf("extra keys = %+v, want the key kept with its week adjustment only", keys)
+	}
+}
+
 func TestPlanProviderBundleImport_RefusesATypeChangeThatLeavesAModelUnserved(t *testing.T) {
 	mem, p, _, _ := renameFixture(t)
 	e := model.NewLLMModel(p.ID(), "org-a", "e", "model-e", "", 100, 0)

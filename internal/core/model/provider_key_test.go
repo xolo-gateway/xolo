@@ -128,3 +128,40 @@ func TestKeyWindowsIgnoreAnythingButARollingWindow(t *testing.T) {
 		}
 	}
 }
+
+func TestFitKeyOverridesFollowsTheWindowsOfThePlan(t *testing.T) {
+	value, tokens, anchor := int64(10_000_000), int64(1_000), time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)
+	plan := &SubscriptionPlan{Label: "Go", Constraints: []PlanConstraint{
+		{Kind: ConstraintRollingWindow, Label: "5h", Duration: PlanDuration(5 * time.Hour), ValueBudget: &value},
+		{Kind: ConstraintRollingWindow, Label: "week", Duration: PlanDuration(7 * 24 * time.Hour), ValueBudget: &value},
+		{Kind: ConstraintConcurrency, Label: "parallel"},
+	}}
+	keys := []ProviderKey{{ID: "k2", Label: "member 2", Overrides: map[string]PlanConstraintOverride{
+		"5h":       {ValueBudget: &value},                         // kept
+		"week":     {TokenBudget: &tokens, WindowAnchor: &anchor}, // the window holds no token budget
+		"month":    {ValueBudget: &value},                         // no such window
+		"parallel": {ValueBudget: &value},                         // not a rolling window
+	}}}
+
+	fitted, dropped := FitKeyOverrides(keys, plan)
+	want := []KeyOverrideRef{{Key: "member 2", Window: "month"}, {Key: "member 2", Window: "parallel"}, {Key: "member 2", Window: "week"}}
+	if len(dropped) != len(want) {
+		t.Fatalf("dropped = %+v, want %+v", dropped, want)
+	}
+	for i := range want {
+		if dropped[i] != want[i] {
+			t.Errorf("dropped[%d] = %+v, want %+v", i, dropped[i], want[i])
+		}
+	}
+	o := fitted[0].Overrides
+	if len(o) != 2 || o["5h"].ValueBudget == nil || o["week"].TokenBudget != nil || o["week"].WindowAnchor == nil {
+		t.Errorf("fitted overrides = %+v, want 5h kept and week without its token budget", o)
+	}
+	if len(keys[0].Overrides) != 4 {
+		t.Error("the keys given were modified")
+	}
+
+	if same, none := FitKeyOverrides(fitted, plan); none != nil || len(same[0].Overrides) != 2 {
+		t.Errorf("fitting again dropped %+v, want nothing", none)
+	}
+}
