@@ -15,6 +15,7 @@ import (
 	"github.com/bornholm/go-x/slogx"
 	"github.com/pkg/errors"
 	"github.com/xolo-gateway/xolo/internal/core/model"
+	"github.com/xolo-gateway/xolo/internal/core/port"
 	"github.com/xolo-gateway/xolo/internal/core/service"
 	"github.com/xolo-gateway/xolo/internal/crypto"
 	httpCtx "github.com/xolo-gateway/xolo/internal/http/context"
@@ -132,6 +133,18 @@ func (h *Handler) importProviderBundle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	parsedCurrency := bundle.Provider.Currency
+	// A bundle priced in another currency than the provider it is imported
+	// into is converted, so that its prices and budgets never land under a
+	// currency they are not in.
+	if p != nil && bundle.Provider.Currency != p.Currency() {
+		if err := h.convertBundleCurrency(ctx, &bundle, p.Currency()); err != nil {
+			slog.WarnContext(ctx, "could not convert bundle prices", slogx.Error(err))
+			h.renderProviderBundleError(w, r, vmodel, i18n.T(ctx, "org.errors.provider_bundle.no_rate", bundle.Provider.Currency, p.Currency()))
+			return
+		}
+	}
+
 	// The apply step plans with the selection it applies, which may change
 	// the API the models are served by.
 	apply := r.FormValue("step") == "apply"
@@ -149,7 +162,22 @@ func (h *Handler) importProviderBundle(w http.ResponseWriter, r *http.Request) {
 	}
 	vmodel.Plan = &plan
 	vmodel.Bundle = string(raw)
+	if bundle.Provider.Currency != parsedCurrency {
+		// The apply step writes what this dry run shows: it posts back the
+		// converted bundle, not the file, so a rate that moves in between
+		// changes nothing.
+		converted, err := json.Marshal(bundle)
+		if err != nil {
+			slog.ErrorContext(ctx, "could not encode converted bundle", slogx.Error(err))
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
+		vmodel.Bundle = string(converted)
+	}
 	vmodel.Name = bundle.Provider.Name
+	if names := bundle.Provider.OmittedHeaders; len(names) > 0 {
+		vmodel.Notice = i18n.T(ctx, "org.provider_bundle.omitted_headers", strings.Join(names, ", "))
+	}
 
 	if !apply {
 		templ.Handler(component.ProviderBundleImportPage(vmodel)).ServeHTTP(w, r)
@@ -181,6 +209,10 @@ func (h *Handler) importProviderBundle(w http.ResponseWriter, r *http.Request) {
 	result, err := service.ApplyProviderBundle(ctx, h.providerStore, plan, *sel, newProvider)
 	if err != nil {
 		if webcommon.RejectLocked(w, r, err) {
+			return
+		}
+		if errors.Is(err, port.ErrInvalid) {
+			h.renderProviderBundleError(w, r, vmodel, i18n.T(ctx, "org.errors.provider_bundle.invalid_settings"))
 			return
 		}
 		slog.ErrorContext(ctx, "could not apply provider bundle", slogx.Error(err))
@@ -215,7 +247,11 @@ func (h *Handler) importProviderBundle(w http.ResponseWriter, r *http.Request) {
 	if len(result.Failed) == 0 && len(result.Skipped) == 0 {
 		vmodel.Notice = i18n.T(ctx, "org.provider_bundle.nothing_applied")
 	} else {
-		vmodel.Notice = i18n.T(ctx, "org.provider_bundle.applied", result.Created, result.Updated)
+		notice := "org.provider_bundle.applied"
+		if result.ProviderChanged {
+			notice = "org.provider_bundle.applied_with_provider"
+		}
+		vmodel.Notice = i18n.T(ctx, notice, result.Created, result.Updated)
 		vmodel.Failures = append(h.bundleFailureReasons(ctx, org, result.Failed), bundleSkipReasons(ctx, result.Skipped)...)
 	}
 	templ.Handler(component.ProviderBundleImportPage(vmodel)).ServeHTTP(w, r)
@@ -246,6 +282,12 @@ func (h *Handler) bundleFailureReasons(ctx context.Context, org model.Organizati
 func bundleSkipReasons(ctx context.Context, skipped []service.BundleModelPlan) []string {
 	reasons := make([]string, 0, len(skipped))
 	for _, mp := range skipped {
+		if mp.RefusedField != "" && mp.Existing != nil {
+			// One change of a model otherwise updated: it is named under the
+			// name it still has.
+			reasons = append(reasons, i18n.T(ctx, "org.provider_bundle.change_not_applied", mp.Existing.ProxyName(), component.ProviderBundleFieldLabel(ctx, mp.RefusedField), mp.Conflict))
+			continue
+		}
 		reason := mp.Conflict
 		if mp.KindNotServed != "" {
 			reason = i18n.T(ctx, "org.errors.providers.kind_not_served", mp.KindNotServed, common.ModelKindLabel(ctx, mp.Model.Kind))
@@ -373,4 +415,51 @@ func (h *Handler) providerBundleImportVModel(ctx context.Context, org model.Orga
 			Breadcrumbs:  breadcrumbs,
 		},
 	}
+}
+
+// convertBundleCurrency converts the prices and the plan's value budgets of
+// bundle into the currency to, which becomes the bundle's.
+func (h *Handler) convertBundleCurrency(ctx context.Context, bundle *model.ProviderBundle, to string) error {
+	if h.exchangeRateService == nil {
+		return errors.New("no exchange rate service")
+	}
+	from := bundle.Provider.Currency
+	convert := func(microcents int64) (int64, error) {
+		return h.exchangeRateService.Convert(ctx, microcents, from, to)
+	}
+	for i := range bundle.Models {
+		prices := &bundle.Models[i].Prices
+		for _, p := range []*float64{&prices.Input, &prices.CachedInput, &prices.Output} {
+			v, err := convert(model.MicrocentsPer1K(*p))
+			if err != nil {
+				return errors.WithStack(err)
+			}
+			*p = model.PricePerMillion(v)
+		}
+	}
+	if plan := bundle.Provider.SubscriptionPlan; plan != nil {
+		for ci := range plan.Constraints {
+			c := &plan.Constraints[ci]
+			if c.ValueBudget != nil {
+				v, err := convert(*c.ValueBudget)
+				if err != nil {
+					return errors.WithStack(err)
+				}
+				c.ValueBudget = &v
+			}
+			for id, b := range c.ModelBudgets {
+				if b.ValueBudget == nil {
+					continue
+				}
+				v, err := convert(*b.ValueBudget)
+				if err != nil {
+					return errors.WithStack(err)
+				}
+				b.ValueBudget = &v
+				c.ModelBudgets[id] = b
+			}
+		}
+	}
+	bundle.Provider.Currency = to
+	return nil
 }

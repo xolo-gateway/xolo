@@ -48,6 +48,9 @@ type BundleModelPlan struct {
 	// KindNotServed, when set, is the provider type whose API does not serve
 	// the model's kind: the model is skipped, as the model form refuses it.
 	KindNotServed string
+	// RefusedField, in a result's Skipped, names the one change of an
+	// updated model that could not be applied, its other changes written.
+	RefusedField string
 }
 
 // ProviderBundlePlan is the dry run of a provider bundle import: nothing is
@@ -487,7 +490,7 @@ func ApplyProviderBundle(ctx context.Context, store port.ProviderStore, plan Pro
 		for _, change := range mp.Changes {
 			if change.Conflict != "" && sel.Fields[mp.Index][change.Field] {
 				skipped := mp
-				skipped.Conflict = change.Conflict
+				skipped.Conflict, skipped.RefusedField = change.Conflict, change.Field
 				result.Skipped = append(result.Skipped, skipped)
 			}
 		}
@@ -556,6 +559,9 @@ func applyProviderSettings(ctx context.Context, store port.ProviderStore, plan P
 			p.SetBillingMode(billingModeOrPayg(s.BillingMode))
 			p.SetSubscriptionPlan(s.SubscriptionPlan)
 		}
+		if err := validateBundleProvider(p); err != nil {
+			return nil, false, err
+		}
 		if err := store.CreateProvider(ctx, p); err != nil {
 			return nil, false, errors.Wrap(err, "could not create provider")
 		}
@@ -584,7 +590,7 @@ func applyProviderSettings(ctx context.Context, store port.ProviderStore, plan P
 		case BundleFieldRateLimit:
 			updated.SetRateLimitConfig(s.RateLimit)
 		case BundleFieldRequestHeaders:
-			updated.SetRequestHeaders(s.RequestHeaders)
+			updated.SetRequestHeaders(model.MergeImportedHeaders(t.RequestHeaders(), s.RequestHeaders))
 		}
 	}
 	if sel.Billing && plan.Billing != nil {
@@ -596,6 +602,9 @@ func applyProviderSettings(ctx context.Context, store port.ProviderStore, plan P
 		return t, false, nil
 	}
 	updated.SetUpdatedAt(time.Now())
+	if err := validateBundleProvider(updated); err != nil {
+		return nil, false, err
+	}
 	if err := store.SaveProvider(ctx, updated); err != nil {
 		return nil, false, errors.Wrap(err, "could not update provider")
 	}
@@ -609,4 +618,24 @@ func billingModeOrPayg(m model.BillingMode) model.BillingMode {
 		return model.BillingModePayg
 	}
 	return m
+}
+
+// validateBundleProvider checks the provider an import is about to write
+// with the rules of every other provider write path (validateProvider): the
+// store validates nothing of its own.
+func validateBundleProvider(p model.Provider) error {
+	err := validateProvider(model.ProviderSettings{
+		Name:             p.Name(),
+		Type:             p.Type(),
+		BaseURL:          p.BaseURL(),
+		Active:           p.Active(),
+		Currency:         p.Currency(),
+		CloudTier:        p.CloudTier(),
+		BillingMode:      p.BillingMode(),
+		SubscriptionPlan: p.SubscriptionPlan(),
+		RetryConfig:      p.RetryConfig(),
+		RateLimitConfig:  p.RateLimitConfig(),
+		RequestHeaders:   p.RequestHeaders(),
+	})
+	return errors.Wrap(err, "invalid provider settings")
 }

@@ -20,7 +20,7 @@ type ECBProvider struct {
 func NewECBProvider() *ECBProvider {
 	return &ECBProvider{
 		url:    defaultECBURL,
-		client: &http.Client{},
+		client: &http.Client{Timeout: fetchTimeout},
 	}
 }
 

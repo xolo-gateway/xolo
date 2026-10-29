@@ -141,26 +141,26 @@ func TestProviderBundle_SaysWhenNothingWasApplied(t *testing.T) {
 	}
 }
 
-func TestCatalogImport_PreviewsTheCatalogProviderAsABundle(t *testing.T) {
-	h, s, tenant := importFixture(t, "https://opencode.ai/inference/go/v1", "sk")
-	h.SetCatalog(catalog.NewSource("", 0))
-
-	fields := url.Values{"catalog_provider": {"opencode-go"}, "plan": {"go"}}
+func TestProviderBundle_AnswersInvalidSettingsWithThePage(t *testing.T) {
+	h, s, tenant := importFixture(t, "https://example.test/v1", "sk")
+	store := &bundleStore{modelFormStore: s}
+	h.providerStore = store
+	// Model budgets on a provider-wide limit: the bundle parses, the
+	// provider validation every write path applies refuses it.
+	doc := `{"kind":"xolo.provider","version":"1","provider":{"type":"openai","currency":"USD","billing_mode":"subscription",` +
+		`"subscription_plan":{"label":"P","constraints":[{"kind":"concurrency","label":"c","max_concurrent":2,"model_budgets":{"a":{}}}]}},"models":[]}`
+	fields := url.Values{"step": {"apply"}, "bundle": {doc}, "billing": {"on"}, "name": {"P"}, "api_key": {"k"}}
 	rr := httptest.NewRecorder()
-	h.previewCatalogImport(rr, bundleRequest(t, s, tenant, string(s.provider.ID()), bytes.NewBufferString(fields.Encode()), "application/x-www-form-urlencoded"))
-	if rr.Code != http.StatusOK {
-		t.Fatalf("status = %d: %s", rr.Code, rr.Body.String())
+	h.importProviderBundle(rr, bundleRequest(t, s, tenant, "", bytes.NewBufferString(fields.Encode()), "application/x-www-form-urlencoded"))
+	if rr.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("status = %d, want 422: %s", rr.Code, rr.Body.String())
 	}
-	page := rr.Body.String()
-	if !strings.Contains(page, `name="create"`) || !strings.Contains(page, `name="billing"`) || !strings.Contains(page, `name="bundle"`) {
-		t.Error("the preview should offer the models, the plan apart, and carry the bundle to apply")
-	}
-	if len(s.created) != 0 {
-		t.Error("the preview wrote to the store")
+	if !strings.Contains(stdhtml.UnescapeString(rr.Body.String()), "rien n'a été écrit") || len(store.providers) != 0 {
+		t.Error("the page should say nothing was written, and nothing should be")
 	}
 }
 
-// fixedRates serves one exchange rate.
+// fixedRates serves the exchange rates it holds, as "FROM>TO".
 type fixedRates map[string]float64
 
 func (f fixedRates) FetchRates(_ context.Context, base string) (map[string]float64, error) {
@@ -188,6 +188,85 @@ func (m *memoryRates) UpsertRate(_ context.Context, r model.ExchangeRate) error 
 }
 
 func (m *memoryRates) ListRates(context.Context) ([]model.ExchangeRate, error) { return nil, nil }
+
+func TestProviderBundle_ConvertsABundleInAnotherCurrency(t *testing.T) {
+	h, s, tenant := importFixture(t, "https://example.test/v1", "sk")
+	h.exchangeRateService = service.NewExchangeRateService(fixedRates{"EUR>USD": 2}, &memoryRates{rates: map[string]model.ExchangeRate{}}, time.Hour)
+	doc := `{"kind":"xolo.provider","version":"1","provider":{"type":"openai","currency":"EUR"},` +
+		`"models":[{"real_model":"m","proxy_name":"m","enabled":true,"prices":{"input":1,"output":3}}]}`
+
+	fields := url.Values{"step": {"apply"}, "bundle": {doc}, "create": {"0"}}
+	rr := httptest.NewRecorder()
+	h.importProviderBundle(rr, bundleRequest(t, s, tenant, string(s.provider.ID()), bytes.NewBufferString(fields.Encode()), "application/x-www-form-urlencoded"))
+	if rr.Code != http.StatusSeeOther {
+		t.Fatalf("status = %d: %s", rr.Code, rr.Body.String())
+	}
+	if len(s.created) != 1 {
+		t.Fatalf("created %d models, want 1", len(s.created))
+	}
+	if m := s.created[0]; m.PromptCostPer1KTokens() != 2000 || m.CompletionCostPer1KTokens() != 6000 {
+		t.Errorf("prices = %d / %d microcents per 1K, want the EUR prices converted to USD at 2", m.PromptCostPer1KTokens(), m.CompletionCostPer1KTokens())
+	}
+}
+
+func TestProviderBundle_RefusesABundleItCannotConvert(t *testing.T) {
+	h, s, tenant := importFixture(t, "https://example.test/v1", "sk")
+	doc := `{"kind":"xolo.provider","version":"1","provider":{"type":"openai","currency":"EUR"},"models":[]}`
+	fields := url.Values{"step": {"preview"}, "bundle": {doc}}
+	rr := httptest.NewRecorder()
+	h.importProviderBundle(rr, bundleRequest(t, s, tenant, string(s.provider.ID()), bytes.NewBufferString(fields.Encode()), "application/x-www-form-urlencoded"))
+	if rr.Code != http.StatusUnprocessableEntity {
+		t.Errorf("status = %d, want the import refused rather than EUR prices under USD", rr.Code)
+	}
+}
+
+func TestProviderBundle_PreviewPostsBackTheConvertedBundle(t *testing.T) {
+	h, s, tenant := importFixture(t, "https://example.test/v1", "sk")
+	h.exchangeRateService = service.NewExchangeRateService(fixedRates{"EUR>USD": 2}, &memoryRates{rates: map[string]model.ExchangeRate{}}, time.Hour)
+	doc := `{"kind":"xolo.provider","version":"1","provider":{"type":"openai","currency":"EUR","omitted_request_headers":["Api-Key"]},` +
+		`"models":[{"real_model":"m","proxy_name":"m","enabled":true,"prices":{"input":1,"output":3}}]}`
+	fields := url.Values{"step": {"preview"}, "bundle": {doc}}
+	rr := httptest.NewRecorder()
+	h.importProviderBundle(rr, bundleRequest(t, s, tenant, string(s.provider.ID()), bytes.NewBufferString(fields.Encode()), "application/x-www-form-urlencoded"))
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d: %s", rr.Code, rr.Body.String())
+	}
+	page := rr.Body.String()
+	i := strings.Index(page, `name="bundle" value="`)
+	if i < 0 {
+		t.Fatal("no bundle in the page")
+	}
+	raw := page[i+len(`name="bundle" value="`):]
+	posted, err := model.ParseProviderBundle([]byte(stdhtml.UnescapeString(raw[:strings.Index(raw, `"`)])))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if posted.Provider.Currency != "USD" || posted.Models[0].Prices.Output != 6 {
+		t.Errorf("posted bundle = %s %v, want the dry run's converted prices", posted.Provider.Currency, posted.Models[0].Prices)
+	}
+	if !strings.Contains(stdhtml.UnescapeString(page), "Api-Key") {
+		t.Error("the preview should name the header to configure again")
+	}
+}
+
+func TestCatalogImport_PreviewsTheCatalogProviderAsABundle(t *testing.T) {
+	h, s, tenant := importFixture(t, "https://opencode.ai/inference/go/v1", "sk")
+	h.SetCatalog(catalog.NewSource("", 0))
+
+	fields := url.Values{"catalog_provider": {"opencode-go"}, "plan": {"go"}}
+	rr := httptest.NewRecorder()
+	h.previewCatalogImport(rr, bundleRequest(t, s, tenant, string(s.provider.ID()), bytes.NewBufferString(fields.Encode()), "application/x-www-form-urlencoded"))
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d: %s", rr.Code, rr.Body.String())
+	}
+	page := rr.Body.String()
+	if !strings.Contains(page, `name="create"`) || !strings.Contains(page, `name="billing"`) || !strings.Contains(page, `name="bundle"`) {
+		t.Error("the preview should offer the models, the plan apart, and carry the bundle to apply")
+	}
+	if len(s.created) != 0 {
+		t.Error("the preview wrote to the store")
+	}
+}
 
 func TestCatalogImport_ConvertsPricesIntoTheProvidersCurrency(t *testing.T) {
 	h, s, tenant := importFixture(t, "https://opencode.ai/inference/go/v1", "sk")

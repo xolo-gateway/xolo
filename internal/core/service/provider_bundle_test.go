@@ -333,7 +333,7 @@ func TestParseProviderBundle_RefusesAnotherKindOrVersion(t *testing.T) {
 		`{"kind":"xolo.pipeline","version":"1","provider":{"type":"openai"}}`,
 		`{"kind":"xolo.provider","version":"2","provider":{"type":"openai"}}`,
 		`{"kind":"xolo.provider","version":"1","provider":{"type":"nope"}}`,
-		`{"kind":"xolo.provider","version":"1","provider":{"type":"openai"},"models":[{"real_model":"a"}]}`,
+		`{"kind":"xolo.provider","version":"1","provider":{"type":"openai","currency":"USD"},"models":[{"real_model":"a"}]}`,
 		`not json`,
 	} {
 		if _, err := model.ParseProviderBundle([]byte(doc)); err == nil {
@@ -369,7 +369,7 @@ func TestPlanProviderBundleImport_SkipsAKindTheTargetDoesNotServe(t *testing.T) 
 	// completion model without an API of its own would be served by the
 	// target's API, which serves decisions only.
 	bundle := model.ProviderBundle{Kind: model.ProviderBundleKind, Version: model.ProviderBundleVersion,
-		Provider: model.ProviderBundleSettings{Type: "openai"},
+		Provider: model.ProviderBundleSettings{Type: "openai", Currency: "USD"},
 		Models:   []model.ProviderBundleModel{{RealModel: "gpt", ProxyName: "gpt", Kind: model.ModelKindCompletion}, {RealModel: "gpt-2", ProxyName: "gpt-2", APIType: "openai"}}}
 	target := model.NewProvider("org-a", "TypeSafe", "typesafe", "", "key", "USD")
 
@@ -406,7 +406,7 @@ func TestPlanProviderBundleImport_FreesTheNameARenamedModelLeaves(t *testing.T) 
 func TestApplyProviderBundle_GoesOnPastAModelTheStoreRefuses(t *testing.T) {
 	store := newMemoryProviderStore()
 	bundle := model.ProviderBundle{Kind: model.ProviderBundleKind, Version: model.ProviderBundleVersion,
-		Provider: model.ProviderBundleSettings{Type: "openai"},
+		Provider: model.ProviderBundleSettings{Type: "openai", Currency: "USD"},
 		Models:   []model.ProviderBundleModel{{RealModel: "a", ProxyName: "a"}, {RealModel: "b", ProxyName: "b"}}}
 	plan := PlanProviderBundleImport(bundle, nil, nil, takenNames{})
 	store.refuse = map[string]bool{"a": true}
@@ -422,8 +422,22 @@ func TestApplyProviderBundle_GoesOnPastAModelTheStoreRefuses(t *testing.T) {
 
 func TestParseProviderBundle_RefusesReservedHeadersAndAbsurdPrices(t *testing.T) {
 	for name, doc := range map[string]string{
-		"reserved header": `{"kind":"xolo.provider","version":"1","provider":{"type":"openai","request_headers":{"headers":{"Authorization":"Bearer x"}}}}`,
-		"absurd price":    `{"kind":"xolo.provider","version":"1","provider":{"type":"openai"},"models":[{"real_model":"a","proxy_name":"a","prices":{"input":1e300,"output":1}}]}`,
+		"reserved header":   `{"kind":"xolo.provider","version":"1","provider":{"type":"openai","currency":"USD","request_headers":{"headers":{"Authorization":"Bearer x"}}}}`,
+		"billing mode":      `{"kind":"xolo.provider","version":"1","provider":{"type":"openai","currency":"USD","billing_mode":"free"}}`,
+		"currency":          `{"kind":"xolo.provider","version":"1","provider":{"type":"openai","currency":"XXX"}}`,
+		"no currency":       `{"kind":"xolo.provider","version":"1","provider":{"type":"openai"}}`,
+		"scope":             `{"kind":"xolo.provider","version":"1","provider":{"type":"openai","currency":"USD","subscription_plan":{"label":"P","constraints":[{"kind":"rolling_window","label":"5h","duration":"5h","scope":"modle"}]}}}`,
+		"model concurrency": `{"kind":"xolo.provider","version":"1","provider":{"type":"openai","currency":"USD","subscription_plan":{"label":"P","constraints":[{"kind":"concurrency","label":"c","max_concurrent":2,"scope":"model"}]}}}`,
+		"cloud tier":        `{"kind":"xolo.provider","version":"1","provider":{"type":"openai","currency":"USD","cloud_tier":7}}`,
+		"nan-free ratio":    `{"kind":"xolo.provider","version":"1","provider":{"type":"openai","currency":"USD","subscription_plan":{"label":"P","constraints":[{"kind":"rolling_window","label":"5h","duration":"5h","reserve_ratio":2}]}}}`,
+		"no duration":       `{"kind":"xolo.provider","version":"1","provider":{"type":"openai","currency":"USD","subscription_plan":{"label":"P","constraints":[{"kind":"rolling_window","label":"5h"}]}}}`,
+		"zero concurrency":  `{"kind":"xolo.provider","version":"1","provider":{"type":"openai","currency":"USD","subscription_plan":{"label":"P","constraints":[{"kind":"concurrency","label":"c","max_concurrent":0}]}}}`,
+		"zero retry delay":  `{"kind":"xolo.provider","version":"1","provider":{"type":"openai","currency":"USD","retry":{"enabled":true,"max_attempts":3,"delay":0}}}`,
+		"zero rate burst":   `{"kind":"xolo.provider","version":"1","provider":{"type":"openai","currency":"USD","rate_limit":{"enabled":true,"interval":1000000000,"max_burst":0}}}`,
+		"zero token limit":  `{"kind":"xolo.provider","version":"1","provider":{"type":"openai","currency":"USD"},"models":[{"real_model":"a","proxy_name":"a","token_limit":{"enabled":true,"max_tokens":10,"interval":0},"prices":{"input":1,"output":1}}]}`,
+		"negative window":   `{"kind":"xolo.provider","version":"1","provider":{"type":"openai","currency":"USD"},"models":[{"real_model":"a","proxy_name":"a","context_window":-1,"prices":{"input":1,"output":1}}]}`,
+		"negative speed":    `{"kind":"xolo.provider","version":"1","provider":{"type":"openai","currency":"USD"},"models":[{"real_model":"a","proxy_name":"a","tokens_per_sec_low":-5,"prices":{"input":1,"output":1}}]}`,
+		"absurd price":      `{"kind":"xolo.provider","version":"1","provider":{"type":"openai","currency":"USD"},"models":[{"real_model":"a","proxy_name":"a","prices":{"input":1e300,"output":1}}]}`,
 	} {
 		if _, err := model.ParseProviderBundle([]byte(doc)); err == nil {
 			t.Errorf("%s: parsed, want refused", name)
@@ -434,7 +448,7 @@ func TestParseProviderBundle_RefusesReservedHeadersAndAbsurdPrices(t *testing.T)
 func TestPlanProviderBundleImport_ShowsAbsentSettingsAsEmpty(t *testing.T) {
 	target := model.NewProvider("org-a", "P", "openai", "", "key", "USD")
 	bundle := model.ProviderBundle{Kind: model.ProviderBundleKind, Version: model.ProviderBundleVersion,
-		Provider: model.ProviderBundleSettings{Type: "openai", Retry: &model.RetryConfig{Enabled: true, MaxAttempts: 2}}}
+		Provider: model.ProviderBundleSettings{Type: "openai", Currency: "USD", Retry: &model.RetryConfig{Enabled: true, MaxAttempts: 2}}}
 	plan := PlanProviderBundleImport(bundle, target, nil, takenNames{})
 	for _, c := range plan.Settings {
 		if c.From == "null" || c.To == "null" {
@@ -495,7 +509,7 @@ func TestApplyProviderBundle_RenamesBeforeItCreatesUnderTheFreedName(t *testing.
 
 func TestPlanProviderBundleImportWith_ChecksKindsAgainstTheImportedType(t *testing.T) {
 	bundle := model.ProviderBundle{Kind: model.ProviderBundleKind, Version: model.ProviderBundleVersion,
-		Provider: model.ProviderBundleSettings{Type: "typesafe"},
+		Provider: model.ProviderBundleSettings{Type: "typesafe", Currency: "USD"},
 		Models:   []model.ProviderBundleModel{{RealModel: "judge", ProxyName: "judge"}}}
 	target := model.NewProvider("org-a", "P", "openai", "", "key", "USD")
 
@@ -554,7 +568,99 @@ func TestApplyProviderBundle_ReportsASelectedRenameItCannotApply(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(result.Skipped) != 1 || result.Skipped[0].Conflict == "" {
-		t.Errorf("skipped = %+v, want the refused rename reported", result.Skipped)
+	if len(result.Skipped) != 1 || result.Skipped[0].Conflict == "" || result.Skipped[0].RefusedField != BundleFieldProxyName {
+		t.Errorf("skipped = %+v, want the refused rename reported as that one change", result.Skipped)
+	}
+}
+
+func TestApplyProviderBundle_WritesTheOtherChangesOfAModelWithARefusedRename(t *testing.T) {
+	mem := newMemoryProviderStore()
+	p := configuredProvider(t, mem, "org-a")
+	models := mem.modelsOf("org-a")
+
+	// kimi-k3 moves to the name glm-5 keeps and gets a description: the
+	// rename is refused, the description written.
+	bundle := model.NewProviderBundle(p, models, false, time.Now())
+	index := -1
+	for i := range bundle.Models {
+		if bundle.Models[i].RealModel == "kimi-k3" {
+			bundle.Models[i].ProxyName = "glm-5"
+			bundle.Models[i].Description = "Kimi K3"
+			index = i
+		}
+	}
+	sel := BundleSelection{Fields: map[int]map[string]bool{index: {BundleFieldProxyName: true, BundleFieldDescription: true}}}
+	plan := PlanProviderBundleImportWith(bundle, p, models, namesOf(models), &sel)
+	result, err := ApplyProviderBundle(context.Background(), mem, plan, sel, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Updated != 1 || len(result.Skipped) != 1 || result.Skipped[0].RefusedField != BundleFieldProxyName {
+		t.Fatalf("result = updated %d skipped %+v; want the description written and the rename reported", result.Updated, result.Skipped)
+	}
+	updated := mem.models[result.Skipped[0].Existing.ID()]
+	if updated.Description() != "Kimi K3" || updated.ProxyName() != "kimi-k3" {
+		t.Errorf("model = %q %q, want the new description under its kept name", updated.ProxyName(), updated.Description())
+	}
+}
+
+func TestApplyProviderBundle_ValidatesTheProviderLikeEveryWritePath(t *testing.T) {
+	// What the provider form and the provisioning API refuse, a bundle
+	// cannot write either: here, model budgets on a provider-wide limit,
+	// which the bundle's own validation leaves to the service.
+	mem := newMemoryProviderStore()
+	max := 2
+	bundle := model.ProviderBundle{Kind: model.ProviderBundleKind, Version: model.ProviderBundleVersion,
+		Provider: model.ProviderBundleSettings{Type: "openai", Currency: "USD", BillingMode: model.BillingModeSubscription,
+			SubscriptionPlan: &model.SubscriptionPlan{Label: "P", Constraints: []model.PlanConstraint{{
+				Kind: model.ConstraintConcurrency, Label: "c", MaxConcurrent: &max,
+				ModelBudgets: map[string]model.PlanBudget{"a": {}},
+			}}}}}
+	plan := PlanProviderBundleImport(bundle, nil, nil, takenNames{})
+	_, err := ApplyProviderBundle(context.Background(), mem, plan, selectAll(plan), &NewProviderTarget{OrgID: "org-a", Name: "P", APIKey: "k"})
+	if !errors.Is(err, port.ErrInvalid) {
+		t.Fatalf("err = %v, want the provider refused as invalid", err)
+	}
+	if mem.writes != 0 {
+		t.Errorf("%d writes, want none before the provider is valid", mem.writes)
+	}
+}
+
+func TestNewProviderBundle_LeavesOutHeadersThatLookLikeCredentials(t *testing.T) {
+	p := model.NewProvider("org-a", "Gateway", "openai", "https://gw.test/v1", "key", "USD")
+	p.SetRequestHeaders(&model.ProviderRequestHeaders{Headers: map[string]string{
+		"X-Title": "xolo", "Ocp-Apim-Subscription-Key": "secret-1", "X-Auth-Token": "secret-2",
+	}, SessionHeader: "X-Session-Affinity"})
+	data, err := json.Marshal(model.NewProviderBundle(p, nil, false, time.Now()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	doc := string(data)
+	if strings.Contains(doc, "secret-1") || strings.Contains(doc, "secret-2") {
+		t.Error("the export carries a credential header")
+	}
+	if !strings.Contains(doc, "X-Title") || !strings.Contains(doc, "X-Session-Affinity") {
+		t.Error("the export should keep the plain headers and the session header name")
+	}
+	if !strings.Contains(doc, `"omitted_request_headers":["Ocp-Apim-Subscription-Key","X-Auth-Token"]`) {
+		t.Errorf("the export should name the headers it left out: %s", doc)
+	}
+}
+
+func TestApplyProviderBundle_KeepsTheTargetsCredentialHeaders(t *testing.T) {
+	mem := newMemoryProviderStore()
+	target := model.NewProvider("org-a", "Gateway", "openai", "https://gw.test/v1", "key", "USD")
+	target.SetRequestHeaders(&model.ProviderRequestHeaders{Headers: map[string]string{"Api-Key": "secret", "X-Old": "1"}})
+	bundle := model.ProviderBundle{Kind: model.ProviderBundleKind, Version: model.ProviderBundleVersion,
+		Provider: model.ProviderBundleSettings{Type: "openai", Currency: "USD", BaseURL: "https://gw.test/v1",
+			RequestHeaders: &model.ProviderRequestHeaders{Headers: map[string]string{"X-Title": "xolo"}}}}
+	plan := PlanProviderBundleImport(bundle, target, nil, takenNames{})
+	result, err := ApplyProviderBundle(context.Background(), mem, plan, BundleSelection{Settings: map[string]bool{BundleFieldRequestHeaders: true}}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	headers := result.Provider.RequestHeaders().Headers
+	if headers["Api-Key"] != "secret" || headers["X-Title"] != "xolo" || headers["X-Old"] != "" {
+		t.Errorf("headers = %v, want the bundle's plus the target's credential header", headers)
 	}
 }

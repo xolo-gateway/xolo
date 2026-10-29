@@ -31,6 +31,11 @@ var providerBundleFieldKeys = map[string]string{
 	service.BundleFieldExtraBody:      "org.provider_bundle.field.extra_body",
 }
 
+// ProviderBundleFieldLabel names a field of a bundle import in the interface.
+func ProviderBundleFieldLabel(ctx context.Context, field string) string {
+	return providerBundleFieldLabel(ctx, field)
+}
+
 func providerBundleFieldLabel(ctx context.Context, field string) string {
 	if key, ok := providerBundleFieldKeys[field]; ok {
 		return i18n.T(ctx, key)
