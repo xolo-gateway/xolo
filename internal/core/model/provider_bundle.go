@@ -293,6 +293,16 @@ func (b ProviderBundle) Validate() error {
 	if !b.Provider.RequestHeaders.Valid() {
 		return errors.Wrap(ErrInvalidProviderBundle, "request_headers name a reserved header or exceed the limits")
 	}
+	// A bundle never carries a header whose name looks like a credential:
+	// an export leaves them out, and an import keeps the target's own. One
+	// written by hand is refused rather than silently ignored.
+	if h := b.Provider.RequestHeaders; h != nil {
+		for name := range h.Headers {
+			if credentialHeader(name) {
+				return errors.Wrapf(ErrInvalidProviderBundle, "request header %q looks like a credential, which a bundle does not carry", name)
+			}
+		}
+	}
 	if b.Provider.BaseURL != "" && !IsValidBaseURL(b.Provider.BaseURL) {
 		return errors.Wrapf(ErrInvalidProviderBundle, "invalid base_url %q", b.Provider.BaseURL)
 	}
