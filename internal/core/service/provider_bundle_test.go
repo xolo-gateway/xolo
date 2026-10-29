@@ -748,8 +748,10 @@ func TestApplyProviderBundle_ReportsASwapItCannotWrite(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(result.Failed) != 2 {
-		t.Errorf("failed = %+v, want both renames of the swap reported", result.Failed)
+	// The dry run refuses the swap: nothing fails at the store, and both
+	// renames are reported as not applied.
+	if len(result.Failed) != 0 || len(result.Skipped) != 2 {
+		t.Errorf("failed = %+v, skipped = %d; want both renames of the swap reported as refused", result.Failed, len(result.Skipped))
 	}
 }
 
@@ -820,5 +822,64 @@ func TestPlanProviderBundleImport_NeverOffersTheNameARefusedRenameKeeps(t *testi
 	}
 	if len(result.Failed) != 0 {
 		t.Errorf("failed = %+v, want nothing the dry run did not announce", result.Failed)
+	}
+}
+
+func TestPlanProviderBundleImport_RefusesASwapInTheDryRun(t *testing.T) {
+	mem, p, _, _ := renameFixture(t)
+	models := mem.modelsOf("org-a")
+	bundle := model.ProviderBundle{Kind: model.ProviderBundleKind, Version: model.ProviderBundleVersion,
+		Provider: model.ProviderBundleSettings{Type: "openai", Currency: "USD", BaseURL: "https://p.test/v1"},
+		Models: []model.ProviderBundleModel{
+			{RealModel: "model-a", ProxyName: "b", Enabled: true, Prices: model.ModelPrices{Input: 0.1, Output: 0.2}},
+			{RealModel: "model-b", ProxyName: "a", Enabled: true, Prices: model.ModelPrices{Input: 0.1, Output: 0.2}},
+		}}
+	plan := PlanProviderBundleImport(bundle, p, models, namesOf(models))
+	for _, m := range plan.Models {
+		for _, c := range m.Changes {
+			if c.Field == BundleFieldProxyName && !c.Refused() {
+				t.Errorf("%s: swap rename offered, want it refused in the dry run", m.Model.RealModel)
+			}
+		}
+	}
+	result, err := ApplyProviderBundle(context.Background(), uniqueNamesStore{mem}, plan, selectAll(plan), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Failed) != 0 {
+		t.Errorf("failed = %+v, want nothing the dry run did not announce", result.Failed)
+	}
+}
+
+func TestPlanProviderBundleImport_RefusesOnlyTheRenamesOfACycle(t *testing.T) {
+	// a(a) and b(b) swap their names while d(d) moves to e: the swap is
+	// refused, the unrelated rename is kept.
+	mem := newMemoryProviderStore()
+	p := model.NewProvider("org-a", "P", "openai", "https://p.test/v1", "key", "USD")
+	for _, n := range []string{"a", "b", "c", "d"} {
+		if err := mem.CreateLLMModel(context.Background(), model.NewLLMModel(p.ID(), "org-a", n, "model-"+n, "", 100, 200)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	models := mem.modelsOf("org-a")
+	prices := model.ModelPrices{Input: 0.1, Output: 0.2}
+	bundle := model.ProviderBundle{Kind: model.ProviderBundleKind, Version: model.ProviderBundleVersion,
+		Provider: model.ProviderBundleSettings{Type: "openai", Currency: "USD", BaseURL: "https://p.test/v1"},
+		Models: []model.ProviderBundleModel{
+			{RealModel: "model-d", ProxyName: "e", Enabled: true, Prices: prices},
+			{RealModel: "model-a", ProxyName: "b", Enabled: true, Prices: prices},
+			{RealModel: "model-b", ProxyName: "a", Enabled: true, Prices: prices},
+		}}
+	plan := PlanProviderBundleImport(bundle, p, models, namesOf(models))
+	refused := map[string]bool{}
+	for _, m := range plan.Models {
+		for _, c := range m.Changes {
+			if c.Field == BundleFieldProxyName {
+				refused[m.Model.RealModel] = c.Refused()
+			}
+		}
+	}
+	if refused["model-d"] || !refused["model-a"] || !refused["model-b"] {
+		t.Errorf("refused = %v, want the swap refused and the unrelated rename kept", refused)
 	}
 }
