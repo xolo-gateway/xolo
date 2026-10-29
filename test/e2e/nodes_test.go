@@ -182,10 +182,10 @@ func TestNodes_GuardedAgent(t *testing.T) {
 		if len(up.Messages) == 0 || up.Messages[0].Role != "system" || !strings.Contains(fmt.Sprint(up.Messages[0].Content), "support e2e") {
 			t.Errorf("system prompt missing or not first: %s", up.Raw)
 		}
-		if strings.Contains(up.Raw, "Jean Dupont") || !strings.Contains(up.Raw, "PERSON_1") {
+		if strings.Contains(up.Raw, "Jean Dupont") || !strings.Contains(up.Raw, "⟦PERSON_") {
 			t.Errorf("provider request is not pseudonymised: %s", up.Raw)
 		}
-		if !strings.Contains(res.Content, "Jean Dupont") || strings.Contains(res.Content, "PERSON_1") {
+		if !strings.Contains(res.Content, "Jean Dupont") || strings.Contains(res.Content, "⟦PERSON_") {
 			t.Errorf("answer not de-pseudonymised: %q", res.Content)
 		}
 

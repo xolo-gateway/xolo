@@ -37,7 +37,7 @@ func TestPseudonymizer_TagStrategy_RoundTrip(t *testing.T) {
 			t.Errorf("provider saw %q in the request: %s", leak, upstream.Raw)
 		}
 	}
-	if !strings.Contains(upstream.Raw, "PERSON_1") || !strings.Contains(upstream.Raw, "LOCATION_1") {
+	if !strings.Contains(upstream.Raw, "⟦PERSON_") || !strings.Contains(upstream.Raw, "⟦LOCATION_") {
 		t.Errorf("provider request lacks the expected placeholders: %s", upstream.Raw)
 	}
 
@@ -45,7 +45,7 @@ func TestPseudonymizer_TagStrategy_RoundTrip(t *testing.T) {
 	if !strings.Contains(res.Content, "Jean Dupont") || !strings.Contains(res.Content, "Lyon") {
 		t.Errorf("answer not deanonymized: %q", res.Content)
 	}
-	if strings.Contains(res.Content, "PERSON_1") {
+	if strings.Contains(res.Content, "⟦PERSON_") {
 		t.Errorf("placeholder leaked into the answer: %q", res.Content)
 	}
 
@@ -133,5 +133,124 @@ func TestPseudonymizer_PersonalHMACScope(t *testing.T) {
 	}
 	if len(env.provider.Requests()) != before {
 		t.Fatal("missing keys must block before provider")
+	}
+}
+
+// TestPseudonymizer_MessagesStreamRestoresToolCallArguments checks the return
+// leg of a tool call on the Anthropic Messages route, streamed, through an
+// OpenAI-compatible provider: the model writes a placeholder it read into the
+// arguments of a call, and the client must get the original value back, not
+// the placeholder (#56).
+func TestPseudonymizer_MessagesStreamRestoresToolCallArguments(t *testing.T) {
+	before := len(env.provider.Requests())
+
+	status, events := postStreamedMessages(t, tokenAlice, map[string]any{
+		"model":      modelTagStrategy,
+		"max_tokens": 256,
+		"stream":     true,
+		"tools": []map[string]any{{
+			"name":         "sql",
+			"description":  "Runs a read-only SQL query.",
+			"input_schema": map[string]any{"type": "object", "properties": map[string]any{"query": map[string]any{"type": "string"}}},
+		}},
+		"messages": []map[string]any{
+			{"role": "user", "content": "Retrouve le client du dossier en cours dans la base."},
+			{"role": "assistant", "content": []map[string]any{
+				{"type": "text", "text": "Je lis le dossier."},
+				{"type": "tool_use", "id": "toolu_read", "name": "sql", "input": map[string]any{"query": "SELECT dossier FROM dossiers LIMIT 1"}},
+			}},
+			{"role": "user", "content": []map[string]any{
+				{"type": "tool_result", "tool_use_id": "toolu_read", "content": "Dossier 42 : le client est Jean Dupont, domicilié à Lyon."},
+			}},
+		},
+	})
+	if status != 200 {
+		t.Fatalf("status = %d, events = %s", status, events)
+	}
+
+	upstream := env.provider.RequestsSince(before)
+	if len(upstream) != 1 {
+		t.Fatalf("upstream calls = %d, want 1", len(upstream))
+	}
+	if strings.Contains(upstream[0].Raw, "Jean Dupont") || !strings.Contains(upstream[0].Raw, "⟦PERSON_") {
+		t.Fatalf("the provider did not get a pseudonymized request: %s", upstream[0].Raw)
+	}
+
+	if text := streamedText(t, events); strings.Contains(text, "⟦") {
+		t.Errorf("text = %q, want the placeholder restored", text)
+	}
+	input := toolUseInput(t, events)
+	if !strings.Contains(input, "Jean Dupont") || strings.Contains(input, "⟦") {
+		t.Errorf("tool_use input = %q, want the placeholder restored to Jean Dupont\nevents:\n%s", input, events)
+	}
+}
+
+// TestPseudonymizer_MessagesRelayDoesNotRestoreAnEarlierPlaceholderToSomeoneElse
+// checks a placeholder the model reuses from an earlier turn, kept in a
+// thinking block the pseudonymizer forwards untouched to an anthropic
+// provider: the entity it stands for is no longer in the request, so the
+// request's mapping does not hold it. Nothing about him outlives the earlier
+// request: the placeholder cannot be restored to him, but it must not name the
+// person this request holds either, nor reach the client live.
+func TestPseudonymizer_MessagesRelayDoesNotRestoreAnEarlierPlaceholderToSomeoneElse(t *testing.T) {
+	// An earlier turn names Jean Dupont: the placeholder the model saw for him.
+	before := len(env.provider.Requests())
+	if res := messagesRequest(t, tokenAlice, modelClaude, "", []map[string]any{
+		{"role": "user", "content": "Le client est Jean Dupont."},
+	}); res.Status != 200 {
+		t.Fatalf("earlier turn: status = %d, body = %s", res.Status, res.Body)
+	}
+	earlier := env.provider.RequestsSince(before)
+	if len(earlier) != 1 {
+		t.Fatalf("earlier turn: upstream calls = %d, want 1", len(earlier))
+	}
+	jean := placeholderPattern.FindString(earlier[0].Raw)
+	if !strings.HasPrefix(jean, "⟦PERSON_") {
+		t.Fatalf("earlier turn: no person placeholder in %s", earlier[0].Raw)
+	}
+
+	// This turn names Marie Martin only; the model still reasons on Jean
+	// Dupont's placeholder, kept in its thinking from the earlier turn.
+	before = len(env.provider.Requests())
+	status, events := postStreamedMessages(t, tokenAlice, map[string]any{
+		"model":      modelClaude,
+		"max_tokens": 256,
+		"stream":     true,
+		"tools": []map[string]any{{
+			"name":         "sql",
+			"description":  "Runs a read-only SQL query.",
+			"input_schema": map[string]any{"type": "object", "properties": map[string]any{"query": map[string]any{"type": "string"}}},
+		}},
+		"messages": []map[string]any{
+			{"role": "user", "content": "Retrouve le dossier du client."},
+			{"role": "assistant", "content": []map[string]any{
+				{"type": "thinking", "thinking": "Le client est " + jean + ", je cherche son dossier.", "signature": "sig-e2e"},
+				{"type": "tool_use", "id": "toolu_read", "name": "sql", "input": map[string]any{"query": "SELECT dossier FROM dossiers LIMIT 1"}},
+			}},
+			{"role": "user", "content": []map[string]any{
+				{"type": "tool_result", "tool_use_id": "toolu_read", "content": "Dossier 42, suivi par Marie Martin."},
+			}},
+		},
+	})
+	if status != 200 {
+		t.Fatalf("status = %d, events = %s", status, events)
+	}
+	upstream := env.provider.RequestsSince(before)
+	if len(upstream) != 1 {
+		t.Fatalf("upstream calls = %d, want 1", len(upstream))
+	}
+	if strings.Contains(upstream[0].Raw, "Marie Martin") || !strings.Contains(upstream[0].Raw, "Le client est "+jean) {
+		t.Fatalf("the provider did not get the earlier thinking and a pseudonymized request: %s", upstream[0].Raw)
+	}
+	if first := placeholderPattern.FindString(upstream[0].Raw); first != jean {
+		t.Fatalf("the model quotes %q, want the earlier placeholder %q", first, jean)
+	}
+
+	input := toolUseInput(t, events)
+	if strings.Contains(input, "Marie Martin") {
+		t.Errorf("tool_use input = %q: the earlier placeholder of Jean Dupont names Marie Martin", input)
+	}
+	if strings.Contains(input, jean) {
+		t.Errorf("tool_use input = %q, want the earlier placeholder neutralized", input)
 	}
 }
