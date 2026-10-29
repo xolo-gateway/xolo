@@ -691,3 +691,93 @@ func TestParseProviderBundle_RefusesACredentialHeader(t *testing.T) {
 		t.Error("a bundle carrying a credential header was accepted")
 	}
 }
+
+// renameStore holds two models of one provider, a and b.
+func renameFixture(t *testing.T) (*memoryProviderStore, model.Provider, model.LLMModel, model.LLMModel) {
+	t.Helper()
+	mem := newMemoryProviderStore()
+	p := model.NewProvider("org-a", "P", "openai", "https://p.test/v1", "key", "USD")
+	a := model.NewLLMModel(p.ID(), "org-a", "a", "model-a", "", 100, 200)
+	b := model.NewLLMModel(p.ID(), "org-a", "b", "model-b", "", 100, 200)
+	for _, m := range []model.LLMModel{a, b} {
+		if err := mem.CreateLLMModel(context.Background(), m); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return mem, p, a, b
+}
+
+func TestApplyProviderBundle_RenamesAlongAChainWhateverTheBundleOrder(t *testing.T) {
+	mem, p, a, b := renameFixture(t)
+	models := mem.modelsOf("org-a")
+	// b takes a's name, listed first; a moves to c.
+	bundle := model.ProviderBundle{Kind: model.ProviderBundleKind, Version: model.ProviderBundleVersion,
+		Provider: model.ProviderBundleSettings{Type: "openai", Currency: "USD", BaseURL: "https://p.test/v1"},
+		Models: []model.ProviderBundleModel{
+			{RealModel: "model-b", ProxyName: "a", Enabled: true, Prices: model.ModelPrices{Input: 0.1, Output: 0.2}},
+			{RealModel: "model-a", ProxyName: "c", Enabled: true, Prices: model.ModelPrices{Input: 0.1, Output: 0.2}},
+		}}
+	plan := PlanProviderBundleImport(bundle, p, models, namesOf(models))
+	for _, m := range plan.Models {
+		for _, c := range m.Changes {
+			if c.Refused() {
+				t.Fatalf("%s: %s refused (%q), want the chain planned", m.Model.RealModel, c.Field, c.Conflict)
+			}
+		}
+	}
+	result, err := ApplyProviderBundle(context.Background(), uniqueNamesStore{mem}, plan, selectAll(plan), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Failed) != 0 || mem.models[a.ID()].ProxyName() != "c" || mem.models[b.ID()].ProxyName() != "a" {
+		t.Errorf("failed %+v, a=%q b=%q; want a moved to c, then b to a", result.Failed, mem.models[a.ID()].ProxyName(), mem.models[b.ID()].ProxyName())
+	}
+}
+
+func TestApplyProviderBundle_ReportsASwapItCannotWrite(t *testing.T) {
+	mem, p, _, _ := renameFixture(t)
+	models := mem.modelsOf("org-a")
+	bundle := model.ProviderBundle{Kind: model.ProviderBundleKind, Version: model.ProviderBundleVersion,
+		Provider: model.ProviderBundleSettings{Type: "openai", Currency: "USD", BaseURL: "https://p.test/v1"},
+		Models: []model.ProviderBundleModel{
+			{RealModel: "model-a", ProxyName: "b", Enabled: true, Prices: model.ModelPrices{Input: 0.1, Output: 0.2}},
+			{RealModel: "model-b", ProxyName: "a", Enabled: true, Prices: model.ModelPrices{Input: 0.1, Output: 0.2}},
+		}}
+	plan := PlanProviderBundleImport(bundle, p, models, namesOf(models))
+	result, err := ApplyProviderBundle(context.Background(), uniqueNamesStore{mem}, plan, selectAll(plan), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Failed) != 2 {
+		t.Errorf("failed = %+v, want both renames of the swap reported", result.Failed)
+	}
+}
+
+func TestPlanProviderBundleImportWith_ChecksTheKindAgainstTheKeptAPI(t *testing.T) {
+	mem := newMemoryProviderStore()
+	p := model.NewProvider("org-a", "P", "openai", "https://p.test/v1", "key", "USD")
+	m := model.NewLLMModel(p.ID(), "org-a", "m", "model-m", "", 100, 200)
+	m.SetAPIType("anthropic")
+	if err := mem.CreateLLMModel(context.Background(), m); err != nil {
+		t.Fatal(err)
+	}
+	models := mem.modelsOf("org-a")
+	// The bundle moves the model to the OpenAI API and makes it an
+	// embeddings model; the operator keeps the API but takes the kind.
+	bundle := model.ProviderBundle{Kind: model.ProviderBundleKind, Version: model.ProviderBundleVersion,
+		Provider: model.ProviderBundleSettings{Type: "openai", Currency: "USD", BaseURL: "https://p.test/v1"},
+		Models: []model.ProviderBundleModel{{RealModel: "model-m", ProxyName: "m", Kind: model.ModelKindEmbeddings, APIType: "openai",
+			Enabled: true, Prices: model.ModelPrices{Input: 0.1, Output: 0.2}}}}
+	sel := BundleSelection{Fields: map[int]map[string]bool{0: {BundleFieldKind: true}}}
+	plan := PlanProviderBundleImportWith(bundle, p, models, namesOf(models), &sel)
+	result, err := ApplyProviderBundle(context.Background(), mem, plan, sel, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Updated != 0 || len(result.Skipped) != 1 || result.Skipped[0].RefusedField != BundleFieldKind || result.Skipped[0].KindNotServed != "anthropic" {
+		t.Errorf("result = updated %d skipped %+v; want the kind change refused against the Anthropic API the model keeps", result.Updated, result.Skipped)
+	}
+	if mem.models[m.ID()].Kind() != model.ModelKindCompletion {
+		t.Error("the model was given a kind its API does not serve")
+	}
+}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"reflect"
+	"slices"
 	"strconv"
 	"time"
 
@@ -31,6 +32,14 @@ type BundleFieldChange struct {
 	From     string
 	To       string
 	Conflict string
+	// KindNotServed, on a kind change, is the provider type whose API, kept
+	// by the model, does not serve the new kind.
+	KindNotServed string
+}
+
+// Refused reports whether the change cannot be applied.
+func (c BundleFieldChange) Refused() bool {
+	return c.Conflict != "" || c.KindNotServed != ""
 }
 
 // BundleModelPlan is what importing one model of a bundle would do.
@@ -305,6 +314,18 @@ func PlanProviderBundleImportWith(bundle model.ProviderBundle, target model.Prov
 		servedType = target.Type()
 	}
 
+	// Without a selection, the dry run assumes every change applies; at
+	// apply time, only the selected ones count.
+	selected := func(i int, field string) bool { return sel == nil || sel.Fields[i][field] }
+
+	// The names the renames leave are freed first, whatever the order of
+	// the bundle, so that a model can take the name another one leaves.
+	for i, bm := range bundle.Models {
+		if m := existing[i]; m != nil && m.ProxyName() != bm.ProxyName && selected(i, BundleFieldProxyName) {
+			names.Release(m.ProxyName())
+		}
+	}
+
 	// The models to update are planned first, so that a name one of them
 	// leaves is free for a model to create.
 	plans := make([]BundleModelPlan, len(bundle.Models))
@@ -313,10 +334,8 @@ func PlanProviderBundleImportWith(bundle model.ProviderBundle, target model.Prov
 			if (existing[i] != nil) != updates {
 				continue
 			}
-			// Without a selection, the dry run assumes every rename applies;
-			// at apply time, only the selected ones free their name.
-			renames := sel == nil || sel.Fields[i][BundleFieldProxyName]
-			plans[i] = planBundleModel(i, bm, existing[i], servedType, renames, names)
+			plans[i] = planBundleModel(i, bm, existing[i], servedType,
+				selected(i, BundleFieldProxyName), selected(i, BundleFieldAPI), names)
 		}
 	}
 	plan.Models = plans
@@ -325,20 +344,25 @@ func PlanProviderBundleImportWith(bundle model.ProviderBundle, target model.Prov
 
 // planBundleModel plans the import of the bundle model bm, at index i, into
 // the target model existing (nil to create it).
-func planBundleModel(i int, bm model.ProviderBundleModel, existing model.LLMModel, servedType string, renames bool, names ProxyNames) BundleModelPlan {
+func planBundleModel(i int, bm model.ProviderBundleModel, existing model.LLMModel, servedType string, renames, apiChanges bool, names ProxyNames) BundleModelPlan {
 	mp := BundleModelPlan{Index: i, Model: bm, Existing: existing}
 
 	// The kind must be one the API serving the model serves, as the model
-	// form requires: the provider's API when the bundle sets none. An unset
-	// kind is the default kind of that API.
+	// form requires: the bundle's API, or the provider's when it sets none.
+	// An existing model whose API change is not applied keeps its own. An
+	// unset kind is the default kind of that API.
 	served := bm.APIType
+	if existing != nil && !apiChanges {
+		served = existing.APIType()
+	}
 	if served == "" {
 		served = servedType
 	}
 	if mp.Model.Kind == "" {
 		mp.Model.Kind = model.DefaultProviderTypeKind(served)
 	}
-	if !model.ProviderTypeServes(served, mp.Model.Kind) {
+	kindServed := model.ProviderTypeServes(served, mp.Model.Kind)
+	if !kindServed && existing == nil {
 		mp.Action, mp.KindNotServed = BundleModelSkip, served
 		return mp
 	}
@@ -360,12 +384,19 @@ func planBundleModel(i int, bm model.ProviderBundleModel, existing model.LLMMode
 			continue
 		}
 		change := BundleFieldChange{Field: f.name, From: displayValue(from), To: displayValue(to)}
+		if f.name == BundleFieldKind && !kindServed {
+			change.KindNotServed = served
+		}
 		if f.name == BundleFieldProxyName {
 			if conflict := names.Conflict(bm.ProxyName); conflict != "" {
 				change.Conflict = conflict
+				// The model keeps its name: the one freed for it is taken
+				// back.
+				if renames {
+					names.Declare(existing.ProxyName())
+				}
 			} else if renames {
 				names.Declare(bm.ProxyName)
-				names.Release(existing.ProxyName())
 			}
 		}
 		mp.Changes = append(mp.Changes, change)
@@ -488,58 +519,58 @@ func ApplyProviderBundle(ctx context.Context, store port.ProviderStore, plan Pro
 		// A selected change the apply plan finds in conflict, such as a
 		// rename onto a name another model still holds, is reported too.
 		for _, change := range mp.Changes {
-			if change.Conflict != "" && sel.Fields[mp.Index][change.Field] {
+			if change.Refused() && sel.Fields[mp.Index][change.Field] {
 				skipped := mp
-				skipped.Conflict, skipped.RefusedField = change.Conflict, change.Field
+				skipped.Conflict, skipped.RefusedField, skipped.KindNotServed = change.Conflict, change.Field, change.KindNotServed
 				result.Skipped = append(result.Skipped, skipped)
 			}
 		}
 	}
 
 	// Updates go first, as the plan orders them: a model to create may take
-	// the name a renamed model leaves.
-	for _, action := range []BundleModelAction{BundleModelUpdate, BundleModelCreate} {
-		for _, mp := range plan.Models {
-			if mp.Action != action {
+	// the name a renamed model leaves. Among the updates, a rename onto the
+	// name another updated model still holds waits for that one: names
+	// move along chains. A cycle (a swap) cannot be written without a
+	// temporary name; its renames fail and are reported.
+	pending := make([]BundleModelPlan, 0, len(plan.Models))
+	for _, mp := range plan.Models {
+		if mp.Action == BundleModelUpdate {
+			pending = append(pending, mp)
+		}
+	}
+	for len(pending) > 0 {
+		var blocked []BundleModelPlan
+		for _, mp := range pending {
+			name := bundleUpdateName(mp, sel.Fields[mp.Index])
+			if name != mp.Existing.ProxyName() && slices.ContainsFunc(pending, func(o BundleModelPlan) bool {
+				return o.Index != mp.Index && o.Existing.ProxyName() == name
+			}) {
+				blocked = append(blocked, mp)
 				continue
 			}
-			switch mp.Action {
-			case BundleModelCreate:
-				if !sel.Models[mp.Index] {
-					continue
-				}
-				m := model.NewLLMModelFromBundle(model.NewLLMModelID(), target.ID(), target.OrgID(), time.Now(), mp.Model)
-				if err := store.CreateLLMModel(ctx, m); err != nil {
-					result.Failed = append(result.Failed, BundleModelFailure{Index: mp.Index, ProxyName: m.ProxyName(), Err: errors.WithStack(err)})
-					continue
-				}
-				result.Created++
-			case BundleModelUpdate:
-				fields := sel.Fields[mp.Index]
-				updated := model.BundleModelOf(mp.Existing)
-				changed := false
-				for _, change := range mp.Changes {
-					if !fields[change.Field] || change.Conflict != "" {
-						continue
-					}
-					for _, f := range bundleModelFields {
-						if f.name == change.Field {
-							f.set(&updated, mp.Model)
-							changed = true
-						}
-					}
-				}
-				if !changed {
-					continue
-				}
-				m := model.NewLLMModelFromBundle(mp.Existing.ID(), mp.Existing.ProviderID(), mp.Existing.OrgID(), mp.Existing.CreatedAt(), updated)
-				if err := store.SaveLLMModel(ctx, m); err != nil {
-					result.Failed = append(result.Failed, BundleModelFailure{Index: mp.Index, ProxyName: m.ProxyName(), Err: errors.WithStack(err)})
-					continue
-				}
-				result.Updated++
-			}
+			applyBundleUpdate(ctx, store, mp, sel.Fields[mp.Index], &result)
 		}
+		if len(blocked) == len(pending) {
+			// No rename can go first: write them in order, the store
+			// refuses what it must.
+			for _, mp := range blocked {
+				applyBundleUpdate(ctx, store, mp, sel.Fields[mp.Index], &result)
+			}
+			break
+		}
+		pending = blocked
+	}
+
+	for _, mp := range plan.Models {
+		if mp.Action != BundleModelCreate || !sel.Models[mp.Index] {
+			continue
+		}
+		m := model.NewLLMModelFromBundle(model.NewLLMModelID(), target.ID(), target.OrgID(), time.Now(), mp.Model)
+		if err := store.CreateLLMModel(ctx, m); err != nil {
+			result.Failed = append(result.Failed, BundleModelFailure{Index: mp.Index, ProxyName: m.ProxyName(), Err: errors.WithStack(err)})
+			continue
+		}
+		result.Created++
 	}
 	return result, nil
 }
@@ -638,4 +669,40 @@ func validateBundleProvider(p model.Provider) error {
 		RequestHeaders:   p.RequestHeaders(),
 	})
 	return errors.Wrap(err, "invalid provider settings")
+}
+
+// bundleUpdateName is the proxy name an updated model ends up with.
+func bundleUpdateName(mp BundleModelPlan, fields map[string]bool) string {
+	for _, change := range mp.Changes {
+		if change.Field == BundleFieldProxyName && fields[change.Field] && !change.Refused() {
+			return mp.Model.ProxyName
+		}
+	}
+	return mp.Existing.ProxyName()
+}
+
+// applyBundleUpdate writes the selected, applicable changes of one model.
+func applyBundleUpdate(ctx context.Context, store port.ProviderStore, mp BundleModelPlan, fields map[string]bool, result *BundleApplyResult) {
+	updated := model.BundleModelOf(mp.Existing)
+	changed := false
+	for _, change := range mp.Changes {
+		if !fields[change.Field] || change.Refused() {
+			continue
+		}
+		for _, f := range bundleModelFields {
+			if f.name == change.Field {
+				f.set(&updated, mp.Model)
+				changed = true
+			}
+		}
+	}
+	if !changed {
+		return
+	}
+	m := model.NewLLMModelFromBundle(mp.Existing.ID(), mp.Existing.ProviderID(), mp.Existing.OrgID(), mp.Existing.CreatedAt(), updated)
+	if err := store.SaveLLMModel(ctx, m); err != nil {
+		result.Failed = append(result.Failed, BundleModelFailure{Index: mp.Index, ProxyName: m.ProxyName(), Err: errors.WithStack(err)})
+		return
+	}
+	result.Updated++
 }
