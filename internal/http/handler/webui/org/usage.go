@@ -885,14 +885,18 @@ func (h *Handler) buildSubscriptionProviderUsage(ctx context.Context, orgID mode
 			}
 		}
 
-		pu.Constraints = h.planConstraintsUsage(ctx, pooled, providerScope, keys, models, now)
+		windows := map[string]map[model.ProviderKeyID]time.Time{}
+		for _, c := range plan.Constraints {
+			windows[c.Label] = model.KeyWindows(p, c.Label, now)
+		}
+		pu.Constraints = h.planConstraintsUsage(ctx, pooled, providerScope, windows, keys, models, now)
 		if len(keys) > 1 && common.HasPermission(ctx, orgID, rbac.PermProvidersRead) {
 			for _, k := range model.ProviderKeys(p) {
 				scope := providerScope
 				scope.ByKey, scope.KeyID = true, k.ID
 				pu.Keys = append(pu.Keys, component.SubscriptionKeyUsage{
 					Label:       k.Label,
-					Constraints: h.planConstraintsUsage(ctx, plan, scope, []model.ProviderKeyID{k.ID}, models, now),
+					Constraints: h.planConstraintsUsage(ctx, model.KeyPlan(p, k.ID), scope, windows, []model.ProviderKeyID{k.ID}, models, now),
 				})
 			}
 		}
@@ -905,10 +909,13 @@ func (h *Handler) buildSubscriptionProviderUsage(ctx context.Context, orgID mode
 
 // planConstraintsUsage reads the consumption of every constraint of a plan on
 // a plan scope: the whole provider, or one of its keys. keys are the keys the
-// scope covers, whose cooldowns the gauges report.
-func (h *Handler) planConstraintsUsage(ctx context.Context, plan *model.SubscriptionPlan, providerScope model.PlanUsageScope, keys []model.ProviderKeyID, models []model.LLMModel, now time.Time) []component.SubscriptionConstraintUsage {
+// scope covers, whose cooldowns the gauges report; windows, per constraint
+// label, the window starts of the keys an override moves (model.KeyWindows).
+func (h *Handler) planConstraintsUsage(ctx context.Context, plan *model.SubscriptionPlan, scope model.PlanUsageScope, windows map[string]map[model.ProviderKeyID]time.Time, keys []model.ProviderKeyID, models []model.LLMModel, now time.Time) []component.SubscriptionConstraintUsage {
 	usage := make([]component.SubscriptionConstraintUsage, 0, len(plan.Constraints))
 	for _, c := range plan.Constraints {
+		providerScope := scope
+		providerScope.KeyWindows = windows[c.Label]
 		if c.PerModel() {
 			usage = append(usage, h.perModelConstraintUsage(ctx, c, providerScope, keys, models, now)...)
 			continue

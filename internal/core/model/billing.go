@@ -2,8 +2,10 @@ package model
 
 import (
 	"encoding/json"
+	"maps"
 	"math"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -237,6 +239,22 @@ type PlanUsageScope struct {
 	// the count covers every key.
 	ByKey bool
 	KeyID ProviderKeyID
+	// KeyWindows counts the usage of these keys from their own window start
+	// instead of the one the count is asked from: keys whose subscription
+	// renews on another day (see KeyWindows). The other keys keep the asked
+	// start.
+	KeyWindows map[ProviderKeyID]time.Time
+}
+
+// Since is the earliest instant the scope counts usage from, for a count asked
+// from since: a key window may start before it.
+func (s PlanUsageScope) Since(since time.Time) time.Time {
+	for _, start := range s.KeyWindows {
+		if start.Before(since) {
+			since = start
+		}
+	}
+	return since
 }
 
 // UpstreamModelIDs returns the ids of the models, among models, that m's
@@ -263,6 +281,9 @@ func (s PlanUsageScope) Key() string {
 	key := string(s.OrgID) + "|" + string(s.ProviderID) + "|" + strings.Join(ids, ",")
 	if s.ByKey {
 		key += "|key:" + string(s.KeyID)
+	}
+	for _, k := range slices.Sorted(maps.Keys(s.KeyWindows)) {
+		key += "|" + string(k) + "@" + strconv.FormatInt(s.KeyWindows[k].UnixNano(), 10)
 	}
 	return key
 }

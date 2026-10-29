@@ -590,8 +590,11 @@ func (h *Handler) buildDashboardSubscriptionUsage(ctx context.Context, orgID mod
 		}
 
 		for _, c := range plan.Constraints {
+			// The keys whose window an override moves are counted in it.
+			constraintScope := providerScope
+			constraintScope.KeyWindows = model.KeyWindows(p, c.Label, now)
 			if c.PerModel() {
-				pu.Constraints = append(pu.Constraints, h.perModelDashboardUsage(ctx, c, providerScope, keys, models, userID, memberCount, now)...)
+				pu.Constraints = append(pu.Constraints, h.perModelDashboardUsage(ctx, c, constraintScope, keys, models, userID, memberCount, now)...)
 				continue
 			}
 
@@ -601,7 +604,7 @@ func (h *Handler) buildDashboardSubscriptionUsage(ctx context.Context, orgID mod
 
 			switch c.Kind {
 			case model.ConstraintRollingWindow:
-				h.fillDashboardRollingWindowUsage(ctx, &cu, c, providerScope, models, userID, memberCount, now)
+				h.fillDashboardRollingWindowUsage(ctx, &cu, c, constraintScope, models, userID, memberCount, now)
 
 			case model.ConstraintConcurrency:
 				if h.subscriptionMonitor != nil {
@@ -803,6 +806,7 @@ func applyFairShare(
 		OrgID:       scope.OrgID,
 		ProviderID:  scope.ProviderID,
 		ModelIDs:    scope.ModelIDs,
+		KeyWindows:  scope.KeyWindows,
 		UserID:      userID,
 		MemberCount: int(memberCount),
 		Constraint:  c,

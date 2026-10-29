@@ -2,6 +2,7 @@ package gorm_test
 
 import (
 	"context"
+	"reflect"
 	"testing"
 	"time"
 
@@ -77,7 +78,7 @@ func scenarioProviderStoreProviders(t *testing.T, store *xologorm.Store) {
 	if loaded.BillingMode() != model.BillingModeSubscription {
 		t.Errorf("expected billing mode %q, got %q", model.BillingModeSubscription, loaded.BillingMode())
 	}
-	if keys := loaded.ExtraAPIKeys(); len(keys) != 1 || keys[0] != (model.ProviderKey{ID: "k2", Label: "member 2", APIKey: "encrypted-key-2"}) {
+	if keys := loaded.ExtraAPIKeys(); len(keys) != 1 || !reflect.DeepEqual(keys[0], model.ProviderKey{ID: "k2", Label: "member 2", APIKey: "encrypted-key-2"}) {
 		t.Errorf("expected the extra API keys to round-trip, got %+v", keys)
 	}
 

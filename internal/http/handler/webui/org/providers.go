@@ -254,11 +254,17 @@ func (h *Handler) updateProvider(w http.ResponseWriter, r *http.Request) {
 	// that round trip: the retry and rate-limit sections are rendered from the
 	// stored configuration on every error path, as they always were. Parsing
 	// the plan first at least keeps the plan itself whole when one of those
-	// sections is what fails.
-	// The keys too are read before the other validations, the plan's included,
-	// so that a rejected form shows them as edited. A rejection of the keys
-	// themselves shows the stored ones.
-	extraAPIKeys, keysErr := parseProviderKeysFromForm(r, h.secretKey, existing.ExtraAPIKeys())
+	// sections is what fails. The extra keys make the same round trip; they
+	// adjust the plan's windows, so they are read on the plan as submitted. A
+	// rejection of the keys themselves shows the stored ones.
+	var (
+		subscriptionPlan *model.SubscriptionPlan
+		planErr          error
+	)
+	if billingMode == model.BillingModeSubscription {
+		subscriptionPlan, planErr = parseSubscriptionPlanFromForm(r)
+	}
+	extraAPIKeys, keysErr := parseProviderKeysFromForm(r, h.secretKey, existing.ExtraAPIKeys(), subscriptionPlan)
 	rejected := func(plan *model.SubscriptionPlan) providerWithPlan {
 		p := submittedProvider(r, existing, billingMode, plan)
 		if keysErr == nil {
@@ -266,16 +272,10 @@ func (h *Handler) updateProvider(w http.ResponseWriter, r *http.Request) {
 		}
 		return p
 	}
-
-	var subscriptionPlan *model.SubscriptionPlan
-	if billingMode == model.BillingModeSubscription {
-		plan, err := parseSubscriptionPlanFromForm(r)
-		if err != nil {
-			h.renderProviderFormError(w, r, ctx, user, orgSlug, org, rejected(plan), false,
-				i18n.T(ctx, "org.errors.providers.plan", err.Error()))
-			return
-		}
-		subscriptionPlan = plan
+	if planErr != nil {
+		h.renderProviderFormError(w, r, ctx, user, orgSlug, org, rejected(subscriptionPlan), false,
+			i18n.T(ctx, "org.errors.providers.plan", planErr.Error()))
+		return
 	}
 	if keysErr != nil {
 		h.renderProviderFormError(w, r, ctx, user, orgSlug, org, rejected(subscriptionPlan), false,
@@ -985,7 +985,7 @@ func redisplayedKeys(posted, stored []model.ProviderKey) []model.ProviderKey {
 // left blank; a row without id is a new key, whose value is required. A row
 // with neither label nor value is skipped, so an added row left empty is not
 // an error. A form that does not carry the section keeps the stored keys.
-func parseProviderKeysFromForm(r *http.Request, secretKey string, stored []model.ProviderKey) ([]model.ProviderKey, error) {
+func parseProviderKeysFromForm(r *http.Request, secretKey string, stored []model.ProviderKey, plan *model.SubscriptionPlan) ([]model.ProviderKey, error) {
 	ctx := r.Context()
 	if _, posted := r.Form["provider_key_count"]; !posted {
 		// The keys section is shown for a subscription provider only: a form
@@ -1029,6 +1029,11 @@ func parseProviderKeysFromForm(r *http.Request, secretKey string, stored []model
 		labels[label] = true
 
 		key := model.ProviderKey{ID: id, Label: label, APIKey: current.APIKey}
+		overrides, err := parseKeyOverridesFromForm(r, prefix, label, plan)
+		if err != nil {
+			return nil, err
+		}
+		key.Overrides = overrides
 		if id == "" {
 			if value == "" {
 				return nil, errors.New(i18n.T(ctx, "org.errors.providers.api_key_value", label))
@@ -1049,6 +1054,79 @@ func parseProviderKeysFromForm(r *http.Request, secretKey string, stored []model
 	}
 	return keys, nil
 }
+
+// parseKeyOverridesFromForm reads how a key adjusts the rolling windows of the
+// plan (provider_key_k{i}_o{j}_label / _value_budget / _token_budget /
+// _model_budgets / _reset_in). A window is named by its label, so an
+// adjustment follows its window when the plan's rows move, and is dropped
+// with it. Fields left empty keep the plan's.
+func parseKeyOverridesFromForm(r *http.Request, prefix, keyLabel string, plan *model.SubscriptionPlan) (map[string]model.PlanConstraintOverride, error) {
+	ctx := r.Context()
+	if plan == nil {
+		return nil, nil
+	}
+	var overrides map[string]model.PlanConstraintOverride
+	for j := 0; j < maxKeyOverrides; j++ {
+		op := fmt.Sprintf("%so%d_", prefix, j)
+		if _, posted := r.Form[op+"label"]; !posted {
+			break
+		}
+		label := r.FormValue(op + "label")
+		i := slices.IndexFunc(plan.Constraints, func(c model.PlanConstraint) bool { return c.Label == label })
+		if i < 0 || plan.Constraints[i].Kind != model.ConstraintRollingWindow {
+			continue
+		}
+		c := plan.Constraints[i]
+		fail := func(err error) error {
+			return errors.New(i18n.T(ctx, "org.errors.providers.api_key_override", keyLabel, label, localizedError(ctx, err)))
+		}
+
+		var o model.PlanConstraintOverride
+		if c.ValueBudget != nil {
+			vb, err := parseBudgetField(strings.TrimSpace(r.FormValue(op + "value_budget")))
+			if err != nil {
+				return nil, fail(err)
+			}
+			o.ValueBudget = vb
+		}
+		if c.TokenBudget != nil {
+			o.TokenBudget = parsePlanTokenBudget(r.FormValue(op + "token_budget"))
+		}
+		if c.Scope == model.PlanScopeModel || c.Scope == model.PlanScopeShared {
+			budgets, err := parsePlanModelBudgets(r.FormValue(op + "model_budgets"))
+			if err != nil {
+				return nil, fail(err)
+			}
+			if len(budgets) > 0 {
+				o.ModelBudgets = budgets
+			}
+		}
+		o.WindowAnchor = computeWindowAnchor(r.FormValue(op+"reset_in"), c.Duration.Duration())
+		if o.Empty() {
+			continue
+		}
+		if c.Scope == model.PlanScopeShared && len(o.ModelBudgets) > 0 {
+			var firstErr error
+			checkSharedModelBudgets(ctx, o.Apply(c), o.ModelBudgets, func(err error) {
+				if firstErr == nil {
+					firstErr = err
+				}
+			})
+			if firstErr != nil {
+				return nil, fail(firstErr)
+			}
+		}
+		if overrides == nil {
+			overrides = map[string]model.PlanConstraintOverride{}
+		}
+		overrides[label] = o
+	}
+	return overrides, nil
+}
+
+// maxKeyOverrides bounds the windows a key's adjustments are read for, as
+// maxProviderKeys bounds the keys.
+const maxKeyOverrides = 64
 
 // parseRequestHeadersFromForm reads the session header and the fixed headers
 // of a provider. It returns nil when neither is set.

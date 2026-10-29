@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/url"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -240,7 +241,7 @@ func TestParseProviderKeysFromForm(t *testing.T) {
 	}
 
 	t.Run("a form without the section keeps the stored keys", func(t *testing.T) {
-		keys, err := parseProviderKeysFromForm(makeRequest(map[string]string{"name": "OpenCode"}), secret, stored)
+		keys, err := parseProviderKeysFromForm(makeRequest(map[string]string{"name": "OpenCode"}), secret, stored, nil)
 		if err != nil || len(keys) != 2 {
 			t.Errorf("got %+v, %v; want the stored keys", keys, err)
 		}
@@ -256,14 +257,14 @@ func TestParseProviderKeysFromForm(t *testing.T) {
 			"provider_key_k1_value": " sk-4 ",
 			// An added row left empty.
 			"provider_key_k2_id": "",
-		}), secret, stored)
+		}), secret, stored, nil)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 		if len(keys) != 2 {
 			t.Fatalf("got %d keys, want 2: k3 was removed, the empty row skipped", len(keys))
 		}
-		if keys[0] != (model.ProviderKey{ID: "k2", Label: "member two", APIKey: "encrypted-2"}) {
+		if !reflect.DeepEqual(keys[0], model.ProviderKey{ID: "k2", Label: "member two", APIKey: "encrypted-2"}) {
 			t.Errorf("k2 = %+v, want relabelled with its secret kept", keys[0])
 		}
 		if keys[1].ID == "" || keys[1].Label != "member 4" {
@@ -279,7 +280,7 @@ func TestParseProviderKeysFromForm(t *testing.T) {
 			"provider_key_count":    "1",
 			"provider_key_k0_id":    "forged",
 			"provider_key_k0_label": "member 5",
-		}), secret, stored)
+		}), secret, stored, nil)
 		if err == nil {
 			t.Error("expected an error: a new key needs its value")
 		}
@@ -293,7 +294,7 @@ func TestParseProviderKeysFromForm(t *testing.T) {
 			"provider_key_k1_id":    "k2",
 			"provider_key_k1_label": "member 2 bis",
 			"provider_key_k1_value": "sk-bis",
-		}), secret, stored)
+		}), secret, stored, nil)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -315,10 +316,63 @@ func TestParseProviderKeysFromForm(t *testing.T) {
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
-			if _, err := parseProviderKeysFromForm(makeRequest(fields), secret, stored); err == nil {
+			if _, err := parseProviderKeysFromForm(makeRequest(fields), secret, stored, nil); err == nil {
 				t.Error("expected an error")
 			}
 		})
+	}
+}
+
+func TestParseProviderKeysFromForm_Overrides(t *testing.T) {
+	const secret = "0123456789abcdef0123456789abcdef"
+	stored := []model.ProviderKey{{ID: "k2", Label: "member 2", APIKey: "encrypted-2"}}
+	month, week := int64(60_000_000), int64(30_000_000)
+	glm := int64(180_000_000)
+	plan := &model.SubscriptionPlan{Constraints: []model.PlanConstraint{
+		{Kind: model.ConstraintRollingWindow, Label: "Semaine", Duration: model.PlanDuration(168 * time.Hour), ValueBudget: &week},
+		{Kind: model.ConstraintRollingWindow, Label: "Mois", Duration: model.PlanDuration(720 * time.Hour), ValueBudget: &month,
+			Scope: model.PlanScopeShared, ModelBudgets: map[string]model.PlanBudget{"glm": {ValueBudget: &glm}}},
+	}}
+	fields := map[string]string{
+		"provider_key_count":    "1",
+		"provider_key_k0_id":    "k2",
+		"provider_key_k0_label": "member 2",
+		// The week is kept as is.
+		"provider_key_k0_o0_label": "Semaine",
+		// Posted in another order than the plan's: the label decides.
+		"provider_key_k0_o1_label":         "Mois",
+		"provider_key_k0_o1_value_budget":  "65",
+		"provider_key_k0_o1_model_budgets": "glm = 185",
+		"provider_key_k0_o1_reset_in":      "9d",
+		// A window the plan no longer has is dropped.
+		"provider_key_k0_o2_label":        "5h",
+		"provider_key_k0_o2_value_budget": "12",
+	}
+
+	before := time.Now()
+	keys, err := parseProviderKeysFromForm(makeRequest(fields), secret, stored, plan)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	overrides := keys[0].Overrides
+	if len(overrides) != 1 {
+		t.Fatalf("overrides = %+v, want the month alone", overrides)
+	}
+	o := overrides["Mois"]
+	if o.ValueBudget == nil || *o.ValueBudget != 65_000_000 || o.TokenBudget != nil {
+		t.Errorf("month budget = %+v, want 65$", o)
+	}
+	if b := o.ModelBudgets["glm"].ValueBudget; b == nil || *b != 185_000_000 {
+		t.Errorf("glm = %v, want 185$", b)
+	}
+	// The month resets in nine days: its window started 21 days ago.
+	if o.WindowAnchor == nil || o.Apply(plan.Constraints[1]).NextResetAt(before).Sub(before) < 9*24*time.Hour-time.Minute {
+		t.Errorf("anchor = %v, want a window resetting in 9 days", o.WindowAnchor)
+	}
+
+	fields["provider_key_k0_o1_model_budgets"] = "glm = 0"
+	if _, err := parseProviderKeysFromForm(makeRequest(fields), secret, stored, plan); err == nil {
+		t.Error("expected an error: a zero model budget weighs infinitely on a shared window")
 	}
 }
 
@@ -332,7 +386,7 @@ func TestRedisplayedKeysDropTheSecretOfNewKeys(t *testing.T) {
 	got := redisplayedKeys(posted, stored)
 
 	want := []model.ProviderKey{{ID: "k2", Label: "member two", APIKey: "encrypted-2"}, {Label: "member 3"}}
-	if len(got) != 2 || got[0] != want[0] || got[1] != want[1] {
+	if !reflect.DeepEqual(got, want) {
 		t.Errorf("got %+v, want %+v: a key never saved is shown as a new row whose value is typed again", got, want)
 	}
 }
