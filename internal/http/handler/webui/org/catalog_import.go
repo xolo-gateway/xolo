@@ -165,6 +165,16 @@ func (h *Handler) previewCatalogImport(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	// The catalog describes no cloud tier, retry nor rate limit, and no
+	// billing without a plan: an existing provider keeps its own, rather
+	// than a dry run offering to clear them. Set once the prices are
+	// converted: its plan is already in its currency.
+	if p != nil {
+		bundle.Provider.CloudTier, bundle.Provider.Retry, bundle.Provider.RateLimit = p.CloudTier(), p.RetryConfig(), p.RateLimitConfig()
+		if plan == "" {
+			bundle.Provider.BillingMode, bundle.Provider.SubscriptionPlan = p.BillingMode(), p.SubscriptionPlan()
+		}
+	}
 	// The apply step parses the bundle posted back and checks its plan: a
 	// release it would refuse is refused here, before the operator chooses
 	// from it.

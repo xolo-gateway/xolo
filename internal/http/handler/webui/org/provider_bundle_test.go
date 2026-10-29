@@ -713,3 +713,26 @@ func TestCatalogImport_KeepsTheSharedBudgetsOfTheModelsItLeavesOut(t *testing.T)
 		t.Error("the page says budgets were removed, none was")
 	}
 }
+
+func TestCatalogImport_KeepsTheSettingsTheCatalogDoesNotDescribe(t *testing.T) {
+	h, s, tenant := importFixture(t, "https://acme.test/v1", "sk")
+	target := s.provider.(*model.BaseProvider)
+	target.SetCloudTier(2)
+	target.SetRetryConfig(&model.RetryConfig{Enabled: true, MaxAttempts: 7, Delay: time.Second})
+	target.SetBillingMode(model.BillingModeSubscription)
+	acme := catalog.Provider{ID: "acme", Name: "Acme", Currency: "USD", Offerings: []catalog.Offering{
+		{Model: "glm", ModelID: "glm", Prices: catalog.Prices{Input: 1, Output: 2}},
+	}}
+	acme.Xolo.Type, acme.Xolo.BaseURL = "openai", "https://acme.test/v1"
+	h.SetCatalog(catalog.NewStaticSource(&catalog.Catalog{Kind: catalog.Kind, Format: catalog.Format, Version: "v1", Providers: []catalog.Provider{acme}}))
+
+	fields := url.Values{"catalog_provider": {"acme"}, "plan": {"none"}}
+	rr := httptest.NewRecorder()
+	h.previewCatalogImport(rr, bundleRequest(t, s, tenant, string(s.provider.ID()), bytes.NewBufferString(fields.Encode()), "application/x-www-form-urlencoded"))
+	page := stdhtml.UnescapeString(rr.Body.String())
+	for _, kept := range []string{`"cloud_tier":2`, `"max_attempts":7`, `"billing_mode":"subscription"`} {
+		if !strings.Contains(page, kept) {
+			t.Errorf("status %d: the bundle posted back lacks %s, which the catalog does not describe", rr.Code, kept)
+		}
+	}
+}
