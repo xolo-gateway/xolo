@@ -10,6 +10,7 @@ package catalog
 import (
 	"encoding/json"
 	"math"
+	"slices"
 	"strings"
 	"time"
 
@@ -187,12 +188,18 @@ func Parse(data []byte) (*Catalog, error) {
 		return nil, errors.Wrapf(ErrInvalid, "kind %q format %q, want %q format %q", c.Kind, c.Format, Kind, Format)
 	}
 	// Prices are only meaningful in their currency: a release with a
-	// provider lacking one is refused, and the last release read is kept.
+	// provider lacking one is refused, and the last release read is kept. A
+	// provider billing in a currency Xolo does not support is left out.
+	providers := c.Providers[:0]
 	for _, p := range c.Providers {
 		if len(p.Currency) != 3 {
 			return nil, errors.Wrapf(ErrInvalid, "provider %q has no currency", p.ID)
 		}
+		if slices.Contains(model.SupportedCurrencies, p.Currency) {
+			providers = append(providers, p)
+		}
 	}
+	c.Providers = providers
 	return &c, nil
 }
 

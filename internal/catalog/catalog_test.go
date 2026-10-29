@@ -96,6 +96,17 @@ func TestParse_RefusesAProviderWithoutCurrency(t *testing.T) {
 	}
 }
 
+func TestParse_LeavesOutAProviderInAnUnsupportedCurrency(t *testing.T) {
+	doc := `{"kind":"xolo.catalog","format":"1","version":"v1","models":[],"providers":[{"id":"p","name":"P","currency":"CNY","offerings":[]},{"id":"q","name":"Q","currency":"USD","offerings":[]}]}`
+	c, err := Parse([]byte(doc))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(c.Providers) != 1 || c.Providers[0].ID != "q" {
+		t.Errorf("providers = %+v, want the USD one only", c.Providers)
+	}
+}
+
 func TestSource_FallsBackOnTheSnapshot(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		http.Error(w, "down", http.StatusServiceUnavailable)

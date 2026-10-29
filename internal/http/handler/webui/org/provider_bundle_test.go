@@ -251,3 +251,20 @@ func TestCatalogImport_RefusesWithoutAnExchangeRate(t *testing.T) {
 		t.Errorf("status = %d, want the import refused rather than prices left in USD", rr.Code)
 	}
 }
+
+func TestConvertBundleCurrency_ConvertsConstraintBudgetsToo(t *testing.T) {
+	h := &Handler{exchangeRateService: service.NewExchangeRateService(fixedRates{"USD>EUR": 0.5}, &memoryRates{rates: map[string]model.ExchangeRate{}}, time.Hour)}
+	budget := int64(10_000_000)
+	bundle := model.ProviderBundle{Provider: model.ProviderBundleSettings{Currency: "USD", SubscriptionPlan: &model.SubscriptionPlan{
+		Constraints: []model.PlanConstraint{{Kind: model.ConstraintRollingWindow, Label: "5h", ValueBudget: &budget}},
+	}}}
+	if err := h.convertBundleCurrency(context.Background(), &bundle, "EUR"); err != nil {
+		t.Fatal(err)
+	}
+	if got := bundle.Provider.SubscriptionPlan.Constraints[0].ValueBudget; got == nil || *got != 5_000_000 {
+		t.Errorf("constraint budget = %v, want 5000000 microcents", got)
+	}
+	if budget != 10_000_000 {
+		t.Error("the conversion changed the source budget in place")
+	}
+}
