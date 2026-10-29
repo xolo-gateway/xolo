@@ -365,7 +365,8 @@
         // Le catalogue publie les prix dans la devise du fournisseur ;
         // l'organisation les stocke dans celle de son fournisseur.
         var currency = button.dataset.currency || entry.currency;
-        var rate = 1;
+        // Un prix sans devise n'est jamais rempli.
+        var rate = entry.currency ? 1 : null;
         if (entry.currency && currency !== entry.currency) {
           // Sans taux, les prix ne sont pas remplis : un montant dans une
           // autre devise serait facturé comme s'il était dans la bonne.

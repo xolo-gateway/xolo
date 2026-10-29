@@ -89,6 +89,13 @@ func TestLookup_PrefersTheOfferingOfTheSameProvider(t *testing.T) {
 	}
 }
 
+func TestParse_RefusesAProviderWithoutCurrency(t *testing.T) {
+	doc := `{"kind":"xolo.catalog","format":"1","version":"v1","models":[],"providers":[{"id":"p","name":"P","offerings":[]}]}`
+	if _, err := Parse([]byte(doc)); err == nil {
+		t.Error("a provider without currency was accepted")
+	}
+}
+
 func TestSource_FallsBackOnTheSnapshot(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		http.Error(w, "down", http.StatusServiceUnavailable)

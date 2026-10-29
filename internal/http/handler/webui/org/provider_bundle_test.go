@@ -221,6 +221,22 @@ func TestCatalogImport_ConvertsPricesIntoTheProvidersCurrency(t *testing.T) {
 	if got, want := bundle.Models[0].Prices.Output, original.Models[0].Prices.Output/2; got != model.PricePerMillion(model.MicrocentsPer1K(want)) {
 		t.Errorf("output price = %v, want %v converted at 0.5", got, want)
 	}
+	// The plan's per-model value budgets are converted too.
+	converted, before := bundle.Provider.SubscriptionPlan.Constraints[0], original.Provider.SubscriptionPlan.Constraints[0]
+	checked := 0
+	for id, b := range before.ModelBudgets {
+		if b.ValueBudget == nil {
+			continue
+		}
+		got := converted.ModelBudgets[id].ValueBudget
+		if got == nil || *got != *b.ValueBudget/2 {
+			t.Errorf("budget of %s = %v, want %d converted at 0.5", id, got, *b.ValueBudget/2)
+		}
+		checked++
+	}
+	if checked == 0 {
+		t.Error("the snapshot plan has no value budget to check")
+	}
 }
 
 func TestCatalogImport_RefusesWithoutAnExchangeRate(t *testing.T) {

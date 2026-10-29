@@ -186,6 +186,13 @@ func Parse(data []byte) (*Catalog, error) {
 	if c.Kind != Kind || c.Format != Format {
 		return nil, errors.Wrapf(ErrInvalid, "kind %q format %q, want %q format %q", c.Kind, c.Format, Kind, Format)
 	}
+	// Prices are only meaningful in their currency: a release with a
+	// provider lacking one is refused, and the last release read is kept.
+	for _, p := range c.Providers {
+		if len(p.Currency) != 3 {
+			return nil, errors.Wrapf(ErrInvalid, "provider %q has no currency", p.ID)
+		}
+	}
 	return &c, nil
 }
 
