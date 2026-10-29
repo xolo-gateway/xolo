@@ -272,8 +272,12 @@ const (
 // a few at a time instead of all at once, which would only move the
 // imbalance to the other key. Once moved, a user stays on their new key until
 // it gets as far ahead in turn.
+//
+// The margin is drawn apart from model.KeyAffinity: the users that ranking
+// placed on a key are those it ranks first, and their margins would otherwise
+// all sit at the low end.
 func rebalanceMargin(userID model.UserID, key model.ProviderKeyID) float64 {
-	rank := float64(model.KeyAffinity(userID, key)) / float64(math.MaxUint64)
+	rank := float64(model.KeyAffinity(userID+"\x00margin", key)) / float64(math.MaxUint64)
 	return minRebalanceMargin + rank*(maxRebalanceMargin-minRebalanceMargin)
 }
 

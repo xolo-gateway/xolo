@@ -217,31 +217,53 @@ func TestSubscriptionEnforcer_PoolMovesAUserOffAKeyFarAhead(t *testing.T) {
 func TestSubscriptionEnforcer_PoolMovesUsersOffAKeyAFewAtATime(t *testing.T) {
 	f := newPoolFixture(t, 0)
 	f.provider.SetExtraAPIKeys([]model.ProviderKey{{ID: "k2", Label: "member 2", APIKey: "key2"}})
-	users := make([]model.UserID, 40)
-	for i := range users {
-		users[i] = model.UserID(fmt.Sprintf("u%d", i))
-		f.consume(users[i], model.PrimaryProviderKey, 0)
-	}
-	// The users' own key is 20 points ahead of the other: between the
-	// smallest and the largest margin.
-	f.consume("bob", model.PrimaryProviderKey, 2_000_000)
 
-	moved := 0
-	for _, user := range users {
+	// The users arrive on an idle pool and are placed by pickKey itself, so
+	// that their margins are those of the users the placement puts on a key.
+	var onPrimary []model.UserID
+	for i := range 80 {
+		user := model.UserID(fmt.Sprintf("u%d", i))
 		req, msg := f.check(t, user)
 		if msg != "" {
 			t.Fatalf("%s denied (%q), want granted", user, msg)
 		}
 		key := chosenKey(t, req)
-		if want := rebalanceMargin(user, model.PrimaryProviderKey) < 0.2; (key == "k2") != want {
-			t.Errorf("%s on %q with a margin of %.2f, want moved = %v", user, key, rebalanceMargin(user, model.PrimaryProviderKey), want)
-		}
-		if key == "k2" {
-			moved++
+		f.consume(user, key, 0)
+		if key == model.PrimaryProviderKey {
+			onPrimary = append(onPrimary, user)
 		}
 	}
-	if moved == 0 || moved == len(users) {
-		t.Errorf("%d of %d users moved, want some of them only", moved, len(users))
+	if len(onPrimary) < 20 {
+		t.Fatalf("%d users placed on the provider's own key, want enough to measure", len(onPrimary))
+	}
+
+	// The provider's own key then gets further and further ahead of k2.
+	previous := 0
+	for _, gap := range []int64{1_000_000, 1_500_000, 2_000_000, 2_500_000, 3_100_000} {
+		f.usage.value["bob"] = map[model.ProviderKeyID]int64{model.PrimaryProviderKey: gap}
+		moved := 0
+		for _, user := range onPrimary {
+			req, msg := f.check(t, user)
+			if msg != "" {
+				t.Fatalf("%s denied (%q), want granted", user, msg)
+			}
+			if chosenKey(t, req) == "k2" {
+				moved++
+			}
+		}
+		if gap == 3_100_000 {
+			if moved != len(onPrimary) {
+				t.Errorf("%d of %d users moved past the largest margin, want all", moved, len(onPrimary))
+			}
+			continue
+		}
+		if moved == len(onPrimary) {
+			t.Errorf("every user left at a gap of %d points, want some of them only", gap/100_000)
+		}
+		if gap > 1_000_000 && moved <= previous {
+			t.Errorf("%d users moved at a gap of %d points, %d before: want more as the gap widens", moved, gap/100_000, previous)
+		}
+		previous = moved
 	}
 }
 
