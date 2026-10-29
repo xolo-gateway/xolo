@@ -396,3 +396,17 @@ func TestSubscriptionEnforcer_PoolCountsAMovedKeyInItsOwnWindow(t *testing.T) {
 		}
 	}
 }
+
+func TestSubscriptionEnforcer_PoolSkipsTheKeysUsageOfAWindowWithoutBudget(t *testing.T) {
+	f := newPoolFixture(t, 0)
+	f.provider.SetSubscriptionPlan(&model.SubscriptionPlan{Label: "Go", Constraints: []model.PlanConstraint{{
+		Kind: model.ConstraintRollingWindow, Label: "5h", Duration: model.PlanDuration(5 * time.Hour),
+	}}})
+
+	if _, msg := f.check(t, "alice"); msg != "" {
+		t.Fatalf("alice denied (%q), want granted", msg)
+	}
+	if f.usage.byKeyReads != 0 {
+		t.Errorf("%d reads of the keys' usage, want none: no key holds a budget on the window", f.usage.byKeyReads)
+	}
+}

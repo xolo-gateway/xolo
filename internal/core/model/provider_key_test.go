@@ -88,3 +88,43 @@ func TestKeyPlansAdjustTheProviderPlanPerKey(t *testing.T) {
 		t.Error("windows for a constraint the plan does not have")
 	}
 }
+
+func TestPooledPlanLeavesOutTheKeysAModelIsUnlimitedOn(t *testing.T) {
+	month, glm := int64(60_000_000), int64(180_000_000)
+	p := NewProvider("org", "OpenCode", "openai", "", "own", "USD")
+	p.SetSubscriptionPlan(&SubscriptionPlan{Constraints: []PlanConstraint{{
+		Kind: ConstraintRollingWindow, Label: "Mois", Duration: PlanDuration(720 * time.Hour), ValueBudget: &month,
+		Scope: PlanScopeShared, ModelBudgets: map[string]PlanBudget{"glm": {ValueBudget: &glm}},
+	}}})
+	p.SetExtraAPIKeys([]ProviderKey{
+		{ID: "k2", Overrides: map[string]PlanConstraintOverride{"Mois": {ModelBudgets: map[string]PlanBudget{"glm": {}}}}},
+		{ID: "k3", Overrides: map[string]PlanConstraintOverride{"Mois": {ModelBudgets: map[string]PlanBudget{"free": {}}}}},
+	})
+
+	pooled := PooledPlan(p).Constraints[0]
+	if got := *pooled.ModelBudgets["glm"].ValueBudget; got != 360_000_000 {
+		t.Errorf("pooled glm = %d, want 360$: k2 leaves it unlimited and adds nothing", got)
+	}
+	if b := pooled.ModelBudgets["free"]; b.ValueBudget == nil || *b.ValueBudget != 120_000_000 {
+		t.Errorf("pooled free = %+v, want 120$: the keys that do not list it count at their window's budget", b)
+	}
+}
+
+func TestKeyWindowsIgnoreAnythingButARollingWindow(t *testing.T) {
+	anchor := time.Date(2026, 10, 29, 8, 0, 0, 0, time.UTC)
+	concurrent := 2
+	p := NewProvider("org", "OpenCode", "openai", "", "own", "USD")
+	p.SetSubscriptionPlan(&SubscriptionPlan{Constraints: []PlanConstraint{
+		{Kind: ConstraintConcurrency, Label: "parallel", MaxConcurrent: &concurrent},
+		{Kind: ConstraintRollingWindow, Label: "unset"},
+	}})
+	p.SetExtraAPIKeys([]ProviderKey{{ID: "k2", Overrides: map[string]PlanConstraintOverride{
+		"parallel": {WindowAnchor: &anchor}, "unset": {WindowAnchor: &anchor},
+	}}})
+
+	for _, label := range []string{"parallel", "unset"} {
+		if w := KeyWindows(p, label, anchor.Add(time.Hour)); w != nil {
+			t.Errorf("%s: windows = %v, want none: it has no window to start", label, w)
+		}
+	}
+}

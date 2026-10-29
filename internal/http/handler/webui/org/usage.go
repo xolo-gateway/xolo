@@ -896,7 +896,7 @@ func (h *Handler) buildSubscriptionProviderUsage(ctx context.Context, orgID mode
 				scope.ByKey, scope.KeyID = true, k.ID
 				pu.Keys = append(pu.Keys, component.SubscriptionKeyUsage{
 					Label:       k.Label,
-					Constraints: h.planConstraintsUsage(ctx, model.KeyPlan(p, k.ID), scope, nil, []model.ProviderKeyID{k.ID}, models, now),
+					Constraints: h.planConstraintsUsage(ctx, model.KeyPlan(p, k.ID), scope, windows, []model.ProviderKeyID{k.ID}, models, now),
 				})
 			}
 		}

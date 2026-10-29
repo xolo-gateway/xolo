@@ -278,7 +278,7 @@ func (e *XoloSubscriptionEnforcer) keyStates(ctx context.Context, scope planScop
 			continue
 		}
 		var usage map[model.ProviderKeyID]map[model.LLMModelID]port.PlanUsageTotals
-		if c.Kind == model.ConstraintRollingWindow && c.Duration.Duration() > 0 {
+		if c.Kind == model.ConstraintRollingWindow && c.Duration.Duration() > 0 && anyBudget(plans, i) {
 			var err error
 			if usage, err = e.rolling.keysUsage(ctx, scope, c.ForModel(scope.UpstreamModel)); err != nil {
 				return nil, err
@@ -305,6 +305,17 @@ func (e *XoloSubscriptionEnforcer) keyStates(ctx context.Context, scope planScop
 		}
 	}
 	return states, nil
+}
+
+// anyBudget reports whether one of the keys' plans holds a budget on its i-th
+// constraint, without which its usage is not worth reading.
+func anyBudget(plans map[model.ProviderKeyID]*model.SubscriptionPlan, i int) bool {
+	for _, plan := range plans {
+		if c := plan.Constraints[i]; c.TokenBudget != nil || c.ValueBudget != nil {
+			return true
+		}
+	}
+	return false
 }
 
 // MarkKeyExhausted puts in cooldown an API key a request moved away from after

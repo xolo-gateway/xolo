@@ -221,10 +221,13 @@ func KeyWindows(p Provider, label string, now time.Time) map[ProviderKeyID]time.
 		return nil
 	}
 	i := slices.IndexFunc(plan.Constraints, func(c PlanConstraint) bool { return c.Label == label })
-	if i < 0 {
+	// Only a rolling window has a start; any other would read as "since ever".
+	if i < 0 || plan.Constraints[i].Kind != ConstraintRollingWindow || plan.Constraints[i].Duration.Duration() <= 0 {
 		return nil
 	}
 	var windows map[ProviderKeyID]time.Time
+	// The provider's own key holds the plan itself, never an override (see
+	// ProviderKeyByID): its window is the plan's.
 	for _, k := range p.ExtraAPIKeys() {
 		o, ok := k.Overrides[label]
 		if !ok || o.WindowAnchor == nil {
