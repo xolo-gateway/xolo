@@ -1221,6 +1221,9 @@ func TestApplyProviderBundle_WritesTheOtherSettingsWhenItCannotCheckTheType(t *t
 	if result.TypeUnchecked == nil || result.Updated != 2 || got.Type() != "openai" || got.BaseURL() != "https://other.test/v1" {
 		t.Errorf("type %q base URL %q, result %+v; want the type change held back and the base URL written", got.Type(), got.BaseURL(), result)
 	}
+	if !slices.Equal(result.Stranded, []string{"a", "b"}) {
+		t.Errorf("stranded = %v, want a and b, written for the type held back", result.Stranded)
+	}
 }
 
 func TestApplyProviderBundle_ReportsALockedProviderNextToTheModelsWritten(t *testing.T) {

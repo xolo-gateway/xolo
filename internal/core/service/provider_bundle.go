@@ -725,15 +725,8 @@ type BundleApplyResult struct {
 	// Stranded lists the models written for a provider type the provider
 	// did not take, which its own type does not serve.
 	Stranded []string
-	// written holds the proxy names of the models the import wrote.
-	written map[string]bool
-}
-
-func (r *BundleApplyResult) wrote(m model.LLMModel) {
-	if r.written == nil {
-		r.written = map[string]bool{}
-	}
-	r.written[m.ProxyName()] = true
+	// written holds the models the import wrote.
+	written []model.LLMModel
 }
 
 // Refused reports whether a selected change could not be written.
@@ -841,7 +834,7 @@ func ApplyProviderBundle(ctx context.Context, store port.ProviderStore, plan Pro
 			continue
 		}
 		result.Created++
-		result.wrote(m)
+		result.written = append(result.written, m)
 	}
 
 	if updated != nil {
@@ -859,8 +852,8 @@ func ApplyProviderBundle(ctx context.Context, store port.ProviderStore, plan Pro
 // models already written.
 func saveProviderSettings(ctx context.Context, store port.ProviderStore, plan ProviderBundlePlan, sel BundleSelection, updated *model.BaseProvider, result *BundleApplyResult) error {
 	t := plan.Target
-	var models []model.LLMModel
-	if updated.Type() != t.Type() {
+	typeChange := updated.Type() != t.Type()
+	if typeChange {
 		all, err := store.ListLLMModels(ctx, t.OrgID())
 		if err != nil {
 			// The type change cannot be checked against the models as
@@ -869,8 +862,7 @@ func saveProviderSettings(ctx context.Context, store port.ProviderStore, plan Pr
 			result.TypeUnchecked = errors.Wrap(err, "could not list provider models")
 			updated.SetType(t.Type())
 		}
-		models = all
-		if unserved := unservedModels(models, t.ID(), updated.Type()); err == nil && len(unserved) > 0 {
+		if unserved := unservedModels(all, t.ID(), updated.Type()); err == nil && len(unserved) > 0 {
 			result.SkippedSettings = append(result.SkippedSettings, BundleFieldChange{
 				Field: BundleFieldType, From: t.Type(), To: updated.Type(), Unserved: unserved,
 			})
@@ -893,12 +885,8 @@ func saveProviderSettings(ctx context.Context, store port.ProviderStore, plan Pr
 	}
 	// The models this import wrote for a type the provider did not take
 	// are named: a new import completes them once it can be written.
-	if models != nil && result.Provider.Type() == t.Type() {
-		for _, name := range unservedModels(models, t.ID(), t.Type()) {
-			if result.written[name] {
-				result.Stranded = append(result.Stranded, name)
-			}
-		}
+	if typeChange && result.Provider.Type() == t.Type() {
+		result.Stranded = unservedModels(result.written, t.ID(), t.Type())
 	}
 	return nil
 }
@@ -1048,5 +1036,5 @@ func applyBundleUpdate(ctx context.Context, store port.ProviderStore, mp BundleM
 		return
 	}
 	result.Updated++
-	result.wrote(m)
+	result.written = append(result.written, m)
 }
