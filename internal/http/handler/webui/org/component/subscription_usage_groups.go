@@ -65,30 +65,36 @@ type subscriptionConstraintGroup struct {
 	IdlePerModel  bool
 	ShareDegraded bool
 	// Rows are sorted by percentage, descending. Folded holds the least
-	// constrained ones, hidden behind a toggle that shows FoldedPeak.
-	Rows       []subscriptionGaugeRow
-	Folded     []subscriptionGaugeRow
-	FoldedPeak int
+	// constrained ones, hidden behind a toggle that shows FoldedPeak, the
+	// highest percentage hidden, and FoldedUnlimited, the number of hidden
+	// rows without a bar, which have no percentage to sum up.
+	Rows            []subscriptionGaugeRow
+	Folded          []subscriptionGaugeRow
+	FoldedPeak      int
+	FoldedUnlimited int
 }
 
 // groupSubscriptionConstraints groups the flat list of constraint usages a
-// builder produces (one entry per constraint and upstream model, in plan
-// order) by constraint.
+// builder produces (one entry per constraint and upstream model) by
+// constraint, groups keeping the order of their first entry.
 func groupSubscriptionConstraints(usages []SubscriptionConstraintUsage) []subscriptionConstraintGroup {
 	var groups []subscriptionConstraintGroup
 	for _, cu := range usages {
 		if cu.Constraint.Kind != model.ConstraintRollingWindow && cu.Constraint.Kind != model.ConstraintConcurrency {
 			continue
 		}
-		// The builders emit the entries of one constraint next to each other.
-		if n := len(groups); n == 0 || !sameConstraint(groups[n-1].Constraint, cu.Constraint) {
+		i := slices.IndexFunc(groups, func(g subscriptionConstraintGroup) bool {
+			return sameConstraint(g.Constraint, cu.Constraint)
+		})
+		if i < 0 {
+			i = len(groups)
 			groups = append(groups, subscriptionConstraintGroup{
 				Constraint: cu.Constraint,
 				Anchored:   cu.Anchored,
 				ResetAt:    cu.ResetAt,
 			})
 		}
-		g := &groups[len(groups)-1]
+		g := &groups[i]
 		if cu.Constraint.PerModel() && cu.UpstreamModel == "" {
 			g.IdlePerModel = true
 		}
@@ -205,6 +211,9 @@ func (g *subscriptionConstraintGroup) finish() {
 	g.Rows, g.Folded = visible, folded
 	for _, r := range folded {
 		g.FoldedPeak = max(g.FoldedPeak, r.Pct)
+		if r.Kind == gaugeNone {
+			g.FoldedUnlimited++
+		}
 	}
 }
 

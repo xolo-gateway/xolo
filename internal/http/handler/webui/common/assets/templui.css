@@ -2098,6 +2098,9 @@
   .decoration-dotted {
     text-decoration-style: dotted;
   }
+  .underline-offset-2 {
+    text-underline-offset: 2px;
+  }
   .underline-offset-4 {
     text-underline-offset: 4px;
   }

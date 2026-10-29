@@ -620,6 +620,8 @@
   "org.subscription.share_note_of": "%s: %s",
   "org.subscription.share_basis_short": "%s/%s active",
   "org.subscription.more_models": "+ %d other models, up to %s",
+  "org.subscription.more_models_unlimited": "+ %d other models without limit",
+  "org.subscription.more_models_mixed": "+ %d other models, up to %s, and %d without limit",
   "org.subscription.peak": "Peak: %s",
   "org.subscription.no_usage": "no usage in progress",
   "org.middlewares.page_title": "Middlewares - %s",

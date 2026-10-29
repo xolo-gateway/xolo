@@ -3,6 +3,7 @@ package component
 import (
 	"context"
 	stdhtml "html"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -249,5 +250,51 @@ func TestSubscriptionUsageSection_SaysARegimeSharedByBothBudgetsOnce(t *testing.
 	}
 	if strings.Contains(html, "Valeur : ") || strings.Contains(html, "Tokens : ") {
 		t.Error("a regime shared by both budgets should not be attributed to one of them")
+	}
+}
+
+func unlimitedUsage(label, upstream string, used int64) SubscriptionConstraintUsage {
+	cu := perModelUsage(label, 0, upstream, used)
+	cu.Constraint.TokenBudget = nil
+	return cu
+}
+
+func TestSubscriptionFoldLabel_DoesNotSumUpUnlimitedRowsAsZeroPercent(t *testing.T) {
+	gauged := []SubscriptionConstraintUsage{
+		perModelUsage("5h", 100, "m1", 50),
+		perModelUsage("5h", 100, "m2", 40),
+		perModelUsage("5h", 100, "m3", 30),
+	}
+
+	cases := []struct {
+		name  string
+		extra []SubscriptionConstraintUsage
+		want  string
+	}{
+		{"only unlimited", []SubscriptionConstraintUsage{unlimitedUsage("5h", "free1", 900_000_000), unlimitedUsage("5h", "free2", 1)}, "+ 2 autres modèles sans limite"},
+		{"mixed", []SubscriptionConstraintUsage{perModelUsage("5h", 100, "m4", 4), unlimitedUsage("5h", "free1", 900_000_000)}, "+ 1 autres modèles, jusqu'à 4%, et 1 sans limite"},
+		{"only gauged", []SubscriptionConstraintUsage{perModelUsage("5h", 100, "m4", 4), perModelUsage("5h", 100, "m5", 2)}, "+ 2 autres modèles, jusqu'à 4%"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			groups := groupSubscriptionConstraints(append(slices.Clone(gauged), tc.extra...))
+			if got := subscriptionFoldLabel(context.Background(), groups[0]); got != tc.want {
+				t.Errorf("fold label = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestGroupSubscriptionConstraints_DoesNotDependOnEntryOrder(t *testing.T) {
+	groups := groupSubscriptionConstraints([]SubscriptionConstraintUsage{
+		perModelUsage("5h", 100, "a", 1),
+		perModelUsage("week", 100, "a", 1),
+		perModelUsage("5h", 100, "b", 2),
+	})
+	if len(groups) != 2 {
+		t.Fatalf("got %d groups, want one per constraint whatever the entry order", len(groups))
+	}
+	if groups[0].Constraint.Label != "5h" || len(groups[0].Rows) != 2 {
+		t.Errorf("first group = %s with %d rows, want 5h with both of its models", groups[0].Constraint.Label, len(groups[0].Rows))
 	}
 }
