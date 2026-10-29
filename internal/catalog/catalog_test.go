@@ -2,18 +2,36 @@ package catalog
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/xolo-gateway/xolo/internal/core/model"
 )
 
-func TestSnapshot_ConvertsEveryProviderIntoAValidBundle(t *testing.T) {
-	c := Snapshot()
+// testdataCatalog is a release of the catalog kept for the tests: Xolo
+// embeds none.
+func testdataCatalog(t *testing.T) *Catalog {
+	t.Helper()
+	data, err := os.ReadFile("testdata/catalog.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, err := Parse(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return c
+}
+
+func TestRelease_ConvertsEveryProviderIntoAValidBundle(t *testing.T) {
+	c := testdataCatalog(t)
 	if len(c.Providers) == 0 || len(c.Models) == 0 {
-		t.Fatal("the embedded snapshot is empty")
+		t.Fatal("the test release is empty")
 	}
 	for _, p := range c.Providers {
 		plans := []string{""}
@@ -107,31 +125,42 @@ func TestParse_LeavesOutAProviderInAnUnsupportedCurrency(t *testing.T) {
 	}
 }
 
-func TestSource_FallsBackOnTheSnapshot(t *testing.T) {
+func TestSource_IsUnavailableUntilAReleaseIsRead(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		http.Error(w, "down", http.StatusServiceUnavailable)
 	}))
 	defer server.Close()
 	s := NewSource(server.URL, time.Hour)
 	s.Refresh(context.Background())
-	if c := s.Catalog(context.Background()); c == nil || c.Version != Snapshot().Version {
-		t.Errorf("catalog = %v, want the embedded snapshot", c)
+	if c, err := s.Catalog(context.Background()); c != nil || !errors.Is(err, ErrUnavailable) {
+		t.Errorf("catalog = %v, %v; want unavailable, with no embedded copy to fall back on", c, err)
 	}
 }
 
-func TestSource_ServesTheFetchedRelease(t *testing.T) {
+func TestSource_ServesTheFetchedReleaseAndKeepsItWhenTheNextFetchFails(t *testing.T) {
+	var up atomic.Bool
+	up.Store(true)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		if !up.Load() {
+			http.Error(w, "down", http.StatusServiceUnavailable)
+			return
+		}
 		_, _ = w.Write([]byte(`{"kind":"xolo.catalog","format":"1","version":"v2026.11.01","models":[],"providers":[]}`))
 	}))
 	defer server.Close()
-	s := NewSource(server.URL, time.Hour)
-	// A first call never waits for the network.
-	if c := s.Catalog(context.Background()); c.Version != Snapshot().Version {
-		t.Errorf("version = %q, want the snapshot while the release is fetched", c.Version)
+	s := NewSource(server.URL, 0)
+	// A first call never waits for the network: the catalog is not read yet.
+	if _, err := s.Catalog(context.Background()); !errors.Is(err, ErrUnavailable) {
+		t.Errorf("err = %v, want unavailable before the first release is read", err)
 	}
 	s.Refresh(context.Background())
-	if c := s.Catalog(context.Background()); c.Version != "v2026.11.01" {
-		t.Errorf("version = %q, want the fetched release", c.Version)
+	if c, err := s.Catalog(context.Background()); err != nil || c.Version != "v2026.11.01" {
+		t.Fatalf("catalog = %v, %v; want the fetched release", c, err)
+	}
+	up.Store(false)
+	s.Refresh(context.Background())
+	if c, err := s.Catalog(context.Background()); err != nil || c.Version != "v2026.11.01" {
+		t.Errorf("catalog = %v, %v; want the last release kept", c, err)
 	}
 }
 

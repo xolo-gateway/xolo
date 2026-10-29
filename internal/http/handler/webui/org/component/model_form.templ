@@ -81,26 +81,29 @@ templ ModelForm(vmodel ModelFormVModel) {
 										@form.Label(form.LabelProps{}) {
 											{ i18n.T(ctx, "org.model.real_model") }
 										}
-										@button.Button(button.Props{
-											Variant: button.VariantLink,
-											Class:   "text-xs h-auto p-0",
-											Attributes: templ.Attributes{
-												"type":                   "button",
-												"data-lookup-url":        common.BaseURLString(ctx, common.WithPath("/api/catalog/lookup")),
-												"data-exchange-rate-url": common.BaseURLString(ctx, common.WithPath("/api/exchange-rate")),
-												"data-currency":          vmodel.Provider.Currency(),
-												"data-provider-type":     vmodel.Provider.Type(),
-												"data-provider-base-url": vmodel.Provider.BaseURL(),
-												"data-msg-missing":       i18n.T(ctx, "org.model.prefill_missing_real_model"),
-												"data-msg-not-found":     i18n.T(ctx, "org.model.prefill_not_found"),
-												"data-msg-prices-vary":   i18n.T(ctx, "org.model.prefill_prices_vary"),
-												"data-msg-estimated":     i18n.T(ctx, "org.model.prefill_estimated"),
-												"data-msg-no-rate":       i18n.T(ctx, "org.model.prefill_no_rate"),
-												"data-field-labels":      catalogFieldLabels(ctx, vmodel.Provider.Currency()),
-												"data-xolo-catalog":      "",
-											},
-										}) {
-											{ i18n.T(ctx, "org.model.prefill_catalog") }
+										if vmodel.CatalogEnabled {
+											@button.Button(button.Props{
+												Variant: button.VariantLink,
+												Class:   "text-xs h-auto p-0",
+												Attributes: templ.Attributes{
+													"type":                   "button",
+													"data-lookup-url":        common.BaseURLString(ctx, common.WithPath("/api/catalog/lookup")),
+													"data-exchange-rate-url": common.BaseURLString(ctx, common.WithPath("/api/exchange-rate")),
+													"data-currency":          vmodel.Provider.Currency(),
+													"data-provider-type":     vmodel.Provider.Type(),
+													"data-provider-base-url": vmodel.Provider.BaseURL(),
+													"data-msg-missing":       i18n.T(ctx, "org.model.prefill_missing_real_model"),
+													"data-msg-not-found":     i18n.T(ctx, "org.model.prefill_not_found"),
+													"data-msg-prices-vary":   i18n.T(ctx, "org.model.prefill_prices_vary"),
+													"data-msg-estimated":     i18n.T(ctx, "org.model.prefill_estimated"),
+													"data-msg-no-rate":       i18n.T(ctx, "org.model.prefill_no_rate"),
+													"data-msg-unavailable":   i18n.T(ctx, "org.errors.catalog_import.unavailable"),
+													"data-field-labels":      catalogFieldLabels(ctx, vmodel.Provider.Currency()),
+													"data-xolo-catalog":      "",
+												},
+											}) {
+												{ i18n.T(ctx, "org.model.prefill_catalog") }
+											}
 										}
 									</div>
 									if !vmodel.IsNew && vmodel.Model != nil {

@@ -1,10 +1,12 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/xolo-gateway/xolo/internal/catalog"
 )
@@ -100,5 +102,25 @@ func TestCatalogLookup_NeverFillsAnotherProvidersEndpoint(t *testing.T) {
 	}
 	if got.PromptCost == nil {
 		t.Error("the prices should still be pre-filled")
+	}
+}
+
+func TestCatalogLookup_DisabledOrUnavailable(t *testing.T) {
+	rr := httptest.NewRecorder()
+	(&Handler{}).handleCatalogLookup(rr, httptest.NewRequest(http.MethodGet, "/api/catalog/lookup?id=glm", nil))
+	if rr.Code != http.StatusNotFound {
+		t.Errorf("disabled: status = %d, want 404", rr.Code)
+	}
+
+	down := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "down", http.StatusServiceUnavailable)
+	}))
+	defer down.Close()
+	source := catalog.NewSource(down.URL, time.Hour)
+	source.Refresh(context.Background())
+	rr = httptest.NewRecorder()
+	(&Handler{catalog: source}).handleCatalogLookup(rr, httptest.NewRequest(http.MethodGet, "/api/catalog/lookup?id=glm", nil))
+	if rr.Code != http.StatusServiceUnavailable {
+		t.Errorf("unavailable: status = %d, want 503", rr.Code)
 	}
 }

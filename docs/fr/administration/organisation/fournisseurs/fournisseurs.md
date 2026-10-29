@@ -470,7 +470,7 @@ Le [catalogue ouvert de modèles](https://github.com/xolo-gateway/catalog), main
 
 Cliquez sur **Importer depuis le catalogue**, sur la liste des fournisseurs pour créer un fournisseur, ou sur la page des modèles d'un fournisseur existant pour le mettre à jour. Le fournisseur du catalogue qui a la même URL de base est proposé en premier. Choisissez-le, et le forfait auquel vous êtes abonné s'il y en a un, puis **Prévisualiser les changements** : la suite est celle de l'import d'un bundle (voir ci-dessous), avec le même aperçu à cocher. Les prix importés sont ceux du palier de base.
 
-L'instance lit la dernière version du catalogue (`XOLO_CATALOG_URL`) et retombe sur l'instantané embarqué dans le binaire quand elle ne peut pas l'atteindre.
+L'instance lit la dernière version du catalogue à son adresse (`XOLO_CATALOG_URL`) et n'en embarque aucune copie : si elle n'a pas encore pu la lire, l'import et le pré-remplissage l'indiquent. `XOLO_CATALOG_ENABLED=false` retire ces deux fonctions.
 
 ### Exporter et importer un fournisseur configuré
 

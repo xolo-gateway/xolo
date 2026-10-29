@@ -49,13 +49,17 @@ func (h *Handler) handleCatalogLookup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if h.catalog == nil {
-		writeError(w, http.StatusNotFound, "no model catalog")
+		writeError(w, http.StatusNotFound, "the model catalog is disabled")
 		return
 	}
 	providerType := strings.TrimSpace(r.URL.Query().Get("provider"))
 	baseURL := strings.TrimSpace(r.URL.Query().Get("base_url"))
 
-	c := h.catalog.Catalog(r.Context())
+	c, err := h.catalog.Catalog(r.Context())
+	if err != nil {
+		writeError(w, http.StatusServiceUnavailable, "the model catalog is unavailable")
+		return
+	}
 	found, ok := c.Lookup(id, baseURL, providerType)
 	if !ok {
 		writeError(w, http.StatusNotFound, "model not found in the catalog")

@@ -349,7 +349,7 @@
 
       var response = await fetch(url);
       if (!response.ok) {
-        window.alert(button.dataset.msgNotFound);
+        window.alert(response.status === 503 ? button.dataset.msgUnavailable : button.dataset.msgNotFound);
         return;
       }
       var entry = await response.json();

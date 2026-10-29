@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -251,7 +252,7 @@ func TestProviderBundle_PreviewPostsBackTheConvertedBundle(t *testing.T) {
 
 func TestCatalogImport_PreviewsTheCatalogProviderAsABundle(t *testing.T) {
 	h, s, tenant := importFixture(t, "https://opencode.ai/inference/go/v1", "sk")
-	h.SetCatalog(catalog.NewSource("", 0))
+	h.SetCatalog(catalog.NewStaticSource(testCatalogRelease(t)))
 
 	fields := url.Values{"catalog_provider": {"opencode-go"}, "plan": {"go"}}
 	rr := httptest.NewRecorder()
@@ -271,7 +272,7 @@ func TestCatalogImport_PreviewsTheCatalogProviderAsABundle(t *testing.T) {
 func TestCatalogImport_ConvertsPricesIntoTheProvidersCurrency(t *testing.T) {
 	h, s, tenant := importFixture(t, "https://opencode.ai/inference/go/v1", "sk")
 	s.provider = model.NewProvider(s.org.ID(), "OpenCode Go", "openai", "https://opencode.ai/inference/go/v1", s.provider.APIKey(), "EUR")
-	h.SetCatalog(catalog.NewStaticSource(catalog.Snapshot()))
+	h.SetCatalog(catalog.NewStaticSource(testCatalogRelease(t)))
 	h.exchangeRateService = service.NewExchangeRateService(fixedRates{"USD>EUR": 0.5}, &memoryRates{rates: map[string]model.ExchangeRate{}}, time.Hour)
 
 	fields := url.Values{"catalog_provider": {"opencode-go"}, "plan": {"go"}}
@@ -295,7 +296,7 @@ func TestCatalogImport_ConvertsPricesIntoTheProvidersCurrency(t *testing.T) {
 	if bundle.Provider.Currency != "EUR" {
 		t.Errorf("currency = %q, want the provider's", bundle.Provider.Currency)
 	}
-	snapshot := catalog.Snapshot()
+	snapshot := testCatalogRelease(t)
 	original, _ := snapshot.Bundle("opencode-go", "go")
 	if got, want := bundle.Models[0].Prices.Output, original.Models[0].Prices.Output/2; got != model.PricePerMillion(model.MicrocentsPer1K(want)) {
 		t.Errorf("output price = %v, want %v converted at 0.5", got, want)
@@ -321,7 +322,7 @@ func TestCatalogImport_ConvertsPricesIntoTheProvidersCurrency(t *testing.T) {
 func TestCatalogImport_RefusesWithoutAnExchangeRate(t *testing.T) {
 	h, s, tenant := importFixture(t, "https://opencode.ai/inference/go/v1", "sk")
 	s.provider = model.NewProvider(s.org.ID(), "OpenCode Go", "openai", "https://opencode.ai/inference/go/v1", s.provider.APIKey(), "EUR")
-	h.SetCatalog(catalog.NewStaticSource(catalog.Snapshot()))
+	h.SetCatalog(catalog.NewStaticSource(testCatalogRelease(t)))
 
 	fields := url.Values{"catalog_provider": {"opencode-go"}, "plan": {"none"}}
 	rr := httptest.NewRecorder()
@@ -363,5 +364,45 @@ func TestCatalogImport_TellsAMalformedReleaseFromAnUnknownProvider(t *testing.T)
 		if rr.Code != http.StatusUnprocessableEntity || !strings.Contains(stdhtml.UnescapeString(rr.Body.String()), want) {
 			t.Errorf("plan %s: status %d, want 422 mentioning %q", plan, rr.Code, want)
 		}
+	}
+}
+
+// testCatalogRelease is the release of the catalog kept for the tests.
+func testCatalogRelease(t *testing.T) *catalog.Catalog {
+	t.Helper()
+	data, err := os.ReadFile("../../../../catalog/testdata/catalog.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, err := catalog.Parse(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return c
+}
+
+func TestCatalogImport_IsNotOfferedWhenTheCatalogIsDisabled(t *testing.T) {
+	h, s, tenant := importFixture(t, "https://opencode.ai/inference/go/v1", "sk")
+	rr := httptest.NewRecorder()
+	h.getCatalogImportPage(rr, bundleRequest(t, s, tenant, string(s.provider.ID()), bytes.NewBufferString(""), "text/plain"))
+	if rr.Code != http.StatusNotFound {
+		t.Errorf("status = %d, want 404 with no catalog", rr.Code)
+	}
+}
+
+func TestCatalogImport_SaysWhenTheCatalogCannotBeRead(t *testing.T) {
+	h, s, tenant := importFixture(t, "https://opencode.ai/inference/go/v1", "sk")
+	down := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "down", http.StatusServiceUnavailable)
+	}))
+	defer down.Close()
+	source := catalog.NewSource(down.URL, time.Hour)
+	source.Refresh(context.Background())
+	h.SetCatalog(source)
+
+	rr := httptest.NewRecorder()
+	h.getCatalogImportPage(rr, bundleRequest(t, s, tenant, string(s.provider.ID()), bytes.NewBufferString(""), "text/plain"))
+	if rr.Code != http.StatusUnprocessableEntity || !strings.Contains(stdhtml.UnescapeString(rr.Body.String()), "ne peut pas être lu") {
+		t.Errorf("status = %d, want the page saying the catalog cannot be read", rr.Code)
 	}
 }

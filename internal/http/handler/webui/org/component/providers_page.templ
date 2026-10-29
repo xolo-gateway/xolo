@@ -19,14 +19,16 @@ templ ProvidersPage(vmodel ProvidersPageVModel) {
 			Subtitle: i18n.T(ctx, "org.models.providers.subtitle", vmodel.Org.Name()),
 		}) {
 			if common.HasPermission(ctx, vmodel.Org.ID(), rbac.PermProvidersWrite) {
-				@button.Button(button.Props{
-					Variant: button.VariantOutline,
-					Size:    button.SizeSm,
-					Class:   "gap-1.5",
-					Href:    common.BaseURLString(ctx, common.WithPath("/orgs/", vmodel.Org.Slug(), "/admin/providers/catalog")),
-				}) {
-					@icon.LibraryBig(icon.Props{Class: "size-3.5"})
-					{ i18n.T(ctx, "org.catalog_import.from_catalog") }
+				if vmodel.CatalogEnabled {
+					@button.Button(button.Props{
+						Variant: button.VariantOutline,
+						Size:    button.SizeSm,
+						Class:   "gap-1.5",
+						Href:    common.BaseURLString(ctx, common.WithPath("/orgs/", vmodel.Org.Slug(), "/admin/providers/catalog")),
+					}) {
+						@icon.LibraryBig(icon.Props{Class: "size-3.5"})
+						{ i18n.T(ctx, "org.catalog_import.from_catalog") }
+					}
 				}
 				@button.Button(button.Props{
 					Variant: button.VariantOutline,

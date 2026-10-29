@@ -2,7 +2,6 @@ package catalog
 
 import (
 	"context"
-	_ "embed"
 	"io"
 	"log/slog"
 	"net/http"
@@ -13,28 +12,17 @@ import (
 	"github.com/pkg/errors"
 )
 
-// snapshot is the release embedded in the binary, for an instance that
-// cannot reach the catalog.
-//
-//go:embed snapshot.json
-var snapshot []byte
+// ErrUnavailable reports that no release of the catalog could be read yet.
+var ErrUnavailable = errors.New("model catalog unavailable")
 
 // maxCatalogSize bounds a downloaded release.
 const maxCatalogSize = 32 << 20
 
-// Snapshot returns the release embedded in the binary.
-func Snapshot() *Catalog {
-	c, err := Parse(snapshot)
-	if err != nil {
-		panic(errors.Wrap(err, "embedded catalog snapshot"))
-	}
-	return c
-}
-
-// Source serves the catalog: the release at its URL, fetched at most once
-// per refresh interval, or else the last one it fetched, or else the
-// embedded snapshot. A catalog that cannot be reached never blocks a page:
-// the fetch runs in the background while callers get the current catalog.
+// Source serves the catalog published at its URL: the last release it read,
+// fetched again at most once per refresh interval. Xolo embeds no copy of
+// the catalog: until a first release is read, the catalog is unavailable. A
+// fetch never blocks a page: it runs in the background while callers get
+// the release already read.
 type Source struct {
 	url      string
 	interval time.Duration
@@ -42,9 +30,15 @@ type Source struct {
 
 	mu        sync.Mutex
 	current   *Catalog
+	lastErr   error
 	fetchedAt time.Time
 	// inflight is closed when the fetch in progress, if any, ends.
 	inflight chan struct{}
+}
+
+// NewSource serves the catalog published at url.
+func NewSource(url string, interval time.Duration) *Source {
+	return &Source{url: url, interval: interval, client: &http.Client{Timeout: 15 * time.Second}}
 }
 
 // NewStaticSource always serves c, as a test or an offline tool needs.
@@ -52,29 +46,28 @@ func NewStaticSource(c *Catalog) *Source {
 	return &Source{current: c}
 }
 
-// NewSource serves the catalog published at url. An empty url serves the
-// embedded snapshot only.
-func NewSource(url string, interval time.Duration) *Source {
-	return &Source{url: url, interval: interval, client: &http.Client{Timeout: 15 * time.Second}}
-}
-
-// Catalog returns the current catalog, and starts fetching a newer release
-// in the background when the refresh interval has elapsed.
-func (s *Source) Catalog(ctx context.Context) *Catalog {
+// Catalog returns the last release read, and starts fetching a newer one in
+// the background when the refresh interval has elapsed. It returns
+// ErrUnavailable while no release could be read.
+func (s *Source) Catalog(ctx context.Context) (*Catalog, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.current == nil {
-		s.current = Snapshot()
-	}
 	if s.url != "" && s.inflight == nil && time.Since(s.fetchedAt) >= s.interval {
 		s.inflight = make(chan struct{})
 		go s.refresh(context.WithoutCancel(ctx), s.inflight)
 	}
-	return s.current
+	if s.current == nil {
+		if s.lastErr != nil {
+			return nil, errors.Wrap(ErrUnavailable, s.lastErr.Error())
+		}
+		return nil, errors.WithStack(ErrUnavailable)
+	}
+	return s.current, nil
 }
 
 // Refresh fetches the release now and waits for it, or for the fetch already
-// in progress. It keeps the current catalog when the fetch fails.
+// in progress, as the start of the server does. It keeps the release already
+// read when the fetch fails.
 func (s *Source) Refresh(ctx context.Context) {
 	s.mu.Lock()
 	if s.url == "" {
@@ -105,10 +98,11 @@ func (s *Source) refresh(ctx context.Context, done chan struct{}) {
 	// A failed fetch is retried at the next interval, not on every page.
 	s.fetchedAt = time.Now()
 	if err != nil {
-		slog.WarnContext(ctx, "could not fetch the model catalog, keeping the current one", slog.String("url", s.url), slogx.Error(err))
+		s.lastErr = err
+		slog.WarnContext(ctx, "could not fetch the model catalog", slog.String("url", s.url), slogx.Error(err))
 		return
 	}
-	s.current = c
+	s.current, s.lastErr = c, nil
 }
 
 func (s *Source) fetch(ctx context.Context) (*Catalog, error) {

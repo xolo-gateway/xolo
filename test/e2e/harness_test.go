@@ -65,6 +65,9 @@ var env struct {
 	baseURL  string
 	dsn      string
 	provider *fakeProvider
+	// catalogURL serves the test release of the model catalog: Xolo embeds
+	// none and reads it from its URL.
+	catalogURL string
 	logPath  string
 
 	// serverBin and pluginsDir let a test start another server process with
@@ -149,6 +152,17 @@ func run(m *testing.M) (int, error) {
 	env.provider = newFakeProvider()
 	defer env.provider.Close()
 
+	release, err := os.ReadFile(filepath.Join(root, "internal", "catalog", "testdata", "catalog.json"))
+	if err != nil {
+		return 1, fmt.Errorf("read the test catalog: %w", err)
+	}
+	catalogServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(release)
+	}))
+	defer catalogServer.Close()
+	env.catalogURL = catalogServer.URL
+
 	if err := prepareDatabase(env.dsn, env.provider.baseURL()); err != nil {
 		return 1, fmt.Errorf("prepare database: %w", err)
 	}
@@ -224,6 +238,7 @@ func serverEnv(pluginsDir string, port int, baseURL, dsn string) []string {
 		"XOLO_SECRET_KEY=" + seedSecretKey,
 		"XOLO_PLUGINS_DIR=" + pluginsDir,
 		"XOLO_LOGGER_LEVEL=0",
+		"XOLO_CATALOG_URL=" + env.catalogURL,
 	}
 }
 

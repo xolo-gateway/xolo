@@ -25,7 +25,11 @@ func (h *Handler) getCatalogImportPage(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	c := h.catalog.Catalog(ctx)
+	c, err := h.catalog.Catalog(ctx)
+	if err != nil {
+		h.renderProviderBundleError(w, r, h.providerBundleImportVModel(ctx, org, p), i18n.T(ctx, "org.errors.catalog_import.unavailable"))
+		return
+	}
 	vmodel := component.CatalogImportVModel{
 		AppLayoutVModel: h.providerBundleImportVModel(ctx, org, p).AppLayoutVModel,
 		Org:             org,
@@ -65,7 +69,11 @@ func (h *Handler) previewCatalogImport(w http.ResponseWriter, r *http.Request) {
 	}
 	vmodel := h.providerBundleImportVModel(ctx, org, p)
 
-	c := h.catalog.Catalog(ctx)
+	c, err := h.catalog.Catalog(ctx)
+	if err != nil {
+		h.renderProviderBundleError(w, r, vmodel, i18n.T(ctx, "org.errors.catalog_import.unavailable"))
+		return
+	}
 	bundle, err := c.Bundle(r.FormValue("catalog_provider"), plan)
 	if err != nil {
 		// A provider or plan the release lacks is the operator's to fix; a

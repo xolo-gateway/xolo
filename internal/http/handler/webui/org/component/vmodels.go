@@ -32,6 +32,9 @@ type MembersPageVModel struct {
 
 type ProvidersPageVModel struct {
 	common.AppLayoutVModel
+	// CatalogEnabled offers the import from, or pre-fill by, the model
+	// catalog: false when it is disabled.
+	CatalogEnabled bool
 	Org         model.Organization
 	Providers   []model.Provider
 	ModelCounts map[model.ProviderID]int
@@ -52,6 +55,9 @@ type ProviderFormVModel struct {
 
 type ModelsPageVModel struct {
 	common.AppLayoutVModel
+	// CatalogEnabled offers the import from, or pre-fill by, the model
+	// catalog: false when it is disabled.
+	CatalogEnabled bool
 	Org      model.Organization
 	Provider model.Provider
 	Models   []model.LLMModel
@@ -92,6 +98,9 @@ type ModelImportCandidate struct {
 
 type ModelFormVModel struct {
 	common.AppLayoutVModel
+	// CatalogEnabled offers the import from, or pre-fill by, the model
+	// catalog: false when it is disabled.
+	CatalogEnabled bool
 	Org      model.Organization
 	Provider model.Provider
 	Model    model.LLMModel

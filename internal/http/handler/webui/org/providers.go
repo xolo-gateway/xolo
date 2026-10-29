@@ -64,6 +64,7 @@ func (h *Handler) getProvidersPage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	vmodel := component.ProvidersPageVModel{
+		CatalogEnabled: h.catalog != nil,
 		Org:         org,
 		Providers:   providers,
 		ModelCounts: modelCounts,
@@ -495,6 +496,7 @@ func (h *Handler) getModelsPage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	vmodel := component.ModelsPageVModel{
+		CatalogEnabled: h.catalog != nil,
 		Org:      org,
 		Provider: p,
 		Models:   filtered,
@@ -530,6 +532,7 @@ func (h *Handler) getNewModelPage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	vmodel := component.ModelFormVModel{
+		CatalogEnabled: h.catalog != nil,
 		Org:      org,
 		Provider: p,
 		IsNew:    true,
@@ -1228,6 +1231,7 @@ func (h *Handler) getEditModelPage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	vmodel := component.ModelFormVModel{
+		CatalogEnabled: h.catalog != nil,
 		Org:      org,
 		Provider: p,
 		Model:    m,
@@ -1379,6 +1383,7 @@ func (h *Handler) updateModel(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) renderModelFormError(w http.ResponseWriter, r *http.Request, ctx context.Context, user model.User, orgSlug string, org model.Organization, p model.Provider, m model.LLMModel, isNew bool, errMsg string) {
 	vmodel := component.ModelFormVModel{
+		CatalogEnabled: h.catalog != nil,
 		Org:      org,
 		Provider: p,
 		Model:    m,
