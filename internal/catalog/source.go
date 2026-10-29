@@ -41,9 +41,10 @@ type Source struct {
 	inflight chan struct{}
 }
 
-// NewSource serves the catalog published at url.
+// NewSource serves the catalog published at url, read again every interval,
+// a minute at least: a shorter one would fetch on every page.
 func NewSource(url string, interval time.Duration) *Source {
-	return &Source{url: url, interval: interval, client: &http.Client{Timeout: 15 * time.Second}}
+	return &Source{url: url, interval: max(interval, unavailableRetry), client: &http.Client{Timeout: 15 * time.Second}}
 }
 
 // NewStaticSource always serves c, as a test or an offline tool needs.

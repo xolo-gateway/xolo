@@ -683,6 +683,7 @@
   "org.catalog_import.no_plan": "None (pay as you go)",
   "org.catalog_import.from_catalog": "Import from the catalog",
   "org.catalog_import.from": "Changes proposed by the model catalog, release %s. Prices are the base tier: a provider pricing by prompt size or time of day publishes the other tiers in the catalog.",
+  "org.catalog_import.other_endpoint": "This catalog provider is not at the address of %s: its models, prices and plan are imported, not its API nor its endpoints.",
   "org.errors.catalog_import.unavailable": "The model catalog cannot be read at the moment: try again later.",
   "org.errors.catalog_import.unknown": "This provider or plan is not in the model catalog.",
   "org.errors.catalog_import.invalid": "The catalog release %s cannot be imported: one of its entries is malformed. Try again once a corrected release is published.",

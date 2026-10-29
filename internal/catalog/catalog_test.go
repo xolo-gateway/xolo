@@ -294,3 +294,30 @@ func TestBundle_RefusesAModelBudgetThatNamesNoOffering(t *testing.T) {
 		t.Errorf("without the plan: %v", err)
 	}
 }
+
+func TestSource_NeverRefreshesMoreThanOnceAMinute(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"kind":"xolo.catalog","format":"1","version":"v1","models":[],"providers":[]}`))
+	}))
+	defer server.Close()
+	s := NewSource(server.URL, 0)
+	s.Refresh(context.Background())
+	if _, err := s.Catalog(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.inflight != nil {
+		t.Error("a zero interval started another fetch right after the last one")
+	}
+}
+
+func TestBundle_RefusesAModelBudgetOnAnOfferingItLeavesOut(t *testing.T) {
+	c := testCatalog()
+	acme := &c.Providers[0]
+	acme.Offerings = append(acme.Offerings, Offering{Model: "kimi", ModelID: "kimi-far", APIType: "gemini", Prices: Prices{Input: 1, Output: 2}})
+	acme.Plans[0].Constraints[0].ModelBudgets["kimi-far"] = Budget{}
+	if _, err := c.Bundle("acme", "pro"); !errors.Is(err, ErrInvalid) {
+		t.Errorf("err = %v, want refused: kimi-far is served through another API without its endpoint, and left out", err)
+	}
+}

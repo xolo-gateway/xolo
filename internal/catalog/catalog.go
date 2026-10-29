@@ -258,14 +258,21 @@ func (c *Catalog) ProviderAt(baseURL string) *Provider {
 		return p
 	}
 	for i := range c.Providers {
-		p := &c.Providers[i]
-		for j := range p.Offerings {
-			if p.ServesAt(&p.Offerings[j], baseURL) {
-				return p
-			}
+		if c.Providers[i].ReachedAt(baseURL) {
+			return &c.Providers[i]
 		}
 	}
 	return nil
+}
+
+// ReachedAt reports whether a Xolo provider at baseURL is p: at its
+// endpoint, or at the one one of its offerings is served through.
+func (p *Provider) ReachedAt(baseURL string) bool {
+	normalized := strings.TrimRight(baseURL, "/")
+	if normalized != "" && strings.TrimRight(p.Xolo.BaseURL, "/") == normalized {
+		return true
+	}
+	return slices.ContainsFunc(p.Offerings, func(o Offering) bool { return p.ServesAt(&o, baseURL) })
 }
 
 // MatchProvider returns the catalog provider an existing provider most likely
@@ -311,13 +318,13 @@ func (c *Catalog) Bundle(providerID, planID string) (model.ProviderBundle, error
 		if err != nil {
 			return model.ProviderBundle{}, err
 		}
-		// A per-model budget is keyed by an offering's model_id, the model
-		// Xolo's plans match on: under any other key it would apply to no
-		// model, in silence.
+		// A per-model budget is keyed by the model_id of an offering the
+		// bundle imports, the model Xolo's plans match on: under any other
+		// key it would apply to no model, in silence.
 		for _, constraint := range sp.Constraints {
 			for key := range constraint.ModelBudgets {
-				if !slices.ContainsFunc(p.Offerings, func(o Offering) bool { return o.ModelID == key }) {
-					return model.ProviderBundle{}, errors.Wrapf(ErrInvalid, "plan %q of %q: model budget %q names no offering", planID, providerID, key)
+				if !slices.ContainsFunc(p.Offerings, func(o Offering) bool { return o.ModelID == key && o.Reachable(p) }) {
+					return model.ProviderBundle{}, errors.Wrapf(ErrInvalid, "plan %q of %q: model budget %q names no offering the bundle imports", planID, providerID, key)
 				}
 			}
 		}

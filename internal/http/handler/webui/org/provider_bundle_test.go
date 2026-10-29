@@ -562,3 +562,24 @@ func TestCatalogImport_RefusesAReleasePlanThePlanEditorRefuses(t *testing.T) {
 		t.Errorf("status %d, want 422 naming the release rather than a dry run the apply would refuse", rr.Code)
 	}
 }
+
+func TestCatalogImport_KeepsTheEndpointsOfAnotherProviderOut(t *testing.T) {
+	h, s, tenant := importFixture(t, "https://acme.test/v1", "sk")
+	beta := catalog.Provider{ID: "beta", Name: "Beta", Currency: "USD", Offerings: []catalog.Offering{
+		{Model: "glm", ModelID: "glm", Prices: catalog.Prices{Input: 1, Output: 2}},
+		{Model: "haiku", ModelID: "haiku", APIType: "anthropic", BaseURL: "https://beta.test/anthropic/v1", Prices: catalog.Prices{Input: 1, Output: 5}},
+	}}
+	beta.Xolo.Type, beta.Xolo.BaseURL = "openrouter", "https://beta.test/v1"
+	h.SetCatalog(catalog.NewStaticSource(&catalog.Catalog{Kind: catalog.Kind, Format: catalog.Format, Version: "v1", Providers: []catalog.Provider{beta}}))
+
+	fields := url.Values{"catalog_provider": {"beta"}, "plan": {"none"}}
+	rr := httptest.NewRecorder()
+	h.previewCatalogImport(rr, bundleRequest(t, s, tenant, string(s.provider.ID()), bytes.NewBufferString(fields.Encode()), "application/x-www-form-urlencoded"))
+	page := stdhtml.UnescapeString(rr.Body.String())
+	if rr.Code != http.StatusOK || strings.Contains(page, "beta.test") || strings.Contains(page, "openrouter") {
+		t.Errorf("status %d: the dry run offers Beta's endpoints or API to a provider at another address", rr.Code)
+	}
+	if !strings.Contains(page, "n'est pas à l'adresse de") {
+		t.Error("the page should say Beta's endpoints are left out")
+	}
+}

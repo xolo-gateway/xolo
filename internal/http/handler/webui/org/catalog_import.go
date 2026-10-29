@@ -87,6 +87,16 @@ func (h *Handler) previewCatalogImport(w http.ResponseWriter, r *http.Request) {
 		h.renderProviderBundleError(w, r, vmodel, i18n.T(ctx, "org.errors.catalog_import.invalid", c.Version))
 		return
 	}
+	// Imported into a provider at another endpoint, a catalog provider gives
+	// its models, prices and plan, not its API nor its endpoints: they would
+	// receive this provider's key. The model form's pre-fill does the same.
+	otherEndpoint := p != nil && !c.Provider(r.FormValue("catalog_provider")).ReachedAt(p.BaseURL())
+	if otherEndpoint {
+		bundle.Provider.Type, bundle.Provider.BaseURL = p.Type(), p.BaseURL()
+		for i := range bundle.Models {
+			bundle.Models[i].APIType, bundle.Models[i].BaseURL = "", ""
+		}
+	}
 	// The catalog publishes in each provider's currency: imported into a
 	// provider billing in another one, its prices and budgets are converted,
 	// so that they never land under a currency they are not in.
@@ -129,5 +139,8 @@ func (h *Handler) previewCatalogImport(w http.ResponseWriter, r *http.Request) {
 	vmodel.Bundle = string(raw)
 	vmodel.Name = bundle.Provider.Name
 	vmodel.Notice = i18n.T(ctx, "org.catalog_import.from", c.Version)
+	if otherEndpoint {
+		vmodel.Notice += " " + i18n.T(ctx, "org.catalog_import.other_endpoint", p.Name())
+	}
 	templ.Handler(component.ProviderBundleImportPage(vmodel)).ServeHTTP(w, r)
 }
