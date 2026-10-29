@@ -2,6 +2,8 @@ package gorm
 
 import (
 	"context"
+	"maps"
+	"slices"
 	"time"
 
 	"github.com/xolo-gateway/xolo/internal/core/model"
@@ -276,7 +278,21 @@ func (s *Store) SumCostSinceByCurrency(ctx context.Context, userIDs []model.User
 func planUsageQuery(db *gorm.DB, scope model.PlanUsageScope, since time.Time) *gorm.DB {
 	query := db.Model(&UsageRecord{}).
 		Where("org_id = ? AND provider_id = ? AND plan_covered = 1 AND created_at >= ?",
-			string(scope.OrgID), string(scope.ProviderID), since)
+			string(scope.OrgID), string(scope.ProviderID), scope.Since(since))
+	if len(scope.KeyWindows) > 0 {
+		// The range above starts at the earliest window, so the indexes keep
+		// bounding it; each key is then held to its own start.
+		keys := slices.Sorted(maps.Keys(scope.KeyWindows))
+		ids := make([]string, len(keys))
+		for i, key := range keys {
+			ids[i] = string(key)
+		}
+		windows := db.Where("provider_key_id NOT IN ? AND created_at >= ?", ids, since)
+		for _, key := range keys {
+			windows = windows.Or("provider_key_id = ? AND created_at >= ?", string(key), scope.KeyWindows[key])
+		}
+		query = query.Where(windows)
+	}
 	if len(scope.ModelIDs) > 0 {
 		ids := make([]string, len(scope.ModelIDs))
 		for i, id := range scope.ModelIDs {

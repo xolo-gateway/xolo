@@ -25,6 +25,8 @@ type poolUsageStore struct {
 	last  map[model.UserID]model.ProviderKeyID
 	// byKeyReads counts the reads of every key's usage at once.
 	byKeyReads int
+	// scopes records the scope of every plan read.
+	scopes []model.PlanUsageScope
 }
 
 func (s *poolUsageStore) sum(scope model.PlanUsageScope, user model.UserID) int64 {
@@ -43,6 +45,7 @@ func (s *poolUsageStore) sum(scope model.PlanUsageScope, user model.UserID) int6
 }
 
 func (s *poolUsageStore) SumPlanUsageSince(_ context.Context, scope model.PlanUsageScope, _ time.Time) (int64, int64, error) {
+	s.scopes = append(s.scopes, scope)
 	return 0, s.sum(scope, ""), nil
 }
 
@@ -65,8 +68,9 @@ func (s *poolUsageStore) HasPlanUsageSince(_ context.Context, user model.UserID,
 	return ok, nil
 }
 
-func (s *poolUsageStore) SumPlanUsageByKeySince(_ context.Context, _ model.PlanUsageScope, _ time.Time) (map[model.ProviderKeyID]map[model.LLMModelID]port.PlanUsageTotals, error) {
+func (s *poolUsageStore) SumPlanUsageByKeySince(_ context.Context, scope model.PlanUsageScope, _ time.Time) (map[model.ProviderKeyID]map[model.LLMModelID]port.PlanUsageTotals, error) {
 	s.byKeyReads++
+	s.scopes = append(s.scopes, scope)
 	result := map[model.ProviderKeyID]map[model.LLMModelID]port.PlanUsageTotals{}
 	for _, byKey := range s.value {
 		for key, v := range byKey {
@@ -344,5 +348,84 @@ func TestSubscriptionEnforcer_PoolLeavesFullKeysOutOfTheFallbacks(t *testing.T) 
 	fallbacks, _ := req.Metadata[metaProviderKeyFallbacks].([]model.ProviderKeyID)
 	if !slices.Equal(fallbacks, []model.ProviderKeyID{"k3"}) {
 		t.Errorf("fallbacks = %q, want k3 alone: the provider's own key is used up", fallbacks)
+	}
+}
+
+func TestSubscriptionEnforcer_PoolHoldsEachKeyToItsOwnBudget(t *testing.T) {
+	f := newPoolFixture(t, 0)
+	larger := int64(20_000_000)
+	f.provider.SetExtraAPIKeys([]model.ProviderKey{
+		{ID: "k2", Label: "member 2", APIKey: "key2", Overrides: map[string]model.PlanConstraintOverride{"5h": {ValueBudget: &larger}}},
+		{ID: "k3", Label: "member 3", APIKey: "key3"},
+	})
+	f.consume("alice", "k2", 15_000_000)
+	f.consume("bob", model.PrimaryProviderKey, 10_000_000)
+	f.consume("carol", "k3", 10_000_000)
+
+	req, msg := f.check(t, "alice")
+	if msg != "" {
+		t.Fatalf("alice denied (%q), want granted: k2 holds 20$, 5$ of which are left", msg)
+	}
+	if key := chosenKey(t, req); key != "k2" {
+		t.Errorf("alice on %q, want k2, the only key with room left", key)
+	}
+
+	f.consume("alice", "k2", 5_000_000)
+	if _, msg := f.check(t, "alice"); msg == "" {
+		t.Error("alice granted, want denied: every key, k2's 20$ included, is used up")
+	}
+}
+
+func TestSubscriptionEnforcer_PoolCountsAMovedKeyInItsOwnWindow(t *testing.T) {
+	f := newPoolFixture(t, 0)
+	moved := time.Now().Add(-time.Hour)
+	f.provider.SetExtraAPIKeys([]model.ProviderKey{
+		{ID: "k2", Label: "member 2", APIKey: "key2", Overrides: map[string]model.PlanConstraintOverride{"5h": {WindowAnchor: &moved}}},
+		{ID: "k3", Label: "member 3", APIKey: "key3"},
+	})
+
+	if _, msg := f.check(t, "alice"); msg != "" {
+		t.Fatalf("alice denied (%q), want granted", msg)
+	}
+	if len(f.usage.scopes) == 0 {
+		t.Fatal("no plan read")
+	}
+	for _, scope := range f.usage.scopes {
+		if start, ok := scope.KeyWindows["k2"]; !ok || !start.Equal(moved) || len(scope.KeyWindows) != 1 {
+			t.Errorf("read on %v, want k2 counted from its own window, the other keys from the plan's", scope.KeyWindows)
+		}
+	}
+}
+
+func TestSubscriptionEnforcer_PoolSkipsTheKeysUsageOfAWindowWithoutBudget(t *testing.T) {
+	f := newPoolFixture(t, 0)
+	f.provider.SetSubscriptionPlan(&model.SubscriptionPlan{Label: "Go", Constraints: []model.PlanConstraint{{
+		Kind: model.ConstraintRollingWindow, Label: "5h", Duration: model.PlanDuration(5 * time.Hour),
+	}}})
+
+	if _, msg := f.check(t, "alice"); msg != "" {
+		t.Fatalf("alice denied (%q), want granted", msg)
+	}
+	if f.usage.byKeyReads != 0 {
+		t.Errorf("%d reads of the keys' usage, want none: no key holds a budget on the window", f.usage.byKeyReads)
+	}
+}
+
+func TestSubscriptionEnforcer_PoolHoldsKeysToABudgetSetPerModelOnly(t *testing.T) {
+	// A per-model window whose budget lives in its model budgets alone.
+	f := newPoolFixture(t, 0)
+	kimi := int64(10_000_000)
+	f.provider.SetSubscriptionPlan(&model.SubscriptionPlan{Label: "Go", Constraints: []model.PlanConstraint{{
+		Kind: model.ConstraintRollingWindow, Label: "5h", Duration: model.PlanDuration(5 * time.Hour),
+		Scope: model.PlanScopeModel, ModelBudgets: map[string]model.PlanBudget{"kimi-k3": {ValueBudget: &kimi}},
+	}}})
+	f.consume("alice", "k2", 10_000_000)
+
+	req, msg := f.check(t, "alice")
+	if msg != "" {
+		t.Fatalf("alice denied (%q), want granted on another key", msg)
+	}
+	if key := chosenKey(t, req); key == "k2" {
+		t.Error("alice kept on k2, want moved off it: kimi-k3's budget is used up there")
 	}
 }

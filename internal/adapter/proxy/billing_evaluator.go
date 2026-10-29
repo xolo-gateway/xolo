@@ -32,6 +32,9 @@ type planScope struct {
 	// reads the upstream model, hence the weight, of each model consumed.
 	// Unused by the other constraints.
 	Models []model.LLMModel
+	// KeyWindows are, per constraint label, the window starts of the keys of a
+	// pool whose window an override moves (see model.KeyWindows).
+	KeyWindows map[string]map[model.ProviderKeyID]time.Time
 	// ByKey narrows the scope to one API key of the provider, KeyID, when the
 	// provider spreads its plan over several keys. A constraint is then checked
 	// against that key's usage and budget alone: the users' shares are decided
@@ -44,7 +47,7 @@ type planScope struct {
 // requested upstream model alone for a per-model constraint, narrowed to one
 // API key of the provider when the scope is.
 func (s planScope) usageScope(c model.PlanConstraint) model.PlanUsageScope {
-	scope := model.PlanUsageScope{OrgID: s.OrgID, ProviderID: s.ProviderID, ByKey: s.ByKey, KeyID: s.KeyID}
+	scope := model.PlanUsageScope{OrgID: s.OrgID, ProviderID: s.ProviderID, ByKey: s.ByKey, KeyID: s.KeyID, KeyWindows: s.KeyWindows[c.Label]}
 	if c.PerModel() {
 		scope.ModelIDs = s.ModelIDs
 	}
@@ -186,6 +189,7 @@ func (e *rollingWindowEvaluator) Acquire(ctx context.Context, scope planScope, c
 			OrgID:       scope.OrgID,
 			ProviderID:  scope.ProviderID,
 			ModelIDs:    usage.ModelIDs,
+			KeyWindows:  usage.KeyWindows,
 			UserID:      scope.UserID,
 			MemberCount: scope.MemberCount,
 			Constraint:  c,
@@ -252,29 +256,26 @@ func budgetDenial(scope planScope, c model.PlanConstraint, name string, tokens, 
 }
 
 // keysUsage reads, in one aggregation, the consumption of a constraint in its
-// current window on every API key of a pool, weighed like planUsage for a
-// shared constraint. Keys without usage are absent.
-func (e *rollingWindowEvaluator) keysUsage(ctx context.Context, scope planScope, c model.PlanConstraint) (map[model.ProviderKeyID]service.PlanUsage, error) {
+// current window on every API key of a pool, model by model, each key in its
+// own window. Keys without usage are absent.
+func (e *rollingWindowEvaluator) keysUsage(ctx context.Context, scope planScope, c model.PlanConstraint) (map[model.ProviderKeyID]map[model.LLMModelID]port.PlanUsageTotals, error) {
 	usage := scope.usageScope(c)
 	usage.ByKey, usage.KeyID = false, ""
-	byKey, err := e.usageStore.SumPlanUsageByKeySince(ctx, usage, c.CurrentWindowStart(time.Now()))
-	if err != nil {
-		return nil, err
+	return e.usageStore.SumPlanUsageByKeySince(ctx, usage, c.CurrentWindowStart(time.Now()))
+}
+
+// keyUsage totals what a key consumed of a constraint, weighed like planUsage
+// when the constraint is shared.
+func keyUsage(c model.PlanConstraint, models []model.LLMModel, byModel map[model.LLMModelID]port.PlanUsageTotals) service.PlanUsage {
+	if c.Shared() {
+		return service.WeighSharedPlanUsage(c, models, byModel)
 	}
-	result := make(map[model.ProviderKeyID]service.PlanUsage, len(byKey))
-	for key, byModel := range byKey {
-		if c.Shared() {
-			result[key] = service.WeighSharedPlanUsage(c, scope.Models, byModel)
-			continue
-		}
-		var total service.PlanUsage
-		for _, t := range byModel {
-			total.Tokens += t.Tokens
-			total.Value += t.Value
-		}
-		result[key] = total
+	var total service.PlanUsage
+	for _, t := range byModel {
+		total.Tokens += t.Tokens
+		total.Value += t.Value
 	}
-	return result, nil
+	return total
 }
 
 // fillRatio is how much of a constraint's budget a consumption fills, the

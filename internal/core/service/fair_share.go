@@ -25,7 +25,10 @@ type FairShareRequest struct {
 	// ModelIDs narrows the plan to these models, for a per-model constraint:
 	// the budget, the consumption and the competing users are then those of
 	// one upstream model. Empty means the whole provider.
-	ModelIDs    []model.LLMModelID
+	ModelIDs []model.LLMModelID
+	// KeyWindows are the window starts of the keys of a pool whose window is
+	// moved (see model.PlanUsageScope.KeyWindows).
+	KeyWindows  map[model.ProviderKeyID]time.Time
 	UserID      model.UserID
 	MemberCount int
 	Constraint  model.PlanConstraint
@@ -43,7 +46,7 @@ type FairShareRequest struct {
 }
 
 func (r FairShareRequest) usageScope() model.PlanUsageScope {
-	return model.PlanUsageScope{OrgID: r.OrgID, ProviderID: r.ProviderID, ModelIDs: r.ModelIDs}
+	return model.PlanUsageScope{OrgID: r.OrgID, ProviderID: r.ProviderID, ModelIDs: r.ModelIDs, KeyWindows: r.KeyWindows}
 }
 
 // PlanUsage is the plan-wide consumption of a window.

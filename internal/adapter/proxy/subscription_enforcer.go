@@ -121,7 +121,18 @@ func (e *XoloSubscriptionEnforcer) PreRequest(ctx context.Context, req *genaiPro
 	// left (see pickKey).
 	keys := model.ProviderKeyIDs(p)
 	pooled := len(keys) > 1
-	shared := plan.Pooled(len(keys))
+	shared := model.PooledPlan(p)
+	if pooled {
+		now := time.Now()
+		for _, c := range plan.Constraints {
+			if windows := model.KeyWindows(p, c.Label, now); windows != nil {
+				if scope.KeyWindows == nil {
+					scope.KeyWindows = map[string]map[model.ProviderKeyID]time.Time{}
+				}
+				scope.KeyWindows[c.Label] = windows
+			}
+		}
+	}
 
 	// Check cooldowns first (fast path, no DB). The keys of a pool are checked
 	// one by one when one is picked.
@@ -166,7 +177,7 @@ func (e *XoloSubscriptionEnforcer) PreRequest(ctx context.Context, req *genaiPro
 	}
 
 	if pooled {
-		chosen, fallbacks, denial, err := e.pickKey(ctx, scope, plan, keys)
+		chosen, fallbacks, denial, err := e.pickKey(ctx, scope, p, keys)
 		if err != nil {
 			releaseAll(ctx, reservations)
 			return nil, errors.WithStack(err)
@@ -194,9 +205,9 @@ func (e *XoloSubscriptionEnforcer) PreRequest(ctx context.Context, req *genaiPro
 // so the users arriving on an idle plan spread over the keys. The fallbacks
 // are the other keys with room left, in the same order.
 //
-// The plan is the provider's own, applied to each key; the users' shares were
+// Each key is held to its own plan (model.KeyPlan); the users' shares were
 // already decided on the pool.
-func (e *XoloSubscriptionEnforcer) pickKey(ctx context.Context, scope planScope, plan *model.SubscriptionPlan, keys []model.ProviderKeyID) (model.ProviderKeyID, []model.ProviderKeyID, *planDenial, error) {
+func (e *XoloSubscriptionEnforcer) pickKey(ctx context.Context, scope planScope, p model.Provider, keys []model.ProviderKeyID) (model.ProviderKeyID, []model.ProviderKeyID, *planDenial, error) {
 	sticky, hasSticky := model.ProviderKeyID(""), false
 	if scope.UserID != "" {
 		last, ok, err := e.usageStore.LastPlanUsageKey(ctx, model.PlanUsageScope{OrgID: scope.OrgID, ProviderID: scope.ProviderID}, scope.UserID)
@@ -210,7 +221,7 @@ func (e *XoloSubscriptionEnforcer) pickKey(ctx context.Context, scope planScope,
 		sticky = last
 	}
 
-	states, err := e.keyStates(ctx, scope, plan, keys)
+	states, err := e.keyStates(ctx, scope, p, keys)
 	if err != nil {
 		return "", nil, nil, err
 	}
@@ -253,22 +264,23 @@ type keyState struct {
 	denial *planDenial
 }
 
-// keyStates measures every key of a pool, with one read per rolling window
-// for all the keys together. The concurrency constraints are held on the pool
-// only.
-func (e *XoloSubscriptionEnforcer) keyStates(ctx context.Context, scope planScope, plan *model.SubscriptionPlan, keys []model.ProviderKeyID) (map[model.ProviderKeyID]keyState, error) {
+// keyStates measures every key of a pool against its own plan, with one read
+// per rolling window for all the keys together, each key in its own window.
+// The concurrency constraints are held on the pool only.
+func (e *XoloSubscriptionEnforcer) keyStates(ctx context.Context, scope planScope, p model.Provider, keys []model.ProviderKeyID) (map[model.ProviderKeyID]keyState, error) {
+	plans := make(map[model.ProviderKeyID]*model.SubscriptionPlan, len(keys))
+	for _, key := range keys {
+		plans[key] = model.KeyPlan(p, key)
+	}
 	states := make(map[model.ProviderKeyID]keyState, len(keys))
-	for _, c := range plan.Constraints {
-		if c.PerModel() {
-			if scope.UpstreamModel == "" {
-				continue
-			}
-			c = c.ForModel(scope.UpstreamModel)
+	for i, c := range p.SubscriptionPlan().Constraints {
+		if c.PerModel() && scope.UpstreamModel == "" {
+			continue
 		}
-		var usage map[model.ProviderKeyID]service.PlanUsage
-		if c.Kind == model.ConstraintRollingWindow && c.Duration.Duration() > 0 && (c.TokenBudget != nil || c.ValueBudget != nil) {
+		var usage map[model.ProviderKeyID]map[model.LLMModelID]port.PlanUsageTotals
+		if c.Kind == model.ConstraintRollingWindow && c.Duration.Duration() > 0 && anyBudget(plans, i, scope.UpstreamModel) {
 			var err error
-			if usage, err = e.rolling.keysUsage(ctx, scope, c); err != nil {
+			if usage, err = e.rolling.keysUsage(ctx, scope, c.ForModel(scope.UpstreamModel)); err != nil {
 				return nil, err
 			}
 		}
@@ -277,18 +289,39 @@ func (e *XoloSubscriptionEnforcer) keyStates(ctx context.Context, scope planScop
 			if state.denial != nil {
 				continue
 			}
+			kc := plans[key].Constraints[i]
+			if kc.PerModel() {
+				kc = kc.ForModel(scope.UpstreamModel)
+			}
 			keyScope := scope.forKey(key)
 			if e.state.IsKeyExhausted(scope.OrgID, scope.ProviderID, key, c.Label, cooldownModel(c, scope.UpstreamModel)) {
-				state.denial = &planDenial{Message: "plan quota in cooldown [" + keyScope.constraintName(c) + "]: upstream provider reported exhaustion"}
-			} else if usage != nil {
-				u := usage[key]
-				state.denial = budgetDenial(keyScope, c, keyScope.constraintName(c), u.Tokens, u.Value)
-				state.fill = max(state.fill, fillRatio(c, u))
+				state.denial = &planDenial{Message: "plan quota in cooldown [" + keyScope.constraintName(kc) + "]: upstream provider reported exhaustion"}
+			} else if usage != nil && (kc.TokenBudget != nil || kc.ValueBudget != nil) {
+				u := keyUsage(kc, scope.Models, usage[key])
+				state.denial = budgetDenial(keyScope, kc, keyScope.constraintName(kc), u.Tokens, u.Value)
+				state.fill = max(state.fill, fillRatio(kc, u))
 			}
 			states[key] = state
 		}
 	}
 	return states, nil
+}
+
+// anyBudget reports whether one of the keys' plans holds a budget on its i-th
+// constraint, as it applies to the requested upstream model, without which
+// its usage is not worth reading. A per-model window may hold its budgets in
+// its model budgets alone.
+func anyBudget(plans map[model.ProviderKeyID]*model.SubscriptionPlan, i int, upstreamModel string) bool {
+	for _, plan := range plans {
+		c := plan.Constraints[i]
+		if c.PerModel() {
+			c = c.ForModel(upstreamModel)
+		}
+		if c.TokenBudget != nil || c.ValueBudget != nil {
+			return true
+		}
+	}
+	return false
 }
 
 // MarkKeyExhausted puts in cooldown an API key a request moved away from after
