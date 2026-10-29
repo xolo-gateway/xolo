@@ -95,6 +95,7 @@ templ ModelForm(vmodel ModelFormVModel) {
 												"data-msg-not-found":     i18n.T(ctx, "org.model.prefill_not_found"),
 												"data-msg-prices-vary":   i18n.T(ctx, "org.model.prefill_prices_vary"),
 												"data-msg-estimated":     i18n.T(ctx, "org.model.prefill_estimated"),
+												"data-field-labels":      catalogFieldLabels(ctx, vmodel.Provider.Currency()),
 												"data-xolo-catalog":      "",
 											},
 										}) {

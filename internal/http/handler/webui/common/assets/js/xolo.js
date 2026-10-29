@@ -397,7 +397,16 @@
       var notes = [];
       if (entry.prices_vary) notes.push(button.dataset.msgPricesVary);
       if (entry.estimated && entry.estimated.length) {
-        notes.push(button.dataset.msgEstimated + " " + entry.estimated.join(", "));
+        var labels = {};
+        try {
+          labels = JSON.parse(button.dataset.fieldLabels || "{}");
+        } catch (e) {}
+        var names = [];
+        entry.estimated.forEach(function (field) {
+          var name = labels[field] || field;
+          if (names.indexOf(name) < 0) names.push(name);
+        });
+        notes.push(button.dataset.msgEstimated + "\n- " + names.join("\n- "));
       }
       if (notes.length) window.alert(notes.join("\n\n"));
     } finally {

@@ -1,6 +1,12 @@
 package component
 
-import "github.com/xolo-gateway/xolo/internal/catalog"
+import (
+	"context"
+	"encoding/json"
+
+	"github.com/xolo-gateway/xolo/internal/catalog"
+	"github.com/xolo-gateway/xolo/internal/i18n"
+)
 
 // catalogProvidersSuggestedFirst lists the providers of c, the suggested one
 // first.
@@ -14,4 +20,22 @@ func catalogProvidersSuggestedFirst(c *catalog.Catalog, suggested string) []cata
 		providers = append(providers, p)
 	}
 	return providers
+}
+
+// catalogFieldLabels names, for the pre-fill's alert, the model form fields
+// the catalog lookup reports as estimated.
+func catalogFieldLabels(ctx context.Context, currency string) string {
+	labels := map[string]string{
+		"context_window":     i18n.T(ctx, "org.model.context_output"),
+		"output_window":      i18n.T(ctx, "org.model.context_output"),
+		"active_params":      i18n.T(ctx, "org.model.active_params"),
+		"prompt_cost":        i18n.T(ctx, "org.model.prompt_cost", currency),
+		"cached_prompt_cost": i18n.T(ctx, "org.model.cached_prompt_cost", currency),
+		"completion_cost":    i18n.T(ctx, "org.model.completion_cost", currency),
+	}
+	data, err := json.Marshal(labels)
+	if err != nil {
+		return "{}"
+	}
+	return string(data)
 }
