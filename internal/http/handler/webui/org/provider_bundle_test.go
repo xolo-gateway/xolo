@@ -514,8 +514,8 @@ func TestCatalogImport_RefusesAReleaseWhoseBundleDoesNotValidate(t *testing.T) {
 	fields := url.Values{"catalog_provider": {"acme"}, "plan": {"none"}}
 	rr := httptest.NewRecorder()
 	h.previewCatalogImport(rr, bundleRequest(t, s, tenant, string(s.provider.ID()), bytes.NewBufferString(fields.Encode()), "application/x-www-form-urlencoded"))
-	if rr.Code != http.StatusUnprocessableEntity || !strings.Contains(stdhtml.UnescapeString(rr.Body.String()), "v-invalid") {
-		t.Errorf("status %d, want 422 naming the release rather than a dry run the apply would refuse", rr.Code)
+	if page := stdhtml.UnescapeString(rr.Body.String()); rr.Code != http.StatusUnprocessableEntity || !strings.Contains(page, "v-invalid") || !strings.Contains(page, "no-such-type") {
+		t.Errorf("status %d, want 422 naming the release and the entry at fault rather than a dry run the apply would refuse", rr.Code)
 	}
 }
 

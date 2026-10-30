@@ -688,7 +688,6 @@
   "org.catalog_import.budgets_dropped": "Sus presupuestos en las restricciones por modelo se retiran del plan; los de una restricción compartida se mantienen, pues ponderan los modelos que no lista.",
   "org.errors.catalog_import.unavailable": "No se puede leer el catálogo de modelos en este momento: inténtelo más tarde.",
   "org.errors.catalog_import.unknown": "Este proveedor o plan no está en el catálogo de modelos.",
-  "org.errors.catalog_import.invalid": "La versión %s del catálogo no se puede importar: una de sus entradas está mal formada. Inténtelo de nuevo cuando se publique una versión corregida.",
   "org.errors.catalog_import.invalid_entry": "La versión %s del catálogo no se puede importar: %s. Inténtelo de nuevo cuando se publique una versión corregida.",
   "org.model.prefill_no_rate": "Los precios no se rellenaron: no hay tipo de cambio disponible para convertirlos a la moneda del proveedor.",
   "org.errors.catalog_import.no_rate": "El catálogo publica estos precios en %s y no hay tipo de cambio a %s disponible: inténtelo más tarde.",
