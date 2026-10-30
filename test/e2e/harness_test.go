@@ -22,6 +22,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 	"sync"
@@ -344,6 +345,14 @@ type chatRequest struct {
 	Raw string `json:"-"`
 	// Header keeps the request headers, for the Messages endpoint only.
 	Header http.Header `json:"-"`
+	Stream bool        `json:"stream"`
+	Tools  []struct {
+		// Name is an Anthropic tool's, Function.Name an OpenAI one's.
+		Name     string `json:"name"`
+		Function struct {
+			Name string `json:"name"`
+		} `json:"function"`
+	} `json:"tools"`
 }
 
 type chatMessage struct {
@@ -425,6 +434,11 @@ func (p *fakeProvider) handleChat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if req.Stream && len(req.Tools) > 0 {
+		p.streamToolCall(w, req)
+		return
+	}
+
 	answer := "Bien reçu : " + lastUserText(req.Messages)
 	resp := map[string]any{
 		"id":      "chatcmpl-e2e",
@@ -440,6 +454,96 @@ func (p *fakeProvider) handleChat(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(resp)
+}
+
+// placeholderPattern matches a pseudonymizer placeholder, ⟦LABEL_index_nonce⟧.
+var placeholderPattern = regexp.MustCompile(`⟦[A-Z_]+_[0-9]+_[0-9a-f]+⟧`)
+
+// streamToolCall answers a streamed request offering tools the way a model
+// acts on what it read: a call to the first tool, its arguments quoting the
+// first placeholder of the request after a sentence naming it, streamed in
+// fragments that split the placeholder.
+func (p *fakeProvider) streamToolCall(w http.ResponseWriter, req chatRequest) {
+	placeholder := placeholderPattern.FindString(req.Raw)
+	args := string(mustJSON(map[string]any{"query": "SELECT * FROM clients WHERE nom = '" + placeholder + "'"}))
+	cut := strings.Index(args, "⟦") + len("⟦") + 3
+	if cut < len("⟦")+3 || cut > len(args) {
+		cut = len(args) / 2
+	}
+
+	chunk := func(delta map[string]any, finish any, usage any) map[string]any {
+		c := map[string]any{
+			"id": "chatcmpl-e2e-tool", "object": "chat.completion.chunk", "created": time.Now().Unix(), "model": req.Model,
+			"choices": []map[string]any{{"index": 0, "delta": delta, "finish_reason": finish}},
+		}
+		if usage != nil {
+			c["usage"] = usage
+		}
+		return c
+	}
+	toolDelta := func(call map[string]any) map[string]any {
+		call["index"] = 0
+		return map[string]any{"tool_calls": []map[string]any{call}}
+	}
+	chunks := []map[string]any{
+		chunk(map[string]any{"role": "assistant", "content": ""}, nil, nil),
+		chunk(map[string]any{"content": "Je cherche " + placeholder + "."}, nil, nil),
+		chunk(toolDelta(map[string]any{"id": "call_e2e", "type": "function",
+			"function": map[string]any{"name": req.Tools[0].Function.Name, "arguments": ""}}), nil, nil),
+		chunk(toolDelta(map[string]any{"function": map[string]any{"arguments": args[:cut]}}), nil, nil),
+		chunk(toolDelta(map[string]any{"function": map[string]any{"arguments": args[cut:]}}), nil, nil),
+		chunk(map[string]any{}, "tool_calls", map[string]any{"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15}),
+	}
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.WriteHeader(http.StatusOK)
+	flusher, _ := w.(http.Flusher)
+	for _, c := range chunks {
+		fmt.Fprintf(w, "data: %s\n\n", mustJSON(c))
+		if flusher != nil {
+			flusher.Flush()
+		}
+	}
+	fmt.Fprint(w, "data: [DONE]\n\n")
+}
+
+// streamToolUse answers a Messages request offering tools like
+// streamToolCall: a tool_use block whose input quotes the first placeholder
+// of the request, streamed in fragments that split it.
+func (p *fakeProvider) streamToolUse(w http.ResponseWriter, req chatRequest) {
+	placeholder := placeholderPattern.FindString(req.Raw)
+	input := string(mustJSON(map[string]any{"query": "SELECT * FROM clients WHERE nom = '" + placeholder + "'"}))
+	cut := strings.Index(input, "⟦") + len("⟦") + 3
+	if cut < len("⟦")+3 || cut > len(input) {
+		cut = len(input) / 2
+	}
+
+	events := []map[string]any{
+		{"type": "message_start", "message": map[string]any{
+			"id": "msg_e2e_tool", "type": "message", "role": "assistant", "model": req.Model,
+			"content": []any{}, "stop_reason": nil, "stop_sequence": nil,
+			"usage": map[string]any{"input_tokens": fakeMessagesInputTokens, "output_tokens": 1},
+		}},
+		{"type": "content_block_start", "index": 0, "content_block": map[string]any{
+			"type": "tool_use", "id": "toolu_e2e", "name": req.Tools[0].Name, "input": map[string]any{},
+		}},
+		{"type": "content_block_delta", "index": 0, "delta": map[string]any{"type": "input_json_delta", "partial_json": input[:cut]}},
+		{"type": "content_block_delta", "index": 0, "delta": map[string]any{"type": "input_json_delta", "partial_json": input[cut:]}},
+		{"type": "content_block_stop", "index": 0},
+		{"type": "message_delta", "delta": map[string]any{"stop_reason": "tool_use", "stop_sequence": nil},
+			"usage": map[string]any{"output_tokens": fakeMessagesOutputTokens}},
+		{"type": "message_stop"},
+	}
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.WriteHeader(http.StatusOK)
+	flusher, _ := w.(http.Flusher)
+	for _, ev := range events {
+		fmt.Fprintf(w, "event: %s\ndata: %s\n\n", ev["type"], mustJSON(ev))
+		if flusher != nil {
+			flusher.Flush()
+		}
+	}
 }
 
 // handleMessages answers an Anthropic Messages request with the SSE stream
@@ -484,6 +588,11 @@ func (p *fakeProvider) handleMessages(w http.ResponseWriter, r *http.Request) {
 			"type":   "dangerous_tool_use",
 			"status": map[string]any{"type": "available", "tool_uses": map[string]any{}},
 		}}
+	}
+
+	if len(req.Tools) > 0 {
+		p.streamToolUse(w, req)
+		return
 	}
 
 	answer := "Bien reçu : " + lastUserText(req.Messages)

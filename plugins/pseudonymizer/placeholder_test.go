@@ -346,8 +346,11 @@ func TestChainedNodes_EachRestoresItsOwnPlaceholders(t *testing.T) {
 	outerMessages = append(outerMessages, map[string]any{"role": "user", "content": "Et en copie " + innerSecret})
 	innerOut, innerHost := preRequestOnNode(t, "node-inner", outerMessages)
 
-	outerPlaceholder := "⟦EMAIL_1_" + nodeNonce("node-outer") + "⟧"
-	innerPlaceholder := "⟦EMAIL_1_" + nodeNonce("node-inner") + "⟧"
+	outerPlaceholder := placeholderOf(t, outerOut.NodeState, agentBlockSecret)
+	innerPlaceholder := placeholderOf(t, innerOut.NodeState, innerSecret)
+	if !strings.HasSuffix(outerPlaceholder, "_"+nodeNonce("node-outer")+"⟧") || !strings.HasSuffix(innerPlaceholder, "_"+nodeNonce("node-inner")+"⟧") {
+		t.Fatalf("placeholders %s and %s do not carry their node's nonce", outerPlaceholder, innerPlaceholder)
+	}
 	for _, placeholder := range []string{outerPlaceholder, innerPlaceholder} {
 		if !strings.Contains(innerOut.ModifiedMessagesJson, placeholder) {
 			t.Fatalf("the model does not see %s: %s", placeholder, innerOut.ModifiedMessagesJson)
@@ -365,6 +368,22 @@ func TestChainedNodes_EachRestoresItsOwnPlaceholders(t *testing.T) {
 		t.Errorf("restored = %q, want %q", fromOuter.ModifiedResponseContent, want)
 	}
 	innerBackHost.assertNoEventOfType(t, eventPlaceholdersNeutralized)
+}
+
+// placeholderOf is the placeholder a node's state maps to value.
+func placeholderOf(t *testing.T, nodeState []byte, value string) string {
+	t.Helper()
+	var state pluginState
+	if err := json.Unmarshal(nodeState, &state); err != nil {
+		t.Fatal(err)
+	}
+	for placeholder, original := range state.Mapping {
+		if original == value {
+			return placeholder
+		}
+	}
+	t.Fatalf("no placeholder for %q in %v", value, state.Mapping)
+	return ""
 }
 
 // regexOnlyRecognizer finds the identifiers and secrets go-anon knows by

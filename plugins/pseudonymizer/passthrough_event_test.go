@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"testing"
 
 	"github.com/bornholm/go-anon/pkg/ner"
@@ -121,5 +122,44 @@ func TestSummarizeEntities(t *testing.T) {
 	}
 	if got := summarizeEntities(map[string]int{}); got != "" {
 		t.Errorf("summarizeEntities(empty) = %q, want empty", got)
+	}
+}
+
+// failingSecretsHost is a host whose secret store answers an error.
+type failingSecretsHost struct {
+	*fakeUIHost
+}
+
+func (failingSecretsHost) GetSecret(context.Context, string, string, string, string) (string, bool, error) {
+	return "", false, errors.New("secret store unavailable")
+}
+
+func TestPreRequest_IndexKeyUnavailable_EmitsEvent(t *testing.T) {
+	// Without its index key the node still serves the request, its
+	// placeholders numbered in order of appearance, and says so.
+	host := &captureHost{HostClient: failingSecretsHost{newFakeUIHost()}}
+	p := newPlugin()
+	host.attachTo(p)
+
+	msgs, err := json.Marshal([]map[string]any{{"role": "user", "content": "Bonjour, je m'appelle Jean Dupont."}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, err := p.PreRequest(context.Background(), &proto.PreRequestInput{
+		Ctx:          &proto.RequestContext{OrgId: "org-1", UserId: "user-1", NodeId: "node-1", ConfigJson: `{"language":"fr"}`},
+		MessagesJson: string(msgs),
+	})
+	if err != nil {
+		t.Fatalf("PreRequest: %v", err)
+	}
+	if !out.Allowed {
+		t.Fatalf("expected the request to be served, got %+v", out)
+	}
+	evt := host.waitForEventOfType(t, eventIndexKeyUnavailable)
+	if evt.Severity != "warning" {
+		t.Errorf("severity = %q, want warning", evt.Severity)
+	}
+	if evt.Attributes["error"] == "" {
+		t.Error("error attribute missing")
 	}
 }

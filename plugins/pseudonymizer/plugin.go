@@ -39,6 +39,8 @@ type Plugin struct {
 	hostMu     sync.Mutex
 	hostClient pluginsdk.HostClient
 
+	indexKeys indexKeys
+
 	// emitting counts the emitEvent calls still under way, for a test to
 	// assert an event was not emitted without guessing how long to wait.
 	emitting sync.WaitGroup
@@ -275,6 +277,31 @@ func (p *Plugin) PreRequest(ctx context.Context, in *proto.PreRequestInput) (*pr
 			RejectionReason: "Requête refusée par le pseudonymiseur : " + err.Error() + ". Contactez l'administrateur de l'organisation.",
 		}, nil
 	}
+	var keyStore indexKeyStore
+	if host := p.getHostClient(); host != nil {
+		keyStore = host
+	}
+	if indexOpt, err := p.indexKeys.indexKeyOption(ctx, cfg, in.GetCtx(), keyStore); err != nil {
+		// The request is still served, its placeholders numbered in order of
+		// appearance: a placeholder kept from an earlier turn may then be
+		// restored to another entity (#56).
+		slog.WarnContext(ctx, "pseudonymizer: placeholder indexes follow the order of appearance, no index key", slog.Any("error", err))
+		p.emitEvent(pluginsdk.Event{
+			PluginName: "pseudonymizer",
+			OrgID:      in.GetCtx().GetOrgId(),
+			UserID:     in.GetCtx().GetUserId(),
+			Type:       eventIndexKeyUnavailable,
+			Severity:   "warning",
+			Message:    "Jetons numérotés dans l'ordre d'apparition, clé d'index indisponible : " + err.Error(),
+			Attributes: map[string]string{
+				"error":    err.Error(),
+				"strategy": cfg.Strategy,
+			},
+		})
+	} else if indexOpt != nil {
+		anonymOpts = append(anonymOpts, indexOpt)
+	}
+
 	var (
 		removedParts         []removedPart
 		processedAttachments int

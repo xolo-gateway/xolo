@@ -123,3 +123,64 @@ func TestMessagesRoute_ClientSystemPromptWithoutARewritingNode(t *testing.T) {
 		t.Errorf("the system prompt is lost even with no rewriting node.\nsent: %s", upstream[0].Raw)
 	}
 }
+
+// postStreamedMessages posts a streamed request to the Anthropic Messages route and
+// returns the status and the raw server-sent events.
+func postStreamedMessages(t *testing.T, token string, body map[string]any) (int, string) {
+	t.Helper()
+
+	req, err := http.NewRequest(http.MethodPost, env.baseURL+"/api/v1/messages", bytes.NewReader(mustJSON(body)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("anthropic-version", "2023-06-01")
+
+	resp, err := (&http.Client{Timeout: 3 * time.Minute}).Do(req)
+	if err != nil {
+		t.Fatalf("messages request: %v", err)
+	}
+	defer resp.Body.Close()
+	raw, _ := io.ReadAll(resp.Body)
+	return resp.StatusCode, string(raw)
+}
+
+// toolUseInput reassembles the input of the tool_use blocks of a Messages
+// event stream from their input_json_delta fragments.
+func toolUseInput(t *testing.T, events string) string {
+	t.Helper()
+
+	toolUse := map[int]bool{}
+	var input strings.Builder
+	for _, line := range strings.Split(events, "\n") {
+		data, ok := strings.CutPrefix(line, "data:")
+		if !ok {
+			continue
+		}
+		var event struct {
+			Type         string `json:"type"`
+			Index        int    `json:"index"`
+			ContentBlock struct {
+				Type string `json:"type"`
+			} `json:"content_block"`
+			Delta struct {
+				Type        string `json:"type"`
+				PartialJSON string `json:"partial_json"`
+			} `json:"delta"`
+		}
+		if json.Unmarshal([]byte(strings.TrimSpace(data)), &event) != nil {
+			continue
+		}
+		switch {
+		case event.Type == "content_block_start" && event.ContentBlock.Type == "tool_use":
+			toolUse[event.Index] = true
+		case event.Delta.Type == "input_json_delta" && toolUse[event.Index]:
+			input.WriteString(event.Delta.PartialJSON)
+		}
+	}
+	if len(toolUse) == 0 {
+		t.Fatalf("no tool_use block in the stream:\n%s", events)
+	}
+	return input.String()
+}
