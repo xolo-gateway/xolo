@@ -1,6 +1,8 @@
 package component
 
 import (
+	"context"
+
 	common "github.com/xolo-gateway/xolo/internal/http/handler/webui/common/component"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/button"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/icon"
@@ -29,7 +31,7 @@ templ modelCatalogPanel(vmodel ModelFormVModel, readonly bool) {
 					for _, d := range vmodel.CatalogDivergences {
 						<li class="flex flex-wrap items-center justify-between gap-2 text-sm">
 							<span>
-								<span class="font-medium">{ providerBundleFieldLabel(ctx, d.Field) }</span>
+								<span class="font-medium">{ catalogValueLabel(ctx, d.Field) }</span>
 								{ " " }
 								<span class="text-muted-foreground">{ i18n.T(ctx, "org.model.catalog.values", d.Current, d.Catalog) }</span>
 							</span>
@@ -62,6 +64,25 @@ templ catalogEstimatedBadge(vmodel ModelFormVModel, fields ...string) {
 	if catalogEstimated(vmodel, fields...) {
 		@common.Badge(common.ToneInfo, i18n.T(ctx, "org.model.catalog.estimated"))
 	}
+}
+
+// catalogValueKeys names the catalog values that are one price, window or
+// throughput of a bundle field; the others are named like the bundle field.
+var catalogValueKeys = map[string]string{
+	"prompt_cost":         "org.model.catalog.value.prompt_cost",
+	"cached_prompt_cost":  "org.model.catalog.value.cached_prompt_cost",
+	"completion_cost":     "org.model.catalog.value.completion_cost",
+	"context_window":      "org.model.catalog.value.context_window",
+	"output_window":       "org.model.catalog.value.output_window",
+	"tokens_per_sec_low":  "org.model.catalog.value.tokens_per_sec_low",
+	"tokens_per_sec_high": "org.model.catalog.value.tokens_per_sec_high",
+}
+
+func catalogValueLabel(ctx context.Context, name string) string {
+	if key, ok := catalogValueKeys[name]; ok {
+		return i18n.T(ctx, key)
+	}
+	return providerBundleFieldLabel(ctx, name)
 }
 
 func catalogEstimated(vmodel ModelFormVModel, fields ...string) bool {

@@ -144,10 +144,10 @@ func TestModelForm_ShowsTheCatalogFollowUp(t *testing.T) {
 		t.Error("the form should say which catalog entry the model follows")
 	}
 	accept := "/models/" + string(m.ID()) + "/catalog/accept"
-	if !strings.Contains(page, accept) || !strings.Contains(page, `name="field" value="`+service.BundleFieldWindows+`"`) {
+	if !strings.Contains(page, accept) || !strings.Contains(page, `name="field" value="context_window"`) {
 		t.Error("the form should offer the catalog's window, which the operator changed")
 	}
-	if strings.Contains(page, `name="field" value="`+service.BundleFieldPrices+`"`) {
+	if strings.Contains(page, `name="field" value="prompt_cost"`) {
 		t.Error("the prices are the catalog's: nothing to offer")
 	}
 	// The active parameters hold the catalog's estimate; the window the
@@ -187,7 +187,7 @@ func TestModelForm_ShowsNoCatalogFollowUpForAModelWithoutOrigin(t *testing.T) {
 func TestAcceptCatalogValue_WritesTheCatalogValueOfTheField(t *testing.T) {
 	h, s, _, _, request := catalogModelFixture(t)
 	rr := httptest.NewRecorder()
-	h.acceptCatalogValue(rr, request(http.MethodPost, url.Values{"field": {service.BundleFieldWindows}}))
+	h.acceptCatalogValue(rr, request(http.MethodPost, url.Values{"field": {"context_window"}}))
 	if rr.Code != http.StatusSeeOther || !strings.HasSuffix(rr.Header().Get("Location"), "/edit?success=catalog_accepted") {
 		t.Fatalf("status = %d, location %q: %s", rr.Code, rr.Header().Get("Location"), rr.Body.String())
 	}
@@ -217,7 +217,7 @@ func TestDetachCatalogOrigin_ForgetsTheOrigin(t *testing.T) {
 	}
 	// A model without origin answers like a missing one.
 	rr = httptest.NewRecorder()
-	h.acceptCatalogValue(rr, request(http.MethodPost, url.Values{"field": {service.BundleFieldWindows}}))
+	h.acceptCatalogValue(rr, request(http.MethodPost, url.Values{"field": {"context_window"}}))
 	if rr.Code != http.StatusNotFound {
 		t.Fatalf("accept on a detached model = %d, want 404", rr.Code)
 	}

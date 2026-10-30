@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	stderrors "errors"
 	"log/slog"
 	"reflect"
 	"slices"
@@ -15,18 +16,70 @@ import (
 	"github.com/xolo-gateway/xolo/internal/core/port"
 )
 
-// catalogFollowedFields are the model fields the catalog gives, which
-// following it keeps up to date. The proxy name, the enabled flag, the token
-// limit and the extra body are the operator's alone.
-var catalogFollowedFields = []string{
-	BundleFieldDescription,
-	BundleFieldKind,
-	BundleFieldPrices,
-	BundleFieldWindows,
-	BundleFieldActiveParams,
-	BundleFieldThroughput,
-	BundleFieldCapabilities,
-	BundleFieldAPI,
+// catalogValue is one value the catalog gives a model, which following it
+// keeps up to date: a price or a window on its own, so that the operator's
+// change of one leaves the others followed. Group is the bundle field the
+// import writes it with.
+type catalogValue struct {
+	name  string
+	group string
+	get   func(m model.ProviderBundleModel) any
+	set   func(dst *model.ProviderBundleModel, src model.ProviderBundleModel)
+}
+
+// wholeField is a bundle field followed as one value.
+func wholeField(name string) catalogValue {
+	f := bundleField(name)
+	return catalogValue{name: name, group: name, get: f.get, set: f.set}
+}
+
+// catalogValues are the values following the catalog keeps up to date, named
+// after their model form field when they are one. The proxy name, the enabled
+// flag, the token limit and the extra body are the operator's alone.
+var catalogValues = []catalogValue{
+	wholeField(BundleFieldDescription),
+	wholeField(BundleFieldKind),
+	{"prompt_cost", BundleFieldPrices,
+		func(m model.ProviderBundleModel) any { return model.PricePerMillion(storedPrices(m.Prices)[0]) },
+		func(d *model.ProviderBundleModel, s model.ProviderBundleModel) { d.Prices.Input = s.Prices.Input }},
+	{"cached_prompt_cost", BundleFieldPrices,
+		func(m model.ProviderBundleModel) any { return model.PricePerMillion(storedPrices(m.Prices)[1]) },
+		func(d *model.ProviderBundleModel, s model.ProviderBundleModel) {
+			d.Prices.CachedInput = s.Prices.CachedInput
+		}},
+	{"completion_cost", BundleFieldPrices,
+		func(m model.ProviderBundleModel) any { return model.PricePerMillion(storedPrices(m.Prices)[2]) },
+		func(d *model.ProviderBundleModel, s model.ProviderBundleModel) { d.Prices.Output = s.Prices.Output }},
+	{"context_window", BundleFieldWindows,
+		func(m model.ProviderBundleModel) any { return m.ContextWindow },
+		func(d *model.ProviderBundleModel, s model.ProviderBundleModel) { d.ContextWindow = s.ContextWindow }},
+	{"output_window", BundleFieldWindows,
+		func(m model.ProviderBundleModel) any { return m.OutputWindow },
+		func(d *model.ProviderBundleModel, s model.ProviderBundleModel) { d.OutputWindow = s.OutputWindow }},
+	wholeField(BundleFieldActiveParams),
+	{"tokens_per_sec_low", BundleFieldThroughput,
+		func(m model.ProviderBundleModel) any { return m.TokensPerSecLow },
+		func(d *model.ProviderBundleModel, s model.ProviderBundleModel) { d.TokensPerSecLow = s.TokensPerSecLow }},
+	{"tokens_per_sec_high", BundleFieldThroughput,
+		func(m model.ProviderBundleModel) any { return m.TokensPerSecHigh },
+		func(d *model.ProviderBundleModel, s model.ProviderBundleModel) {
+			d.TokensPerSecHigh = s.TokensPerSecHigh
+		}},
+	wholeField(BundleFieldCapabilities),
+	wholeField(BundleFieldAPI),
+}
+
+func lookupCatalogValue(name string) (catalogValue, bool) {
+	for _, v := range catalogValues {
+		if v.name == name {
+			return v, true
+		}
+	}
+	return catalogValue{}, false
+}
+
+func (v catalogValue) same(a, b model.ProviderBundleModel) bool {
+	return reflect.DeepEqual(v.get(a), v.get(b))
 }
 
 func bundleField(name string) bundleModelField {
@@ -36,10 +89,6 @@ func bundleField(name string) bundleModelField {
 		}
 	}
 	panic("service: unknown bundle field " + name)
-}
-
-func sameField(f bundleModelField, a, b model.ProviderBundleModel) bool {
-	return reflect.DeepEqual(f.get(a), f.get(b))
 }
 
 // CatalogImport is the catalog entry the bundle of an import was converted
@@ -88,7 +137,9 @@ func (ci CatalogImport) Origin(raw, applied model.ProviderBundleModel) model.Cat
 // RecordCatalogOrigins records the origin of the models an import of ci
 // wrote, as planned by plan and applied with sel into result: the models it
 // created, the ones it updated, and the ones it found unchanged. A model it
-// failed to write, or the operator left out, gets none.
+// failed to write, or the operator left out, gets none. An origin the store
+// fails to record leaves that model out of following, not the others: the
+// failures are returned together.
 func RecordCatalogOrigins(ctx context.Context, store port.ProviderStore, origins port.CatalogOriginStore, ci CatalogImport, plan ProviderBundlePlan, sel BundleSelection, result BundleApplyResult) error {
 	if result.Provider == nil {
 		return nil
@@ -101,6 +152,7 @@ func RecordCatalogOrigins(ctx context.Context, store port.ProviderStore, origins
 	for _, f := range result.Failed {
 		failed[f.Index] = true
 	}
+	var errs []error
 	for _, mp := range plan.Models {
 		i := slices.IndexFunc(ci.Models, func(bm model.ProviderBundleModel) bool { return bm.RealModel == mp.Model.RealModel })
 		if i < 0 || failed[mp.Index] {
@@ -131,13 +183,13 @@ func RecordCatalogOrigins(ctx context.Context, store port.ProviderStore, origins
 		}
 		origin := ci.Origin(ci.Models[i], mp.Model)
 		if err := origins.SaveCatalogOrigin(ctx, id, &origin); err != nil {
-			return errors.WithStack(err)
+			errs = append(errs, errors.Wrapf(err, "model %s", mp.Model.ProxyName))
 		}
 	}
-	return nil
+	return stderrors.Join(errs...)
 }
 
-// CatalogDivergence is a field of a model that differs from its catalog
+// CatalogDivergence is a value of a model that differs from its catalog
 // value: the operator changed it, or the catalog changed it and the model
 // could not take it. Catalog is the catalog's value, in the provider's
 // currency.
@@ -147,17 +199,16 @@ type CatalogDivergence struct {
 	Catalog string
 }
 
-// CatalogDivergences lists the fields of m that differ from the catalog
-// values recorded in origin.
+// CatalogDivergences lists the values of m that differ from the catalog
+// values recorded in origin, each named as AcceptCatalogValue takes it.
 func CatalogDivergences(m model.LLMModel, origin model.CatalogOrigin) []CatalogDivergence {
 	current := model.BundleModelOf(m)
 	var divergences []CatalogDivergence
-	for _, name := range catalogFollowedFields {
-		f := bundleField(name)
-		if sameField(f, current, origin.Applied) {
+	for _, v := range catalogValues {
+		if v.same(current, origin.Applied) {
 			continue
 		}
-		divergences = append(divergences, CatalogDivergence{Field: name, Current: displayValue(f.get(current)), Catalog: displayValue(f.get(origin.Applied))})
+		divergences = append(divergences, CatalogDivergence{Field: v.name, Current: displayValue(v.get(current)), Catalog: displayValue(v.get(origin.Applied))})
 	}
 	return divergences
 }
@@ -169,35 +220,19 @@ func CatalogEstimated(m model.LLMModel, origin model.CatalogOrigin, formField st
 	if !slices.Contains(origin.Estimated, formField) {
 		return false
 	}
-	value, ok := formFieldValues[formField]
-	if !ok {
-		return false
-	}
-	return value(model.BundleModelOf(m)) == value(origin.Applied)
+	v, ok := lookupCatalogValue(formField)
+	return ok && v.same(model.BundleModelOf(m), origin.Applied)
 }
 
-// formFieldValues reads, in a bundle model, the value of each model form
-// field the catalog may estimate: one price or one window, not the group
-// the bundle import writes together.
-var formFieldValues = map[string]func(model.ProviderBundleModel) any{
-	"prompt_cost":         func(m model.ProviderBundleModel) any { return storedPrices(m.Prices)[0] },
-	"cached_prompt_cost":  func(m model.ProviderBundleModel) any { return storedPrices(m.Prices)[1] },
-	"completion_cost":     func(m model.ProviderBundleModel) any { return storedPrices(m.Prices)[2] },
-	"context_window":      func(m model.ProviderBundleModel) any { return m.ContextWindow },
-	"output_window":       func(m model.ProviderBundleModel) any { return m.OutputWindow },
-	"active_params":       func(m model.ProviderBundleModel) any { return m.ActiveParams },
-	"tokens_per_sec_low":  func(m model.ProviderBundleModel) any { return m.TokensPerSecLow },
-	"tokens_per_sec_high": func(m model.ProviderBundleModel) any { return m.TokensPerSecHigh },
-}
-
-// AcceptCatalogValue writes the catalog value of field to the model m, which
-// has the origin origin, through the bundle import: the same checks apply
-// as to an import, the kind served by the API among them. It returns
-// ErrInvalid when the field is not one the catalog gives, or when the
-// import refuses it.
+// AcceptCatalogValue writes the catalog value named value, as
+// CatalogDivergences names it, to the model m, which has the origin origin,
+// through the bundle import: the same checks apply as to an import, the kind
+// served by the API among them. The model's other values, even of the same
+// bundle field, are kept. It returns ErrInvalid when the value is not one the
+// catalog gives, or when the import refuses it.
 func AcceptCatalogValue(ctx context.Context, store port.ProviderStore, p model.Provider, m model.LLMModel, origin model.CatalogOrigin, field string) error {
-	if !slices.Contains(catalogFollowedFields, field) {
-		return errors.Wrapf(port.ErrInvalid, "%q is no field of the catalog", field)
+	if _, ok := lookupCatalogValue(field); !ok {
+		return errors.Wrapf(port.ErrInvalid, "%q is no value of the catalog", field)
 	}
 	result, err := applyCatalogFields(ctx, store, p, []catalogFieldWrite{{model: m, values: origin.Applied, fields: []string{field}}})
 	if err != nil {
@@ -212,14 +247,15 @@ func AcceptCatalogValue(ctx context.Context, store port.ProviderStore, p model.P
 	return nil
 }
 
-// catalogFieldWrite is the catalog values of fields to write to model.
+// catalogFieldWrite is the catalog values, named in fields, to write to
+// model.
 type catalogFieldWrite struct {
 	model  model.LLMModel
 	values model.ProviderBundleModel
 	fields []string
 }
 
-// applyCatalogFields writes the given fields of each model of p through the
+// applyCatalogFields writes the given values of each model of p through the
 // bundle import, so that the projections, the audit and the event feed see
 // them and the import's checks apply. The models keep their names: no write
 // renames one.
@@ -235,8 +271,9 @@ func applyCatalogFields(ctx context.Context, store port.ProviderStore, p model.P
 		bm := model.BundleModelOf(w.model)
 		fields := map[string]bool{}
 		for _, name := range w.fields {
-			bundleField(name).set(&bm, w.values)
-			fields[name] = true
+			v, _ := lookupCatalogValue(name)
+			v.set(&bm, w.values)
+			fields[v.group] = true
 		}
 		sel.Fields[len(bundle.Models)] = fields
 		bundle.Models = append(bundle.Models, bm)
@@ -282,7 +319,7 @@ type CatalogFollowReport struct {
 	Updated int
 	Fields  int
 	// Kept counts the catalog changes left out because the operator changed
-	// the field, or because the import refused them.
+	// the value, or because the import refused them.
 	Kept int
 	// Failed counts the models the store refused to write: they are
 	// compared with the release again next time.
@@ -375,10 +412,15 @@ func (f *CatalogFollower) followGroup(ctx context.Context, c *catalog.Catalog, p
 	if err != nil {
 		return errors.WithStack(err)
 	}
+	if p.Currency() == "" {
+		// Nothing tells the currency to write prices in: the catalog import
+		// refuses such a provider, and it stays as it is until it has one.
+		return nil
+	}
 	converted := tb.Bundle
 	converted.Models = slices.Clone(tb.Bundle.Models)
 	if p.Currency() != converted.Provider.Currency {
-		if f.rates == nil || p.Currency() == "" {
+		if f.rates == nil {
 			return errors.Errorf("cannot convert %s prices into %q", converted.Provider.Currency, p.Currency())
 		}
 		// Converted at today's rate. A price the catalog did not change is
@@ -417,19 +459,18 @@ func (f *CatalogFollower) followGroup(ctx context.Context, c *catalog.Catalog, p
 		origin := t.Origin
 		origin.Version, origin.Currency, origin.Catalog, origin.Estimated = c.Version, tb.Bundle.Provider.Currency, raw, tb.Estimated[raw.RealModel]
 		var take []string
-		for _, name := range catalogFollowedFields {
-			field := bundleField(name)
-			if sameField(field, raw, t.Origin.Catalog) {
+		for _, v := range catalogValues {
+			if v.same(raw, t.Origin.Catalog) {
 				continue
 			}
-			// The catalog changed the field: the model takes it when it
-			// still holds the value it was imported with.
-			if sameField(field, current, t.Origin.Applied) {
-				take = append(take, name)
+			// The catalog changed the value: the model takes it when it
+			// still holds the one it was imported with.
+			if v.same(current, t.Origin.Applied) {
+				take = append(take, v.name)
 			} else {
 				report.Kept++
 			}
-			field.set(&origin.Applied, applied)
+			v.set(&origin.Applied, applied)
 		}
 		next[m.ID()] = origin
 		if len(take) > 0 {
@@ -448,17 +489,21 @@ func (f *CatalogFollower) followGroup(ctx context.Context, c *catalog.Catalog, p
 			report.Failed++
 			slog.WarnContext(ctx, "could not follow the model catalog for a model", slog.String("model", failure.ProxyName), slogx.Error(failure.Err))
 		}
-		report.Kept += len(result.Skipped)
 		for _, w := range writes {
 			if _, ok := next[w.model.ID()]; !ok {
 				continue
 			}
+			// The import refuses a bundle field: every value written with it.
 			refused := 0
-			for _, s := range result.Skipped {
-				if s.Existing != nil && s.Existing.ID() == w.model.ID() {
+			for _, name := range w.fields {
+				v, _ := lookupCatalogValue(name)
+				if slices.ContainsFunc(result.Skipped, func(s BundleModelPlan) bool {
+					return s.Existing != nil && s.Existing.ID() == w.model.ID() && s.RefusedField == v.group
+				}) {
 					refused++
 				}
 			}
+			report.Kept += refused
 			if written := len(w.fields) - refused; written > 0 {
 				report.Updated++
 				report.Fields += written

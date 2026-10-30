@@ -520,6 +520,8 @@ Un modèle importé depuis le catalogue garde la trace de son entrée : le fourn
 - une valeur que vous avez modifiée est conservée, quoi que fasse le catalogue ;
 - le nom proxy, l'activation, la limite de tokens et le corps additionnel ne sont jamais touchés.
 
+Chaque prix, chaque fenêtre et chaque borne de débit est suivi séparément : modifier le prix d'entrée laisse le prix de sortie suivre le catalogue.
+
 Pour un fournisseur dans une autre devise que le catalogue, un prix que le catalogue change est converti au taux du jour ; un prix qu'il ne change pas reste celui de l'import, même si le taux bouge. Sans taux de change, le fournisseur est laissé en l'état jusqu'à la relecture suivante. Un modèle dont le catalogue ne liste plus l'offre garde ses valeurs. Les écritures passent par les mêmes contrôles qu'un import : un changement d'API qui ne servirait plus le type du modèle est refusé.
 
 Le formulaire d'un modèle suivi présente un encart **Suivi du catalogue**. Il rappelle l'entrée et la version suivies, et liste les champs qui diffèrent du catalogue avec les deux valeurs : **Utiliser la valeur du catalogue** l'applique. **Ne plus suivre le catalogue** détache le modèle, qui garde alors ses valeurs. Les champs dont la valeur est une estimation du catalogue, et que vous n'avez pas modifiés, portent le badge **estimé**.

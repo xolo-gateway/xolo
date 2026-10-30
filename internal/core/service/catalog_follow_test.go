@@ -141,7 +141,7 @@ func TestCatalogFollower_TakesWhatTheCatalogChangedAndKeepsWhatTheOperatorChange
 	if m.ContextWindow() != 64_000 {
 		t.Fatalf("context window = %d, want the operator's 64000 kept", m.ContextWindow())
 	}
-	if report.Models != 1 || report.Updated != 1 || report.Fields != 1 || report.Kept != 1 || report.Failed != 0 {
+	if report.Models != 1 || report.Updated != 1 || report.Fields != 2 || report.Kept != 1 || report.Failed != 0 {
 		t.Fatalf("report = %+v", report)
 	}
 	origin := origins.origins[id]
@@ -150,7 +150,7 @@ func TestCatalogFollower_TakesWhatTheCatalogChangedAndKeepsWhatTheOperatorChange
 	}
 	// The window the operator kept is offered, with the catalog's value.
 	divergences := CatalogDivergences(m, origin)
-	if len(divergences) != 1 || divergences[0].Field != BundleFieldWindows || divergences[0].Catalog != "256000 / 0" {
+	if len(divergences) != 1 || divergences[0].Field != "context_window" || divergences[0].Catalog != "256000" {
 		t.Fatalf("divergences = %+v, want the windows", divergences)
 	}
 
@@ -289,7 +289,7 @@ func TestAcceptCatalogValue_WritesTheCatalogValueOfOneField(t *testing.T) {
 		t.Fatal("a window the operator changed is no catalog estimate")
 	}
 
-	if err := AcceptCatalogValue(ctx, store, p, store.models[id], origins.origins[id], BundleFieldWindows); err != nil {
+	if err := AcceptCatalogValue(ctx, store, p, store.models[id], origins.origins[id], "context_window"); err != nil {
 		t.Fatal(err)
 	}
 	m := store.models[id]
@@ -312,4 +312,80 @@ func TestAcceptCatalogValue_WritesTheCatalogValueOfOneField(t *testing.T) {
 	if err := AcceptCatalogValue(ctx, store, p, m, origins.origins[id], BundleFieldProxyName); !errors.Is(err, port.ErrInvalid) {
 		t.Fatalf("accepting a field the catalog does not give = %v, want ErrInvalid", err)
 	}
+}
+
+func TestCatalogFollower_FollowsEachPriceOnItsOwn(t *testing.T) {
+	ctx := context.Background()
+	store, origins, p, id := importedFromCatalog(t, followRelease("v1", 2, 6, 128_000), "USD", nil)
+	// The operator sets the input price; the release changes the output one.
+	edited := model.BundleModelOf(store.models[id])
+	edited.Prices.Input = 5
+	store.models[id] = model.NewLLMModelFromBundle(id, p.ID(), p.OrgID(), p.CreatedAt(), edited)
+
+	report, err := NewCatalogFollower(store, origins, nil).Follow(ctx, followRelease("v2", 3, 9, 128_000))
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := store.models[id]
+	if m.PromptCostPer1KTokens() != 5000 || m.CompletionCostPer1KTokens() != 9000 {
+		t.Fatalf("prices = %d / %d, want the operator's input price and the new output price", m.PromptCostPer1KTokens(), m.CompletionCostPer1KTokens())
+	}
+	if report.Fields != 1 || report.Kept != 1 {
+		t.Fatalf("report = %+v, want the output price written and the input price kept", report)
+	}
+
+	// Taking the catalog's input price keeps the output price as it is.
+	m = store.models[id]
+	edited = model.BundleModelOf(m)
+	edited.Prices.Output = 12
+	store.models[id] = model.NewLLMModelFromBundle(id, p.ID(), p.OrgID(), p.CreatedAt(), edited)
+	if err := AcceptCatalogValue(ctx, store, p, store.models[id], origins.origins[id], "prompt_cost"); err != nil {
+		t.Fatal(err)
+	}
+	if m := store.models[id]; m.PromptCostPer1KTokens() != 3000 || m.CompletionCostPer1KTokens() != 12000 {
+		t.Fatalf("prices = %d / %d, want the catalog's input price and the operator's output price", m.PromptCostPer1KTokens(), m.CompletionCostPer1KTokens())
+	}
+}
+
+func TestRecordCatalogOrigins_RecordsTheOthersWhenOneFails(t *testing.T) {
+	ctx := context.Background()
+	release := followRelease("v1", 2, 6, 128_000)
+	release.Providers[0].Offerings = append(release.Providers[0].Offerings, catalog.Offering{Model: "large", ModelID: "large-mini", Prices: catalog.Prices{Input: 1, Output: 2}})
+	store := newMemoryProviderStore()
+	p := model.NewProvider("org", "Example", "openai", "https://api.example.com/v1", "key", "USD")
+	if err := store.CreateProvider(ctx, p); err != nil {
+		t.Fatal(err)
+	}
+	tb, err := release.BundleFor("example", "", p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan := PlanProviderBundleImport(tb.Bundle, p, nil, takenNames{})
+	sel := selectAll(plan)
+	result, err := ApplyProviderBundle(ctx, store, plan, sel, nil)
+	if err != nil || result.Created != 2 {
+		t.Fatalf("created %d, %v", result.Created, err)
+	}
+	origins := &failingFirstOrigins{memoryOriginStore: memoryOriginStore{models: store, origins: map[model.LLMModelID]model.CatalogOrigin{}}}
+	err = RecordCatalogOrigins(ctx, store, origins, NewCatalogImport("example", "v1", tb), plan, sel, result)
+	if err == nil {
+		t.Fatal("want the failure returned")
+	}
+	if len(origins.origins) != 1 {
+		t.Fatalf("recorded %d origins, want the second model's despite the first failure", len(origins.origins))
+	}
+}
+
+// failingFirstOrigins fails the first origin it is given to save.
+type failingFirstOrigins struct {
+	memoryOriginStore
+	failed bool
+}
+
+func (s *failingFirstOrigins) SaveCatalogOrigin(ctx context.Context, id model.LLMModelID, o *model.CatalogOrigin) error {
+	if !s.failed {
+		s.failed = true
+		return errors.New("store down")
+	}
+	return s.memoryOriginStore.SaveCatalogOrigin(ctx, id, o)
 }
