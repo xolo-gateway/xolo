@@ -32,6 +32,7 @@ var getCatalogFollowerFromConfig = createFromConfigOnce(func(ctx context.Context
 		return nil, errors.WithStack(err)
 	}
 	follower := service.NewCatalogFollower(providerStore, origins, rates)
-	go follower.Run(context.WithoutCancel(ctx), source, conf.Catalog.RefreshInterval)
+	// It stops with the server.
+	go follower.Run(ctx, source, conf.Catalog.RefreshInterval)
 	return follower, nil
 })

@@ -299,6 +299,16 @@ func TestAcceptCatalogValue_WritesTheCatalogValueOfOneField(t *testing.T) {
 	if !CatalogEstimated(m, origins.origins[id], "context_window") || CatalogEstimated(m, origins.origins[id], "prompt_cost") {
 		t.Fatal("want the window flagged as the catalog's estimate, the published price not")
 	}
+	// Narrowing the output window leaves the context window the catalog's
+	// estimate.
+	origin := origins.origins[id]
+	origin.Estimated = append(origin.Estimated, "output_window")
+	narrowed := model.BundleModelOf(m)
+	narrowed.OutputWindow = 1000
+	m = model.NewLLMModelFromBundle(id, p.ID(), p.OrgID(), p.CreatedAt(), narrowed)
+	if !CatalogEstimated(m, origin, "context_window") || CatalogEstimated(m, origin, "output_window") {
+		t.Fatal("want the context window still flagged, the narrowed output window not")
+	}
 	if err := AcceptCatalogValue(ctx, store, p, m, origins.origins[id], BundleFieldProxyName); !errors.Is(err, port.ErrInvalid) {
 		t.Fatalf("accepting a field the catalog does not give = %v, want ErrInvalid", err)
 	}

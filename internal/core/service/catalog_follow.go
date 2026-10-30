@@ -164,29 +164,30 @@ func CatalogDivergences(m model.LLMModel, origin model.CatalogOrigin) []CatalogD
 
 // CatalogEstimated reports whether the model form field formField of m holds
 // the catalog's estimate: the catalog estimates it, and the operator did not
-// change the field it belongs to.
+// change it.
 func CatalogEstimated(m model.LLMModel, origin model.CatalogOrigin, formField string) bool {
 	if !slices.Contains(origin.Estimated, formField) {
 		return false
 	}
-	name, ok := formFieldBundleField[formField]
+	value, ok := formFieldValues[formField]
 	if !ok {
 		return false
 	}
-	return sameField(bundleField(name), model.BundleModelOf(m), origin.Applied)
+	return value(model.BundleModelOf(m)) == value(origin.Applied)
 }
 
-// formFieldBundleField maps the model form fields the catalog may estimate
-// to the bundle field holding them.
-var formFieldBundleField = map[string]string{
-	"prompt_cost":         BundleFieldPrices,
-	"cached_prompt_cost":  BundleFieldPrices,
-	"completion_cost":     BundleFieldPrices,
-	"context_window":      BundleFieldWindows,
-	"output_window":       BundleFieldWindows,
-	"active_params":       BundleFieldActiveParams,
-	"tokens_per_sec_low":  BundleFieldThroughput,
-	"tokens_per_sec_high": BundleFieldThroughput,
+// formFieldValues reads, in a bundle model, the value of each model form
+// field the catalog may estimate: one price or one window, not the group
+// the bundle import writes together.
+var formFieldValues = map[string]func(model.ProviderBundleModel) any{
+	"prompt_cost":         func(m model.ProviderBundleModel) any { return storedPrices(m.Prices)[0] },
+	"cached_prompt_cost":  func(m model.ProviderBundleModel) any { return storedPrices(m.Prices)[1] },
+	"completion_cost":     func(m model.ProviderBundleModel) any { return storedPrices(m.Prices)[2] },
+	"context_window":      func(m model.ProviderBundleModel) any { return m.ContextWindow },
+	"output_window":       func(m model.ProviderBundleModel) any { return m.OutputWindow },
+	"active_params":       func(m model.ProviderBundleModel) any { return m.ActiveParams },
+	"tokens_per_sec_low":  func(m model.ProviderBundleModel) any { return m.TokensPerSecLow },
+	"tokens_per_sec_high": func(m model.ProviderBundleModel) any { return m.TokensPerSecHigh },
 }
 
 // AcceptCatalogValue writes the catalog value of field to the model m, which
