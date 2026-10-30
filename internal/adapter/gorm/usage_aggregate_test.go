@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -356,10 +357,12 @@ func TestAggregateCostByDimensions_Arguments(t *testing.T) {
 			}
 		})
 		t.Run("more than four dimensions fail", func(t *testing.T) {
+			// There are four supported dimensions, so the fifth is unsupported
+			// too: the message tells the limit apart from that error.
 			_, err := store.AggregateCostByDimensions(ctx, filter,
 				port.UsageDimensionModel, port.UsageDimensionDay, port.UsageDimensionUser, port.UsageDimensionProvider, port.UsageDimension("week"))
-			if err == nil {
-				t.Error("expected an error")
+			if err == nil || !strings.Contains(err.Error(), "at most 4 usage dimensions") {
+				t.Errorf("expected the dimension limit error, got %v", err)
 			}
 		})
 	})
