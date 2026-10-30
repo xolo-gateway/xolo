@@ -54,8 +54,11 @@ type UsageDaily struct {
 	// EnergyWh and CO2Grams are the energy the requests were estimated to use,
 	// mid estimates, each with the model it ran on as it was when it was
 	// recorded or, for the history, when the column was added.
-	EnergyWh float64
-	CO2Grams float64
+	//
+	// Zero by default: a row an instance predating the columns inserts still
+	// adds up afterwards.
+	EnergyWh float64 `gorm:"not null;default:0"`
+	CO2Grams float64 `gorm:"not null;default:0"`
 }
 
 func (UsageDaily) TableName() string { return usageDailyTable }
@@ -99,8 +102,9 @@ func usageDailyRow(r *UsageRecord, energy model.UsageEnergy) *UsageDaily {
 // other; the columns are qualified by the table, see incrementQuotaUsage.
 func incrementUsageDaily(db *gorm.DB, record *UsageRecord, energy model.UsageEnergy) error {
 	row := usageDailyRow(record, energy)
+	// COALESCE keeps a column a former row left NULL from swallowing the sum.
 	add := func(column string, value any) clause.Expr {
-		return gorm.Expr(usageDailyTable+"."+column+" + ?", value)
+		return gorm.Expr("COALESCE("+usageDailyTable+"."+column+", 0) + ?", value)
 	}
 	return errors.WithStack(db.Clauses(clause.OnConflict{
 		Columns: []clause.Column{

@@ -328,3 +328,28 @@ func TestUsageDaily_EnergyMatchesTheRecords(t *testing.T) {
 		require.Equal(t, int64(2), requests, "the first day and today are estimated")
 	})
 }
+
+// A row an instance predating the energy columns inserts leaves them out: the
+// energy of the requests recorded after it still adds up.
+func TestUsageDaily_EnergyAddsToARowWrittenWithoutIt(t *testing.T) {
+	eachBackendDB(t, func(t *testing.T, db *gormpkg.DB) {
+		ctx := context.Background()
+		store := newStoreOn(t, db)
+		migrateSchema(t, store)
+
+		rec := model.NewUsageRecord("u1", "", "org-1", "", "p1", "m-gpt", "gpt", "", 10, 0, 20, 1000, "EUR", model.CostSourceProvider, "")
+		rec.SetEnergy(model.UsageEnergy{Wh: 2.5, CO2Grams: 0.5})
+		day := rec.CreatedAt().In(time.Local).Format("2006-01-02")
+		require.NoError(t, db.Exec(`INSERT INTO usage_daily (org_id, day, user_id, application_id, team_id, provider_id, model_id, model_name, currency, plan_covered,
+			requests, cost, prompt_tokens, cached_tokens, completion_tokens, total_tokens)
+			VALUES ('org-1', ?, 'u1', '', '', 'p1', 'm-gpt', 'gpt', 'EUR', 0, 1, 1000, 10, 0, 20, 30)`, day).Error)
+
+		require.NoError(t, store.RecordUsage(ctx, rec))
+
+		var row xologorm.UsageDaily
+		require.NoError(t, db.Where("org_id = ? AND user_id = ? AND day = ?", "org-1", "u1", day).Take(&row).Error)
+		require.Equal(t, int64(2), row.Requests)
+		require.InDelta(t, 2.5, row.EnergyWh, 1e-12)
+		require.InDelta(t, 0.5, row.CO2Grams, 1e-12)
+	})
+}
