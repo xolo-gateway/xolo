@@ -435,6 +435,13 @@ func TestCatalogImport_SaysWhenTheCatalogCannotBeRead(t *testing.T) {
 	if strings.Contains(page, `name="bundle_file"`) {
 		t.Error("the catalog page should say it, not the bundle file import page")
 	}
+
+	fields := url.Values{"catalog_provider": {"opencode-go"}, "plan": {"none"}}
+	rr = httptest.NewRecorder()
+	h.previewCatalogImport(rr, bundleRequest(t, s, tenant, string(s.provider.ID()), bytes.NewBufferString(fields.Encode()), "application/x-www-form-urlencoded"))
+	if page := stdhtml.UnescapeString(rr.Body.String()); rr.Code != http.StatusServiceUnavailable || strings.Contains(page, `name="bundle_file"`) || !strings.Contains(page, "ne peut pas être lu") {
+		t.Errorf("posted: status = %d, want 503 said on the catalog page", rr.Code)
+	}
 }
 
 func TestProviderBundle_ReportsARefusedTypeChangeNextToWrittenModels(t *testing.T) {

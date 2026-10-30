@@ -1,6 +1,7 @@
 package org
 
 import (
+	"context"
 	"encoding/json"
 	"log/slog"
 	"net/http"
@@ -29,17 +30,10 @@ func (h *Handler) getCatalogImportPage(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	vmodel := component.CatalogImportVModel{
-		AppLayoutVModel: h.providerBundleImportVModel(ctx, org, p).AppLayoutVModel,
-		Org:             org,
-		Provider:        p,
-	}
+	vmodel := h.catalogImportVModel(ctx, org, p)
 	c, err := h.catalog.Catalog(ctx)
 	if err != nil {
-		// Said on the page asked for, which a reload reads again.
-		vmodel.Error = i18n.T(ctx, "org.errors.catalog_import.unavailable")
-		w.WriteHeader(http.StatusServiceUnavailable)
-		templ.Handler(component.CatalogImportPage(vmodel)).ServeHTTP(w, r)
+		h.renderCatalogUnavailable(w, r, vmodel)
 		return
 	}
 	vmodel.Catalog = c
@@ -48,6 +42,22 @@ func (h *Handler) getCatalogImportPage(w http.ResponseWriter, r *http.Request) {
 			vmodel.Suggested = match.ID
 		}
 	}
+	templ.Handler(component.CatalogImportPage(vmodel)).ServeHTTP(w, r)
+}
+
+func (h *Handler) catalogImportVModel(ctx context.Context, org model.Organization, p model.Provider) component.CatalogImportVModel {
+	return component.CatalogImportVModel{
+		AppLayoutVModel: h.providerBundleImportVModel(ctx, org, p).AppLayoutVModel,
+		Org:             org,
+		Provider:        p,
+	}
+}
+
+// renderCatalogUnavailable says the catalog cannot be read on the catalog
+// page, which a reload reads again, whether the form was shown or posted.
+func (h *Handler) renderCatalogUnavailable(w http.ResponseWriter, r *http.Request, vmodel component.CatalogImportVModel) {
+	vmodel.Error = i18n.T(r.Context(), "org.errors.catalog_import.unavailable")
+	w.WriteHeader(http.StatusServiceUnavailable)
 	templ.Handler(component.CatalogImportPage(vmodel)).ServeHTTP(w, r)
 }
 
@@ -78,7 +88,7 @@ func (h *Handler) previewCatalogImport(w http.ResponseWriter, r *http.Request) {
 
 	c, err := h.catalog.Catalog(ctx)
 	if err != nil {
-		h.renderProviderBundleErrorStatus(w, r, vmodel, i18n.T(ctx, "org.errors.catalog_import.unavailable"), http.StatusServiceUnavailable)
+		h.renderCatalogUnavailable(w, r, h.catalogImportVModel(ctx, org, p))
 		return
 	}
 	bundle, err := c.Bundle(r.FormValue("catalog_provider"), plan)
