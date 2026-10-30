@@ -352,7 +352,7 @@ func TestBundle_KeepsTheSharedBudgetOfAnOfferingItLeavesOut(t *testing.T) {
 }
 
 func TestPrices_VariesOnlyWithPublishedTiersOrPeak(t *testing.T) {
-	for raw, want := range map[string]bool{"": false, "null": false, "[]": false, "{}": false, `[{"above":200000,"input":2}]`: true} {
+	for raw, want := range map[string]bool{"": false, "null": false, "[]": false, "{}": false, "[ ]": false, "{ }": false, `[{"above":200000,"input":2}]`: true} {
 		if got := (Prices{Tiers: json.RawMessage(raw)}).Varies(); got != want {
 			t.Errorf("tiers %q: varies = %v, want %v", raw, got, want)
 		}

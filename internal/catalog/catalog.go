@@ -143,9 +143,17 @@ func (p Prices) Varies() bool {
 // published reports whether raw holds a value: an empty array or object, or
 // null, holds none.
 func published(raw json.RawMessage) bool {
-	switch string(bytes.TrimSpace(raw)) {
-	case "", "null", "[]", "{}":
+	var v any
+	if len(bytes.TrimSpace(raw)) == 0 || json.Unmarshal(raw, &v) != nil {
 		return false
+	}
+	switch v := v.(type) {
+	case nil:
+		return false
+	case []any:
+		return len(v) > 0
+	case map[string]any:
+		return len(v) > 0
 	}
 	return true
 }

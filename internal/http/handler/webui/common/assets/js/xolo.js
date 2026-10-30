@@ -361,7 +361,10 @@
 
       var response = await fetch(url);
       if (!response.ok) {
-        window.alert(response.status === 503 ? button.dataset.msgUnavailable : button.dataset.msgNotFound);
+        // Seul un 404 dit le modèle inconnu : une session expirée ou une
+        // panne n'est pas son fait.
+        var messages = { 404: button.dataset.msgNotFound, 503: button.dataset.msgUnavailable };
+        window.alert(messages[response.status] || button.dataset.msgFailed);
         return;
       }
       var entry = await response.json();
