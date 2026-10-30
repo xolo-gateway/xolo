@@ -45,7 +45,8 @@ type LLMModel struct {
 
 // llmModelOwnColumns are the columns of an LLM model the store writes apart
 // from its configuration, which CreateLLMModel and SaveLLMModel leave as they
-// are.
+// are, and which the reads of the configuration leave out: the model routes
+// never need them.
 var llmModelOwnColumns = []string{"CatalogOrigin"}
 
 type wrappedLLMModel struct {

@@ -371,7 +371,7 @@ func (f *CatalogFollower) Follow(ctx context.Context, c *catalog.Catalog) (Catal
 
 // Run follows the releases source serves until ctx is done: it fetches the
 // release every interval, a minute at least, and follows it. While no release
-// can be read, it tries again after a minute.
+// can be read, or following it fails, it tries again after a minute.
 func (f *CatalogFollower) Run(ctx context.Context, source *catalog.Source, interval time.Duration) {
 	interval = max(interval, time.Minute)
 	for {
@@ -381,6 +381,8 @@ func (f *CatalogFollower) Run(ctx context.Context, source *catalog.Source, inter
 		if err != nil {
 			wait = time.Minute
 		} else if report, err := f.Follow(ctx, c); err != nil {
+			// Retried soon, as an unreadable release is.
+			wait = time.Minute
 			slog.WarnContext(ctx, "could not follow the model catalog", slog.String("version", c.Version), slogx.Error(err))
 		} else if report.Updated > 0 || report.Kept > 0 || report.Failed > 0 {
 			slog.InfoContext(ctx, "followed the model catalog", slog.String("version", c.Version),

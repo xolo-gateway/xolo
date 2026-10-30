@@ -75,6 +75,9 @@ func (h *Handler) detachCatalogOrigin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.catalogOrigins.SaveCatalogOrigin(ctx, m.ID(), nil); err != nil {
+		if webcommon.RejectLocked(w, r, err) {
+			return
+		}
 		if errors.Is(err, port.ErrNotFound) {
 			http.NotFound(w, r)
 			return
