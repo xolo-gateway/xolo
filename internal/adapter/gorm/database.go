@@ -732,6 +732,18 @@ func schemaMigrations(artifact *RecoveryArtifact) []*gormigrate.Migration {
 				return errors.WithStack(tx.Migrator().DropColumn(&UserPreferences{}, "locale"))
 			},
 		},
+		{
+			// Add catalog_origin to llm_models: the catalog entry a model was
+			// imported from, which following the catalog compares with newer
+			// releases. Existing models have none.
+			ID: catalogOriginMigrationID,
+			Migrate: func(tx *gorm.DB) error {
+				return errors.WithStack(tx.AutoMigrate(&LLMModel{}))
+			},
+			Rollback: func(tx *gorm.DB) error {
+				return errors.WithStack(tx.Migrator().DropColumn(&LLMModel{}, "catalog_origin"))
+			},
+		},
 	}
 }
 
@@ -742,4 +754,5 @@ const (
 	modelKindMigrationID              = "202610220002"
 	providerKeyPoolMigrationID        = "202610290001"
 	memberLocaleMigrationID           = "202610290002"
+	catalogOriginMigrationID          = "202610300001"
 )

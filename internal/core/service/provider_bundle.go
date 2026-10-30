@@ -1063,3 +1063,54 @@ func applyBundleUpdate(ctx context.Context, store port.ProviderStore, mp BundleM
 	result.Updated++
 	result.written = append(result.written, m)
 }
+
+// CurrencyConverter converts an amount in microcents between currencies, as
+// ExchangeRateService does.
+type CurrencyConverter interface {
+	Convert(ctx context.Context, amount int64, from, to string) (int64, error)
+}
+
+// ConvertBundleCurrency converts the prices and the plan's value budgets of
+// bundle into the currency to, which becomes the bundle's: they never land
+// under a currency they are not in.
+func ConvertBundleCurrency(ctx context.Context, rates CurrencyConverter, bundle *model.ProviderBundle, to string) error {
+	from := bundle.Provider.Currency
+	convert := func(microcents int64) (int64, error) {
+		return rates.Convert(ctx, microcents, from, to)
+	}
+	for i := range bundle.Models {
+		prices := &bundle.Models[i].Prices
+		for _, p := range []*float64{&prices.Input, &prices.CachedInput, &prices.Output} {
+			v, err := convert(model.MicrocentsPer1K(*p))
+			if err != nil {
+				return errors.WithStack(err)
+			}
+			*p = model.PricePerMillion(v)
+		}
+	}
+	if plan := bundle.Provider.SubscriptionPlan; plan != nil {
+		for ci := range plan.Constraints {
+			c := &plan.Constraints[ci]
+			if c.ValueBudget != nil {
+				v, err := convert(*c.ValueBudget)
+				if err != nil {
+					return errors.WithStack(err)
+				}
+				c.ValueBudget = &v
+			}
+			for id, b := range c.ModelBudgets {
+				if b.ValueBudget == nil {
+					continue
+				}
+				v, err := convert(*b.ValueBudget)
+				if err != nil {
+					return errors.WithStack(err)
+				}
+				b.ValueBudget = &v
+				c.ModelBudgets[id] = b
+			}
+		}
+	}
+	bundle.Provider.Currency = to
+	return nil
+}

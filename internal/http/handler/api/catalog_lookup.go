@@ -70,14 +70,8 @@ func (h *Handler) handleCatalogLookup(w http.ResponseWriter, r *http.Request) {
 }
 
 func catalogPrefill(c *catalog.Catalog, found catalog.Prefill, providerType, baseURL string) CatalogPrefill {
-	out := CatalogPrefill{Version: c.Version}
-	estimated := func(field string, p catalog.Provenance) {
-		if p.Status == catalog.StatusEstimated {
-			out.Estimated = append(out.Estimated, field)
-		}
-	}
-	// The offering's own windows, when it narrows the model's, carry their
-	// own provenance.
+	out := CatalogPrefill{Version: c.Version, Estimated: c.Estimated(found.Model, found.Offering)}
+	// The offering's own windows narrow the model's.
 	contextWindow, outputWindow := (*catalog.Count)(nil), (*catalog.Count)(nil)
 	if m := found.Model; m != nil {
 		out.Name, out.Kind = m.Name, m.Kind
@@ -87,7 +81,6 @@ func catalogPrefill(c *catalog.Catalog, found catalog.Prefill, providerType, bas
 		}
 		if m.Params != nil && m.Params.Active != nil {
 			out.ActiveParams = float64(m.Params.Active.Value) / 1e9
-			estimated("active_params", m.Params.Active.Provenance)
 		}
 	}
 	if o := found.Offering; o != nil {
@@ -99,11 +92,6 @@ func catalogPrefill(c *catalog.Catalog, found catalog.Prefill, providerType, bas
 			out.CachedPromptCost = &cached
 		}
 		out.PricesVary = o.Prices.Varies()
-		estimated("prompt_cost", o.Prices.Provenance)
-		estimated("completion_cost", o.Prices.Provenance)
-		if out.CachedPromptCost != nil {
-			estimated("cached_prompt_cost", o.Prices.Provenance)
-		}
 		if o.ContextWindow != nil {
 			contextWindow = o.ContextWindow
 		}
@@ -112,8 +100,6 @@ func catalogPrefill(c *catalog.Catalog, found catalog.Prefill, providerType, bas
 		}
 		if o.Throughput != nil {
 			out.TokensPerSecLow, out.TokensPerSecHigh = o.Throughput.Low, o.Throughput.High
-			estimated("tokens_per_sec_low", o.Throughput.Provenance)
-			estimated("tokens_per_sec_high", o.Throughput.Provenance)
 		}
 		// The API is pre-filled when it is not the provider's own, by the rule
 		// of the catalog import: the same model either way. Only an offering
@@ -133,11 +119,9 @@ func catalogPrefill(c *catalog.Catalog, found catalog.Prefill, providerType, bas
 	}
 	if contextWindow != nil {
 		out.ContextWindow = contextWindow.Value
-		estimated("context_window", contextWindow.Provenance)
 	}
 	if outputWindow != nil {
 		out.OutputWindow = outputWindow.Value
-		estimated("output_window", outputWindow.Provenance)
 	}
 	return out
 }

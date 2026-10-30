@@ -1332,6 +1332,13 @@ func (h *Handler) getEditModelPage(w http.ResponseWriter, r *http.Request) {
 			},
 		},
 	}
+	switch r.URL.Query().Get("success") {
+	case "catalog_accepted":
+		vmodel.Notice = i18n.T(ctx, "org.model.catalog.accepted")
+	case "catalog_detached":
+		vmodel.Notice = i18n.T(ctx, "org.model.catalog.detached")
+	}
+	h.withModelCatalogOrigin(ctx, &vmodel)
 
 	templ.Handler(component.ModelForm(vmodel)).ServeHTTP(w, r)
 }
@@ -1485,6 +1492,7 @@ func (h *Handler) renderModelFormError(w http.ResponseWriter, r *http.Request, c
 			},
 		},
 	}
+	h.withModelCatalogOrigin(ctx, &vmodel)
 	w.WriteHeader(http.StatusUnprocessableEntity)
 	templ.Handler(component.ModelForm(vmodel)).ServeHTTP(w, r)
 }

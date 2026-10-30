@@ -38,7 +38,16 @@ type LLMModel struct {
 	// Kind is what the model is called for. The models stored before kinds
 	// existed hold the default, completion.
 	Kind string `gorm:"not null;default:'completion'"`
+	// CatalogOrigin is the catalog entry the model was imported from, see
+	// model.CatalogOrigin. It has its own writer: saving the model omits it.
+	CatalogOrigin JSONColumn[model.CatalogOrigin] `gorm:"type:text"`
 }
+
+// llmModelOwnColumns are the columns of an LLM model the store writes apart
+// from its configuration, which CreateLLMModel and SaveLLMModel leave as they
+// are, and which the reads of the configuration leave out: the model routes
+// never need them.
+var llmModelOwnColumns = []string{"CatalogOrigin"}
 
 type wrappedLLMModel struct {
 	m *LLMModel

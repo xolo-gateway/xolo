@@ -108,6 +108,9 @@ templ providerBundlePlan(vmodel ProviderBundleImportVModel, importURL string) {
 	<form method="POST" action={ templ.SafeURL(importURL) } class="space-y-4">
 		<input type="hidden" name="step" value="apply"/>
 		<input type="hidden" name="bundle" value={ vmodel.Bundle }/>
+		if vmodel.CatalogImport != "" {
+			<input type="hidden" name="catalog_import" value={ vmodel.CatalogImport }/>
+		}
 		if plan.Target == nil {
 			@common.Section() {
 				@common.SectionBody(common.SectionBodyProps{Class: "space-y-3"}) {

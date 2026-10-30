@@ -10,4 +10,8 @@ type CatalogConfig struct {
 	Enabled         bool          `env:"ENABLED" envDefault:"true"`
 	URL             string        `env:"URL" envDefault:"https://github.com/xolo-gateway/catalog/releases/latest/download/catalog.json"`
 	RefreshInterval time.Duration `env:"REFRESH_INTERVAL" envDefault:"24h"`
+	// Follow keeps the models imported from the catalog up to date with its
+	// releases: a value a release changes is written to the models that still
+	// hold the one they were imported with.
+	Follow bool `env:"FOLLOW" envDefault:"true"`
 }
