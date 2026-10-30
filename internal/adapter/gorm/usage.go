@@ -38,9 +38,10 @@ type UsageRecord struct {
 	// idx_usage_user_created serves the personal pages, which filter on the
 	// user and a period without an organization: idx_usage_user_org_created
 	// cannot bound the period there, so they read every record of the user, and
-	// the paginated list sorted them all to return one page.
+	// the paginated list sorted them all to return one page. It also serves the
+	// lookups on user_id alone, which had an index of their own until then.
 	CreatedAt     time.Time `gorm:"index:idx_usage_user_created,priority:2;index:idx_usage_org_created,priority:2;index:idx_usage_user_org_created,priority:3;index:idx_usage_org_payg_cost,priority:3;index:idx_usage_org_prov_plan,priority:4;index:idx_usage_org_prov_user,priority:5;index:idx_usage_org_prov_model_plan,priority:5"`
-	UserID        string    `gorm:"index;index:idx_usage_user_created,priority:1;index:idx_usage_user_org_created,priority:1;index:idx_usage_org_payg_cost,priority:4;index:idx_usage_org_prov_plan,priority:5;index:idx_usage_org_prov_user,priority:4;index:idx_usage_org_prov_model_plan,priority:6"`
+	UserID        string    `gorm:"index:idx_usage_user_created,priority:1;index:idx_usage_user_org_created,priority:1;index:idx_usage_org_payg_cost,priority:4;index:idx_usage_org_prov_plan,priority:5;index:idx_usage_org_prov_user,priority:4;index:idx_usage_org_prov_model_plan,priority:6"`
 	ApplicationID string    `gorm:"index"`
 	// TeamID is the team the request was attributed to, empty when charged to
 	// the organization alone.

@@ -68,28 +68,39 @@ func TestUsageRecord_PlanIndexIsAddedToAnExistingSchema(t *testing.T) {
 	})
 }
 
-func TestUsageRecord_UserIndexIsAddedToAnExistingSchema(t *testing.T) {
+func TestUsageRecord_UserIndexMigrationUpgradesAnExistingSchema(t *testing.T) {
 	eachBackendDB(t, func(t *testing.T, db *gormpkg.DB) {
-		store := newStoreOn(t, db)
-		migrateSchema(t, store)
+		migrateSchema(t, newStoreOn(t, db))
 
-		// Raw SQL rather than Migrator().DropIndex, see above.
-		if err := db.Exec("DROP INDEX " + db.Statement.Quote("idx_usage_user_created")).Error; err != nil {
-			t.Fatalf("drop index: %v", err)
+		// Put the table back in the state a deployment predating migration
+		// 202610300002 is in, and forget that the migration ran. Raw SQL rather
+		// than Migrator().DropIndex, see above.
+		for _, stmt := range []string{
+			"DROP INDEX " + db.Statement.Quote("idx_usage_user_created"),
+			"CREATE INDEX idx_usage_records_user_id ON usage_records(user_id)",
+		} {
+			if err := db.Exec(stmt).Error; err != nil {
+				t.Fatalf("%s: %v", stmt, err)
+			}
+		}
+		if err := db.Exec("DELETE FROM migrations WHERE id = ?", "202610300002").Error; err != nil {
+			t.Fatalf("forget migration: %v", err)
 		}
 
-		// This is what migration 202610300002 runs.
-		if err := db.AutoMigrate(&xologorm.UsageRecord{}); err != nil {
-			t.Fatalf("AutoMigrate: %v", err)
-		}
+		// A new store runs the pending migrations on its first write.
+		migrateSchema(t, newStoreOn(t, db))
+
 		if !db.Migrator().HasIndex("usage_records", "idx_usage_user_created") {
-			t.Error("AutoMigrate did not add idx_usage_user_created to an existing table")
+			t.Error("the migration did not add idx_usage_user_created")
+		}
+		if db.Migrator().HasIndex("usage_records", "idx_usage_records_user_id") {
+			t.Error("the migration kept idx_usage_records_user_id, a prefix of idx_usage_user_created")
 		}
 	})
 }
 
 // The personal pages filter on the user and a period, without an organization.
-// On idx_usage_records_user_id SQLite read every record of the user, and sorted
+// On the index on user_id alone SQLite read every record of the user, and sorted
 // them all to return one page of the usage table.
 func TestUsageRecord_PersonalQueriesUseTheUserIndex(t *testing.T) {
 	db := openSQLite(t, newSQLiteDSN(t))
@@ -108,6 +119,10 @@ func TestUsageRecord_PersonalQueriesUseTheUserIndex(t *testing.T) {
 		"period aggregate": {
 			"SELECT COUNT(*), COALESCE(SUM(cost),0) FROM usage_records WHERE user_id IN (?) AND created_at >= ?",
 			[]any{userID, since},
+		},
+		"model aggregate": {
+			"SELECT COUNT(*), COALESCE(SUM(cost),0) FROM usage_records WHERE user_id IN (?) AND model_id = ? AND created_at >= ?",
+			[]any{userID, "model-1", since},
 		},
 		"virtual model aggregate": {
 			"SELECT COUNT(*), COALESCE(SUM(cost),0) FROM usage_records WHERE user_id IN (?) AND proxy_model_name = ? AND created_at >= ?",
