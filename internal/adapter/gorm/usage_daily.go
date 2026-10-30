@@ -22,7 +22,7 @@ const usageDailyTable = "usage_daily"
 // A row is written as usage is recorded, in the same transaction as the record
 // itself. The pages read it for the whole days of their period and read the
 // records for the rest: the start of the first day and today, see
-// usageRollupWindows.
+// usageSources.
 //
 // The records stay the source of truth; this table is rebuilt from them by
 // RebuildUsageDaily.
