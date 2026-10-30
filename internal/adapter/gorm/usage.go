@@ -112,6 +112,9 @@ func (w *wrappedUsageRecord) Status() model.UsageStatus {
 	return model.UsageStatus(w.r.Status)
 }
 
+// Energy reports none: only usage_daily keeps the energy of the records.
+func (w *wrappedUsageRecord) Energy() model.UsageEnergy { return model.UsageEnergy{} }
+
 var _ model.UsageRecord = &wrappedUsageRecord{}
 
 func fromUsageRecord(r model.UsageRecord) *UsageRecord {

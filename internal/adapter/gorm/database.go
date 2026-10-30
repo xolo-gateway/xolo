@@ -774,6 +774,24 @@ func schemaMigrations(artifact *RecoveryArtifact) []*gormigrate.Migration {
 				return errors.WithStack(tx.Migrator().DropTable(&UsageDaily{}))
 			},
 		},
+		{
+			// Add the estimated energy to usage_daily, and rebuild it so the
+			// history gets the energy of its requests, estimated with the
+			// models as they are now.
+			ID: usageEnergyMigrationID,
+			Migrate: func(tx *gorm.DB) error {
+				if err := tx.AutoMigrate(&UsageDaily{}); err != nil {
+					return errors.WithStack(err)
+				}
+				return backfillUsageDaily(tx)
+			},
+			Rollback: func(tx *gorm.DB) error {
+				if err := tx.Migrator().DropColumn(&UsageDaily{}, "energy_wh"); err != nil {
+					return errors.WithStack(err)
+				}
+				return errors.WithStack(tx.Migrator().DropColumn(&UsageDaily{}, "co2_grams"))
+			},
+		},
 	}
 }
 
@@ -787,4 +805,5 @@ const (
 	catalogOriginMigrationID          = "202610300001"
 	userUsageIndexMigrationID         = "202610300002"
 	usageDailyMigrationID             = "202610300003"
+	usageEnergyMigrationID            = "202610300004"
 )

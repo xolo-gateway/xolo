@@ -110,6 +110,13 @@ type UsageStore interface {
 	// different orgs, currencies or billing arrangements within the filter share
 	// a row. Records without a model are left out.
 	AggregateRequestSizes(ctx context.Context, filter UsageFilter) ([]RequestSize, error)
+	// AggregateEnergy returns the energy of the usage matching the filter in
+	// two parts: the energy estimated as the requests were recorded, which the
+	// daily usage sums keep for the whole days of the period, and the request
+	// sizes of the rest of the period, for the caller to estimate as
+	// AggregateRequestSizes'. A filter the daily sums cannot answer returns
+	// sizes only.
+	AggregateEnergy(ctx context.Context, filter UsageFilter) (model.UsageEnergy, []RequestSize, error)
 }
 
 // PlanUsageTotals is the subscription-covered consumption of a window.

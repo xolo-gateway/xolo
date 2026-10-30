@@ -10,9 +10,12 @@ import (
 	"time"
 
 	"github.com/rs/xid"
+	"github.com/stretchr/testify/require"
 	xologorm "github.com/xolo-gateway/xolo/internal/adapter/gorm"
 	"github.com/xolo-gateway/xolo/internal/core/model"
 	"github.com/xolo-gateway/xolo/internal/core/port"
+	"github.com/xolo-gateway/xolo/internal/core/service"
+	"github.com/xolo-gateway/xolo/internal/estimator"
 	gormpkg "gorm.io/gorm"
 )
 
@@ -263,5 +266,65 @@ func sortedCosts(rows []port.DimensionCost) []port.DimensionCost {
 			cmp.Compare(a.Currency, b.Currency),
 			cmp.Compare(fmt.Sprint(a.PlanCovered), fmt.Sprint(b.PlanCovered)),
 		)
+	})
+}
+
+// The energy of a period is the energy stored for its whole days plus the
+// estimate of the rest: it must be the estimate of every record alone.
+func TestUsageDaily_EnergyMatchesTheRecords(t *testing.T) {
+	eachBackendDB(t, func(t *testing.T, db *gormpkg.DB) {
+		ctx := context.Background()
+		store := newStoreOn(t, db)
+		migrateSchema(t, store)
+
+		org := model.NewOrganization(testTenantID, "acme", "Acme", "")
+		require.NoError(t, store.CreateOrg(ctx, org))
+		orgID := string(org.ID())
+		// Raw inserts, under the ids the usage records name.
+		provider := &xologorm.Provider{ID: "p1", OrgID: orgID, Name: "Local", Type: "openai", APIKey: "k", Active: 1, CloudTier: int(estimator.TierMajorCloud)}
+		require.NoError(t, db.Create(provider).Error)
+		llm := &xologorm.LLMModel{ID: "m-gpt", ProviderID: "p1", OrgID: orgID, ProxyName: "gpt", RealModel: "gpt", Enabled: 1, ActiveParams: 8_000_000_000}
+		require.NoError(t, db.Create(llm).Error)
+
+		since := localNoon(7).Add(3 * time.Hour)
+		pastUsage(t, db, localNoon(8), "u1", orgID, "gpt", 1, false)
+		pastUsage(t, db, localNoon(7).Add(4*time.Hour), "u1", orgID, "gpt", 10, false)
+		pastUsage(t, db, localNoon(6), "u1", orgID, "gpt", 100, false)
+		pastUsage(t, db, localMidnight(3).Add(5*time.Minute), "u2", orgID, "gpt", 200, true)
+		pastUsage(t, db, localNoon(1), "u1", orgID, "claude", 300, false)
+		require.NoError(t, xologorm.RebuildUsageDaily(db))
+
+		// Today, through the store, with the energy the proxy estimates.
+		wh, co2, ok := estimator.RequestEnergy(estimator.TierMajorCloud, llm.ActiveParams, 0, 0, 10, 20)
+		require.True(t, ok)
+		rec := model.NewUsageRecord("u1", "", org.ID(), "", "p1", "m-gpt", "gpt", "", 10, 0, 20, 1000, "EUR", model.CostSourceProvider, "")
+		rec.SetEnergy(model.UsageEnergy{Wh: wh, CO2Grams: co2})
+		require.NoError(t, store.RecordUsage(ctx, rec))
+
+		org1 := org.ID()
+		until := time.Now().Add(time.Hour)
+		split := port.UsageFilter{OrgID: &org1, Since: &since}
+		recordsOnly := port.UsageFilter{OrgID: &org1, Since: &since, Until: &until}
+
+		gotWh, gotCO2, err := service.EstimateUsageEnergy(ctx, store, store, split)
+		require.NoError(t, err)
+		wantWh, wantCO2, err := service.EstimateUsageEnergy(ctx, store, store, recordsOnly)
+		require.NoError(t, err)
+
+		// Four requests to the sized model in the period; the one before it
+		// and the unsized model are left out.
+		require.InDelta(t, 4*wh, wantWh, 1e-9*wantWh)
+		require.InDelta(t, wantWh, gotWh, 1e-9*wantWh)
+		require.InDelta(t, wantCO2, gotCO2, 1e-9*wantCO2)
+
+		// The whole days come from the stored energy, not from an estimate.
+		stored, sizes, err := store.AggregateEnergy(ctx, split)
+		require.NoError(t, err)
+		require.InDelta(t, 2*wh, stored.Wh, 1e-9*wh)
+		var requests int64
+		for _, size := range sizes {
+			requests += size.Requests
+		}
+		require.Equal(t, int64(2), requests, "the first day and today are estimated")
 	})
 }

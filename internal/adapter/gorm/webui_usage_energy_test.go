@@ -23,9 +23,9 @@ type countingUsageStore struct {
 	sizes atomic.Int32
 }
 
-func (s *countingUsageStore) AggregateRequestSizes(ctx context.Context, filter port.UsageFilter) ([]port.RequestSize, error) {
+func (s *countingUsageStore) AggregateEnergy(ctx context.Context, filter port.UsageFilter) (model.UsageEnergy, []port.RequestSize, error) {
 	s.sizes.Add(1)
-	return s.UsageStore.AggregateRequestSizes(ctx, filter)
+	return s.UsageStore.AggregateEnergy(ctx, filter)
 }
 
 // The energy estimate is cached by range: a page loaded again a moment later
