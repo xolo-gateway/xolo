@@ -10,6 +10,7 @@ import (
 	"github.com/xolo-gateway/xolo/internal/core/model"
 	"github.com/xolo-gateway/xolo/internal/core/port"
 	"github.com/xolo-gateway/xolo/internal/core/service"
+	"github.com/xolo-gateway/xolo/internal/estimator"
 )
 
 // fakeProviderStore embeds the port.ProviderStore interface (nil) and only
@@ -384,5 +385,44 @@ func TestUsageTrackerRecordsTheProviderKeyUsed(t *testing.T) {
 		if got := usageStore.recorded.ProviderKeyID(); got != want {
 			t.Errorf("key %q recorded as %q, want %q", key, got, want)
 		}
+	}
+}
+
+// The energy of a request is estimated as it is recorded, with the model and
+// provider it ran on, for the daily usage sums.
+func TestUsageTrackerEstimatesTheEnergy(t *testing.T) {
+	orgID := model.OrgID("org-1")
+	provider := model.NewProvider(orgID, "openai", "openai", "https://api.openai.com", "key", "USD")
+	provider.SetCloudTier(int(estimator.TierMajorCloud))
+	org := model.NewOrganization(testTenantID, "org-1", "Org 1", "", "USD")
+
+	for _, tc := range []struct {
+		name         string
+		activeParams int64
+	}{
+		{"sized model", 8_000_000_000},
+		{"model without a parameter count", 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			llmModel := model.NewLLMModel(provider.ID(), orgID, "cadoles/test-model", "real/model", "desc", 1000, 2000)
+			llmModel.SetActiveParams(tc.activeParams)
+			tracker, usageStore := newTestTracker(&fakeProviderStore{provider: provider, llmModel: llmModel}, &fakeOrgStore{org: org})
+
+			req, res := newTestRequestResponse(llmModel.ID(), orgID, &genaiProxy.TokenUsage{PromptTokens: 1000, CompletionTokens: 500, TotalTokens: 1500})
+			if _, err := tracker.PostResponse(context.Background(), req, res); err != nil {
+				t.Fatalf("PostResponse() error = %v", err)
+			}
+
+			want := model.UsageEnergy{}
+			if wh, co2, ok := estimator.RequestEnergy(estimator.TierMajorCloud, tc.activeParams, 0, 0, 1000, 500); ok {
+				want = model.UsageEnergy{Wh: wh, CO2Grams: co2}
+			}
+			if tc.activeParams > 0 && want.Wh == 0 {
+				t.Fatal("the reference estimate is zero, the test proves nothing")
+			}
+			if got := usageStore.recorded.Energy(); got != want {
+				t.Errorf("Energy() = %+v, want %+v", got, want)
+			}
+		})
 	}
 }

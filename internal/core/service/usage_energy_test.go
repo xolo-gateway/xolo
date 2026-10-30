@@ -13,11 +13,12 @@ import (
 
 type requestSizeStore struct {
 	port.UsageStore
-	sizes []port.RequestSize
+	stored model.UsageEnergy
+	sizes  []port.RequestSize
 }
 
-func (s *requestSizeStore) AggregateRequestSizes(context.Context, port.UsageFilter) ([]port.RequestSize, error) {
-	return s.sizes, nil
+func (s *requestSizeStore) AggregateEnergy(context.Context, port.UsageFilter) (model.UsageEnergy, []port.RequestSize, error) {
+	return s.stored, s.sizes, nil
 }
 
 type energyProviderStore struct {
@@ -99,5 +100,31 @@ func TestEstimateUsageEnergyReportsStoreErrors(t *testing.T) {
 
 	if _, _, err := EstimateUsageEnergy(context.Background(), usage, providers, port.UsageFilter{}); !errors.Is(err, failure) {
 		t.Fatalf("expected the store error, got %v", err)
+	}
+}
+
+// The whole days of a period come with their energy stored: it is added to the
+// estimate of the rest as it is.
+func TestEstimateUsageEnergyAddsTheStoredEnergy(t *testing.T) {
+	provider := model.NewProvider("org-1", "local", "openai", "", "", "EUR")
+	sized := model.NewLLMModel(provider.ID(), "org-1", "small", "small", "", 0, 0)
+	sized.SetActiveParams(8_000_000_000)
+	providers := &energyProviderStore{
+		models:    map[model.LLMModelID]model.LLMModel{sized.ID(): sized},
+		providers: map[model.ProviderID]model.Provider{provider.ID(): provider},
+	}
+	sizes := []port.RequestSize{{ModelID: sized.ID(), PromptTokens: 100, CompletionTokens: 50, Requests: 2}}
+
+	estimated, estimatedCO2, err := EstimateUsageEnergy(context.Background(), &requestSizeStore{sizes: sizes}, providers, port.UsageFilter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	stored := model.UsageEnergy{Wh: 12.5, CO2Grams: 3.25}
+	energy, co2, err := EstimateUsageEnergy(context.Background(), &requestSizeStore{stored: stored, sizes: sizes}, providers, port.UsageFilter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if math.Abs(energy-(estimated+stored.Wh)) > 1e-9 || math.Abs(co2-(estimatedCO2+stored.CO2Grams)) > 1e-9 {
+		t.Errorf("got %v Wh / %v g, want %v Wh / %v g", energy, co2, estimated+stored.Wh, estimatedCO2+stored.CO2Grams)
 	}
 }

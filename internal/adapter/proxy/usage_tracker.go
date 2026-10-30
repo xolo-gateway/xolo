@@ -13,6 +13,7 @@ import (
 	"github.com/xolo-gateway/xolo/internal/core/model"
 	"github.com/xolo-gateway/xolo/internal/core/port"
 	"github.com/xolo-gateway/xolo/internal/core/service"
+	"github.com/xolo-gateway/xolo/internal/estimator"
 	"github.com/xolo-gateway/xolo/internal/metrics"
 )
 
@@ -197,6 +198,13 @@ func (t *XoloUsageTracker) PostResponse(ctx context.Context, req *genaiProxy.Pro
 	record.SetPlanCovered(planCovered)
 	record.SetProviderCost(providerCost)
 	record.SetStatus(status)
+	// The energy is estimated once, as the request is recorded, with the
+	// model it ran on as it is now: the usage pages read it from the daily
+	// sums instead of estimating every request of their period again.
+	if wh, co2, ok := estimator.RequestEnergy(estimator.CloudTier(p.CloudTier()), llmModel.ActiveParams(),
+		llmModel.TokensPerSecLow(), llmModel.TokensPerSecHigh(), promptTokens, completionTokens); ok {
+		record.SetEnergy(model.UsageEnergy{Wh: wh, CO2Grams: co2})
+	}
 	// The key the request went through, which a plan spread over several keys
 	// is metered on. Checked against the provider: the metadata describes the
 	// requested model, which a pipeline may have replaced.

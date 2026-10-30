@@ -107,6 +107,16 @@ type UsageRecord interface {
 	// records count toward quotas and costs like any other: the tokens were
 	// produced and billed.
 	Status() UsageStatus
+	// Energy is the energy the request was estimated to use when it was
+	// recorded. Only the daily usage sums keep it: a record read back from the
+	// store reports none.
+	Energy() UsageEnergy
+}
+
+// UsageEnergy is the estimated energy of usage, mid estimates.
+type UsageEnergy struct {
+	Wh       float64
+	CO2Grams float64
 }
 
 type BaseUsageRecord struct {
@@ -132,6 +142,7 @@ type BaseUsageRecord struct {
 	providerCost      int64
 	providerKeyID     ProviderKeyID
 	status            UsageStatus
+	energy            UsageEnergy
 }
 
 func (r *BaseUsageRecord) ID() UsageRecordID            { return r.id }
@@ -157,12 +168,14 @@ func (r *BaseUsageRecord) PlanCovered() bool            { return r.planCovered }
 func (r *BaseUsageRecord) ProviderCost() int64          { return r.providerCost }
 func (r *BaseUsageRecord) ProviderKeyID() ProviderKeyID { return r.providerKeyID }
 func (r *BaseUsageRecord) Status() UsageStatus          { return r.status }
+func (r *BaseUsageRecord) Energy() UsageEnergy          { return r.energy }
 
 func (r *BaseUsageRecord) SetResolvedModelName(v string)    { r.resolvedModelName = v }
 func (r *BaseUsageRecord) SetPlanCovered(v bool)            { r.planCovered = v }
 func (r *BaseUsageRecord) SetProviderCost(v int64)          { r.providerCost = v }
 func (r *BaseUsageRecord) SetStatus(v UsageStatus)          { r.status = v }
 func (r *BaseUsageRecord) SetProviderKeyID(v ProviderKeyID) { r.providerKeyID = v }
+func (r *BaseUsageRecord) SetEnergy(v UsageEnergy)          { r.energy = v }
 
 var _ UsageRecord = &BaseUsageRecord{}
 

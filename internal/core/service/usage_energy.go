@@ -10,16 +10,23 @@ import (
 )
 
 // EstimateUsageEnergy sums the estimated energy (Wh) and CO₂ (grams, mid
-// estimate) of the requests matching the filter. The estimate is non-linear
-// per request, so it is computed once per model and token counts, then
-// multiplied by the number of requests sharing them. Models without an active
-// parameter count, or deleted since, are left out. Any other store error is
-// returned: a partial total must not be shown, nor cached, as the real one.
+// estimate) of the requests matching the filter.
+//
+// The whole days of the period come with the energy estimated as their
+// requests were recorded. The rest is estimated here: the estimate is
+// non-linear per request, so it is computed once per model and token counts,
+// then multiplied by the number of requests sharing them. Models without an
+// active parameter count, or deleted since, are left out. Any other store error
+// is returned: a partial total must not be shown, nor cached, as the real one.
+//
+// The stored energy is kept as it was estimated: a model deleted since still
+// counts on the whole days, and a change of its parameters does not reach them.
 func EstimateUsageEnergy(ctx context.Context, usage port.UsageStore, providers port.ProviderStore, filter port.UsageFilter) (totalEnergyWh, totalCO2GramsMid float64, err error) {
-	sizes, err := usage.AggregateRequestSizes(ctx, filter)
+	stored, sizes, err := usage.AggregateEnergy(ctx, filter)
 	if err != nil {
 		return 0, 0, errors.WithStack(err)
 	}
+	totalEnergyWh, totalCO2GramsMid = stored.Wh, stored.CO2Grams
 
 	models := make(map[model.LLMModelID]model.LLMModel)
 	tiers := make(map[model.ProviderID]estimator.CloudTier)
@@ -52,17 +59,10 @@ func EstimateUsageEnergy(ctx context.Context, usage port.UsageStore, providers p
 			}
 			tiers[pid] = tier
 		}
-		est := estimator.NewCloudEstimator(tier).EstimateFromParams(
-			float64(m.ActiveParams()),
-			estimator.InferenceRequest{
-				InputTokens:  int(size.PromptTokens),
-				OutputTokens: int(size.CompletionTokens),
-			},
-			m.TokensPerSecLow(),
-			m.TokensPerSecHigh(),
-		)
-		totalEnergyWh += est.Mid.TotalWh * float64(size.Requests)
-		totalCO2GramsMid += est.Mid.Equivalences.CO2Grams * float64(size.Requests)
+		wh, co2, _ := estimator.RequestEnergy(tier, m.ActiveParams(), m.TokensPerSecLow(), m.TokensPerSecHigh(),
+			int(size.PromptTokens), int(size.CompletionTokens))
+		totalEnergyWh += wh * float64(size.Requests)
+		totalCO2GramsMid += co2 * float64(size.Requests)
 	}
 	return totalEnergyWh, totalCO2GramsMid, nil
 }

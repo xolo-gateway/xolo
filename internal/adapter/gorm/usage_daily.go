@@ -5,7 +5,9 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
+	"github.com/xolo-gateway/xolo/internal/core/model"
 	"github.com/xolo-gateway/xolo/internal/core/port"
+	"github.com/xolo-gateway/xolo/internal/estimator"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -49,6 +51,14 @@ type UsageDaily struct {
 	CachedTokens     int64
 	CompletionTokens int64
 	TotalTokens      int64
+	// EnergyWh and CO2Grams are the energy the requests were estimated to use,
+	// mid estimates, each with the model it ran on as it was when it was
+	// recorded or, for the history, when the column was added.
+	//
+	// Zero by default: a row an instance predating the columns inserts still
+	// adds up afterwards.
+	EnergyWh float64 `gorm:"not null;default:0"`
+	CO2Grams float64 `gorm:"not null;default:0"`
 }
 
 func (UsageDaily) TableName() string { return usageDailyTable }
@@ -58,8 +68,9 @@ func usageDay(t time.Time) string {
 	return t.In(time.Local).Format("2006-01-02")
 }
 
-// usageDailyRow is the contribution of a stored record to its day.
-func usageDailyRow(r *UsageRecord) *UsageDaily {
+// usageDailyRow is the contribution of a stored record, and of the energy it
+// was estimated to use, to its day.
+func usageDailyRow(r *UsageRecord, energy model.UsageEnergy) *UsageDaily {
 	modelName := r.ResolvedModelName
 	if modelName == "" {
 		modelName = r.ProxyModelName
@@ -81,16 +92,19 @@ func usageDailyRow(r *UsageRecord) *UsageDaily {
 		CachedTokens:     int64(r.CachedTokens),
 		CompletionTokens: int64(r.CompletionTokens),
 		TotalTokens:      int64(r.TotalTokens),
+		EnergyWh:         energy.Wh,
+		CO2Grams:         energy.CO2Grams,
 	}
 }
 
 // incrementUsageDaily adds a stored record to its day. The upsert is a single
 // statement so two concurrent requests add up instead of overwriting each
 // other; the columns are qualified by the table, see incrementQuotaUsage.
-func incrementUsageDaily(db *gorm.DB, record *UsageRecord) error {
-	row := usageDailyRow(record)
-	add := func(column string, value int64) clause.Expr {
-		return gorm.Expr(usageDailyTable+"."+column+" + ?", value)
+func incrementUsageDaily(db *gorm.DB, record *UsageRecord, energy model.UsageEnergy) error {
+	row := usageDailyRow(record, energy)
+	// COALESCE keeps a column a former row left NULL from swallowing the sum.
+	add := func(column string, value any) clause.Expr {
+		return gorm.Expr("COALESCE("+usageDailyTable+"."+column+", 0) + ?", value)
 	}
 	return errors.WithStack(db.Clauses(clause.OnConflict{
 		Columns: []clause.Column{
@@ -104,6 +118,8 @@ func incrementUsageDaily(db *gorm.DB, record *UsageRecord) error {
 			"cached_tokens":     add("cached_tokens", row.CachedTokens),
 			"completion_tokens": add("completion_tokens", row.CompletionTokens),
 			"total_tokens":      add("total_tokens", row.TotalTokens),
+			"energy_wh":         add("energy_wh", row.EnergyWh),
+			"co2_grams":         add("co2_grams", row.CO2Grams),
 		}),
 	}).Create(row).Error)
 }
@@ -113,17 +129,25 @@ func incrementUsageDaily(db *gorm.DB, record *UsageRecord) error {
 //
 // The migration must run with the other instances stopped: a record an older
 // instance writes after the backfill never reaches its day, and the pages
-// would under-report that day for good. RebuildUsageDaily repairs it.
+// would under-report that day for good. The same goes for the energy of a
+// record an instance predating usageEnergyMigrationID writes: its day keeps
+// none. RebuildUsageDaily repairs both.
+//
+// The migrations do not run in a transaction: the backfill gets its own, so a
+// failure does not leave the table half filled.
 func migrateUsageDaily(tx *gorm.DB) error {
 	if err := tx.AutoMigrate(&UsageDaily{}); err != nil {
 		return errors.WithStack(err)
 	}
-	return backfillUsageDaily(tx)
+	return errors.WithStack(tx.Transaction(backfillUsageDaily))
 }
 
 // RebuildUsageDaily rebuilds the daily usage sums from the usage records. It
 // is what the migration runs, exported for the tooling that writes usage
 // records in bulk rather than through the store — the seeder.
+//
+// The energy of every day is estimated again, with the models as they are at
+// the rebuild: the energy kept as the requests were recorded is lost.
 func RebuildUsageDaily(db *gorm.DB) error {
 	return db.Transaction(backfillUsageDaily)
 }
@@ -136,40 +160,59 @@ func RebuildUsageDaily(db *gorm.DB) error {
 // database's timezone may differ from the server's, and a record near midnight
 // would then land on another day than the one the reads expect, which counts
 // it twice or not at all.
+//
+// The energy is not kept on the records: it is estimated here, with the
+// models as they are now, for each size of request — the estimate is not
+// linear in the tokens — then multiplied by the requests of that size. There
+// can be as many sizes as records, so the rows are read as they come rather
+// than loaded at once; on PostgreSQL the transaction holds its snapshot for as
+// long.
 func backfillUsageDaily(tx *gorm.DB) error {
 	if err := tx.Exec("DELETE FROM " + usageDailyTable).Error; err != nil {
 		return errors.WithStack(err)
 	}
 
+	energyOf, err := requestEnergyEstimator(tx)
+	if err != nil {
+		return err
+	}
+
 	quarterExpr := utcQuarterExpr(tx)
 	keys := "org_id, COALESCE(user_id, ''), COALESCE(application_id, ''), COALESCE(team_id, ''), provider_id, model_id, " +
 		"COALESCE(NULLIF(resolved_model_name, ''), proxy_model_name), COALESCE(currency, ''), plan_covered"
-	var quarters []struct {
-		Quarter string
-		UsageDaily
-	}
-	err := tx.Raw(`
+	rows, err := tx.Raw(`
 		SELECT ` + quarterExpr + ` as quarter, org_id, COALESCE(user_id, '') as user_id, COALESCE(application_id, '') as application_id,
 			COALESCE(team_id, '') as team_id, provider_id, model_id, COALESCE(NULLIF(resolved_model_name, ''), proxy_model_name) as model_name,
-			COALESCE(currency, '') as currency, plan_covered,
+			COALESCE(currency, '') as currency, plan_covered, prompt_tokens as request_prompt_tokens, completion_tokens as request_completion_tokens,
 			COUNT(*) as requests, COALESCE(SUM(cost), 0) as cost, COALESCE(SUM(prompt_tokens), 0) as prompt_tokens,
 			COALESCE(SUM(cached_tokens), 0) as cached_tokens, COALESCE(SUM(completion_tokens), 0) as completion_tokens,
 			COALESCE(SUM(total_tokens), 0) as total_tokens
 		  FROM usage_records
-		 GROUP BY ` + quarterExpr + `, ` + keys).Scan(&quarters).Error
+		 GROUP BY ` + quarterExpr + `, ` + keys + `, prompt_tokens, completion_tokens`).Rows()
 	if err != nil {
 		return errors.WithStack(err)
 	}
+	defer rows.Close()
 
 	days := make(map[UsageDaily]*UsageDaily)
-	for _, q := range quarters {
+	for rows.Next() {
+		var q struct {
+			Quarter                 string
+			RequestPromptTokens     int
+			RequestCompletionTokens int
+			UsageDaily
+		}
+		if err := tx.ScanRows(rows, &q); err != nil {
+			return errors.WithStack(err)
+		}
 		day, err := localDayOfQuarter(q.Quarter)
 		if err != nil {
 			return err
 		}
-		key := q.UsageDaily
-		key.Day = day
-		key.Requests, key.Cost, key.PromptTokens, key.CachedTokens, key.CompletionTokens, key.TotalTokens = 0, 0, 0, 0, 0, 0
+		key := UsageDaily{
+			OrgID: q.OrgID, Day: day, UserID: q.UserID, ApplicationID: q.ApplicationID, TeamID: q.TeamID,
+			ProviderID: q.ProviderID, ModelID: q.ModelID, ModelName: q.ModelName, Currency: q.Currency, PlanCovered: q.PlanCovered,
+		}
 		row, ok := days[key]
 		if !ok {
 			row = new(UsageDaily)
@@ -182,15 +225,61 @@ func backfillUsageDaily(tx *gorm.DB) error {
 		row.CachedTokens += q.CachedTokens
 		row.CompletionTokens += q.CompletionTokens
 		row.TotalTokens += q.TotalTokens
+		energy := energyOf(q.ModelID, q.RequestPromptTokens, q.RequestCompletionTokens)
+		row.EnergyWh += energy.Wh * float64(q.Requests)
+		row.CO2Grams += energy.CO2Grams * float64(q.Requests)
+	}
+	if err := rows.Err(); err != nil {
+		return errors.WithStack(err)
 	}
 	if len(days) == 0 {
 		return nil
 	}
-	rows := make([]*UsageDaily, 0, len(days))
+	daily := make([]*UsageDaily, 0, len(days))
 	for _, row := range days {
-		rows = append(rows, row)
+		daily = append(daily, row)
 	}
-	return errors.WithStack(tx.CreateInBatches(rows, 500).Error)
+	return errors.WithStack(tx.CreateInBatches(daily, 500).Error)
+}
+
+// requestEnergyEstimator loads the models and providers once and returns the
+// estimated energy of one request to a model, none for a model without an
+// active parameter count or deleted since, as service.EstimateUsageEnergy
+// does.
+func requestEnergyEstimator(tx *gorm.DB) (func(modelID string, promptTokens, completionTokens int) model.UsageEnergy, error) {
+	var models []LLMModel
+	if err := tx.Select("id", "provider_id", "active_params", "tokens_per_sec_low", "tokens_per_sec_high").Find(&models).Error; err != nil {
+		return nil, errors.WithStack(err)
+	}
+	var providers []Provider
+	if err := tx.Select("id", "cloud_tier").Find(&providers).Error; err != nil {
+		return nil, errors.WithStack(err)
+	}
+	tiers := make(map[string]estimator.CloudTier, len(providers))
+	for _, p := range providers {
+		tiers[p.ID] = estimator.CloudTier(p.CloudTier)
+	}
+	byID := make(map[string]LLMModel, len(models))
+	for _, m := range models {
+		byID[m.ID] = m
+	}
+	return func(modelID string, promptTokens, completionTokens int) model.UsageEnergy {
+		m, ok := byID[modelID]
+		if !ok {
+			return model.UsageEnergy{}
+		}
+		// A provider deleted since is estimated as a hyperscaler, as the
+		// service does.
+		tier, ok := tiers[m.ProviderID]
+		if !ok {
+			tier = estimator.TierHyperscaler
+		}
+		wh, co2, ok := estimator.RequestEnergy(tier, m.ActiveParams, m.TokensPerSecLow, m.TokensPerSecHigh, promptTokens, completionTokens)
+		if !ok {
+			return model.UsageEnergy{}
+		}
+		return model.UsageEnergy{Wh: wh, CO2Grams: co2}
+	}, nil
 }
 
 // utcQuarterExpr returns the SQL expression of the UTC quarter of an hour a

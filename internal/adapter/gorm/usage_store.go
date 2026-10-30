@@ -29,7 +29,7 @@ func (s *Store) RecordUsage(ctx context.Context, record model.UsageRecord) error
 		if err := incrementQuotaUsage(db, quotaUsageRows(record)); err != nil {
 			return err
 		}
-		return incrementUsageDaily(db, row)
+		return incrementUsageDaily(db, row, record.Energy())
 	})
 }
 
@@ -675,6 +675,68 @@ func (s *Store) AggregatePlanTokensByUser(ctx context.Context, filter port.Usage
 		result = append(result, port.UserTokenUsage{UserID: model.UserID(userID), Tokens: sum})
 	}
 	return result, nil
+}
+
+// AggregateEnergy implements port.UsageStore.
+func (s *Store) AggregateEnergy(ctx context.Context, filter port.UsageFilter) (model.UsageEnergy, []port.RequestSize, error) {
+	type sizeKey struct {
+		modelID                        string
+		promptTokens, completionTokens int64
+	}
+	var (
+		stored model.UsageEnergy
+		sizes  map[sizeKey]int64
+	)
+	sources := usageSources(filter, time.Now())
+	err := s.read(ctx, func(ctx context.Context, db *gorm.DB) error {
+		return readPeriod(db, sources, func(db *gorm.DB) error {
+			// Each attempt of a replayed read starts from zero.
+			stored, sizes = model.UsageEnergy{}, make(map[sizeKey]int64)
+			for _, src := range sources {
+				if src.daily {
+					var part struct{ Wh, CO2 float64 }
+					query := src.query(db).Select("COALESCE(SUM(energy_wh), 0) as wh, COALESCE(SUM(co2_grams), 0) as co2")
+					if err := query.Scan(&part).Error; err != nil {
+						return errors.WithStack(err)
+					}
+					stored.Wh += part.Wh
+					stored.CO2Grams += part.CO2
+					continue
+				}
+				var rows []struct {
+					ModelID          string
+					PromptTokens     int64
+					CompletionTokens int64
+					Requests         int64
+				}
+				query := src.query(db).
+					Select("model_id as model_id, prompt_tokens as prompt_tokens, completion_tokens as completion_tokens, COUNT(*) as requests").
+					Where("model_id <> ''").
+					Group("model_id, prompt_tokens, completion_tokens")
+				if err := query.Scan(&rows).Error; err != nil {
+					return errors.WithStack(err)
+				}
+				for _, r := range rows {
+					sizes[sizeKey{r.ModelID, r.PromptTokens, r.CompletionTokens}] += r.Requests
+				}
+			}
+			return nil
+		})
+	})
+	if err != nil {
+		return model.UsageEnergy{}, nil, err
+	}
+
+	result := make([]port.RequestSize, 0, len(sizes))
+	for k, requests := range sizes {
+		result = append(result, port.RequestSize{
+			ModelID:          model.LLMModelID(k.modelID),
+			PromptTokens:     k.promptTokens,
+			CompletionTokens: k.completionTokens,
+			Requests:         requests,
+		})
+	}
+	return stored, result, nil
 }
 
 // AggregateRequestSizes implements port.UsageStore.
