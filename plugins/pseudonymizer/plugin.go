@@ -286,6 +286,18 @@ func (p *Plugin) PreRequest(ctx context.Context, in *proto.PreRequestInput) (*pr
 		// appearance: a placeholder kept from an earlier turn may then be
 		// restored to another entity (#56).
 		slog.WarnContext(ctx, "pseudonymizer: placeholder indexes follow the order of appearance, no index key", slog.Any("error", err))
+		p.emitEvent(pluginsdk.Event{
+			PluginName: "pseudonymizer",
+			OrgID:      in.GetCtx().GetOrgId(),
+			UserID:     in.GetCtx().GetUserId(),
+			Type:       eventIndexKeyUnavailable,
+			Severity:   "warning",
+			Message:    "Jetons numérotés dans l'ordre d'apparition, clé d'index indisponible : " + err.Error(),
+			Attributes: map[string]string{
+				"error":    err.Error(),
+				"strategy": cfg.Strategy,
+			},
+		})
 	} else if indexOpt != nil {
 		anonymOpts = append(anonymOpts, indexOpt)
 	}

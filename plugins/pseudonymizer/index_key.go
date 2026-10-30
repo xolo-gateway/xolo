@@ -17,6 +17,10 @@ import (
 // placeholder indexes are derived from (see indexKeyOption).
 const secretKeyIndex = "index_key"
 
+// eventIndexKeyUnavailable reports a request whose placeholders are numbered in
+// order of appearance, the node's index key being unavailable.
+const eventIndexKeyUnavailable = "index-key.unavailable"
+
 // indexKeyStore is what indexKeyOption needs of the host's secret store.
 type indexKeyStore interface {
 	GetSecret(ctx context.Context, scopeID, pluginName, nodeID, key string) (string, bool, error)
