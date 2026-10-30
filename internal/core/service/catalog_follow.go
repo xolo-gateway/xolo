@@ -333,6 +333,10 @@ type CatalogFollowReport struct {
 // has is left as it is. Following is idempotent: it can run on every
 // replica, and again on the same release.
 //
+// It returns the report of what it did even when it fails: a provider it
+// could not follow, for want of an exchange rate or of the store, does not
+// keep the others from following.
+//
 // It reads the models before writing them: an edit saved in between is
 // overwritten by the bundle import's write of the whole model.
 func (f *CatalogFollower) Follow(ctx context.Context, c *catalog.Catalog) (CatalogFollowReport, error) {
@@ -360,13 +364,15 @@ func (f *CatalogFollower) Follow(ctx context.Context, c *catalog.Catalog) (Catal
 		}
 		groups[g] = append(groups[g], t)
 	}
+	// One provider's failure leaves the others to follow; the failures are
+	// returned together, for the caller to try again soon.
+	var errs []error
 	for _, g := range order {
 		if err := f.followGroup(ctx, c, g.provider, g.catalogProvider, groups[g], &report); err != nil {
-			// One provider's failure leaves the others to follow.
-			slog.WarnContext(ctx, "could not follow the model catalog", slog.String("provider", string(g.provider)), slog.String("catalog_provider", g.catalogProvider), slogx.Error(err))
+			errs = append(errs, errors.Wrapf(err, "provider %s, catalog provider %s", g.provider, g.catalogProvider))
 		}
 	}
-	return report, nil
+	return report, stderrors.Join(errs...)
 }
 
 // Run follows the releases source serves until ctx is done: it fetches the
@@ -380,14 +386,18 @@ func (f *CatalogFollower) Run(ctx context.Context, source *catalog.Source, inter
 		c, err := source.Catalog(ctx)
 		if err != nil {
 			wait = time.Minute
-		} else if report, err := f.Follow(ctx, c); err != nil {
-			// Retried soon, as an unreadable release is.
-			wait = time.Minute
-			slog.WarnContext(ctx, "could not follow the model catalog", slog.String("version", c.Version), slogx.Error(err))
-		} else if report.Updated > 0 || report.Kept > 0 || report.Failed > 0 {
-			slog.InfoContext(ctx, "followed the model catalog", slog.String("version", c.Version),
-				slog.Int("models", report.Models), slog.Int("updated", report.Updated), slog.Int("fields", report.Fields),
-				slog.Int("kept", report.Kept), slog.Int("failed", report.Failed))
+		} else {
+			report, err := f.Follow(ctx, c)
+			if err != nil {
+				// Retried soon, as an unreadable release is.
+				wait = time.Minute
+				slog.WarnContext(ctx, "could not follow the model catalog", slog.String("version", c.Version), slogx.Error(err))
+			}
+			if report.Updated > 0 || report.Kept > 0 || report.Failed > 0 {
+				slog.InfoContext(ctx, "followed the model catalog", slog.String("version", c.Version),
+					slog.Int("models", report.Models), slog.Int("updated", report.Updated), slog.Int("fields", report.Fields),
+					slog.Int("kept", report.Kept), slog.Int("failed", report.Failed))
+			}
 		}
 		select {
 		case <-ctx.Done():

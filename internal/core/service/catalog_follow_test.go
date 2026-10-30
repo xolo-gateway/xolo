@@ -198,8 +198,8 @@ func TestCatalogFollower_LeavesAProviderItCannotConvertForLater(t *testing.T) {
 	store, origins, _, id := importedFromCatalog(t, followRelease("v1", 2, 6, 128_000), "EUR", rates)
 	rates.err = errors.New("no rate")
 	follower := NewCatalogFollower(store, origins, rates)
-	if _, err := follower.Follow(ctx, followRelease("v2", 4, 6, 128_000)); err != nil {
-		t.Fatal(err)
+	if _, err := follower.Follow(ctx, followRelease("v2", 4, 6, 128_000)); err == nil {
+		t.Fatal("want the missing rate returned, for the follow to be tried again soon")
 	}
 	if got := store.models[id].PromptCostPer1KTokens(); got != 1000 {
 		t.Fatalf("prompt cost = %d without a rate, want 1000 kept", got)
@@ -418,8 +418,8 @@ func TestCatalogFollower_SavesTheOtherOriginsWhenOneFails(t *testing.T) {
 	}
 
 	origins.failed = false
-	if _, err := NewCatalogFollower(store, origins, nil).Follow(ctx, release("v2", 3)); err != nil {
-		t.Fatal(err)
+	if _, err := NewCatalogFollower(store, origins, nil).Follow(ctx, release("v2", 3)); err == nil {
+		t.Fatal("want the failed save returned")
 	}
 	followed := 0
 	for _, o := range origins.origins {
