@@ -90,6 +90,10 @@ type UsageStore interface {
 	// carry their equivalent PAYG value: a caller charting billed spend only sets
 	// UsageFilter.PlanCovered to false.
 	AggregateCostByDimension(ctx context.Context, filter UsageFilter, dimension UsageDimension) ([]DimensionCost, error)
+	// AggregateCostByDimensions returns, for each dimension, what
+	// AggregateCostByDimension would, in a single pass over the records: a page
+	// charting the same period several ways reads it once.
+	AggregateCostByDimensions(ctx context.Context, filter UsageFilter, dimensions ...UsageDimension) (map[UsageDimension][]DimensionCost, error)
 	// AggregatePlanTokensByUser returns subscription-covered (plan_covered=true) token
 	// sub-totals grouped by user, honoring the filter.
 	AggregatePlanTokensByUser(ctx context.Context, filter UsageFilter) ([]UserTokenUsage, error)

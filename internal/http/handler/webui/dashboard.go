@@ -222,13 +222,14 @@ func (h *Handler) getDashboardPage(w http.ResponseWriter, r *http.Request) {
 		return out
 	}
 
-	perModel := convertPerOrg(h.aggregateCostRows(ctx, chartFilter, port.UsageDimensionModel))
+	costRows := h.aggregateCostRows(ctx, chartFilter, port.UsageDimensionModel, port.UsageDimensionDay, port.UsageDimensionProvider)
+	perModel := convertPerOrg(costRows[port.UsageDimensionModel])
 
-	paygDayRows, coveredDayRows := port.SplitPlanCovered(h.aggregateCostRows(ctx, chartFilter, port.UsageDimensionDay))
+	paygDayRows, coveredDayRows := port.SplitPlanCovered(costRows[port.UsageDimensionDay])
 	perDay := convertPerOrg(paygDayRows)
 	coveredPerDay := convertPerOrg(coveredDayRows)
 
-	providerRows := h.aggregateCostRows(ctx, chartFilter, port.UsageDimensionProvider)
+	providerRows := costRows[port.UsageDimensionProvider]
 	perProvider := make(map[model.ProviderID]int64)
 	for key, cost := range convertPerOrg(providerRows) {
 		perProvider[model.ProviderID(key)] += cost
@@ -361,12 +362,13 @@ func (h *Handler) getDashboardPage(w http.ResponseWriter, r *http.Request) {
 
 func intPtr(n int) *int { return &n }
 
-// aggregateCostRows fetches the PAYG cost sub-totals for a dimension, logging and
-// returning nil on error so a failed chart never blocks the whole page.
-func (h *Handler) aggregateCostRows(ctx context.Context, filter port.UsageFilter, dim port.UsageDimension) []port.DimensionCost {
-	rows, err := h.usageStore.AggregateCostByDimension(ctx, filter, dim)
+// aggregateCostRows fetches the cost sub-totals for each dimension in a single
+// pass, logging and returning nil on error so a failed chart never blocks the
+// whole page.
+func (h *Handler) aggregateCostRows(ctx context.Context, filter port.UsageFilter, dims ...port.UsageDimension) map[port.UsageDimension][]port.DimensionCost {
+	rows, err := h.usageStore.AggregateCostByDimensions(ctx, filter, dims...)
 	if err != nil {
-		slog.WarnContext(ctx, "could not aggregate usage cost", slog.String("dimension", string(dim)), slogx.Error(err))
+		slog.WarnContext(ctx, "could not aggregate usage cost", slogx.Error(err))
 		return nil
 	}
 	return rows
