@@ -5,8 +5,6 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
-	"slices"
-	"strings"
 
 	"github.com/a-h/templ"
 	"github.com/bornholm/go-x/slogx"
@@ -105,7 +103,7 @@ func (h *Handler) previewCatalogImport(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusUnprocessableEntity)
 		templ.Handler(component.CatalogImportPage(page)).ServeHTTP(w, r)
 	}
-	bundle, err := c.Bundle(r.FormValue("catalog_provider"), plan)
+	tb, err := c.BundleFor(r.FormValue("catalog_provider"), plan, p)
 	if err != nil {
 		// A provider or plan the release lacks is the operator's to fix; a
 		// release that does not convert is the catalog's, and is logged.
@@ -118,67 +116,15 @@ func (h *Handler) previewCatalogImport(w http.ResponseWriter, r *http.Request) {
 		refuse(i18n.T(ctx, "org.errors.catalog_import.invalid_entry", c.Version, err.Error()))
 		return
 	}
-	// Imported into a provider at another endpoint than its own, a catalog
-	// provider gives its models, prices and plan, not its API nor its
-	// endpoints: they would receive this provider's key. Per offering, by
-	// the rule of the model form's pre-fill: one served at the provider's
-	// address keeps the API served there, one served elsewhere through
-	// another API is left out, the others give their figures. So is a model
-	// of a kind the API it ends on does not serve.
-	otherEndpoint := p != nil && strings.TrimRight(c.Provider(r.FormValue("catalog_provider")).Xolo.BaseURL, "/") != strings.TrimRight(p.BaseURL(), "/")
-	leftOut, budgetsDropped := 0, false
-	if otherEndpoint {
-		target, catalogType := strings.TrimRight(p.BaseURL(), "/"), bundle.Provider.Type
-		bundle.Provider.Type, bundle.Provider.BaseURL = p.Type(), p.BaseURL()
-		models := bundle.Models[:0]
-		for _, bm := range bundle.Models {
-			api := bm.APIType
-			switch {
-			case bm.BaseURL != "" && strings.TrimRight(bm.BaseURL, "/") == target:
-				// The API served there: the offering's, else its catalog
-				// provider's, which a bundle model leaves implicit.
-				if api == "" {
-					api = catalogType
-				}
-				bm.BaseURL = ""
-			case api != "" && api != p.Type():
-				leftOut++
-				continue
-			default:
-				api, bm.BaseURL = "", ""
-			}
-			if api == p.Type() {
-				api = ""
-			}
-			served := api
-			if served == "" {
-				served = p.Type()
-			}
-			if bm.Kind != "" && !model.ProviderTypeServes(served, bm.Kind) {
-				leftOut++
-				continue
-			}
-			bm.APIType = api
-			models = append(models, bm)
-		}
-		bundle.Models = models
-		// A budget of a model left out would apply to none. A shared
-		// constraint keeps it: its smallest budget weighs the models it
-		// does not list, which the published plan sets.
-		if plan := bundle.Provider.SubscriptionPlan; plan != nil && leftOut > 0 {
-			for i := range plan.Constraints {
-				if plan.Constraints[i].Shared() {
-					continue
-				}
-				for name := range plan.Constraints[i].ModelBudgets {
-					if !slices.ContainsFunc(models, func(bm model.ProviderBundleModel) bool { return bm.RealModel == name }) {
-						delete(plan.Constraints[i].ModelBudgets, name)
-						budgetsDropped = true
-					}
-				}
-			}
-		}
+	// The values as the release gives them, before any conversion: the
+	// models the import writes remember them, to follow the catalog.
+	origin, err := json.Marshal(service.NewCatalogImport(r.FormValue("catalog_provider"), c.Version, tb))
+	if err != nil {
+		slog.ErrorContext(ctx, "could not encode catalog origin", slogx.Error(err))
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
 	}
+	bundle := tb.Bundle
 	// The catalog publishes in each provider's currency: imported into a
 	// provider billing in another one, its prices and budgets are converted,
 	// so that they never land under a currency they are not in.
@@ -229,15 +175,16 @@ func (h *Handler) previewCatalogImport(w http.ResponseWriter, r *http.Request) {
 	}
 	vmodel.Plan = &dryRun
 	vmodel.Bundle = string(raw)
+	vmodel.CatalogImport = string(origin)
 	vmodel.Name = bundle.Provider.Name
 	vmodel.Notice = i18n.T(ctx, "org.catalog_import.from", c.Version)
-	if otherEndpoint {
+	if tb.OtherEndpoint {
 		vmodel.Notice += " " + i18n.T(ctx, "org.catalog_import.other_endpoint", p.Name())
 	}
-	if leftOut > 0 {
-		vmodel.Notice += " " + i18n.T(ctx, "org.catalog_import.unserved_left_out", p.Type(), leftOut)
+	if tb.LeftOut > 0 {
+		vmodel.Notice += " " + i18n.T(ctx, "org.catalog_import.unserved_left_out", p.Type(), tb.LeftOut)
 	}
-	if budgetsDropped {
+	if tb.BudgetsDropped {
 		vmodel.Notice += " " + i18n.T(ctx, "org.catalog_import.budgets_dropped")
 	}
 	templ.Handler(component.ProviderBundleImportPage(vmodel)).ServeHTTP(w, r)

@@ -106,6 +106,16 @@ type ModelFormVModel struct {
 	Model          model.LLMModel
 	IsNew          bool
 	Error          string
+	// Notice reports an action that succeeded, such as taking a catalog
+	// value.
+	Notice string
+	// CatalogOrigin is the catalog entry the model was imported from, nil
+	// when it has none; CatalogDivergences lists the fields that differ
+	// from the catalog's values, and CatalogEstimated the form fields that
+	// hold a catalog estimate.
+	CatalogOrigin      *model.CatalogOrigin
+	CatalogDivergences []service.CatalogDivergence
+	CatalogEstimated   map[string]bool
 }
 
 type QuotaPageVModel struct {
@@ -418,6 +428,10 @@ type ProviderBundleImportVModel struct {
 	// OmittedHeaders names the credential-looking request headers the
 	// bundle left out, to configure again on the provider.
 	OmittedHeaders string
+	// CatalogImport, when the bundle comes from the open model catalog, is
+	// the catalog entry it was converted from (service.CatalogImport as
+	// JSON), posted back with it so that the models written remember it.
+	CatalogImport string
 }
 
 // CatalogImportVModel is the choice of a provider of the open model catalog

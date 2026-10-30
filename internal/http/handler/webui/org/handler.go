@@ -47,11 +47,20 @@ type Handler struct {
 	// catalog is the open model catalog providers import from, see
 	// SetCatalog.
 	catalog *catalog.Source
+	// catalogOrigins keeps the catalog entry of each imported model, see
+	// SetCatalogOrigins; nil records and shows none.
+	catalogOrigins port.CatalogOriginStore
 }
 
 // SetCatalog lets the provider pages import from the open model catalog.
 func (h *Handler) SetCatalog(source *catalog.Source) {
 	h.catalog = source
+}
+
+// SetCatalogOrigins lets the models imported from the catalog remember their
+// entry, which following the catalog and the model form read.
+func (h *Handler) SetCatalogOrigins(origins port.CatalogOriginStore) {
+	h.catalogOrigins = origins
 }
 
 // ServeHTTP implements http.Handler.
@@ -207,6 +216,8 @@ func NewHandler(
 	h.mux.Handle("GET /{orgSlug}/admin/providers/{providerID}/models/{modelID}/edit", assertPerm(rbac.PermProvidersRead)(http.HandlerFunc(h.getEditModelPage)))
 	h.mux.Handle("POST /{orgSlug}/admin/providers/{providerID}/models/{modelID}/edit", assertPerm(rbac.PermProvidersWrite)(http.HandlerFunc(h.updateModel)))
 	h.mux.Handle("DELETE /{orgSlug}/admin/providers/{providerID}/models/{modelID}", assertPerm(rbac.PermProvidersWrite)(http.HandlerFunc(h.deleteModel)))
+	h.mux.Handle("POST /{orgSlug}/admin/providers/{providerID}/models/{modelID}/catalog/accept", assertPerm(rbac.PermProvidersWrite)(http.HandlerFunc(h.acceptCatalogValue)))
+	h.mux.Handle("POST /{orgSlug}/admin/providers/{providerID}/models/{modelID}/catalog/detach", assertPerm(rbac.PermProvidersWrite)(http.HandlerFunc(h.detachCatalogOrigin)))
 
 	h.mux.Handle("GET /{orgSlug}/admin/quota", assertPerm(rbac.PermQuotaRead)(http.HandlerFunc(h.getOrgQuotaPage)))
 	h.mux.Handle("POST /{orgSlug}/admin/quota", assertPerm(rbac.PermQuotaWrite)(http.HandlerFunc(h.saveOrgQuota)))

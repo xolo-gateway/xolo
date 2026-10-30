@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"reflect"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -356,5 +357,44 @@ func TestPrices_VariesOnlyWithPublishedTiersOrPeak(t *testing.T) {
 		if got := (Prices{Tiers: json.RawMessage(raw)}).Varies(); got != want {
 			t.Errorf("tiers %q: varies = %v, want %v", raw, got, want)
 		}
+	}
+}
+
+func TestBundleFor_FlagsTheEstimatesOfTheModelsItKeeps(t *testing.T) {
+	estimated := Provenance{Status: StatusEstimated}
+	p := Provider{ID: "beta", Name: "Beta", Currency: "USD", Offerings: []Offering{
+		{Model: "chat", ModelID: "chat", Prices: Prices{Input: 1, Output: 2}, Throughput: &Throughput{Low: 10, High: 20, Provenance: estimated}},
+		{Model: "embed", ModelID: "embed", Prices: Prices{Input: 1, Provenance: estimated}},
+	}}
+	p.Xolo.Type, p.Xolo.BaseURL = "openai", "https://beta.test/v1"
+	c := &Catalog{Version: "v1", Providers: []Provider{p}, Models: []Model{
+		{ID: "chat", Name: "Chat", Params: &Params{Active: &Count{Value: 7e9, Provenance: estimated}}},
+		{ID: "embed", Name: "Embed", Kind: "embeddings"},
+	}}
+
+	tb, err := c.BundleFor("beta", "", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string][]string{
+		"chat":  {"active_params", "tokens_per_sec_low", "tokens_per_sec_high"},
+		"embed": {"prompt_cost", "completion_cost"},
+	}
+	if !reflect.DeepEqual(tb.Estimated, want) {
+		t.Fatalf("estimated = %v, want %v", tb.Estimated, want)
+	}
+
+	// Into an Anthropic provider elsewhere, the embeddings model is left out,
+	// and so are its estimates.
+	target := model.NewProvider("org", "Acme", "anthropic", "https://acme.test/v1", "key", "USD")
+	tb, err = c.BundleFor("beta", "", target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !tb.OtherEndpoint || tb.LeftOut != 1 || len(tb.Bundle.Models) != 1 {
+		t.Fatalf("other endpoint %v, %d left out, %d models: want the embeddings model left out", tb.OtherEndpoint, tb.LeftOut, len(tb.Bundle.Models))
+	}
+	if _, ok := tb.Estimated["embed"]; ok || len(tb.Estimated["chat"]) != 3 {
+		t.Fatalf("estimated = %v, want the chat model's only", tb.Estimated)
 	}
 }

@@ -193,6 +193,18 @@ func (h *Handler) importProviderBundle(w http.ResponseWriter, r *http.Request) {
 	}
 	vmodel.Name = bundle.Provider.Name
 	vmodel.OmittedHeaders = strings.Join(bundle.Provider.OmittedHeaders, ", ")
+	// A bundle converted from the catalog comes with its entry, for the
+	// models it writes to remember.
+	var catalogImport *service.CatalogImport
+	if posted := r.FormValue("catalog_import"); posted != "" && h.catalogOrigins != nil {
+		var ci service.CatalogImport
+		if err := json.Unmarshal([]byte(posted), &ci); err != nil {
+			h.renderProviderBundleError(w, r, vmodel, i18n.T(ctx, "org.errors.provider_bundle.invalid", err.Error()))
+			return
+		}
+		catalogImport = &ci
+		vmodel.CatalogImport = posted
+	}
 
 	if !apply {
 		templ.Handler(component.ProviderBundleImportPage(vmodel)).ServeHTTP(w, r)
@@ -239,6 +251,14 @@ func (h *Handler) importProviderBundle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if catalogImport != nil {
+		// The models are written: an origin that fails to record only leaves
+		// them out of following the catalog.
+		if err := service.RecordCatalogOrigins(ctx, h.providerStore, h.catalogOrigins, *catalogImport, plan, *sel, result); err != nil {
+			slog.ErrorContext(ctx, "could not record the catalog origin of imported models", slogx.Error(err))
+		}
+	}
+
 	if !result.Refused() && result.Wrote() {
 		http.Redirect(w, r, "/orgs/"+org.Slug()+"/admin/providers/"+string(result.Provider.ID())+"/models?success=imported", http.StatusSeeOther)
 		return
@@ -251,7 +271,7 @@ func (h *Handler) importProviderBundle(w http.ResponseWriter, r *http.Request) {
 			name := vmodel.Name
 			omitted := vmodel.OmittedHeaders
 			vmodel = h.providerBundleImportVModel(ctx, org, result.Provider)
-			vmodel.Bundle, vmodel.Name, vmodel.OmittedHeaders = string(raw), name, omitted
+			vmodel.Bundle, vmodel.Name, vmodel.OmittedHeaders, vmodel.CatalogImport = string(raw), name, omitted, r.FormValue("catalog_import")
 		}
 		// The dry run is replanned against the provider as written: its type
 		// may have changed.
@@ -479,43 +499,5 @@ func (h *Handler) convertBundleCurrency(ctx context.Context, bundle *model.Provi
 	if h.exchangeRateService == nil {
 		return errors.New("no exchange rate service")
 	}
-	from := bundle.Provider.Currency
-	convert := func(microcents int64) (int64, error) {
-		return h.exchangeRateService.Convert(ctx, microcents, from, to)
-	}
-	for i := range bundle.Models {
-		prices := &bundle.Models[i].Prices
-		for _, p := range []*float64{&prices.Input, &prices.CachedInput, &prices.Output} {
-			v, err := convert(model.MicrocentsPer1K(*p))
-			if err != nil {
-				return errors.WithStack(err)
-			}
-			*p = model.PricePerMillion(v)
-		}
-	}
-	if plan := bundle.Provider.SubscriptionPlan; plan != nil {
-		for ci := range plan.Constraints {
-			c := &plan.Constraints[ci]
-			if c.ValueBudget != nil {
-				v, err := convert(*c.ValueBudget)
-				if err != nil {
-					return errors.WithStack(err)
-				}
-				c.ValueBudget = &v
-			}
-			for id, b := range c.ModelBudgets {
-				if b.ValueBudget == nil {
-					continue
-				}
-				v, err := convert(*b.ValueBudget)
-				if err != nil {
-					return errors.WithStack(err)
-				}
-				b.ValueBudget = &v
-				c.ModelBudgets[id] = b
-			}
-		}
-	}
-	bundle.Provider.Currency = to
-	return nil
+	return service.ConvertBundleCurrency(ctx, h.exchangeRateService, bundle, to)
 }

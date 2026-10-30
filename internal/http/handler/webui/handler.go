@@ -50,9 +50,11 @@ func (h *Handler) WithTeams(teams port.TeamStore) *Handler {
 	return h
 }
 
-// WithCatalog lets the provider pages import from the open model catalog.
-func (h *Handler) WithCatalog(source *catalog.Source) *Handler {
+// WithCatalog lets the provider pages import from the open model catalog,
+// the models imported remembering their entry in origins.
+func (h *Handler) WithCatalog(source *catalog.Source, origins port.CatalogOriginStore) *Handler {
 	h.orgHandler.SetCatalog(source)
+	h.orgHandler.SetCatalogOrigins(origins)
 	return h
 }
 

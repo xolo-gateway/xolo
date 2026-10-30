@@ -79,7 +79,7 @@ func (s *Store) DeleteProvider(ctx context.Context, id model.ProviderID) error {
 // CreateLLMModel implements port.ProviderStore.
 func (s *Store) CreateLLMModel(ctx context.Context, m model.LLMModel) error {
 	return s.recorded(ctx, tracking("llm_model", string(m.ID())), func(ctx context.Context, db *gorm.DB) error {
-		return errors.WithStack(db.Create(fromLLMModel(m)).Error)
+		return errors.WithStack(db.Omit(llmModelOwnColumns...).Create(fromLLMModel(m)).Error)
 	})
 }
 
@@ -156,7 +156,7 @@ func (s *Store) ListEnabledLLMModels(ctx context.Context, orgID model.OrgID) ([]
 // SaveLLMModel implements port.ProviderStore.
 func (s *Store) SaveLLMModel(ctx context.Context, m model.LLMModel) error {
 	return s.recorded(ctx, tracking("llm_model", string(m.ID())), func(ctx context.Context, db *gorm.DB) error {
-		return errors.WithStack(db.Clauses(clause.OnConflict{
+		return errors.WithStack(db.Omit(llmModelOwnColumns...).Clauses(clause.OnConflict{
 			Columns:   []clause.Column{{Name: "id"}},
 			UpdateAll: true,
 		}).Create(fromLLMModel(m)).Error)

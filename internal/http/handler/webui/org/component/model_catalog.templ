@@ -1,0 +1,74 @@
+package component
+
+import (
+	common "github.com/xolo-gateway/xolo/internal/http/handler/webui/common/component"
+	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/button"
+	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/icon"
+	"github.com/xolo-gateway/xolo/internal/i18n"
+)
+
+// modelCatalogPanel tells which catalog entry the model follows, and offers
+// the catalog's value of each field that differs from it.
+templ modelCatalogPanel(vmodel ModelFormVModel, readonly bool) {
+	{{ origin := vmodel.CatalogOrigin }}
+	{{ baseURL := common.BaseURLString(ctx, common.WithPath("/orgs/", vmodel.Org.Slug(), "/admin/providers/", string(vmodel.Provider.ID()), "/models/", string(vmodel.Model.ID()), "/catalog")) }}
+	@common.Section() {
+		@common.SectionHeader() {
+			@icon.BookOpen(icon.Props{Class: "size-4 text-muted-foreground"})
+			@common.SectionTitle() {
+				{ i18n.T(ctx, "org.model.catalog.title") }
+			}
+		}
+		@common.SectionBody(common.SectionBodyProps{Class: "space-y-3"}) {
+			@common.SectionNote() {
+				{ i18n.T(ctx, "org.model.catalog.followed", origin.Provider, origin.Model, origin.Version) }
+			}
+			if len(vmodel.CatalogDivergences) > 0 {
+				<p class="text-sm">{ i18n.T(ctx, "org.model.catalog.divergences") }</p>
+				<ul class="space-y-2">
+					for _, d := range vmodel.CatalogDivergences {
+						<li class="flex flex-wrap items-center justify-between gap-2 text-sm">
+							<span>
+								<span class="font-medium">{ providerBundleFieldLabel(ctx, d.Field) }</span>
+								{ " " }
+								<span class="text-muted-foreground">{ i18n.T(ctx, "org.model.catalog.values", d.Current, d.Catalog) }</span>
+							</span>
+							if !readonly {
+								<form method="POST" action={ templ.SafeURL(baseURL + "/accept") }>
+									<input type="hidden" name="field" value={ d.Field }/>
+									@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantOutline, Size: button.SizeSm}) {
+										{ i18n.T(ctx, "org.model.catalog.accept") }
+									}
+								</form>
+							}
+						</li>
+					}
+				</ul>
+			}
+			if !readonly {
+				<form method="POST" action={ templ.SafeURL(baseURL + "/detach") }>
+					@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantLink, Class: "h-auto p-0 text-xs"}) {
+						{ i18n.T(ctx, "org.model.catalog.detach") }
+					}
+				</form>
+			}
+		}
+	}
+}
+
+// catalogEstimatedBadge marks a field holding the catalog's estimate rather
+// than a published figure.
+templ catalogEstimatedBadge(vmodel ModelFormVModel, fields ...string) {
+	if catalogEstimated(vmodel, fields...) {
+		@common.Badge(common.ToneInfo, i18n.T(ctx, "org.model.catalog.estimated"))
+	}
+}
+
+func catalogEstimated(vmodel ModelFormVModel, fields ...string) bool {
+	for _, f := range fields {
+		if vmodel.CatalogEstimated[f] {
+			return true
+		}
+	}
+	return false
+}
