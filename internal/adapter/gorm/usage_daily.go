@@ -125,17 +125,25 @@ func incrementUsageDaily(db *gorm.DB, record *UsageRecord, energy model.UsageEne
 //
 // The migration must run with the other instances stopped: a record an older
 // instance writes after the backfill never reaches its day, and the pages
-// would under-report that day for good. RebuildUsageDaily repairs it.
+// would under-report that day for good. The same goes for the energy of a
+// record an instance predating usageEnergyMigrationID writes: its day keeps
+// none. RebuildUsageDaily repairs both.
+//
+// The migrations do not run in a transaction: the backfill gets its own, so a
+// failure does not leave the table half filled.
 func migrateUsageDaily(tx *gorm.DB) error {
 	if err := tx.AutoMigrate(&UsageDaily{}); err != nil {
 		return errors.WithStack(err)
 	}
-	return backfillUsageDaily(tx)
+	return errors.WithStack(tx.Transaction(backfillUsageDaily))
 }
 
 // RebuildUsageDaily rebuilds the daily usage sums from the usage records. It
 // is what the migration runs, exported for the tooling that writes usage
 // records in bulk rather than through the store — the seeder.
+//
+// The energy of every day is estimated again, with the models as they are at
+// the rebuild: the energy kept as the requests were recorded is lost.
 func RebuildUsageDaily(db *gorm.DB) error {
 	return db.Transaction(backfillUsageDaily)
 }
@@ -153,7 +161,8 @@ func RebuildUsageDaily(db *gorm.DB) error {
 // models as they are now, for each size of request — the estimate is not
 // linear in the tokens — then multiplied by the requests of that size. There
 // can be as many sizes as records, so the rows are read as they come rather
-// than loaded at once.
+// than loaded at once; on PostgreSQL the transaction holds its snapshot for as
+// long.
 func backfillUsageDaily(tx *gorm.DB) error {
 	if err := tx.Exec("DELETE FROM " + usageDailyTable).Error; err != nil {
 		return errors.WithStack(err)

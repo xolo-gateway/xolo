@@ -783,7 +783,7 @@ func schemaMigrations(artifact *RecoveryArtifact) []*gormigrate.Migration {
 				if err := tx.AutoMigrate(&UsageDaily{}); err != nil {
 					return errors.WithStack(err)
 				}
-				return backfillUsageDaily(tx)
+				return errors.WithStack(tx.Transaction(backfillUsageDaily))
 			},
 			Rollback: func(tx *gorm.DB) error {
 				if err := tx.Migrator().DropColumn(&UsageDaily{}, "energy_wh"); err != nil {

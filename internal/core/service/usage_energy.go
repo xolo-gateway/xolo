@@ -18,6 +18,9 @@ import (
 // then multiplied by the number of requests sharing them. Models without an
 // active parameter count, or deleted since, are left out. Any other store error
 // is returned: a partial total must not be shown, nor cached, as the real one.
+//
+// The stored energy is kept as it was estimated: a model deleted since still
+// counts on the whole days, and a change of its parameters does not reach them.
 func EstimateUsageEnergy(ctx context.Context, usage port.UsageStore, providers port.ProviderStore, filter port.UsageFilter) (totalEnergyWh, totalCO2GramsMid float64, err error) {
 	stored, sizes, err := usage.AggregateEnergy(ctx, filter)
 	if err != nil {
