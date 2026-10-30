@@ -22,10 +22,14 @@ import (
 // until the next backfill, and there is no backfill on the hot path.
 func (s *Store) RecordUsage(ctx context.Context, record model.UsageRecord) error {
 	return s.withRetry(ctx, true, func(ctx context.Context, db *gorm.DB) error {
-		if err := db.Create(fromUsageRecord(record)).Error; err != nil {
+		row := fromUsageRecord(record)
+		if err := db.Create(row).Error; err != nil {
 			return errors.WithStack(err)
 		}
-		return incrementQuotaUsage(db, quotaUsageRows(record))
+		if err := incrementQuotaUsage(db, quotaUsageRows(record)); err != nil {
+			return err
+		}
+		return incrementUsageDaily(db, row)
 	})
 }
 
@@ -111,10 +115,32 @@ func (s *Store) AggregateUsage(ctx context.Context, filter port.UsageFilter) (*p
 	}
 
 	err := s.read(ctx, func(ctx context.Context, db *gorm.DB) error {
-		query := db.Model(&UsageRecord{}).
-			Select("COUNT(*) as total_requests, COALESCE(SUM(cost),0) as total_cost, COALESCE(SUM(prompt_tokens),0) as prompt_tokens, COALESCE(SUM(cached_tokens),0) as cached_tokens, COALESCE(SUM(completion_tokens),0) as completion_tokens, COALESCE(SUM(total_tokens),0) as total_tokens")
-		query = applyUsageFilter(query, filter)
-		return errors.WithStack(query.Scan(&counts).Error)
+		for _, src := range usageSources(filter, time.Now()) {
+			requests := "COUNT(*)"
+			if src.daily {
+				requests = "COALESCE(SUM(requests),0)"
+			}
+			var part struct {
+				TotalRequests    int64
+				TotalCost        int64
+				PromptTokens     int64
+				CachedTokens     int64
+				CompletionTokens int64
+				TotalTokens      int64
+			}
+			query := src.query(db).
+				Select(requests + " as total_requests, COALESCE(SUM(cost),0) as total_cost, COALESCE(SUM(prompt_tokens),0) as prompt_tokens, COALESCE(SUM(cached_tokens),0) as cached_tokens, COALESCE(SUM(completion_tokens),0) as completion_tokens, COALESCE(SUM(total_tokens),0) as total_tokens")
+			if err := query.Scan(&part).Error; err != nil {
+				return errors.WithStack(err)
+			}
+			counts.TotalRequests += part.TotalRequests
+			counts.TotalCost += part.TotalCost
+			counts.PromptTokens += part.PromptTokens
+			counts.CachedTokens += part.CachedTokens
+			counts.CompletionTokens += part.CompletionTokens
+			counts.TotalTokens += part.TotalTokens
+		}
+		return nil
 	})
 	if err != nil {
 		return nil, err
@@ -519,33 +545,43 @@ func (s *Store) AggregateCostByDimensions(ctx context.Context, filter port.Usage
 		return nil, errors.Errorf("at most %d usage dimensions at once, got %v", maxUsageDimensions, dimensions)
 	}
 
-	var rows []struct {
+	type costRow struct {
 		Key0, Key1, Key2, Key3 string
 		OrgID                  string
 		Currency               string
 		PlanCovered            int
 		Cost                   int64
 	}
+	// The rows of every source of the period, summed below like the rows of
+	// one query.
+	var rows []costRow
 	err := s.read(ctx, func(ctx context.Context, db *gorm.DB) error {
-		selects := make([]string, 0, len(dimensions)+4)
-		groups := make([]string, 0, len(dimensions))
-		for i, dimension := range dimensions {
-			groupExpr, err := dimensionGroupExpr(db, dimension)
-			if err != nil {
-				return err
+		for _, src := range usageSources(filter, time.Now()) {
+			selects := make([]string, 0, len(dimensions)+4)
+			groups := make([]string, 0, len(dimensions))
+			for i, dimension := range dimensions {
+				groupExpr, err := src.dimensionExpr(db, dimension)
+				if err != nil {
+					return err
+				}
+				selects = append(selects, fmt.Sprintf("%s as key%d", groupExpr, i))
+				groups = append(groups, groupExpr)
 			}
-			selects = append(selects, fmt.Sprintf("%s as key%d", groupExpr, i))
-			groups = append(groups, groupExpr)
-		}
-		selects = append(selects, "org_id as org_id", "currency as currency", "plan_covered as plan_covered", "COALESCE(SUM(cost), 0) as cost")
+			selects = append(selects, "org_id as org_id", "currency as currency", "plan_covered as plan_covered", "COALESCE(SUM(cost), 0) as cost")
 
-		query := db.Model(&UsageRecord{}).Select(strings.Join(selects, ", "))
-		query = applyUsageFilter(query, filter)
-		for _, group := range groups {
-			query = query.Group(group)
+			query := src.query(db).Select(strings.Join(selects, ", "))
+			for _, group := range groups {
+				query = query.Group(group)
+			}
+			query = query.Group("org_id").Group("currency").Group("plan_covered")
+
+			var part []costRow
+			if err := query.Scan(&part).Error; err != nil {
+				return errors.WithStack(err)
+			}
+			rows = append(rows, part...)
 		}
-		query = query.Group("org_id").Group("currency").Group("plan_covered")
-		return errors.WithStack(query.Scan(&rows).Error)
+		return nil
 	})
 	if err != nil {
 		return nil, err

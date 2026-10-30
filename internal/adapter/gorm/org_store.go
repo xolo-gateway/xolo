@@ -190,6 +190,7 @@ func deleteOrgWithin(db *gorm.DB, id model.OrgID) error {
 		&Alert{},
 		&AlertIncident{},
 		&UsageRecord{},
+		&UsageDaily{},
 		&Event{},
 		&EventSettings{},
 		&VirtualModel{},

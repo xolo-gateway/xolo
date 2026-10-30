@@ -149,7 +149,7 @@ func MigrateDatabase(ctx context.Context, db *gorm.DB, artifact *RecoveryArtifac
 					// Personal virtual model store
 					&PersonalVirtualModel{},
 					// Quota store
-					&Quota{}, &QuotaUsage{},
+					&Quota{}, &QuotaUsage{}, &UsageDaily{},
 					// Usage store
 					&UsageRecord{},
 					// Invite store
@@ -764,6 +764,16 @@ func schemaMigrations(artifact *RecoveryArtifact) []*gormigrate.Migration {
 				return errors.WithStack(tx.Migrator().DropIndex(&UsageRecord{}, "idx_usage_user_created"))
 			},
 		},
+		{
+			// Add usage_daily, the daily sums of the usage records the usage
+			// pages read for the whole days of their period, and fill it from
+			// the usage history.
+			ID:      usageDailyMigrationID,
+			Migrate: migrateUsageDaily,
+			Rollback: func(tx *gorm.DB) error {
+				return errors.WithStack(tx.Migrator().DropTable(&UsageDaily{}))
+			},
+		},
 	}
 }
 
@@ -776,4 +786,5 @@ const (
 	memberLocaleMigrationID           = "202610290002"
 	catalogOriginMigrationID          = "202610300001"
 	userUsageIndexMigrationID         = "202610300002"
+	usageDailyMigrationID             = "202610300003"
 )
