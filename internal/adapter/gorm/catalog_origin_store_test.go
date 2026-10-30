@@ -78,6 +78,22 @@ func scenarioCatalogOriginStore(t *testing.T, store *xologorm.Store) {
 		t.Fatalf("tracked models = %+v, want the tracked one only", list)
 	}
 
+	followed := *origin
+	followed.Version = "v0.2.0"
+	if err := store.UpdateCatalogOrigin(ctx, tracked.ID(), followed); err != nil {
+		t.Fatalf("UpdateCatalogOrigin: %v", err)
+	}
+	if got, err := store.GetCatalogOrigin(ctx, tracked.ID()); err != nil || got.Version != "v0.2.0" {
+		t.Fatalf("updated origin = %+v, %v", got, err)
+	}
+	// A model without origin is not given one by an update.
+	if err := store.UpdateCatalogOrigin(ctx, untracked.ID(), followed); !errors.Is(err, port.ErrNotFound) {
+		t.Fatalf("UpdateCatalogOrigin on a model without origin: %v, want ErrNotFound", err)
+	}
+	if got, err := store.GetCatalogOrigin(ctx, untracked.ID()); err != nil || got != nil {
+		t.Fatalf("the update gave the model an origin: %+v, %v", got, err)
+	}
+
 	if err := store.SaveCatalogOrigin(ctx, tracked.ID(), nil); err != nil {
 		t.Fatalf("SaveCatalogOrigin(nil): %v", err)
 	}

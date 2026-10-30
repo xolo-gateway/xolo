@@ -72,4 +72,20 @@ func (s *Store) SaveCatalogOrigin(ctx context.Context, id model.LLMModelID, orig
 	})
 }
 
+// UpdateCatalogOrigin implements port.CatalogOriginStore. The condition on
+// the column makes the replacement atomic with a concurrent detach.
+func (s *Store) UpdateCatalogOrigin(ctx context.Context, id model.LLMModelID, origin model.CatalogOrigin) error {
+	return s.withRetry(ctx, true, func(ctx context.Context, db *gorm.DB) error {
+		result := db.Model(&LLMModel{}).Where("id = ? AND catalog_origin IS NOT NULL", string(id)).
+			Update("catalog_origin", JSONColumn[model.CatalogOrigin]{Val: &origin})
+		if result.Error != nil {
+			return errors.WithStack(result.Error)
+		}
+		if result.RowsAffected == 0 {
+			return errors.WithStack(port.ErrNotFound)
+		}
+		return nil
+	})
+}
+
 var _ port.CatalogOriginStore = &Store{}

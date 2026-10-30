@@ -377,21 +377,30 @@ func (f *CatalogFollower) Follow(ctx context.Context, c *catalog.Catalog) (Catal
 
 // Run follows the releases source serves until ctx is done: it fetches the
 // release every interval, a minute at least, and follows it. While no release
-// can be read, or following it fails, it tries again after a minute.
+// can be read, it fetches again after a minute. A follow that fails is tried
+// again on the release already read, after a minute, then twice as long at
+// each failure, up to the interval.
 func (f *CatalogFollower) Run(ctx context.Context, source *catalog.Source, interval time.Duration) {
 	interval = max(interval, time.Minute)
+	retry := time.Minute
+	var fetched time.Time
 	for {
-		source.Refresh(ctx)
-		wait := interval
+		if fetched.IsZero() || time.Since(fetched) >= interval {
+			source.Refresh(ctx)
+			fetched = time.Now()
+		}
+		wait := time.Until(fetched.Add(interval))
 		c, err := source.Catalog(ctx)
 		if err != nil {
-			wait = time.Minute
+			fetched, wait = time.Time{}, time.Minute
 		} else {
 			report, err := f.Follow(ctx, c)
 			if err != nil {
-				// Retried soon, as an unreadable release is.
-				wait = time.Minute
+				wait = min(wait, retry)
+				retry = min(retry*2, interval)
 				slog.WarnContext(ctx, "could not follow the model catalog", slog.String("version", c.Version), slogx.Error(err))
+			} else {
+				retry = time.Minute
 			}
 			if report.Updated > 0 || report.Kept > 0 || report.Failed > 0 {
 				slog.InfoContext(ctx, "followed the model catalog", slog.String("version", c.Version),
@@ -530,7 +539,8 @@ func (f *CatalogFollower) followGroup(ctx context.Context, c *catalog.Catalog, p
 		if !ok {
 			continue
 		}
-		if err := f.origins.SaveCatalogOrigin(ctx, t.ModelID, &origin); err != nil && !errors.Is(err, port.ErrNotFound) {
+		// A model detached, or deleted, since it was read keeps no origin.
+		if err := f.origins.UpdateCatalogOrigin(ctx, t.ModelID, origin); err != nil && !errors.Is(err, port.ErrNotFound) {
 			errs = append(errs, errors.Wrapf(err, "model %s", t.ModelID))
 		}
 	}

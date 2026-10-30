@@ -57,6 +57,13 @@ func (s *memoryOriginStore) SaveCatalogOrigin(_ context.Context, id model.LLMMod
 	return nil
 }
 
+func (s *memoryOriginStore) UpdateCatalogOrigin(ctx context.Context, id model.LLMModelID, o model.CatalogOrigin) error {
+	if _, ok := s.origins[id]; !ok {
+		return port.ErrNotFound
+	}
+	return s.SaveCatalogOrigin(ctx, id, &o)
+}
+
 // fixedRate converts at rate, or fails when err is set.
 type fixedRate struct {
 	rate float64
@@ -382,6 +389,13 @@ type failingFirstOrigins struct {
 	failed bool
 }
 
+func (s *failingFirstOrigins) UpdateCatalogOrigin(ctx context.Context, id model.LLMModelID, o model.CatalogOrigin) error {
+	if _, ok := s.origins[id]; !ok {
+		return port.ErrNotFound
+	}
+	return s.SaveCatalogOrigin(ctx, id, &o)
+}
+
 func (s *failingFirstOrigins) SaveCatalogOrigin(ctx context.Context, id model.LLMModelID, o *model.CatalogOrigin) error {
 	if !s.failed {
 		s.failed = true
@@ -430,4 +444,30 @@ func TestCatalogFollower_SavesTheOtherOriginsWhenOneFails(t *testing.T) {
 	if followed != 1 {
 		t.Fatalf("%d origins at v2, want the one the store saved despite the other's failure", followed)
 	}
+}
+
+func TestCatalogFollower_DoesNotBringBackADetachedOrigin(t *testing.T) {
+	ctx := context.Background()
+	store, origins, _, id := importedFromCatalog(t, followRelease("v1", 2, 6, 128_000), "USD", nil)
+	// The operator detaches the model while the follow reads it.
+	detaching := &detachingOrigins{memoryOriginStore: origins, id: id}
+	if _, err := NewCatalogFollower(store, detaching, nil).Follow(ctx, followRelease("v2", 3, 6, 128_000)); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := origins.origins[id]; ok {
+		t.Fatal("the follow brought back the origin the operator detached")
+	}
+}
+
+// detachingOrigins forgets the origin of id once it has been listed, as a
+// detach saved while a follow runs.
+type detachingOrigins struct {
+	*memoryOriginStore
+	id model.LLMModelID
+}
+
+func (s *detachingOrigins) ListCatalogTrackedModels(ctx context.Context) ([]model.CatalogTrackedModel, error) {
+	tracked, err := s.memoryOriginStore.ListCatalogTrackedModels(ctx)
+	delete(s.origins, s.id)
+	return tracked, err
 }

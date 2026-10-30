@@ -20,4 +20,8 @@ type CatalogOriginStore interface {
 	// when origin is nil. It returns ErrNotFound when the model does not
 	// exist.
 	SaveCatalogOrigin(ctx context.Context, id model.LLMModelID, origin *model.CatalogOrigin) error
+	// UpdateCatalogOrigin replaces the origin of the model id, as following
+	// the catalog does: it returns ErrNotFound, writing nothing, when the
+	// model does not exist or has no origin any more.
+	UpdateCatalogOrigin(ctx context.Context, id model.LLMModelID, origin model.CatalogOrigin) error
 }

@@ -46,6 +46,13 @@ func (s *memoryCatalogOrigins) SaveCatalogOrigin(_ context.Context, id model.LLM
 	return nil
 }
 
+func (s *memoryCatalogOrigins) UpdateCatalogOrigin(ctx context.Context, id model.LLMModelID, o model.CatalogOrigin) error {
+	if _, ok := s.origins[id]; !ok {
+		return port.ErrNotFound
+	}
+	return s.SaveCatalogOrigin(ctx, id, &o)
+}
+
 // hiddenValue reads the value of the hidden field name of page.
 func hiddenValue(t *testing.T, page, name string) string {
 	t.Helper()
