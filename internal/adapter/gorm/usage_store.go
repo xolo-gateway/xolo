@@ -105,7 +105,7 @@ func (s *Store) QueryUsage(ctx context.Context, filter port.UsageFilter) ([]mode
 
 // AggregateUsage implements port.UsageStore.
 func (s *Store) AggregateUsage(ctx context.Context, filter port.UsageFilter) (*port.UsageAggregate, error) {
-	var counts struct {
+	type usageCounts struct {
 		TotalRequests    int64
 		TotalCost        int64
 		PromptTokens     int64
@@ -113,10 +113,14 @@ func (s *Store) AggregateUsage(ctx context.Context, filter port.UsageFilter) (*p
 		CompletionTokens int64
 		TotalTokens      int64
 	}
+	var counts usageCounts
 
 	sources := usageSources(filter, time.Now())
 	err := s.read(ctx, func(ctx context.Context, db *gorm.DB) error {
 		return readPeriod(db, sources, func(db *gorm.DB) error {
+			// The store replays the whole read on a retryable error: each
+			// attempt starts from zero, or the parts read twice add up twice.
+			counts = usageCounts{}
 			for _, src := range sources {
 				requests := "COUNT(*)"
 				if src.daily {
@@ -563,6 +567,9 @@ func (s *Store) AggregateCostByDimensions(ctx context.Context, filter port.Usage
 	sources := usageSources(filter, time.Now())
 	err := s.read(ctx, func(ctx context.Context, db *gorm.DB) error {
 		return readPeriod(db, sources, func(db *gorm.DB) error {
+			// The store replays the whole read on a retryable error: each
+			// attempt starts from no rows, or the parts read twice add up twice.
+			rows = nil
 			for _, src := range sources {
 				selects := make([]string, 0, len(dimensions)+4)
 				groups := make([]string, 0, len(dimensions))
