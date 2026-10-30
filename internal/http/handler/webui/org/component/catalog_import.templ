@@ -38,11 +38,13 @@ templ CatalogImportPage(vmodel CatalogImportVModel) {
 					}
 				}
 			}
-			@common.SectionNote() {
-				{ i18n.T(ctx, "org.catalog_import.help", vmodel.Catalog.Version) }
-			}
-			for _, p := range catalogProvidersSuggestedFirst(vmodel.Catalog, vmodel.Suggested) {
-				@catalogProviderCard(vmodel, p, actionURL)
+			if vmodel.Catalog != nil {
+				@common.SectionNote() {
+					{ i18n.T(ctx, "org.catalog_import.help", vmodel.Catalog.Version) }
+				}
+				for _, p := range catalogProvidersSuggestedFirst(vmodel.Catalog, vmodel.Suggested) {
+					@catalogProviderCard(vmodel, p, actionURL)
+				}
 			}
 		</div>
 	}

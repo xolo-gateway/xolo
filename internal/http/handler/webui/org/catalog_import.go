@@ -29,17 +29,20 @@ func (h *Handler) getCatalogImportPage(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	c, err := h.catalog.Catalog(ctx)
-	if err != nil {
-		h.renderProviderBundleErrorStatus(w, r, h.providerBundleImportVModel(ctx, org, p), i18n.T(ctx, "org.errors.catalog_import.unavailable"), http.StatusServiceUnavailable)
-		return
-	}
 	vmodel := component.CatalogImportVModel{
 		AppLayoutVModel: h.providerBundleImportVModel(ctx, org, p).AppLayoutVModel,
 		Org:             org,
 		Provider:        p,
-		Catalog:         c,
 	}
+	c, err := h.catalog.Catalog(ctx)
+	if err != nil {
+		// Said on the page asked for, which a reload reads again.
+		vmodel.Error = i18n.T(ctx, "org.errors.catalog_import.unavailable")
+		w.WriteHeader(http.StatusServiceUnavailable)
+		templ.Handler(component.CatalogImportPage(vmodel)).ServeHTTP(w, r)
+		return
+	}
+	vmodel.Catalog = c
 	if p != nil {
 		if match := c.ProviderAt(p.BaseURL()); match != nil {
 			vmodel.Suggested = match.ID
