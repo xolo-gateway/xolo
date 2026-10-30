@@ -99,7 +99,8 @@ type UsageStore interface {
 	// fails on an unsupported one. The order of each slice is unspecified.
 	AggregateCostByDimensions(ctx context.Context, filter UsageFilter, dimensions ...UsageDimension) (map[UsageDimension][]DimensionCost, error)
 	// AggregatePlanTokensByUser returns subscription-covered (plan_covered=true) token
-	// sub-totals grouped by user, honoring the filter.
+	// sub-totals grouped by user, honoring the filter but its PlanCovered, which
+	// it ignores.
 	AggregatePlanTokensByUser(ctx context.Context, filter UsageFilter) ([]UserTokenUsage, error)
 	// AggregateRequestSizes counts the requests matching the filter by model and
 	// token counts. The energy estimate is non-linear per request: these rows
