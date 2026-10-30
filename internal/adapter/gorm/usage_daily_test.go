@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"context"
 	"fmt"
+	"maps"
 	"slices"
 	"testing"
 	"time"
@@ -128,11 +129,36 @@ func TestUsageDaily_PeriodReadsMatchTheRecords(t *testing.T) {
 					t.Fatalf("AggregateCostByDimensions over the records: %v", err)
 				}
 				for _, d := range dimensions {
+					// Read alone, the records are charted on the database's day,
+					// which is the server's on SQLite only. The days of the split
+					// read are checked below on both.
+					if d == port.UsageDimensionDay && db.Dialector.Name() != "sqlite" {
+						continue
+					}
 					if g, w := sortedCosts(gotCosts[d]), sortedCosts(wantCosts[d]); !slices.Equal(g, w) {
 						t.Errorf("%s: got %v, the records give %v", d, g, w)
 					}
 				}
 			})
+		}
+
+		// The server's day of each record, whatever the database's timezone:
+		// the minutes before midnight belong to the day before.
+		days, err := store.AggregateCostByDimensions(ctx, filters["organization"], port.UsageDimensionDay)
+		if err != nil {
+			t.Fatal(err)
+		}
+		gotDays := map[string]int64{}
+		for _, row := range days[port.UsageDimensionDay] {
+			gotDays[row.Key] += row.Cost
+		}
+		day := func(days int) string { return localNoon(days).Format("2006-01-02") }
+		wantDays := map[string]int64{
+			day(7): 10 + 40000, day(6): 100 + 200 + 20000, day(4): 300 + 400, day(3): 800,
+			day(1): 600 + 80000, day(0): 1000,
+		}
+		if !maps.Equal(gotDays, wantDays) {
+			t.Errorf("organization by day: got %v, want %v", gotDays, wantDays)
 		}
 
 		// The expected totals, so the comparison above is not between two

@@ -1,6 +1,7 @@
 package gorm
 
 import (
+	"database/sql"
 	"time"
 
 	"github.com/pkg/errors"
@@ -216,8 +217,12 @@ func localDayOfQuarter(quarter string) (string, error) {
 // usageSource is one part of a period the usage pages read: either usage
 // records, or the daily sums of whole days.
 type usageSource struct {
-	daily  bool
-	filter port.UsageFilter
+	daily bool
+	// quarterDays buckets the records on the server's day through their UTC
+	// quarter of an hour (utcQuarterExpr), as usage_daily writes its days, so
+	// a period read from both does not depend on the database's timezone.
+	quarterDays bool
+	filter      port.UsageFilter
 	// bound narrows the source to its part of the period.
 	bound func(*gorm.DB) *gorm.DB
 }
@@ -237,8 +242,13 @@ func (src usageSource) query(db *gorm.DB) *gorm.DB {
 	return query
 }
 
-// dimensionExpr is dimensionGroupExpr for the source's table.
+// dimensionExpr is dimensionGroupExpr for the source's table. A day of
+// records bucketed by quarter of an hour is turned into the server's day with
+// localDayOfQuarter.
 func (src usageSource) dimensionExpr(db *gorm.DB, d port.UsageDimension) (string, error) {
+	if src.quarterDays && d == port.UsageDimensionDay {
+		return utcQuarterExpr(db), nil
+	}
 	if !src.daily {
 		return dimensionGroupExpr(db, d)
 	}
@@ -291,12 +301,28 @@ func usageSources(filter port.UsageFilter, now time.Time) []usageSource {
 
 	sources := make([]usageSource, 0, 3)
 	if partialFirstDay {
-		sources = append(sources, usageSource{filter: filter, bound: func(q *gorm.DB) *gorm.DB { return q.Where("created_at < ?", firstDay) }})
+		sources = append(sources, usageSource{quarterDays: true, filter: filter, bound: func(q *gorm.DB) *gorm.DB { return q.Where("created_at < ?", firstDay) }})
 	}
 	return append(sources,
 		usageSource{daily: true, filter: wholeDays, bound: func(q *gorm.DB) *gorm.DB { return q.Where("day >= ? AND day < ?", fromDay, toDay) }},
-		usageSource{filter: todayOnward},
+		usageSource{quarterDays: true, filter: todayOnward},
 	)
+}
+
+// readPeriod runs fn, which reads every source of a period, on one snapshot of
+// the database when there are several: a record committed between the read of
+// the daily sums and the read of today's records would otherwise be counted by
+// neither. SQLite gives a transaction its snapshot; PostgreSQL needs REPEATABLE
+// READ for that.
+func readPeriod(db *gorm.DB, sources []usageSource, fn func(db *gorm.DB) error) error {
+	if len(sources) < 2 {
+		return fn(db)
+	}
+	var opts []*sql.TxOptions
+	if isPostgres(db) {
+		opts = append(opts, &sql.TxOptions{Isolation: sql.LevelRepeatableRead, ReadOnly: true})
+	}
+	return errors.WithStack(db.Transaction(fn, opts...))
 }
 
 // startOfLocalDay returns the server-local midnight starting t's day.

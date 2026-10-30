@@ -8,9 +8,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/pkg/errors"
 	"github.com/xolo-gateway/xolo/internal/core/model"
 	"github.com/xolo-gateway/xolo/internal/core/port"
-	"github.com/pkg/errors"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -114,33 +114,36 @@ func (s *Store) AggregateUsage(ctx context.Context, filter port.UsageFilter) (*p
 		TotalTokens      int64
 	}
 
+	sources := usageSources(filter, time.Now())
 	err := s.read(ctx, func(ctx context.Context, db *gorm.DB) error {
-		for _, src := range usageSources(filter, time.Now()) {
-			requests := "COUNT(*)"
-			if src.daily {
-				requests = "COALESCE(SUM(requests),0)"
+		return readPeriod(db, sources, func(db *gorm.DB) error {
+			for _, src := range sources {
+				requests := "COUNT(*)"
+				if src.daily {
+					requests = "COALESCE(SUM(requests),0)"
+				}
+				var part struct {
+					TotalRequests    int64
+					TotalCost        int64
+					PromptTokens     int64
+					CachedTokens     int64
+					CompletionTokens int64
+					TotalTokens      int64
+				}
+				query := src.query(db).
+					Select(requests + " as total_requests, COALESCE(SUM(cost),0) as total_cost, COALESCE(SUM(prompt_tokens),0) as prompt_tokens, COALESCE(SUM(cached_tokens),0) as cached_tokens, COALESCE(SUM(completion_tokens),0) as completion_tokens, COALESCE(SUM(total_tokens),0) as total_tokens")
+				if err := query.Scan(&part).Error; err != nil {
+					return errors.WithStack(err)
+				}
+				counts.TotalRequests += part.TotalRequests
+				counts.TotalCost += part.TotalCost
+				counts.PromptTokens += part.PromptTokens
+				counts.CachedTokens += part.CachedTokens
+				counts.CompletionTokens += part.CompletionTokens
+				counts.TotalTokens += part.TotalTokens
 			}
-			var part struct {
-				TotalRequests    int64
-				TotalCost        int64
-				PromptTokens     int64
-				CachedTokens     int64
-				CompletionTokens int64
-				TotalTokens      int64
-			}
-			query := src.query(db).
-				Select(requests + " as total_requests, COALESCE(SUM(cost),0) as total_cost, COALESCE(SUM(prompt_tokens),0) as prompt_tokens, COALESCE(SUM(cached_tokens),0) as cached_tokens, COALESCE(SUM(completion_tokens),0) as completion_tokens, COALESCE(SUM(total_tokens),0) as total_tokens")
-			if err := query.Scan(&part).Error; err != nil {
-				return errors.WithStack(err)
-			}
-			counts.TotalRequests += part.TotalRequests
-			counts.TotalCost += part.TotalCost
-			counts.PromptTokens += part.PromptTokens
-			counts.CachedTokens += part.CachedTokens
-			counts.CompletionTokens += part.CompletionTokens
-			counts.TotalTokens += part.TotalTokens
-		}
-		return nil
+			return nil
+		})
 	})
 	if err != nil {
 		return nil, err
@@ -497,10 +500,16 @@ func (s *Store) HasPlanUsageSince(ctx context.Context, userID model.UserID, scop
 func dimensionGroupExpr(db *gorm.DB, d port.UsageDimension) (string, error) {
 	switch d {
 	case port.UsageDimensionDay:
-		// The UTC quarter of an hour, which the caller turns into the server's
-		// local day with localDayOfQuarter: the database's timezone may not be
-		// the server's, and usage_daily buckets its days in the server's.
-		return utcQuarterExpr(db), nil
+		// Bucket on the server's local calendar day, matching the time.Time
+		// formatting used elsewhere, and render it as a YYYY-MM-DD string so
+		// both backends yield the same key type. Only affects which day a
+		// record near midnight lands in; never the summed totals. A period read
+		// partly from usage_daily buckets its records otherwise, see
+		// usageSource.dimensionExpr.
+		if isPostgres(db) {
+			return "to_char(created_at AT TIME ZONE current_setting('TIMEZONE'), 'YYYY-MM-DD')", nil
+		}
+		return "date(created_at, 'localtime')", nil
 	case port.UsageDimensionModel:
 		return "COALESCE(NULLIF(resolved_model_name, ''), proxy_model_name)", nil
 	case port.UsageDimensionUser:
@@ -551,43 +560,46 @@ func (s *Store) AggregateCostByDimensions(ctx context.Context, filter port.Usage
 	// The rows of every source of the period, summed below like the rows of
 	// one query.
 	var rows []costRow
+	sources := usageSources(filter, time.Now())
 	err := s.read(ctx, func(ctx context.Context, db *gorm.DB) error {
-		for _, src := range usageSources(filter, time.Now()) {
-			selects := make([]string, 0, len(dimensions)+4)
-			groups := make([]string, 0, len(dimensions))
-			for i, dimension := range dimensions {
-				groupExpr, err := src.dimensionExpr(db, dimension)
-				if err != nil {
-					return err
-				}
-				selects = append(selects, fmt.Sprintf("%s as key%d", groupExpr, i))
-				groups = append(groups, groupExpr)
-			}
-			selects = append(selects, "org_id as org_id", "currency as currency", "plan_covered as plan_covered", "COALESCE(SUM(cost), 0) as cost")
-
-			query := src.query(db).Select(strings.Join(selects, ", "))
-			for _, group := range groups {
-				query = query.Group(group)
-			}
-			query = query.Group("org_id").Group("currency").Group("plan_covered")
-
-			var part []costRow
-			if err := query.Scan(&part).Error; err != nil {
-				return errors.WithStack(err)
-			}
-			if day := slices.Index(dimensions, port.UsageDimensionDay); day >= 0 && !src.daily {
-				for j := range part {
-					keys := [maxUsageDimensions]*string{&part[j].Key0, &part[j].Key1, &part[j].Key2, &part[j].Key3}
-					localDay, err := localDayOfQuarter(*keys[day])
+		return readPeriod(db, sources, func(db *gorm.DB) error {
+			for _, src := range sources {
+				selects := make([]string, 0, len(dimensions)+4)
+				groups := make([]string, 0, len(dimensions))
+				for i, dimension := range dimensions {
+					groupExpr, err := src.dimensionExpr(db, dimension)
 					if err != nil {
 						return err
 					}
-					*keys[day] = localDay
+					selects = append(selects, fmt.Sprintf("%s as key%d", groupExpr, i))
+					groups = append(groups, groupExpr)
 				}
+				selects = append(selects, "org_id as org_id", "currency as currency", "plan_covered as plan_covered", "COALESCE(SUM(cost), 0) as cost")
+
+				query := src.query(db).Select(strings.Join(selects, ", "))
+				for _, group := range groups {
+					query = query.Group(group)
+				}
+				query = query.Group("org_id").Group("currency").Group("plan_covered")
+
+				var part []costRow
+				if err := query.Scan(&part).Error; err != nil {
+					return errors.WithStack(err)
+				}
+				if day := slices.Index(dimensions, port.UsageDimensionDay); day >= 0 && src.quarterDays {
+					for j := range part {
+						keys := [maxUsageDimensions]*string{&part[j].Key0, &part[j].Key1, &part[j].Key2, &part[j].Key3}
+						localDay, err := localDayOfQuarter(*keys[day])
+						if err != nil {
+							return err
+						}
+						*keys[day] = localDay
+					}
+				}
+				rows = append(rows, part...)
 			}
-			rows = append(rows, part...)
-		}
-		return nil
+			return nil
+		})
 	})
 	if err != nil {
 		return nil, err
