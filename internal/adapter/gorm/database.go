@@ -744,6 +744,26 @@ func schemaMigrations(artifact *RecoveryArtifact) []*gormigrate.Migration {
 				return errors.WithStack(tx.Migrator().DropColumn(&LLMModel{}, "catalog_origin"))
 			},
 		},
+		{
+			// Add (user_id, created_at) to usage_records for the personal pages,
+			// which filter on the user and a period without an organization, and
+			// drop the index on user_id alone: a prefix of the new one, it only
+			// cost a write on every proxied request. AutoMigrate never drops an
+			// index, hence the raw statement.
+			ID: userUsageIndexMigrationID,
+			Migrate: func(tx *gorm.DB) error {
+				if err := tx.AutoMigrate(&UsageRecord{}); err != nil {
+					return errors.WithStack(err)
+				}
+				return errors.WithStack(tx.Exec("DROP INDEX IF EXISTS idx_usage_records_user_id").Error)
+			},
+			Rollback: func(tx *gorm.DB) error {
+				if err := tx.Exec("CREATE INDEX IF NOT EXISTS idx_usage_records_user_id ON usage_records(user_id)").Error; err != nil {
+					return errors.WithStack(err)
+				}
+				return errors.WithStack(tx.Migrator().DropIndex(&UsageRecord{}, "idx_usage_user_created"))
+			},
+		},
 	}
 }
 
@@ -755,4 +775,5 @@ const (
 	providerKeyPoolMigrationID        = "202610290001"
 	memberLocaleMigrationID           = "202610290002"
 	catalogOriginMigrationID          = "202610300001"
+	userUsageIndexMigrationID         = "202610300002"
 )

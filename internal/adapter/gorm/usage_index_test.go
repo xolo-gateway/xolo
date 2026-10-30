@@ -2,7 +2,9 @@ package gorm_test
 
 import (
 	"context"
+	"strings"
 	"testing"
+	"time"
 
 	xologorm "github.com/xolo-gateway/xolo/internal/adapter/gorm"
 	"github.com/xolo-gateway/xolo/internal/core/model"
@@ -64,6 +66,88 @@ func TestUsageRecord_PlanIndexIsAddedToAnExistingSchema(t *testing.T) {
 			}
 		}
 	})
+}
+
+func TestUsageRecord_UserIndexMigrationUpgradesAnExistingSchema(t *testing.T) {
+	eachBackendDB(t, func(t *testing.T, db *gormpkg.DB) {
+		migrateSchema(t, newStoreOn(t, db))
+
+		// Put the table back in the state a deployment predating migration
+		// 202610300002 is in, and forget that the migration ran. Raw SQL rather
+		// than Migrator().DropIndex, see above.
+		for _, stmt := range []string{
+			"DROP INDEX " + db.Statement.Quote("idx_usage_user_created"),
+			"CREATE INDEX idx_usage_records_user_id ON usage_records(user_id)",
+		} {
+			if err := db.Exec(stmt).Error; err != nil {
+				t.Fatalf("%s: %v", stmt, err)
+			}
+		}
+		if err := db.Exec("DELETE FROM migrations WHERE id = ?", "202610300002").Error; err != nil {
+			t.Fatalf("forget migration: %v", err)
+		}
+
+		// A new store runs the pending migrations on its first write.
+		migrateSchema(t, newStoreOn(t, db))
+
+		if !db.Migrator().HasIndex("usage_records", "idx_usage_user_created") {
+			t.Error("the migration did not add idx_usage_user_created")
+		}
+		if db.Migrator().HasIndex("usage_records", "idx_usage_records_user_id") {
+			t.Error("the migration kept idx_usage_records_user_id, a prefix of idx_usage_user_created")
+		}
+	})
+}
+
+// The personal pages filter on the user and a period, without an organization.
+// On the index on user_id alone SQLite read every record of the user, and sorted
+// them all to return one page of the usage table.
+func TestUsageRecord_PersonalQueriesUseTheUserIndex(t *testing.T) {
+	db := openSQLite(t, newSQLiteDSN(t))
+	migrateSchema(t, newStoreOn(t, db))
+
+	// The shape applyUsageFilter gives them.
+	userID, since := string(model.NewUserID()), time.Now().Add(-7*24*time.Hour)
+	queries := map[string]struct {
+		sql  string
+		args []any
+	}{
+		"usage table page": {
+			"SELECT * FROM usage_records WHERE user_id IN (?) AND created_at >= ? ORDER BY created_at DESC LIMIT 51",
+			[]any{userID, since},
+		},
+		"period aggregate": {
+			"SELECT COUNT(*), COALESCE(SUM(cost),0) FROM usage_records WHERE user_id IN (?) AND created_at >= ?",
+			[]any{userID, since},
+		},
+		"model aggregate": {
+			"SELECT COUNT(*), COALESCE(SUM(cost),0) FROM usage_records WHERE user_id IN (?) AND model_id = ? AND created_at >= ?",
+			[]any{userID, "model-1", since},
+		},
+		"virtual model aggregate": {
+			"SELECT COUNT(*), COALESCE(SUM(cost),0) FROM usage_records WHERE user_id IN (?) AND proxy_model_name = ? AND created_at >= ?",
+			[]any{userID, "acme/fast", since},
+		},
+	}
+	for name, q := range queries {
+		t.Run(name, func(t *testing.T) {
+			var rows []struct{ Detail string }
+			if err := db.Raw("EXPLAIN QUERY PLAN "+q.sql, q.args...).Scan(&rows).Error; err != nil {
+				t.Fatalf("explain: %v", err)
+			}
+			var plan []string
+			for _, r := range rows {
+				plan = append(plan, r.Detail)
+			}
+			got := strings.Join(plan, " | ")
+			if !strings.Contains(got, "idx_usage_user_created (user_id=? AND created_at>?)") {
+				t.Errorf("plan does not bound the period on idx_usage_user_created: %s", got)
+			}
+			if strings.Contains(got, "TEMP B-TREE") {
+				t.Errorf("plan sorts in a temp B-tree: %s", got)
+			}
+		})
+	}
 }
 
 // migrateSchema runs the store's migrations by performing one write.
