@@ -497,14 +497,10 @@ func (s *Store) HasPlanUsageSince(ctx context.Context, userID model.UserID, scop
 func dimensionGroupExpr(db *gorm.DB, d port.UsageDimension) (string, error) {
 	switch d {
 	case port.UsageDimensionDay:
-		// Bucket on the server's local calendar day, matching the time.Time
-		// formatting used elsewhere, and render it as a YYYY-MM-DD string so
-		// both backends yield the same key type. Only affects which day a
-		// record near midnight lands in; never the summed totals.
-		if isPostgres(db) {
-			return "to_char(created_at AT TIME ZONE current_setting('TIMEZONE'), 'YYYY-MM-DD')", nil
-		}
-		return "date(created_at, 'localtime')", nil
+		// The UTC quarter of an hour, which the caller turns into the server's
+		// local day with localDayOfQuarter: the database's timezone may not be
+		// the server's, and usage_daily buckets its days in the server's.
+		return utcQuarterExpr(db), nil
 	case port.UsageDimensionModel:
 		return "COALESCE(NULLIF(resolved_model_name, ''), proxy_model_name)", nil
 	case port.UsageDimensionUser:
@@ -578,6 +574,16 @@ func (s *Store) AggregateCostByDimensions(ctx context.Context, filter port.Usage
 			var part []costRow
 			if err := query.Scan(&part).Error; err != nil {
 				return errors.WithStack(err)
+			}
+			if day := slices.Index(dimensions, port.UsageDimensionDay); day >= 0 && !src.daily {
+				for j := range part {
+					keys := [maxUsageDimensions]*string{&part[j].Key0, &part[j].Key1, &part[j].Key2, &part[j].Key3}
+					localDay, err := localDayOfQuarter(*keys[day])
+					if err != nil {
+						return err
+					}
+					*keys[day] = localDay
+				}
 			}
 			rows = append(rows, part...)
 		}

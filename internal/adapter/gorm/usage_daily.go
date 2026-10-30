@@ -109,6 +109,10 @@ func incrementUsageDaily(db *gorm.DB, record *UsageRecord) error {
 
 // migrateUsageDaily creates the usage_daily table and fills it from the usage
 // history.
+//
+// The migration must run with the other instances stopped: a record an older
+// instance writes after the backfill never reaches its day, and the pages
+// would under-report that day for good. RebuildUsageDaily repairs it.
 func migrateUsageDaily(tx *gorm.DB) error {
 	if err := tx.AutoMigrate(&UsageDaily{}); err != nil {
 		return errors.WithStack(err)
@@ -120,31 +124,93 @@ func migrateUsageDaily(tx *gorm.DB) error {
 // is what the migration runs, exported for the tooling that writes usage
 // records in bulk rather than through the store — the seeder.
 func RebuildUsageDaily(db *gorm.DB) error {
-	return backfillUsageDaily(db)
+	return db.Transaction(backfillUsageDaily)
 }
 
-// backfillUsageDaily rebuilds every row from usage_records in a single
-// INSERT ... SELECT, after emptying the table so a re-run does not double the
-// sums.
+// backfillUsageDaily rebuilds every row from usage_records, after emptying the
+// table so a re-run does not double the sums.
 //
-// The day is the one the usage charts bucket a record in (dimensionGroupExpr),
-// so a backfilled day holds the records the charts showed for it.
+// The records are summed by UTC quarter of an hour in SQL, and each quarter is
+// turned into the server's local day in Go, as incrementUsageDaily does: the
+// database's timezone may differ from the server's, and a record near midnight
+// would then land on another day than the one the reads expect, which counts
+// it twice or not at all.
 func backfillUsageDaily(tx *gorm.DB) error {
 	if err := tx.Exec("DELETE FROM " + usageDailyTable).Error; err != nil {
 		return errors.WithStack(err)
 	}
-	dayExpr, err := dimensionGroupExpr(tx, "day")
-	if err != nil {
-		return err
+
+	quarterExpr := utcQuarterExpr(tx)
+	keys := "org_id, COALESCE(user_id, ''), COALESCE(application_id, ''), COALESCE(team_id, ''), provider_id, model_id, " +
+		"COALESCE(NULLIF(resolved_model_name, ''), proxy_model_name), COALESCE(currency, ''), plan_covered"
+	var quarters []struct {
+		Quarter string
+		UsageDaily
 	}
-	modelExpr := "COALESCE(NULLIF(resolved_model_name, ''), proxy_model_name)"
-	return errors.WithStack(tx.Exec(`
-		INSERT INTO ` + usageDailyTable + ` (org_id, day, user_id, application_id, team_id, provider_id, model_id, model_name, currency, plan_covered,
-			requests, cost, prompt_tokens, cached_tokens, completion_tokens, total_tokens)
-		SELECT org_id, ` + dayExpr + `, COALESCE(user_id, ''), COALESCE(application_id, ''), COALESCE(team_id, ''), provider_id, model_id, ` + modelExpr + `, COALESCE(currency, ''), plan_covered,
-			COUNT(*), COALESCE(SUM(cost), 0), COALESCE(SUM(prompt_tokens), 0), COALESCE(SUM(cached_tokens), 0), COALESCE(SUM(completion_tokens), 0), COALESCE(SUM(total_tokens), 0)
+	err := tx.Raw(`
+		SELECT ` + quarterExpr + ` as quarter, org_id, COALESCE(user_id, '') as user_id, COALESCE(application_id, '') as application_id,
+			COALESCE(team_id, '') as team_id, provider_id, model_id, COALESCE(NULLIF(resolved_model_name, ''), proxy_model_name) as model_name,
+			COALESCE(currency, '') as currency, plan_covered,
+			COUNT(*) as requests, COALESCE(SUM(cost), 0) as cost, COALESCE(SUM(prompt_tokens), 0) as prompt_tokens,
+			COALESCE(SUM(cached_tokens), 0) as cached_tokens, COALESCE(SUM(completion_tokens), 0) as completion_tokens,
+			COALESCE(SUM(total_tokens), 0) as total_tokens
 		  FROM usage_records
-		 GROUP BY org_id, ` + dayExpr + `, COALESCE(user_id, ''), COALESCE(application_id, ''), COALESCE(team_id, ''), provider_id, model_id, ` + modelExpr + `, COALESCE(currency, ''), plan_covered`).Error)
+		 GROUP BY ` + quarterExpr + `, ` + keys).Scan(&quarters).Error
+	if err != nil {
+		return errors.WithStack(err)
+	}
+
+	days := make(map[UsageDaily]*UsageDaily)
+	for _, q := range quarters {
+		day, err := localDayOfQuarter(q.Quarter)
+		if err != nil {
+			return err
+		}
+		key := q.UsageDaily
+		key.Day = day
+		key.Requests, key.Cost, key.PromptTokens, key.CachedTokens, key.CompletionTokens, key.TotalTokens = 0, 0, 0, 0, 0, 0
+		row, ok := days[key]
+		if !ok {
+			row = new(UsageDaily)
+			*row = key
+			days[key] = row
+		}
+		row.Requests += q.Requests
+		row.Cost += q.Cost
+		row.PromptTokens += q.PromptTokens
+		row.CachedTokens += q.CachedTokens
+		row.CompletionTokens += q.CompletionTokens
+		row.TotalTokens += q.TotalTokens
+	}
+	if len(days) == 0 {
+		return nil
+	}
+	rows := make([]*UsageDaily, 0, len(days))
+	for _, row := range days {
+		rows = append(rows, row)
+	}
+	return errors.WithStack(tx.CreateInBatches(rows, 500).Error)
+}
+
+// utcQuarterExpr returns the SQL expression of the UTC quarter of an hour a
+// record was created in, "YYYY-MM-DD HH:MM".
+func utcQuarterExpr(db *gorm.DB) string {
+	if isPostgres(db) {
+		return "to_char(date_trunc('hour', created_at AT TIME ZONE 'UTC') + floor(extract(minute FROM created_at AT TIME ZONE 'UTC') / 15) * interval '15 minutes', 'YYYY-MM-DD HH24:MI')"
+	}
+	// strftime normalizes the stored value to UTC whatever offset it carries.
+	return "strftime('%Y-%m-%d %H:', created_at) || printf('%02d', CAST(strftime('%M', created_at) AS INTEGER) / 15 * 15)"
+}
+
+// localDayOfQuarter returns the server-local day of a UTC quarter of an hour.
+// Every timezone in use is offset from UTC by whole quarters of an hour, so a
+// quarter falls within one local day.
+func localDayOfQuarter(quarter string) (string, error) {
+	t, err := time.ParseInLocation("2006-01-02 15:04", quarter, time.UTC)
+	if err != nil {
+		return "", errors.Wrapf(err, "parse usage quarter %q", quarter)
+	}
+	return usageDay(t), nil
 }
 
 // usageSource is one part of a period the usage pages read: either usage
@@ -192,8 +258,8 @@ func (src usageSource) dimensionExpr(db *gorm.DB, d port.UsageDimension) (string
 
 // usageSources splits the period of a filter between the usage records and
 // their daily sums: the records from the start of the period to the end of its
-// first day, the daily sums of the whole days after it, and the records of
-// today. A filter the daily sums cannot answer — on an API token, a requested
+// first day, unless it starts at midnight, the daily sums of the whole days
+// after it, and the records of today. A filter the daily sums cannot answer — on an API token, a requested
 // model name or an end of period — reads the records alone, as does a period
 // shorter than two days.
 //
@@ -204,24 +270,33 @@ func usageSources(filter port.UsageFilter, now time.Time) []usageSource {
 		return all
 	}
 
-	firstDayEnd := startOfLocalDay(*filter.Since).AddDate(0, 0, 1)
+	// The first whole day: the day of the start of the period when it starts
+	// at midnight, the next one otherwise.
+	firstDay := startOfLocalDay(*filter.Since)
+	partialFirstDay := !firstDay.Equal(*filter.Since)
+	if partialFirstDay {
+		firstDay = firstDay.AddDate(0, 0, 1)
+	}
 	today := startOfLocalDay(now)
-	if !firstDayEnd.Before(today) {
+	if !firstDay.Before(today) {
 		return all
 	}
 
 	wholeDays := filter
 	wholeDays.Since = nil
-	fromDay, toDay := usageDay(firstDayEnd), usageDay(today)
+	fromDay, toDay := usageDay(firstDay), usageDay(today)
 
 	todayOnward := filter
 	todayOnward.Since = &today
 
-	return []usageSource{
-		{filter: filter, bound: func(q *gorm.DB) *gorm.DB { return q.Where("created_at < ?", firstDayEnd) }},
-		{daily: true, filter: wholeDays, bound: func(q *gorm.DB) *gorm.DB { return q.Where("day >= ? AND day < ?", fromDay, toDay) }},
-		{filter: todayOnward},
+	sources := make([]usageSource, 0, 3)
+	if partialFirstDay {
+		sources = append(sources, usageSource{filter: filter, bound: func(q *gorm.DB) *gorm.DB { return q.Where("created_at < ?", firstDay) }})
 	}
+	return append(sources,
+		usageSource{daily: true, filter: wholeDays, bound: func(q *gorm.DB) *gorm.DB { return q.Where("day >= ? AND day < ?", fromDay, toDay) }},
+		usageSource{filter: todayOnward},
+	)
 }
 
 // startOfLocalDay returns the server-local midnight starting t's day.

@@ -19,12 +19,17 @@ import (
 // sums are rebuilt from. The store only writes records at the current time.
 func pastUsage(t *testing.T, db *gormpkg.DB, at time.Time, userID, orgID, model string, cost int64, planCovered bool) {
 	t.Helper()
+	pastTeamUsage(t, db, at, userID, orgID, "", model, cost, planCovered)
+}
+
+func pastTeamUsage(t *testing.T, db *gormpkg.DB, at time.Time, userID, orgID, teamID, model string, cost int64, planCovered bool) {
+	t.Helper()
 	covered := 0
 	if planCovered {
 		covered = 1
 	}
 	rec := &xologorm.UsageRecord{
-		ID: xid.New().String(), CreatedAt: at, UserID: userID, OrgID: orgID, ProviderID: "p1", ModelID: "m-" + model,
+		ID: xid.New().String(), CreatedAt: at, UserID: userID, OrgID: orgID, TeamID: teamID, ProviderID: "p1", ModelID: "m-" + model,
 		ProxyModelName: model, PromptTokens: 10, CachedTokens: 2, CompletionTokens: 20, TotalTokens: 30,
 		Cost: cost, Currency: "EUR", PlanCovered: covered, Status: "ok",
 	}
@@ -33,11 +38,16 @@ func pastUsage(t *testing.T, db *gormpkg.DB, at time.Time, userID, orgID, model 
 	}
 }
 
-// localNoon is noon, server time, days before today. Records stay far from
-// midnight so their day does not depend on the database's timezone.
+// localNoon is noon, server time, days before today.
 func localNoon(days int) time.Time {
 	y, m, d := time.Now().Date()
 	return time.Date(y, m, d-days, 12, 0, 0, 0, time.Local)
+}
+
+// localMidnight is the server-local midnight starting the day days before today.
+func localMidnight(days int) time.Time {
+	y, m, d := time.Now().Date()
+	return time.Date(y, m, d-days, 0, 0, 0, 0, time.Local)
 }
 
 // The usage pages read the whole days of their period from usage_daily and
@@ -61,6 +71,12 @@ func TestUsageDaily_PeriodReadsMatchTheRecords(t *testing.T) {
 		pastUsage(t, db, localNoon(4), "u2", "org-1", "claude", 400, false)
 		pastUsage(t, db, localNoon(2), "u2", "org-2", "gpt", 500, false)
 		pastUsage(t, db, localNoon(1).Add(8*time.Hour), "u1", "org-1", "gpt", 600, false)
+		pastTeamUsage(t, db, localNoon(3), "u2", "org-1", "team-1", "gpt", 800, false)
+		// Minutes from midnight on the days bounding the period: the day of each
+		// must be the server's, whatever the database's timezone.
+		pastUsage(t, db, localMidnight(6).Add(5*time.Minute), "u1", "org-1", "gpt", 20000, false)
+		pastUsage(t, db, localMidnight(6).Add(-5*time.Minute), "u1", "org-1", "gpt", 40000, false)
+		pastUsage(t, db, localMidnight(0).Add(-5*time.Minute), "u1", "org-1", "gpt", 80000, false)
 		// Before the period.
 		pastUsage(t, db, localNoon(9), "u1", "org-1", "gpt", 7000, false)
 		if err := xologorm.RebuildUsageDaily(db); err != nil {
@@ -70,11 +86,18 @@ func TestUsageDaily_PeriodReadsMatchTheRecords(t *testing.T) {
 		recordUsage(t, store, "u1", "p1", "m-gpt", "gpt", "", "EUR", 1000, 10, 20, false)
 
 		org1, user1, payg := model.OrgID("org-1"), model.UserID("u1"), false
+		team1, provider1, gpt, eur := model.TeamID("team-1"), model.ProviderID("p1"), model.LLMModelID("m-gpt"), "EUR"
+		midnight := localMidnight(6)
 		filters := map[string]port.UsageFilter{
-			"all":          {Since: &since},
-			"organization": {OrgID: &org1, Since: &since},
-			"user":         {UserID: &user1, Since: &since},
-			"payg":         {OrgID: &org1, PlanCovered: &payg, Since: &since},
+			"all":           {Since: &since},
+			"organization":  {OrgID: &org1, Since: &since},
+			"user":          {UserID: &user1, Since: &since},
+			"payg":          {OrgID: &org1, PlanCovered: &payg, Since: &since},
+			"team":          {OrgID: &org1, TeamID: &team1, Since: &since},
+			"provider":      {ProviderID: &provider1, Since: &since},
+			"model":         {ModelID: &gpt, Since: &since},
+			"currency":      {Currency: &eur, Since: &since},
+			"from midnight": {OrgID: &org1, Since: &midnight},
 		}
 		dimensions := []port.UsageDimension{port.UsageDimensionModel, port.UsageDimensionDay, port.UsageDimensionUser, port.UsageDimensionProvider}
 		for name, filter := range filters {
@@ -118,8 +141,8 @@ func TestUsageDaily_PeriodReadsMatchTheRecords(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if agg.TotalRequests != 7 || agg.TotalCost != 10+100+200+300+400+600+1000 {
-			t.Errorf("organization: %d requests for %d, want 7 for 2610", agg.TotalRequests, agg.TotalCost)
+		if want := int64(10 + 100 + 200 + 300 + 400 + 600 + 800 + 20000 + 40000 + 80000 + 1000); agg.TotalRequests != 11 || agg.TotalCost != want {
+			t.Errorf("organization: %d requests for %d, want 11 for %d", agg.TotalRequests, agg.TotalCost, want)
 		}
 	})
 }
