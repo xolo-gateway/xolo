@@ -1,7 +1,11 @@
 package gorm_test
 
 import (
+	"cmp"
 	"context"
+	"fmt"
+	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -260,4 +264,106 @@ func scenarioAggregateRequestSizes(t *testing.T, store *xologorm.Store) {
 			t.Errorf("missing %+v in %+v", w, rows)
 		}
 	}
+}
+
+func TestAggregateCostByDimensions(t *testing.T) {
+	eachBackend(t, scenarioAggregateCostByDimensions)
+}
+
+// A single pass over several dimensions returns, for each, the sub-totals a
+// pass over that dimension alone does.
+func scenarioAggregateCostByDimensions(t *testing.T, store *xologorm.Store) {
+	ctx := context.Background()
+	orgID := model.OrgID("org-1")
+
+	recordUsage(t, store, "u1", "p1", "m-gpt", "gpt-4", "", "USD", 1000, 10, 20, false)
+	recordUsage(t, store, "u1", "p1", "m-gpt", "virtual", "gpt-4", "USD", 2000, 10, 20, false)
+	recordUsage(t, store, "u1", "p1", "m-gpt", "gpt-4", "", "EUR", 300, 10, 20, false)
+	recordUsage(t, store, "u2", "p2", "m-claude", "claude", "", "EUR", 500, 5, 5, false)
+	recordUsage(t, store, "u2", "p1", "m-gpt", "gpt-4", "", "USD", 700, 5, 5, false)
+	recordUsage(t, store, "u1", "p1", "m-gpt", "gpt-4", "", "USD", 999999, 40, 60, true)
+
+	since := time.Now().Add(-time.Hour)
+	filter := port.UsageFilter{OrgID: &orgID, Since: &since}
+	dimensions := []port.UsageDimension{port.UsageDimensionModel, port.UsageDimensionDay, port.UsageDimensionUser, port.UsageDimensionProvider}
+
+	got, err := store.AggregateCostByDimensions(ctx, filter, dimensions...)
+	if err != nil {
+		t.Fatalf("AggregateCostByDimensions: %v", err)
+	}
+	if len(got) != len(dimensions) {
+		t.Fatalf("expected %d dimensions, got %d", len(dimensions), len(got))
+	}
+
+	sorted := func(rows []port.DimensionCost) []port.DimensionCost {
+		return slices.SortedFunc(slices.Values(rows), func(a, b port.DimensionCost) int {
+			return cmp.Or(
+				cmp.Compare(a.Key, b.Key),
+				cmp.Compare(a.OrgID, b.OrgID),
+				cmp.Compare(a.Currency, b.Currency),
+				cmp.Compare(fmt.Sprint(a.PlanCovered), fmt.Sprint(b.PlanCovered)),
+			)
+		})
+	}
+	for _, dimension := range dimensions {
+		alone, err := store.AggregateCostByDimension(ctx, filter, dimension)
+		if err != nil {
+			t.Fatalf("AggregateCostByDimension(%s): %v", dimension, err)
+		}
+		if want, got := sorted(alone), sorted(got[dimension]); !slices.Equal(want, got) {
+			t.Errorf("%s: single pass gave %v, alone %v", dimension, got, want)
+		}
+	}
+
+	// The sub-totals are summed across the other dimensions: two users of
+	// gpt-4 in USD make one PAYG sub-total.
+	var gptUSD []port.DimensionCost
+	for _, row := range got[port.UsageDimensionModel] {
+		if row.Key == "gpt-4" && row.Currency == "USD" && !row.PlanCovered {
+			gptUSD = append(gptUSD, row)
+		}
+	}
+	if len(gptUSD) != 1 || gptUSD[0].Cost != 3700 {
+		t.Errorf("gpt-4 USD PAYG: expected one sub-total of 3700, got %v", gptUSD)
+	}
+}
+
+func TestAggregateCostByDimensions_Arguments(t *testing.T) {
+	eachBackend(t, func(t *testing.T, store *xologorm.Store) {
+		ctx := context.Background()
+		orgID := model.OrgID("org-1")
+		recordUsage(t, store, "u1", "p1", "m-gpt", "gpt-4", "", "USD", 1000, 10, 20, false)
+		since := time.Now().Add(-time.Hour)
+		filter := port.UsageFilter{OrgID: &orgID, Since: &since}
+
+		t.Run("a repeated dimension is grouped on once", func(t *testing.T) {
+			got, err := store.AggregateCostByDimensions(ctx, filter, port.UsageDimensionModel, port.UsageDimensionModel)
+			if err != nil {
+				t.Fatalf("AggregateCostByDimensions: %v", err)
+			}
+			if len(got) != 1 || len(got[port.UsageDimensionModel]) != 1 || got[port.UsageDimensionModel][0].Cost != 1000 {
+				t.Errorf("expected one gpt-4 sub-total of 1000, got %v", got)
+			}
+		})
+		t.Run("no dimension yields an empty map", func(t *testing.T) {
+			got, err := store.AggregateCostByDimensions(ctx, filter)
+			if err != nil || len(got) != 0 {
+				t.Errorf("expected an empty map, got %v, %v", got, err)
+			}
+		})
+		t.Run("an unsupported dimension fails", func(t *testing.T) {
+			if _, err := store.AggregateCostByDimensions(ctx, filter, port.UsageDimension("week")); err == nil {
+				t.Error("expected an error")
+			}
+		})
+		t.Run("more than four dimensions fail", func(t *testing.T) {
+			// There are four supported dimensions, so the fifth is unsupported
+			// too: the message tells the limit apart from that error.
+			_, err := store.AggregateCostByDimensions(ctx, filter,
+				port.UsageDimensionModel, port.UsageDimensionDay, port.UsageDimensionUser, port.UsageDimensionProvider, port.UsageDimension("week"))
+			if err == nil || !strings.Contains(err.Error(), "at most 4 usage dimensions") {
+				t.Errorf("expected the dimension limit error, got %v", err)
+			}
+		})
+	})
 }

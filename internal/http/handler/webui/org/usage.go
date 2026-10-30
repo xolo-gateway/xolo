@@ -270,9 +270,10 @@ func (h *Handler) getUsagePage(w http.ResponseWriter, r *http.Request) {
 		return out
 	}
 
-	perModel := convertToOrg(h.aggregateCostRows(ctx, chartFilter, port.UsageDimensionModel))
+	costRows := h.aggregateCostRows(ctx, chartFilter, port.UsageDimensionModel, port.UsageDimensionDay, port.UsageDimensionUser, port.UsageDimensionProvider)
+	perModel := convertToOrg(costRows[port.UsageDimensionModel])
 
-	paygDayRows, coveredDayRows := port.SplitPlanCovered(h.aggregateCostRows(ctx, chartFilter, port.UsageDimensionDay))
+	paygDayRows, coveredDayRows := port.SplitPlanCovered(costRows[port.UsageDimensionDay])
 	perDay := convertToOrg(paygDayRows)
 	coveredPerDay := convertToOrg(coveredDayRows)
 	if agg != nil && scope.team != nil {
@@ -285,14 +286,14 @@ func (h *Handler) getUsagePage(w http.ResponseWriter, r *http.Request) {
 
 	// Per-user PAYG cost, keyed by display name (two ids sharing a name merge, as before).
 	// The subscription consumption is charted apart, in tokens, below.
-	paygUserRows, _ := port.SplitPlanCovered(h.aggregateCostRows(ctx, chartFilter, port.UsageDimensionUser))
+	paygUserRows, _ := port.SplitPlanCovered(costRows[port.UsageDimensionUser])
 	perUser := make(map[string]int64)
 	for key, cost := range convertToOrg(paygUserRows) {
 		perUser[h.usageUserLabel(ctx, model.UserID(key), userMap)] += cost
 	}
 
 	// Per-provider cost, keyed by provider id.
-	providerRows := h.aggregateCostRows(ctx, chartFilter, port.UsageDimensionProvider)
+	providerRows := costRows[port.UsageDimensionProvider]
 	perProvider := make(map[model.ProviderID]int64)
 	for key, cost := range convertToOrg(providerRows) {
 		perProvider[model.ProviderID(key)] += cost
@@ -474,12 +475,13 @@ func (h *Handler) getUsagePage(w http.ResponseWriter, r *http.Request) {
 
 func intPtr(n int) *int { return &n }
 
-// aggregateCostRows fetches the cost sub-totals for a dimension, logging and
-// returning nil on error so a failed chart never blocks the whole page.
-func (h *Handler) aggregateCostRows(ctx context.Context, filter port.UsageFilter, dim port.UsageDimension) []port.DimensionCost {
-	rows, err := h.usageStore.AggregateCostByDimension(ctx, filter, dim)
+// aggregateCostRows fetches the cost sub-totals for each dimension in a single
+// pass. On error it logs and returns nil: every chart of the page is then
+// empty, but the rest of the page still renders.
+func (h *Handler) aggregateCostRows(ctx context.Context, filter port.UsageFilter, dims ...port.UsageDimension) map[port.UsageDimension][]port.DimensionCost {
+	rows, err := h.usageStore.AggregateCostByDimensions(ctx, filter, dims...)
 	if err != nil {
-		slog.WarnContext(ctx, "could not aggregate usage cost", slog.String("dimension", string(dim)), slogx.Error(err))
+		slog.WarnContext(ctx, "could not aggregate usage cost", slog.Any("dimensions", dims), slogx.Error(err))
 		return nil
 	}
 	return rows

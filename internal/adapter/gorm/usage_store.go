@@ -2,8 +2,10 @@ package gorm
 
 import (
 	"context"
+	"fmt"
 	"maps"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/xolo-gateway/xolo/internal/core/model"
@@ -490,39 +492,86 @@ func dimensionGroupExpr(db *gorm.DB, d port.UsageDimension) (string, error) {
 
 // AggregateCostByDimension implements port.UsageStore.
 func (s *Store) AggregateCostByDimension(ctx context.Context, filter port.UsageFilter, dimension port.UsageDimension) ([]port.DimensionCost, error) {
-	var rows []struct {
-		GroupKey    string
-		OrgID       string
-		Currency    string
-		PlanCovered int
-		Cost        int64
+	byDimension, err := s.AggregateCostByDimensions(ctx, filter, dimension)
+	if err != nil {
+		return nil, err
+	}
+	return byDimension[dimension], nil
+}
+
+// maxUsageDimensions is how many dimensions AggregateCostByDimensions groups
+// on at once: one key column each, Key0 to Key3 of its rows.
+const maxUsageDimensions = 4
+
+// AggregateCostByDimensions implements port.UsageStore.
+//
+// The query groups on every dimension at once, then each dimension's
+// sub-totals are summed from those rows. There is one row per distinct
+// combination of the dimensions (with org, currency and plan coverage): their
+// product, not their sum. On a long range of a busy organization it can come
+// close to the number of records, and all of it is loaded before summing.
+func (s *Store) AggregateCostByDimensions(ctx context.Context, filter port.UsageFilter, dimensions ...port.UsageDimension) (map[port.UsageDimension][]port.DimensionCost, error) {
+	dimensions = slices.Compact(slices.Sorted(slices.Values(dimensions)))
+	if len(dimensions) == 0 {
+		return map[port.UsageDimension][]port.DimensionCost{}, nil
+	}
+	if len(dimensions) > maxUsageDimensions {
+		return nil, errors.Errorf("at most %d usage dimensions at once, got %v", maxUsageDimensions, dimensions)
 	}
 
+	var rows []struct {
+		Key0, Key1, Key2, Key3 string
+		OrgID                  string
+		Currency               string
+		PlanCovered            int
+		Cost                   int64
+	}
 	err := s.read(ctx, func(ctx context.Context, db *gorm.DB) error {
-		groupExpr, err := dimensionGroupExpr(db, dimension)
-		if err != nil {
-			return err
+		selects := make([]string, 0, len(dimensions)+4)
+		groups := make([]string, 0, len(dimensions))
+		for i, dimension := range dimensions {
+			groupExpr, err := dimensionGroupExpr(db, dimension)
+			if err != nil {
+				return err
+			}
+			selects = append(selects, fmt.Sprintf("%s as key%d", groupExpr, i))
+			groups = append(groups, groupExpr)
 		}
+		selects = append(selects, "org_id as org_id", "currency as currency", "plan_covered as plan_covered", "COALESCE(SUM(cost), 0) as cost")
 
-		query := db.Model(&UsageRecord{}).
-			Select(groupExpr + " as group_key, org_id as org_id, currency as currency, plan_covered as plan_covered, COALESCE(SUM(cost), 0) as cost")
+		query := db.Model(&UsageRecord{}).Select(strings.Join(selects, ", "))
 		query = applyUsageFilter(query, filter)
-		query = query.Group(groupExpr).Group("org_id").Group("currency").Group("plan_covered")
+		for _, group := range groups {
+			query = query.Group(group)
+		}
+		query = query.Group("org_id").Group("currency").Group("plan_covered")
 		return errors.WithStack(query.Scan(&rows).Error)
 	})
 	if err != nil {
 		return nil, err
 	}
 
-	result := make([]port.DimensionCost, 0, len(rows))
-	for _, r := range rows {
-		result = append(result, port.DimensionCost{
-			Key:         r.GroupKey,
-			OrgID:       model.OrgID(r.OrgID),
-			Currency:    r.Currency,
-			Cost:        r.Cost,
-			PlanCovered: r.PlanCovered != 0,
-		})
+	result := make(map[port.UsageDimension][]port.DimensionCost, len(dimensions))
+	for i, dimension := range dimensions {
+		// Sub-totals are indexed on everything but their cost.
+		index := make(map[port.DimensionCost]int)
+		costs := make([]port.DimensionCost, 0)
+		for _, row := range rows {
+			subTotal := port.DimensionCost{
+				Key:         [maxUsageDimensions]string{row.Key0, row.Key1, row.Key2, row.Key3}[i],
+				OrgID:       model.OrgID(row.OrgID),
+				Currency:    row.Currency,
+				PlanCovered: row.PlanCovered != 0,
+			}
+			k, ok := index[subTotal]
+			if !ok {
+				k = len(costs)
+				index[subTotal] = k
+				costs = append(costs, subTotal)
+			}
+			costs[k].Cost += row.Cost
+		}
+		result[dimension] = costs
 	}
 	return result, nil
 }
