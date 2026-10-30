@@ -2,6 +2,7 @@ package catalog
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -347,5 +348,13 @@ func TestBundle_KeepsTheSharedBudgetOfAnOfferingItLeavesOut(t *testing.T) {
 	}
 	if err := bundle.Validate(); err != nil {
 		t.Errorf("the bundle does not validate: %v", err)
+	}
+}
+
+func TestPrices_VariesOnlyWithPublishedTiersOrPeak(t *testing.T) {
+	for raw, want := range map[string]bool{"": false, "null": false, "[]": false, "{}": false, `[{"above":200000,"input":2}]`: true} {
+		if got := (Prices{Tiers: json.RawMessage(raw)}).Varies(); got != want {
+			t.Errorf("tiers %q: varies = %v, want %v", raw, got, want)
+		}
 	}
 }

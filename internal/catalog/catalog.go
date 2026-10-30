@@ -8,6 +8,7 @@
 package catalog
 
 import (
+	"bytes"
 	"encoding/json"
 	"math"
 	"slices"
@@ -136,7 +137,17 @@ type Prices struct {
 // Varies reports whether the provider publishes other prices than the base
 // tier, which Xolo, storing one price per model, does not apply.
 func (p Prices) Varies() bool {
-	return len(p.Tiers) > 0 || len(p.Peak) > 0
+	return published(p.Tiers) || published(p.Peak)
+}
+
+// published reports whether raw holds a value: an empty array or object, or
+// null, holds none.
+func published(raw json.RawMessage) bool {
+	switch string(bytes.TrimSpace(raw)) {
+	case "", "null", "[]", "{}":
+		return false
+	}
+	return true
 }
 
 // Throughput is a decode throughput in tokens per second.

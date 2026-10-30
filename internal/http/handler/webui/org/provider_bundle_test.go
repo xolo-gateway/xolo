@@ -387,8 +387,12 @@ func TestCatalogImport_TellsAMalformedReleaseFromAnUnknownProvider(t *testing.T)
 		fields := url.Values{"catalog_provider": {"acme"}, "plan": {plan}}
 		rr := httptest.NewRecorder()
 		h.previewCatalogImport(rr, bundleRequest(t, s, tenant, string(s.provider.ID()), bytes.NewBufferString(fields.Encode()), "application/x-www-form-urlencoded"))
-		if rr.Code != http.StatusUnprocessableEntity || !strings.Contains(stdhtml.UnescapeString(rr.Body.String()), want) {
+		page := stdhtml.UnescapeString(rr.Body.String())
+		if rr.Code != http.StatusUnprocessableEntity || !strings.Contains(page, want) {
 			t.Errorf("plan %s: status %d, want 422 mentioning %q", plan, rr.Code, want)
+		}
+		if strings.Contains(page, `name="bundle_file"`) || !strings.Contains(page, `name="catalog_provider"`) {
+			t.Errorf("plan %s: the refusal should be said on the catalog page, where the operator chooses again", plan)
 		}
 	}
 }

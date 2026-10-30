@@ -36,13 +36,19 @@ func (h *Handler) getCatalogImportPage(w http.ResponseWriter, r *http.Request) {
 		h.renderCatalogUnavailable(w, r, vmodel)
 		return
 	}
+	templ.Handler(component.CatalogImportPage(withCatalog(vmodel, c))).ServeHTTP(w, r)
+}
+
+// withCatalog lists the providers of c on the catalog page, the one the
+// target provider most likely is first.
+func withCatalog(vmodel component.CatalogImportVModel, c *catalog.Catalog) component.CatalogImportVModel {
 	vmodel.Catalog = c
-	if p != nil {
+	if p := vmodel.Provider; p != nil {
 		if match := c.ProviderAt(p.BaseURL()); match != nil {
 			vmodel.Suggested = match.ID
 		}
 	}
-	templ.Handler(component.CatalogImportPage(vmodel)).ServeHTTP(w, r)
+	return vmodel
 }
 
 func (h *Handler) catalogImportVModel(ctx context.Context, org model.Organization, p model.Provider) component.CatalogImportVModel {
@@ -91,17 +97,25 @@ func (h *Handler) previewCatalogImport(w http.ResponseWriter, r *http.Request) {
 		h.renderCatalogUnavailable(w, r, h.catalogImportVModel(ctx, org, p))
 		return
 	}
+	// A choice the import refuses is said on the catalog page, where the
+	// operator chooses again.
+	refuse := func(msg string) {
+		page := withCatalog(h.catalogImportVModel(ctx, org, p), c)
+		page.Error = msg
+		w.WriteHeader(http.StatusUnprocessableEntity)
+		templ.Handler(component.CatalogImportPage(page)).ServeHTTP(w, r)
+	}
 	bundle, err := c.Bundle(r.FormValue("catalog_provider"), plan)
 	if err != nil {
 		// A provider or plan the release lacks is the operator's to fix; a
 		// release that does not convert is the catalog's, and is logged.
 		if errors.Is(err, catalog.ErrNotFound) {
-			h.renderProviderBundleError(w, r, vmodel, i18n.T(ctx, "org.errors.catalog_import.unknown"))
+			refuse(i18n.T(ctx, "org.errors.catalog_import.unknown"))
 			return
 		}
 		// The entry at fault is named, for the operator to report it.
 		slog.ErrorContext(ctx, "could not convert the catalog provider", slog.String("version", c.Version), slogx.Error(err))
-		h.renderProviderBundleError(w, r, vmodel, i18n.T(ctx, "org.errors.catalog_import.invalid_entry", c.Version, err.Error()))
+		refuse(i18n.T(ctx, "org.errors.catalog_import.invalid_entry", c.Version, err.Error()))
 		return
 	}
 	// Imported into a provider at another endpoint than its own, a catalog
@@ -169,13 +183,13 @@ func (h *Handler) previewCatalogImport(w http.ResponseWriter, r *http.Request) {
 	// provider billing in another one, its prices and budgets are converted,
 	// so that they never land under a currency they are not in.
 	if p != nil && p.Currency() == "" {
-		h.renderProviderBundleError(w, r, vmodel, i18n.T(ctx, "org.errors.providers.no_currency"))
+		refuse(i18n.T(ctx, "org.errors.providers.no_currency"))
 		return
 	}
 	if p != nil && bundle.Provider.Currency != p.Currency() {
 		if err := h.convertBundleCurrency(ctx, &bundle, p.Currency()); err != nil {
 			slog.WarnContext(ctx, "could not convert catalog prices", slogx.Error(err))
-			h.renderProviderBundleError(w, r, vmodel, i18n.T(ctx, "org.errors.catalog_import.no_rate", bundle.Provider.Currency, p.Currency()))
+			refuse(i18n.T(ctx, "org.errors.catalog_import.no_rate", bundle.Provider.Currency, p.Currency()))
 			return
 		}
 	}
@@ -198,7 +212,7 @@ func (h *Handler) previewCatalogImport(w http.ResponseWriter, r *http.Request) {
 	}
 	if err != nil {
 		slog.ErrorContext(ctx, "the catalog provider gives an invalid bundle", slog.String("version", c.Version), slogx.Error(err))
-		h.renderProviderBundleError(w, r, vmodel, i18n.T(ctx, "org.errors.catalog_import.invalid_entry", c.Version, err.Error()))
+		refuse(i18n.T(ctx, "org.errors.catalog_import.invalid_entry", c.Version, err.Error()))
 		return
 	}
 	raw, err := json.Marshal(bundle)

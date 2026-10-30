@@ -690,6 +690,7 @@
   "org.errors.catalog_import.unknown": "Ce fournisseur ou ce forfait n'est pas dans le catalogue de modèles.",
   "org.errors.catalog_import.invalid_entry": "La version %s du catalogue ne peut pas être importée : %s. Réessayez une fois une version corrigée publiée.",
   "org.model.prefill_no_rate": "Les prix n'ont pas été remplis : aucun taux de change n'est disponible pour les convertir dans la devise du fournisseur.",
+  "org.model.prefill_failed": "Le catalogue n'a pas pu être joint : rien n'a été rempli. Réessayez.",
   "org.errors.catalog_import.no_rate": "Le catalogue publie ces prix en %s et aucun taux de change vers %s n'est disponible : réessayez plus tard.",
   "org.errors.provider_bundle.no_rate": "Ce bundle est tarifé en %s et aucun taux de change vers %s n'est disponible : réessayez plus tard.",
   "org.errors.provider_bundle.converted_invalid": "Converti en %s, ce bundle sort des bornes autorisées : %s",

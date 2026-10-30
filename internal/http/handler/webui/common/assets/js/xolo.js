@@ -440,6 +440,9 @@
         notes.push(button.dataset.msgEstimated + "\n- " + names.join("\n- "));
       }
       if (notes.length) window.alert(notes.join("\n\n"));
+    } catch (e) {
+      // Le serveur n'a pas répondu : rien n'est rempli.
+      window.alert(button.dataset.msgFailed);
     } finally {
       button.disabled = false;
     }
