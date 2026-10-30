@@ -278,31 +278,33 @@ func applyUsageFilter(query *gorm.DB, filter port.UsageFilter) *gorm.DB {
 // Only PAYG (plan_covered=0) records are included so subscription usage does not
 // inflate monetary quotas.
 func (s *Store) SumCostSinceByCurrency(ctx context.Context, userIDs []model.UserID, orgID model.OrgID, since time.Time) (map[string]int64, error) {
-	var rows []struct {
-		Currency string
-		Total    int64
-	}
+	payg := false
+	filter := port.UsageFilter{OrgID: &orgID, UserIDs: userIDs, PlanCovered: &payg, Since: &since}
+	sources := usageSources(filter, time.Now())
 
+	var result map[string]int64
 	err := s.read(ctx, func(ctx context.Context, db *gorm.DB) error {
-		query := db.Model(&UsageRecord{}).
-			Select("currency, COALESCE(SUM(cost), 0) as total").
-			Where("org_id = ? AND created_at >= ? AND plan_covered = 0", string(orgID), since)
-		if len(userIDs) > 0 {
-			ids := make([]string, len(userIDs))
-			for i, uid := range userIDs {
-				ids[i] = string(uid)
+		return readPeriod(db, sources, func(db *gorm.DB) error {
+			// Each attempt of a replayed read starts from zero.
+			result = make(map[string]int64)
+			for _, src := range sources {
+				var rows []struct {
+					Currency string
+					Total    int64
+				}
+				query := src.query(db).Select("currency, COALESCE(SUM(cost), 0) as total").Group("currency")
+				if err := query.Scan(&rows).Error; err != nil {
+					return errors.WithStack(err)
+				}
+				for _, r := range rows {
+					result[r.Currency] += r.Total
+				}
 			}
-			query = query.Where("user_id IN ?", ids)
-		}
-		return errors.WithStack(query.Group("currency").Scan(&rows).Error)
+			return nil
+		})
 	})
 	if err != nil {
 		return nil, err
-	}
-
-	result := make(map[string]int64, len(rows))
-	for _, r := range rows {
-		result[r.Currency] = r.Total
 	}
 	return result, nil
 }
@@ -639,29 +641,38 @@ func (s *Store) AggregateCostByDimensions(ctx context.Context, filter port.Usage
 
 // AggregatePlanTokensByUser implements port.UsageStore.
 func (s *Store) AggregatePlanTokensByUser(ctx context.Context, filter port.UsageFilter) ([]port.UserTokenUsage, error) {
-	var rows []struct {
-		UserID string
-		Tokens int64
-	}
+	covered := true
+	filter.PlanCovered = &covered
+	sources := usageSources(filter, time.Now())
 
+	var tokens map[string]int64
 	err := s.read(ctx, func(ctx context.Context, db *gorm.DB) error {
-		query := db.Model(&UsageRecord{}).
-			Select("user_id as user_id, COALESCE(SUM(total_tokens), 0) as tokens").
-			Where("plan_covered = 1")
-		query = applyUsageFilter(query, filter)
-		query = query.Group("user_id")
-		return errors.WithStack(query.Scan(&rows).Error)
+		return readPeriod(db, sources, func(db *gorm.DB) error {
+			// Each attempt of a replayed read starts from zero.
+			tokens = make(map[string]int64)
+			for _, src := range sources {
+				var rows []struct {
+					UserID string
+					Tokens int64
+				}
+				query := src.query(db).Select("user_id as user_id, COALESCE(SUM(total_tokens), 0) as tokens").Group("user_id")
+				if err := query.Scan(&rows).Error; err != nil {
+					return errors.WithStack(err)
+				}
+				for _, r := range rows {
+					tokens[r.UserID] += r.Tokens
+				}
+			}
+			return nil
+		})
 	})
 	if err != nil {
 		return nil, err
 	}
 
-	result := make([]port.UserTokenUsage, 0, len(rows))
-	for _, r := range rows {
-		result = append(result, port.UserTokenUsage{
-			UserID: model.UserID(r.UserID),
-			Tokens: r.Tokens,
-		})
+	result := make([]port.UserTokenUsage, 0, len(tokens))
+	for userID, sum := range tokens {
+		result = append(result, port.UserTokenUsage{UserID: model.UserID(userID), Tokens: sum})
 	}
 	return result, nil
 }

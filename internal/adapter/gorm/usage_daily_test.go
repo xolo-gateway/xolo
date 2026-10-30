@@ -142,6 +142,38 @@ func TestUsageDaily_PeriodReadsMatchTheRecords(t *testing.T) {
 			})
 		}
 
+		// The quota and leaderboard sums read the same split.
+		t.Run("cost by currency", func(t *testing.T) {
+			got, err := store.SumCostSinceByCurrency(ctx, []model.UserID{"u1", "u2"}, org1, since)
+			if err != nil {
+				t.Fatalf("SumCostSinceByCurrency: %v", err)
+			}
+			want := map[string]int64{"EUR": 10 + 100 + 200 + 400 + 600 + 800 + 20000 + 40000 + 80000 + 1000}
+			if !maps.Equal(got, want) {
+				t.Errorf("got %v, want %v", got, want)
+			}
+		})
+		t.Run("plan tokens by user", func(t *testing.T) {
+			until := time.Now().Add(time.Hour)
+			recordsOnly := port.UsageFilter{OrgID: &org1, Since: &since, Until: &until}
+			split := port.UsageFilter{OrgID: &org1, Since: &since}
+			tokens := func(f port.UsageFilter) map[model.UserID]int64 {
+				rows, err := store.AggregatePlanTokensByUser(ctx, f)
+				if err != nil {
+					t.Fatalf("AggregatePlanTokensByUser: %v", err)
+				}
+				out := map[model.UserID]int64{}
+				for _, r := range rows {
+					out[r.UserID] += r.Tokens
+				}
+				return out
+			}
+			got, want := tokens(split), tokens(recordsOnly)
+			if !maps.Equal(got, want) || got["u1"] != 30 {
+				t.Errorf("got %v, the records give %v, want u1: 30", got, want)
+			}
+		})
+
 		// The server's day of each record, whatever the database's timezone:
 		// the minutes before midnight belong to the day before.
 		days, err := store.AggregateCostByDimensions(ctx, filters["organization"], port.UsageDimensionDay)
