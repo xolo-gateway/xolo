@@ -510,14 +510,17 @@ func (f *CatalogFollower) followGroup(ctx context.Context, c *catalog.Catalog, p
 			}
 		}
 	}
+	// An origin the store fails to save is compared again next time; the
+	// others are saved.
+	var errs []error
 	for _, t := range tracked {
 		origin, ok := next[t.ModelID]
 		if !ok {
 			continue
 		}
 		if err := f.origins.SaveCatalogOrigin(ctx, t.ModelID, &origin); err != nil && !errors.Is(err, port.ErrNotFound) {
-			return errors.WithStack(err)
+			errs = append(errs, errors.Wrapf(err, "model %s", t.ModelID))
 		}
 	}
-	return nil
+	return stderrors.Join(errs...)
 }

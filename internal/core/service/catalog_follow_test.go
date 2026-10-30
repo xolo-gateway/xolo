@@ -389,3 +389,45 @@ func (s *failingFirstOrigins) SaveCatalogOrigin(ctx context.Context, id model.LL
 	}
 	return s.memoryOriginStore.SaveCatalogOrigin(ctx, id, o)
 }
+
+func TestCatalogFollower_SavesTheOtherOriginsWhenOneFails(t *testing.T) {
+	ctx := context.Background()
+	release := func(version string, input float64) *catalog.Catalog {
+		c := followRelease(version, input, 6, 128_000)
+		c.Providers[0].Offerings = append(c.Providers[0].Offerings, catalog.Offering{Model: "large", ModelID: "large-mini", Prices: catalog.Prices{Input: input, Output: 2}})
+		return c
+	}
+	store := newMemoryProviderStore()
+	p := model.NewProvider("org", "Example", "openai", "https://api.example.com/v1", "key", "USD")
+	if err := store.CreateProvider(ctx, p); err != nil {
+		t.Fatal(err)
+	}
+	tb, err := release("v1", 1).BundleFor("example", "", p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan := PlanProviderBundleImport(tb.Bundle, p, nil, takenNames{})
+	sel := selectAll(plan)
+	result, err := ApplyProviderBundle(ctx, store, plan, sel, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	origins := &failingFirstOrigins{memoryOriginStore: memoryOriginStore{models: store, origins: map[model.LLMModelID]model.CatalogOrigin{}}, failed: true}
+	if err := RecordCatalogOrigins(ctx, store, origins, NewCatalogImport("example", "v1", tb), plan, sel, result); err != nil || len(origins.origins) != 2 {
+		t.Fatalf("recorded %d origins, %v", len(origins.origins), err)
+	}
+
+	origins.failed = false
+	if _, err := NewCatalogFollower(store, origins, nil).Follow(ctx, release("v2", 3)); err != nil {
+		t.Fatal(err)
+	}
+	followed := 0
+	for _, o := range origins.origins {
+		if o.Version == "v2" {
+			followed++
+		}
+	}
+	if followed != 1 {
+		t.Fatalf("%d origins at v2, want the one the store saved despite the other's failure", followed)
+	}
+}
