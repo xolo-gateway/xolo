@@ -498,11 +498,11 @@
     -webkit-box-orient: vertical;
     -webkit-line-clamp: 1;
   }
-  .line-clamp-3 {
+  .line-clamp-2 {
     overflow: hidden;
     display: -webkit-box;
     -webkit-box-orient: vertical;
-    -webkit-line-clamp: 3;
+    -webkit-line-clamp: 2;
   }
   .block {
     display: block;
@@ -884,6 +884,9 @@
   .min-w-48 {
     min-width: calc(var(--spacing) * 48);
   }
+  .min-w-60 {
+    min-width: calc(var(--spacing) * 60);
+  }
   .min-w-64 {
     min-width: calc(var(--spacing) * 64);
   }
@@ -1202,9 +1205,6 @@
       border-top-width: calc(1px * var(--tw-divide-y-reverse));
       border-bottom-width: calc(1px * calc(1 - var(--tw-divide-y-reverse)));
     }
-  }
-  .self-start {
-    align-self: flex-start;
   }
   .truncate {
     overflow: hidden;
@@ -3649,6 +3649,11 @@
   .data-\[variant\=warning\]\:bg-yellow-500 {
     &[data-variant="warning"] {
       background-color: var(--color-yellow-500);
+    }
+  }
+  .sm\:ml-auto {
+    @media (width >= 40rem) {
+      margin-left: auto;
     }
   }
   .sm\:max-w-lg {

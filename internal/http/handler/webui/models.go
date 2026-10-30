@@ -1,81 +1,35 @@
 package webui
 
 import (
+	"cmp"
 	"context"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"slices"
-	"sort"
-	"time"
+	"strings"
 
 	"github.com/a-h/templ"
 	"github.com/bornholm/go-x/slogx"
 	"github.com/xolo-gateway/xolo/internal/core/model"
-	"github.com/xolo-gateway/xolo/internal/core/port"
 	"github.com/xolo-gateway/xolo/internal/core/rbac"
 	"github.com/xolo-gateway/xolo/internal/core/service"
 	httpCtx "github.com/xolo-gateway/xolo/internal/http/context"
-	webcommon "github.com/xolo-gateway/xolo/internal/http/handler/webui/common"
 	common "github.com/xolo-gateway/xolo/internal/http/handler/webui/common/component"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/profile/component"
 	"github.com/xolo-gateway/xolo/internal/http/middleware/authz"
 	"github.com/xolo-gateway/xolo/internal/i18n"
 )
 
+// getModelsPage lists the models the user can call, as a catalog. It reads no
+// usage: the usage of each model is on the usage page.
 func (h *Handler) getModelsPage(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	user := httpCtx.User(ctx)
 	memberships := httpCtx.Memberships(ctx)
 
-	rangeParam := r.URL.Query().Get("range")
-	_, since := webcommon.UsageRange(rangeParam, time.Now())
-	showAll := r.URL.Query().Get("show_all") == "true"
-	sortParam := r.URL.Query().Get("sort")
-	orderParam := r.URL.Query().Get("order")
-	// Normalise unknown sort values so the URL and the active UI tab never
-	// disagree (e.g. ?sort=price_invalid would otherwise render "Usage" as
-	// active while actually falling back to usage ordering). The result is
-	// forwarded to ModelsPageVModel.Sort, which modelsSortControl reads to
-	// decide which segment is rendered as the active <a> (the active
-	// segment carries the next-cycle href); keep the normalisation here so
-	// a future template-only move cannot desync the tab state from the
-	// actual ordering.
-	if sortParam != "" && sortParam != "price" {
-		sortParam = ""
-	}
-	// Each criterion has its own default direction:
-	//   - price is naturally read ascending (cheapest first);
-	//   - usage is naturally read descending (most-used first).
-	// orderParam overrides the default when set to the opposite value.
-	order := orderDesc
-	if sortParam == "price" {
-		order = orderAsc
-	}
-	orderExplicit := false
-	switch orderParam {
-	case "asc":
-		order = orderAsc
-		orderExplicit = true
-	case "desc":
-		order = orderDesc
-		orderExplicit = true
-	}
-
-	modelUsages := h.loadModelUsages(ctx, user.ID(), memberships, since)
-
-	sort.Slice(modelUsages, func(i, j int) bool {
-		return compareModelUsages(modelUsages[i], modelUsages[j], sortParam, order)
-	})
-
-	allModelUsages := modelUsages
-	totalCount := len(modelUsages)
-	remainingCount := totalCount - component.DefaultMaxDisplayedModels
-
-	if !showAll && totalCount > component.DefaultMaxDisplayedModels {
-		modelUsages = modelUsages[:component.DefaultMaxDisplayedModels]
-	} else {
-		remainingCount = 0
-	}
+	filter := parseModelsFilter(r.URL.Query())
+	models := h.loadCatalogModels(ctx, user.ID(), memberships)
 
 	vmodel := component.ModelsPageVModel{
 		AppLayoutVModel: common.AppLayoutVModel{
@@ -87,123 +41,170 @@ func (h *Handler) getModelsPage(w http.ResponseWriter, r *http.Request) {
 			},
 			Context: common.ContextPersonal,
 		},
-		ModelUsages:    modelUsages,
-		AllModelUsages: allModelUsages,
-		Range:          rangeParam,
-		RemainingCount: remainingCount,
-		ShowAll:        showAll,
-		Sort:           sortParam,
-		Order:          order.String(),
-		OrderExplicit:  orderExplicit,
+		Models:    filterCatalogModels(models, filter),
+		AllModels: models,
+		Filter:    filter,
+		Facets:    catalogFacets(models),
 	}
 
 	templ.Handler(component.ModelsPage(vmodel)).ServeHTTP(w, r)
 }
 
-// sortOrder encodes the order in which compareModelUsages ranks rows.
-type sortOrder int
-
-const (
-	// orderAsc is the natural ascending direction: cheaper first under
-	// price sort, fewer requests first under usage sort.
-	orderAsc sortOrder = iota
-	// orderDesc reverses the natural direction: more expensive first
-	// under price sort, more requests first under usage sort.
-	orderDesc
-)
-
-// String returns the URL form of the order: "asc" or "desc". Used to
-// propagate the effective ordering to ModelsPageVModel.Order so the
-// toggle button can render the right icon and the templ href builders
-// can preserve it across links.
-func (o sortOrder) String() string {
-	switch o {
-	case orderDesc:
-		return "desc"
-	default:
-		return "asc"
+// parseModelsFilter reads the filter of the models page from its query
+// string. Unknown values are dropped, so the controls never show a choice the
+// list does not apply.
+func parseModelsFilter(query url.Values) component.ModelsFilter {
+	filter := component.ModelsFilter{
+		Query:    strings.TrimSpace(query.Get("q")),
+		Provider: query.Get("provider"),
+		Kind:     query.Get("kind"),
+		Type:     query.Get("type"),
+		Sort:     query.Get("sort"),
 	}
+	switch model.ModelKind(filter.Kind) {
+	case model.ModelKindCompletion, model.ModelKindEmbeddings, model.ModelKindDecision:
+	default:
+		filter.Kind = ""
+	}
+	if filter.Type != component.ModelsTypeDirect && filter.Type != component.ModelsTypeVirtual {
+		filter.Type = ""
+	}
+	if !slices.Contains(component.ModelsSorts, filter.Sort) {
+		filter.Sort = component.ModelsSortName
+	}
+	for _, capability := range query["cap"] {
+		if slices.Contains(component.ModelCapabilityKeys, capability) && !slices.Contains(filter.Capabilities, capability) {
+			filter.Capabilities = append(filter.Capabilities, capability)
+		}
+	}
+	return filter
 }
 
-// compareModelUsages orders two ModelUsage rows for the /models page.
-//
-// sortParam semantics:
-//   - "price" — order by per-1K rate (PromptCostPer1KTokens +
-//     CompletionCostPer1KTokens). Virtual models have no direct pricing
-//     so they are pushed to the end of the list regardless of order.
-//     This is the same rate the card display builds from, NOT
-//     Aggregate.TotalCost over the selected period. Ties (including
-//     virtual-vs-virtual) fall back to the usage comparison below.
-//   - anything else (including "") — fall through to the existing usage
-//     comparison (total requests).
-//
-// ord flips the direction of the active sort. Under usage sort with
-// orderAsc, models with no usage (Aggregate nil or TotalRequests == 0)
-// are pushed to the end so the user does not see untested models at
-// the top. Under usage sort with orderDesc, higher-usage models lead
-// the list and unused models trail — this is the default historical
-// behaviour and is preserved.
-//
-// Rows that compare equal under every tie-breaker (e.g. two virtual
-// models with nil aggregates) keep the order produced by loadModelUsages;
-// sort.Slice is unstable, so two such rows may swap between renders.
-func compareModelUsages(a, b component.ModelUsage, sortParam string, ord sortOrder) bool {
-	if sortParam == "price" {
-		aVirtual := a.Model.IsVirtual()
-		bVirtual := b.Model.IsVirtual()
-		if aVirtual != bVirtual {
-			// Virtual models have no rate to compare, keep them at the
-			// end of the list regardless of order.
-			return !aVirtual
+// filterCatalogModels returns the models matching the filter, in its order.
+func filterCatalogModels(models []component.CatalogModel, filter component.ModelsFilter) []component.CatalogModel {
+	terms := strings.Fields(strings.ToLower(filter.Query))
+	matching := make([]component.CatalogModel, 0, len(models))
+	for _, m := range models {
+		if filter.Provider != "" && component.ProviderName(m) != filter.Provider {
+			continue
 		}
-		// Both are non-virtual (the early return on aVirtual != bVirtual
-		// guarantees this). Two non-virtual models with different per-1K
-		// rates are ordered in the requested direction; equal-rate pairs
-		// fall through to the usage comparison below.
-		if !aVirtual {
-			ac := a.Model.PromptCostPer1KTokens() + a.Model.CompletionCostPer1KTokens()
-			bc := b.Model.PromptCostPer1KTokens() + b.Model.CompletionCostPer1KTokens()
-			if ac != bc {
-				if ord == orderDesc {
-					return ac > bc
-				}
-				return ac < bc
-			}
+		if filter.Kind != "" && string(m.Model.Kind()) != filter.Kind {
+			continue
+		}
+		if filter.Type == component.ModelsTypeDirect && m.Model.IsVirtual() ||
+			filter.Type == component.ModelsTypeVirtual && !m.Model.IsVirtual() {
+			continue
+		}
+		if !hasCapabilities(m.Model.Capabilities(), filter.Capabilities) {
+			continue
+		}
+		if !matchesTerms(m, terms) {
+			continue
+		}
+		matching = append(matching, m)
+	}
+	slices.SortStableFunc(matching, func(a, b component.CatalogModel) int {
+		return compareCatalogModels(a, b, filter.Sort)
+	})
+	return matching
+}
+
+func hasCapabilities(caps model.ModelCapabilities, wanted []string) bool {
+	for _, capability := range wanted {
+		if !component.HasCapability(caps, capability) {
+			return false
 		}
 	}
+	return true
+}
 
-	aa := a.Aggregate
-	bb := b.Aggregate
-
-	// Under usage sort with orderAsc, push models with no usage (nil
-	// aggregate or TotalRequests == 0) to the end so the user does not
-	// land on untested models first. Under orderDesc this rule is a
-	// no-op: it would still leave untested models at the bottom, which
-	// matches the historical default ordering (descending first).
-	if sortParam != "price" && ord == orderAsc {
-		aUnused := aa == nil || aa.TotalRequests == 0
-		bUnused := bb == nil || bb.TotalRequests == 0
-		if aUnused != bUnused {
-			return !aUnused
-		}
-	}
-
-	if aa == nil && bb == nil {
-		return false
-	}
-	if aa == nil {
-		return false
-	}
-	if bb == nil {
+// matchesTerms is true when every term appears in one of the model's names,
+// its description or its provider's name.
+func matchesTerms(m component.CatalogModel, terms []string) bool {
+	if len(terms) == 0 {
 		return true
 	}
-	if ord == orderDesc {
-		return aa.TotalRequests > bb.TotalRequests
+	haystack := strings.ToLower(strings.Join(append(slices.Clone(component.ModelNames(m)),
+		m.Model.ProxyName(), m.Model.Description(), component.ProviderName(m)), "\n"))
+	for _, term := range terms {
+		if !strings.Contains(haystack, term) {
+			return false
+		}
 	}
-	return aa.TotalRequests < bb.TotalRequests
+	return true
 }
 
-func (h *Handler) loadModelUsages(ctx context.Context, userID model.UserID, memberships []model.Membership, since time.Time) []component.ModelUsage {
+// compareCatalogModels orders two models by the sort criterion, then by name.
+// A virtual model has no price and goes after the priced ones; a model of
+// unknown context window goes after the known ones.
+func compareCatalogModels(a, b component.CatalogModel, sort string) int {
+	var c int
+	switch sort {
+	case component.ModelsSortPrice:
+		if c = cmpBool(a.Model.IsVirtual(), b.Model.IsVirtual()); c == 0 {
+			c = cmp.Compare(catalogRate(a), catalogRate(b))
+		}
+	case component.ModelsSortNewest:
+		c = b.Model.CreatedAt().Compare(a.Model.CreatedAt())
+	case component.ModelsSortContext:
+		if c = cmpBool(a.Model.ContextWindow() <= 0, b.Model.ContextWindow() <= 0); c == 0 {
+			c = cmp.Compare(b.Model.ContextWindow(), a.Model.ContextWindow())
+		}
+	}
+	if c != 0 {
+		return c
+	}
+	return strings.Compare(component.ModelNames(a)[0], component.ModelNames(b)[0])
+}
+
+func catalogRate(m component.CatalogModel) int64 {
+	return m.Model.PromptCostPer1KTokens() + m.Model.CompletionCostPer1KTokens()
+}
+
+// cmpBool orders false before true.
+func cmpBool(a, b bool) int {
+	switch {
+	case a == b:
+		return 0
+	case a:
+		return 1
+	default:
+		return -1
+	}
+}
+
+// catalogFacets lists the choices the filter controls offer: only those that
+// narrow the list.
+func catalogFacets(models []component.CatalogModel) component.ModelsFacets {
+	var facets component.ModelsFacets
+	orgs := make(map[model.OrgID]struct{})
+	var hasDirect bool
+	for _, m := range models {
+		if name := component.ProviderName(m); name != "" && !slices.Contains(facets.Providers, name) {
+			facets.Providers = append(facets.Providers, name)
+		}
+		if kind := m.Model.Kind(); !slices.Contains(facets.Kinds, kind) {
+			facets.Kinds = append(facets.Kinds, kind)
+		}
+		if m.Model.IsVirtual() {
+			facets.Virtual = true
+		} else {
+			hasDirect = true
+		}
+		if m.Org != nil {
+			orgs[m.Org.ID()] = struct{}{}
+		}
+	}
+	slices.Sort(facets.Providers)
+	slices.Sort(facets.Kinds)
+	facets.Virtual = facets.Virtual && hasDirect
+	facets.SeveralOrgs = len(orgs) > 1
+	return facets
+}
+
+// loadCatalogModels lists the models the user can call in every organization
+// they belong to: the enabled models and the virtual models they are granted.
+func (h *Handler) loadCatalogModels(ctx context.Context, userID model.UserID, memberships []model.Membership) []component.CatalogModel {
 	user := httpCtx.User(ctx)
 	isGlobalAdmin := user != nil && slices.Contains(user.Roles(), authz.RoleAdmin)
 
@@ -213,7 +214,7 @@ func (h *Handler) loadModelUsages(ctx context.Context, userID model.UserID, memb
 	}
 	cards := h.modelCards.NewResolver(ctx, orgIDs, "", userID)
 
-	var modelUsages []component.ModelUsage
+	var models []component.CatalogModel
 	for _, m := range memberships {
 		perms, err := h.roleStore.ResolveEffectivePermissions(ctx, userID, m.OrgID())
 		if err != nil {
@@ -231,44 +232,7 @@ func (h *Handler) loadModelUsages(ctx context.Context, userID model.UserID, memb
 
 		// Load regular LLM models (blanket permission or per-model grants)
 		if perms.HasAnyModelAccess(rbac.ModelKindLLM) {
-			models, err := h.providerStore.ListEnabledLLMModels(ctx, m.OrgID())
-			if err != nil {
-				slog.ErrorContext(ctx, "could not list models", slogx.Error(err), slog.String("orgID", string(m.OrgID())))
-			} else {
-				providerCache := make(map[model.ProviderID]model.Provider)
-				for _, llmModel := range models {
-					names := service.ListedModelNames(perms, "", orgSlugOf(org), llmModel.ProxyName(), string(llmModel.ID()), rbac.ModelKindLLM)
-					if len(names) == 0 {
-						continue
-					}
-					modelID := llmModel.ID()
-					modelAgg, err := h.usageStore.AggregateUsage(ctx, port.UsageFilter{
-						UserID:  &userID,
-						ModelID: &modelID,
-						Since:   &since,
-					})
-					if err != nil {
-						slog.ErrorContext(ctx, "could not aggregate model usage", slogx.Error(err))
-						modelAgg = nil
-					}
-					providerID := llmModel.ProviderID()
-					if _, ok := providerCache[providerID]; !ok {
-						p, err := h.providerStore.GetProviderByID(ctx, providerID)
-						if err != nil {
-							slog.ErrorContext(ctx, "could not get provider", slogx.Error(err), slog.String("providerID", string(providerID)))
-						} else {
-							providerCache[providerID] = p
-						}
-					}
-					modelUsages = append(modelUsages, component.ModelUsage{
-						Model:     llmModel,
-						Org:       org,
-						Aggregate: modelAgg,
-						Provider:  providerCache[providerID],
-						Names:     names,
-					})
-				}
-			}
+			models = append(models, h.directCatalogModels(ctx, perms, m.OrgID(), org)...)
 		}
 
 		// Load virtual models (blanket permission or per-model grants)
@@ -282,32 +246,54 @@ func (h *Handler) loadModelUsages(ctx context.Context, userID model.UserID, memb
 					if len(names) == 0 {
 						continue
 					}
-					qualifiedName := org.Slug() + "/" + vm.Name()
-					modelAgg, err := h.usageStore.AggregateUsage(ctx, port.UsageFilter{
-						UserID:         &userID,
-						ProxyModelName: &qualifiedName,
-						Since:          &since,
-					})
-					if err != nil {
-						slog.ErrorContext(ctx, "could not aggregate virtual model usage", slogx.Error(err))
-						modelAgg = nil
-					}
-					modelUsages = append(modelUsages, virtualModelUsage(cards, vm, org, modelAgg, names))
+					models = append(models, virtualCatalogModel(cards, vm, org, names))
 				}
 			}
 		}
 	}
-	return modelUsages
+	return models
 }
 
-// virtualModelUsage describes a virtual model with its catalogue card: its
+// directCatalogModels lists the enabled models of an organization the
+// permissions grant, with their provider.
+func (h *Handler) directCatalogModels(ctx context.Context, perms rbac.PermissionSet, orgID model.OrgID, org model.Organization) []component.CatalogModel {
+	llmModels, err := h.providerStore.ListEnabledLLMModels(ctx, orgID)
+	if err != nil {
+		slog.ErrorContext(ctx, "could not list models", slogx.Error(err), slog.String("orgID", string(orgID)))
+		return nil
+	}
+	providers := make(map[model.ProviderID]model.Provider)
+	list, err := h.providerStore.ListProviders(ctx, orgID)
+	if err != nil {
+		slog.ErrorContext(ctx, "could not list providers", slogx.Error(err), slog.String("orgID", string(orgID)))
+	}
+	for _, p := range list {
+		providers[p.ID()] = p
+	}
+
+	var models []component.CatalogModel
+	for _, llmModel := range llmModels {
+		names := service.ListedModelNames(perms, "", orgSlugOf(org), llmModel.ProxyName(), string(llmModel.ID()), rbac.ModelKindLLM)
+		if len(names) == 0 {
+			continue
+		}
+		models = append(models, component.CatalogModel{
+			Model:    llmModel,
+			Org:      org,
+			Provider: providers[llmModel.ProviderID()],
+			Names:    names,
+		})
+	}
+	return models
+}
+
+// virtualCatalogModel describes a virtual model with its catalogue card: its
 // capabilities are undetermined when the card does not declare them.
-func virtualModelUsage(cards *service.ModelCardResolver, vm model.VirtualModel, org model.Organization, agg *port.UsageAggregate, names []string) component.ModelUsage {
+func virtualCatalogModel(cards *service.ModelCardResolver, vm model.VirtualModel, org model.Organization, names []string) component.CatalogModel {
 	card := cards.OrgModelCard(vm)
-	return component.ModelUsage{
+	return component.CatalogModel{
 		Model:                    &virtualModelAsLLMModel{vm: vm, org: org, card: card},
 		Org:                      org,
-		Aggregate:                agg,
 		Names:                    names,
 		CapabilitiesUndetermined: !card.Declared,
 	}

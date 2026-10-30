@@ -1,43 +1,135 @@
 package component
 
 import (
-	"github.com/xolo-gateway/xolo/internal/i18n"
 	"context"
 	"encoding/json"
 	"fmt"
-	"slices"
 	"github.com/xolo-gateway/xolo/internal/core/model"
 	common "github.com/xolo-gateway/xolo/internal/http/handler/webui/common/component"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/accordion"
+	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/button"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/card"
+	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/checkbox"
+	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/copybutton"
+	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/form"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/icon"
+	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/selectbox"
+	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/table"
+	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/utils"
+	"github.com/xolo-gateway/xolo/internal/i18n"
+	"slices"
 )
 
-const DefaultMaxDisplayedModels int = 3
+// CatalogModel is a model the user can call, as the models page lists it.
+type CatalogModel struct {
+	Model    model.LLMModel
+	Org      model.Organization
+	Provider model.Provider // nil for virtual models
+	// Names are the names the user can call the model by: "<org>/<model>"
+	// for the organization-wide access, "<org>/<team>/<model>" per team.
+	Names []string
+	// CapabilitiesUndetermined is true for a virtual model whose capabilities
+	// are neither derived from its pipeline nor declared by its catalogue
+	// overrides: the false values of Model.Capabilities() then mean unknown.
+	CapabilitiesUndetermined bool
+}
+
+// ModelNames returns the names a model row shows, the qualified name when
+// none were resolved.
+func ModelNames(m CatalogModel) []string {
+	if len(m.Names) > 0 {
+		return m.Names
+	}
+	if m.Org != nil {
+		return []string{m.Org.Slug() + "/" + m.Model.ProxyName()}
+	}
+	return []string{m.Model.ProxyName()}
+}
+
+// ProviderName is the name of the model's provider, empty for a virtual model.
+func ProviderName(m CatalogModel) string {
+	if m.Provider == nil {
+		return ""
+	}
+	return m.Provider.Name()
+}
+
+// Values of the type filter.
+const (
+	ModelsTypeDirect  = "direct"
+	ModelsTypeVirtual = "virtual"
+)
+
+// Values of the sort control. The name order is the default.
+const (
+	ModelsSortName    = "name"
+	ModelsSortPrice   = "price"
+	ModelsSortNewest  = "newest"
+	ModelsSortContext = "context"
+)
+
+var ModelsSorts = []string{ModelsSortName, ModelsSortPrice, ModelsSortNewest, ModelsSortContext}
+
+// ModelCapabilityKeys are the capabilities the list can be filtered on, as
+// the query string names them.
+var ModelCapabilityKeys = []string{"tools", "vision", "reasoning", "audio"}
+
+// HasCapability tells whether caps include the capability named by key.
+func HasCapability(caps model.ModelCapabilities, key string) bool {
+	switch key {
+	case "tools":
+		return caps.Tools
+	case "vision":
+		return caps.Vision
+	case "reasoning":
+		return caps.Reasoning
+	case "audio":
+		return caps.Audio
+	default:
+		return false
+	}
+}
+
+// ModelsFilter is the search, the filters and the order of the models page,
+// read from its query string.
+type ModelsFilter struct {
+	Query    string
+	Provider string
+	Kind     string
+	// Type is "", ModelsTypeDirect or ModelsTypeVirtual.
+	Type string
+	// Capabilities lists the capabilities a model must all have.
+	Capabilities []string
+	Sort         string
+}
+
+// Active tells whether the filter narrows the list.
+func (f ModelsFilter) Active() bool {
+	return f.Query != "" || f.Provider != "" || f.Kind != "" || f.Type != "" || len(f.Capabilities) > 0
+}
+
+// ModelsFacets are the choices the filter controls offer, drawn from the
+// models the user can call. A control is hidden when it could not narrow the
+// list.
+type ModelsFacets struct {
+	Providers []string
+	Kinds     []model.ModelKind
+	// Virtual is true when the list mixes direct and virtual models.
+	Virtual bool
+	// SeveralOrgs is true when the models come from more than one
+	// organization: each row then names its organization.
+	SeveralOrgs bool
+}
 
 type ModelsPageVModel struct {
 	AppLayoutVModel common.AppLayoutVModel
-	ModelUsages     []ModelUsage
-	AllModelUsages  []ModelUsage
-	Range           string
-	RemainingCount  int
-	// ShowAll mirrors the show_all query parameter from the request so the
-	// period selector can round-trip the expanded state. Defaults to false
-	// when the request did not ask for the full list.
-	ShowAll bool
-	// Sort selects how the model list is ordered: "" (default) orders by
-	// aggregate usage; "price" orders by total cost (prompt + completion
-	// per 1K tokens). Unknown values are normalised to "" by the handler.
-	Sort string
-	// Order is the direction of the sort: "asc" or "desc". Each criterion
-	// has its own default (price asc, usage desc) and Order reflects the
-	// effective direction so the URL and the toggle button never disagree.
-	Order string
-	// OrderExplicit is true when the request explicitly carried ?order=...
-	// (i.e. the user picked a non-default direction). The range form
-	// round-trips Order only when this is true, so the default view
-	// does not pollute its bookmark with a redundant ?order=... param.
-	OrderExplicit bool
+	// Models are the models matching the filter, in its order.
+	Models []CatalogModel
+	// AllModels are every model the user can call: the call examples are
+	// built from them, whatever the filter.
+	AllModels []CatalogModel
+	Filter    ModelsFilter
+	Facets    ModelsFacets
 }
 
 templ ModelsPage(vmodel ModelsPageVModel) {
@@ -45,53 +137,26 @@ templ ModelsPage(vmodel ModelsPageVModel) {
 		common.WithTitle(i18n.T(ctx, "profile.models.page_title")),
 	) {
 		<div class="space-y-6">
-			<!-- Header + period selector -->
-			<div class="flex items-center justify-between">
-				<div class="flex items-center gap-4">
-					@icon.BrainCircuit(icon.Props{Class: "h-8 w-8"})
-					@common.PageHeader(common.PageHeaderProps{
-						Title: i18n.T(ctx, "profile.models.title"),
-					})
-				</div>
-				<div class="flex items-center gap-3">
-					@modelsSortControl(vmodel.Sort, vmodel.Order)
-					<form method="GET" class="flex items-center gap-2">
-						@common.RangeSelect(vmodel.Range)
-						if vmodel.Sort != "" {
-							<input type="hidden" name="sort" value={ vmodel.Sort }/>
-						}
-						if vmodel.OrderExplicit {
-							<input type="hidden" name="order" value={ vmodel.Order }/>
-						}
-						if vmodel.ShowAll {
-							<input type="hidden" name="show_all" value="true"/>
-						}
-					</form>
-				</div>
-			</div>
-			<!-- Models list -->
-			if len(vmodel.ModelUsages) == 0 {
+			@common.PageHeader(common.PageHeaderProps{
+				Title:    i18n.T(ctx, "profile.models.title"),
+				Subtitle: i18n.T(ctx, "profile.models.subtitle"),
+			}) {
+				@button.Button(button.Props{
+					Href:    common.BaseURLString(ctx, common.WithPath("/usage")),
+					Variant: button.VariantOutline,
+					Size:    button.SizeSm,
+					Class:   "gap-1.5",
+				}) {
+					@icon.ChartColumn(icon.Props{Class: "size-3.5"})
+					{ i18n.T(ctx, "profile.models.usage_link") }
+				}
+			}
+			if len(vmodel.AllModels) == 0 {
 				<p class="text-sm text-muted-foreground">{ i18n.T(ctx, "profile.models.empty") }</p>
 			} else {
-				<div class="space-y-4">
-					<div id="models-grid" class="flex flex-col gap-3">
-						{{ max := DefaultMaxDisplayedModels }}
-						if vmodel.RemainingCount == 0 {
-							{{ max = len(vmodel.ModelUsages) }}
-						}
-						for _, mu := range vmodel.ModelUsages[:max] {
-							@modelCard(mu)
-						}
-					</div>
-					if vmodel.RemainingCount > 0 {
-						{{ href := templ.SafeURL(common.MutateCurrentURL(ctx, common.WithoutValues("show_all", "*"), common.WithValues("show_all", "true"))) }}
-						<a
-							href={ href }
-							class="text-sm text-muted-foreground hover:text-foreground underline cursor-pointer"
-						>
-							{ i18n.T(ctx, "profile.models.show_more", fmt.Sprintf("%d", vmodel.RemainingCount)) }
-						</a>
-					}
+				<div>
+					@modelsFilterBar(vmodel)
+					@modelsResults(vmodel)
 				</div>
 			}
 			<!-- How-to card -->
@@ -132,14 +197,14 @@ templ ModelsPage(vmodel ModelsPageVModel) {
 								@apiExample("python", "Python · openai", pythonExample(ctx, common.BaseURLString(ctx, common.WithPath("/api/v1")))) {
 									@icon.Code(icon.Props{Class: "h-4 w-4 shrink-0"})
 								}
-								@apiExample("json", "OpenCode · ~/.config/opencode/config.json", openCodeConfigExample(common.BaseURLString(ctx, common.WithPath("/api/v1")), vmodel.AllModelUsages)) {
+								@apiExample("json", "OpenCode · ~/.config/opencode/config.json", openCodeConfigExample(common.BaseURLString(ctx, common.WithPath("/api/v1")), vmodel.AllModels)) {
 									@icon.Code(icon.Props{Class: "h-4 w-4 shrink-0"})
 								}
 								@apiExample("bash", i18n.T(ctx, "profile.models.api.claude_code_title"), claudeCodeExample(ctx, common.BaseURLString(ctx, common.WithPath("/api")))) {
 									@icon.Terminal(icon.Props{Class: "h-4 w-4 shrink-0"})
 								}
 							}
-							if names := undeterminedModelNames(vmodel.AllModelUsages); len(names) > 0 {
+							if names := undeterminedModelNames(vmodel.AllModels); len(names) > 0 {
 								<p class="text-xs text-muted-foreground">
 									{ i18n.T(ctx, "profile.models.undetermined.before") }
 									for i, name := range names {
@@ -176,175 +241,289 @@ templ apiExample(language, title, snippet string) {
 	}
 }
 
-// modelsSortControl renders a two-segment cyclic control (Usage /
-// Prix) that mirrors the SegmentedNav used for the period selector
-// (24 h / 7 j / 30 j / 12 m) on the org and personal dashboards.
-// Each segment is cyclic: clicking the inactive segment once enters
-// the new criterion at its natural default direction; clicking the
-// active segment again cycles through the available directions.
-//
-// Active and inactive segments are both rendered as <a> links: the
-// active one carries the URL of the next direction in the cycle, the
-// inactive one carries the URL of the criterion's natural default.
-// Server-rendered, bookmarkable, no JS.
-//
-// URL contract:
-//   Usage ↓ (default):  /models
-//   Usage ↑            : /models?order=asc
-//   Prix ↑  (default): /models?sort=price
-//   Prix ↓             : /models?sort=price&order=desc
-templ modelsSortControl(currentSort string, currentOrder string) {
-	@common.SegmentedNav([]common.Segment{
-		usageSegment(ctx, currentSort, currentOrder),
-		priceSegment(ctx, currentSort, currentOrder),
-	})
-}
-
-// usageSegment returns the Usage segment of the sort control. The
-// active label embeds the current direction (Usage ↓ or Usage ↑);
-// its href carries the OPPOSITE direction so a click cycles the
-// order. The inactive label is plain "Usage" and its href drops
-// `sort` and `order` so the user lands on the criterion's natural
-// default (Usage ↓).
-func usageSegment(ctx context.Context, currentSort string, currentOrder string) common.Segment {
-	if currentSort != "price" {
-		// Usage is active: label carries direction, href carries the
-		// opposite direction so the next click toggles. We must drop
-		// any existing `order` first because httpURL.WithValues uses
-		// query.Add (append); without the drop the URL would carry
-		// `order=asc&order=desc` on a page that already had ?order=asc,
-		// and Go's url.Values.Get returns the first value, breaking
-		// the toggle on reachable bookmarks.
-		if currentOrder == "asc" {
-			return common.Segment{
-				Label:  i18n.T(ctx, "profile.models.sort.usage") + " ↑",
-				Href:   common.MutateCurrentURL(ctx, common.WithoutValues("order", "*")),
-				Active: true,
-			}
-		}
-		return common.Segment{
-			Label:  i18n.T(ctx, "profile.models.sort.usage") + " ↓",
-			Href:   common.MutateCurrentURL(ctx, common.WithoutValues("order", "*"), common.WithValues("order", "asc")),
-			Active: true,
-		}
+// modelsLiveAttributes swap the results in place as the filter changes, and
+// keep the URL in step so a filtered view can be shared. The form still works
+// without JavaScript: Enter in the search field submits it.
+func modelsLiveAttributes(ctx context.Context, trigger string) templ.Attributes {
+	return templ.Attributes{
+		"hx-get":        common.BaseURLString(ctx, common.WithPath("/models")),
+		"hx-trigger":    trigger,
+		"hx-include":    "#models-filters",
+		"hx-target":     "#models-results",
+		"hx-select":     "#models-results",
+		"hx-swap":       "outerHTML",
+		"hx-push-url":   "true",
+		"hx-select-oob": "unset",
 	}
-	// Inactive: a single "Usage" tab lands on the criterion's natural
-	// default (Usage ↓ = no params).
-	href := common.MutateCurrentURL(ctx, common.WithoutValues("sort", "*"), common.WithoutValues("order", "*"))
-	return common.Segment{Label: i18n.T(ctx, "profile.models.sort.usage"), Href: href}
 }
 
-// priceSegment returns the Prix segment of the sort control. Same
-// cyclic pattern: 1st click from Usage → Prix ↑ (asc, the criterion
-// default), 2nd click on Prix ↑ → Prix ↓ (desc), 3rd click → Prix ↑
-// again.
-func priceSegment(ctx context.Context, currentSort string, currentOrder string) common.Segment {
-	if currentSort == "price" {
-		// Prix is active: same drop-then-add pattern as usageSegment
-		// to avoid duplicate `order` params on reachable bookmarks.
-		if currentOrder == "desc" {
-			return common.Segment{
-				Label:  i18n.T(ctx, "profile.models.sort.price") + " ↓",
-				Href:   common.MutateCurrentURL(ctx, common.WithoutValues("order", "*")),
-				Active: true,
+// searchAttributes refresh the results as the user types, rather than on the
+// change event the field only fires when it loses focus.
+func searchAttributes(ctx context.Context) templ.Attributes {
+	attrs := modelsLiveAttributes(ctx, "input changed delay:250ms, search")
+	attrs["autocomplete"] = "off"
+	attrs["aria-label"] = i18n.T(ctx, "profile.models.search_placeholder")
+	return attrs
+}
+
+templ modelsFilterBar(vmodel ModelsPageVModel) {
+	<form
+		id="models-filters"
+		method="GET"
+		action={ templ.SafeURL(common.BaseURLString(ctx, common.WithPath("/models"))) }
+		{ modelsLiveAttributes(ctx, "change")... }
+	>
+		@common.FilterBar() {
+			@common.SearchFilter(common.SearchFilterProps{
+				ID:          "models-search",
+				Name:        "q",
+				Value:       vmodel.Filter.Query,
+				Placeholder: i18n.T(ctx, "profile.models.search_placeholder"),
+				Attributes:  searchAttributes(ctx),
+			})
+			if len(vmodel.Facets.Providers) > 1 {
+				@modelsSelect("models-provider", "provider", vmodel.Filter.Provider, providerOptions(ctx, vmodel.Facets.Providers))
 			}
-		}
-		return common.Segment{
-			Label:  i18n.T(ctx, "profile.models.sort.price") + " ↑",
-			Href:   common.MutateCurrentURL(ctx, common.WithoutValues("order", "*"), common.WithValues("order", "desc")),
-			Active: true,
-		}
-	}
-	// Inactive: a single "Prix" tab lands on the criterion's natural
-	// default (Prix ↑ = ?sort=price).
-	href := common.MutateCurrentURL(ctx,
-		common.WithoutValues("sort", "*", "order", "*"),
-		common.WithValues("sort", "price"),
-	)
-	return common.Segment{Label: i18n.T(ctx, "profile.models.sort.price"), Href: href}
-}
-
-templ modelCard(mu ModelUsage) {
-	@card.Card() {
-		@card.Content(card.ContentProps{Class: "flex items-start gap-4"}) {
-			<div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-accent">
-				if mu.Model.IsVirtual() {
-					@icon.Network(icon.Props{Size: 20, Class: "text-primary"})
-				} else {
-					@icon.BrainCircuit(icon.Props{Size: 20, Class: "text-primary"})
-				}
+			if vmodel.Facets.Virtual {
+				@modelsSelect("models-type", "type", vmodel.Filter.Type, []modelsOption{
+					{Value: "", Label: i18n.T(ctx, "profile.models.filter.type_all")},
+					{Value: ModelsTypeDirect, Label: i18n.T(ctx, "profile.models.filter.type_direct")},
+					{Value: ModelsTypeVirtual, Label: i18n.T(ctx, "profile.models.filter.type_virtual")},
+				})
+			}
+			if len(vmodel.Facets.Kinds) > 1 {
+				@modelsSelect("models-kind", "kind", vmodel.Filter.Kind, kindOptions(ctx, vmodel.Facets.Kinds))
+			}
+			<div class="sm:ml-auto">
+				@modelsSelect("models-sort", "sort", vmodel.Filter.Sort, []modelsOption{
+					{Value: ModelsSortName, Label: i18n.T(ctx, "profile.models.sort.name")},
+					{Value: ModelsSortPrice, Label: i18n.T(ctx, "profile.models.sort.price")},
+					{Value: ModelsSortNewest, Label: i18n.T(ctx, "profile.models.sort.newest")},
+					{Value: ModelsSortContext, Label: i18n.T(ctx, "profile.models.sort.context")},
+				})
 			</div>
-			<div class="flex-1 min-w-0">
-				<div class="flex items-center gap-2">
-					<span class="font-semibold font-mono text-sm truncate">
-						{ ModelNames(mu)[0] }
-					</span>
-					if mu.Model.IsVirtual() {
-						@common.Badge(common.ToneInfo, i18n.T(ctx, "profile.models.badge.virtual"))
-					}
-					if mu.CapabilitiesUndetermined {
-						@common.Badge(common.ToneWarning, i18n.T(ctx, "profile.models.badge.undetermined"))
-					}
-					if mu.Model.Kind() != model.ModelKindCompletion {
-						@common.Badge(common.ToneInfo, common.ModelKindLabel(ctx, mu.Model.Kind()))
-					}
-					if mu.Provider != nil && mu.Provider.BillingMode() == model.BillingModeSubscription {
-						@common.Badge(common.ToneNeutral, i18n.T(ctx, "profile.models.badge.subscription"))
-					} else if mu.Provider != nil {
-						@common.Badge(common.ToneNeutral, i18n.T(ctx, "profile.models.badge.pay_as_you_go"))
+		}
+		<fieldset class="mb-3 flex flex-wrap items-center gap-x-4 gap-y-2">
+			<legend class="sr-only">{ i18n.T(ctx, "profile.models.filter.capabilities") }</legend>
+			<span class="text-xs text-muted-foreground" aria-hidden="true">{ i18n.T(ctx, "profile.models.filter.capabilities") }</span>
+			for _, key := range ModelCapabilityKeys {
+				<div class="flex items-center gap-1.5">
+					@checkbox.Checkbox(checkbox.Props{
+						ID:      "models-cap-" + key,
+						Name:    "cap",
+						Value:   key,
+						Checked: slices.Contains(vmodel.Filter.Capabilities, key),
+					})
+					@form.Label(form.LabelProps{For: "models-cap-" + key, Class: "text-sm font-normal"}) {
+						{ capabilityLabel(ctx, key) }
 					}
 				</div>
-				if names := ModelNames(mu); len(names) > 1 {
-					<p class="text-xs text-muted-foreground mt-0.5">
-						{ i18n.T(ctx, "profile.models.also") }
-						for i, name := range names[1:] {
-							if i > 0 {
-								{ ", " }
+			}
+		</fieldset>
+	</form>
+}
+
+type modelsOption struct {
+	Value string
+	Label string
+}
+
+func providerOptions(ctx context.Context, providers []string) []modelsOption {
+	options := []modelsOption{{Value: "", Label: i18n.T(ctx, "profile.models.filter.provider_all")}}
+	for _, p := range providers {
+		options = append(options, modelsOption{Value: p, Label: p})
+	}
+	return options
+}
+
+func kindOptions(ctx context.Context, kinds []model.ModelKind) []modelsOption {
+	options := []modelsOption{{Value: "", Label: i18n.T(ctx, "profile.models.filter.kind_all")}}
+	for _, k := range kinds {
+		options = append(options, modelsOption{Value: string(k), Label: common.ModelKindLabel(ctx, k)})
+	}
+	return options
+}
+
+func capabilityLabel(ctx context.Context, key string) string {
+	return i18n.T(ctx, "common.catalog.cap."+key)
+}
+
+// modelsSelect renders one filter of the bar. The select box fires a change
+// event on its hidden input, which the form listens to.
+templ modelsSelect(id, name, value string, options []modelsOption) {
+	@selectbox.SelectBox(selectbox.Props{ID: id, Class: "w-auto"}) {
+		@selectbox.Trigger(selectbox.TriggerProps{Name: name, Class: "h-8 min-w-40"}) {
+			@selectbox.Value()
+		}
+		@selectbox.Content(selectbox.ContentProps{NoSearch: true}) {
+			@selectbox.Group() {
+				for _, o := range options {
+					@selectbox.Item(selectbox.ItemProps{Value: o.Value, Selected: o.Value == value}) {
+						{ o.Label }
+					}
+				}
+			}
+		}
+	}
+}
+
+templ modelsResults(vmodel ModelsPageVModel) {
+	<div id="models-results">
+		<div class="mb-2 flex items-center gap-3 text-xs text-muted-foreground">
+			if vmodel.Filter.Active() {
+				<span>{ i18n.T(ctx, "profile.models.count_filtered", len(vmodel.Models), len(vmodel.AllModels)) }</span>
+				<a href={ templ.SafeURL(common.BaseURLString(ctx, common.WithPath("/models"))) } class="underline hover:text-foreground">
+					{ i18n.T(ctx, "profile.models.clear_filters") }
+				</a>
+			} else {
+				<span>{ i18n.T(ctx, "profile.models.count", len(vmodel.Models)) }</span>
+			}
+			<span class="ml-auto">{ i18n.T(ctx, "profile.models.price_unit") }</span>
+		</div>
+		if len(vmodel.Models) == 0 {
+			@common.EmptyState(common.EmptyStateProps{
+				Icon:        icon.SearchX,
+				Title:       i18n.T(ctx, "profile.models.no_match.title"),
+				Description: i18n.T(ctx, "profile.models.no_match.description"),
+				Compact:     true,
+			})
+		} else {
+			@common.Section() {
+				<div class="overflow-x-auto">
+					@table.Table() {
+						@table.Header() {
+							@table.Head() {
+								{ i18n.T(ctx, "profile.models.col.model") }
 							}
-							<span class="font-mono">{ name }</span>
+							@table.Head() {
+								{ i18n.T(ctx, "profile.models.col.provider") }
+							}
+							@table.Head(table.HeadProps{Class: "text-right"}) {
+								{ i18n.T(ctx, "profile.models.col.prompt") }
+							}
+							@table.Head(table.HeadProps{Class: "text-right"}) {
+								{ i18n.T(ctx, "profile.models.col.completion") }
+							}
+							@table.Head(table.HeadProps{Class: "text-right"}) {
+								{ i18n.T(ctx, "profile.models.col.context") }
+							}
+							@table.Head(table.HeadProps{Class: "text-right"}) {
+								{ i18n.T(ctx, "profile.models.col.output") }
+							}
+							@table.Head() {
+								{ i18n.T(ctx, "profile.models.col.capabilities") }
+							}
 						}
-					</p>
-				}
-				if mu.Model.Description() != "" {
-					<p class="text-xs text-muted-foreground mt-0.5 whitespace-normal break-words [overflow-wrap:anywhere] line-clamp-3">
-						{ mu.Model.Description() }
-					</p>
-				}
-				if mu.Org != nil {
-					<div class="mt-1">
-						@common.Badge(common.ToneNeutral, mu.Org.Name())
-					</div>
-				}
-			</div>
-			if mu.Aggregate != nil && mu.Aggregate.TotalRequests > 0 {
-				<div class="flex gap-4 shrink-0 self-start">
-					<div class="text-right">
-						<div class="text-sm font-semibold">{ fmt.Sprintf("%d", mu.Aggregate.TotalRequests) }</div>
-						<div class="text-xs text-muted-foreground">{ i18n.T(ctx, "profile.models.stat.requests_short") }</div>
-					</div>
-					<div class="text-right">
-						<div class="text-sm font-semibold">{ fmt.Sprintf("%d", mu.Aggregate.TotalTokens) }</div>
-						<div class="text-xs text-muted-foreground">{ i18n.T(ctx, "profile.models.stat.tokens_short") }</div>
-					</div>
-					<div class="text-right">
-						<div class="text-sm font-semibold">{ common.FormatCost(ctx, mu.Aggregate.TotalCost, mu.Aggregate.Currency) }</div>
-						<div class="text-xs text-muted-foreground">{ i18n.T(ctx, "profile.models.stat.cost_short") }</div>
-					</div>
-				</div>
-			} else if !mu.Model.IsVirtual() {
-				<div class="flex gap-4 shrink-0 self-start">
-					<div class="text-right">
-						<div class="text-sm font-semibold">{ formatCostPerM(ctx, mu.Model.PromptCostPer1KTokens(), orgCurrency(mu.Org)) }</div>
-						<div class="text-xs text-muted-foreground">{ i18n.T(ctx, "profile.models.stat.prompt_per_m") }</div>
-					</div>
-					<div class="text-right">
-						<div class="text-sm font-semibold">{ formatCostPerM(ctx, mu.Model.CompletionCostPer1KTokens(), orgCurrency(mu.Org)) }</div>
-						<div class="text-xs text-muted-foreground">{ i18n.T(ctx, "profile.models.stat.completion_per_m") }</div>
-					</div>
+						@table.Body() {
+							for _, m := range vmodel.Models {
+								@modelRow(m, vmodel.Facets.SeveralOrgs)
+							}
+						}
+					}
 				</div>
 			}
 		}
+	</div>
+}
+
+templ modelRow(m CatalogModel, showOrg bool) {
+	@table.Row() {
+		@table.Cell(table.CellProps{Class: "min-w-60 max-w-md whitespace-normal"}) {
+			<div class="flex items-center gap-2">
+				if m.Model.IsVirtual() {
+					@icon.Network(icon.Props{Class: "size-3.5 shrink-0 text-primary"})
+				} else {
+					@icon.BrainCircuit(icon.Props{Class: "size-3.5 shrink-0 text-primary"})
+				}
+				{{ nameID := "model-" + utils.RandomID() }}
+				<span id={ nameID } class="font-mono text-xs font-semibold break-all">{ ModelNames(m)[0] }</span>
+				@copybutton.CopyButton(copybutton.Props{
+					TargetID: nameID,
+					Class:    "size-6 shrink-0",
+					Attrs:    templ.Attributes{"title": i18n.T(ctx, "common.copy")},
+				})
+			</div>
+			if names := ModelNames(m); len(names) > 1 {
+				<p class="mt-0.5 text-xs text-muted-foreground">
+					{ i18n.T(ctx, "profile.models.also") }
+					for i, name := range names[1:] {
+						if i > 0 {
+							{ ", " }
+						}
+						<span class="font-mono">{ name }</span>
+					}
+				</p>
+			}
+			if m.Model.Description() != "" {
+				<p class="mt-0.5 text-xs text-muted-foreground break-words [overflow-wrap:anywhere] line-clamp-2" title={ m.Model.Description() }>
+					{ m.Model.Description() }
+				</p>
+			}
+			if showOrg && m.Org != nil {
+				<div class="mt-1">
+					@common.Badge(common.ToneNeutral, m.Org.Name())
+				</div>
+			}
+		}
+		@table.Cell() {
+			if m.Model.IsVirtual() {
+				@common.Badge(common.ToneInfo, i18n.T(ctx, "profile.models.badge.virtual"))
+			} else if m.Provider != nil {
+				<div class="text-sm">{ m.Provider.Name() }</div>
+				if m.Provider.BillingMode() == model.BillingModeSubscription {
+					@common.Badge(common.ToneNeutral, i18n.T(ctx, "profile.models.badge.subscription"))
+				}
+			}
+		}
+		@table.Cell(table.CellProps{Class: "text-right tnum text-sm"}) {
+			if !m.Model.IsVirtual() {
+				{ formatCostPerM(ctx, m.Model.PromptCostPer1KTokens(), orgCurrency(m.Org)) }
+			} else {
+				<span class="text-muted-foreground">—</span>
+			}
+		}
+		@table.Cell(table.CellProps{Class: "text-right tnum text-sm"}) {
+			if !m.Model.IsVirtual() {
+				{ formatCostPerM(ctx, m.Model.CompletionCostPer1KTokens(), orgCurrency(m.Org)) }
+			} else {
+				<span class="text-muted-foreground">—</span>
+			}
+		}
+		@table.Cell(table.CellProps{Class: "text-right tnum text-sm text-muted-foreground"}) {
+			{ formatTokenWindow(m.Model.ContextWindow()) }
+		}
+		@table.Cell(table.CellProps{Class: "text-right tnum text-sm text-muted-foreground"}) {
+			{ formatTokenWindow(m.Model.OutputWindow()) }
+		}
+		@table.Cell() {
+			<div class="flex flex-wrap gap-1">
+				if m.Model.Kind() != model.ModelKindCompletion {
+					@common.Badge(common.ToneInfo, common.ModelKindLabel(ctx, m.Model.Kind()))
+				}
+				if m.CapabilitiesUndetermined {
+					@common.Badge(common.ToneWarning, i18n.T(ctx, "profile.models.badge.undetermined"))
+				} else {
+					for _, key := range ModelCapabilityKeys {
+						if HasCapability(m.Model.Capabilities(), key) {
+							@common.Badge(common.ToneNeutral, capabilityLabel(ctx, key))
+						}
+					}
+				}
+			</div>
+		}
 	}
+}
+
+// formatTokenWindow writes a context or output window in thousands of tokens,
+// a dash when it is unknown.
+func formatTokenWindow(v int64) string {
+	if v <= 0 {
+		return "—"
+	}
+	if v < 1_000 {
+		return fmt.Sprintf("%d", v)
+	}
+	return fmt.Sprintf("%d k", v/1_000)
 }
 
 func curlExample(ctx context.Context, baseURL string) string {
@@ -383,15 +562,15 @@ export CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1
 claude`
 }
 
-func openCodeConfigExample(baseURL string, modelUsages []ModelUsage) string {
+func openCodeConfigExample(baseURL string, catalog []CatalogModel) string {
 	type providerOptions struct {
 		BaseURL string `json:"baseURL"`
 		APIKey  string `json:"apiKey"`
 	}
 	type providerEntry struct {
-		NPM     string                         `json:"npm"`
-		Name    string                         `json:"name"`
-		Options providerOptions                `json:"options"`
+		NPM     string                              `json:"npm"`
+		Name    string                              `json:"name"`
+		Options providerOptions                     `json:"options"`
 		Models  map[string]model.OpenCodeModelEntry `json:"models"`
 	}
 	type configRoot struct {
@@ -400,16 +579,16 @@ func openCodeConfigExample(baseURL string, modelUsages []ModelUsage) string {
 	}
 
 	models := make(map[string]model.OpenCodeModelEntry)
-	for _, mu := range modelUsages {
+	for _, m := range catalog {
 		// A coding agent only holds conversations.
-		if mu.Model.Kind() != model.ModelKindCompletion {
+		if m.Model.Kind() != model.ModelKindCompletion {
 			continue
 		}
-		for _, name := range ModelNames(mu) {
+		for _, name := range ModelNames(m) {
 			entry := model.OpenCodeEntry(
-				mu.Model.Capabilities(),
-				mu.Model.ContextWindow(),
-				mu.Model.OutputWindow(),
+				m.Model.Capabilities(),
+				m.Model.ContextWindow(),
+				m.Model.OutputWindow(),
 			)
 			entry.Name = name
 
@@ -441,11 +620,11 @@ func openCodeConfigExample(baseURL string, modelUsages []ModelUsage) string {
 
 // undeterminedModelNames lists the names of the completion models whose
 // capabilities are undetermined, sorted alphabetically.
-func undeterminedModelNames(modelUsages []ModelUsage) []string {
+func undeterminedModelNames(catalog []CatalogModel) []string {
 	var names []string
-	for _, mu := range modelUsages {
-		if mu.CapabilitiesUndetermined && mu.Model.Kind() == model.ModelKindCompletion {
-			names = append(names, ModelNames(mu)...)
+	for _, m := range catalog {
+		if m.CapabilitiesUndetermined && m.Model.Kind() == model.ModelKindCompletion {
+			names = append(names, ModelNames(m)...)
 		}
 	}
 	slices.Sort(names)
@@ -465,58 +644,4 @@ func orgCurrency(org model.Organization) string {
 		return "USD"
 	}
 	return currency
-}
-
-templ ModelsGrid(modelUsages []ModelUsage) {
-	<div id="models-grid" class="grid grid-cols-1 md:grid-cols-2 gap-4">
-		for _, mu := range modelUsages {
-			@card.Card() {
-				@card.Header() {
-					@card.Title() {
-						if mu.Org != nil {
-							{ mu.Org.Slug() + "/" + mu.Model.ProxyName() }
-						} else {
-							{ mu.Model.ProxyName() }
-						}
-					}
-					if mu.Org != nil {
-						<p class="text-xs text-muted-foreground">{ mu.Org.Name() }</p>
-					}
-				}
-				@card.Content() {
-					<div class="space-y-3">
-						if mu.Model.Description() != "" {
-							<p class="text-sm text-muted-foreground">{ mu.Model.Description() }</p>
-						}
-						<div class="grid grid-cols-2 gap-2 text-sm">
-							<div>
-								<span class="text-muted-foreground">{ i18n.T(ctx, "profile.models.grid.prompt") }</span>
-								<p class="font-medium">{ formatCostPerM(ctx, mu.Model.PromptCostPer1KTokens(), orgCurrency(mu.Org)) }</p>
-							</div>
-							<div>
-								<span class="text-muted-foreground">{ i18n.T(ctx, "profile.models.grid.completion") }</span>
-								<p class="font-medium">{ formatCostPerM(ctx, mu.Model.CompletionCostPer1KTokens(), orgCurrency(mu.Org)) }</p>
-							</div>
-						</div>
-						if mu.Aggregate != nil && mu.Aggregate.TotalRequests > 0 {
-							<div class="border-t pt-3 grid grid-cols-3 gap-2 text-sm">
-								<div>
-									<span class="text-muted-foreground">{ i18n.T(ctx, "profile.models.grid.requests") }</span>
-									<p class="font-medium">{ fmt.Sprintf("%d", mu.Aggregate.TotalRequests) }</p>
-								</div>
-								<div>
-									<span class="text-muted-foreground">{ i18n.T(ctx, "profile.models.grid.tokens") }</span>
-									<p class="font-medium">{ fmt.Sprintf("%d", mu.Aggregate.TotalTokens) }</p>
-								</div>
-								<div>
-									<span class="text-muted-foreground">{ i18n.T(ctx, "profile.models.grid.cost") }</span>
-									<p class="font-medium">{ common.FormatCost(ctx, mu.Aggregate.TotalCost, mu.Aggregate.Currency) }</p>
-								</div>
-							</div>
-						}
-					</div>
-				}
-			}
-		}
-	</div>
 }
