@@ -405,6 +405,7 @@ func TestParseSubscriptionPlanFromForm_FairShareTuning(t *testing.T) {
 		"plan_c0_pace_slack":          "5",
 		"plan_c0_happy_hour_start":    "80",
 		"plan_c0_happy_hour_max_lead": "30m",
+		"plan_c0_share_threshold":     "70",
 	})
 
 	plan, err := parseSubscriptionPlanFromForm(r)
@@ -427,6 +428,9 @@ func TestParseSubscriptionPlanFromForm_FairShareTuning(t *testing.T) {
 	}
 	if c.HappyHourMaxLead == nil || c.HappyHourMaxLead.Duration() != 30*time.Minute {
 		t.Errorf("HappyHourMaxLead = %v, want 30m", c.HappyHourMaxLead)
+	}
+	if c.ShareThreshold == nil || *c.ShareThreshold != 0.7 {
+		t.Errorf("ShareThreshold = %v, want 0.7", c.ShareThreshold)
 	}
 }
 

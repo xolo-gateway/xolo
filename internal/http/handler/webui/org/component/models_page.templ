@@ -48,6 +48,15 @@ templ ModelsPage(vmodel ModelsPageVModel) {
 					{ i18n.T(ctx, "org.provider_bundle.import_bundle") }
 				}
 				@button.Button(button.Props{
+					Href:    common.BaseURLString(ctx, common.WithPath("/orgs/", vmodel.Org.Slug(), "/admin/providers/", string(vmodel.Provider.ID()), "/import")),
+					Variant: button.VariantOutline,
+					Size:    button.SizeSm,
+					Class:   "gap-1.5",
+				}) {
+					@icon.FileUp(icon.Props{Class: "size-3.5"})
+					{ i18n.T(ctx, "org.provider_bundle.import_bundle") }
+				}
+				@button.Button(button.Props{
 					Href:    common.BaseURLString(ctx, common.WithPath("/orgs/", vmodel.Org.Slug(), "/admin/providers/", string(vmodel.Provider.ID()), "/models/import")),
 					Variant: button.VariantOutline,
 					Size:    button.SizeSm,

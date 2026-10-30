@@ -57,6 +57,9 @@ func (p *wrappedUserPreference) DarkMode() (bool, bool) {
 	return *p.p.DarkMode, true
 }
 
+// Locale implements model.UserPreferences.
+func (p *wrappedUserPreference) Locale() string { return p.p.Locale }
+
 var _ model.UserPreferences = &wrappedUserPreference{}
 
 // UserPreference is a separate table for storing user preferences
@@ -64,6 +67,8 @@ type UserPreferences struct {
 	ID       uint   `gorm:"primaryKey"`
 	UserID   string `gorm:"unique;index"`
 	DarkMode *bool
+	// Locale is part of the member representation: see userLocale.
+	Locale string `gorm:"not null;default:''"`
 }
 
 // fromUser converts a model.User to a GORM User
@@ -95,6 +100,7 @@ func fromUser(u model.User) *User {
 		if darkMode, exists := prefs.DarkMode(); exists {
 			user.Preferences.DarkMode = &darkMode
 		}
+		user.Preferences.Locale = prefs.Locale()
 	}
 
 	for _, r := range u.Roles() {

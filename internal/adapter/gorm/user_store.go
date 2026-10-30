@@ -319,6 +319,11 @@ func (s *Store) SaveUser(ctx context.Context, user model.User) error {
 		// Handle preferences separately with the correct conflict column
 		if gormUser.Preferences != nil {
 			gormUser.Preferences.UserID = gormUser.ID
+			if id, ok := model.LocaleChange(ctx); ok && id == user.ID() {
+				if err := assertOnlyLocalePreference(db, gormUser.Preferences); err != nil {
+					return err
+				}
+			}
 			if err := db.Clauses(clause.OnConflict{
 				Columns:   []clause.Column{{Name: "user_id"}},
 				UpdateAll: true,

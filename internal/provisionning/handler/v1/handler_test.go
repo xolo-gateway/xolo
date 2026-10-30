@@ -899,6 +899,76 @@ func TestCommonMemberKeepsIdentity(t *testing.T) {
 	}
 }
 
+func TestCommonMemberLocale(t *testing.T) {
+	env := newEnv(t)
+	userID := createUser(t, env.handler, env.tenantID, "sub-locale")
+	target := env.tenantBase + "/members/" + userID
+	body := func(locale any) map[string]any {
+		b := memberBody("locale@acme.tld")
+		if locale != nil {
+			b["locale"] = locale
+		}
+		return b
+	}
+
+	rec := call(t, env.handler, http.MethodPut, target, body(" fr-CA "))
+	assertStatus(t, rec, http.StatusOK)
+	if got := decodeBody(t, rec)["locale"]; got != "fr-CA" {
+		t.Fatalf("PUT locale: got %v, want fr-CA trimmed with its case", got)
+	}
+	etag := rec.Header().Get("ETag")
+	if etag == "" {
+		t.Fatal("PUT should answer an ETag")
+	}
+
+	rec = call(t, env.handler, http.MethodGet, target, nil)
+	assertStatus(t, rec, http.StatusOK)
+	if got := decodeBody(t, rec)["locale"]; got != "fr-CA" || rec.Header().Get("ETag") != etag {
+		t.Fatalf("GET locale: got %v, ETag %q, want fr-CA, %q", got, rec.Header().Get("ETag"), etag)
+	}
+
+	rec = call(t, env.handler, http.MethodPut, target, body("fr-CA"))
+	assertStatus(t, rec, http.StatusOK)
+	if rec.Header().Get("ETag") != etag {
+		t.Errorf("an identical PUT should keep its ETag: %q then %q", etag, rec.Header().Get("ETag"))
+	}
+
+	// A valid tag Xolo does not offer is kept as is.
+	rec = call(t, env.handler, http.MethodPut, target, body("pt-BR"))
+	assertStatus(t, rec, http.StatusOK)
+	if got := decodeBody(t, rec)["locale"]; got != "pt-BR" {
+		t.Errorf("unsupported locale: got %v, want pt-BR", got)
+	}
+	for _, valid := range []string{"zh-Hant-TW", "es-419", "sr-Latn", "haw"} {
+		rec = call(t, env.handler, http.MethodPut, target, body(valid))
+		assertStatus(t, rec, http.StatusOK)
+	}
+
+	for _, invalid := range []any{"fr-fr", "FR", "fr_FR", "fr-CA-x-private", "en-US-posix", "e", "fr-", 42} {
+		rec = call(t, env.handler, http.MethodPut, target, body(invalid))
+		code := "invalid_representation"
+		if _, number := invalid.(int); number {
+			code = "invalid_json"
+		}
+		assertStatus(t, rec, http.StatusBadRequest)
+		assertErrorCode(t, rec, code)
+	}
+	rec = call(t, env.handler, http.MethodPut, target, `{"email":"locale@acme.tld","tenant_role":"member","status":"active","locale":null}`)
+	assertStatus(t, rec, http.StatusBadRequest)
+	assertErrorCode(t, rec, "invalid_representation")
+
+	// Omitted or empty, the locale is cleared and left out.
+	for _, cleared := range []any{nil, "  "} {
+		rec = call(t, env.handler, http.MethodPut, target, body("es"))
+		assertStatus(t, rec, http.StatusOK)
+		rec = call(t, env.handler, http.MethodPut, target, body(cleared))
+		assertStatus(t, rec, http.StatusOK)
+		if _, present := decodeBody(t, rec)["locale"]; present {
+			t.Errorf("cleared locale %v should be omitted, got %s", cleared, rec.Body.String())
+		}
+	}
+}
+
 // ── Xolo extensions ─────────────────────────────────────────────────────────
 
 func TestHealthzAndPermissions(t *testing.T) {

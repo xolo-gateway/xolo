@@ -38,7 +38,7 @@ Eliminación diferida de tenants, organizaciones y miembros mediante la API de p
 
 ## Idioma
 
-La interfaz web está disponible en inglés, francés y español. Cada solicitud usa el idioma elegido con el selector de idioma (guardado en la cookie `xolo_locale`); si no, la mejor coincidencia de la cabecera `Accept-Language` del navegador; si no, el idioma predeterminado indicado abajo.
+La interfaz web está disponible en inglés, francés y español. Cada solicitud usa el idioma que eligió el miembro conectado, guardado con su cuenta (o uno cercano, `fr-CA` da francés); si no, el idioma elegido con el selector de idioma en este navegador (guardado en la cookie `xolo_locale`); si no, la mejor coincidencia de la cabecera `Accept-Language` del navegador; si no, el idioma predeterminado indicado abajo.
 
 | Variable | Valor predeterminado | Descripción |
 | --- | --- | --- |

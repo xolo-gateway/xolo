@@ -69,7 +69,7 @@ Webhooks have their own variables, see [Webhooks](#webhooks).
 | `PUT` | `/v1/tenants/{tenantID}` | `{"slug","name","status"}` |
 | `PUT` | `/v1/tenants/{tenantID}/domains/{hostname}` | `{"status"}` |
 | `PUT` | `/v1/tenants/{tenantID}/organizations/{orgID}` | `{"slug","name","status"}` |
-| `PUT` | `/v1/tenants/{tenantID}/members/{memberID}` | `{"email","tenant_role","status"}`, optional `"display_name"` and `"identity"` |
+| `PUT` | `/v1/tenants/{tenantID}/members/{memberID}` | `{"email","tenant_role","status"}`, optional `"display_name"`, `"locale"` and `"identity"` |
 | `PUT` | `/v1/tenants/{tenantID}/organizations/{orgID}/members/{memberID}` | `{"role","status"}` |
 | `PUT` | `/v1/tenants/{tenantID}/organizations/{orgID}/teams/{teamID}` | `{"slug","name","status"}` |
 | `PUT` | `/v1/tenants/{tenantID}/organizations/{orgID}/teams/{teamID}/members/{memberID}` | `{"status"}` |
@@ -92,7 +92,8 @@ Treat it as a set: its order is not significant.
   representation and its `ETag`. A `PUT` identical to the stored state changes
   nothing, writes no audit and keeps its `ETag`, so a client can replay its
   whole desired state.
-- **A `PUT` replaces the representation.** An omitted `display_name` is empty.
+- **A `PUT` replaces the representation.** An omitted `display_name` or
+  `locale` is empty, and left out of the representation.
   An omitted `identity` is kept, see [Declared identity](#declared-identity).
   Fields outside the contract — descriptions, currencies, sign-in links,
   platform roles, custom roles — are never touched.
@@ -124,8 +125,16 @@ by another tenant is a `409`.
 ### Members
 
 `PUT …/members/{memberID}` creates the member or updates it: email, display
-name, tenant role, status and declared identity. `suspended` deactivates the
-account. The platform roles are never modified.
+name, locale, tenant role, status and declared identity. `suspended` deactivates
+the account. The platform roles are never modified.
+
+`locale` is the language the person chose for the interface. It is trimmed,
+never re-cased, and must then be empty or a canonical language tag: 2 or 3
+lowercase letters, optionally a script (`-Hant`), optionally a region (`-BR`,
+`-419`), 12 bytes at most. `fr-fr`, `FR` or `fr_FR` are
+`400 invalid_representation`. A valid tag Xolo does not offer, such as `pt-BR`,
+is kept as is: the web UI uses the closest language it supports, see
+[Language chosen in Xolo](#language-chosen-in-xolo).
 
 **A member can be provisioned ahead of their first sign-in.** A `PUT` on an
 unknown identifier creates the account with the platform `user` role, linked to
@@ -846,6 +855,28 @@ plane declared:
   bootstrap the instance, and the application accounts. Any other identity is
   refused with `403`.
 
+### Language chosen in Xolo
+
+The web UI is displayed in, in order: the language of the signed-in member's
+`locale` when Xolo offers one close to it, the language chosen with the switch
+on this browser (`xolo_locale` cookie), `Accept-Language`, then
+`XOLO_DEFAULT_LOCALE`.
+
+The language switch works signed out, on this browser only. Signed in, it also
+stores the choice as the member's `locale`, even with `member=control_plane`:
+it is the one member field Xolo changes itself. That change writes only
+`locale`, is audited with the member as actor and publishes exactly one
+`member.updated.v1`, with a request ID Xolo generated, in the same
+transaction. Choosing the same language again publishes nothing. Every other
+member field stays refused locally. The control plane adopts the choice and
+passes it on to the other applications; its next `PUT` replaces `locale` like
+any other field.
+
+> **Before upgrading.** A `PUT` that omits `locale` clears the language the
+> member chose in Xolo. A control plane unaware of the field therefore resets
+> every member's language the next time it replays its members: upgrade it to
+> send `locale` first.
+
 ### Adoption export
 
 `GET /v1/xolo/adoption/export`, like `xolo-adoption export`, streams the
@@ -855,7 +886,7 @@ taking any lock. The format, `xolo-adoption/1`, is NDJSON
 (`application/x-ndjson`):
 
 ```text
-{"version":"xolo-adoption/1","contract":"0.1.0-draft.2","source":"urn:uuid:…","c0":"…","families":["tenant","tenant_domain","organization","member","organization_membership","team","team_membership","provider","custom_role","team_settings","application","quota","alert"]}
+{"version":"xolo-adoption/1","contract":"0.1.0-draft.3","source":"urn:uuid:…","c0":"…","families":["tenant","tenant_domain","organization","member","organization_membership","team","team_membership","provider","custom_role","team_settings","application","quota","alert"]}
 {"family":"tenant","key":{"tenant_id":"…"},"representation":{…},"etag":"W/\"42\""}
 …
 {"count":128,"complete":true,"sha256":"…"}

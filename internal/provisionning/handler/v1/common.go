@@ -81,7 +81,7 @@ func (h *Handler) handlePutTenantMember(w http.ResponseWriter, r *http.Request) 
 	if !ok {
 		return
 	}
-	fields, objects, ok := decodeCommonObject(w, r, []string{"email", "tenant_role", "status"}, []string{"display_name"}, "identity")
+	fields, objects, ok := decodeCommonObject(w, r, []string{"email", "tenant_role", "status"}, []string{"display_name", "locale"}, "identity")
 	if !ok {
 		return
 	}
@@ -89,10 +89,17 @@ func (h *Handler) handlePutTenantMember(w http.ResponseWriter, r *http.Request) 
 	if !ok {
 		return
 	}
+	// A non-canonical tag is an invalid representation, never rewritten.
+	locale := model.NormalizeLocale(fields["locale"])
+	if !model.IsValidLocale(locale) {
+		writeError(w, http.StatusBadRequest, codeInvalidRepresentation, "locale must be a canonical language tag")
+		return
+	}
 	h.writeCommon(w, r, scope, key, "could not write member", func(ctx context.Context, tx *service.ProvisioningService) error {
 		_, err := tx.PutTenantMember(ctx, model.TenantID(scope.TenantID), model.UserID(key), service.CommonMember{
 			Email:       fields["email"],
 			DisplayName: fields["display_name"],
+			Locale:      locale,
 			TenantRole:  model.TenantRole(fields["tenant_role"]),
 			Status:      model.Status(fields["status"]),
 			Identity:    identity,

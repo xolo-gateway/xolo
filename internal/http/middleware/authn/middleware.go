@@ -21,50 +21,71 @@ type Authenticator interface {
 
 func Middleware(onUnauthorized func(w http.ResponseWriter, r *http.Request), authenticators ...Authenticator) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
-		var fn http.HandlerFunc = func(w http.ResponseWriter, r *http.Request) {
-			for i, authenticator := range authenticators {
-				slog.Debug("authn middleware: trying", "index", i, "authenticator", fmt.Sprintf("%T", authenticator))
-				user, err := authenticator.Authenticate(w, r)
-				if err != nil {
-					if errors.Is(err, ErrSkipRequest) {
-						return
-					}
+		return authenticate(next, func(w http.ResponseWriter, r *http.Request) {
+			metrics.AuthFailures.Inc()
+			onUnauthorized(w, r)
+		}, authenticators, false)
+	}
+}
 
-					slog.ErrorContext(r.Context(), "could not authenticate user", slog.Any("error", errors.WithStack(err)))
-					common.HandleError(w, r, err)
+// Optional authenticates the request when one of the authenticators can and
+// lets it reach signedOut otherwise, which is not an authentication failure.
+// A credential an authenticator can not use, such as an expired token or a
+// broken session, is logged and treated as no credential at all.
+func Optional(signedOut http.Handler, authenticators ...Authenticator) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return authenticate(next, signedOut.ServeHTTP, authenticators, true)
+	}
+}
+
+func authenticate(next http.Handler, onUnauthorized func(w http.ResponseWriter, r *http.Request), authenticators []Authenticator, optional bool) http.Handler {
+	var fn http.HandlerFunc = func(w http.ResponseWriter, r *http.Request) {
+		for i, authenticator := range authenticators {
+			slog.Debug("authn middleware: trying", "index", i, "authenticator", fmt.Sprintf("%T", authenticator))
+			user, err := authenticator.Authenticate(w, r)
+			if err != nil {
+				if errors.Is(err, ErrSkipRequest) {
 					return
 				}
 
-				if user == nil {
+				if optional {
+					slog.WarnContext(r.Context(), "ignoring unusable credential", slog.Any("error", errors.WithStack(err)))
 					continue
 				}
 
-				ctx := r.Context()
-
-				// An identity stamped with another tenant is treated as if the
-				// authenticator had found nothing: a session cookie set on a
-				// parent domain, or an API token issued elsewhere, must never
-				// authenticate on this tenant. Checked once here rather than in
-				// every authenticator, so a new one can not forget it.
-				if tenant := httpCtx.Tenant(ctx); tenant != nil && user.TenantID != "" && user.TenantID != string(tenant.ID()) {
-					slog.WarnContext(ctx, "rejecting identity authenticated on another tenant",
-						slog.String("identityTenantID", user.TenantID),
-						slog.String("requestTenantID", string(tenant.ID())))
-					continue
-				}
-
-				ctx = SetContextUser(ctx, user)
-
-				r = r.WithContext(ctx)
-
-				next.ServeHTTP(w, r)
+				slog.ErrorContext(r.Context(), "could not authenticate user", slog.Any("error", errors.WithStack(err)))
+				common.HandleError(w, r, err)
 				return
 			}
 
-			metrics.AuthFailures.Inc()
-			onUnauthorized(w, r)
+			if user == nil {
+				continue
+			}
+
+			ctx := r.Context()
+
+			// An identity stamped with another tenant is treated as if the
+			// authenticator had found nothing: a session cookie set on a
+			// parent domain, or an API token issued elsewhere, must never
+			// authenticate on this tenant. Checked once here rather than in
+			// every authenticator, so a new one can not forget it.
+			if tenant := httpCtx.Tenant(ctx); tenant != nil && user.TenantID != "" && user.TenantID != string(tenant.ID()) {
+				slog.WarnContext(ctx, "rejecting identity authenticated on another tenant",
+					slog.String("identityTenantID", user.TenantID),
+					slog.String("requestTenantID", string(tenant.ID())))
+				continue
+			}
+
+			ctx = SetContextUser(ctx, user)
+
+			r = r.WithContext(ctx)
+
+			next.ServeHTTP(w, r)
+			return
 		}
 
-		return fn
+		onUnauthorized(w, r)
 	}
+
+	return fn
 }

@@ -110,6 +110,10 @@ type PlanConstraint struct {
 	// which "the leftover is about to be destroyed" stops being true. Nil means
 	// DefaultHappyHourLead of the window.
 	HappyHourMaxLead *PlanDuration `json:"happy_hour_max_lead,omitempty"`
+	// ShareThreshold is the fraction of the budget the plan may fill before
+	// the users' shares apply: below it any user may consume, the plan having
+	// room for everyone. Nil or zero applies the shares from the first request.
+	ShareThreshold *float64 `json:"share_threshold,omitempty"`
 	// WindowAnchor aligns a rolling_window constraint on a fixed (tumbling) schedule.
 	// It records any instant at which a window opened; combined with Duration it lets us
 	// compute the current window boundaries so they match the upstream provider's real
@@ -390,6 +394,10 @@ const (
 	// the user still has more than the old cap gave them. On a sliding window,
 	// where there is no pacing, this is the only reason a share ever narrows.
 	FairShareModeCapped FairShareMode = "capped"
+	// FairShareModeOpen means the plan is still under its share threshold:
+	// with room for everyone, the user may consume up to that threshold
+	// whatever their share.
+	FairShareModeOpen FairShareMode = "open"
 )
 
 // FairShareParams describes the state of a plan constraint at decision time.
@@ -406,8 +414,8 @@ type FairShareParams struct {
 	// UsedTotal is the plan-wide consumption in the current window.
 	UsedTotal int64
 	// UserUsed is what the user being allocated already consumed in the window.
-	// Only the happy hour reads it, to hand out the leftover on top of what each
-	// active user already holds.
+	// Only the happy hour and the share threshold read it, to hand out room on
+	// top of what each user already holds.
 	UserUsed int64
 	// WindowDuration is the length of the window, used to turn the happy-hour
 	// fraction into a real duration. Zero disables the happy hour.
@@ -428,6 +436,9 @@ type FairShareParams struct {
 	// HappyHourMaxLead caps how long before the reset the happy hour may open,
 	// regardless of the fraction.
 	HappyHourMaxLead time.Duration
+	// ShareThreshold is the fraction of the budget under which the plan is
+	// open to anyone (see PlanConstraint.ShareThreshold). Zero disables it.
+	ShareThreshold float64
 }
 
 // FairShareAllocation is the outcome of the allocator for a single user.
@@ -456,6 +467,10 @@ type FairShareAllocation struct {
 // a window: it stays at 1 as long as plan-wide consumption trails the elapsed
 // fraction of the window (plus some slack), then decreases linearly to 0 as the
 // budget fills up, collapsing the allowance back onto the guaranteed floor.
+//
+// While the plan as a whole stays under its share threshold, the shares do not
+// apply at all: any user may consume until the plan reaches it, the plan
+// having room for everyone. Past it, the allocation below takes over.
 //
 // In the last moments of a window the leftover budget would be destroyed by the
 // upcoming reset, so it is shared out between the active users on top of what
@@ -531,13 +546,38 @@ func ComputeFairShare(p FairShareParams) FairShareAllocation {
 	// destroyed must never be the reason a request is refused — and since it is
 	// the nominal allowance that carries the floor above, deferring to it also
 	// keeps an exhausted window from allocating zero to everyone.
+	result := FairShareAllocation{Allowance: allowance, Mode: mode}
 	if anchored && p.inHappyHour() {
-		if hh := p.happyHourAllowance(int64(active)); hh > allowance {
-			return FairShareAllocation{Allowance: hh, Mode: FairShareModeHappyHour}
+		if hh := p.happyHourAllowance(int64(active)); hh > result.Allowance {
+			result = FairShareAllocation{Allowance: hh, Mode: FairShareModeHappyHour}
 		}
 	}
 
-	return FairShareAllocation{Allowance: allowance, Mode: mode}
+	// Under the share threshold the plan has room for everyone: the shares
+	// only take over once it fills past it. Like the happy hour this only ever
+	// widens an allowance.
+	if open := p.openAllowance(); open > result.Allowance {
+		result = FairShareAllocation{Allowance: open, Mode: FairShareModeOpen}
+	}
+	return result
+}
+
+// openAllowance lets the user consume until the plan reaches its share
+// threshold: what they already used, plus the room left under the threshold.
+// The room is the plan's, not the user's: once the recorded usage reaches the
+// threshold, no user is let through it any more. Requests are decided on the
+// usage already recorded, so the ones in flight when it is crossed may take
+// the plan past it by what they consume; the shares then apply to everyone.
+// Zero when the threshold is unset or reached.
+func (p FairShareParams) openAllowance() int64 {
+	if p.ShareThreshold <= 0 || p.Budget <= 0 {
+		return 0
+	}
+	room := int64(math.Round(clampUnit(p.ShareThreshold)*float64(p.Budget))) - p.UsedTotal
+	if room <= 0 {
+		return 0
+	}
+	return max(p.UserUsed, 0) + room
 }
 
 // inHappyHour reports whether the window is close enough to its reset for the
@@ -648,6 +688,9 @@ func (c PlanConstraint) FairShareParamsFor(p FairShareParams) FairShareParams {
 	p.HappyHourStart = DefaultHappyHourStart
 	if c.HappyHourStart != nil && *c.HappyHourStart > 0 {
 		p.HappyHourStart = *c.HappyHourStart
+	}
+	if c.ShareThreshold != nil {
+		p.ShareThreshold = *c.ShareThreshold
 	}
 	p.WindowDuration = c.Duration.Duration()
 	p.HappyHourMaxLead = DefaultHappyHourLead(p.WindowDuration)

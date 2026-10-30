@@ -733,3 +733,55 @@ func TestComputeFairShare_ThrottledKeepsPrecedenceOverCapped(t *testing.T) {
 		t.Errorf("allowance = %d, want it narrowed below the static share as well", got.Allowance)
 	}
 }
+
+func TestComputeFairShare_ShareThresholdOpensThePlanUntilItFills(t *testing.T) {
+	// The production case: a 60$ pool 39 % full, 8 active members of 17, one
+	// of them holding 15.46$, far past a share of about 6.4$.
+	p := FairShareParams{
+		Budget:         60_000_000,
+		TotalMembers:   17,
+		ActiveUsers:    8,
+		UsedTotal:      23_400_000,
+		UserUsed:       15_460_000,
+		Elapsed:        0.54,
+		Reserve:        0.1,
+		Slack:          DefaultPaceSlack,
+		HappyHourStart: DefaultHappyHourStart,
+	}
+	shared := ComputeFairShare(p)
+	if shared.Allowance >= p.UserUsed {
+		t.Fatalf("without threshold the allowance is %d, want under the user's %d", shared.Allowance, p.UserUsed)
+	}
+
+	p.ShareThreshold = 0.7
+	got := ComputeFairShare(p)
+	// 70 % of 60$ is 42$: 18.6$ of room, on top of the user's 15.46$.
+	if got.Allowance != 34_060_000 || got.Mode != FairShareModeOpen {
+		t.Errorf("allowance = %d (%s), want 34060000 open: the plan has room under its threshold", got.Allowance, got.Mode)
+	}
+
+	// Past the threshold the shares apply again.
+	p.UsedTotal = 43_000_000
+	if got := ComputeFairShare(p); got.Mode == FairShareModeOpen || got.Allowance >= p.UserUsed {
+		t.Errorf("allowance = %d (%s), want the share once the plan is past its threshold", got.Allowance, got.Mode)
+	}
+}
+
+func TestComputeFairShare_ShareThresholdNeverNarrowsAShare(t *testing.T) {
+	// Room under the threshold smaller than the share: the share stands.
+	p := FairShareParams{
+		Budget:         1000,
+		TotalMembers:   2,
+		ActiveUsers:    1,
+		UsedTotal:      690,
+		Elapsed:        -1,
+		Reserve:        DefaultReserveRatio,
+		HappyHourStart: DefaultHappyHourStart,
+		ShareThreshold: 0.7,
+	}
+	without := p
+	without.ShareThreshold = 0
+	if got, want := ComputeFairShare(p), ComputeFairShare(without); got != want {
+		t.Errorf("allocation = %+v, want %+v: the threshold only widens", got, want)
+	}
+}

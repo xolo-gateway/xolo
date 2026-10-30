@@ -88,7 +88,7 @@ Webhooks have their own variables, see [Webhooks](#webhooks).
 | `PUT` | `/v1/tenants/{tenantID}` | `{"slug","name","status"}` |
 | `PUT` | `/v1/tenants/{tenantID}/domains/{hostname}` | `{"status"}` |
 | `PUT` | `/v1/tenants/{tenantID}/organizations/{orgID}` | `{"slug","name","status"}` |
-| `PUT` | `/v1/tenants/{tenantID}/members/{memberID}` | `{"email","tenant_role","status"}`, optional `"display_name"` and `"identity"` |
+| `PUT` | `/v1/tenants/{tenantID}/members/{memberID}` | `{"email","tenant_role","status"}`, optional `"display_name"`, `"locale"` and `"identity"` |
 | `PUT` | `/v1/tenants/{tenantID}/organizations/{orgID}/members/{memberID}` | `{"role","status"}` |
 | `PUT` | `/v1/tenants/{tenantID}/organizations/{orgID}/teams/{teamID}` | `{"slug","name","status"}` |
 | `PUT` | `/v1/tenants/{tenantID}/organizations/{orgID}/teams/{teamID}/members/{memberID}` | `{"status"}` |
@@ -111,7 +111,8 @@ Treat it as a set: its order is not significant.
   representation and its `ETag`. A `PUT` identical to the stored state changes
   nothing, writes no audit and keeps its `ETag`, so a client can replay its
   whole desired state.
-- **A `PUT` replaces the representation.** An omitted `display_name` is empty.
+- **A `PUT` replaces the representation.** An omitted `display_name` or
+  `locale` is empty, and left out of the representation.
   An omitted `identity` is kept, see [Declared identity](#declared-identity).
   Fields outside the contract — descriptions, currencies, sign-in links,
   platform roles, custom roles — are never touched.
@@ -143,8 +144,18 @@ by another tenant is a `409`.
 ### Members
 
 `PUT …/members/{memberID}` creates the member or updates it: email, display
-name, tenant role, status and declared identity. `suspended` deactivates the
-account. The platform roles are never modified.
+name, locale, tenant role, status and declared identity. `suspended` deactivates
+the account. The platform roles are never modified.
+
+**`locale`** is the language the person chose for the interface. It is trimmed,
+never re-cased, and must then be empty or a canonical language tag: 2 or 3
+lowercase letters, optionally a script (`-Hant`), optionally a region (`-BR`,
+`-419`), 12 bytes at most. `fr-FR` is valid; `fr-fr`, `FR`, `fr_FR` and any
+variant, extension or private-use subtag are `400 invalid_representation`. A
+valid tag Xolo does not offer, such as `pt-BR`, is kept and returned as is: the
+web UI is served in the closest language it supports (`fr-CA` in French), or as
+when the member chose none (see [Language chosen in Xolo](#language-chosen-in-xolo)).
+It is stored with the member's preferences.
 
 **A member can be provisioned ahead of their first sign-in.** A `PUT` on an
 unknown identifier creates the account with the platform `user` role, linked to
@@ -158,8 +169,8 @@ tenant always keeps one active owner once it has one: demoting or suspending the
 last one is refused with `409 last_owner`.
 
 **Platform administrators are protected.** Any `PUT` that would change an
-account holding the platform `admin` role — email, display name, status, tenant
-role or identity — is refused with `409 platform_admin_protected`; an identical
+account holding the platform `admin` role — email, display name, locale,
+status, tenant role or identity — is refused with `409 platform_admin_protected`; an identical
 `PUT` still answers `200`. The same protection applies to
 `PUT /v1/xolo/tenants/{tenantID}/users`. A sign-in never attaches a platform
 administrator to a new identity either, neither through a declaration nor
@@ -855,6 +866,41 @@ plane declared:
   bootstrap the instance, and the application accounts. Any other identity is
   refused with `403`.
 
+### Language chosen in Xolo
+
+The web UI resolves its language from, in order: the locale of the signed-in
+member when Xolo offers a language close to it, the `xolo_locale` cookie,
+`Accept-Language`, then `XOLO_DEFAULT_LOCALE`. The pipeline editor reads the
+same language from `data-locale`.
+
+The language switch (`POST /locale`, rate limited) always sets the cookie, so
+it works signed out; a credential it can not use, such as an expired token or a
+broken session, counts as signed out rather than failing the switch. Signed in
+on an active account, it also stores the choice as the member's
+`locale`, the one member field Xolo writes itself **even with
+`member=control_plane`**: a person can choose their language in any
+application. That write changes only `locale`, in one provisioning
+transaction with its audit (the member as actor) and its publication: exactly
+one `member.updated.v1`, with a request ID Xolo generated, never one received
+from the control plane. A rollback exposes none of them. Choosing the stored
+value again writes nothing and publishes nothing. Every other member field
+stays refused locally, and a write that changes anything besides the locale
+of the member's own representation is refused as a whole. The control plane
+reads the member back and adopts the value; its next `PUT` replaces `locale`
+like any other field: the last write wins.
+
+**Before upgrading**, make the control plane send `locale`. A `PUT` that omits
+it clears the language the member chose in Xolo, so a control plane unaware of
+the field resets every member's language the next time it replays its
+members. Upgrade the control plane first, or have it read members back and
+keep their `locale`, before letting it replay.
+
+Without a control plane, the same write publishes the same event: every
+member write is published, whoever owns the family.
+
+Migration `202610290002` adds the locale to the preferences of the users. No
+member has one yet, so no projection nor `ETag` changes.
+
 ### Adoption export
 
 `GET /v1/xolo/adoption/export`, like `xolo-adoption export`, streams the
@@ -864,7 +910,7 @@ taking any lock. The format, `xolo-adoption/1`, is NDJSON
 (`application/x-ndjson`):
 
 ```text
-{"version":"xolo-adoption/1","contract":"0.1.0-draft.2","source":"urn:uuid:…","c0":"…","families":["tenant","tenant_domain","organization","member","organization_membership","team","team_membership","provider","custom_role","team_settings","application","quota","alert"]}
+{"version":"xolo-adoption/1","contract":"0.1.0-draft.3","source":"urn:uuid:…","c0":"…","families":["tenant","tenant_domain","organization","member","organization_membership","team","team_membership","provider","custom_role","team_settings","application","quota","alert"]}
 {"family":"tenant","key":{"tenant_id":"…"},"representation":{…},"etag":"W/\"42\""}
 …
 {"count":128,"complete":true,"sha256":"…"}
@@ -1185,8 +1231,8 @@ and cascading deletion. Repeated changes to a resource coalesce within the
 transaction; a no-op produces no audit. States exclude secrets and technical
 timestamps. Audits retain the tenant/organization scope after resource deletion.
 UUID audit identifiers do not imply commit order. This audit covers provisioning
-mutations, and the sign-ins that create, link or update an account, with that
-account as actor; reads and ordinary web UI operations do not write it. A user
+mutations, the sign-ins that create, link or update an account, and the
+language a member chooses, with that account as actor; reads and ordinary web UI operations do not write it. A user
 state includes its declared identity: unlike events, the audit table holds it.
 
 Send `X-Request-ID` as a single value of exactly 32 lowercase hexadecimal characters.

@@ -175,6 +175,21 @@ func (b *Bundle) Match(acceptLanguage string, fallback language.Tag) language.Ta
 	return b.tags[index]
 }
 
+// Closest returns the supported language closest to a language tag, such as
+// the one a member chose in another application: fr-CA gives French. It
+// reports false when none is close, as for pt-BR.
+func (b *Bundle) Closest(tag string) (language.Tag, bool) {
+	parsed, err := language.Parse(tag)
+	if err != nil {
+		return language.Und, false
+	}
+	_, index, confidence := b.matcher.Match(parsed)
+	if confidence == language.No {
+		return language.Und, false
+	}
+	return b.tags[index], true
+}
+
 // Printer formats messages in tag.
 func (b *Bundle) Printer(tag language.Tag) *message.Printer {
 	return message.NewPrinter(tag, message.Catalog(b.catalog))

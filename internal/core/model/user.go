@@ -282,11 +282,18 @@ func NewApplicationAuthToken(application Application, orgID OrgID, label, value 
 
 type UserPreferences interface {
 	DarkMode() (bool, bool)
+	// Locale is the language the member chose for the interface, a
+	// canonical tag, empty when they chose none.
+	Locale() string
 }
 
 type BaseUserPreferences struct {
 	darkMode *bool
+	locale   string
 }
+
+// Locale implements [UserPreferences].
+func (p *BaseUserPreferences) Locale() string { return p.locale }
 
 // DarkMode implements [UserPreferences].
 func (p *BaseUserPreferences) DarkMode() (bool, bool) {
@@ -301,6 +308,25 @@ func SetUserPrefencesDarkMode(darkMode *bool) BaseUserPreferencesSetter {
 	return func(p *BaseUserPreferences) {
 		p.darkMode = darkMode
 	}
+}
+
+func SetUserPreferencesLocale(locale string) BaseUserPreferencesSetter {
+	return func(p *BaseUserPreferences) {
+		p.locale = locale
+	}
+}
+
+// CopyUserPreferences copies preferences, nil giving none set.
+func CopyUserPreferences(preferences UserPreferences) *BaseUserPreferences {
+	copied := NewUserPreferences()
+	if preferences == nil {
+		return copied
+	}
+	if darkMode, exists := preferences.DarkMode(); exists {
+		copied.darkMode = &darkMode
+	}
+	copied.locale = preferences.Locale()
+	return copied
 }
 
 func (p *BaseUserPreferences) Set(setters ...BaseUserPreferencesSetter) {

@@ -110,6 +110,30 @@ func TestCatalogsMatchTheSourceKeysAndVerbs(t *testing.T) {
 	}
 }
 
+// TestCatalogsEscapeTheirPercentSigns catches a literal "%" left unescaped:
+// T formats every message, so "(%)" renders as "%!)(MISSING)", and the verb
+// comparison above does not see it, matching verbs only.
+func TestCatalogsEscapeTheirPercentSigns(t *testing.T) {
+	for locale, messages := range readCatalogs(t) {
+		for key, value := range messages {
+			texts := []string{}
+			switch value := value.(type) {
+			case string:
+				texts = append(texts, value)
+			case map[string]string:
+				for _, text := range value {
+					texts = append(texts, text)
+				}
+			}
+			for _, text := range texts {
+				if rest := verbPattern.ReplaceAllString(text, ""); strings.Contains(rest, "%") {
+					t.Errorf("%s: key %q has an unescaped %%: %q", locale, key, text)
+				}
+			}
+		}
+	}
+}
+
 func TestCatalogFilesAreValidJSONWithoutDuplicateKeys(t *testing.T) {
 	paths, _ := fs.Glob(files, "locales/*.json")
 	for _, path := range paths {
@@ -168,6 +192,28 @@ func TestLookupAcceptsOnlySupportedCanonicalTags(t *testing.T) {
 	for _, value := range []string{"", "de", "fr-CA", "FR", "x", "../en"} {
 		if tag, ok := bundle.Lookup(value); ok {
 			t.Errorf("Lookup(%q)=%v", value, tag)
+		}
+	}
+}
+
+func TestClosestServesTheNearestSupportedLanguage(t *testing.T) {
+	bundle, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for tag, want := range map[string]language.Tag{
+		"fr":         language.French,
+		"fr-CA":      language.French,
+		"es-419":     language.Spanish,
+		"en-Latn-US": language.English,
+	} {
+		if got, ok := bundle.Closest(tag); !ok || got != want {
+			t.Errorf("Closest(%q)=%v,%v, want %v", tag, got, ok, want)
+		}
+	}
+	for _, tag := range []string{"", "pt-BR", "de", "it", "not a tag"} {
+		if got, ok := bundle.Closest(tag); ok {
+			t.Errorf("Closest(%q)=%v", tag, got)
 		}
 	}
 }

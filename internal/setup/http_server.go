@@ -7,6 +7,7 @@ import (
 	proxyAdapter "github.com/xolo-gateway/xolo/internal/adapter/proxy"
 	"github.com/xolo-gateway/xolo/internal/config"
 	"github.com/xolo-gateway/xolo/internal/core/model"
+	"github.com/xolo-gateway/xolo/internal/core/service"
 	"github.com/xolo-gateway/xolo/internal/http"
 	"github.com/xolo-gateway/xolo/internal/http/handler/api"
 	"github.com/xolo-gateway/xolo/internal/http/handler/metrics"
@@ -15,6 +16,7 @@ import (
 	pipelineAssets "github.com/xolo-gateway/xolo/internal/http/handler/webui/pipeline"
 	"github.com/xolo-gateway/xolo/internal/http/middleware/authn"
 	"github.com/xolo-gateway/xolo/internal/http/middleware/authz"
+	"github.com/xolo-gateway/xolo/internal/http/middleware/bridge"
 	localeMiddleware "github.com/xolo-gateway/xolo/internal/http/middleware/locale"
 	membershipsMiddleware "github.com/xolo-gateway/xolo/internal/http/middleware/memberships"
 	"github.com/xolo-gateway/xolo/internal/http/middleware/ratelimit"
@@ -87,18 +89,40 @@ func NewHTTPServerFromConfig(ctx context.Context, conf *config.Config) (*http.Se
 		conf.HTTP.RateLimit.CacheTTL,
 	)
 
-	authChain := func(h gohttp.Handler) gohttp.Handler {
-		return authnMiddleware(bridgeMiddleware(h))
+	locales, err := i18n.Load()
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+	defaultLocale, ok := locales.Lookup(conf.DefaultLocale)
+	if !ok {
+		return nil, errors.Errorf("default locale %q is not supported", conf.DefaultLocale)
 	}
 
-	taskRunner, err := getTaskRunner(ctx, conf)
-	if err != nil {
-		return nil, errors.Wrap(err, "could not create task runner from config")
+	// The language a member chose comes first, once the user is resolved.
+	authChain := func(h gohttp.Handler) gohttp.Handler {
+		return authnMiddleware(bridgeMiddleware(localeMiddleware.Member(locales)(h)))
 	}
 
 	userStore, err := getUserStoreFromConfig(ctx, conf)
 	if err != nil {
 		return nil, errors.Wrap(err, "could not create user store from config")
+	}
+
+	// A language switch looks the user up when signed in, and still works
+	// signed out, as on the sign-in page. The lookup writes nothing: the
+	// locale write opens the only transaction of the request.
+	localeSignedIn := func(h gohttp.Handler) gohttp.Handler {
+		return authn.Optional(h, authenticators...)(bridge.Lookup(userStore)(h))
+	}
+	transactions, err := getProvisioningTransactionFromConfig(ctx, conf)
+	if err != nil {
+		return nil, errors.Wrap(err, "could not create provisioning transactions from config")
+	}
+	memberLocale := service.NewMemberLocale(transactions)
+
+	taskRunner, err := getTaskRunner(ctx, conf)
+	if err != nil {
+		return nil, errors.Wrap(err, "could not create task runner from config")
 	}
 
 	orgStore, err := getOrgStoreFromConfig(ctx, conf)
@@ -321,15 +345,6 @@ func NewHTTPServerFromConfig(ctx context.Context, conf *config.Config) (*http.Se
 		}),
 	)
 
-	locales, err := i18n.Load()
-	if err != nil {
-		return nil, errors.WithStack(err)
-	}
-	defaultLocale, ok := locales.Lookup(conf.DefaultLocale)
-	if !ok {
-		return nil, errors.Errorf("default locale %q is not supported", conf.DefaultLocale)
-	}
-
 	options := []http.OptionFunc{
 		http.WithAddress(conf.HTTP.Address),
 		http.WithShutdownTimeout(conf.HTTP.ShutdownTimeout),
@@ -338,7 +353,7 @@ func NewHTTPServerFromConfig(ctx context.Context, conf *config.Config) (*http.Se
 		// rendered in it too.
 		http.WithMiddleware(localeMiddleware.Middleware(locales, defaultLocale, "/assets/", "/api/", "/metrics/", "/auth/token/")),
 		http.WithMiddleware(tenantMiddleware),
-		http.WithRoute("POST /locale", localeMiddleware.Handler(locales, conf.HTTP.Session.Cookie.Secure)),
+		http.WithRoute("POST /locale", rateLimiter(localeMiddleware.Handler(locales, conf.HTTP.Session.Cookie.Secure, memberLocale, localeSignedIn))),
 		http.WithMount("/assets/", assets),
 		http.WithMount("/assets/pipeline/", pipelineAssets.NewAssetsHandler()),
 		http.WithMount("/auth/oidc/", rateLimiter(oidcAuthn)),

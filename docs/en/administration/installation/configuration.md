@@ -38,7 +38,7 @@ Deferred deletion of tenants, organizations and members through the provisioning
 
 ## Language
 
-The web interface is available in English, French and Spanish. Each request uses the language chosen with the language switch (stored in the `xolo_locale` cookie), otherwise the best match of the browser's `Accept-Language` header, otherwise the default below.
+The web interface is available in English, French and Spanish. Each request uses the language the signed-in member chose, kept with their account (or a close one, `fr-CA` giving French), otherwise the language chosen with the language switch on this browser (stored in the `xolo_locale` cookie), otherwise the best match of the browser's `Accept-Language` header, otherwise the default below.
 
 | Variable | Default | Description |
 | --- | --- | --- |

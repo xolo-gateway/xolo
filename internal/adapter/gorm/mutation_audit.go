@@ -231,6 +231,15 @@ func mutationSnapshot(db *gorm.DB, key mutationKey) ([]byte, error) {
 			return nil, err
 		}
 		row["platform_roles"] = roles
+		locale, err := userLocale(db, key.id)
+		if err != nil {
+			return nil, err
+		}
+		// Absent rather than empty: the snapshots of members without one stay
+		// those taken before the column existed.
+		if locale != "" {
+			row["locale"] = locale
+		}
 	}
 	if key.kind == "role" {
 		permissions := []string{}
@@ -270,6 +279,22 @@ func teamMemberSnapshot(db *gorm.DB, key mutationKey) ([]byte, error) {
 		}
 	}
 	return json.Marshal(row)
+}
+
+// userLocale reads the locale a user chose, kept with their preferences.
+// A migration running before the column exists sees none.
+func userLocale(db *gorm.DB, userID string) (string, error) {
+	if migratingSchema(db) && !db.Migrator().HasColumn("user_preferences", "locale") {
+		return "", nil
+	}
+	var locales []string
+	if err := db.Table("user_preferences").Where("user_id = ?", userID).Limit(1).Pluck("locale", &locales).Error; err != nil {
+		return "", err
+	}
+	if len(locales) == 0 {
+		return "", nil
+	}
+	return locales[0], nil
 }
 
 type migratingSchemaKey struct{}

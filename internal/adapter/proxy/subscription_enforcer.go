@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
+	"math"
 	"net/http"
 	"slices"
 	"strconv"
@@ -199,11 +200,12 @@ func (e *XoloSubscriptionEnforcer) PreRequest(ctx context.Context, req *genaiPro
 // and the keys it may move to when that one turns out exhausted upstream.
 //
 // A user stays on the key their last request went through, where the upstream
-// prompt cache of their conversations lives, as long as it has room left. A
-// user without one, or whose key ran out, is moved to the key with the most
-// room left; keys with as much room are ranked per user (model.KeyAffinity),
-// so the users arriving on an idle plan spread over the keys. The fallbacks
-// are the other keys with room left, in the same order.
+// prompt cache of their conversations lives, as long as it has room left and
+// is not much fuller than the emptiest key (see rebalanceMargin). A user
+// without one, whose key ran out or drifted too far ahead, is moved to the key
+// with the most room left; keys with as much room are ranked per user
+// (model.KeyAffinity), so the users arriving on an idle plan spread over the
+// keys. The fallbacks are the other keys with room left, in the same order.
 //
 // Each key is held to its own plan (model.KeyPlan); the users' shares were
 // already decided on the pool.
@@ -249,11 +251,34 @@ func (e *XoloSubscriptionEnforcer) pickKey(ctx context.Context, scope planScope,
 		return cmp.Compare(model.KeyAffinity(scope.UserID, a), model.KeyAffinity(scope.UserID, b))
 	})
 	if hasSticky {
-		if i := slices.Index(open, sticky); i > 0 {
+		i := slices.Index(open, sticky)
+		if i > 0 && states[sticky].fill-states[open[0]].fill <= rebalanceMargin(scope.UserID, sticky) {
 			open = slices.Insert(slices.Delete(open, i, i+1), 0, sticky)
 		}
 	}
 	return open[0], open[1:], nil, nil
+}
+
+// The bounds of rebalanceMargin, as a share of a key's budget.
+const (
+	minRebalanceMargin = 0.10
+	maxRebalanceMargin = 0.30
+)
+
+// rebalanceMargin is how much fuller than the emptiest key a user's key may
+// get before the user leaves it, giving up the prompt cache it holds for
+// them. Each user has their own margin, drawn between minRebalanceMargin and
+// maxRebalanceMargin, so that as the gap between keys widens the users leave
+// a few at a time instead of all at once, which would only move the
+// imbalance to the other key. Once moved, a user stays on their new key until
+// it gets as far ahead in turn.
+//
+// The margin is drawn apart from model.KeyAffinity: the users that ranking
+// placed on a key are those it ranks first, and their margins would otherwise
+// all sit at the low end.
+func rebalanceMargin(userID model.UserID, key model.ProviderKeyID) float64 {
+	rank := float64(model.KeyAffinity(userID+"\x00margin", key)) / float64(math.MaxUint64)
+	return minRebalanceMargin + rank*(maxRebalanceMargin-minRebalanceMargin)
 }
 
 // keyState is how much of the plan one key of a pool consumed: the fullest of

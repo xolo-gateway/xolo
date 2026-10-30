@@ -22,10 +22,12 @@ type CommonResource struct {
 
 // CommonMember is the common representation of a tenant member. The platform
 // roles are not part of it: a PUT never changes them. Identity says what the
-// PUT does to the declared identity and the sign-in link.
+// PUT does to the declared identity and the sign-in link. Locale is kept in
+// the member's preferences; empty clears it.
 type CommonMember struct {
 	Email       string
 	DisplayName string
+	Locale      string
 	TenantRole  model.TenantRole
 	Status      model.Status
 	Identity    IdentityChange
@@ -338,8 +340,9 @@ func (s *ProvisioningService) PutOrganization(ctx context.Context, tenantID mode
 func (s *ProvisioningService) PutTenantMember(ctx context.Context, tenantID model.TenantID, userID model.UserID, p CommonMember) (CommonMember, error) {
 	p.Email = strings.TrimSpace(p.Email)
 	p.DisplayName = strings.TrimSpace(p.DisplayName)
+	p.Locale = model.NormalizeLocale(p.Locale)
 	if !validCommonText(p.Email, 3, maxCommonEmailLength) || !strings.Contains(p.Email, "@") ||
-		!validCommonText(p.DisplayName, 0, maxCommonNameLength) || !p.TenantRole.Valid() || !p.Status.Valid() {
+		!validCommonText(p.DisplayName, 0, maxCommonNameLength) || !model.IsValidLocale(p.Locale) || !p.TenantRole.Valid() || !p.Status.Valid() {
 		return p, errors.WithStack(port.ErrInvalid)
 	}
 	if p.Identity.Kind == IdentityDeclare && !p.Identity.Identity.Valid() {
@@ -371,7 +374,7 @@ func (s *ProvisioningService) PutTenantMember(ctx context.Context, tenantID mode
 	if old.Provider() == model.ApplicationProvider {
 		return p, errors.Wrap(port.ErrNotFound, "user not found")
 	}
-	if old.Email() == p.Email && old.DisplayName() == p.DisplayName &&
+	if old.Email() == p.Email && old.DisplayName() == p.DisplayName && memberLocale(old) == p.Locale &&
 		old.TenantRole() == p.TenantRole && model.DeclaredStatus(old.Active()) == p.Status &&
 		p.Identity.unchanged(old) {
 		return p, nil
@@ -390,8 +393,25 @@ func (s *ProvisioningService) PutTenantMember(ctx context.Context, tenantID mode
 	user.SetDisplayName(p.DisplayName)
 	user.SetActive(p.Status == model.StatusActive)
 	user.SetTenantRole(p.TenantRole)
+	setMemberLocale(user, p.Locale)
 	p.Identity.apply(user)
 	return p, errors.WithStack(s.userStore.SaveUser(ctx, user))
+}
+
+// memberLocale returns the locale a member chose, empty when none.
+func memberLocale(user model.User) string {
+	if preferences := user.Preferences(); preferences != nil {
+		return preferences.Locale()
+	}
+	return ""
+}
+
+// setMemberLocale replaces the locale of a member, keeping their other
+// preferences.
+func setMemberLocale(user *model.BaseUser, locale string) {
+	preferences := model.CopyUserPreferences(user.Preferences())
+	preferences.Set(model.SetUserPreferencesLocale(locale))
+	user.SetPreferences(preferences)
 }
 
 // createTenantMember creates a member provisioned ahead of its first sign-in.
@@ -403,6 +423,7 @@ func (s *ProvisioningService) createTenantMember(ctx context.Context, tenantID m
 	user := model.NewUser(tenantID, "", "", p.Email, p.DisplayName, p.Status == model.StatusActive, model.PlatformRoleUser)
 	user.SetID(userID)
 	user.SetTenantRole(p.TenantRole)
+	setMemberLocale(user, p.Locale)
 	p.Identity.apply(user)
 	return errors.WithStack(s.userStore.SaveUser(ctx, user))
 }

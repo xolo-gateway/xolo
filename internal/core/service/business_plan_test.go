@@ -80,3 +80,18 @@ func TestValidatePlanConstraint_PerModel(t *testing.T) {
 		})
 	}
 }
+
+func TestValidatePlanConstraint_ShareThreshold(t *testing.T) {
+	budget := int64(30_000_000)
+	c := model.PlanConstraint{Kind: model.ConstraintRollingWindow, Label: "week", Duration: model.PlanDuration(168 * time.Hour), ValueBudget: &budget}
+	for _, tc := range []struct {
+		threshold float64
+		valid     bool
+	}{{0, true}, {0.7, true}, {1, true}, {-0.1, false}, {1.5, false}} {
+		threshold := tc.threshold
+		c.ShareThreshold = &threshold
+		if err := validatePlanConstraint(c); (err == nil) != tc.valid {
+			t.Errorf("threshold %v: err = %v, want valid %v", threshold, err, tc.valid)
+		}
+	}
+}

@@ -39,6 +39,7 @@ import (
 //   - plan_c{i}_pace_slack           (percent 0-100, empty = allocator default)
 //   - plan_c{i}_happy_hour_start     (percent 1-100, empty = allocator default; 100 disables)
 //   - plan_c{i}_happy_hour_max_lead  (duration, e.g. "1h", "2d"; empty = allocator default)
+//   - plan_c{i}_share_threshold      (percent 0-100, empty = shares from the first request)
 //   - plan_c{i}_scope                ("provider", "model": each upstream model metered on its own, or "shared": one budget, each model weighted by its own)
 //   - plan_c{i}_model_budgets        (one "model = budget" override per line, see parsePlanModelBudgets)
 // submitted, when not nil, is the form as it was posted: the page is being
@@ -120,6 +121,7 @@ templ planConstraintRow(idx int, c model.PlanConstraint, readonly bool, submitte
 	{{ paceSlackName := "plan_c" + idxKey + "_pace_slack" }}
 	{{ happyStartName := "plan_c" + idxKey + "_happy_hour_start" }}
 	{{ happyLeadName := "plan_c" + idxKey + "_happy_hour_max_lead" }}
+	{{ shareThresholdName := "plan_c" + idxKey + "_share_threshold" }}
 	{{ scopeName := "plan_c" + idxKey + "_scope" }}
 	{{ modelBudgetsName := "plan_c" + idxKey + "_model_budgets" }}
 	// A form rendered back reads the scope from the submission alone, never
@@ -160,6 +162,7 @@ templ planConstraintRow(idx int, c model.PlanConstraint, readonly bool, submitte
 	{{ reserveStr := submittedOr(submitted, reserveName, formatRatioField(c.ReserveRatio)) }}
 	{{ paceSlackStr := submittedOr(submitted, paceSlackName, formatRatioField(c.PaceSlack)) }}
 	{{ happyStartStr := submittedOr(submitted, happyStartName, formatRatioField(c.HappyHourStart)) }}
+	{{ shareThresholdStr := submittedOr(submitted, shareThresholdName, formatRatioField(c.ShareThreshold)) }}
 	{{ happyLeadStr := "" }}
 	if c.HappyHourMaxLead != nil {
 		{{ happyLeadStr = c.HappyHourMaxLead.Duration().String() }}
@@ -446,6 +449,22 @@ templ planConstraintRow(idx int, c model.PlanConstraint, readonly bool, submitte
 									Placeholder: i18n.T(ctx, "org.plan.happy_lead_placeholder"),
 									Disabled:    readonly,
 									Attributes:  templ.Attributes{"data-xolo-name": "plan_c{i}_happy_hour_max_lead"},
+								})
+							</div>
+							<div class="space-y-1">
+								@form.Label() {
+									{ i18n.T(ctx, "org.plan.share_threshold") }
+								}
+								@form.Description() {
+									{ i18n.T(ctx, "org.plan.share_threshold_help") }
+								}
+								@input.Input(input.Props{
+									Name:        shareThresholdName,
+									Type:        input.TypeNumber,
+									Value:       shareThresholdStr,
+									Placeholder: "0",
+									Disabled:    readonly,
+									Attributes:  templ.Attributes{"data-xolo-name": "plan_c{i}_share_threshold", "min": "0", "max": "100", "step": "any"},
 								})
 							</div>
 						</div>

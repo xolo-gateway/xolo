@@ -209,6 +209,9 @@ func projectionRepresentation(id projectionID, row snapshotRow) (string, error) 
 		if name := row.str("display_name"); name != "" {
 			rep["display_name"] = name
 		}
+		if locale := row.str("locale"); locale != "" {
+			rep["locale"] = locale
+		}
 		// The declared identity is part of the member; the sign-in link is
 		// not, so linking a sign-in never changes the projection.
 		if issuer := row.str("identity_issuer"); issuer != "" {
@@ -364,9 +367,10 @@ func publishProjections(ctx context.Context, db *gorm.DB, ownership model.Owners
 	if err != nil || len(changes) == 0 {
 		return err
 	}
+	localeOnly := func(id model.UserID) (bool, error) { return snapshotDiffersOnlyByLocale(db, before, id) }
 	// Refused before the lock: a write the policy forbids never waits on
 	// the publications of other writers.
-	if err := authorizeProjections(ctx, ownership, changes); err != nil {
+	if err := authorizeProjections(ctx, ownership, changes, localeOnly); err != nil {
 		return err
 	}
 	if err := lockProvisioningFeed(db); err != nil {
@@ -378,7 +382,7 @@ func publishProjections(ctx context.Context, db *gorm.DB, ownership model.Owners
 	if changes, err = pendingProjections(db, before, keys); err != nil {
 		return err
 	}
-	if err := authorizeProjections(ctx, ownership, changes); err != nil {
+	if err := authorizeProjections(ctx, ownership, changes, localeOnly); err != nil {
 		return err
 	}
 	publish, err := newEventAppender(ctx, db)

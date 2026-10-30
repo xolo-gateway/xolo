@@ -3,6 +3,7 @@ package proxy
 import (
 	"cmp"
 	"context"
+	"fmt"
 	"net/http"
 	"slices"
 	"strings"
@@ -183,13 +184,95 @@ func TestSubscriptionEnforcer_PoolSpreadsNewcomersOverTheKeys(t *testing.T) {
 func TestSubscriptionEnforcer_PoolKeepsAUserOnTheirKey(t *testing.T) {
 	f := newPoolFixture(t, 0)
 	f.consume("alice", "k2", 9_000_000)
+	f.consume("bob", model.PrimaryProviderKey, 8_500_000)
+	f.consume("carol", "k3", 8_500_000)
 
 	req, msg := f.check(t, "alice")
 	if msg != "" {
 		t.Fatalf("alice denied (%q), want granted", msg)
 	}
 	if key := chosenKey(t, req); key != "k2" {
-		t.Errorf("alice moved to %q, want kept on k2: it has room left and holds her cache", key)
+		t.Errorf("alice moved to %q, want kept on k2: it has room left, is barely fuller than the others and holds her cache", key)
+	}
+}
+
+func TestSubscriptionEnforcer_PoolMovesAUserOffAKeyFarAhead(t *testing.T) {
+	f := newPoolFixture(t, 0)
+	f.consume("alice", model.PrimaryProviderKey, 6_000_000)
+	f.consume("bob", "k2", 2_000_000)
+
+	req, msg := f.check(t, "alice")
+	if msg != "" {
+		t.Fatalf("alice denied (%q), want granted", msg)
+	}
+	if key := chosenKey(t, req); key != "k3" {
+		t.Errorf("alice kept on %q, want moved to k3: her key is 60 points ahead of the idle one", key)
+	}
+	fallbacks, _ := req.Metadata[metaProviderKeyFallbacks].([]model.ProviderKeyID)
+	if !slices.Equal(fallbacks, []model.ProviderKeyID{"k2", model.PrimaryProviderKey}) {
+		t.Errorf("fallbacks = %q, want the other keys, emptiest first", fallbacks)
+	}
+}
+
+func TestSubscriptionEnforcer_PoolMovesUsersOffAKeyAFewAtATime(t *testing.T) {
+	f := newPoolFixture(t, 0)
+	f.provider.SetExtraAPIKeys([]model.ProviderKey{{ID: "k2", Label: "member 2", APIKey: "key2"}})
+
+	// The users arrive on an idle pool and are placed by pickKey itself, so
+	// that their margins are those of the users the placement puts on a key.
+	var onPrimary []model.UserID
+	for i := range 80 {
+		user := model.UserID(fmt.Sprintf("u%d", i))
+		req, msg := f.check(t, user)
+		if msg != "" {
+			t.Fatalf("%s denied (%q), want granted", user, msg)
+		}
+		key := chosenKey(t, req)
+		f.consume(user, key, 0)
+		if key == model.PrimaryProviderKey {
+			onPrimary = append(onPrimary, user)
+		}
+	}
+	if len(onPrimary) < 20 {
+		t.Fatalf("%d users placed on the provider's own key, want enough to measure", len(onPrimary))
+	}
+
+	// The provider's own key then gets further and further ahead of k2.
+	previous := 0
+	for _, gap := range []int64{1_000_000, 1_500_000, 2_000_000, 2_500_000, 3_100_000} {
+		f.usage.value["bob"] = map[model.ProviderKeyID]int64{model.PrimaryProviderKey: gap}
+		moved := 0
+		for _, user := range onPrimary {
+			req, msg := f.check(t, user)
+			if msg != "" {
+				t.Fatalf("%s denied (%q), want granted", user, msg)
+			}
+			if chosenKey(t, req) == "k2" {
+				moved++
+			}
+		}
+		if gap == 3_100_000 {
+			if moved != len(onPrimary) {
+				t.Errorf("%d of %d users moved past the largest margin, want all", moved, len(onPrimary))
+			}
+			continue
+		}
+		if moved == len(onPrimary) {
+			t.Errorf("every user left at a gap of %d points, want some of them only", gap/100_000)
+		}
+		if gap > 1_000_000 && moved <= previous {
+			t.Errorf("%d users moved at a gap of %d points, %d before: want more as the gap widens", moved, gap/100_000, previous)
+		}
+		previous = moved
+	}
+}
+
+func TestRebalanceMarginStaysWithinItsBounds(t *testing.T) {
+	for i := range 1000 {
+		m := rebalanceMargin(model.UserID(fmt.Sprintf("u%d", i)), "k2")
+		if m < minRebalanceMargin || m > maxRebalanceMargin {
+			t.Fatalf("margin %.3f out of [%.2f, %.2f]", m, minRebalanceMargin, maxRebalanceMargin)
+		}
 	}
 }
 
@@ -427,5 +510,26 @@ func TestSubscriptionEnforcer_PoolHoldsKeysToABudgetSetPerModelOnly(t *testing.T
 	}
 	if key := chosenKey(t, req); key == "k2" {
 		t.Error("alice kept on k2, want moved off it: kimi-k3's budget is used up there")
+	}
+}
+
+func TestSubscriptionEnforcer_ShareThresholdLetsAUserPastTheirShare(t *testing.T) {
+	f := newPoolFixture(t, 2)
+	f.consume("bob", "k3", 1_000_000)
+	f.consume("alice", model.PrimaryProviderKey, 8_000_000)
+	f.consume("alice", "k2", 8_000_000)
+
+	_, msg := f.check(t, "alice")
+	if !strings.Contains(msg, "fair-share") {
+		t.Fatalf("message = %q, want a fair-share denial: her 16$ are past her share of the 30$ pool", msg)
+	}
+
+	threshold := 0.7
+	plan := *f.provider.SubscriptionPlan()
+	plan.Constraints = slices.Clone(plan.Constraints)
+	plan.Constraints[0].ShareThreshold = &threshold
+	f.provider.SetSubscriptionPlan(&plan)
+	if _, msg := f.check(t, "alice"); msg != "" {
+		t.Errorf("alice denied (%q), want granted: the pool, at 17$ of 30$, is under its 70%% threshold", msg)
 	}
 }

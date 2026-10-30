@@ -720,6 +720,18 @@ func schemaMigrations(artifact *RecoveryArtifact) []*gormigrate.Migration {
 				return errors.WithStack(tx.Migrator().DropColumn(&UsageRecord{}, "provider_key_id"))
 			},
 		},
+		{
+			// Add locale to user_preferences, the language a member chose,
+			// published in the member representation. No member has one yet,
+			// so no projection changes.
+			ID: memberLocaleMigrationID,
+			Migrate: func(tx *gorm.DB) error {
+				return errors.WithStack(tx.AutoMigrate(&UserPreferences{}))
+			},
+			Rollback: func(tx *gorm.DB) error {
+				return errors.WithStack(tx.Migrator().DropColumn(&UserPreferences{}, "locale"))
+			},
+		},
 	}
 }
 
@@ -729,4 +741,5 @@ const (
 	providerRequestHeadersMigrationID = "202610220001"
 	modelKindMigrationID              = "202610220002"
 	providerKeyPoolMigrationID        = "202610290001"
+	memberLocaleMigrationID           = "202610290002"
 )

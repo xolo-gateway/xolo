@@ -221,7 +221,7 @@ Le fichier `.env.dist` à la racine du dépôt liste l'ensemble des variables av
 
 ## Langue
 
-L'interface web est disponible en anglais, en français et en espagnol. Chaque requête utilise la langue choisie avec le sélecteur de langue (conservée dans le cookie `xolo_locale`), sinon la meilleure correspondance de l'en-tête `Accept-Language` du navigateur, sinon la langue par défaut ci-dessous.
+L'interface web est disponible en anglais, en français et en espagnol. Chaque requête utilise la langue choisie par le membre connecté, conservée avec son compte (ou une langue proche, `fr-CA` donnant le français), sinon la langue choisie avec le sélecteur de langue sur ce navigateur (conservée dans le cookie `xolo_locale`), sinon la meilleure correspondance de l'en-tête `Accept-Language` du navigateur, sinon la langue par défaut ci-dessous.
 
 | Variable | Défaut | Description |
 | --- | --- | --- |

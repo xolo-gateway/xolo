@@ -77,7 +77,7 @@ N'exposez pas ce port sur un réseau public : réservez-le au réseau d'administ
 | `PUT` | `/v1/tenants/{tenantID}` | `{"slug","name","status"}` |
 | `PUT` | `/v1/tenants/{tenantID}/domains/{hostname}` | `{"status"}` |
 | `PUT` | `/v1/tenants/{tenantID}/organizations/{orgID}` | `{"slug","name","status"}` |
-| `PUT` | `/v1/tenants/{tenantID}/members/{memberID}` | `{"email","tenant_role","status"}`, `"display_name"` et `"identity"` facultatifs |
+| `PUT` | `/v1/tenants/{tenantID}/members/{memberID}` | `{"email","tenant_role","status"}`, `"display_name"`, `"locale"` et `"identity"` facultatifs |
 | `PUT` | `/v1/tenants/{tenantID}/organizations/{orgID}/members/{memberID}` | `{"role","status"}` |
 | `PUT` | `/v1/tenants/{tenantID}/organizations/{orgID}/teams/{teamID}` | `{"slug","name","status"}` |
 | `PUT` | `/v1/tenants/{tenantID}/organizations/{orgID}/teams/{teamID}/members/{memberID}` | `{"status"}` |
@@ -100,7 +100,8 @@ Traitez-la comme un ensemble : son ordre n'est pas significatif.
   enregistrée et son `ETag`. Un `PUT` identique à l'état enregistré ne change
   rien, n'écrit pas d'audit et conserve son `ETag` : un client peut rejouer tout
   son état souhaité.
-- **Un `PUT` remplace la représentation.** Un `display_name` omis est vide. Une
+- **Un `PUT` remplace la représentation.** Un `display_name` ou une `locale`
+  omis est vide, et absent de la représentation. Une
   `identity` omise est conservée, voir [Identité déclarée](#identite-declaree).
   Les champs hors contrat — descriptions, devises, liens de connexion, rôles de
   plateforme, rôles personnalisés — ne sont jamais modifiés.
@@ -135,8 +136,17 @@ utilisé par un autre tenant donne `409`.
 ### Membres
 
 `PUT …/members/{memberID}` crée le membre ou le met à jour : email, nom affiché,
-rôle de tenant, statut et identité déclarée. `suspended` désactive le compte.
-Les rôles de plateforme ne sont jamais modifiés.
+langue (`locale`), rôle de tenant, statut et identité déclarée. `suspended`
+désactive le compte. Les rôles de plateforme ne sont jamais modifiés.
+
+`locale` est la langue choisie par la personne pour l'interface. Elle est
+débarrassée de ses espaces, jamais recasée, puis doit être vide ou une
+étiquette de langue canonique : 2 ou 3 lettres minuscules, éventuellement une
+écriture (`-Hant`), éventuellement une région (`-BR`, `-419`), 12 octets au
+plus. `fr-fr`, `FR` ou `fr_FR` sont refusés avec `400 invalid_representation`.
+Une étiquette valide que Xolo ne propose pas, comme `pt-BR`, est conservée
+telle quelle : l'interface web utilise la langue proposée la plus proche, voir
+[Langue choisie dans Xolo](#langue-choisie-dans-xolo).
 
 **Un membre peut être provisionné avant sa première connexion.** Un `PUT` sur un
 identifiant inconnu crée le compte avec le rôle de plateforme `user`, lié à
@@ -905,6 +915,28 @@ par le système de pilotage :
   amorcent l'instance, et les comptes d'application. Toute autre identité est
   refusée avec `403`.
 
+### Langue choisie dans Xolo
+
+L'interface web s'affiche, dans l'ordre : dans la langue de la `locale` du
+membre connecté si Xolo en propose une proche, dans la langue choisie avec le
+sélecteur sur ce navigateur (cookie `xolo_locale`), selon `Accept-Language`,
+puis dans `XOLO_DEFAULT_LOCALE`.
+
+Le sélecteur de langue fonctionne déconnecté, sur ce navigateur seulement.
+Connecté, il enregistre aussi le choix comme `locale` du membre, même avec
+`member=control_plane` : c'est le seul champ du membre que Xolo modifie
+lui-même. Cette modification n'écrit que `locale`, est auditée avec le membre
+comme acteur et publie exactement un `member.updated.v1`, avec un identifiant
+de requête généré par Xolo, dans la même transaction. Choisir de nouveau la
+même langue ne publie rien. Tous les autres champs du membre restent refusés
+localement. Le système de pilotage adopte le choix et le transmet aux autres
+applications ; son `PUT` suivant remplace `locale` comme tout autre champ.
+
+> **Avant la mise à jour.** Un `PUT` qui omet `locale` efface la langue choisie
+> par le membre dans Xolo. Un système de pilotage qui ignore ce champ
+> réinitialise donc la langue de chaque membre la prochaine fois qu'il rejoue
+> ses membres : mettez-le d'abord à jour pour qu'il transmette `locale`.
+
 ### Export d'adoption
 
 `GET /v1/xolo/adoption/export`, comme `xolo-adoption export`, diffuse en flux
@@ -914,7 +946,7 @@ sans prendre de verrou. Le format, `xolo-adoption/1`, est du NDJSON
 (`application/x-ndjson`) :
 
 ```text
-{"version":"xolo-adoption/1","contract":"0.1.0-draft.2","source":"urn:uuid:…","c0":"…","families":["tenant","tenant_domain","organization","member","organization_membership","team","team_membership","provider","custom_role","team_settings","application","quota","alert"]}
+{"version":"xolo-adoption/1","contract":"0.1.0-draft.3","source":"urn:uuid:…","c0":"…","families":["tenant","tenant_domain","organization","member","organization_membership","team","team_membership","provider","custom_role","team_settings","application","quota","alert"]}
 {"family":"tenant","key":{"tenant_id":"…"},"representation":{…},"etag":"W/\"42\""}
 …
 {"count":128,"complete":true,"sha256":"…"}
