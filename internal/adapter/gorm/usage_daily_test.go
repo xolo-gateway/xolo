@@ -78,13 +78,16 @@ func TestUsageDaily_PeriodReadsMatchTheRecords(t *testing.T) {
 		pastUsage(t, db, localMidnight(6).Add(5*time.Minute), "u1", "org-1", "gpt", 20000, false)
 		pastUsage(t, db, localMidnight(6).Add(-5*time.Minute), "u1", "org-1", "gpt", 40000, false)
 		pastUsage(t, db, localMidnight(0).Add(-5*time.Minute), "u1", "org-1", "gpt", 80000, false)
+		// Covered by a plan, on the partial first day.
+		pastUsage(t, db, localNoon(7).Add(5*time.Hour), "u2", "org-1", "claude", 3, true)
 		// Before the period.
 		pastUsage(t, db, localNoon(9), "u1", "org-1", "gpt", 7000, false)
 		if err := xologorm.RebuildUsageDaily(db); err != nil {
 			t.Fatalf("RebuildUsageDaily: %v", err)
 		}
-		// Today, through the store.
+		// Today, through the store, one of them covered by a plan.
 		recordUsage(t, store, "u1", "p1", "m-gpt", "gpt", "", "EUR", 1000, 10, 20, false)
+		recordUsage(t, store, "u2", "p1", "m-gpt", "gpt", "", "EUR", 5, 100, 200, true)
 
 		org1, user1, payg := model.OrgID("org-1"), model.UserID("u1"), false
 		team1, provider1, gpt, eur := model.TeamID("team-1"), model.ProviderID("p1"), model.LLMModelID("m-gpt"), "EUR"
@@ -144,13 +147,23 @@ func TestUsageDaily_PeriodReadsMatchTheRecords(t *testing.T) {
 
 		// The quota and leaderboard sums read the same split.
 		t.Run("cost by currency", func(t *testing.T) {
-			got, err := store.SumCostSinceByCurrency(ctx, []model.UserID{"u1", "u2"}, org1, since)
+			// PAYG only: the covered records are left out.
+			want := map[string]int64{"EUR": 10 + 100 + 200 + 400 + 600 + 800 + 20000 + 40000 + 80000 + 1000}
+			for _, users := range [][]model.UserID{{"u1", "u2"}, nil} {
+				got, err := store.SumCostSinceByCurrency(ctx, users, org1, since)
+				if err != nil {
+					t.Fatalf("SumCostSinceByCurrency: %v", err)
+				}
+				if !maps.Equal(got, want) {
+					t.Errorf("users %v: got %v, want %v", users, got, want)
+				}
+			}
+			got, err := store.SumCostSinceByCurrency(ctx, []model.UserID{"u2"}, org1, since)
 			if err != nil {
 				t.Fatalf("SumCostSinceByCurrency: %v", err)
 			}
-			want := map[string]int64{"EUR": 10 + 100 + 200 + 400 + 600 + 800 + 20000 + 40000 + 80000 + 1000}
-			if !maps.Equal(got, want) {
-				t.Errorf("got %v, want %v", got, want)
+			if want := map[string]int64{"EUR": 400 + 800}; !maps.Equal(got, want) {
+				t.Errorf("u2: got %v, want %v", got, want)
 			}
 		})
 		t.Run("plan tokens by user", func(t *testing.T) {
@@ -168,9 +181,10 @@ func TestUsageDaily_PeriodReadsMatchTheRecords(t *testing.T) {
 				}
 				return out
 			}
+			// u1 on a whole day; u2 on the partial first day and today.
 			got, want := tokens(split), tokens(recordsOnly)
-			if !maps.Equal(got, want) || got["u1"] != 30 {
-				t.Errorf("got %v, the records give %v, want u1: 30", got, want)
+			if !maps.Equal(got, want) || got["u1"] != 30 || got["u2"] != 30+300 {
+				t.Errorf("got %v, the records give %v, want u1: 30, u2: 330", got, want)
 			}
 		})
 
@@ -186,8 +200,8 @@ func TestUsageDaily_PeriodReadsMatchTheRecords(t *testing.T) {
 		}
 		day := func(days int) string { return localNoon(days).Format("2006-01-02") }
 		wantDays := map[string]int64{
-			day(7): 10 + 40000, day(6): 100 + 200 + 20000, day(4): 300 + 400, day(3): 800,
-			day(1): 600 + 80000, day(0): 1000,
+			day(7): 10 + 3 + 40000, day(6): 100 + 200 + 20000, day(4): 300 + 400, day(3): 800,
+			day(1): 600 + 80000, day(0): 1000 + 5,
 		}
 		if !maps.Equal(gotDays, wantDays) {
 			t.Errorf("organization by day: got %v, want %v", gotDays, wantDays)
@@ -199,8 +213,8 @@ func TestUsageDaily_PeriodReadsMatchTheRecords(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if want := int64(10 + 100 + 200 + 300 + 400 + 600 + 800 + 20000 + 40000 + 80000 + 1000); agg.TotalRequests != 11 || agg.TotalCost != want {
-			t.Errorf("organization: %d requests for %d, want 11 for %d", agg.TotalRequests, agg.TotalCost, want)
+		if want := int64(10 + 3 + 100 + 200 + 300 + 400 + 600 + 800 + 20000 + 40000 + 80000 + 1000 + 5); agg.TotalRequests != 13 || agg.TotalCost != want {
+			t.Errorf("organization: %d requests for %d, want 13 for %d", agg.TotalRequests, agg.TotalCost, want)
 		}
 	})
 }
