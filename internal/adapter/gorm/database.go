@@ -744,6 +744,17 @@ func schemaMigrations(artifact *RecoveryArtifact) []*gormigrate.Migration {
 				return errors.WithStack(tx.Migrator().DropColumn(&LLMModel{}, "catalog_origin"))
 			},
 		},
+		{
+			// Add (user_id, created_at) to usage_records for the personal pages,
+			// which filter on the user and a period without an organization.
+			ID: userUsageIndexMigrationID,
+			Migrate: func(tx *gorm.DB) error {
+				return errors.WithStack(tx.AutoMigrate(&UsageRecord{}))
+			},
+			Rollback: func(tx *gorm.DB) error {
+				return errors.WithStack(tx.Migrator().DropIndex(&UsageRecord{}, "idx_usage_user_created"))
+			},
+		},
 	}
 }
 
@@ -755,4 +766,5 @@ const (
 	providerKeyPoolMigrationID        = "202610290001"
 	memberLocaleMigrationID           = "202610290002"
 	catalogOriginMigrationID          = "202610300001"
+	userUsageIndexMigrationID         = "202610300002"
 )
