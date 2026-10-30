@@ -363,12 +363,12 @@ func (h *Handler) getDashboardPage(w http.ResponseWriter, r *http.Request) {
 func intPtr(n int) *int { return &n }
 
 // aggregateCostRows fetches the cost sub-totals for each dimension in a single
-// pass, logging and returning nil on error so a failed chart never blocks the
-// whole page.
+// pass. On error it logs and returns nil: every chart of the page is then
+// empty, but the rest of the page still renders.
 func (h *Handler) aggregateCostRows(ctx context.Context, filter port.UsageFilter, dims ...port.UsageDimension) map[port.UsageDimension][]port.DimensionCost {
 	rows, err := h.usageStore.AggregateCostByDimensions(ctx, filter, dims...)
 	if err != nil {
-		slog.WarnContext(ctx, "could not aggregate usage cost", slogx.Error(err))
+		slog.WarnContext(ctx, "could not aggregate usage cost", slog.Any("dimensions", dims), slogx.Error(err))
 		return nil
 	}
 	return rows

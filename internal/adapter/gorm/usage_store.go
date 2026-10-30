@@ -499,15 +499,26 @@ func (s *Store) AggregateCostByDimension(ctx context.Context, filter port.UsageF
 	return byDimension[dimension], nil
 }
 
+// maxUsageDimensions is how many dimensions AggregateCostByDimensions groups
+// on at once: one key column each, Key0 to Key3 of its rows.
+const maxUsageDimensions = 4
+
 // AggregateCostByDimensions implements port.UsageStore.
 //
 // The query groups on every dimension at once, then each dimension's
-// sub-totals are summed from those rows. The rows number the distinct
-// combinations of the dimensions, far fewer than the records they sum.
+// sub-totals are summed from those rows. There is one row per distinct
+// combination of the dimensions (with org, currency and plan coverage): their
+// product, not their sum. On a long range of a busy organization it can come
+// close to the number of records, and all of it is loaded before summing.
 func (s *Store) AggregateCostByDimensions(ctx context.Context, filter port.UsageFilter, dimensions ...port.UsageDimension) (map[port.UsageDimension][]port.DimensionCost, error) {
 	dimensions = slices.Compact(slices.Sorted(slices.Values(dimensions)))
+	if len(dimensions) == 0 {
+		return map[port.UsageDimension][]port.DimensionCost{}, nil
+	}
+	if len(dimensions) > maxUsageDimensions {
+		return nil, errors.Errorf("at most %d usage dimensions at once, got %v", maxUsageDimensions, dimensions)
+	}
 
-	// One key column per dimension, Key0 to Key3: there are four dimensions.
 	var rows []struct {
 		Key0, Key1, Key2, Key3 string
 		OrgID                  string
@@ -516,9 +527,6 @@ func (s *Store) AggregateCostByDimensions(ctx context.Context, filter port.Usage
 		Cost                   int64
 	}
 	err := s.read(ctx, func(ctx context.Context, db *gorm.DB) error {
-		if len(dimensions) > 4 {
-			return errors.Errorf("at most 4 usage dimensions, got %d", len(dimensions))
-		}
 		selects := make([]string, 0, len(dimensions)+4)
 		groups := make([]string, 0, len(dimensions))
 		for i, dimension := range dimensions {
@@ -550,7 +558,7 @@ func (s *Store) AggregateCostByDimensions(ctx context.Context, filter port.Usage
 		costs := make([]port.DimensionCost, 0)
 		for _, row := range rows {
 			subTotal := port.DimensionCost{
-				Key:         [...]string{row.Key0, row.Key1, row.Key2, row.Key3}[i],
+				Key:         [maxUsageDimensions]string{row.Key0, row.Key1, row.Key2, row.Key3}[i],
 				OrgID:       model.OrgID(row.OrgID),
 				Currency:    row.Currency,
 				PlanCovered: row.PlanCovered != 0,

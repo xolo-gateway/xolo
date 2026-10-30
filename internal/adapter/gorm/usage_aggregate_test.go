@@ -326,3 +326,41 @@ func scenarioAggregateCostByDimensions(t *testing.T, store *xologorm.Store) {
 		t.Errorf("gpt-4 USD PAYG: expected one sub-total of 3700, got %v", gptUSD)
 	}
 }
+
+func TestAggregateCostByDimensions_Arguments(t *testing.T) {
+	eachBackend(t, func(t *testing.T, store *xologorm.Store) {
+		ctx := context.Background()
+		orgID := model.OrgID("org-1")
+		recordUsage(t, store, "u1", "p1", "m-gpt", "gpt-4", "", "USD", 1000, 10, 20, false)
+		since := time.Now().Add(-time.Hour)
+		filter := port.UsageFilter{OrgID: &orgID, Since: &since}
+
+		t.Run("a repeated dimension is grouped on once", func(t *testing.T) {
+			got, err := store.AggregateCostByDimensions(ctx, filter, port.UsageDimensionModel, port.UsageDimensionModel)
+			if err != nil {
+				t.Fatalf("AggregateCostByDimensions: %v", err)
+			}
+			if len(got) != 1 || len(got[port.UsageDimensionModel]) != 1 || got[port.UsageDimensionModel][0].Cost != 1000 {
+				t.Errorf("expected one gpt-4 sub-total of 1000, got %v", got)
+			}
+		})
+		t.Run("no dimension yields an empty map", func(t *testing.T) {
+			got, err := store.AggregateCostByDimensions(ctx, filter)
+			if err != nil || len(got) != 0 {
+				t.Errorf("expected an empty map, got %v, %v", got, err)
+			}
+		})
+		t.Run("an unsupported dimension fails", func(t *testing.T) {
+			if _, err := store.AggregateCostByDimensions(ctx, filter, port.UsageDimension("week")); err == nil {
+				t.Error("expected an error")
+			}
+		})
+		t.Run("more than four dimensions fail", func(t *testing.T) {
+			_, err := store.AggregateCostByDimensions(ctx, filter,
+				port.UsageDimensionModel, port.UsageDimensionDay, port.UsageDimensionUser, port.UsageDimensionProvider, port.UsageDimension("week"))
+			if err == nil {
+				t.Error("expected an error")
+			}
+		})
+	})
+}

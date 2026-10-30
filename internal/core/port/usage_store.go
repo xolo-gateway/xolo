@@ -93,6 +93,10 @@ type UsageStore interface {
 	// AggregateCostByDimensions returns, for each dimension, what
 	// AggregateCostByDimension would, in a single pass over the records: a page
 	// charting the same period several ways reads it once.
+	//
+	// A dimension given twice is grouped on once, and no dimension yields an
+	// empty map. It accepts at most four dimensions, as many as there are, and
+	// fails on an unsupported one. The order of each slice is unspecified.
 	AggregateCostByDimensions(ctx context.Context, filter UsageFilter, dimensions ...UsageDimension) (map[UsageDimension][]DimensionCost, error)
 	// AggregatePlanTokensByUser returns subscription-covered (plan_covered=true) token
 	// sub-totals grouped by user, honoring the filter.
