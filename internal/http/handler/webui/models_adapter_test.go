@@ -56,10 +56,10 @@ func modelNode(t *testing.T, data model.ModelNodeData) *model.PipelineGraph {
 	return &model.PipelineGraph{Nodes: []model.PipelineNode{{ID: "m", Type: model.NodeTypeModel, Data: raw}}}
 }
 
-// TestVirtualModelUsage pins what the profile models page shows of a virtual
+// TestVirtualCatalogModel pins what the profile models page shows of a virtual
 // model: the windows and capabilities its pipeline derives, and undetermined
 // capabilities when the pipeline picks its model at runtime.
-func TestVirtualModelUsage(t *testing.T) {
+func TestVirtualCatalogModel(t *testing.T) {
 	org := model.NewOrganization("tenant", "acme", "ACME", "")
 	thinker := model.NewLLMModel(model.NewProviderID(), org.ID(), "thinker", "thinker", "", 0, 0)
 	thinker.SetContextWindow(200_000)
@@ -74,7 +74,7 @@ func TestVirtualModelUsage(t *testing.T) {
 
 	derived := model.NewVirtualModel(org.ID(), "smart", "")
 	derived.SetGraph(modelNode(t, model.ModelNodeData{ProxyName: "thinker"}))
-	mu := virtualModelUsage(cards, derived, org, nil, []string{"acme/smart"})
+	mu := virtualCatalogModel(cards, derived, org, []string{"acme/smart"})
 	if mu.CapabilitiesUndetermined {
 		t.Error("a pipeline calling a known model must determine the capabilities")
 	}
@@ -87,7 +87,7 @@ func TestVirtualModelUsage(t *testing.T) {
 
 	passthrough := model.NewVirtualModel(org.ID(), "router", "")
 	passthrough.SetGraph(modelNode(t, model.ModelNodeData{Passthrough: true}))
-	mu = virtualModelUsage(cards, passthrough, org, nil, []string{"acme/router"})
+	mu = virtualCatalogModel(cards, passthrough, org, []string{"acme/router"})
 	if !mu.CapabilitiesUndetermined {
 		t.Error("a passthrough pipeline must leave the capabilities undetermined")
 	}
@@ -96,11 +96,11 @@ func TestVirtualModelUsage(t *testing.T) {
 	}
 }
 
-// TestVirtualModelUsageOutputWindow pins how a virtual model's output window
+// TestVirtualCatalogModelOutputWindow pins how a virtual model's output window
 // combines its candidates: the smallest when all are known, unknown as soon as
 // one is, and the catalogue override above both. Each candidate name is
 // looked up once for the whole page.
-func TestVirtualModelUsageOutputWindow(t *testing.T) {
+func TestVirtualCatalogModelOutputWindow(t *testing.T) {
 	org := model.NewOrganization("tenant", "acme", "ACME", "")
 	newModel := func(name string, output int64) model.LLMModel {
 		m := model.NewLLMModel(model.NewProviderID(), org.ID(), name, name, "", 0, 0)
@@ -138,7 +138,7 @@ func TestVirtualModelUsageOutputWindow(t *testing.T) {
 			vm := model.NewVirtualModel(org.ID(), "vm", "")
 			vm.SetGraph(fallback(t, tt.models...))
 			vm.SetCatalogOverrides(tt.overrides)
-			mu := virtualModelUsage(cards, vm, org, nil, []string{"acme/vm"})
+			mu := virtualCatalogModel(cards, vm, org, []string{"acme/vm"})
 			if got := mu.Model.OutputWindow(); got != tt.want {
 				t.Errorf("OutputWindow() = %d, want %d", got, tt.want)
 			}

@@ -1,7 +1,6 @@
 package component
 
 import (
-	"github.com/xolo-gateway/xolo/internal/i18n"
 	"fmt"
 	"github.com/xolo-gateway/xolo/internal/core/model"
 	"github.com/xolo-gateway/xolo/internal/core/port"
@@ -11,6 +10,7 @@ import (
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/icon"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/pagination"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/table"
+	"github.com/xolo-gateway/xolo/internal/i18n"
 )
 
 type OrgUsage struct {
@@ -20,32 +20,6 @@ type OrgUsage struct {
 	MonthlyCost int64
 	YearlyCost  int64
 	Currency    string
-}
-
-type ModelUsage struct {
-	Model     model.LLMModel
-	Org       model.Organization
-	Aggregate *port.UsageAggregate
-	Provider  model.Provider // nil for virtual models
-	// Names are the names the user can call the model by: "<org>/<model>"
-	// for the organization-wide access, "<org>/<team>/<model>" per team.
-	Names []string
-	// CapabilitiesUndetermined is true for a virtual model whose capabilities
-	// are neither derived from its pipeline nor declared by its catalogue
-	// overrides: the false values of Model.Capabilities() then mean unknown.
-	CapabilitiesUndetermined bool
-}
-
-// ModelNames returns the names a model card shows, the qualified name when
-// none were resolved.
-func ModelNames(mu ModelUsage) []string {
-	if len(mu.Names) > 0 {
-		return mu.Names
-	}
-	if mu.Org != nil {
-		return []string{mu.Org.Slug() + "/" + mu.Model.ProxyName()}
-	}
-	return []string{mu.Model.ProxyName()}
 }
 
 type DisplayUsageRecord struct {
@@ -82,8 +56,8 @@ type DashboardPageVModel struct {
 	// PlanCoveredProviders holds the labels of ChartPerProvider billed by
 	// subscription.
 	PlanCoveredProviders map[string]bool
-	TotalEnergyWh         float64 // sum of midpoint estimates (0 if all unknown)
-	TotalCO2GramsMid      float64 // sum of CO₂ midpoints (world average, grams)
+	TotalEnergyWh        float64 // sum of midpoint estimates (0 if all unknown)
+	TotalCO2GramsMid     float64 // sum of CO₂ midpoints (world average, grams)
 }
 
 // ChartShare represents a value's share of a total, as a percentage, with
