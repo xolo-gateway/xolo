@@ -28,8 +28,9 @@ func (h *Handler) getModelsPage(w http.ResponseWriter, r *http.Request) {
 	user := httpCtx.User(ctx)
 	memberships := httpCtx.Memberships(ctx)
 
-	filter := parseModelsFilter(r.URL.Query())
 	models := h.loadCatalogModels(ctx, user.ID(), memberships)
+	facets := catalogFacets(models)
+	filter := parseModelsFilter(r.URL.Query(), facets)
 
 	vmodel := component.ModelsPageVModel{
 		AppLayoutVModel: common.AppLayoutVModel{
@@ -44,7 +45,7 @@ func (h *Handler) getModelsPage(w http.ResponseWriter, r *http.Request) {
 		Models:    filterCatalogModels(models, filter),
 		AllModels: models,
 		Filter:    filter,
-		Facets:    catalogFacets(models),
+		Facets:    facets,
 	}
 
 	templ.Handler(component.ModelsPage(vmodel)).ServeHTTP(w, r)
@@ -52,8 +53,9 @@ func (h *Handler) getModelsPage(w http.ResponseWriter, r *http.Request) {
 
 // parseModelsFilter reads the filter of the models page from its query
 // string. Unknown values are dropped, so the controls never show a choice the
-// list does not apply.
-func parseModelsFilter(query url.Values) component.ModelsFilter {
+// list does not apply: a provider the user has no model of, from a shared URL,
+// would otherwise narrow the list from a control that is not rendered.
+func parseModelsFilter(query url.Values, facets component.ModelsFacets) component.ModelsFilter {
 	filter := component.ModelsFilter{
 		Query:    strings.TrimSpace(query.Get("q")),
 		Provider: query.Get("provider"),
@@ -65,6 +67,9 @@ func parseModelsFilter(query url.Values) component.ModelsFilter {
 	case model.ModelKindCompletion, model.ModelKindEmbeddings, model.ModelKindDecision:
 	default:
 		filter.Kind = ""
+	}
+	if !slices.Contains(facets.Providers, filter.Provider) {
+		filter.Provider = ""
 	}
 	if filter.Type != component.ModelsTypeDirect && filter.Type != component.ModelsTypeVirtual {
 		filter.Type = ""
@@ -262,11 +267,15 @@ func (h *Handler) directCatalogModels(ctx context.Context, perms rbac.Permission
 		slog.ErrorContext(ctx, "could not list models", slogx.Error(err), slog.String("orgID", string(orgID)))
 		return nil
 	}
-	providers := make(map[model.ProviderID]model.Provider)
+	// Without its providers, every row of the organization would lose its
+	// provider and escape the provider filter: drop the organization, as when
+	// its models cannot be listed.
 	list, err := h.providerStore.ListProviders(ctx, orgID)
 	if err != nil {
 		slog.ErrorContext(ctx, "could not list providers", slogx.Error(err), slog.String("orgID", string(orgID)))
+		return nil
 	}
+	providers := make(map[model.ProviderID]model.Provider, len(list))
 	for _, p := range list {
 		providers[p.ID()] = p
 	}

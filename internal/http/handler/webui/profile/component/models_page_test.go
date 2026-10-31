@@ -107,3 +107,22 @@ func TestModelsPageRendersTheFilter(t *testing.T) {
 		t.Errorf("an unfiltered view has no filter to clear")
 	}
 }
+
+func TestDescriptionSummary(t *testing.T) {
+	cases := []struct {
+		description string
+		summary     string
+		more        bool
+	}{
+		{description: "Fast and cheap.", summary: "Fast and cheap."},
+		{description: "  Routes to\ndeepseek.  ", summary: "Routes to deepseek."},
+		{description: "First paragraph.\r\n\r\nSecond one.", summary: "First paragraph.", more: true},
+		{description: strings.Repeat("long ", 20), summary: strings.TrimSpace(strings.Repeat("long ", 20)), more: true},
+	}
+	for _, tc := range cases {
+		summary, more := descriptionSummary(tc.description)
+		if summary != tc.summary || more != tc.more {
+			t.Errorf("descriptionSummary(%q) = %q, %v, want %q, %v", tc.description, summary, more, tc.summary, tc.more)
+		}
+	}
+}

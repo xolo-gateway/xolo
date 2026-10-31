@@ -90,6 +90,7 @@ func testCatalog() []component.CatalogModel {
 // TestParseModelsFilter pins how the query string becomes a filter: unknown
 // values are dropped so the controls never show a choice the list ignores.
 func TestParseModelsFilter(t *testing.T) {
+	facets := catalogFacets(testCatalog())
 	filter := parseModelsFilter(url.Values{
 		"q":        {"  deep  "},
 		"provider": {"Mistral"},
@@ -97,7 +98,7 @@ func TestParseModelsFilter(t *testing.T) {
 		"type":     {"virtual"},
 		"sort":     {"usage"},
 		"cap":      {"tools", "telepathy", "tools", "vision"},
-	})
+	}, facets)
 	want := component.ModelsFilter{
 		Query:        "deep",
 		Provider:     "Mistral",
@@ -109,8 +110,11 @@ func TestParseModelsFilter(t *testing.T) {
 		filter.Type != want.Type || filter.Sort != want.Sort || !slices.Equal(filter.Capabilities, want.Capabilities) {
 		t.Errorf("got %+v, want %+v", filter, want)
 	}
-	if parseModelsFilter(url.Values{}).Active() {
+	if parseModelsFilter(url.Values{}, facets).Active() {
 		t.Errorf("an empty query string must not narrow the list")
+	}
+	if f := parseModelsFilter(url.Values{"provider": {"Anthropic"}}, facets); f.Provider != "" {
+		t.Errorf("a provider the user has no model of must be dropped, got %q", f.Provider)
 	}
 }
 
