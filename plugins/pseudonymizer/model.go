@@ -285,22 +285,17 @@ func loadModel(ctx context.Context, src modelSource, bias float64) (*indecis.Mod
 }
 
 // gatedRecognizer reads a text with the model once a decision slot is free.
-// It implements go-anon's ContextRecognizer: the wait for a slot ends with the
-// request, or with errModelBusy after wait, and the reading itself stops with
-// the request.
+// The wait for a slot ends with the request, or with errModelBusy after wait,
+// and the reading itself stops with the request.
 type gatedRecognizer struct {
 	rec       *recognizer.Recognizer
 	decisions chan struct{}
 	wait      time.Duration
 }
 
-var _ goanon.ContextRecognizer = gatedRecognizer{}
+var _ goanon.Recognizer = gatedRecognizer{}
 
-func (g gatedRecognizer) Recognize(text string) ([]ner.Entity, error) {
-	return g.RecognizeContext(context.Background(), text)
-}
-
-func (g gatedRecognizer) RecognizeContext(ctx context.Context, text string) ([]ner.Entity, error) {
+func (g gatedRecognizer) Recognize(ctx context.Context, text string) ([]ner.Entity, error) {
 	timer := time.NewTimer(g.wait)
 	defer timer.Stop()
 	select {

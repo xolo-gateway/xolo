@@ -390,7 +390,7 @@ func placeholderOf(t *testing.T, nodeState []byte, value string) string {
 // pattern, so placeholders of every form can be produced without a model.
 type regexOnlyRecognizer struct{}
 
-func (regexOnlyRecognizer) Recognize(text string) ([]ner.Entity, error) {
+func (regexOnlyRecognizer) Recognize(_ context.Context, text string) ([]ner.Entity, error) {
 	patterns := append(append([]ner.RegexPattern{}, goanon.BuiltinRegexPatterns...), goanon.SecretPatterns()...)
 	return ner.RegexEntityFilter(patterns)(text, nil), nil
 }
@@ -422,7 +422,7 @@ func TestMaskPlaceholders_CoversEveryFormGoAnonWrites(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			anon := goanon.NewAnonymizer(regexOnlyRecognizer{}, goanon.Config{Strategy: tc.strategy, ConsistentMap: true})
 			session := goanon.NewSession()
-			result, err := anon.Anonymize(source, append(tc.opts, anonymizer.WithSession(session))...)
+			result, err := anon.Anonymize(context.Background(), source, append(tc.opts, anonymizer.WithSession(session))...)
 			if err != nil {
 				t.Fatalf("anonymize: %v", err)
 			}
@@ -446,7 +446,7 @@ func TestMaskPlaceholders_CoversEveryFormGoAnonWrites(t *testing.T) {
 			// node the placeholders belong to.
 			for _, own := range []func(string) bool{ownedBy(session.Nonce()), ownedBy("")} {
 				masked := maskPlaceholders(result.Text, own)
-				_, err := anon.Anonymize(masked.Text, append(tc.opts, anonymizer.WithSession(goanon.NewSession()))...)
+				_, err := anon.Anonymize(context.Background(), masked.Text, append(tc.opts, anonymizer.WithSession(goanon.NewSession()))...)
 				if errors.Is(err, anonymizer.ErrPlaceholderCollision) {
 					t.Errorf("go-anon refuses the masked text %q", masked.Text)
 				} else if err != nil {

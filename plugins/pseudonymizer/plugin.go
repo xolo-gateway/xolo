@@ -342,7 +342,7 @@ func (p *Plugin) PreRequest(ctx context.Context, in *proto.PreRequestInput) (*pr
 	// detectKept expose la détection en lecture seule sur laquelle s'appuient les
 	// chemins qui transmettent un contenu sans le réécrire.
 	detectKept := func(text string) ([]ner.Entity, error) {
-		entities, err := anon.DetectContext(ctx, text)
+		entities, err := anon.Detect(ctx, text)
 		if err != nil {
 			return nil, err
 		}
@@ -388,7 +388,7 @@ func (p *Plugin) PreRequest(ctx context.Context, in *proto.PreRequestInput) (*pr
 	ownPlaceholder := ownedBy(session.Nonce())
 	anonymize := func(s string) (*anonymizer.Result, error) {
 		masked := maskPlaceholders(s, ownPlaceholder)
-		result, err := anon.Anonymize(masked.Text, append(anonymOpts, anonymizer.WithSession(session), anonymizer.WithContext(ctx))...)
+		result, err := anon.Anonymize(ctx, masked.Text, append(anonymOpts, anonymizer.WithSession(session))...)
 		if err != nil {
 			return nil, err
 		}

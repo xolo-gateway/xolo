@@ -171,18 +171,15 @@ func TestGatedRecognizer_BoundedWait(t *testing.T) {
 	decisions <- struct{}{}
 	g := gatedRecognizer{decisions: decisions, wait: 20 * time.Millisecond}
 
-	if _, err := g.RecognizeContext(context.Background(), "Jean Dupont"); !errors.Is(err, errModelBusy) {
-		t.Errorf("RecognizeContext = %v, want errModelBusy", err)
-	}
-	if _, err := g.Recognize("Jean Dupont"); !errors.Is(err, errModelBusy) {
+	if _, err := g.Recognize(context.Background(), "Jean Dupont"); !errors.Is(err, errModelBusy) {
 		t.Errorf("Recognize = %v, want errModelBusy", err)
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	g.wait = time.Hour
-	if _, err := g.RecognizeContext(ctx, "Jean Dupont"); !errors.Is(err, context.Canceled) {
-		t.Errorf("RecognizeContext = %v, want context.Canceled", err)
+	if _, err := g.Recognize(ctx, "Jean Dupont"); !errors.Is(err, context.Canceled) {
+		t.Errorf("Recognize = %v, want context.Canceled", err)
 	}
 	if len(decisions) != 1 {
 		t.Errorf("a failed wait took or released a slot: %d taken", len(decisions))

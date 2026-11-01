@@ -1,6 +1,7 @@
 package pipelinetest
 
 import (
+	"context"
 	goanon "github.com/bornholm/go-anon"
 	"github.com/bornholm/go-anon/pkg/anonymizer"
 	"github.com/bornholm/go-anon/pkg/ner"
@@ -13,7 +14,7 @@ type regexRecognizer struct {
 	patterns []ner.RegexPattern
 }
 
-func (r *regexRecognizer) Recognize(text string) ([]ner.Entity, error) {
+func (r *regexRecognizer) Recognize(_ context.Context, text string) ([]ner.Entity, error) {
 	filter := ner.RegexEntityFilter(r.patterns)
 	return filter(text, nil), nil
 }

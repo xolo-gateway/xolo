@@ -116,7 +116,7 @@ require (
 	github.com/Oudwins/tailwind-merge-go v0.2.1
 	github.com/a-h/templ v0.3.1001
 	github.com/bornholm/genai v0.47.1
-	github.com/bornholm/go-anon v0.4.1-0.20261101180322-64ca47663d4b
+	github.com/bornholm/go-anon v0.4.1-0.20261101181452-0ecf3d6fd823
 	github.com/bornholm/go-fuzzy v0.0.0-20250815131223-76b121e8632d
 	github.com/bornholm/go-x v0.0.0-20260127104343-c6737ea35324
 	github.com/bornholm/indecis v0.8.0
