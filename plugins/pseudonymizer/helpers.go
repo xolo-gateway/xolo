@@ -14,6 +14,12 @@ func formatFloat(f float64) string {
 	return strconv.FormatFloat(f, 'f', -1, 64)
 }
 
+// formatBias formats the bias for its input field, 0 included: unlike the
+// thresholds, 0 is a setting of its own, not "no limit".
+func formatBias(f float64) string {
+	return strconv.FormatFloat(f, 'f', -1, 64)
+}
+
 // languageNames maps ISO 639-1 codes to their display name in the UI.
 var languageNames = map[string]string{
 	"fr": "Français",

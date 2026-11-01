@@ -80,6 +80,40 @@ func TestPseudonymizer_NoPersonalData_Passthrough(t *testing.T) {
 	assertNoEvent(t, snap, eventDetected)
 }
 
+// TestPseudonymizer_IndecisEngine_RoundTrip checks the indecis engine through
+// a real server: its model, downloaded on first use, masks the indirect
+// identifiers and the health data the CRF leaves readable, and the answer
+// gets them back.
+func TestPseudonymizer_IndecisEngine_RoundTrip(t *testing.T) {
+	snap := snapshotEvents(t)
+	before := len(env.provider.Requests())
+
+	res := chat(t, tokenAlice, modelIndecis, "Mon fils Lucas, 8 ans, est suivi au CMP de Villeurbanne pour un TDAH.")
+
+	if res.Status != 200 {
+		t.Fatalf("status = %d, body = %s", res.Status, res.Body)
+	}
+	requests := env.provider.Requests()
+	if len(requests) != before+1 {
+		t.Fatalf("provider received %d request(s), want 1", len(requests)-before)
+	}
+	upstream := requests[len(requests)-1]
+	for _, leak := range []string{"Lucas", "8 ans", "Villeurbanne", "TDAH"} {
+		if strings.Contains(upstream.Raw, leak) {
+			t.Errorf("provider saw %q in the request: %s", leak, upstream.Raw)
+		}
+	}
+	if !strings.Contains(upstream.Raw, "⟦PERSON_") {
+		t.Errorf("provider request lacks a PERSON placeholder: %s", upstream.Raw)
+	}
+	for _, original := range []string{"Lucas", "TDAH"} {
+		if !strings.Contains(res.Content, original) {
+			t.Errorf("answer not deanonymized, %q missing: %q", original, res.Content)
+		}
+	}
+	waitForEvent(t, snap, eventDetected)
+}
+
 // TestPseudonymizer_HashWithoutKey_FailsClosed checks that a hash strategy
 // with no HMAC key on the node refuses the request instead of forwarding
 // personal data in clear, and reports the refusal as an event.

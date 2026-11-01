@@ -21,6 +21,7 @@ import (
 	"github.com/bornholm/go-anon/pkg/anonymizer"
 	"github.com/bornholm/go-anon/pkg/modelstore"
 	"github.com/bornholm/go-anon/pkg/ner"
+	"github.com/bornholm/indecis-ner/recognizer"
 	"github.com/xolo-gateway/xolo/pkg/pluginsdk"
 	proto "github.com/xolo-gateway/xolo/pkg/pluginsdk/proto"
 )
@@ -35,6 +36,10 @@ type Plugin struct {
 	detector   goanon.LanguageDetector
 	candidates []string
 	lastCfgKey string
+
+	// models holds the indecis models, loaded once per directory and bias
+	// whatever the config changes: see models.
+	models models
 
 	hostMu     sync.Mutex
 	hostClient pluginsdk.HostClient
@@ -1397,6 +1402,11 @@ func (p *Plugin) getDetector(ctx context.Context, cfg Config) (goanon.LanguageDe
 
 	if p.detector == nil {
 		p.candidates = supportedLanguages(ctx, p.store)
+		if cfg.Engine == engineIndecis {
+			// The indecis model reads every language: the language only
+			// chooses the instruction, and the manifest is not consulted.
+			p.candidates = goanon.SupportedLanguages()
+		}
 		p.detector = goanon.NewWhatlangDetector(p.candidates...)
 		slog.DebugContext(ctx, "pseudonymizer: language detector ready",
 			slog.Any("candidates", p.candidates),
@@ -1409,6 +1419,70 @@ func (p *Plugin) getDetector(ctx context.Context, cfg Config) (goanon.LanguageDe
 // buildAnonymizer downloads the model and creates a new Anonymizer for language.
 // Must be called with p.mu held.
 func (p *Plugin) buildAnonymizer(ctx context.Context, cfg Config, language string) (*anonymizer.Anonymizer, error) {
+	var rec goanon.Recognizer
+	var err error
+	if cfg.Engine == engineIndecis {
+		rec, err = p.indecisRecognizer(ctx, cfg)
+	} else {
+		rec, err = p.crfRecognizer(ctx, cfg, language)
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	// ConsistentMap is always true, matching the go-anon server behaviour.
+	anonCfg := goanon.Config{
+		Strategy:      strategyFromString(cfg.Strategy),
+		ConsistentMap: true,
+	}
+
+	if len(cfg.SkipTypes) > 0 {
+		skipSet := make(map[goanon.EntityType]bool, len(cfg.SkipTypes))
+		for _, t := range cfg.SkipTypes {
+			for _, alias := range typeAliases(t) {
+				skipSet[goanon.EntityType(alias)] = true
+			}
+		}
+		for _, t := range allEntityTypes {
+			if !skipSet[t] {
+				anonCfg.EntityTypes = append(anonCfg.EntityTypes, t)
+			}
+		}
+	}
+
+	return goanon.NewAnonymizer(rec, anonCfg), nil
+}
+
+// indecisRecognizer reads with the indecis model of cfg, downloading it on
+// first use. Identifiers and secrets by regular expression are added to the
+// passages it masks, which take precedence over them.
+func (p *Plugin) indecisRecognizer(ctx context.Context, cfg Config) (goanon.Recognizer, error) {
+	src, err := modelSourceFromConfig(cfg)
+	if err != nil {
+		return nil, err
+	}
+	model, decisions, err := p.models.get(ctx, src, cfg.Bias)
+	if err != nil {
+		return nil, fmt.Errorf("get indecis model: %w", err)
+	}
+
+	var filters []goanon.EntityFilter
+	if cfg.BuiltinRegexPatterns {
+		filters = append(filters, goanon.RegexEntityFilter(builtinRegexPatterns(cfg)))
+	}
+	if cfg.BuiltinSecretPatterns {
+		filters = append(filters, goanon.RegexEntityFilter(goanon.SecretPatterns()))
+	}
+	rec := recognizer.New(model, modelQuestions, append(filters, postFilters(cfg)...)...)
+	// The recognizer's own threshold also drops the typed and sensitive
+	// passages below it, which then neither type nor flag a mask.
+	rec.MinConfidence = cfg.MinConfidence
+	return gatedRecognizer{rec: rec, decisions: decisions}, nil
+}
+
+// crfRecognizer downloads the CRF model of language and builds go-anon's
+// recognizer on it, with the gazetteers and clusters published with it.
+func (p *Plugin) crfRecognizer(ctx context.Context, cfg Config, language string) (goanon.Recognizer, error) {
 	modelPath, err := p.store.Get(ctx, language)
 	if err != nil {
 		return nil, fmt.Errorf("get model for language %q: %w", language, err)
@@ -1446,7 +1520,11 @@ func (p *Plugin) buildAnonymizer(ctx context.Context, cfg Config, language strin
 		recOpts = append(recOpts, goanon.WithBrownClusters(clusters))
 	}
 
-	if filters := postFilters(cfg); len(filters) > 0 {
+	var filters []goanon.EntityFilter
+	if cfg.MinConfidence > 0 {
+		filters = append(filters, goanon.MinConfidenceFilter(cfg.MinConfidence))
+	}
+	if filters = append(filters, postFilters(cfg)...); len(filters) > 0 {
 		recOpts = append(recOpts, goanon.WithPostFilters(filters...))
 	}
 	if cfg.FirstNameReclassify && firstnamesGaz != nil {
@@ -1479,34 +1557,14 @@ func (p *Plugin) buildAnonymizer(ctx context.Context, cfg Config, language strin
 		)
 	}
 
-	// ConsistentMap is always true, matching the go-anon server behaviour.
-	anonCfg := goanon.Config{
-		Strategy:      strategyFromString(cfg.Strategy),
-		ConsistentMap: true,
-	}
-
-	if len(cfg.SkipTypes) > 0 {
-		skipSet := make(map[goanon.EntityType]bool, len(cfg.SkipTypes))
-		for _, t := range cfg.SkipTypes {
-			skipSet[goanon.EntityType(t)] = true
-		}
-		for _, t := range allEntityTypes {
-			if !skipSet[t] {
-				anonCfg.EntityTypes = append(anonCfg.EntityTypes, t)
-			}
-		}
-	}
-
-	return goanon.NewAnonymizer(rec, anonCfg), nil
+	return rec, nil
 }
 
 // postFilters builds the entity filters pruning the recognizer output, in
-// application order: confidence first, then span size, then blocklists.
+// application order: span size, then blocklists. The confidence threshold
+// comes first, and is the engine's own: see buildAnonymizer.
 func postFilters(cfg Config) []goanon.EntityFilter {
 	var filters []goanon.EntityFilter
-	if cfg.MinConfidence > 0 {
-		filters = append(filters, goanon.MinConfidenceFilter(cfg.MinConfidence))
-	}
 	if cfg.MinRunes > 0 {
 		filters = append(filters, ner.MinRunesFilter(cfg.MinRunes))
 	}
@@ -1515,10 +1573,25 @@ func postFilters(cfg Config) []goanon.EntityFilter {
 	}
 	for typeStr, words := range cfg.Blocklist {
 		if len(words) > 0 {
-			filters = append(filters, goanon.BlocklistFilter(goanon.EntityType(typeStr), words...))
+			for _, alias := range typeAliases(typeStr) {
+				filters = append(filters, goanon.BlocklistFilter(goanon.EntityType(alias), words...))
+			}
 		}
 	}
 	return filters
+}
+
+// typeAliases returns t and the type naming the same thing for the other
+// engine: a person is PER for the CRF, PERSON for the indecis model, so that
+// a config written for one keeps skipping and blocking the same with the other.
+func typeAliases(t string) []string {
+	switch goanon.EntityType(t) {
+	case goanon.TypePER:
+		return []string{t, string(typePerson)}
+	case typePerson:
+		return []string{t, string(goanon.TypePER)}
+	}
+	return []string{t}
 }
 
 // builtinRegexPatterns returns the builtin regex patterns to feed the

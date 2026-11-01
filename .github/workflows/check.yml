@@ -68,8 +68,9 @@ jobs:
   # Drives a real server, built from the working tree, over HTTP against a fake
   # provider: built-in pipeline nodes, the shipped plugins and the events they
   # record (see test/e2e/README.md for the scenario list). The pseudonymizer
-  # plugin downloads its NER model on first use; the cache keeps that download
-  # out of the test timeout on later runs.
+  # plugin downloads its NER models on first use, the CRF ones of go-anon and
+  # the indecis one; the cache keeps those downloads out of the test timeout
+  # on later runs.
   e2e:
     env:
       CGO_ENABLED: 0
@@ -83,11 +84,13 @@ jobs:
         with:
           go-version: "1.27.0"
 
-      - name: Cache go-anon models
+      - name: Cache NER models
         uses: actions/cache@v4
         with:
-          path: ~/.cache/go-anon
-          key: go-anon-models-${{ runner.os }}-v1
+          path: |
+            ~/.cache/go-anon
+            ~/.cache/indecis-ner
+          key: ner-models-${{ runner.os }}-v2
 
       - name: End-to-end tests
         run: make test-e2e

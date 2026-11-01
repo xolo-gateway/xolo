@@ -48,7 +48,18 @@ templ page(pd uiPageData) {
 					@card.Title() { { i18n.T(ctx, "plugin.pseudonymizer.models.title") } }
 				}
 				@card.Content() {
-					if len(pd.ModelStatus) == 0 {
+					if pd.Config.Engine == engineIndecis {
+						<div class="flex flex-wrap items-center gap-2">
+							<span class="text-sm font-medium">{ pd.Indecis.Name }</span>
+							@indecisStatusBadge(pd.Indecis)
+						</div>
+						<p class="text-xs text-muted-foreground mt-2 break-all">{ pd.Indecis.Path }</p>
+						if !pd.Indecis.Local {
+							<p class="text-xs text-muted-foreground mt-2">
+								{ i18n.T(ctx, "plugin.pseudonymizer.models.indecis_hint") }
+							</p>
+						}
+					} else if len(pd.ModelStatus) == 0 {
 						<p class="text-sm text-muted-foreground italic">
 							{ i18n.T(ctx, "plugin.pseudonymizer.models.unavailable") }
 						</p>
@@ -73,6 +84,20 @@ templ page(pd uiPageData) {
 					}
 					@card.Content() {
 						<div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+							<div class="space-y-1 sm:col-span-2">
+								@label.Label(label.Props{For: "engine"}) { { i18n.T(ctx, "plugin.pseudonymizer.engine.label") } }
+								<select
+									id="engine"
+									name="engine"
+									class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+								>
+									<option value="crf" if pd.Config.Engine != engineIndecis { selected }>{ i18n.T(ctx, "plugin.pseudonymizer.engine.crf") }</option>
+									<option value="indecis" if pd.Config.Engine == engineIndecis { selected }>{ i18n.T(ctx, "plugin.pseudonymizer.engine.indecis") }</option>
+								</select>
+								<p class="text-xs text-muted-foreground">
+									{ i18n.T(ctx, "plugin.pseudonymizer.engine.help") }
+								</p>
+							</div>
 							<div class="space-y-1">
 								@label.Label(label.Props{For: "language"}) { { i18n.T(ctx, "plugin.pseudonymizer.language.label") } }
 								<select
@@ -129,6 +154,19 @@ templ page(pd uiPageData) {
 					@card.Content() {
 						<div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
 							<div class="space-y-1">
+								@label.Label(label.Props{For: "bias"}) { { i18n.T(ctx, "plugin.pseudonymizer.bias.label") } }
+								@input.Input(input.Props{
+									ID:         "bias",
+									Name:       "bias",
+									Type:       "number",
+									Value:      formatBias(pd.Config.Bias),
+									Attributes: templ.Attributes{"step": "0.5", "min": "0", "max": "10", "required": "required"},
+								})
+								<p class="text-xs text-muted-foreground">
+									{ i18n.T(ctx, "plugin.pseudonymizer.bias.help") }
+								</p>
+							</div>
+							<div class="space-y-1">
 								@label.Label(label.Props{For: "min_confidence"}) { { i18n.T(ctx, "plugin.pseudonymizer.min_confidence.label") } }
 								@input.Input(input.Props{
 									ID:          "min_confidence",
@@ -167,6 +205,32 @@ templ page(pd uiPageData) {
 						</div>
 					}
 				}
+
+			<!-- Types -->
+			@card.Card() {
+				@card.Header() {
+					@card.Title() { { i18n.T(ctx, "plugin.pseudonymizer.types.title") } }
+				}
+				@card.Content() {
+					<p class="text-xs text-muted-foreground mb-3">
+						{ i18n.T(ctx, "plugin.pseudonymizer.types.help") }
+					</p>
+					<div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+						for _, t := range engineTypes(pd.Config.Engine) {
+							<input type="hidden" name="types_shown" value={ string(t) }/>
+							<div class="flex items-start gap-3">
+								<div class="mt-0.5">
+									@checkbox.Checkbox(checkbox.Props{ID: "type_" + string(t), Name: "types", Value: string(t), Checked: !typeSkipped(pd.Config.SkipTypes, t)})
+								</div>
+								<div class="space-y-0.5">
+									@label.Label(label.Props{For: "type_" + string(t)}) { { string(t) } }
+									<p class="text-xs text-muted-foreground">{ i18n.T(ctx, "plugin.pseudonymizer.type." + string(t)) }</p>
+								</div>
+							</div>
+						}
+					</div>
+				}
+			}
 
 			<!-- Vérification -->
 			@card.Card() {
@@ -274,6 +338,24 @@ templ page(pd uiPageData) {
 									Placeholder: i18n.T(ctx, "plugin.pseudonymizer.manifest_url.placeholder"),
 								})
 							</div>
+							<div class="space-y-1">
+								@label.Label(label.Props{For: "model_url"}) { { i18n.T(ctx, "plugin.pseudonymizer.model_url.label") } }
+								@input.Input(input.Props{
+									ID:          "model_url",
+									Name:        "model_url",
+									Value:       pd.Config.ModelURL,
+									Placeholder: i18n.T(ctx, "plugin.pseudonymizer.model_url.placeholder"),
+								})
+							</div>
+							<div class="space-y-1">
+								@label.Label(label.Props{For: "model_dir"}) { { i18n.T(ctx, "plugin.pseudonymizer.model_dir.label") } }
+								@input.Input(input.Props{
+									ID:          "model_dir",
+									Name:        "model_dir",
+									Value:       pd.Config.ModelDir,
+									Placeholder: i18n.T(ctx, "plugin.pseudonymizer.model_dir.placeholder"),
+								})
+							</div>
 							@checkboxRow("offline", i18n.T(ctx, "plugin.pseudonymizer.offline.label"), i18n.T(ctx, "plugin.pseudonymizer.offline.help"), pd.Config.Offline)
 						</div>
 					}
@@ -344,6 +426,22 @@ templ modelStatusBadge(ms modelStatusEntry) {
 	} else {
 		@badge.Badge(badge.Props{Variant: badge.VariantOutline}) {
 			○ { ms.Lang }
+		}
+	}
+}
+
+templ indecisStatusBadge(ms indecisStatus) {
+	if ms.Local {
+		@badge.Badge(badge.Props{}) {
+			{ i18n.T(ctx, "plugin.pseudonymizer.models.local") }
+		}
+	} else if ms.Cached {
+		@badge.Badge(badge.Props{}) {
+			✓ { i18n.T(ctx, "plugin.pseudonymizer.models.cached") }
+		}
+	} else {
+		@badge.Badge(badge.Props{Variant: badge.VariantOutline}) {
+			○ { i18n.T(ctx, "plugin.pseudonymizer.models.missing") }
 		}
 	}
 }

@@ -17,11 +17,13 @@ Ce plugin ouvre son propre écran de configuration dans le panneau de droite.
 
 | Champ | Rôle | Défaut |
 | --- | --- | --- |
+| `engine` | Moteur de détection : `crf` ou `indecis` | `crf` |
 | `strategy` | Stratégie d'anonymisation | `tag` |
 | `language` | Langue | `auto` |
 | `fallback_language` | Langue de repli | `fr` |
+| `bias` | Prudence du moteur `indecis`, de 0 à 10 | 3 |
 | `min_confidence` | Confiance minimale | 0,3 |
-| `skip_types` | Types d'entités à ignorer |  |
+| `skip_types` | Types d'entités à ignorer, ceux que l'écran laisse décochés |  |
 | `blocklist` | Liste de blocage |  |
 | `builtin_regex_patterns` | Patterns regex intégrés | `true` |
 | `builtin_secret_patterns` | Patterns secrets intégrés | `true` |
@@ -32,8 +34,23 @@ Ce plugin ouvre son propre écran de configuration dans le panneau de droite.
 | `verification` | Observer les fuites sans bloquer | `true` |
 | `verification_strict` | Bloquer les requêtes sur fuite | `false` |
 | `cache_dir` | Répertoire de cache des modèles |  |
-| `manifest_url` | URL du manifest des modèles |  |
+| `manifest_url` | URL du manifest des modèles `crf` |  |
+| `model_url` | URL d'un miroir du modèle `indecis` |  |
+| `model_dir` | Répertoire d'un modèle `indecis` déjà présent |  |
 | `offline` | Mode hors-ligne | `false` |
+
+## Moteur de détection
+
+Deux moteurs trouvent les données à remplacer ; les expressions régulières (adresses électroniques, téléphones, IBAN, SIRET, SIREN, adresses IP, secrets) s'ajoutent à l'un comme à l'autre.
+
+- `crf`, par défaut, est le modèle d'entités nommées de go-anon : un modèle par langue (français, anglais, espagnol), qui trouve les personnes (`PER`), les lieux (`LOC`), les organisations (`ORG`) et le reste (`MISC`). Il reste précis sur les demandes courtes, celles qu'on adresse d'ordinaire à un LLM.
+- `indecis` est le modèle de masquage d'[indecis-ner](https://github.com/Bornholm/indecis-ner), le même que celui d'[indecis-caviardage](https://github.com/beewii/indecis-caviardage). Un seul modèle lit toutes les langues : `language` ne choisit plus que la langue de l'instruction donnée au LLM. Il masque aussi les identifiants indirects (âge, métier, proches, événements de vie) et les catégories particulières de données de l'article 9 du RGPD (santé, convictions, origine…), que le moteur `crf` laisse lisibles. Ses types sont `PERSON`, `CODE` (numéros de dossier, de compte…), `LOC`, `ORG`, `DEM` (caractéristiques d'une personne), `DATETIME`, `QUANTITY` et `MISC`.
+
+Le moteur `indecis` masque large : dans « Explique la différence entre TCP et UDP », il masque `TCP` et `UDP`, et dans une demande de code, des mots du code. Il convient aux contenus riches en données personnelles (comptes rendus, courriers, dossiers, pièces jointes), pas à un assistant de code ou à des questions techniques. La prudence (`bias`) règle ce compromis : plus elle est haute, moins il reste de données lisibles, et plus il y a de passages masqués inutilement. Sur les décisions de justice du jeu de test TAB, à 3, aucun identifiant direct n'est resté lisible en anglais ni en espagnol, 2 sur 366 en français, pour environ deux tiers de passages masqués à raison. La confiance minimale s'applique aussi aux passages du modèle : à 0,3, elle écarte la plupart des masques superflus d'une demande courte.
+
+Le modèle `indecis` (environ 310 Mo) est téléchargé depuis la release d'indecis-ner au premier appel, vérifié par son empreinte SHA-256, puis gardé dans `cache_dir` (par défaut, le dossier `indecis-ner` du répertoire de cache de l'utilisateur). Un miroir peut le servir (`model_url`), avec les mêmes empreintes, et `model_dir` désigne un modèle déjà présent sur la machine, utilisé tel quel. Le premier appel attend la fin du téléchargement ; s'il est interrompu, la requête passe sans pseudonymisation et l'événement `passthrough` le signale, comme pour un modèle `crf` absent.
+
+`PER` et `PERSON` désignent le même type dans `skip_types` et `blocklist` : une configuration écrite pour un moteur ignore et bloque les mêmes personnes avec l'autre.
 
 ## En pratique
 
@@ -61,4 +78,4 @@ Les appels d'outils **au format OpenAI** sont couverts eux aussi : leurs argumen
 
 Quatre limites à connaître. Le champ `function_call`, l'ancêtre déprécié de `tool_calls` que quelques clients anciens émettent encore, n'est pas traité : ses arguments partent tels quels. Comme une conversation agentique fait presque toujours remplacer quelque chose, ces échanges perdent le streaming — la réponse n'est renvoyée qu'une fois complète. En mode strict avec `verification_on_leak` à `allow`, une fuite détectée fait passer la requête **entière** en passe-plat : l'événement `sensitive-data.leak` le signale, mais du trafic d'outils transporte un fichier là où un message ordinaire transporte une phrase — `block` refuse plutôt que de transmettre. Enfin, `builtin_secret_patterns` redige les secrets détectés (clé API, jeton…) sans conserver de correspondance réversible : si un agent lit un fichier contenant un secret puis le réécrit, le marqueur de redaction atterrit dans le fichier à la place de la valeur d'origine, perdue sans retour possible — désactivez `builtin_secret_patterns` sur le modèle virtuel concerné si des agents doivent pouvoir modifier des fichiers contenant des identifiants réels.
 
-L'écran du plugin expose d'autres réglages fins (fusion des entités adjacentes, complétion des noms, reclassification des prénoms, SIREN contextuel, limites par entité). Les valeurs par défaut conviennent à un déploiement français.
+L'écran du plugin expose d'autres réglages fins (types à pseudonymiser, fusion des entités adjacentes, complétion des noms, reclassification des prénoms, SIREN contextuel, limites par entité). Les trois réglages de prénoms et de fusion ne valent que pour le moteur `crf`. Les valeurs par défaut conviennent à un déploiement français.

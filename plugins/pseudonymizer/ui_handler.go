@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"path/filepath"
+	"strconv"
 
 	"github.com/a-h/templ"
 	goanon "github.com/bornholm/go-anon"
@@ -40,8 +42,20 @@ type uiPageData struct {
 	// Languages lists the languages selectable in the form: those handled by
 	// the go-anon pipeline for which a model is published.
 	Languages []string
+	// Indecis is the status of the indecis model, for the indecis engine.
+	Indecis indecisStatus
 	// HasHashKey indique si une clé HMAC est déjà stockée pour ce nœud.
 	HasHashKey bool
+}
+
+// indecisStatus says which indecis model the configuration reads with and
+// whether it still has to be downloaded.
+type indecisStatus struct {
+	Name   string
+	Path   string
+	Cached bool
+	// Local is a directory given by the operator, used as is.
+	Local bool
 }
 
 type modelStatusEntry struct {
@@ -91,8 +105,32 @@ func (ui *pluginUI) loadPageData(r *http.Request) (uiPageData, error) {
 		}
 	}
 
-	pd.ModelStatus, pd.Languages = ui.fetchModelStatus(ctx, cfg)
+	if cfg.Engine == engineIndecis {
+		// Every language reads with the one model: the manifest of the CRF
+		// models is not consulted.
+		pd.Indecis = indecisStatusOf(ctx, cfg)
+		pd.Languages = goanon.SupportedLanguages()
+	} else {
+		pd.ModelStatus, pd.Languages = ui.fetchModelStatus(ctx, cfg)
+	}
 	return pd, nil
+}
+
+// indecisStatusOf reads the indecis model status from the disk, without
+// downloading.
+func indecisStatusOf(ctx context.Context, cfg Config) indecisStatus {
+	status := indecisStatus{Name: "indecis-ner " + modelName + " " + modelRelease, Local: cfg.ModelDir != ""}
+	src, err := modelSourceFromConfig(cfg)
+	if err != nil {
+		slog.WarnContext(ctx, "pseudonymizer/ui: failed to resolve the model directory", slog.Any("error", err))
+		return status
+	}
+	if status.Local {
+		status.Name = filepath.Base(src.path())
+	}
+	status.Path = src.path()
+	status.Cached = src.cached()
+	return status
 }
 
 // fetchModelStatus builds a lightweight model status list (no downloads) and
@@ -230,8 +268,16 @@ func (ui *pluginUI) handleDeleteHashKey(w http.ResponseWriter, r *http.Request) 
 // settings the form does not expose.
 func configFromForm(r *http.Request, base Config) Config {
 	cfg := base
+	// The types the page showed, checked or not: without them, an old form
+	// or an API call keeps the skipped types as they were.
+	if shown := r.Form["types_shown"]; len(shown) > 0 {
+		cfg.SkipTypes = skipTypesOf(base.SkipTypes, shown, r.Form["types"])
+	}
+	cfg.Engine = r.FormValue("engine")
 	cfg.CacheDir = r.FormValue("cache_dir")
 	cfg.ManifestURL = r.FormValue("manifest_url")
+	cfg.ModelDir = r.FormValue("model_dir")
+	cfg.ModelURL = r.FormValue("model_url")
 	cfg.Offline = r.FormValue("offline") == "on"
 	cfg.Language = r.FormValue("language")
 	cfg.FallbackLanguage = r.FormValue("fallback_language")
@@ -253,6 +299,12 @@ func configFromForm(r *http.Request, base Config) Config {
 	cfg.MinConfidence = 0
 	cfg.MaxTokens = 0
 	cfg.MinRunes = 0
+	// Unlike the thresholds, an emptied or invalid bias goes back to the
+	// default: a bias of 0 lets through what the measurements count as leaks.
+	cfg.Bias = defaultBias
+	if bias, err := strconv.ParseFloat(r.FormValue("bias"), 64); err == nil && bias >= 0 && bias <= maxBias {
+		cfg.Bias = bias
+	}
 	if minConf := r.FormValue("min_confidence"); minConf != "" {
 		var f float64
 		if err := json.Unmarshal([]byte(minConf), &f); err == nil {
@@ -287,6 +339,9 @@ func configFromForm(r *http.Request, base Config) Config {
 	}
 	if cfg.Strategy == "" {
 		cfg.Strategy = "tag"
+	}
+	if cfg.Engine != engineIndecis {
+		cfg.Engine = engineCRF
 	}
 
 	return cfg

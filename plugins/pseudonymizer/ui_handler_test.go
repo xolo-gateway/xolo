@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 
@@ -123,6 +124,7 @@ func TestPageRendersConfigFields(t *testing.T) {
 
 	html := out.String()
 	for _, name := range []string{
+		"engine", "bias", "model_dir", "model_url",
 		"min_runes", "siren_contextual", "verification", "verification_strict",
 		"process_attachments", "unsupported_attachments", "max_attachment_bytes", "max_attachment_chars",
 	} {
@@ -198,6 +200,14 @@ func TestConfigFromForm_UncheckedBoxesAndClearedNumbers(t *testing.T) {
 		t.Errorf("cleared numbers kept their base value: min_runes=%d max_tokens=%d min_confidence=%v",
 			cfg.MinRunes, cfg.MaxTokens, cfg.MinConfidence)
 	}
+	// A bias of 0 is not "no limit" but the setting that leaks the most: an
+	// emptied field goes back to the default.
+	if cfg.Bias != defaultBias {
+		t.Errorf("cleared bias = %v, want the default %v", cfg.Bias, defaultBias)
+	}
+	if cfg.Engine != engineCRF {
+		t.Errorf("a form without engine gives %q, want crf", cfg.Engine)
+	}
 	// Attachment limits are guardrails, not thresholds to disable: an empty
 	// field falls back to the default rather than lifting the limit.
 	if cfg.MaxAttachmentBytes != defaultMaxAttachmentBytes || cfg.MaxAttachmentChars != defaultMaxAttachmentChars {
@@ -226,5 +236,100 @@ func TestHandleDeleteHashKey(t *testing.T) {
 	}
 	if _, ok := host.secrets[[4]string{"org-1", "pseudonymizer", "node-1", "hash_key"}]; ok {
 		t.Errorf("expected secret to be deleted")
+	}
+}
+
+func TestConfigFromForm_EngineAndBias(t *testing.T) {
+	for _, tt := range []struct {
+		form   string
+		engine string
+		bias   float64
+	}{
+		{"engine=indecis&bias=3", engineIndecis, 3},
+		{"engine=indecis&bias=0", engineIndecis, 0},
+		{"engine=crf&bias=10", engineCRF, 10},
+		{"engine=spacy&bias=11", engineCRF, defaultBias},
+		{"bias=-1", engineCRF, defaultBias},
+		{"bias=abc", engineCRF, defaultBias},
+	} {
+		r := uiRequest(http.MethodPost, "/api/config", "strategy=tag&"+tt.form, "org-1", "node-1", newFakeUIHost())
+		if err := r.ParseForm(); err != nil {
+			t.Fatalf("ParseForm: %v", err)
+		}
+		cfg := configFromForm(r, defaultConfig())
+		if cfg.Engine != tt.engine || cfg.Bias != tt.bias {
+			t.Errorf("%s: engine %q, bias %v; want %q, %v", tt.form, cfg.Engine, cfg.Bias, tt.engine, tt.bias)
+		}
+	}
+}
+
+// The page of the indecis engine shows its model and does not consult the
+// manifest of the CRF models.
+func TestPageRendersIndecisModel(t *testing.T) {
+	cfg := defaultConfig()
+	cfg.Engine = engineIndecis
+	cfg.CacheDir = t.TempDir()
+	pd := uiPageData{BasePath: "/", Config: cfg, Indecis: indecisStatusOf(context.Background(), cfg)}
+
+	var out strings.Builder
+	if err := page(pd).Render(context.Background(), &out); err != nil {
+		t.Fatalf("render page: %v", err)
+	}
+	html := out.String()
+	if !strings.Contains(html, modelName) || !strings.Contains(html, cfg.CacheDir) {
+		t.Errorf("the indecis model and its path are not shown")
+	}
+	if !strings.Contains(html, `<option value="indecis" selected`) {
+		t.Errorf("the indecis engine is not selected")
+	}
+}
+
+// The page offers each type of the engine, checked unless skipped, each with
+// its label: a type without one would show its catalog key.
+func TestPageRendersEntityTypes(t *testing.T) {
+	for _, engine := range []string{engineCRF, engineIndecis} {
+		cfg := defaultConfig()
+		cfg.Engine = engine
+		cfg.SkipTypes = []string{"LOC"}
+		pd := uiPageData{BasePath: "/", Config: cfg}
+
+		var out strings.Builder
+		if err := page(pd).Render(context.Background(), &out); err != nil {
+			t.Fatalf("render page: %v", err)
+		}
+		html := out.String()
+		for _, typ := range engineTypes(engine) {
+			if !strings.Contains(html, `name="types_shown" value="`+string(typ)+`"`) {
+				t.Errorf("%s: type %s not offered", engine, typ)
+			}
+		}
+		if strings.Contains(html, "plugin.pseudonymizer.type.") {
+			t.Errorf("%s: a type has no label", engine)
+		}
+		if !strings.Contains(html, `<input checked id="type_PHONE"`) || !strings.Contains(html, `<input id="type_LOC"`) {
+			t.Errorf("%s: PHONE must be checked, LOC, skipped, unchecked", engine)
+		}
+	}
+}
+
+func TestConfigFromForm_EntityTypes(t *testing.T) {
+	base := defaultConfig()
+	base.SkipTypes = []string{"DATETIME"}
+	r := uiRequest(http.MethodPost, "/api/config",
+		"strategy=tag&types_shown=PER&types_shown=LOC&types_shown=EMAIL&types=PER&types=EMAIL", "org-1", "node-1", newFakeUIHost())
+	if err := r.ParseForm(); err != nil {
+		t.Fatalf("ParseForm: %v", err)
+	}
+	if got := configFromForm(r, base).SkipTypes; !slices.Equal(got, []string{"DATETIME", "LOC"}) {
+		t.Errorf("SkipTypes = %v, want [DATETIME LOC]", got)
+	}
+
+	// A form without the types keeps them as they were.
+	r = uiRequest(http.MethodPost, "/api/config", "strategy=tag", "org-1", "node-1", newFakeUIHost())
+	if err := r.ParseForm(); err != nil {
+		t.Fatalf("ParseForm: %v", err)
+	}
+	if got := configFromForm(r, base).SkipTypes; !slices.Equal(got, []string{"DATETIME"}) {
+		t.Errorf("SkipTypes = %v, want [DATETIME]", got)
 	}
 }

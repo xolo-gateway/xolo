@@ -16,7 +16,7 @@ import (
 // dynamicPrefixes are the key groups completed at runtime from an identifier;
 // every other catalog key must appear literally in a Go file, templates
 // included through their generated code.
-var dynamicPrefixes = []string{"locale.", "rbac."}
+var dynamicPrefixes = []string{"locale.", "rbac.", "plugin.pseudonymizer.type."}
 
 // argumentIndex matches the explicit argument index of a verb, as in %[2]d.
 var argumentIndex = regexp.MustCompile(`^%\[(\d+)\]`)
