@@ -18,15 +18,15 @@ Ce plugin ouvre son propre écran de configuration dans le panneau de droite.
 | Champ | Rôle | Défaut |
 | --- | --- | --- |
 | `engine` | Moteur de détection : `crf` ou `indecis` | `crf` |
-| `strategy` | Stratégie d'anonymisation | `tag` |
+| `strategy` | Stratégie d'anonymisation : `tag`, `hash` ou `redact` (`consistent` produit les mêmes jetons que `tag`) | `tag` |
 | `language` | Langue | `auto` |
 | `fallback_language` | Langue de repli | `fr` |
 | `bias` | Prudence du moteur `indecis`, de 0 à 10 | 3 |
 | `min_confidence` | Confiance minimale | 0,3 |
 | `skip_types` | Types d'entités à ignorer, ceux que l'écran laisse décochés |  |
 | `blocklist` | Liste de blocage |  |
-| `builtin_regex_patterns` | Patterns regex intégrés | `true` |
-| `builtin_secret_patterns` | Patterns secrets intégrés | `true` |
+| `builtin_regex_patterns` | Détection des identifiants par expressions régulières ; l'écran l'active tant qu'un identifiant est coché | `true` |
+| `builtin_secret_patterns` | Détection des secrets ; l'écran l'active tant qu'un secret est coché | `true` |
 | `process_attachments` | Traiter les pièces jointes documentaires | `true` |
 | `unsupported_attachments` | Pièces jointes non traitables | `block` |
 | `max_attachment_bytes` | Taille maximale par pièce jointe, en octets | 10 485 760 |
@@ -81,4 +81,4 @@ Le mode strict ne sert qu'à refuser : avec `verification_on_leak` à `block`, u
 
 Trois limites à connaître. Le champ `function_call`, l'ancêtre déprécié de `tool_calls` que quelques clients anciens émettent encore, n'est pas traité : ses arguments partent tels quels. Comme une conversation agentique fait presque toujours remplacer quelque chose, ces échanges perdent le streaming — la réponse n'est renvoyée qu'une fois complète. Enfin, `builtin_secret_patterns` redige les secrets détectés (clé API, jeton…) sans conserver de correspondance réversible : si un agent lit un fichier contenant un secret puis le réécrit, le marqueur de redaction atterrit dans le fichier à la place de la valeur d'origine, perdue sans retour possible — désactivez `builtin_secret_patterns` sur le modèle virtuel concerné si des agents doivent pouvoir modifier des fichiers contenant des identifiants réels.
 
-L'écran du plugin expose d'autres réglages fins (types à pseudonymiser, fusion des entités adjacentes, complétion des noms, reclassification des prénoms, SIREN contextuel, limites par entité). Les trois réglages de prénoms et de fusion ne valent que pour le moteur `crf`. Les valeurs par défaut conviennent à un déploiement français.
+L'écran du plugin suit l'ordre des décisions : le moteur et la langue des messages, ce qui est masqué (chaque type a sa case : on peut garder les personnes et laisser les lieux lisibles), le remplacement (avec la clé HMAC de la stratégie `hash`, enregistrée à part dans les secrets du nœud), la conduite en cas de fuite, puis les pièces jointes. Les réglages fins (confiance minimale, limites par passage, SIREN contextuel, prénoms et fusion du moteur `crf`, stockage des modèles) sont repliés sous « Réglages avancés ». Les champs propres à un moteur ou à une stratégie suivent le choix fait sur la page, avant même l'enregistrement. Les valeurs par défaut conviennent à un déploiement français.

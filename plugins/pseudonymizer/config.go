@@ -404,16 +404,53 @@ var allEntityTypes = []goanon.EntityType{
 	goanon.TypeAPIKey, goanon.TypeJWT, goanon.TypeSecret,
 }
 
-// engineTypes lists the types the page offers for engine: those its model
-// gives, then the identifiers and the secrets of the regular expressions.
-func engineTypes(engine string) []goanon.EntityType {
-	model := []goanon.EntityType{goanon.TypePER, goanon.TypeLOC, goanon.TypeORG, goanon.TypeMISC}
-	if engine == engineIndecis {
-		model = []goanon.EntityType{typePerson, typeCode, goanon.TypeLOC, goanon.TypeORG, typeDem, typeDatetime, typeQuantity, goanon.TypeMISC}
+// typeGroup is a family of types on the configuration page, under one title.
+// The page offers each type on its own.
+type typeGroup struct {
+	Key   string
+	Types []pageType
+}
+
+// pageType is a type the page offers. IndecisOnly types are only found by the
+// indecis model: the page hides them with the CRF engine.
+type pageType struct {
+	Type        goanon.EntityType
+	IndecisOnly bool
+}
+
+// The families of types. Identifiers and secrets are found by regular
+// expressions, whatever the engine: their detection is on as long as one type
+// of the family is checked (see configFromForm).
+const (
+	groupContent     = "content"
+	groupIdentifiers = "identifiers"
+	groupSecrets     = "secrets"
+)
+
+var pageTypeGroups = []typeGroup{
+	{groupContent, []pageType{
+		{typePerson, false}, {typeCode, true}, {goanon.TypeLOC, false}, {goanon.TypeORG, false},
+		{typeDem, true}, {typeDatetime, true}, {typeQuantity, true}, {goanon.TypeMISC, false},
+	}},
+	{groupIdentifiers, []pageType{
+		{goanon.TypeEMAIL, false}, {goanon.TypePHONE, false}, {goanon.TypeIBAN, false}, {goanon.TypeSIRET, false},
+		{goanon.TypeSIREN, false}, {goanon.TypeIPV4, false}, {goanon.TypeIPV6, false},
+	}},
+	{groupSecrets, []pageType{
+		{goanon.TypeAPIKey, false}, {goanon.TypeJWT, false}, {goanon.TypeSecret, false},
+	}},
+}
+
+// typeChecked reports whether the page shows t as pseudonymized: not skipped,
+// and, for an identifier or a secret, its family's detection on.
+func typeChecked(cfg Config, group string, t goanon.EntityType) bool {
+	switch {
+	case group == groupIdentifiers && !cfg.BuiltinRegexPatterns:
+		return false
+	case group == groupSecrets && !cfg.BuiltinSecretPatterns:
+		return false
 	}
-	return append(model,
-		goanon.TypeEMAIL, goanon.TypePHONE, goanon.TypeIBAN, goanon.TypeSIRET, goanon.TypeSIREN,
-		goanon.TypeIPV4, goanon.TypeIPV6, goanon.TypeAPIKey, goanon.TypeJWT, goanon.TypeSecret)
+	return !typeSkipped(cfg.SkipTypes, t)
 }
 
 // typeSkipped reports whether t, or the type naming the same thing for the

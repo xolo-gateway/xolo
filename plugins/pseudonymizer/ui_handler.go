@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 	"path/filepath"
+	"slices"
 	"strconv"
 
 	"github.com/a-h/templ"
@@ -105,13 +106,13 @@ func (ui *pluginUI) loadPageData(r *http.Request) (uiPageData, error) {
 		}
 	}
 
+	// Both statuses: the page follows a change of engine before it is saved.
+	pd.Indecis = indecisStatusOf(ctx, cfg)
+	pd.ModelStatus, pd.Languages = ui.fetchModelStatus(ctx, cfg)
 	if cfg.Engine == engineIndecis {
-		// Every language reads with the one model: the manifest of the CRF
-		// models is not consulted.
-		pd.Indecis = indecisStatusOf(ctx, cfg)
+		// Every language reads with the one model, whatever the CRF models
+		// published.
 		pd.Languages = goanon.SupportedLanguages()
-	} else {
-		pd.ModelStatus, pd.Languages = ui.fetchModelStatus(ctx, cfg)
 	}
 	return pd, nil
 }
@@ -271,7 +272,21 @@ func configFromForm(r *http.Request, base Config) Config {
 	// The types the page showed, checked or not: without them, an old form
 	// or an API call keeps the skipped types as they were.
 	if shown := r.Form["types_shown"]; len(shown) > 0 {
-		cfg.SkipTypes = skipTypesOf(base.SkipTypes, shown, r.Form["types"])
+		checked := r.Form["types"]
+		cfg.SkipTypes = skipTypesOf(base.SkipTypes, shown, checked)
+		// The regular expressions of a family run as long as one of its
+		// types is checked: the page has no other switch for them.
+		cfg.BuiltinRegexPatterns = groupChecked(groupIdentifiers, checked)
+		cfg.BuiltinSecretPatterns = groupChecked(groupSecrets, checked)
+	}
+	// The leak choice sets the verification fields; without it, they are kept.
+	switch r.FormValue("leak") {
+	case "off":
+		cfg.Verification, cfg.VerificationStrict = false, false
+	case "report":
+		cfg.Verification, cfg.VerificationStrict = true, false
+	case "block":
+		cfg.Verification, cfg.VerificationStrict, cfg.VerificationOnLeak = true, true, "block"
 	}
 	// An absent engine keeps the node's: a partial form must not turn an
 	// indecis node back to the CRF.
@@ -289,12 +304,8 @@ func configFromForm(r *http.Request, base Config) Config {
 	cfg.FirstNameReclassify = r.FormValue("first_name_reclassify") == "on"
 	cfg.Merge = r.FormValue("merge") == "on"
 	cfg.NameCompletion = r.FormValue("name_completion") == "on"
-	cfg.BuiltinRegexPatterns = r.FormValue("builtin_regex_patterns") == "on"
-	cfg.BuiltinSecretPatterns = r.FormValue("builtin_secret_patterns") == "on"
 	cfg.SirenContextual = r.FormValue("siren_contextual") == "on"
 	cfg.InjectInstruction = r.FormValue("inject_instruction") == "on"
-	cfg.Verification = r.FormValue("verification") == "on"
-	cfg.VerificationStrict = r.FormValue("verification_strict") == "on"
 	cfg.ProcessAttachments = r.FormValue("process_attachments") == "on"
 	cfg.UnsupportedAttachments = r.FormValue("unsupported_attachments")
 
@@ -352,6 +363,21 @@ func configFromForm(r *http.Request, base Config) Config {
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
+
+// groupChecked reports whether one type of the family group is among checked.
+func groupChecked(group string, checked []string) bool {
+	for _, g := range pageTypeGroups {
+		if g.Key != group {
+			continue
+		}
+		for _, t := range g.Types {
+			if slices.Contains(checked, string(t.Type)) {
+				return true
+			}
+		}
+	}
+	return false
+}
 
 // formInt reads an integer form field, falling back to fallback when the field
 // is absent — an emptied limit means "back to the default", not "unlimited".
