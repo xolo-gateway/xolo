@@ -118,7 +118,27 @@ func TestPreRequest_ReportedLeakSurvivesALaterRefusal(t *testing.T) {
 	if out.Allowed {
 		t.Fatalf("the unreadable attachment must refuse the request")
 	}
-	if evt := host.waitForEventOfType(t, "sensitive-data.leak"); evt.Attributes["action"] != leakReported {
-		t.Errorf("action = %q, want reported", evt.Attributes["action"])
+	// Nothing reached the model: the event must not say the request left.
+	if evt := host.waitForEventOfType(t, "sensitive-data.leak"); evt.Attributes["action"] != leakRefused {
+		t.Errorf("action = %q, want refused", evt.Attributes["action"])
+	}
+}
+
+// A placeholder already in the content is located in the source, not in the
+// output: two distinct ones are two leaks, one repeated is one.
+func TestObservedLeakKey_ResidualPlaceholderUsesTheSource(t *testing.T) {
+	source := "Voir ⟦PERSON_1_abcdef⟧ et ⟦PERSON_2_abcdef⟧, puis ⟦PERSON_1_abcdef⟧."
+	output := "x"
+	key := func(s string) string {
+		i := strings.Index(source, s)
+		return observedLeakKey(source, output, anonymizer.Leak{Kind: anonymizer.LeakResidualPlaceholderSource, Start: i, End: i + len(s)})
+	}
+	last := strings.LastIndex(source, "⟦PERSON_1_abcdef⟧")
+	repeated := observedLeakKey(source, output, anonymizer.Leak{Kind: anonymizer.LeakResidualPlaceholderSource, Start: last, End: last + len("⟦PERSON_1_abcdef⟧")})
+	if key("⟦PERSON_1_abcdef⟧") == key("⟦PERSON_2_abcdef⟧") {
+		t.Errorf("two distinct placeholders give one key")
+	}
+	if key("⟦PERSON_1_abcdef⟧") != repeated {
+		t.Errorf("one repeated placeholder gives two keys")
 	}
 }

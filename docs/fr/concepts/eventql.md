@@ -229,7 +229,7 @@ par `plugin.<nom>.` (voir le tutoriel plugin, section _Emitting Events_).
 | `type` | `severity` | Émis quand | Attributs |
 |--------|-----------|------------|-----------|
 | `plugin.pseudonymizer.sensitive-data.detected` | `warning` | Le plugin `pseudonymizer` détecte/pseudonymise des données sensibles | `entities`, `types` (ex. `EMAIL:2,PER:1`), `removed_attachments`, `language` |
-| `plugin.pseudonymizer.sensitive-data.leak` | `error` | Le mode strict du plugin `pseudonymizer` détecte une fuite résiduelle après anonymisation | `leak_count`, `leak_<type>` |
+| `plugin.pseudonymizer.sensitive-data.leak` | `error` | La vérification du plugin `pseudonymizer` détecte une fuite résiduelle après anonymisation (un événement par requête, une fuite par valeur distincte) | `leak_count`, `leak_<type>`, `action` : `reported` (la requête est partie pseudonymisée), `blocked` (refusée à cause de la fuite) ou `refused` (refusée pour un autre motif, rien n'a atteint le modèle) |
 | `plugin.pseudonymizer.attachment.blocked` | `warning` | Le plugin `pseudonymizer` refuse une requête portant une pièce jointe non pseudonymisable | `attachments`, `reasons` |
 | `plugin.pseudonymizer.request.blocked` | `error` | Le plugin `pseudonymizer` refuse une requête en stratégie `hash` faute de clé HMAC exploitable sur le nœud (fail-closed) | `reason`, `error`, `strategy` |
 | `plugin.pseudonymizer.index-key.unavailable` | `warning` | Le plugin `pseudonymizer` numérote les jetons d'une requête dans l'ordre d'apparition, la clé d'index du nœud étant indisponible (magasin de secrets en erreur, clé illisible) : un jeton d'un tour précédent peut alors être restitué à une autre personne | `error`, `strategy` |

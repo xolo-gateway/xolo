@@ -209,7 +209,7 @@ func newSession(ctx context.Context, reqCtx *proto.RequestContext) *anonymizer.S
 	return session
 }
 
-func (p *Plugin) PreRequest(ctx context.Context, in *proto.PreRequestInput) (*proto.PreRequestOutput, error) {
+func (p *Plugin) PreRequest(ctx context.Context, in *proto.PreRequestInput) (reqOut *proto.PreRequestOutput, reqErr error) {
 	cfg, err := parseConfig(in.GetCtx().GetConfigJson())
 	if err != nil {
 		return p.passthroughOnError(ctx, in, passthroughConfigError, err), nil
@@ -344,13 +344,19 @@ func (p *Plugin) PreRequest(ctx context.Context, in *proto.PreRequestInput) (*pr
 		neutralizedPlaceholders int
 	)
 
-	// The observed leaks are reported however the request ends: refused for
-	// another reason after a content was let through, they still happened.
+	// The observed leaks are reported however the request ends, and say what
+	// became of it: refused for another reason after a content was observed,
+	// nothing reached the model.
 	defer func() {
-		if len(observedLeaks) > 0 {
-			report := &anonymizer.VerificationReport{Leaks: slices.Collect(maps.Values(observedLeaks))}
-			emitLeakEvent(in, report, leakReported, p.getHostClient())
+		if len(observedLeaks) == 0 {
+			return
 		}
+		action := leakReported
+		if reqOut == nil || !reqOut.Allowed {
+			action = leakRefused
+		}
+		report := &anonymizer.VerificationReport{Leaks: slices.Collect(maps.Values(observedLeaks))}
+		emitLeakEvent(in, report, action, p.getHostClient())
 	}()
 
 	// detectKept expose la détection en lecture seule sur laquelle s'appuient les
@@ -409,7 +415,7 @@ func (p *Plugin) PreRequest(ctx context.Context, in *proto.PreRequestInput) (*pr
 		// Observing, go-anon keeps its report in the result rather than fail.
 		if !result.Verification.OK() {
 			for _, l := range result.Verification.Leaks {
-				observedLeaks[observedLeakKey(result.Text, l)] = l
+				observedLeaks[observedLeakKey(masked.Text, result.Text, l)] = l
 			}
 		}
 		var missing int
@@ -1104,23 +1110,42 @@ func (p *Plugin) emitBlockedAttachmentsEvent(in *proto.PreRequestInput, parts []
 	})
 }
 
-// observedLeakKey identifies a leak the verification found in output, as
-// leakKey does a detected value: its kind, its type and a digest of its
-// normalized surface form, never the text itself.
-func observedLeakKey(output string, l anonymizer.Leak) string {
+// observedLeakKey identifies a leak the verification found, as leakKey does a
+// detected value: its kind, its type and a digest of its normalized surface
+// form, never the text itself. Most leaks are located in output; a placeholder
+// already present in the content is located in source, and invalid UTF-8
+// spans the whole output, so it is one leak whatever the text.
+func observedLeakKey(source, output string, l anonymizer.Leak) string {
 	var surface string
-	if l.Start >= 0 && l.End <= len(output) && l.Start < l.End {
-		surface = output[l.Start:l.End]
+	switch l.Kind {
+	case anonymizer.LeakInvalidUTF8:
+	case anonymizer.LeakResidualPlaceholderSource:
+		surface = slice(source, l.Start, l.End)
+	default:
+		surface = slice(output, l.Start, l.End)
 	}
 	sum := sha256.Sum256([]byte(strings.ToLower(strings.TrimSpace(surface))))
 	return l.Kind.String() + "\x00" + string(l.Type) + "\x00" + hex.EncodeToString(sum[:8])
 }
 
+// slice returns text[start:end], or "" when the bounds do not fit text.
+func slice(text string, start, end int) string {
+	if start < 0 || end > len(text) || start >= end {
+		return ""
+	}
+	return text[start:end]
+}
+
 // Ce que le nœud a fait de la requête où une fuite a été détectée, publié dans
 // l'attribut action de l'événement.
 const (
-	leakBlocked  = "blocked"
+	// leakBlocked : la requête est refusée à cause de la fuite.
+	leakBlocked = "blocked"
+	// leakReported : la requête est partie pseudonymisée, avec la fuite.
 	leakReported = "reported"
+	// leakRefused : la fuite a été observée, mais la requête a été refusée
+	// pour un autre motif ; rien n'a atteint le modèle.
+	leakRefused = "refused"
 )
 
 // emitLeakEvent publie un événement décrivant la fuite détectée. Le rapport
