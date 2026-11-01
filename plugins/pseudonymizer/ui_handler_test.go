@@ -205,9 +205,6 @@ func TestConfigFromForm_UncheckedBoxesAndClearedNumbers(t *testing.T) {
 	if cfg.Bias != defaultBias {
 		t.Errorf("cleared bias = %v, want the default %v", cfg.Bias, defaultBias)
 	}
-	if cfg.Engine != engineCRF {
-		t.Errorf("a form without engine gives %q, want crf", cfg.Engine)
-	}
 	// Attachment limits are guardrails, not thresholds to disable: an empty
 	// field falls back to the default rather than lifting the limit.
 	if cfg.MaxAttachmentBytes != defaultMaxAttachmentBytes || cfg.MaxAttachmentChars != defaultMaxAttachmentChars {
@@ -251,12 +248,18 @@ func TestConfigFromForm_EngineAndBias(t *testing.T) {
 		{"engine=spacy&bias=11", engineCRF, defaultBias},
 		{"bias=-1", engineCRF, defaultBias},
 		{"bias=abc", engineCRF, defaultBias},
+		// A form without the engine keeps the node's.
+		{"bias=3", engineIndecis, 3},
 	} {
 		r := uiRequest(http.MethodPost, "/api/config", "strategy=tag&"+tt.form, "org-1", "node-1", newFakeUIHost())
 		if err := r.ParseForm(); err != nil {
 			t.Fatalf("ParseForm: %v", err)
 		}
-		cfg := configFromForm(r, defaultConfig())
+		base := defaultConfig()
+		if tt.form == "bias=3" {
+			base.Engine = engineIndecis
+		}
+		cfg := configFromForm(r, base)
 		if cfg.Engine != tt.engine || cfg.Bias != tt.bias {
 			t.Errorf("%s: engine %q, bias %v; want %q, %v", tt.form, cfg.Engine, cfg.Bias, tt.engine, tt.bias)
 		}

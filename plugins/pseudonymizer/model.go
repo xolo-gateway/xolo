@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/bornholm/go-anon/pkg/ner"
 	"github.com/bornholm/indecis"
@@ -113,20 +114,23 @@ func (s modelSource) cached() bool {
 	return true
 }
 
-// fetch downloads into the cache the files that are missing or truncated.
+// fetch downloads into the cache the files that are missing or altered. A
+// cached file is checked against its digest, not only its size: a file of the
+// right size but other bytes would otherwise fail every load, the cache never
+// repaired.
 func (s modelSource) fetch(ctx context.Context) error {
-	if s.cached() {
+	if s.dir != "" {
 		return nil
-	}
-	if s.offline {
-		return errModelMissing
 	}
 	if err := os.MkdirAll(s.cache, 0o755); err != nil {
 		return fmt.Errorf("create model cache: %w", err)
 	}
 	for _, f := range modelFiles {
-		if st, err := os.Stat(filepath.Join(s.cache, f.name)); err == nil && st.Size() == f.size {
+		if intact(filepath.Join(s.cache, f.name), f) {
 			continue
+		}
+		if s.offline {
+			return errModelMissing
 		}
 		if err := s.download(ctx, f); err != nil {
 			return fmt.Errorf("download %s: %w", f.name, err)
@@ -135,6 +139,34 @@ func (s modelSource) fetch(ctx context.Context) error {
 	return nil
 }
 
+// intact reports whether path holds f, by its size and digest.
+func intact(path string, f modelFile) bool {
+	file, err := os.Open(path)
+	if err != nil {
+		return false
+	}
+	defer file.Close()
+	if st, err := file.Stat(); err != nil || st.Size() != f.size {
+		return false
+	}
+	digest := sha256.New()
+	if _, err := io.Copy(digest, file); err != nil {
+		return false
+	}
+	return hex.EncodeToString(digest.Sum(nil)) == f.sha256
+}
+
+// downloadClient gives up on a server that does not answer, and
+// downloadTimeout on a download that stalls: the load outlives the request
+// that started it, and the requests that wait for it must see it fail.
+var downloadClient = func() *http.Client {
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.ResponseHeaderTimeout = 30 * time.Second
+	return &http.Client{Transport: transport}
+}()
+
+const downloadTimeout = 30 * time.Minute
+
 // download writes f next to its final path, checks its size and digest, then
 // renames it: an interrupted or altered download never reaches the cache.
 func (s modelSource) download(ctx context.Context, f modelFile) error {
@@ -142,7 +174,7 @@ func (s modelSource) download(ctx context.Context, f modelFile) error {
 	if err != nil {
 		return err
 	}
-	res, err := http.DefaultClient.Do(req)
+	res, err := downloadClient.Do(req)
 	if err != nil {
 		return err
 	}
@@ -205,7 +237,9 @@ func (m *models) get(ctx context.Context, src modelSource, bias float64) (*indec
 		m.loading[key] = load
 		go func() {
 			defer close(load.done)
-			load.model, load.err = loadModel(context.WithoutCancel(ctx), src, bias)
+			ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), downloadTimeout)
+			defer cancel()
+			load.model, load.err = loadModel(ctx, src, bias)
 			if load.err != nil {
 				m.mu.Lock()
 				delete(m.loading, key)

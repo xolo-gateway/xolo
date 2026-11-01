@@ -137,3 +137,27 @@ func TestModels_RetriesAFailedLoad(t *testing.T) {
 		t.Errorf("the failed load was kept: %d entries", left)
 	}
 }
+
+// A cached file of the right size but other bytes is downloaded again: a
+// size check alone would fail every load and never repair the cache.
+func TestModelSource_RepairsAnAlteredCachedFile(t *testing.T) {
+	srv, served := fakeRelease(t, map[string]string{"model.safetensors": "weights"})
+	cfg := defaultConfig()
+	cfg.CacheDir = t.TempDir()
+	cfg.ModelURL = srv.URL
+	src, _ := modelSourceFromConfig(cfg)
+	if err := os.MkdirAll(src.path(), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(src.path(), "model.safetensors")
+	if err := os.WriteFile(path, []byte("WEIGHTS"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := src.fetch(context.Background()); err != nil {
+		t.Fatalf("fetch: %v", err)
+	}
+	if b, _ := os.ReadFile(path); string(b) != "weights" || served.Load() != 1 {
+		t.Errorf("model.safetensors = %q after %d downloads, want it downloaded again", b, served.Load())
+	}
+}

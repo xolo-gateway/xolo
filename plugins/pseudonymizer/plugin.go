@@ -1304,6 +1304,19 @@ func (p *Plugin) getAnonymizer(ctx context.Context, cfg Config, language string)
 		return nil, err
 	}
 
+	// The indecis model is downloaded and loaded before taking p.mu: its
+	// first load can take minutes, and the requests whose anonymizer is
+	// built must not wait for it. buildAnonymizer then finds it loaded.
+	if cfg.Engine == engineIndecis {
+		src, err := modelSourceFromConfig(cfg)
+		if err != nil {
+			return nil, err
+		}
+		if _, _, err := p.models.get(ctx, src, cfg.Bias); err != nil {
+			return nil, fmt.Errorf("get indecis model: %w", err)
+		}
+	}
+
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
@@ -1429,7 +1442,11 @@ func (p *Plugin) buildAnonymizer(ctx context.Context, cfg Config, language strin
 	if err != nil {
 		return nil, err
 	}
+	return goanon.NewAnonymizer(rec, anonymizerConfig(cfg)), nil
+}
 
+// anonymizerConfig returns the anonymizer config of cfg.
+func anonymizerConfig(cfg Config) goanon.Config {
 	// ConsistentMap is always true, matching the go-anon server behaviour.
 	anonCfg := goanon.Config{
 		Strategy:      strategyFromString(cfg.Strategy),
@@ -1437,20 +1454,16 @@ func (p *Plugin) buildAnonymizer(ctx context.Context, cfg Config, language strin
 	}
 
 	if len(cfg.SkipTypes) > 0 {
-		skipSet := make(map[goanon.EntityType]bool, len(cfg.SkipTypes))
-		for _, t := range cfg.SkipTypes {
-			for _, alias := range typeAliases(t) {
-				skipSet[goanon.EntityType(alias)] = true
-			}
-		}
+		// Never nil once a type is skipped: go-anon reads nil as "every
+		// type", and skipping them all would then pseudonymize them all.
+		anonCfg.EntityTypes = []goanon.EntityType{}
 		for _, t := range allEntityTypes {
-			if !skipSet[t] {
+			if !typeSkipped(cfg.SkipTypes, t) {
 				anonCfg.EntityTypes = append(anonCfg.EntityTypes, t)
 			}
 		}
 	}
-
-	return goanon.NewAnonymizer(rec, anonCfg), nil
+	return anonCfg
 }
 
 // indecisRecognizer reads with the indecis model of cfg, downloading it on

@@ -273,7 +273,11 @@ func configFromForm(r *http.Request, base Config) Config {
 	if shown := r.Form["types_shown"]; len(shown) > 0 {
 		cfg.SkipTypes = skipTypesOf(base.SkipTypes, shown, r.Form["types"])
 	}
-	cfg.Engine = r.FormValue("engine")
+	// An absent engine keeps the node's: a partial form must not turn an
+	// indecis node back to the CRF.
+	if engine := r.FormValue("engine"); engine != "" {
+		cfg.Engine = engine
+	}
 	cfg.CacheDir = r.FormValue("cache_dir")
 	cfg.ManifestURL = r.FormValue("manifest_url")
 	cfg.ModelDir = r.FormValue("model_dir")

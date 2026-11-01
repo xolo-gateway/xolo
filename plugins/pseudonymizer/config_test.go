@@ -107,3 +107,38 @@ func TestTypeSkipped(t *testing.T) {
 		t.Errorf("LOC reads as skipped")
 	}
 }
+
+// Skipping every type offered pseudonymizes none: go-anon reads nil
+// EntityTypes as "every type".
+func TestAnonymizerConfig_EverySkippedTypeLeavesNone(t *testing.T) {
+	for _, engine := range []string{engineCRF, engineIndecis} {
+		cfg := defaultConfig()
+		cfg.Engine = engine
+		for _, typ := range allEntityTypes {
+			cfg.SkipTypes = append(cfg.SkipTypes, string(typ))
+		}
+		if got := anonymizerConfig(cfg).EntityTypes; got == nil || len(got) != 0 {
+			t.Errorf("%s: EntityTypes = %#v, want an empty non-nil list", engine, got)
+		}
+	}
+	cfg := defaultConfig()
+	cfg.Engine = engineIndecis
+	cfg.SkipTypes = []string{"PER"}
+	for _, typ := range anonymizerConfig(cfg).EntityTypes {
+		if typ == typePerson || typ == goanon.TypePER {
+			t.Errorf("PER skipped, but %s is pseudonymized", typ)
+		}
+	}
+	if anonymizerConfig(defaultConfig()).EntityTypes != nil {
+		t.Errorf("nothing skipped: EntityTypes must stay nil, every type")
+	}
+}
+
+// The leak scan skips the same types as the anonymizer: PER and PERSON
+// stand for each other there too.
+func TestKeepDetectedTypes_Aliases(t *testing.T) {
+	got := keepDetectedTypes([]ner.Entity{{Type: typePerson}, {Type: goanon.TypeLOC}}, []string{"PER"})
+	if len(got) != 1 || got[0].Type != goanon.TypeLOC {
+		t.Errorf("kept %+v, want the LOC entity only", got)
+	}
+}
