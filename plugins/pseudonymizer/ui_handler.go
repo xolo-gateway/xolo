@@ -107,8 +107,14 @@ func (ui *pluginUI) loadPageData(r *http.Request) (uiPageData, error) {
 	}
 
 	// Both statuses: the page follows a change of engine before it is saved.
+	// An indecis node reads the CRF status from the cached manifest only: its
+	// page must not wait on a manifest its engine does not use.
 	pd.Indecis = indecisStatusOf(ctx, cfg)
-	pd.ModelStatus, pd.Languages = ui.fetchModelStatus(ctx, cfg)
+	crfCfg := cfg
+	if cfg.Engine == engineIndecis {
+		crfCfg.Offline = true
+	}
+	pd.ModelStatus, pd.Languages = ui.fetchModelStatus(ctx, crfCfg)
 	if cfg.Engine == engineIndecis {
 		// Every language reads with the one model, whatever the CRF models
 		// published.

@@ -1556,7 +1556,7 @@
   "plugin.pseudonymizer.model_dir.placeholder": "Default: the downloaded model",
   "plugin.pseudonymizer.model_url.label": "indecis model URL",
   "plugin.pseudonymizer.model_url.placeholder": "Default: indecis-ner release",
-  "plugin.pseudonymizer.models.cached": "In cache",
+  "plugin.pseudonymizer.models.cached": "Present, checked on load",
   "plugin.pseudonymizer.models.download_hint": "Models not yet cached will be downloaded automatically on first use.",
   "plugin.pseudonymizer.models.indecis_hint": "A model not yet in cache is downloaded on first use (about 310 MB), and checked against its digest.",
   "plugin.pseudonymizer.models.local": "Local directory",

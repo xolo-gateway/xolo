@@ -318,6 +318,9 @@ func (p *Plugin) PreRequest(ctx context.Context, in *proto.PreRequestInput) (*pr
 		// personnelles jusqu'au modèle.
 		anonymizeFailures int
 		lastAnonymizeErr  error
+		// observedLeaks gathers what the verification found in the contents
+		// it let through (verifyObserve), for one event per request.
+		observedLeaks []anonymizer.Leak
 		// leakValues holds what Detect found in content deliberately forwarded
 		// without rewriting (a thinking block, a web_search call, an
 		// unrecognized block type). Never added to session.Mapping, so kept
@@ -391,6 +394,10 @@ func (p *Plugin) PreRequest(ctx context.Context, in *proto.PreRequestInput) (*pr
 		result, err := anon.Anonymize(ctx, masked.Text, append(anonymOpts, anonymizer.WithSession(session))...)
 		if err != nil {
 			return nil, err
+		}
+		// Observing, go-anon keeps its report in the result rather than fail.
+		if !result.Verification.OK() {
+			observedLeaks = append(observedLeaks, result.Verification.Leaks...)
 		}
 		var missing int
 		result.Text, missing = masked.Unmask(result.Text)
@@ -768,6 +775,12 @@ func (p *Plugin) PreRequest(ctx context.Context, in *proto.PreRequestInput) (*pr
 
 	// A content whose anonymization failed was forwarded as is: say so, since
 	// nothing in the request itself tells the administrator the filter gave up.
+	// The request leaves pseudonymized: the leaks the verification observed
+	// are reported, as the node's "report" choice promises.
+	if len(observedLeaks) > 0 {
+		emitLeakEvent(in, &anonymizer.VerificationReport{Leaks: observedLeaks}, leakReported, p.getHostClient())
+	}
+
 	if anonymizeFailures > 0 {
 		p.emitEvent(pluginsdk.Event{
 			PluginName: "pseudonymizer",
@@ -1058,7 +1071,7 @@ func handleVerificationError(in *proto.PreRequestInput, err error, host pluginsd
 	if !errors.As(err, &verr) {
 		return nil
 	}
-	emitLeakEvent(in, verr, host)
+	emitLeakEvent(in, verr.Report, leakBlocked, host)
 	return &proto.PreRequestOutput{Allowed: false}
 }
 
@@ -1084,15 +1097,23 @@ func (p *Plugin) emitBlockedAttachmentsEvent(in *proto.PreRequestInput, parts []
 	})
 }
 
+// Ce que le nœud a fait de la requête où une fuite a été détectée, publié dans
+// l'attribut action de l'événement.
+const (
+	leakBlocked  = "blocked"
+	leakReported = "reported"
+)
+
 // emitLeakEvent publie un événement décrivant la fuite détectée. Le rapport
 // est sérialisé sans texte source (offsets et types seulement).
-func emitLeakEvent(in *proto.PreRequestInput, verr *anonymizer.VerificationError, host pluginsdk.HostClient) {
+func emitLeakEvent(in *proto.PreRequestInput, report *anonymizer.VerificationReport, action string, host pluginsdk.HostClient) {
 	if host == nil {
 		return
 	}
-	counts := verr.Report.CountByKind()
+	counts := report.CountByKind()
 	attrs := map[string]string{
-		"leak_count": strconv.Itoa(len(verr.Report.Leaks)),
+		"leak_count": strconv.Itoa(len(report.Leaks)),
+		"action":     action,
 	}
 	for k, n := range counts {
 		attrs["leak_"+k.String()] = strconv.Itoa(n)
@@ -1106,7 +1127,7 @@ func emitLeakEvent(in *proto.PreRequestInput, verr *anonymizer.VerificationError
 			UserID:     in.GetCtx().GetUserId(),
 			Type:       "sensitive-data.leak",
 			Severity:   "error",
-			Message:    fmt.Sprintf("Fuite(s) PII détectée(s) après anonymisation : %d", len(verr.Report.Leaks)),
+			Message:    fmt.Sprintf("Fuite(s) PII détectée(s) après anonymisation : %d", len(report.Leaks)),
 			Attributes: attrs,
 		}); err != nil {
 			slog.Warn("pseudonymizer: could not emit leak event", slog.Any("error", err))

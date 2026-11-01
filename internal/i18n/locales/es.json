@@ -1556,7 +1556,7 @@
   "plugin.pseudonymizer.model_dir.placeholder": "Predeterminado: el modelo descargado",
   "plugin.pseudonymizer.model_url.label": "URL del modelo indecis",
   "plugin.pseudonymizer.model_url.placeholder": "Predeterminado: release de indecis-ner",
-  "plugin.pseudonymizer.models.cached": "En caché",
+  "plugin.pseudonymizer.models.cached": "Presente, comprobado al cargar",
   "plugin.pseudonymizer.models.download_hint": "Los modelos que aún no están en caché se descargarán automáticamente en la primera llamada.",
   "plugin.pseudonymizer.models.indecis_hint": "Un modelo que aún no está en caché se descarga en la primera llamada (unos 310 MB) y se comprueba con su huella.",
   "plugin.pseudonymizer.models.local": "Directorio local",
