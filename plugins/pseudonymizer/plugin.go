@@ -428,7 +428,7 @@ func (p *Plugin) PreRequest(ctx context.Context, in *proto.PreRequestInput) (*pr
 			messages[i][fieldToolCalls] = calls
 		}
 		if err != nil {
-			if out := handleVerificationError(in, err, cfg, p.getHostClient()); out != nil {
+			if out := handleVerificationError(in, err, p.getHostClient()); out != nil {
 				return out, nil
 			}
 			slog.WarnContext(ctx, "pseudonymizer: failed to anonymize tool calls",
@@ -448,7 +448,7 @@ func (p *Plugin) PreRequest(ctx context.Context, in *proto.PreRequestInput) (*pr
 		case string:
 			result, err := anonymize(c)
 			if err != nil {
-				if out := handleVerificationError(in, err, cfg, p.getHostClient()); out != nil {
+				if out := handleVerificationError(in, err, p.getHostClient()); out != nil {
 					return out, nil
 				}
 				slog.WarnContext(ctx, "pseudonymizer: failed to anonymize string content", slog.Any("error", err))
@@ -478,7 +478,7 @@ func (p *Plugin) PreRequest(ctx context.Context, in *proto.PreRequestInput) (*pr
 					text, _ := partMap["text"].(string)
 					result, err := anonymize(text)
 					if err != nil {
-						if out := handleVerificationError(in, err, cfg, p.getHostClient()); out != nil {
+						if out := handleVerificationError(in, err, p.getHostClient()); out != nil {
 							return out, nil
 						}
 						slog.WarnContext(ctx, "pseudonymizer: failed to anonymize text part", slog.Any("error", err))
@@ -569,7 +569,7 @@ func (p *Plugin) PreRequest(ctx context.Context, in *proto.PreRequestInput) (*pr
 					// unpaired id. What cannot be read is replaced in place.
 					updated, err := anonymizeToolPart(partMap, anonymizeText)
 					if err != nil {
-						if out := handleVerificationError(in, err, cfg, p.getHostClient()); out != nil {
+						if out := handleVerificationError(in, err, p.getHostClient()); out != nil {
 							return out, nil
 						}
 						slog.WarnContext(ctx, "pseudonymizer: failed to anonymize tool part",
@@ -607,7 +607,7 @@ func (p *Plugin) PreRequest(ctx context.Context, in *proto.PreRequestInput) (*pr
 
 					result, err := anonymize(text)
 					if err != nil {
-						if out := handleVerificationError(in, err, cfg, p.getHostClient()); out != nil {
+						if out := handleVerificationError(in, err, p.getHostClient()); out != nil {
 							return out, nil
 						}
 						// An attachment whose text could not be anonymized must
@@ -1051,18 +1051,15 @@ func instructionText(language string) string {
 
 // handleVerificationError convertit une erreur d'anonymisation en décision
 // plugin. Si l'erreur n'est pas une *VerificationError, retourne nil (à
-// traiter comme une autre erreur par l'appelant).
-func handleVerificationError(in *proto.PreRequestInput, err error, cfg Config, host pluginsdk.HostClient) *proto.PreRequestOutput {
+// traiter comme une autre erreur par l'appelant). Seule la vérification qui
+// bloque en produit une (verificationMode) : la requête est refusée.
+func handleVerificationError(in *proto.PreRequestInput, err error, host pluginsdk.HostClient) *proto.PreRequestOutput {
 	var verr *anonymizer.VerificationError
 	if !errors.As(err, &verr) {
 		return nil
 	}
 	emitLeakEvent(in, verr, host)
-
-	if cfg.VerificationOnLeak == "block" {
-		return &proto.PreRequestOutput{Allowed: false}
-	}
-	return passthroughOutput()
+	return &proto.PreRequestOutput{Allowed: false}
 }
 
 // emitBlockedAttachmentsEvent signale le refus d'une requête portant des

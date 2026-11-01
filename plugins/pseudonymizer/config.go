@@ -190,14 +190,14 @@ const configSchemaJSON = `{
     },
     "verification_strict": {
       "type": "boolean",
-      "title": "Mode strict — bloque les requêtes sur fuite",
-      "description": "Toute fuite détectée provoque l'échec de l'anonymisation (fail-closed).",
+      "title": "Mode strict",
+      "description": "Avec verification_on_leak à block, une fuite détectée fait refuser la requête. Avec allow, il équivaut à l'observation : la fuite est signalée et la requête part pseudonymisée.",
       "default": false
     },
     "verification_on_leak": {
       "type": "string",
       "title": "Comportement sur fuite (mode strict)",
-      "description": "allow = passe-plat, événement sensible-data.leak émis. block = refus de la requête.",
+      "description": "block = refus de la requête, événement sensitive-data.leak émis. allow = la fuite est signalée et la requête part pseudonymisée.",
       "default": "allow",
       "enum": ["allow", "block"]
     },
@@ -270,7 +270,8 @@ type Config struct {
 	// échouer Anonymize avec *VerificationError.
 	VerificationStrict bool `json:"verification_strict"`
 	// VerificationOnLeak pilote le comportement du plugin quand le mode strict
-	// détecte une fuite : "allow" passe-plat, "block" refuse la requête.
+	// détecte une fuite : "block" refuse la requête, "allow" ramène le mode
+	// strict à l'observation (voir verificationMode).
 	// Valeurs autorisées : "allow", "block". Défaut : "allow".
 	VerificationOnLeak string `json:"verification_on_leak"`
 
