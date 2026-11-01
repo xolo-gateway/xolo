@@ -142,3 +142,21 @@ func TestObservedLeakKey_ResidualPlaceholderUsesTheSource(t *testing.T) {
 		t.Errorf("one repeated placeholder gives two keys")
 	}
 }
+
+// The action follows what became of the request: rewritten, refused, or let
+// through in clear by the passthrough of an error.
+func TestLeakAction(t *testing.T) {
+	for _, tt := range []struct {
+		out  *proto.PreRequestOutput
+		want string
+	}{
+		{&proto.PreRequestOutput{Allowed: true, ModifiedMessagesJson: "[]"}, leakReported},
+		{&proto.PreRequestOutput{Allowed: false}, leakRefused},
+		{nil, leakRefused},
+		{passthroughOutput(), leakPassedThrough},
+	} {
+		if got := leakAction(tt.out); got != tt.want {
+			t.Errorf("leakAction(%+v) = %q, want %q", tt.out, got, tt.want)
+		}
+	}
+}

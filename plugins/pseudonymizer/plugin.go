@@ -351,12 +351,8 @@ func (p *Plugin) PreRequest(ctx context.Context, in *proto.PreRequestInput) (req
 		if len(observedLeaks) == 0 {
 			return
 		}
-		action := leakReported
-		if reqOut == nil || !reqOut.Allowed {
-			action = leakRefused
-		}
 		report := &anonymizer.VerificationReport{Leaks: slices.Collect(maps.Values(observedLeaks))}
-		emitLeakEvent(in, report, action, p.getHostClient())
+		emitLeakEvent(in, report, leakAction(reqOut), p.getHostClient())
 	}()
 
 	// detectKept expose la détection en lecture seule sur laquelle s'appuient les
@@ -1146,7 +1142,23 @@ const (
 	// leakRefused : la fuite a été observée, mais la requête a été refusée
 	// pour un autre motif ; rien n'a atteint le modèle.
 	leakRefused = "refused"
+	// leakPassedThrough : la fuite a été observée, puis la requête est partie
+	// telle quelle, en clair, par le passe-plat d'une erreur.
+	leakPassedThrough = "passthrough"
 )
+
+// leakAction dit ce qu'il est advenu d'une requête où la vérification a
+// observé une fuite, d'après la sortie de PreRequest : seule une sortie
+// réécrite porte les messages pseudonymisés, le passe-plat n'en porte pas.
+func leakAction(out *proto.PreRequestOutput) string {
+	switch {
+	case out == nil || !out.Allowed:
+		return leakRefused
+	case out.ModifiedMessagesJson == "":
+		return leakPassedThrough
+	}
+	return leakReported
+}
 
 // emitLeakEvent publie un événement décrivant la fuite détectée. Le rapport
 // est sérialisé sans texte source (offsets et types seulement).
