@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 )
 
 // fakeRelease serves files as a release would and swaps modelFiles for their
@@ -159,5 +160,31 @@ func TestModelSource_RepairsAnAlteredCachedFile(t *testing.T) {
 	}
 	if b, _ := os.ReadFile(path); string(b) != "weights" || served.Load() != 1 {
 		t.Errorf("model.safetensors = %q after %d downloads, want it downloaded again", b, served.Load())
+	}
+}
+
+// With every slot taken, a reading fails with errModelBusy once its wait is
+// over, and with the request's error when the request ends first: it never
+// blocks past either.
+func TestGatedRecognizer_BoundedWait(t *testing.T) {
+	decisions := make(chan struct{}, 1)
+	decisions <- struct{}{}
+	g := gatedRecognizer{decisions: decisions, wait: 20 * time.Millisecond}
+
+	if _, err := g.RecognizeContext(context.Background(), "Jean Dupont"); !errors.Is(err, errModelBusy) {
+		t.Errorf("RecognizeContext = %v, want errModelBusy", err)
+	}
+	if _, err := g.Recognize("Jean Dupont"); !errors.Is(err, errModelBusy) {
+		t.Errorf("Recognize = %v, want errModelBusy", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	g.wait = time.Hour
+	if _, err := g.RecognizeContext(ctx, "Jean Dupont"); !errors.Is(err, context.Canceled) {
+		t.Errorf("RecognizeContext = %v, want context.Canceled", err)
+	}
+	if len(decisions) != 1 {
+		t.Errorf("a failed wait took or released a slot: %d taken", len(decisions))
 	}
 }

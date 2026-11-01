@@ -342,7 +342,7 @@ func (p *Plugin) PreRequest(ctx context.Context, in *proto.PreRequestInput) (*pr
 	// detectKept expose la détection en lecture seule sur laquelle s'appuient les
 	// chemins qui transmettent un contenu sans le réécrire.
 	detectKept := func(text string) ([]ner.Entity, error) {
-		entities, err := anon.Detect(text)
+		entities, err := anon.DetectContext(ctx, text)
 		if err != nil {
 			return nil, err
 		}
@@ -388,7 +388,7 @@ func (p *Plugin) PreRequest(ctx context.Context, in *proto.PreRequestInput) (*pr
 	ownPlaceholder := ownedBy(session.Nonce())
 	anonymize := func(s string) (*anonymizer.Result, error) {
 		masked := maskPlaceholders(s, ownPlaceholder)
-		result, err := anon.Anonymize(masked.Text, append(anonymOpts, anonymizer.WithSession(session))...)
+		result, err := anon.Anonymize(masked.Text, append(anonymOpts, anonymizer.WithSession(session), anonymizer.WithContext(ctx))...)
 		if err != nil {
 			return nil, err
 		}
@@ -1490,7 +1490,7 @@ func (p *Plugin) indecisRecognizer(ctx context.Context, cfg Config) (goanon.Reco
 	// The recognizer's own threshold also drops the typed and sensitive
 	// passages below it, which then neither type nor flag a mask.
 	rec.MinConfidence = cfg.MinConfidence
-	return gatedRecognizer{rec: rec, decisions: decisions}, nil
+	return gatedRecognizer{rec: rec, decisions: decisions, wait: maxDecisionWait}, nil
 }
 
 // crfRecognizer downloads the CRF model of language and builds go-anon's

@@ -15,6 +15,7 @@ import (
 	"sync"
 	"time"
 
+	goanon "github.com/bornholm/go-anon"
 	"github.com/bornholm/go-anon/pkg/ner"
 	"github.com/bornholm/indecis"
 	"github.com/bornholm/indecis-ner/recognizer"
@@ -53,6 +54,15 @@ var modelFiles = []modelFile{
 // together. Each reading already spreads over every core and holds the
 // encoder buffers (about 60 MB): more would add memory, not throughput.
 const maxDecisions = 4
+
+// maxDecisionWait bounds the wait for a reading slot: past it, the reading
+// fails with errModelBusy rather than hold the request until its client
+// gives up.
+const maxDecisionWait = 30 * time.Second
+
+// errModelBusy reports a text the model could not read in time, every slot
+// being taken by other readings.
+var errModelBusy = fmt.Errorf("le modèle indecis est occupé : aucune des %d places de lecture ne s'est libérée en %s", maxDecisions, maxDecisionWait)
 
 // errModelMissing reports a model that offline mode forbids downloading.
 var errModelMissing = errors.New("le modèle n'est pas en cache et le mode hors-ligne interdit son téléchargement")
@@ -275,13 +285,31 @@ func loadModel(ctx context.Context, src modelSource, bias float64) (*indecis.Mod
 }
 
 // gatedRecognizer reads a text with the model once a decision slot is free.
+// It implements go-anon's ContextRecognizer: the wait for a slot ends with the
+// request, or with errModelBusy after wait, and the reading itself stops with
+// the request.
 type gatedRecognizer struct {
 	rec       *recognizer.Recognizer
 	decisions chan struct{}
+	wait      time.Duration
 }
 
+var _ goanon.ContextRecognizer = gatedRecognizer{}
+
 func (g gatedRecognizer) Recognize(text string) ([]ner.Entity, error) {
-	g.decisions <- struct{}{}
+	return g.RecognizeContext(context.Background(), text)
+}
+
+func (g gatedRecognizer) RecognizeContext(ctx context.Context, text string) ([]ner.Entity, error) {
+	timer := time.NewTimer(g.wait)
+	defer timer.Stop()
+	select {
+	case g.decisions <- struct{}{}:
+	case <-timer.C:
+		return nil, errModelBusy
+	case <-ctx.Done():
+		return nil, fmt.Errorf("attente d'une place de lecture du modèle indecis : %w", ctx.Err())
+	}
 	defer func() { <-g.decisions }()
-	return g.rec.Recognize(text)
+	return g.rec.RecognizeContext(ctx, text)
 }
