@@ -101,7 +101,9 @@ func (s modelSource) path() string {
 }
 
 // cached reports whether every file of the release is in the cache, at its
-// size. A directory given by the operator is always taken as it is.
+// size: a cheap check, for the status of the configuration page. Loading
+// checks each file by its digest (intact), and downloads again one that was
+// altered. A directory given by the operator is always taken as it is.
 func (s modelSource) cached() bool {
 	if s.dir != "" {
 		return true
@@ -206,6 +208,10 @@ func (s modelSource) download(ctx context.Context, f modelFile) error {
 
 // models loads each model once per directory and bias. The bias is set on the
 // model and must not change during a decision, so each one has its instance.
+// Instances are kept for the life of the process: the keys are the few
+// directories and biases the nodes are configured with, and an instance of a
+// file already loaded costs its int8 encoder layers only, indecis mapping the
+// weights shared and loading the tokenizer once per content.
 type models struct {
 	mu      sync.Mutex
 	loading map[string]*modelLoad
