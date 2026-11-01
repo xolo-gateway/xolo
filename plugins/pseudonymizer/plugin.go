@@ -319,8 +319,10 @@ func (p *Plugin) PreRequest(ctx context.Context, in *proto.PreRequestInput) (*pr
 		anonymizeFailures int
 		lastAnonymizeErr  error
 		// observedLeaks gathers what the verification found in the contents
-		// it let through (verifyObserve), for one event per request.
-		observedLeaks []anonymizer.Leak
+		// it let through (verifyObserve), for one event per request. Keyed as
+		// leakValues: one value repeated, or sent back with the history, is
+		// one leak.
+		observedLeaks = map[string]anonymizer.Leak{}
 		// leakValues holds what Detect found in content deliberately forwarded
 		// without rewriting (a thinking block, a web_search call, an
 		// unrecognized block type). Never added to session.Mapping, so kept
@@ -341,6 +343,15 @@ func (p *Plugin) PreRequest(ctx context.Context, in *proto.PreRequestInput) (*pr
 		// relève de anonymizeFailures, pas de ce compte.
 		neutralizedPlaceholders int
 	)
+
+	// The observed leaks are reported however the request ends: refused for
+	// another reason after a content was let through, they still happened.
+	defer func() {
+		if len(observedLeaks) > 0 {
+			report := &anonymizer.VerificationReport{Leaks: slices.Collect(maps.Values(observedLeaks))}
+			emitLeakEvent(in, report, leakReported, p.getHostClient())
+		}
+	}()
 
 	// detectKept expose la détection en lecture seule sur laquelle s'appuient les
 	// chemins qui transmettent un contenu sans le réécrire.
@@ -397,7 +408,9 @@ func (p *Plugin) PreRequest(ctx context.Context, in *proto.PreRequestInput) (*pr
 		}
 		// Observing, go-anon keeps its report in the result rather than fail.
 		if !result.Verification.OK() {
-			observedLeaks = append(observedLeaks, result.Verification.Leaks...)
+			for _, l := range result.Verification.Leaks {
+				observedLeaks[observedLeakKey(result.Text, l)] = l
+			}
 		}
 		var missing int
 		result.Text, missing = masked.Unmask(result.Text)
@@ -775,12 +788,6 @@ func (p *Plugin) PreRequest(ctx context.Context, in *proto.PreRequestInput) (*pr
 
 	// A content whose anonymization failed was forwarded as is: say so, since
 	// nothing in the request itself tells the administrator the filter gave up.
-	// The request leaves pseudonymized: the leaks the verification observed
-	// are reported, as the node's "report" choice promises.
-	if len(observedLeaks) > 0 {
-		emitLeakEvent(in, &anonymizer.VerificationReport{Leaks: observedLeaks}, leakReported, p.getHostClient())
-	}
-
 	if anonymizeFailures > 0 {
 		p.emitEvent(pluginsdk.Event{
 			PluginName: "pseudonymizer",
@@ -1095,6 +1102,18 @@ func (p *Plugin) emitBlockedAttachmentsEvent(in *proto.PreRequestInput, parts []
 			"reasons":     strings.Join(reasons, ", "),
 		},
 	})
+}
+
+// observedLeakKey identifies a leak the verification found in output, as
+// leakKey does a detected value: its kind, its type and a digest of its
+// normalized surface form, never the text itself.
+func observedLeakKey(output string, l anonymizer.Leak) string {
+	var surface string
+	if l.Start >= 0 && l.End <= len(output) && l.Start < l.End {
+		surface = output[l.Start:l.End]
+	}
+	sum := sha256.Sum256([]byte(strings.ToLower(strings.TrimSpace(surface))))
+	return l.Kind.String() + "\x00" + string(l.Type) + "\x00" + hex.EncodeToString(sum[:8])
 }
 
 // Ce que le nœud a fait de la requête où une fuite a été détectée, publié dans

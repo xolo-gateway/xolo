@@ -21,6 +21,13 @@ func (blindRecognizer) Recognize(context.Context, string) ([]ner.Entity, error) 
 // email the recognizer leaves in clear.
 func preRequestWithBlindRecognizer(t *testing.T, cfg Config) (*proto.PreRequestOutput, *captureHost) {
 	t.Helper()
+	return preRequestBlind(t, cfg, []map[string]any{{"role": "user", "content": "Écrire à jean.dupont@example.com demain."}})
+}
+
+// preRequestBlind runs PreRequest with cfg on messages, with a recognizer that
+// finds nothing.
+func preRequestBlind(t *testing.T, cfg Config, messages []map[string]any) (*proto.PreRequestOutput, *captureHost) {
+	t.Helper()
 	host := &captureHost{HostClient: newFakeUIHost()}
 	p := newPlugin()
 	host.attachTo(p)
@@ -35,7 +42,7 @@ func preRequestWithBlindRecognizer(t *testing.T, cfg Config) (*proto.PreRequestO
 	if err != nil {
 		t.Fatal(err)
 	}
-	msgs, _ := json.Marshal([]map[string]any{{"role": "user", "content": "Écrire à jean.dupont@example.com demain."}})
+	msgs, _ := json.Marshal(messages)
 	out, err := p.PreRequest(context.Background(), &proto.PreRequestInput{
 		Ctx:          &proto.RequestContext{OrgId: "org-1", UserId: "user-1", NodeId: "node-1", ConfigJson: string(cfgJSON)},
 		MessagesJson: string(msgs),
@@ -79,5 +86,39 @@ func TestPreRequest_BlockedLeakEmitsAnEvent(t *testing.T) {
 	}
 	if evt := host.waitForEventOfType(t, "sensitive-data.leak"); evt.Attributes["action"] != leakBlocked {
 		t.Errorf("action = %q, want blocked", evt.Attributes["action"])
+	}
+}
+
+// One value repeated, here sent again in the history, is one leak.
+func TestPreRequest_ReportedLeaksAreCountedOnce(t *testing.T) {
+	cfg := attachmentConfig(t)
+	cfg.Verification = true
+
+	_, host := preRequestBlind(t, cfg, []map[string]any{
+		{"role": "user", "content": "Écrire à jean.dupont@example.com demain."},
+		{"role": "assistant", "content": "Je préviens Jean.Dupont@example.com."},
+		{"role": "user", "content": "Merci, écris à jean.dupont@example.com."},
+	})
+	if evt := host.waitForEventOfType(t, "sensitive-data.leak"); evt.Attributes["leak_count"] != "1" {
+		t.Errorf("leak_count = %q, want 1 for one repeated value", evt.Attributes["leak_count"])
+	}
+}
+
+// A leak let through in one content is reported even when the request is then
+// refused for another reason, here an attachment that cannot be read.
+func TestPreRequest_ReportedLeakSurvivesALaterRefusal(t *testing.T) {
+	cfg := attachmentConfig(t)
+	cfg.Verification = true
+	cfg.UnsupportedAttachments = "block"
+
+	out, host := preRequestBlind(t, cfg, []map[string]any{
+		{"role": "user", "content": "Écrire à jean.dupont@example.com demain."},
+		{"role": "user", "content": []any{map[string]any{"type": "image_url", "image_url": map[string]any{"url": "https://example.com/scan.png"}}}},
+	})
+	if out.Allowed {
+		t.Fatalf("the unreadable attachment must refuse the request")
+	}
+	if evt := host.waitForEventOfType(t, "sensitive-data.leak"); evt.Attributes["action"] != leakReported {
+		t.Errorf("action = %q, want reported", evt.Attributes["action"])
 	}
 }
