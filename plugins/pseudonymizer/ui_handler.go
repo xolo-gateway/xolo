@@ -322,9 +322,12 @@ func configFromForm(r *http.Request, base Config) Config {
 	cfg.MinRunes = 0
 	// Unlike the thresholds, an emptied or invalid bias goes back to the
 	// default: a bias of 0 lets through what the measurements count as leaks.
-	cfg.Bias = defaultBias
-	if bias, err := strconv.ParseFloat(r.FormValue("bias"), 64); err == nil && bias >= 0 && bias <= maxBias {
-		cfg.Bias = bias
+	// An absent one keeps the node's, as an absent engine does.
+	if _, sent := r.Form["bias"]; sent {
+		cfg.Bias = defaultBias
+		if bias, err := strconv.ParseFloat(r.FormValue("bias"), 64); err == nil && bias >= 0 && bias <= maxBias {
+			cfg.Bias = bias
+		}
 	}
 	if minConf := r.FormValue("min_confidence"); minConf != "" {
 		var f float64

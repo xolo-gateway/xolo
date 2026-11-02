@@ -427,3 +427,25 @@ func TestPageRendersStrategyAndKey(t *testing.T) {
 		}
 	}
 }
+
+// An absent bias keeps the node's; an emptied one goes back to the default.
+func TestConfigFromForm_AbsentBiasKeepsTheNodes(t *testing.T) {
+	base := defaultConfig()
+	base.Bias = 7
+	for _, tt := range []struct {
+		form string
+		want float64
+	}{
+		{"strategy=tag", 7},
+		{"strategy=tag&bias=", defaultBias},
+		{"strategy=tag&bias=2", 2},
+	} {
+		r := uiRequest(http.MethodPost, "/api/config", tt.form, "org-1", "node-1", newFakeUIHost())
+		if err := r.ParseForm(); err != nil {
+			t.Fatalf("ParseForm: %v", err)
+		}
+		if got := configFromForm(r, base).Bias; got != tt.want {
+			t.Errorf("%s: bias %v, want %v", tt.form, got, tt.want)
+		}
+	}
+}
