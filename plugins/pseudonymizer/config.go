@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"slices"
 
 	goanon "github.com/bornholm/go-anon"
 )
@@ -10,6 +11,13 @@ import (
 const configSchemaJSON = `{
   "type": "object",
   "properties": {
+    "engine": {
+      "type": "string",
+      "title": "Moteur de détection",
+      "description": "crf = modèle d'entités nommées de go-anon, un par langue, précis sur les messages courts. indecis = modèle de masquage d'indecis-ner, multilingue, qui trouve aussi les quasi-identifiants (âge, métier, proches…) et les données sensibles de l'article 9, mais masque aussi des termes techniques dans les demandes courtes : à réserver aux contenus riches en données personnelles.",
+      "default": "crf",
+      "enum": ["crf", "indecis"]
+    },
     "cache_dir": {
       "type": "string",
       "title": "Répertoire de cache",
@@ -18,7 +26,17 @@ const configSchemaJSON = `{
     "manifest_url": {
       "type": "string",
       "title": "URL du manifest",
-      "description": "URL du manifest des modèles disponibles. Par défaut : dépôt officiel go-anon."
+      "description": "URL du manifest des modèles disponibles. Par défaut : dépôt officiel go-anon. Moteur crf."
+    },
+    "model_dir": {
+      "type": "string",
+      "title": "Répertoire du modèle indecis",
+      "description": "Dossier d'un modèle indecis déjà présent sur la machine, utilisé tel quel à la place du modèle téléchargé. Moteur indecis."
+    },
+    "model_url": {
+      "type": "string",
+      "title": "URL du modèle indecis",
+      "description": "Adresse d'un miroir des fichiers du modèle. Par défaut : release d'indecis-ner. Les fichiers restent vérifiés par leur empreinte. Moteur indecis."
     },
     "offline": {
       "type": "boolean",
@@ -47,6 +65,14 @@ const configSchemaJSON = `{
       "default": "tag",
       "enum": ["tag", "redact", "hash", "consistent"]
     },
+    "bias": {
+      "type": "number",
+      "title": "Prudence",
+      "description": "Biais de décodage du modèle indecis (0–10) : plus il est haut, moins il reste de données lisibles, et plus il y a de masques superflus. Moteur indecis.",
+      "default": 3,
+      "minimum": 0,
+      "maximum": 10
+    },
     "min_confidence": {
       "type": "number",
       "title": "Confiance minimale",
@@ -72,10 +98,10 @@ const configSchemaJSON = `{
     "skip_types": {
       "type": "array",
       "title": "Types à ignorer",
-      "description": "Types d'entités à ne pas anonymiser.",
+      "description": "Types d'entités à ne pas anonymiser. PER est le type de personne du moteur crf, PERSON celui du moteur indecis, qui y ajoute CODE, DEM, DATETIME et QUANTITY : l'un vaut pour l'autre.",
       "items": {
         "type": "string",
-        "enum": ["PER","LOC","ORG","MISC","EMAIL","IPV4","IPV6","IBAN","SIRET","SIREN","PHONE","API_KEY","JWT","SECRET"]
+        "enum": ["PER","PERSON","CODE","LOC","ORG","DEM","DATETIME","QUANTITY","MISC","EMAIL","IPV4","IPV6","IBAN","SIRET","SIREN","PHONE","API_KEY","JWT","SECRET"]
       }
     },
     "blocklist": {
@@ -164,14 +190,14 @@ const configSchemaJSON = `{
     },
     "verification_strict": {
       "type": "boolean",
-      "title": "Mode strict — bloque les requêtes sur fuite",
-      "description": "Toute fuite détectée provoque l'échec de l'anonymisation (fail-closed).",
+      "title": "Mode strict",
+      "description": "Avec verification_on_leak à block, une fuite détectée fait refuser la requête. Avec allow, il équivaut à l'observation : la fuite est signalée et la requête part pseudonymisée.",
       "default": false
     },
     "verification_on_leak": {
       "type": "string",
       "title": "Comportement sur fuite (mode strict)",
-      "description": "allow = passe-plat, événement sensible-data.leak émis. block = refus de la requête.",
+      "description": "block = refus de la requête, événement sensitive-data.leak émis. allow = la fuite est signalée et la requête part pseudonymisée.",
       "default": "allow",
       "enum": ["allow", "block"]
     },
@@ -185,10 +211,19 @@ const configSchemaJSON = `{
 
 // Config représente la configuration org-level du plugin.
 type Config struct {
+	// Engine choisit le moteur de détection : engineCRF ou engineIndecis.
+	Engine string `json:"engine"`
+
 	// Modelstore
 	CacheDir    string `json:"cache_dir"`
 	ManifestURL string `json:"manifest_url"`
 	Offline     bool   `json:"offline"`
+	// ModelDir désigne un modèle indecis déjà présent, utilisé tel quel.
+	ModelDir string `json:"model_dir"`
+	// ModelURL remplace l'adresse de la release d'indecis-ner.
+	ModelURL string `json:"model_url"`
+	// Bias est le biais de décodage des questions du modèle indecis (0–10).
+	Bias float64 `json:"bias"`
 
 	// Anonymisation
 	Language              string              `json:"language"`
@@ -235,7 +270,8 @@ type Config struct {
 	// échouer Anonymize avec *VerificationError.
 	VerificationStrict bool `json:"verification_strict"`
 	// VerificationOnLeak pilote le comportement du plugin quand le mode strict
-	// détecte une fuite : "allow" passe-plat, "block" refuse la requête.
+	// détecte une fuite : "block" refuse la requête, "allow" ramène le mode
+	// strict à l'observation (voir verificationMode).
 	// Valeurs autorisées : "allow", "block". Défaut : "allow".
 	VerificationOnLeak string `json:"verification_on_leak"`
 
@@ -261,6 +297,17 @@ func parseConfig(configJSON string) (Config, error) {
 	if cfg.Strategy == "" {
 		cfg.Strategy = "tag"
 	}
+	if cfg.Engine == "" {
+		cfg.Engine = engineCRF
+	}
+	switch cfg.Engine {
+	case engineCRF, engineIndecis:
+	default:
+		return Config{}, fmt.Errorf("engine invalide : %q (attendu : crf|indecis)", cfg.Engine)
+	}
+	if cfg.Bias < 0 || cfg.Bias > maxBias {
+		return Config{}, fmt.Errorf("bias invalide : %v (attendu : 0 à %v)", cfg.Bias, maxBias)
+	}
 	if cfg.VerificationOnLeak == "" {
 		cfg.VerificationOnLeak = "allow"
 	}
@@ -282,6 +329,8 @@ func parseConfig(configJSON string) (Config, error) {
 
 func defaultConfig() Config {
 	return Config{
+		Engine:                engineCRF,
+		Bias:                  defaultBias,
 		Language:              LanguageAuto,
 		FallbackLanguage:      defaultLanguage,
 		Strategy:              "tag",
@@ -322,10 +371,117 @@ func strategyFromString(s string) goanon.Strategy {
 	}
 }
 
+// The detection engines.
+const (
+	engineCRF     = "crf"
+	engineIndecis = "indecis"
+)
+
+const (
+	// defaultBias leaves no direct identifier readable on the court rulings
+	// of TAB in English and Spanish, 2 out of 366 in French, while masking
+	// far less than indecis-caviardage's 5 in short requests.
+	defaultBias = 3
+	maxBias     = 10
+)
+
+// The types of the indecis model's "entities" question, which types each
+// mask. LOC, ORG and MISC are named as go-anon's.
+const (
+	typePerson   goanon.EntityType = "PERSON"
+	typeCode     goanon.EntityType = "CODE"
+	typeDem      goanon.EntityType = "DEM"
+	typeDatetime goanon.EntityType = "DATETIME"
+	typeQuantity goanon.EntityType = "QUANTITY"
+)
+
 // allEntityTypes is the complete list of entity types the anonymizer knows about.
 var allEntityTypes = []goanon.EntityType{
 	goanon.TypePER, goanon.TypeLOC, goanon.TypeORG, goanon.TypeMISC,
+	typePerson, typeCode, typeDem, typeDatetime, typeQuantity,
 	goanon.TypeEMAIL, goanon.TypeIPV4, goanon.TypeIPV6, goanon.TypeIBAN,
 	goanon.TypeSIRET, goanon.TypeSIREN, goanon.TypePHONE,
 	goanon.TypeAPIKey, goanon.TypeJWT, goanon.TypeSecret,
+}
+
+// typeGroup is a family of types on the configuration page, under one title.
+// The page offers each type on its own.
+type typeGroup struct {
+	Key   string
+	Types []pageType
+}
+
+// pageType is a type the page offers. IndecisOnly types are only found by the
+// indecis model: the page hides them with the CRF engine.
+type pageType struct {
+	Type        goanon.EntityType
+	IndecisOnly bool
+}
+
+// The families of types. Identifiers and secrets are found by regular
+// expressions, whatever the engine: their detection is on as long as one type
+// of the family is checked (see configFromForm).
+const (
+	groupContent     = "content"
+	groupIdentifiers = "identifiers"
+	groupSecrets     = "secrets"
+)
+
+var pageTypeGroups = []typeGroup{
+	{groupContent, []pageType{
+		{typePerson, false}, {typeCode, true}, {goanon.TypeLOC, false}, {goanon.TypeORG, false},
+		{typeDem, true}, {typeDatetime, true}, {typeQuantity, true}, {goanon.TypeMISC, false},
+	}},
+	{groupIdentifiers, []pageType{
+		{goanon.TypeEMAIL, false}, {goanon.TypePHONE, false}, {goanon.TypeIBAN, false}, {goanon.TypeSIRET, false},
+		{goanon.TypeSIREN, false}, {goanon.TypeIPV4, false}, {goanon.TypeIPV6, false},
+	}},
+	{groupSecrets, []pageType{
+		{goanon.TypeAPIKey, false}, {goanon.TypeJWT, false}, {goanon.TypeSecret, false},
+	}},
+}
+
+// typeChecked reports whether the page shows t as pseudonymized: not skipped,
+// and, for an identifier or a secret, its family's detection on.
+func typeChecked(cfg Config, group string, t goanon.EntityType) bool {
+	switch {
+	case group == groupIdentifiers && !cfg.BuiltinRegexPatterns:
+		return false
+	case group == groupSecrets && !cfg.BuiltinSecretPatterns:
+		return false
+	}
+	return !typeSkipped(cfg.SkipTypes, t)
+}
+
+// typeSkipped reports whether t, or the type naming the same thing for the
+// other engine, is among skip.
+func typeSkipped(skip []string, t goanon.EntityType) bool {
+	for _, alias := range typeAliases(string(t)) {
+		if slices.Contains(skip, alias) {
+			return true
+		}
+	}
+	return false
+}
+
+// skipTypesOf returns the types to skip once the page checked the types of
+// checked among those it showed. The skipped types it did not show, those of
+// the other engine for instance, are kept.
+func skipTypesOf(base, shown, checked []string) []string {
+	var shownAll []string
+	for _, t := range shown {
+		shownAll = append(shownAll, typeAliases(t)...)
+	}
+	var skip []string
+	for _, t := range base {
+		if !slices.Contains(shownAll, t) {
+			skip = append(skip, t)
+		}
+	}
+	for _, t := range shown {
+		if !slices.Contains(checked, t) {
+			skip = append(skip, t)
+		}
+	}
+	return skip
 }

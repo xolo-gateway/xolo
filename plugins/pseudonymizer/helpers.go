@@ -1,8 +1,12 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"strconv"
+
+	"github.com/a-h/templ"
+	"github.com/xolo-gateway/xolo/internal/i18n"
 )
 
 // formatFloat formats a float64 as a string for HTML input fields.
@@ -11,6 +15,12 @@ func formatFloat(f float64) string {
 	if f == 0 {
 		return ""
 	}
+	return strconv.FormatFloat(f, 'f', -1, 64)
+}
+
+// formatBias formats the bias for its input field, 0 included: unlike the
+// thresholds, 0 is a setting of its own, not "no limit".
+func formatBias(f float64) string {
 	return strconv.FormatFloat(f, 'f', -1, 64)
 }
 
@@ -29,6 +39,19 @@ func languageLabel(code string) string {
 	return code
 }
 
+// numberAttributes returns the attributes of a number input: never negative,
+// with an optional step and maximum.
+func numberAttributes(step, max string) templ.Attributes {
+	attrs := templ.Attributes{"min": "0"}
+	if step != "" {
+		attrs["step"] = step
+	}
+	if max != "" {
+		attrs["max"] = max
+	}
+	return attrs
+}
+
 // formatInt formats an int as a string for HTML input fields.
 // Returns empty string for zero to let the placeholder show.
 func formatInt(n int) string {
@@ -45,4 +68,15 @@ func hashKeyPlaceholder(hasValue bool) string {
 		return "••••••••"
 	}
 	return ""
+}
+
+// typeGroupTitle returns the title of a family of types on the page.
+func typeGroupTitle(ctx context.Context, group string) string {
+	switch group {
+	case groupIdentifiers:
+		return i18n.T(ctx, "plugin.pseudonymizer.types.group.identifiers")
+	case groupSecrets:
+		return i18n.T(ctx, "plugin.pseudonymizer.types.group.secrets")
+	}
+	return i18n.T(ctx, "plugin.pseudonymizer.types.group.content")
 }

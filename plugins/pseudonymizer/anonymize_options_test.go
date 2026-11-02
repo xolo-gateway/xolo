@@ -118,3 +118,27 @@ func TestBuildAnonymizeOptions_SecretScopeIsolation(t *testing.T) {
 		require.ErrorIs(t, err, errHashKeyMissing)
 	}
 }
+
+// The strict verification only serves to refuse the request: with allow, it
+// used to forward the whole request in clear, so it now observes.
+func TestVerificationMode(t *testing.T) {
+	for _, tt := range []struct {
+		verification, strict bool
+		onLeak               string
+		want                 verificationLevel
+	}{
+		{false, false, "allow", verifyNone},
+		{true, false, "allow", verifyObserve},
+		{true, false, "block", verifyObserve},
+		{false, true, "allow", verifyObserve},
+		{true, true, "allow", verifyObserve},
+		{false, true, "block", verifyBlock},
+		{true, true, "block", verifyBlock},
+	} {
+		cfg := defaultConfig()
+		cfg.Verification, cfg.VerificationStrict, cfg.VerificationOnLeak = tt.verification, tt.strict, tt.onLeak
+		if got := verificationMode(cfg); got != tt.want {
+			t.Errorf("verification=%v strict=%v on_leak=%s: %v, want %v", tt.verification, tt.strict, tt.onLeak, got, tt.want)
+		}
+	}
+}

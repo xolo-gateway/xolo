@@ -83,7 +83,6 @@ func TestBuiltinRegexPatterns_KeepsOtherTypes(t *testing.T) {
 
 func TestPostFilters_MinRunes(t *testing.T) {
 	cfg := defaultConfig()
-	cfg.MinConfidence = 0
 	cfg.MinRunes = 2
 
 	filters := postFilters(cfg)
@@ -110,6 +109,8 @@ func TestPostFilters_Order(t *testing.T) {
 	cfg.MaxTokens = 4
 	cfg.Blocklist = map[string][]string{"PER": {"Monsieur"}}
 
+	// Runes, tokens, and the blocklist of PER for each person type: the
+	// confidence threshold is the engine's own, not a post filter.
 	if got := len(postFilters(cfg)); got != 4 {
 		t.Errorf("len(postFilters) = %d, want 4", got)
 	}

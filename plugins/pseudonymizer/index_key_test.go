@@ -39,7 +39,7 @@ func placeholderWith(t *testing.T, keys *indexKeys, host indexKeyStore, reqCtx *
 	if err != nil || opt == nil {
 		t.Fatalf("indexKeyOption = %v, %v", opt, err)
 	}
-	res, err := anonymizer.New(jeanDupontRecognizer{}, anonymizer.Config{Strategy: anonymizer.TagReplace}).Anonymize("Jean Dupont", anonymizer.WithSession(newSession(context.Background(), reqCtx)), opt)
+	res, err := anonymizer.New(jeanDupontRecognizer{}, anonymizer.Config{Strategy: anonymizer.TagReplace}).Anonymize(context.Background(), "Jean Dupont", anonymizer.WithSession(newSession(context.Background(), reqCtx)), opt)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -49,7 +49,7 @@ func placeholderWith(t *testing.T, keys *indexKeys, host indexKeyStore, reqCtx *
 // jeanDupontRecognizer finds Jean Dupont, the whole text.
 type jeanDupontRecognizer struct{}
 
-func (jeanDupontRecognizer) Recognize(text string) ([]ner.Entity, error) {
+func (jeanDupontRecognizer) Recognize(_ context.Context, text string) ([]ner.Entity, error) {
 	return []ner.Entity{{Text: text, Type: ner.TypePER, Start: 0, End: len(text), Confidence: 1}}, nil
 }
 

@@ -316,7 +316,8 @@ func rewriteLeaves(v any, rewrite func(string) (string, error)) (any, error) {
 }
 
 // keepDetectedTypes drops from a Detect result the entity types the operator
-// disabled through `skip_types`.
+// disabled through `skip_types`, PER and PERSON standing for each other as in
+// anonymizerConfig.
 //
 // Detect does not do this itself: it returns the recognizer's raw output,
 // where Anonymize first filters on the EntityTypes the node fills in from
@@ -328,13 +329,9 @@ func keepDetectedTypes(entities []ner.Entity, skipTypes []string) []ner.Entity {
 	if len(skipTypes) == 0 || len(entities) == 0 {
 		return entities
 	}
-	skipped := make(map[string]bool, len(skipTypes))
-	for _, t := range skipTypes {
-		skipped[t] = true
-	}
 	kept := make([]ner.Entity, 0, len(entities))
 	for _, e := range entities {
-		if !skipped[string(e.Type)] {
+		if !typeSkipped(skipTypes, e.Type) {
 			kept = append(kept, e)
 		}
 	}

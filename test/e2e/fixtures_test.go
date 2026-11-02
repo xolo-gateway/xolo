@@ -40,8 +40,11 @@ const (
 	modelFast   = "acme/e2e-fast"
 	modelStrong = "acme/e2e-strong"
 	modelBroken = "acme/e2e-broken"
+	// modelIndecis is wrapped by a pseudonymizer with the indecis engine.
+	modelIndecis = "acme/" + realModelIndecis
 
-	realModelBroken = "e2e-broken"
+	realModelBroken  = "e2e-broken"
+	realModelIndecis = "e2e-indecis"
 
 	// A provider of type anthropic, pointed at the fake Messages endpoint,
 	// with two models: one wrapped by a pseudonymizer middleware, one
@@ -324,7 +327,7 @@ func createTypeSafeProvider(db *gorm.DB, providerURL string) error {
 
 func createModels(db *gorm.DB) error {
 	now := time.Now()
-	for _, name := range []string{"e2e-fast", "e2e-strong", realModelBroken} {
+	for _, name := range []string{"e2e-fast", "e2e-strong", realModelBroken, realModelIndecis} {
 		m := &gormadapter.LLMModel{
 			ID: "mdl-" + name, CreatedAt: now, UpdatedAt: now,
 			ProviderID: providerAcmeOpenAI, OrgID: orgAcme,
@@ -350,6 +353,8 @@ func createMiddlewares(db *gorm.DB) error {
 			`{"language":"fr","strategy":"hash"}`),
 		pseudonymizerMiddleware("mw-e2e-pseudo-claude", "e2e-pseudonymizer-claude", modelClaudeID,
 			`{"language":"fr","strategy":"tag"}`),
+		pseudonymizerMiddleware("mw-e2e-pseudo-indecis", "e2e-pseudonymizer-indecis", "mdl-"+realModelIndecis,
+			`{"engine":"indecis","language":"fr","strategy":"tag"}`),
 	}
 	for _, mw := range middlewares {
 		if err := db.Create(mw).Error; err != nil {

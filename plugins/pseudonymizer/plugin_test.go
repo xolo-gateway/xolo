@@ -290,40 +290,7 @@ func (c *captureHost) assertNoEvent(t *testing.T, window time.Duration) {
 	}
 }
 
-func TestHandleVerificationError_Allow(t *testing.T) {
-	cfg := defaultConfig()
-	cfg.VerificationStrict = true
-	cfg.VerificationOnLeak = "allow"
-
-	verr := &goanon.VerificationError{
-		Report: &goanon.VerificationReport{
-			Leaks: []goanon.Leak{{Kind: goanon.LeakRegexHit, Type: goanon.TypeEMAIL, Start: 0, End: 10}},
-		},
-	}
-	host := &captureHost{}
-
-	out := handleVerificationError(&proto.PreRequestInput{}, verr, cfg, host)
-
-	if out == nil {
-		t.Fatalf("expected non-nil output")
-	}
-	if !out.Allowed {
-		t.Errorf("expected Allowed=true (allow), got false")
-	}
-	got := host.waitForEvent(t)
-	if got.Type != "sensitive-data.leak" {
-		t.Errorf("expected event type sensitive-data.leak, got %q", got.Type)
-	}
-	if got.Severity != "error" {
-		t.Errorf("expected severity error, got %q", got.Severity)
-	}
-}
-
 func TestHandleVerificationError_Block(t *testing.T) {
-	cfg := defaultConfig()
-	cfg.VerificationStrict = true
-	cfg.VerificationOnLeak = "block"
-
 	verr := &goanon.VerificationError{
 		Report: &goanon.VerificationReport{
 			Leaks: []goanon.Leak{{Kind: goanon.LeakKnownEntity, Type: goanon.TypePER, Start: 5, End: 15}},
@@ -331,7 +298,7 @@ func TestHandleVerificationError_Block(t *testing.T) {
 	}
 	host := &captureHost{}
 
-	out := handleVerificationError(&proto.PreRequestInput{}, verr, cfg, host)
+	out := handleVerificationError(&proto.PreRequestInput{}, verr, host)
 
 	if out == nil {
 		t.Fatalf("expected non-nil output")
@@ -346,10 +313,9 @@ func TestHandleVerificationError_Block(t *testing.T) {
 }
 
 func TestHandleVerificationError_NonVerificationError(t *testing.T) {
-	cfg := defaultConfig()
 	host := &captureHost{}
 
-	out := handleVerificationError(&proto.PreRequestInput{}, context.Canceled, cfg, host)
+	out := handleVerificationError(&proto.PreRequestInput{}, context.Canceled, host)
 
 	if out != nil {
 		t.Errorf("expected nil output for non-VerificationError, got %+v", out)
@@ -374,27 +340,6 @@ func TestPassthroughOutput_DeclaresNoResponseRewrite(t *testing.T) {
 	}
 	if len(out.NodeState) != 0 {
 		t.Errorf("passthrough must not stash state, got %d bytes", len(out.NodeState))
-	}
-}
-
-// A leak detected with the "allow" policy still passes through untouched.
-func TestHandleVerificationError_AllowDeclaresNoResponseRewrite(t *testing.T) {
-	cfg := defaultConfig()
-	cfg.VerificationOnLeak = "allow"
-
-	verr := &goanon.VerificationError{
-		Report: &goanon.VerificationReport{
-			Leaks: []goanon.Leak{{Kind: goanon.LeakRegexHit, Type: goanon.TypeEMAIL, Start: 0, End: 10}},
-		},
-	}
-
-	out := handleVerificationError(&proto.PreRequestInput{}, verr, cfg, nil)
-
-	if out == nil {
-		t.Fatal("expected non-nil output")
-	}
-	if !out.NoResponseRewrite {
-		t.Error("the allow path rewrites nothing and must say so")
 	}
 }
 

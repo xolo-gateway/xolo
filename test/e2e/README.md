@@ -72,6 +72,7 @@ En cas d'échec de la mise en place, le journal du serveur est imprimé.
 |---|---|---|
 | `TestPseudonymizer_TagStrategy_RoundTrip` | `acme/gpt-4o-mini` | le fournisseur ne voit que des jetons `⟦PERSON_…⟧`, la réponse restitue les noms, événement `sensitive-data.detected` avec `types=LOC:1,PER:1` |
 | `TestPseudonymizer_NoPersonalData_Passthrough` | `acme/gpt-4o-mini` | message transmis tel quel, aucun événement de détection |
+| `TestPseudonymizer_IndecisEngine_RoundTrip` | `acme/e2e-indecis` | moteur `indecis`, son modèle téléchargé au premier appel : le fournisseur ne voit ni le prénom, ni l'âge, ni la ville, ni le diagnostic, la réponse restitue le prénom et le diagnostic, événement `sensitive-data.detected` |
 | `TestPseudonymizer_HashWithoutKey_FailsClosed` | `acme/gpt-4o` | 403, le fournisseur ne reçoit rien, événement `request.blocked` avec `reason=hash_key_missing` |
 | `TestPseudonymizer_MessagesStreamRestoresToolCallArguments` | `acme/gpt-4o-mini` | route Messages en flux vers un fournisseur `openai` : le placeholder que le modèle recopie d'un `tool_result` dans les arguments d'un appel d'outil, découpé entre deux fragments, revient restitué dans l'`input` du `tool_use` |
 | `TestPseudonymizer_MessagesRelayDoesNotRestoreAnEarlierPlaceholderToSomeoneElse` | `acme/e2e-claude` | relais vers un fournisseur `anthropic` : un placeholder d'un tour précédent, relu dans un bloc de raisonnement, n'est restitué ni à la personne de la requête en cours ni tel quel |
@@ -108,13 +109,13 @@ En cas d'échec de la mise en place, le journal du serveur est imprimé.
 |---|---|
 | `TestLifecyclePurge` | un serveur dédié, multi-tenant, cycle de vie activé (rétention et sondage d'une seconde) : un tenant provisionné avec une organisation et un membre est supprimé (`DELETE` → 202 et `ETag`), son export se vérifie et se confirme avec son condensat ; le worker le purge, le tenant répond 404, son identifiant est refusé à la réutilisation (409 `resource_deleted`) et seul `tenant.deleted.v1` reste dans le flux à son sujet |
 
-Le pseudonymizer est branché par trois middlewares (`mw-e2e-pseudo-tag`,
-`mw-e2e-pseudo-hash`, `mw-e2e-pseudo-claude`) enveloppant chacun un seul modèle ; les autres scénarios
+Le pseudonymizer est branché par quatre middlewares (`mw-e2e-pseudo-tag`,
+`mw-e2e-pseudo-hash`, `mw-e2e-pseudo-claude`, `mw-e2e-pseudo-indecis`) enveloppant chacun un seul modèle ; les autres scénarios
 passent par des modèles virtuels dédiés, tous déclarés dans `fixtures_test.go`
 avec un petit constructeur de graphes (`newGraph().generator("gen")…`).
 
-Le harnais ajoute trois modèles au fournisseur factice : `acme/e2e-fast`,
-`acme/e2e-strong`, et `acme/e2e-broken` auquel le faux serveur répond toujours
+Le harnais ajoute quatre modèles au fournisseur factice : `acme/e2e-fast`,
+`acme/e2e-strong`, `acme/e2e-indecis`, et `acme/e2e-broken` auquel le faux serveur répond toujours
 503. Les plugins `mcp-bridge` (serveur MCP requis), `llm-classifier` (réponse
 JSON structurée d'un modèle requise) et `fuzzy-evaluator` ne sont pas couverts.
 

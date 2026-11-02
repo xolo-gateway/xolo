@@ -17,23 +17,41 @@ Ce plugin ouvre son propre écran de configuration dans le panneau de droite.
 
 | Champ | Rôle | Défaut |
 | --- | --- | --- |
-| `strategy` | Stratégie d'anonymisation | `tag` |
+| `engine` | Moteur de détection : `crf` ou `indecis` | `crf` |
+| `strategy` | Stratégie d'anonymisation : `tag`, `hash` ou `redact` (`consistent` produit les mêmes jetons que `tag`) | `tag` |
 | `language` | Langue | `auto` |
 | `fallback_language` | Langue de repli | `fr` |
+| `bias` | Prudence du moteur `indecis`, de 0 à 10 | 3 |
 | `min_confidence` | Confiance minimale | 0,3 |
-| `skip_types` | Types d'entités à ignorer |  |
+| `skip_types` | Types d'entités à ignorer, ceux que l'écran laisse décochés |  |
 | `blocklist` | Liste de blocage |  |
-| `builtin_regex_patterns` | Patterns regex intégrés | `true` |
-| `builtin_secret_patterns` | Patterns secrets intégrés | `true` |
+| `builtin_regex_patterns` | Détection des identifiants par expressions régulières ; l'écran l'active tant qu'un identifiant est coché | `true` |
+| `builtin_secret_patterns` | Détection des secrets ; l'écran l'active tant qu'un secret est coché | `true` |
 | `process_attachments` | Traiter les pièces jointes documentaires | `true` |
 | `unsupported_attachments` | Pièces jointes non traitables | `block` |
 | `max_attachment_bytes` | Taille maximale par pièce jointe, en octets | 10 485 760 |
 | `inject_instruction` | Instruction de préservation des jetons | `true` |
 | `verification` | Observer les fuites sans bloquer | `true` |
-| `verification_strict` | Bloquer les requêtes sur fuite | `false` |
+| `verification_strict` | Mode strict : avec `verification_on_leak` à `block`, refuse une requête sur fuite | `false` |
+| `verification_on_leak` | `block` refuse la requête ; `allow` ramène le mode strict à l'observation | `allow` |
 | `cache_dir` | Répertoire de cache des modèles |  |
-| `manifest_url` | URL du manifest des modèles |  |
+| `manifest_url` | URL du manifest des modèles `crf` |  |
+| `model_url` | URL d'un miroir du modèle `indecis` |  |
+| `model_dir` | Répertoire d'un modèle `indecis` déjà présent |  |
 | `offline` | Mode hors-ligne | `false` |
+
+## Moteur de détection
+
+Deux moteurs trouvent les données à remplacer ; les expressions régulières (adresses électroniques, téléphones, IBAN, SIRET, SIREN, adresses IP, secrets) s'ajoutent à l'un comme à l'autre.
+
+- `crf`, par défaut, est le modèle d'entités nommées de go-anon : un modèle par langue (français, anglais, espagnol), qui trouve les personnes (`PER`), les lieux (`LOC`), les organisations (`ORG`) et le reste (`MISC`). Il reste précis sur les demandes courtes, celles qu'on adresse d'ordinaire à un LLM.
+- `indecis` est le modèle de masquage d'[indecis-ner](https://github.com/Bornholm/indecis-ner), le même que celui d'[indecis-caviardage](https://github.com/beewii/indecis-caviardage). Un seul modèle lit toutes les langues : `language` ne choisit plus que la langue de l'instruction donnée au LLM. Il masque aussi les identifiants indirects (âge, métier, proches, événements de vie) et les catégories particulières de données de l'article 9 du RGPD (santé, convictions, origine…), que le moteur `crf` laisse lisibles. Ses types sont `PERSON`, `CODE` (numéros de dossier, de compte…), `LOC`, `ORG`, `DEM` (caractéristiques d'une personne), `DATETIME`, `QUANTITY` et `MISC`.
+
+Le moteur `indecis` masque large : dans « Explique la différence entre TCP et UDP », il masque `TCP` et `UDP`, et dans une demande de code, des mots du code. Il convient aux contenus riches en données personnelles (comptes rendus, courriers, dossiers, pièces jointes), pas à un assistant de code ou à des questions techniques. La prudence (`bias`) règle ce compromis : plus elle est haute, moins il reste de données lisibles, et plus il y a de passages masqués inutilement. Sur les décisions de justice du jeu de test TAB, à 3, aucun identifiant direct n'est resté lisible en anglais ni en espagnol, 2 sur 366 en français, pour environ deux tiers de passages masqués à raison. La confiance minimale s'applique aussi aux passages du modèle : à 0,3, elle écarte la plupart des masques superflus d'une demande courte.
+
+Le modèle `indecis` (environ 310 Mo) est téléchargé depuis la release d'indecis-ner au premier appel, vérifié par son empreinte SHA-256, puis gardé dans `cache_dir` (par défaut, le dossier `indecis-ner` du répertoire de cache de l'utilisateur). Un miroir peut le servir (`model_url`), avec les mêmes empreintes, et `model_dir` désigne un modèle déjà présent sur la machine, utilisé tel quel. Le premier appel attend la fin du téléchargement ; s'il est interrompu, la requête passe sans pseudonymisation et l'événement `passthrough` le signale, comme pour un modèle `crf` absent. Le modèle lit au plus quatre textes à la fois, toutes requêtes confondues : chaque lecture occupe déjà tous les cœurs. Un texte qui attend sa place plus de 30 secondes n'est pas pseudonymisé ; il part tel quel et l'événement `passthrough` donne l'erreur (« le modèle indecis est occupé »), comme pour tout échec d'anonymisation. Une requête abandonnée par son client arrête son attente et sa lecture.
+
+`PER` et `PERSON` désignent le même type dans `skip_types` et `blocklist` : une configuration écrite pour un moteur ignore et bloque les mêmes personnes avec l'autre.
 
 ## En pratique
 
@@ -59,6 +77,8 @@ Le **prompt système de haut niveau** de la route Messages n'est pas pseudonymis
 
 Les appels d'outils **au format OpenAI** sont couverts eux aussi : leurs arguments vivent dans `tool_calls[].function.arguments`, en dehors du contenu du message, sous la forme d'un document JSON encodé dans une chaîne ; il est décodé, ses feuilles textuelles sont remplacées, puis il est ré-encodé. L'`id` de l'appel, son `type` et le nom de la fonction sont préservés, comme pour un `tool_use`.
 
-Quatre limites à connaître. Le champ `function_call`, l'ancêtre déprécié de `tool_calls` que quelques clients anciens émettent encore, n'est pas traité : ses arguments partent tels quels. Comme une conversation agentique fait presque toujours remplacer quelque chose, ces échanges perdent le streaming — la réponse n'est renvoyée qu'une fois complète. En mode strict avec `verification_on_leak` à `allow`, une fuite détectée fait passer la requête **entière** en passe-plat : l'événement `sensitive-data.leak` le signale, mais du trafic d'outils transporte un fichier là où un message ordinaire transporte une phrase — `block` refuse plutôt que de transmettre. Enfin, `builtin_secret_patterns` redige les secrets détectés (clé API, jeton…) sans conserver de correspondance réversible : si un agent lit un fichier contenant un secret puis le réécrit, le marqueur de redaction atterrit dans le fichier à la place de la valeur d'origine, perdue sans retour possible — désactivez `builtin_secret_patterns` sur le modèle virtuel concerné si des agents doivent pouvoir modifier des fichiers contenant des identifiants réels.
+Le mode strict ne sert qu'à refuser : avec `verification_on_leak` à `block`, une fuite détectée après pseudonymisation fait refuser la requête, et l'événement `sensitive-data.leak` le signale. Avec `allow`, il équivaut à l'observation : la fuite est signalée et la requête part pseudonymisée. Dans les deux cas, l'événement `sensitive-data.leak` est émis une fois par requête, et son attribut `action` dit ce qu'il est advenu de la requête. En observation, il compte une fuite par valeur distincte ; quand la requête est bloquée, il compte les occurrences du contenu refusé, go-anon ne rendant pas ce contenu avec l'erreur. Il faisait auparavant partir la requête **entière** en clair, moins protégée qu'en observation.
 
-L'écran du plugin expose d'autres réglages fins (fusion des entités adjacentes, complétion des noms, reclassification des prénoms, SIREN contextuel, limites par entité). Les valeurs par défaut conviennent à un déploiement français.
+Trois limites à connaître. Le champ `function_call`, l'ancêtre déprécié de `tool_calls` que quelques clients anciens émettent encore, n'est pas traité : ses arguments partent tels quels. Comme une conversation agentique fait presque toujours remplacer quelque chose, ces échanges perdent le streaming — la réponse n'est renvoyée qu'une fois complète. Enfin, `builtin_secret_patterns` redige les secrets détectés (clé API, jeton…) sans conserver de correspondance réversible : si un agent lit un fichier contenant un secret puis le réécrit, le marqueur de redaction atterrit dans le fichier à la place de la valeur d'origine, perdue sans retour possible — désactivez `builtin_secret_patterns` sur le modèle virtuel concerné si des agents doivent pouvoir modifier des fichiers contenant des identifiants réels.
+
+L'écran du plugin suit l'ordre des décisions : le moteur et la langue des messages, ce qui est masqué (chaque type a sa case : on peut garder les personnes et laisser les lieux lisibles), le remplacement (avec la clé HMAC de la stratégie `hash`, enregistrée à part dans les secrets du nœud), la conduite en cas de fuite, puis les pièces jointes. Les réglages fins (confiance minimale, limites par passage, SIREN contextuel, prénoms et fusion du moteur `crf`, stockage des modèles) sont repliés sous « Réglages avancés ». Les champs propres à un moteur ou à une stratégie suivent le choix fait sur la page, avant même l'enregistrement. Les valeurs par défaut conviennent à un déploiement français.

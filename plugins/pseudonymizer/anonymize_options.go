@@ -23,12 +23,41 @@ type hashKeyLoader interface {
 // données personnelles en clair au modèle.
 var errHashKeyMissing = errors.New("la stratégie hash requiert une clé HMAC configurée sur le nœud")
 
+// verificationLevel dit ce que le nœud fait d'une fuite détectée après
+// anonymisation.
+type verificationLevel int
+
+const (
+	// verifyNone ne vérifie pas la sortie.
+	verifyNone verificationLevel = iota
+	// verifyObserve signale la fuite par un événement ; la requête part
+	// pseudonymisée.
+	verifyObserve
+	// verifyBlock refuse la requête.
+	verifyBlock
+)
+
+// verificationMode lit le niveau de vérification de cfg. La vérification
+// stricte fait échouer l'anonymisation sur une fuite : elle ne sert que pour
+// refuser la requête. Avec verification_on_leak à allow, elle faisait partir la
+// requête entière en clair, moins protégée que sans vérification stricte ;
+// elle vaut désormais une observation.
+func verificationMode(cfg Config) verificationLevel {
+	switch {
+	case cfg.VerificationStrict && cfg.VerificationOnLeak == "block":
+		return verifyBlock
+	case cfg.VerificationStrict || cfg.Verification:
+		return verifyObserve
+	}
+	return verifyNone
+}
+
 // buildAnonymizeOptions assemble les AnonymizeOption à passer à Anonymize()
 // en fonction de la configuration et de l'état du store de secrets.
 //
 // Comportement :
-//   - Verification stricte prime sur l'observation (WithStrictVerification
-//     inclut la vérification, mais on reste explicite pour la lecture).
+//   - La vérification suit verificationMode : stricte seulement quand elle
+//     bloque, observation sinon.
 //   - La clé HMAC est chargée via le store de secrets de l'hôte ; sans clé
 //     valide, la fonction échoue avec une erreur enveloppant errHashKeyMissing
 //     et la requête doit être refusée.
@@ -41,9 +70,10 @@ func buildAnonymizeOptions(
 ) ([]goanon.AnonymizeOption, error) {
 	var opts []goanon.AnonymizeOption
 
-	if cfg.VerificationStrict {
+	switch verificationMode(cfg) {
+	case verifyBlock:
 		opts = append(opts, goanon.WithStrictVerification())
-	} else if cfg.Verification {
+	case verifyObserve:
 		opts = append(opts, goanon.WithVerification())
 	}
 

@@ -5,6 +5,9 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"path/filepath"
+	"slices"
+	"strconv"
 
 	"github.com/a-h/templ"
 	goanon "github.com/bornholm/go-anon"
@@ -40,8 +43,20 @@ type uiPageData struct {
 	// Languages lists the languages selectable in the form: those handled by
 	// the go-anon pipeline for which a model is published.
 	Languages []string
+	// Indecis is the status of the indecis model, for the indecis engine.
+	Indecis indecisStatus
 	// HasHashKey indique si une clé HMAC est déjà stockée pour ce nœud.
 	HasHashKey bool
+}
+
+// indecisStatus says which indecis model the configuration reads with and
+// whether it still has to be downloaded.
+type indecisStatus struct {
+	Name   string
+	Path   string
+	Cached bool
+	// Local is a directory given by the operator, used as is.
+	Local bool
 }
 
 type modelStatusEntry struct {
@@ -91,8 +106,38 @@ func (ui *pluginUI) loadPageData(r *http.Request) (uiPageData, error) {
 		}
 	}
 
-	pd.ModelStatus, pd.Languages = ui.fetchModelStatus(ctx, cfg)
+	// Both statuses: the page follows a change of engine before it is saved.
+	// An indecis node reads the CRF status from the cached manifest only: its
+	// page must not wait on a manifest its engine does not use.
+	pd.Indecis = indecisStatusOf(ctx, cfg)
+	crfCfg := cfg
+	if cfg.Engine == engineIndecis {
+		crfCfg.Offline = true
+	}
+	pd.ModelStatus, pd.Languages = ui.fetchModelStatus(ctx, crfCfg)
+	if cfg.Engine == engineIndecis {
+		// Every language reads with the one model, whatever the CRF models
+		// published.
+		pd.Languages = goanon.SupportedLanguages()
+	}
 	return pd, nil
+}
+
+// indecisStatusOf reads the indecis model status from the disk, without
+// downloading.
+func indecisStatusOf(ctx context.Context, cfg Config) indecisStatus {
+	status := indecisStatus{Name: "indecis-ner " + modelName + " " + modelRelease, Local: cfg.ModelDir != ""}
+	src, err := modelSourceFromConfig(cfg)
+	if err != nil {
+		slog.WarnContext(ctx, "pseudonymizer/ui: failed to resolve the model directory", slog.Any("error", err))
+		return status
+	}
+	if status.Local {
+		status.Name = filepath.Base(src.path())
+	}
+	status.Path = src.path()
+	status.Cached = src.cached()
+	return status
 }
 
 // fetchModelStatus builds a lightweight model status list (no downloads) and
@@ -230,8 +275,34 @@ func (ui *pluginUI) handleDeleteHashKey(w http.ResponseWriter, r *http.Request) 
 // settings the form does not expose.
 func configFromForm(r *http.Request, base Config) Config {
 	cfg := base
+	// The types the page showed, checked or not: without them, an old form
+	// or an API call keeps the skipped types as they were.
+	if shown := r.Form["types_shown"]; len(shown) > 0 {
+		checked := r.Form["types"]
+		cfg.SkipTypes = skipTypesOf(base.SkipTypes, shown, checked)
+		// The regular expressions of a family run as long as one of its
+		// types is checked: the page has no other switch for them.
+		cfg.BuiltinRegexPatterns = groupChecked(groupIdentifiers, checked)
+		cfg.BuiltinSecretPatterns = groupChecked(groupSecrets, checked)
+	}
+	// The leak choice sets the verification fields; without it, they are kept.
+	switch r.FormValue("leak") {
+	case "off":
+		cfg.Verification, cfg.VerificationStrict = false, false
+	case "report":
+		cfg.Verification, cfg.VerificationStrict = true, false
+	case "block":
+		cfg.Verification, cfg.VerificationStrict, cfg.VerificationOnLeak = true, true, "block"
+	}
+	// An absent engine keeps the node's: a partial form must not turn an
+	// indecis node back to the CRF.
+	if engine := r.FormValue("engine"); engine != "" {
+		cfg.Engine = engine
+	}
 	cfg.CacheDir = r.FormValue("cache_dir")
 	cfg.ManifestURL = r.FormValue("manifest_url")
+	cfg.ModelDir = r.FormValue("model_dir")
+	cfg.ModelURL = r.FormValue("model_url")
 	cfg.Offline = r.FormValue("offline") == "on"
 	cfg.Language = r.FormValue("language")
 	cfg.FallbackLanguage = r.FormValue("fallback_language")
@@ -239,12 +310,8 @@ func configFromForm(r *http.Request, base Config) Config {
 	cfg.FirstNameReclassify = r.FormValue("first_name_reclassify") == "on"
 	cfg.Merge = r.FormValue("merge") == "on"
 	cfg.NameCompletion = r.FormValue("name_completion") == "on"
-	cfg.BuiltinRegexPatterns = r.FormValue("builtin_regex_patterns") == "on"
-	cfg.BuiltinSecretPatterns = r.FormValue("builtin_secret_patterns") == "on"
 	cfg.SirenContextual = r.FormValue("siren_contextual") == "on"
 	cfg.InjectInstruction = r.FormValue("inject_instruction") == "on"
-	cfg.Verification = r.FormValue("verification") == "on"
-	cfg.VerificationStrict = r.FormValue("verification_strict") == "on"
 	cfg.ProcessAttachments = r.FormValue("process_attachments") == "on"
 	cfg.UnsupportedAttachments = r.FormValue("unsupported_attachments")
 
@@ -253,6 +320,15 @@ func configFromForm(r *http.Request, base Config) Config {
 	cfg.MinConfidence = 0
 	cfg.MaxTokens = 0
 	cfg.MinRunes = 0
+	// Unlike the thresholds, an emptied or invalid bias goes back to the
+	// default: a bias of 0 lets through what the measurements count as leaks.
+	// An absent one keeps the node's, as an absent engine does.
+	if _, sent := r.Form["bias"]; sent {
+		cfg.Bias = defaultBias
+		if bias, err := strconv.ParseFloat(r.FormValue("bias"), 64); err == nil && bias >= 0 && bias <= maxBias {
+			cfg.Bias = bias
+		}
+	}
 	if minConf := r.FormValue("min_confidence"); minConf != "" {
 		var f float64
 		if err := json.Unmarshal([]byte(minConf), &f); err == nil {
@@ -288,11 +364,29 @@ func configFromForm(r *http.Request, base Config) Config {
 	if cfg.Strategy == "" {
 		cfg.Strategy = "tag"
 	}
+	if cfg.Engine != engineIndecis {
+		cfg.Engine = engineCRF
+	}
 
 	return cfg
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
+
+// groupChecked reports whether one type of the family group is among checked.
+func groupChecked(group string, checked []string) bool {
+	for _, g := range pageTypeGroups {
+		if g.Key != group {
+			continue
+		}
+		for _, t := range g.Types {
+			if slices.Contains(checked, string(t.Type)) {
+				return true
+			}
+		}
+	}
+	return false
+}
 
 // formInt reads an integer form field, falling back to fallback when the field
 // is absent — an emptied limit means "back to the default", not "unlimited".

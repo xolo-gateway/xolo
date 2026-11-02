@@ -30,7 +30,7 @@ func TestPipeline_PseudonymizerAnonymizationRoundTrip(t *testing.T) {
 	// probe session both for the probe and for the real Anonymize call below,
 	// so the placeholder is byte-identical between the two.
 	probeSession := anonymizer.NewSession()
-	if _, err := pipelinetest.NewRegexAnonymizer().Anonymize(userMessage, anonymizer.WithSession(probeSession)); err != nil {
+	if _, err := pipelinetest.NewRegexAnonymizer().Anonymize(context.Background(), userMessage, anonymizer.WithSession(probeSession)); err != nil {
 		t.Fatalf("probe anonymize failed: %v", err)
 	}
 	var placeholder string
@@ -59,7 +59,7 @@ func TestPipeline_PseudonymizerAnonymizationRoundTrip(t *testing.T) {
 				if !ok {
 					continue
 				}
-				result, err := anon.Anonymize(content, anonymizer.WithSession(session))
+				result, err := anon.Anonymize(context.Background(), content, anonymizer.WithSession(session))
 				if err != nil {
 					return nil, err
 				}

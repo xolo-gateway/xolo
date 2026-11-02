@@ -21,6 +21,7 @@ import (
 	"github.com/bornholm/go-anon/pkg/anonymizer"
 	"github.com/bornholm/go-anon/pkg/modelstore"
 	"github.com/bornholm/go-anon/pkg/ner"
+	"github.com/bornholm/indecis-ner/recognizer"
 	"github.com/xolo-gateway/xolo/pkg/pluginsdk"
 	proto "github.com/xolo-gateway/xolo/pkg/pluginsdk/proto"
 )
@@ -35,6 +36,10 @@ type Plugin struct {
 	detector   goanon.LanguageDetector
 	candidates []string
 	lastCfgKey string
+
+	// models holds the indecis models, loaded once per directory and bias
+	// whatever the config changes: see models.
+	models models
 
 	hostMu     sync.Mutex
 	hostClient pluginsdk.HostClient
@@ -204,7 +209,7 @@ func newSession(ctx context.Context, reqCtx *proto.RequestContext) *anonymizer.S
 	return session
 }
 
-func (p *Plugin) PreRequest(ctx context.Context, in *proto.PreRequestInput) (*proto.PreRequestOutput, error) {
+func (p *Plugin) PreRequest(ctx context.Context, in *proto.PreRequestInput) (reqOut *proto.PreRequestOutput, reqErr error) {
 	cfg, err := parseConfig(in.GetCtx().GetConfigJson())
 	if err != nil {
 		return p.passthroughOnError(ctx, in, passthroughConfigError, err), nil
@@ -313,6 +318,11 @@ func (p *Plugin) PreRequest(ctx context.Context, in *proto.PreRequestInput) (*pr
 		// personnelles jusqu'au modèle.
 		anonymizeFailures int
 		lastAnonymizeErr  error
+		// observedLeaks gathers what the verification found in the contents
+		// it let through (verifyObserve), for one event per request. Keyed as
+		// leakValues: one value repeated, or sent back with the history, is
+		// one leak.
+		observedLeaks = map[string]anonymizer.Leak{}
 		// leakValues holds what Detect found in content deliberately forwarded
 		// without rewriting (a thinking block, a web_search call, an
 		// unrecognized block type). Never added to session.Mapping, so kept
@@ -334,10 +344,21 @@ func (p *Plugin) PreRequest(ctx context.Context, in *proto.PreRequestInput) (*pr
 		neutralizedPlaceholders int
 	)
 
+	// The observed leaks are reported however the request ends, and say what
+	// became of it: refused for another reason after a content was observed,
+	// nothing reached the model.
+	defer func() {
+		if len(observedLeaks) == 0 {
+			return
+		}
+		report := &anonymizer.VerificationReport{Leaks: slices.Collect(maps.Values(observedLeaks))}
+		emitLeakEvent(in, report, leakAction(reqOut), p.getHostClient())
+	}()
+
 	// detectKept expose la détection en lecture seule sur laquelle s'appuient les
 	// chemins qui transmettent un contenu sans le réécrire.
 	detectKept := func(text string) ([]ner.Entity, error) {
-		entities, err := anon.Detect(text)
+		entities, err := anon.Detect(ctx, text)
 		if err != nil {
 			return nil, err
 		}
@@ -383,9 +404,15 @@ func (p *Plugin) PreRequest(ctx context.Context, in *proto.PreRequestInput) (*pr
 	ownPlaceholder := ownedBy(session.Nonce())
 	anonymize := func(s string) (*anonymizer.Result, error) {
 		masked := maskPlaceholders(s, ownPlaceholder)
-		result, err := anon.Anonymize(masked.Text, append(anonymOpts, anonymizer.WithSession(session))...)
+		result, err := anon.Anonymize(ctx, masked.Text, append(anonymOpts, anonymizer.WithSession(session))...)
 		if err != nil {
 			return nil, err
+		}
+		// Observing, go-anon keeps its report in the result rather than fail.
+		if !result.Verification.OK() {
+			for _, l := range result.Verification.Leaks {
+				observedLeaks[observedLeakKey(masked.Text, result.Text, l)] = l
+			}
 		}
 		var missing int
 		result.Text, missing = masked.Unmask(result.Text)
@@ -423,7 +450,7 @@ func (p *Plugin) PreRequest(ctx context.Context, in *proto.PreRequestInput) (*pr
 			messages[i][fieldToolCalls] = calls
 		}
 		if err != nil {
-			if out := handleVerificationError(in, err, cfg, p.getHostClient()); out != nil {
+			if out := handleVerificationError(in, err, p.getHostClient()); out != nil {
 				return out, nil
 			}
 			slog.WarnContext(ctx, "pseudonymizer: failed to anonymize tool calls",
@@ -443,7 +470,7 @@ func (p *Plugin) PreRequest(ctx context.Context, in *proto.PreRequestInput) (*pr
 		case string:
 			result, err := anonymize(c)
 			if err != nil {
-				if out := handleVerificationError(in, err, cfg, p.getHostClient()); out != nil {
+				if out := handleVerificationError(in, err, p.getHostClient()); out != nil {
 					return out, nil
 				}
 				slog.WarnContext(ctx, "pseudonymizer: failed to anonymize string content", slog.Any("error", err))
@@ -473,7 +500,7 @@ func (p *Plugin) PreRequest(ctx context.Context, in *proto.PreRequestInput) (*pr
 					text, _ := partMap["text"].(string)
 					result, err := anonymize(text)
 					if err != nil {
-						if out := handleVerificationError(in, err, cfg, p.getHostClient()); out != nil {
+						if out := handleVerificationError(in, err, p.getHostClient()); out != nil {
 							return out, nil
 						}
 						slog.WarnContext(ctx, "pseudonymizer: failed to anonymize text part", slog.Any("error", err))
@@ -564,7 +591,7 @@ func (p *Plugin) PreRequest(ctx context.Context, in *proto.PreRequestInput) (*pr
 					// unpaired id. What cannot be read is replaced in place.
 					updated, err := anonymizeToolPart(partMap, anonymizeText)
 					if err != nil {
-						if out := handleVerificationError(in, err, cfg, p.getHostClient()); out != nil {
+						if out := handleVerificationError(in, err, p.getHostClient()); out != nil {
 							return out, nil
 						}
 						slog.WarnContext(ctx, "pseudonymizer: failed to anonymize tool part",
@@ -602,7 +629,7 @@ func (p *Plugin) PreRequest(ctx context.Context, in *proto.PreRequestInput) (*pr
 
 					result, err := anonymize(text)
 					if err != nil {
-						if out := handleVerificationError(in, err, cfg, p.getHostClient()); out != nil {
+						if out := handleVerificationError(in, err, p.getHostClient()); out != nil {
 							return out, nil
 						}
 						// An attachment whose text could not be anonymized must
@@ -1046,18 +1073,15 @@ func instructionText(language string) string {
 
 // handleVerificationError convertit une erreur d'anonymisation en décision
 // plugin. Si l'erreur n'est pas une *VerificationError, retourne nil (à
-// traiter comme une autre erreur par l'appelant).
-func handleVerificationError(in *proto.PreRequestInput, err error, cfg Config, host pluginsdk.HostClient) *proto.PreRequestOutput {
+// traiter comme une autre erreur par l'appelant). Seule la vérification qui
+// bloque en produit une (verificationMode) : la requête est refusée.
+func handleVerificationError(in *proto.PreRequestInput, err error, host pluginsdk.HostClient) *proto.PreRequestOutput {
 	var verr *anonymizer.VerificationError
 	if !errors.As(err, &verr) {
 		return nil
 	}
-	emitLeakEvent(in, verr, host)
-
-	if cfg.VerificationOnLeak == "block" {
-		return &proto.PreRequestOutput{Allowed: false}
-	}
-	return passthroughOutput()
+	emitLeakEvent(in, verr.Report, leakBlocked, host)
+	return &proto.PreRequestOutput{Allowed: false}
 }
 
 // emitBlockedAttachmentsEvent signale le refus d'une requête portant des
@@ -1082,15 +1106,70 @@ func (p *Plugin) emitBlockedAttachmentsEvent(in *proto.PreRequestInput, parts []
 	})
 }
 
+// observedLeakKey identifies a leak the verification found, as leakKey does a
+// detected value: its kind, its type and a digest of its normalized surface
+// form, never the text itself. Most leaks are located in output; a placeholder
+// already present in the content is located in source, and invalid UTF-8
+// spans the whole output, so it is one leak whatever the text.
+func observedLeakKey(source, output string, l anonymizer.Leak) string {
+	var surface string
+	switch l.Kind {
+	case anonymizer.LeakInvalidUTF8:
+	case anonymizer.LeakResidualPlaceholderSource:
+		surface = slice(source, l.Start, l.End)
+	default:
+		surface = slice(output, l.Start, l.End)
+	}
+	sum := sha256.Sum256([]byte(strings.ToLower(strings.TrimSpace(surface))))
+	return l.Kind.String() + "\x00" + string(l.Type) + "\x00" + hex.EncodeToString(sum[:8])
+}
+
+// slice returns text[start:end], or "" when the bounds do not fit text.
+func slice(text string, start, end int) string {
+	if start < 0 || end > len(text) || start >= end {
+		return ""
+	}
+	return text[start:end]
+}
+
+// Ce que le nœud a fait de la requête où une fuite a été détectée, publié dans
+// l'attribut action de l'événement.
+const (
+	// leakBlocked : la requête est refusée à cause de la fuite.
+	leakBlocked = "blocked"
+	// leakReported : la requête est partie pseudonymisée, avec la fuite.
+	leakReported = "reported"
+	// leakRefused : la fuite a été observée, mais la requête a été refusée
+	// pour un autre motif ; rien n'a atteint le modèle.
+	leakRefused = "refused"
+	// leakPassedThrough : la fuite a été observée, puis la requête est partie
+	// telle quelle, en clair, par le passe-plat d'une erreur.
+	leakPassedThrough = "passthrough"
+)
+
+// leakAction dit ce qu'il est advenu d'une requête où la vérification a
+// observé une fuite, d'après la sortie de PreRequest : seule une sortie
+// réécrite porte les messages pseudonymisés, le passe-plat n'en porte pas.
+func leakAction(out *proto.PreRequestOutput) string {
+	switch {
+	case out == nil || !out.Allowed:
+		return leakRefused
+	case out.ModifiedMessagesJson == "":
+		return leakPassedThrough
+	}
+	return leakReported
+}
+
 // emitLeakEvent publie un événement décrivant la fuite détectée. Le rapport
 // est sérialisé sans texte source (offsets et types seulement).
-func emitLeakEvent(in *proto.PreRequestInput, verr *anonymizer.VerificationError, host pluginsdk.HostClient) {
+func emitLeakEvent(in *proto.PreRequestInput, report *anonymizer.VerificationReport, action string, host pluginsdk.HostClient) {
 	if host == nil {
 		return
 	}
-	counts := verr.Report.CountByKind()
+	counts := report.CountByKind()
 	attrs := map[string]string{
-		"leak_count": strconv.Itoa(len(verr.Report.Leaks)),
+		"leak_count": strconv.Itoa(len(report.Leaks)),
+		"action":     action,
 	}
 	for k, n := range counts {
 		attrs["leak_"+k.String()] = strconv.Itoa(n)
@@ -1104,7 +1183,7 @@ func emitLeakEvent(in *proto.PreRequestInput, verr *anonymizer.VerificationError
 			UserID:     in.GetCtx().GetUserId(),
 			Type:       "sensitive-data.leak",
 			Severity:   "error",
-			Message:    fmt.Sprintf("Fuite(s) PII détectée(s) après anonymisation : %d", len(verr.Report.Leaks)),
+			Message:    fmt.Sprintf("Fuite(s) PII détectée(s) après anonymisation : %d", len(report.Leaks)),
 			Attributes: attrs,
 		}); err != nil {
 			slog.Warn("pseudonymizer: could not emit leak event", slog.Any("error", err))
@@ -1299,6 +1378,19 @@ func (p *Plugin) getAnonymizer(ctx context.Context, cfg Config, language string)
 		return nil, err
 	}
 
+	// The indecis model is downloaded and loaded before taking p.mu: its
+	// first load can take minutes, and the requests whose anonymizer is
+	// built must not wait for it. buildAnonymizer then finds it loaded.
+	if cfg.Engine == engineIndecis {
+		src, err := modelSourceFromConfig(cfg)
+		if err != nil {
+			return nil, err
+		}
+		if _, _, err := p.models.get(ctx, src, cfg.Bias); err != nil {
+			return nil, fmt.Errorf("get indecis model: %w", err)
+		}
+	}
+
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
@@ -1397,6 +1489,11 @@ func (p *Plugin) getDetector(ctx context.Context, cfg Config) (goanon.LanguageDe
 
 	if p.detector == nil {
 		p.candidates = supportedLanguages(ctx, p.store)
+		if cfg.Engine == engineIndecis {
+			// The indecis model reads every language: the language only
+			// chooses the instruction, and the manifest is not consulted.
+			p.candidates = goanon.SupportedLanguages()
+		}
 		p.detector = goanon.NewWhatlangDetector(p.candidates...)
 		slog.DebugContext(ctx, "pseudonymizer: language detector ready",
 			slog.Any("candidates", p.candidates),
@@ -1409,6 +1506,70 @@ func (p *Plugin) getDetector(ctx context.Context, cfg Config) (goanon.LanguageDe
 // buildAnonymizer downloads the model and creates a new Anonymizer for language.
 // Must be called with p.mu held.
 func (p *Plugin) buildAnonymizer(ctx context.Context, cfg Config, language string) (*anonymizer.Anonymizer, error) {
+	var rec goanon.Recognizer
+	var err error
+	if cfg.Engine == engineIndecis {
+		rec, err = p.indecisRecognizer(ctx, cfg)
+	} else {
+		rec, err = p.crfRecognizer(ctx, cfg, language)
+	}
+	if err != nil {
+		return nil, err
+	}
+	return goanon.NewAnonymizer(rec, anonymizerConfig(cfg)), nil
+}
+
+// anonymizerConfig returns the anonymizer config of cfg.
+func anonymizerConfig(cfg Config) goanon.Config {
+	// ConsistentMap is always true, matching the go-anon server behaviour.
+	anonCfg := goanon.Config{
+		Strategy:      strategyFromString(cfg.Strategy),
+		ConsistentMap: true,
+	}
+
+	if len(cfg.SkipTypes) > 0 {
+		// Never nil once a type is skipped: go-anon reads nil as "every
+		// type", and skipping them all would then pseudonymize them all.
+		anonCfg.EntityTypes = []goanon.EntityType{}
+		for _, t := range allEntityTypes {
+			if !typeSkipped(cfg.SkipTypes, t) {
+				anonCfg.EntityTypes = append(anonCfg.EntityTypes, t)
+			}
+		}
+	}
+	return anonCfg
+}
+
+// indecisRecognizer reads with the indecis model of cfg, downloading it on
+// first use. Identifiers and secrets by regular expression are added to the
+// passages it masks, which take precedence over them.
+func (p *Plugin) indecisRecognizer(ctx context.Context, cfg Config) (goanon.Recognizer, error) {
+	src, err := modelSourceFromConfig(cfg)
+	if err != nil {
+		return nil, err
+	}
+	model, decisions, err := p.models.get(ctx, src, cfg.Bias)
+	if err != nil {
+		return nil, fmt.Errorf("get indecis model: %w", err)
+	}
+
+	var filters []goanon.EntityFilter
+	if cfg.BuiltinRegexPatterns {
+		filters = append(filters, goanon.RegexEntityFilter(builtinRegexPatterns(cfg)))
+	}
+	if cfg.BuiltinSecretPatterns {
+		filters = append(filters, goanon.RegexEntityFilter(goanon.SecretPatterns()))
+	}
+	rec := recognizer.New(model, modelQuestions, append(filters, postFilters(cfg)...)...)
+	// The recognizer's own threshold also drops the typed and sensitive
+	// passages below it, which then neither type nor flag a mask.
+	rec.MinConfidence = cfg.MinConfidence
+	return gatedRecognizer{rec: rec, decisions: decisions, wait: maxDecisionWait}, nil
+}
+
+// crfRecognizer downloads the CRF model of language and builds go-anon's
+// recognizer on it, with the gazetteers and clusters published with it.
+func (p *Plugin) crfRecognizer(ctx context.Context, cfg Config, language string) (goanon.Recognizer, error) {
 	modelPath, err := p.store.Get(ctx, language)
 	if err != nil {
 		return nil, fmt.Errorf("get model for language %q: %w", language, err)
@@ -1446,7 +1607,11 @@ func (p *Plugin) buildAnonymizer(ctx context.Context, cfg Config, language strin
 		recOpts = append(recOpts, goanon.WithBrownClusters(clusters))
 	}
 
-	if filters := postFilters(cfg); len(filters) > 0 {
+	var filters []goanon.EntityFilter
+	if cfg.MinConfidence > 0 {
+		filters = append(filters, goanon.MinConfidenceFilter(cfg.MinConfidence))
+	}
+	if filters = append(filters, postFilters(cfg)...); len(filters) > 0 {
 		recOpts = append(recOpts, goanon.WithPostFilters(filters...))
 	}
 	if cfg.FirstNameReclassify && firstnamesGaz != nil {
@@ -1479,34 +1644,14 @@ func (p *Plugin) buildAnonymizer(ctx context.Context, cfg Config, language strin
 		)
 	}
 
-	// ConsistentMap is always true, matching the go-anon server behaviour.
-	anonCfg := goanon.Config{
-		Strategy:      strategyFromString(cfg.Strategy),
-		ConsistentMap: true,
-	}
-
-	if len(cfg.SkipTypes) > 0 {
-		skipSet := make(map[goanon.EntityType]bool, len(cfg.SkipTypes))
-		for _, t := range cfg.SkipTypes {
-			skipSet[goanon.EntityType(t)] = true
-		}
-		for _, t := range allEntityTypes {
-			if !skipSet[t] {
-				anonCfg.EntityTypes = append(anonCfg.EntityTypes, t)
-			}
-		}
-	}
-
-	return goanon.NewAnonymizer(rec, anonCfg), nil
+	return rec, nil
 }
 
 // postFilters builds the entity filters pruning the recognizer output, in
-// application order: confidence first, then span size, then blocklists.
+// application order: span size, then blocklists. The confidence threshold
+// comes first, and is the engine's own: see buildAnonymizer.
 func postFilters(cfg Config) []goanon.EntityFilter {
 	var filters []goanon.EntityFilter
-	if cfg.MinConfidence > 0 {
-		filters = append(filters, goanon.MinConfidenceFilter(cfg.MinConfidence))
-	}
 	if cfg.MinRunes > 0 {
 		filters = append(filters, ner.MinRunesFilter(cfg.MinRunes))
 	}
@@ -1515,10 +1660,25 @@ func postFilters(cfg Config) []goanon.EntityFilter {
 	}
 	for typeStr, words := range cfg.Blocklist {
 		if len(words) > 0 {
-			filters = append(filters, goanon.BlocklistFilter(goanon.EntityType(typeStr), words...))
+			for _, alias := range typeAliases(typeStr) {
+				filters = append(filters, goanon.BlocklistFilter(goanon.EntityType(alias), words...))
+			}
 		}
 	}
 	return filters
+}
+
+// typeAliases returns t and the type naming the same thing for the other
+// engine: a person is PER for the CRF, PERSON for the indecis model, so that
+// a config written for one keeps skipping and blocking the same with the other.
+func typeAliases(t string) []string {
+	switch goanon.EntityType(t) {
+	case goanon.TypePER:
+		return []string{t, string(typePerson)}
+	case typePerson:
+		return []string{t, string(goanon.TypePER)}
+	}
+	return []string{t}
 }
 
 // builtinRegexPatterns returns the builtin regex patterns to feed the
