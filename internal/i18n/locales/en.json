@@ -698,6 +698,7 @@
   "org.catalog_import.help": "The open model catalog (release %s) lists providers with their models, prices, windows and plans, each figure with its source. Choose a provider, and a plan when you subscribe to one: the next page shows what the import would change before anything is written.",
   "org.catalog_import.suggested": "Same base URL",
   "org.catalog_import.offerings": {"one": "%d model", "other": "%d models"},
+  "org.catalog_import.prefix_help": "Optional. Put before the proxy name of every model, such as <code>opencode-</code>: a model of the provider already named <code>opencode-glm-5.2</code> keeps its name and follows the catalog.",
   "org.catalog_import.plan": "Subscription plan",
   "org.catalog_import.no_plan": "None (pay as you go)",
   "org.catalog_import.from_catalog": "Import from the catalog",

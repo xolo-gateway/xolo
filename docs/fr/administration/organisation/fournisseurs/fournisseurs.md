@@ -510,6 +510,8 @@ Le [catalogue ouvert de modèles](https://github.com/xolo-gateway/catalog), main
 
 Cliquez sur **Importer depuis le catalogue**, sur la liste des fournisseurs pour créer un fournisseur, ou sur la page des modèles d'un fournisseur existant pour le mettre à jour. Le fournisseur du catalogue qui a la même URL de base est proposé en premier. Choisissez-le, et le forfait auquel vous êtes abonné s'il y en a un, puis **Prévisualiser les changements** : la suite est celle de l'import d'un bundle (voir ci-dessous), avec le même aperçu à cocher. Les prix importés sont ceux du palier de base.
 
+Le champ **Préfixe du nom proxy** est facultatif et suit la même règle que l'import depuis la liste du fournisseur : pas de `/`. Il est placé devant le nom proxy de chaque modèle du catalogue, et l'aperçu montre les noms préfixés. Un modèle du fournisseur déjà nommé ainsi est retrouvé tel quel : avec le préfixe `opencode-`, le modèle `opencode-glm-5.2` garde son nom, l'aperçu ne propose pas de le renommer `glm-5.2`, et il suit ensuite le catalogue. Le champ est prérempli quand plus de la moitié des modèles du fournisseur portent un même préfixe terminé par `-` devant leur modèle réel. Le préfixe n'est pas conservé : le nom proxy n'est pas une valeur suivie, et les versions suivantes du catalogue n'y touchent pas.
+
 L'instance lit la dernière version du catalogue à son adresse (`XOLO_CATALOG_URL`) et n'en embarque aucune copie : si elle n'a pas encore pu la lire, l'import et le pré-remplissage l'indiquent. `XOLO_CATALOG_ENABLED=false` retire ces deux fonctions.
 
 #### Suivre le catalogue

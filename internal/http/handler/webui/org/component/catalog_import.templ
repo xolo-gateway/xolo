@@ -7,7 +7,9 @@ import (
 	common "github.com/xolo-gateway/xolo/internal/http/handler/webui/common/component"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/alert"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/button"
+	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/form"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/icon"
+	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/input"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/label"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/radio"
 	"github.com/xolo-gateway/xolo/internal/i18n"
@@ -91,6 +93,22 @@ templ catalogProviderCard(vmodel CatalogImportVModel, p catalog.Provider, action
 						}
 					</fieldset>
 				}
+				{{ prefixID := "proxy-prefix-" + p.ID }}
+				<div class="space-y-1.5">
+					@form.Label(form.LabelProps{For: prefixID}) {
+						{ i18n.T(ctx, "org.import.prefix_label") }
+					}
+					@input.Input(input.Props{
+						ID:         prefixID,
+						Name:       "proxy_prefix",
+						Value:      vmodel.Prefix,
+						Class:      "font-mono max-w-sm",
+						Attributes: templ.Attributes{"autocomplete": "off"},
+					})
+					@form.Description() {
+						@templ.Raw(i18n.T(ctx, "org.catalog_import.prefix_help"))
+					}
+				</div>
 				@button.Button(button.Props{Type: button.TypeSubmit, Size: button.SizeSm, Class: "gap-1.5"}) {
 					@icon.Eye(icon.Props{Class: "size-3.5"})
 					{ i18n.T(ctx, "org.provider_bundle.preview") }

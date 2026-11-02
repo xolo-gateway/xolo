@@ -446,5 +446,8 @@ type CatalogImportVModel struct {
 	// Suggested is the catalog provider the existing provider most likely
 	// is, listed first.
 	Suggested string
-	Error     string
+	// Prefix is put before the proxy name of every model of the import:
+	// the one most models of Provider share, or the one posted.
+	Prefix string
+	Error  string
 }

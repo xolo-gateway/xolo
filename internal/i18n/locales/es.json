@@ -698,6 +698,7 @@
   "org.catalog_import.help": "El catálogo abierto de modelos (versión %s) recoge proveedores con sus modelos, precios, ventanas y planes, cada cifra con su fuente. Elija un proveedor, y un plan si está suscrito a uno: la página siguiente muestra lo que cambiaría la importación antes de escribir nada.",
   "org.catalog_import.suggested": "Misma URL base",
   "org.catalog_import.offerings": {"one": "%d modelo", "other": "%d modelos"},
+  "org.catalog_import.prefix_help": "Opcional. Se antepone al nombre proxy de cada modelo, por ejemplo <code>opencode-</code>: un modelo del proveedor ya llamado <code>opencode-glm-5.2</code> conserva su nombre y sigue el catálogo.",
   "org.catalog_import.plan": "Plan de suscripción",
   "org.catalog_import.no_plan": "Ninguno (pago por uso)",
   "org.catalog_import.from_catalog": "Importar desde el catálogo",
