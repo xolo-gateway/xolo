@@ -306,5 +306,5 @@ func (g gatedRecognizer) Recognize(ctx context.Context, text string) ([]ner.Enti
 		return nil, fmt.Errorf("attente d'une place de lecture du modèle indecis : %w", ctx.Err())
 	}
 	defer func() { <-g.decisions }()
-	return g.rec.RecognizeContext(ctx, text)
+	return g.rec.Recognize(ctx, text)
 }
