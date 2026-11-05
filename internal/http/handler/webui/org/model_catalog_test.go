@@ -254,3 +254,133 @@ func TestCatalogImport_PostsTheCatalogPricesUnconverted(t *testing.T) {
 		t.Fatalf("catalog import = %s %v, want the release's USD prices", ci.Currency, ci.Models[0].Prices)
 	}
 }
+
+// catalogPreview posts the catalog import form for opencode-go with prefix.
+func catalogPreview(t *testing.T, h *Handler, s *modelFormStore, tenant model.Tenant, prefix string) *httptest.ResponseRecorder {
+	t.Helper()
+	fields := url.Values{"catalog_provider": {"opencode-go"}, "plan": {"none"}, "proxy_prefix": {prefix}}
+	rr := httptest.NewRecorder()
+	h.previewCatalogImport(rr, bundleRequest(t, s, tenant, string(s.provider.ID()), bytes.NewBufferString(fields.Encode()), "application/x-www-form-urlencoded"))
+	return rr
+}
+
+func TestCatalogImport_PutsThePrefixBeforeEveryProxyName(t *testing.T) {
+	declared := [][2]string{{"opencode-glm-5.2", "glm-5.2"}, {"opencode-deepseek-v4-pro", "deepseek-v4-pro"}}
+	h, s, tenant := importFixture(t, "https://opencode.ai/inference/go/v1", "sk", declared...)
+	h.SetCatalog(catalog.NewStaticSource(testCatalogRelease(t)))
+
+	// Without the prefix, the models the provider already has are offered
+	// a rename to the catalog's bare names.
+	rr := catalogPreview(t, h, s, tenant, "")
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d: %s", rr.Code, rr.Body.String())
+	}
+	if !strings.Contains(rr.Body.String(), ":proxy_name\"") {
+		t.Fatal("without a prefix, the preview should offer to rename the existing models")
+	}
+
+	rr = catalogPreview(t, h, s, tenant, " opencode- ")
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d: %s", rr.Code, rr.Body.String())
+	}
+	page := rr.Body.String()
+	bundle, err := model.ParseProviderBundle([]byte(hiddenValue(t, page, "bundle")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, bm := range bundle.Models {
+		if bm.ProxyName != "opencode-"+bm.RealModel {
+			t.Errorf("proxy name = %q, want the prefix before %q", bm.ProxyName, bm.RealModel)
+		}
+	}
+	if strings.Contains(page, ":proxy_name\"") {
+		t.Error("with the provider's prefix, no existing model should be offered a rename")
+	}
+	// The origin keeps the catalog's own names.
+	var ci service.CatalogImport
+	if err := json.Unmarshal([]byte(hiddenValue(t, page, "catalog_import")), &ci); err != nil {
+		t.Fatal(err)
+	}
+	if ci.Models[0].ProxyName != ci.Models[0].RealModel {
+		t.Errorf("origin proxy name = %q, want the catalog's %q", ci.Models[0].ProxyName, ci.Models[0].RealModel)
+	}
+}
+
+func TestCatalogImport_RefusesAPrefixWithASlash(t *testing.T) {
+	h, s, tenant := importFixture(t, "https://opencode.ai/inference/go/v1", "sk")
+	h.SetCatalog(catalog.NewStaticSource(testCatalogRelease(t)))
+	rr := catalogPreview(t, h, s, tenant, "team/")
+	if rr.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("status = %d, want the prefix refused", rr.Code)
+	}
+	if !strings.Contains(rr.Body.String(), `value="team/"`) {
+		t.Error("the catalog page should keep the prefix posted")
+	}
+}
+
+// TestCatalogImport_GivesARefusedPrefixBackToItsCardOnly pins that, into a
+// new provider, the other cards, which create other providers, do not offer
+// the prefix refused on one of them.
+func TestCatalogImport_GivesARefusedPrefixBackToItsCardOnly(t *testing.T) {
+	h, s, tenant := importFixture(t, "https://opencode.ai/inference/go/v1", "sk")
+	h.SetCatalog(catalog.NewStaticSource(testCatalogRelease(t)))
+	fields := url.Values{"catalog_provider": {"opencode-go"}, "plan": {"none"}, "proxy_prefix": {"team/"}}
+	rr := httptest.NewRecorder()
+	h.previewCatalogImport(rr, bundleRequest(t, s, tenant, "", bytes.NewBufferString(fields.Encode()), "application/x-www-form-urlencoded"))
+	if rr.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("status = %d, want the prefix refused", rr.Code)
+	}
+	page := rr.Body.String()
+	if n := strings.Count(page, `name="proxy_prefix"`); n < 2 {
+		t.Fatalf("the page should list several catalog providers, got %d prefix fields", n)
+	}
+	if n := strings.Count(page, `value="team/"`); n != 1 {
+		t.Errorf("the refused prefix is shown on %d cards, want only the one it came from", n)
+	}
+}
+
+func TestCatalogImportPage_OffersThePrefixMostModelsShare(t *testing.T) {
+	cases := []struct {
+		name     string
+		declared [][2]string
+		want     string
+	}{
+		{"most models", [][2]string{{"opencode-glm-5.2", "glm-5.2"}, {"opencode-kimi-k3", "kimi-k3"}, {"fast", "glm-5.3"}}, "opencode-"},
+		{"half only", [][2]string{{"opencode-glm-5.2", "glm-5.2"}, {"glm-5.3", "glm-5.3"}}, ""},
+		{"no dash", [][2]string{{"oc_glm-5.2", "glm-5.2"}, {"oc_kimi-k3", "kimi-k3"}}, ""},
+		{"no real model", [][2]string{{"opencode-", ""}, {"opencode-", ""}, {"fast", "glm-5.3"}}, ""},
+		{"no model", nil, ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			h, s, tenant := importFixture(t, "https://opencode.ai/inference/go/v1", "sk", tc.declared...)
+			h.SetCatalog(catalog.NewStaticSource(testCatalogRelease(t)))
+			rr := httptest.NewRecorder()
+			h.getCatalogImportPage(rr, importRequest(t, s, tenant, http.MethodGet, nil))
+			if rr.Code != http.StatusOK {
+				t.Fatalf("status = %d: %s", rr.Code, rr.Body.String())
+			}
+			if got := hiddenOrInputValue(t, rr.Body.String(), "proxy_prefix"); got != tc.want {
+				t.Errorf("prefix = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+// hiddenOrInputValue reads the value of the first field name of page, empty
+// when the field carries none.
+func hiddenOrInputValue(t *testing.T, page, name string) string {
+	t.Helper()
+	i := strings.Index(page, `name="`+name+`"`)
+	if i < 0 {
+		t.Fatalf("no %s field in the page", name)
+	}
+	tag := page[i:]
+	tag = tag[:strings.Index(tag, ">")]
+	j := strings.Index(tag, `value="`)
+	if j < 0 {
+		return ""
+	}
+	v := tag[j+len(`value="`):]
+	return stdhtml.UnescapeString(v[:strings.Index(v, `"`)])
+}

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"strings"
 
 	"github.com/a-h/templ"
 	"github.com/bornholm/go-x/slogx"
@@ -34,6 +35,7 @@ func (h *Handler) getCatalogImportPage(w http.ResponseWriter, r *http.Request) {
 		h.renderCatalogUnavailable(w, r, vmodel)
 		return
 	}
+	vmodel.Prefix = h.providerProxyPrefix(ctx, org, p)
 	templ.Handler(component.CatalogImportPage(withCatalog(vmodel, c))).ServeHTTP(w, r)
 }
 
@@ -55,6 +57,40 @@ func (h *Handler) catalogImportVModel(ctx context.Context, org model.Organizatio
 		Org:             org,
 		Provider:        p,
 	}
+}
+
+// providerProxyPrefix is the prefix most models of p put before their real
+// model in their proxy name, such as "opencode-" for "opencode-glm-5.2":
+// the catalog import offers it, so that the models it creates follow the
+// provider's naming and those it finds keep their name. Empty when no
+// prefix is shared by more than half of them.
+func (h *Handler) providerProxyPrefix(ctx context.Context, org model.Organization, p model.Provider) string {
+	if p == nil {
+		return ""
+	}
+	models, err := h.providerStore.ListLLMModels(ctx, org.ID())
+	if err != nil {
+		slog.WarnContext(ctx, "could not list the models of the provider", slogx.Error(err))
+		return ""
+	}
+	var total int
+	counts := map[string]int{}
+	for _, m := range models {
+		if m.ProviderID() != p.ID() || m.IsVirtual() {
+			continue
+		}
+		total++
+		name, real := m.ProxyName(), m.RealModel()
+		if real != "" && len(name) > len(real) && strings.HasSuffix(name, real) {
+			counts[name[:len(name)-len(real)]]++
+		}
+	}
+	for prefix, n := range counts {
+		if 2*n > total && strings.HasSuffix(prefix, "-") && prefixError(ctx, prefix) == "" {
+			return prefix
+		}
+	}
+	return ""
 }
 
 // renderCatalogUnavailable says the catalog cannot be read on the catalog
@@ -88,6 +124,7 @@ func (h *Handler) previewCatalogImport(w http.ResponseWriter, r *http.Request) {
 	if plan == "none" {
 		plan = ""
 	}
+	prefix := strings.TrimSpace(r.FormValue("proxy_prefix"))
 	vmodel := h.providerBundleImportVModel(ctx, org, p)
 
 	c, err := h.catalog.Catalog(ctx)
@@ -99,9 +136,18 @@ func (h *Handler) previewCatalogImport(w http.ResponseWriter, r *http.Request) {
 	// operator chooses again.
 	refuse := func(msg string) {
 		page := withCatalog(h.catalogImportVModel(ctx, org, p), c)
-		page.Error = msg
+		page.Error, page.Prefix = msg, prefix
+		// Into a new provider, each card creates a different one: only the
+		// card the prefix was posted from gets it back.
+		if p == nil {
+			page.PrefixFor = r.FormValue("catalog_provider")
+		}
 		w.WriteHeader(http.StatusUnprocessableEntity)
 		templ.Handler(component.CatalogImportPage(page)).ServeHTTP(w, r)
+	}
+	if msg := prefixError(ctx, prefix); msg != "" {
+		refuse(msg)
+		return
 	}
 	tb, err := c.BundleFor(r.FormValue("catalog_provider"), plan, p)
 	if err != nil {
@@ -138,6 +184,13 @@ func (h *Handler) previewCatalogImport(w http.ResponseWriter, r *http.Request) {
 			refuse(i18n.T(ctx, "org.errors.catalog_import.no_rate", bundle.Provider.Currency, p.Currency()))
 			return
 		}
+	}
+	// The prefix goes before every proxy name, before the plan matches them
+	// with the provider's models: one already named with it is found as is
+	// rather than offered a rename. The origin keeps the catalog's names,
+	// which the follow-up does not compare.
+	for i := range bundle.Models {
+		bundle.Models[i].ProxyName = prefix + bundle.Models[i].ProxyName
 	}
 	// The catalog describes no cloud tier, retry nor rate limit, and no
 	// billing without a plan: an existing provider keeps its own, rather
