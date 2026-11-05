@@ -52,6 +52,14 @@ templ CatalogImportPage(vmodel CatalogImportVModel) {
 	}
 }
 
+// cardPrefix is the prefix the card of the catalog provider id offers.
+func cardPrefix(vmodel CatalogImportVModel, id string) string {
+	if vmodel.PrefixFor != "" && vmodel.PrefixFor != id {
+		return ""
+	}
+	return vmodel.Prefix
+}
+
 templ catalogProviderCard(vmodel CatalogImportVModel, p catalog.Provider, actionURL string) {
 	<form method="POST" action={ templ.SafeURL(actionURL) }>
 		<input type="hidden" name="catalog_provider" value={ p.ID }/>
@@ -101,7 +109,7 @@ templ catalogProviderCard(vmodel CatalogImportVModel, p catalog.Provider, action
 					@input.Input(input.Props{
 						ID:         prefixID,
 						Name:       "proxy_prefix",
-						Value:      vmodel.Prefix,
+						Value:      cardPrefix(vmodel, p.ID),
 						Class:      "font-mono max-w-sm",
 						Attributes: templ.Attributes{"autocomplete": "off"},
 					})

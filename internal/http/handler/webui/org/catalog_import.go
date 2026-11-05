@@ -35,6 +35,7 @@ func (h *Handler) getCatalogImportPage(w http.ResponseWriter, r *http.Request) {
 		h.renderCatalogUnavailable(w, r, vmodel)
 		return
 	}
+	vmodel.Prefix = h.providerProxyPrefix(ctx, org, p)
 	templ.Handler(component.CatalogImportPage(withCatalog(vmodel, c))).ServeHTTP(w, r)
 }
 
@@ -55,7 +56,6 @@ func (h *Handler) catalogImportVModel(ctx context.Context, org model.Organizatio
 		AppLayoutVModel: h.providerBundleImportVModel(ctx, org, p).AppLayoutVModel,
 		Org:             org,
 		Provider:        p,
-		Prefix:          h.providerProxyPrefix(ctx, org, p),
 	}
 }
 
@@ -137,6 +137,11 @@ func (h *Handler) previewCatalogImport(w http.ResponseWriter, r *http.Request) {
 	refuse := func(msg string) {
 		page := withCatalog(h.catalogImportVModel(ctx, org, p), c)
 		page.Error, page.Prefix = msg, prefix
+		// Into a new provider, each card creates a different one: only the
+		// card the prefix was posted from gets it back.
+		if p == nil {
+			page.PrefixFor = r.FormValue("catalog_provider")
+		}
 		w.WriteHeader(http.StatusUnprocessableEntity)
 		templ.Handler(component.CatalogImportPage(page)).ServeHTTP(w, r)
 	}

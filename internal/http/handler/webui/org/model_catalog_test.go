@@ -318,6 +318,27 @@ func TestCatalogImport_RefusesAPrefixWithASlash(t *testing.T) {
 	}
 }
 
+// TestCatalogImport_GivesARefusedPrefixBackToItsCardOnly pins that, into a
+// new provider, the other cards, which create other providers, do not offer
+// the prefix refused on one of them.
+func TestCatalogImport_GivesARefusedPrefixBackToItsCardOnly(t *testing.T) {
+	h, s, tenant := importFixture(t, "https://opencode.ai/inference/go/v1", "sk")
+	h.SetCatalog(catalog.NewStaticSource(testCatalogRelease(t)))
+	fields := url.Values{"catalog_provider": {"opencode-go"}, "plan": {"none"}, "proxy_prefix": {"team/"}}
+	rr := httptest.NewRecorder()
+	h.previewCatalogImport(rr, bundleRequest(t, s, tenant, "", bytes.NewBufferString(fields.Encode()), "application/x-www-form-urlencoded"))
+	if rr.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("status = %d, want the prefix refused", rr.Code)
+	}
+	page := rr.Body.String()
+	if n := strings.Count(page, `name="proxy_prefix"`); n < 2 {
+		t.Fatalf("the page should list several catalog providers, got %d prefix fields", n)
+	}
+	if n := strings.Count(page, `value="team/"`); n != 1 {
+		t.Errorf("the refused prefix is shown on %d cards, want only the one it came from", n)
+	}
+}
+
 func TestCatalogImportPage_OffersThePrefixMostModelsShare(t *testing.T) {
 	cases := []struct {
 		name     string
