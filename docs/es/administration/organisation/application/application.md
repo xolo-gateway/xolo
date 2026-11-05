@@ -133,6 +133,7 @@ Cada modelo de `GET /api/v1/models` sigue el formato de OpenRouter:
 
 - `description`;
 - `context_length`;
+- `top_provider.context_length` y `top_provider.max_completion_tokens`, la ventana de contexto y el máximo de tokens que el modelo puede escribir en una respuesta, para dimensionar `max_tokens`. Un modelo virtual publica las ventanas más pequeñas de sus candidatos, o su sobrecarga `MaxOutputTokens`. Una ventana desconocida se omite, y solo los modelos de completado tienen este objeto. `per_request_limits` sigue siendo el límite de tokens fijado por el operador;
 - `architecture.input_modalities`, que contiene `image` cuando el modelo lee imágenes;
 - `supported_parameters`, que contiene `tools` y `reasoning` según sus capacidades;
 - `pricing.prompt` y `pricing.completion`, en unidades monetarias por cada 1.000 tokens.

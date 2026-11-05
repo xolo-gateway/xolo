@@ -1,3 +1,19 @@
+# Unreleased — output window in the models API
+
+Each completion model of `GET /api/v1/models` now carries a `top_provider`
+object, as OpenRouter publishes it: `context_length` is the context window and
+`max_completion_tokens` the most tokens the model can write in one answer, so
+that a client sizes `max_tokens` from the card. A virtual model publishes the
+smallest windows of its candidates, or its `MaxOutputTokens` override. An
+unknown window is left out, and a card without any known window has no
+`top_provider`. `per_request_limits` keeps its meaning, the token limit the
+operator set. No migration.
+
+Details:
+[English](docs/en/administration/organisation/application/application.md#capabilities-and-pricing-of-the-listed-models),
+[Français](docs/fr/administration/organisation/application/application.md#capacites-et-tarif-des-modeles-listes),
+[Español](docs/es/administration/organisation/application/application.md#capacidades-y-precio-de-los-modelos-listados).
+
 # Unreleased — LLM models and personal models in the provisioning API
 
 The provisioning API exposes the models of the providers of an organization as

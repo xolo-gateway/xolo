@@ -51,6 +51,10 @@ type cardEntry struct {
 		PromptTokens     int `json:"prompt_tokens"`
 		CompletionTokens int `json:"completion_tokens"`
 	} `json:"per_request_limits"`
+	TopProvider *struct {
+		ContextLength       *int `json:"context_length"`
+		MaxCompletionTokens *int `json:"max_completion_tokens"`
+	} `json:"top_provider"`
 	Architecture struct {
 		InputModalities  []string `json:"input_modalities"`
 		OutputModalities []string `json:"output_modalities"`
