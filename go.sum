@@ -32,8 +32,8 @@ github.com/bornholm/go-x v0.0.0-20260127104343-c6737ea35324 h1:urrNBFQGXI3uvAivA
 github.com/bornholm/go-x v0.0.0-20260127104343-c6737ea35324/go.mod h1:LrDsNbXXqkdlQ/tlcbWKUF/FoFA/WjUEtNDRa/Xl19c=
 github.com/bornholm/indecis v0.8.0 h1:bMxz4v4TieK5FZgGt04VfO3G1uKVnKMDglr0r/C5r2A=
 github.com/bornholm/indecis v0.8.0/go.mod h1:nNkoX8XEWjrabPBAQQBdwkaZBPcaFSjYQWMD4FMTf/I=
-github.com/bornholm/indecis-ner v0.3.3 h1:gSH/Xyxb/EXppPquk297lZqU+TY6psrl1x8LkITzoiM=
-github.com/bornholm/indecis-ner v0.3.3/go.mod h1:5Ntao3A6KfTmwjjqK21nUrd2dKKBwfpBO+3ovQHPC0Y=
+github.com/bornholm/indecis-ner v0.4.0 h1:LtoSJxMRGnvWAx5syKk1uox8OYBjB/McBNqODfjxcVo=
+github.com/bornholm/indecis-ner v0.4.0/go.mod h1:NIDm0+nlLWKP0TrAQpMTu7VsNeTIrPQHE1P9lQlfZw4=
 github.com/bufbuild/protocompile v0.14.1 h1:iA73zAf/fyljNjQKwYzUHD6AD4R8KMasmwa/FBatYVw=
 github.com/bufbuild/protocompile v0.14.1/go.mod h1:ppVdAIhbr2H8asPk6k4pY7t9zB1OU5DoEw9xY/FUi1c=
 github.com/buger/jsonparser v1.1.2 h1:frqHqw7otoVbk5M8LlE/L7HTnIq2v9RX6EJ48i9AxJk=
