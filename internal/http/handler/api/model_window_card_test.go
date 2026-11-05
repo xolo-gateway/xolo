@@ -120,3 +120,23 @@ func TestVirtualModelCard_TopProviderTakesTheOverride(t *testing.T) {
 		t.Errorf("top_provider = %+v, want max_completion_tokens 4096", got.TopProvider)
 	}
 }
+
+// A personal virtual model publishes the windows of the model its graph
+// names, as an organization one does.
+func TestPersonalVirtualModelCard_TopProviderIsDerived(t *testing.T) {
+	org := model.NewOrganization(testTenantID, "acme", "ACME", "")
+	flash := realModel(org, "flash", 1_048_576, model.ModelCapabilities{}, 0, 0)
+	flash.SetOutputWindow(943_718)
+	pvm := personalVMWithGraph("mine", modelNodeGraph(t, "flash"))
+
+	got := cardScenario{
+		orgs:     []model.Organization{org},
+		models:   map[model.OrgID][]model.LLMModel{org.ID(): {flash}},
+		pvms:     []model.PersonalVirtualModel{pvm},
+		tokenOrg: org.ID(),
+	}.call(t)["~/mine"]
+
+	if got.TopProvider == nil || intField(got.TopProvider.ContextLength) != 1_048_576 || intField(got.TopProvider.MaxCompletionTokens) != 943_718 {
+		t.Errorf("top_provider = %+v, want 1048576 and 943718", got.TopProvider)
+	}
+}
