@@ -32,6 +32,7 @@ type openRouterModel struct {
 	DefaultParameters *struct{}         `json:"default_parameters"`
 	Pricing           modelPricing      `json:"pricing"`
 	PerRequestLimits  *perRequestLimits `json:"per_request_limits,omitempty"`
+	TopProvider       *topProvider      `json:"top_provider,omitempty"`
 	SupportedParams   []string          `json:"supported_parameters"`
 	Xolo              modelDeclarations `json:"xolo"`
 }
@@ -63,6 +64,14 @@ type modelPricing struct {
 type perRequestLimits struct {
 	PromptTokens     int `json:"prompt_tokens,omitempty"`
 	CompletionTokens int `json:"completion_tokens,omitempty"`
+}
+
+// topProvider holds the windows of the model, as OpenRouter publishes them
+// for the provider it routes to first: what a client sizes max_tokens with.
+// An unknown window is left out.
+type topProvider struct {
+	ContextLength       int `json:"context_length,omitempty"`
+	MaxCompletionTokens int `json:"max_completion_tokens,omitempty"`
 }
 
 type pluginManagerIface interface {
@@ -406,6 +415,16 @@ func modelCard(t service.ModelCard) openRouterModel {
 		}
 	}
 
+	// The windows tell a completion client how many tokens it may ask for,
+	// whatever limit the operator set: per_request_limits keeps that one.
+	var top *topProvider
+	if kind == model.ModelKindCompletion && (t.ContextLength > 0 || t.OutputWindow > 0) {
+		top = &topProvider{
+			ContextLength:       int(max(t.ContextLength, 0)),
+			MaxCompletionTokens: int(max(t.OutputWindow, 0)),
+		}
+	}
+
 	return openRouterModel{
 		Object:        "model",
 		OwnedBy:       "xolo",
@@ -421,6 +440,7 @@ func modelCard(t service.ModelCard) openRouterModel {
 			Completion: float64(t.CompletionCost) / 1_000_000,
 		},
 		PerRequestLimits: perLimits,
+		TopProvider:      top,
 		SupportedParams:  supportedParams,
 		Xolo:             modelDeclarations{CapabilitiesDeclared: t.Declared, Currency: t.Currency, Kind: kind},
 	}
