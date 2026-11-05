@@ -81,7 +81,7 @@ func (h *Handler) providerProxyPrefix(ctx context.Context, org model.Organizatio
 		}
 		total++
 		name, real := m.ProxyName(), m.RealModel()
-		if len(name) > len(real) && strings.HasSuffix(name, real) {
+		if real != "" && len(name) > len(real) && strings.HasSuffix(name, real) {
 			counts[name[:len(name)-len(real)]]++
 		}
 	}

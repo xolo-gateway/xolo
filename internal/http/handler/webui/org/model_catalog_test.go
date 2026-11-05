@@ -327,6 +327,7 @@ func TestCatalogImportPage_OffersThePrefixMostModelsShare(t *testing.T) {
 		{"most models", [][2]string{{"opencode-glm-5.2", "glm-5.2"}, {"opencode-kimi-k3", "kimi-k3"}, {"fast", "glm-5.3"}}, "opencode-"},
 		{"half only", [][2]string{{"opencode-glm-5.2", "glm-5.2"}, {"glm-5.3", "glm-5.3"}}, ""},
 		{"no dash", [][2]string{{"oc_glm-5.2", "glm-5.2"}, {"oc_kimi-k3", "kimi-k3"}}, ""},
+		{"no real model", [][2]string{{"opencode-", ""}, {"opencode-", ""}, {"fast", "glm-5.3"}}, ""},
 		{"no model", nil, ""},
 	}
 	for _, tc := range cases {
