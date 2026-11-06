@@ -79,6 +79,9 @@ func VerifyLogoutToken(ctx context.Context, raw, issuer, audience, jwksURL strin
 				keysUnavailable = fmt.Errorf("%w: %w", ErrKeysUnavailable, err)
 				return nil, keysUnavailable
 			case ok:
+				// The provider has just served its keys: a key it does not
+				// hold does not exist, and the token is refused. Deferring
+				// it would let a forged key ID hold a logout forever.
 				key, found = findSigningKey(refreshed, kid)
 			default:
 				// No refetch allowed yet: the cached set, fresh or not,

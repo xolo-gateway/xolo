@@ -90,6 +90,16 @@ func (p *flakyProvider) expire(by time.Duration) {
 	delete(cache.failed, p.url)
 }
 
+// downloadFailed reports whether the last download of the provider's key set
+// ended and failed.
+func (p *flakyProvider) downloadFailed() bool {
+	cache.mu.RLock()
+	defer cache.mu.RUnlock()
+	_, underWay := cache.inflight[p.url]
+	_, failed := cache.failed[p.url]
+	return failed && !underWay
+}
+
 func bearerRequest(token string) *http.Request {
 	r := httptest.NewRequest(http.MethodGet, "/api/v1/models", nil)
 	r.Header.Set("Authorization", "Bearer "+token)
@@ -316,5 +326,38 @@ func TestVerifyLogoutTokenRefetchesOnlyForTheProviderIssuer(t *testing.T) {
 	cache.mu.Unlock()
 	if _, err := VerifyLogoutToken(t.Context(), signLogout(t, p.signer, logoutClaims()), testIssuer, testClientID, p.url); !errors.Is(err, ErrKeysUnavailable) {
 		t.Fatalf("expected ErrKeysUnavailable while no refetch is allowed, got %v", err)
+	}
+}
+
+// While the provider is down, a logout naming an unknown key does not wait on
+// it again within jwksDownloadBackoff: it is deferred at once.
+func TestVerifyLogoutTokenDoesNotRefetchWithinTheBackoff(t *testing.T) {
+	p := newFlakyProvider(t)
+	h := NewHandler(nil)
+	if _, err := h.validateToken(t.Context(), p.signer.sign(t, testIssuer), p.provider()); err != nil {
+		t.Fatal(err)
+	}
+	p.signer.rotate(t, "k2")
+	p.down.Store(true)
+	p.expire(time.Minute)
+
+	// The background download fails and starts the backoff.
+	if _, err := fetchJWKS(t.Context(), p.url); err != nil {
+		t.Fatal(err)
+	}
+	p.waitForHits(t, 2)
+	deadline := time.Now().Add(5 * time.Second)
+	for !p.downloadFailed() {
+		if time.Now().After(deadline) {
+			t.Fatal("the background download did not fail")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+
+	if _, err := VerifyLogoutToken(t.Context(), signLogout(t, p.signer, logoutClaims()), testIssuer, testClientID, p.url); !errors.Is(err, ErrKeysUnavailable) {
+		t.Fatalf("expected ErrKeysUnavailable, got %v", err)
+	}
+	if got := p.hits.Load(); got != 2 {
+		t.Fatalf("provider called %d times, want 2", got)
 	}
 }

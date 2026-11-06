@@ -134,6 +134,19 @@ func (c *jwksCache) Clear() {
 	c.inflight = map[string]chan struct{}{}
 }
 
+// downloadBlocked reports whether a download of jwksURL is under way or failed
+// less than jwksDownloadBackoff ago.
+func (c *jwksCache) downloadBlocked(jwksURL string) bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	if _, ok := c.inflight[jwksURL]; ok {
+		return true
+	}
+	last, ok := c.failed[jwksURL]
+	return ok && time.Since(last) < jwksDownloadBackoff
+}
+
 // allowRefetch reports whether a forced refetch of jwksURL may happen now and,
 // when it may, records it.
 func (c *jwksCache) allowRefetch(jwksURL string) bool {
@@ -200,9 +213,9 @@ func fetchJWKS(ctx context.Context, jwksURL string) (JWKS, error) {
 // downloadAttempt runs the download startDownload recorded as done, bounded
 // by jwksFetchTimeout, ends it and logs its failure.
 func downloadAttempt(ctx context.Context, jwksURL string, done chan struct{}, usingExpiredKeySet bool) {
-	ctx, cancel := context.WithTimeout(ctx, jwksFetchTimeout)
+	downloadCtx, cancel := context.WithTimeout(ctx, jwksFetchTimeout)
 	defer cancel()
-	_, err := downloadJWKS(ctx, jwksURL)
+	_, err := downloadJWKS(downloadCtx, jwksURL)
 	cache.downloadEnded(jwksURL, done, err != nil)
 	if err != nil {
 		slog.WarnContext(ctx, "could not download the key set of an OIDC provider",
@@ -214,8 +227,13 @@ func downloadAttempt(ctx context.Context, jwksURL string, done chan struct{}, us
 
 // refetchJWKS bypasses the cache to pick up keys the provider rotated in since
 // the last fetch. It returns false when a refetch of jwksURL already happened
-// within jwksRefetchInterval.
+// within jwksRefetchInterval. While a download of jwksURL is under way or
+// failed less than jwksDownloadBackoff ago, it does not call the provider and
+// returns ErrKeysUnavailable.
 func refetchJWKS(ctx context.Context, jwksURL string) (JWKS, bool, error) {
+	if cache.downloadBlocked(jwksURL) {
+		return JWKS{}, false, errors.Wrapf(ErrKeysUnavailable, "%s: a download is under way or failed recently", jwksURL)
+	}
 	if !cache.allowRefetch(jwksURL) {
 		return JWKS{}, false, nil
 	}
