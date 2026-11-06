@@ -1,3 +1,19 @@
+# Unreleased — subscription plan checks read hourly sums
+
+The subscription plan checks no longer sum every usage record of their window
+on each proxied request. Usage covered by a plan is now also summed per UTC
+hour in a new `plan_usage_hourly` table, written in the same transaction as the
+record. The checks read the whole hours of their window from it and the
+records for the rest, the start of the window and the current hour. Totals
+stay exact. On a window opened 17 days ago, a request read 17 days of records
+and spent 450 to 750 ms in these sums on SQLite; it now reads one row per hour,
+key, model and user, plus at most two hours of records.
+
+Migration `202611060001` creates the table and fills it from the usage history;
+it requires every server to be stopped. A record an older server writes after
+it never reaches its hour, and the checks under-count that hour until the plan
+windows move past it.
+
 # Unreleased — output window in the models API
 
 Each completion model of `GET /api/v1/models` now carries a `top_provider`
