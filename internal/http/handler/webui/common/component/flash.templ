@@ -18,11 +18,21 @@ import (
 // `subject` names what was acted on ("Le middleware", "Le rôle"); leave it empty
 // for a generic wording.
 templ FlashToast(success, subject string) {
+	@flashToast(success, flashMessage(ctx, success, subject))
+}
+
+// FlashToastFeminine is FlashToast for a subject of feminine gender ("La
+// règle", "L'alerte"): French past participles agree with it.
+templ FlashToastFeminine(success, subject string) {
+	@flashToast(success, flashMessageFeminine(ctx, success, subject))
+}
+
+templ flashToast(success, description string) {
 	if success != "" {
 		@toast.Toast(toast.Props{
 			Variant:     toast.VariantSuccess,
 			Title:       i18n.T(ctx, "common.flash.success_title"),
-			Description: flashMessage(ctx, success, subject),
+			Description: description,
 			Dismissible: true,
 			Icon:        true,
 		})
@@ -135,5 +145,24 @@ func flashMessage(ctx context.Context, success, subject string) string {
 	default:
 		// Unknown verbs still deserve feedback rather than silence.
 		return i18n.T(ctx, "common.flash.done")
+	}
+}
+
+// flashMessageFeminine is flashMessage about a subject of feminine gender.
+func flashMessageFeminine(ctx context.Context, success, subject string) string {
+	if subject == "" {
+		return flashMessage(ctx, success, subject)
+	}
+	switch success {
+	case "created":
+		return i18n.T(ctx, "common.flash.created_subject_feminine", subject)
+	case "updated", "saved":
+		return i18n.T(ctx, "common.flash.saved_subject_feminine", subject)
+	case "deleted":
+		return i18n.T(ctx, "common.flash.deleted_subject_feminine", subject)
+	case "revoked":
+		return i18n.T(ctx, "common.flash.revoked_subject_feminine", subject)
+	default:
+		return flashMessage(ctx, success, subject)
 	}
 }

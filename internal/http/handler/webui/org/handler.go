@@ -50,6 +50,8 @@ type Handler struct {
 	// catalogOrigins keeps the catalog entry of each imported model, see
 	// SetCatalogOrigins; nil records and shows none.
 	catalogOrigins port.CatalogOriginStore
+	// enrollment enables the pages of the enrollment rules, see SetEnrollment.
+	enrollment *service.EnrollmentService
 }
 
 // SetCatalog lets the provider pages import from the open model catalog.
@@ -233,6 +235,14 @@ func NewHandler(
 	h.mux.Handle("POST /{orgSlug}/admin/invites", http.HandlerFunc(h.createInvite))
 	h.mux.Handle("DELETE /{orgSlug}/admin/invites/{inviteID}", http.HandlerFunc(h.revokeInvite))
 	h.mux.Handle("DELETE /{orgSlug}/admin/invites/{inviteID}/delete", http.HandlerFunc(h.deleteInvite))
+
+	// An enrollment rule is a durable invitation, for the whole organization.
+	h.mux.Handle("GET /{orgSlug}/admin/enrollment-rules", assertPerm(rbac.PermInvitesRead)(http.HandlerFunc(h.getEnrollmentRulesPage)))
+	h.mux.Handle("GET /{orgSlug}/admin/enrollment-rules/new", assertPerm(rbac.PermInvitesWrite)(http.HandlerFunc(h.getNewEnrollmentRulePage)))
+	h.mux.Handle("POST /{orgSlug}/admin/enrollment-rules", assertPerm(rbac.PermInvitesWrite)(http.HandlerFunc(h.createEnrollmentRule)))
+	h.mux.Handle("GET /{orgSlug}/admin/enrollment-rules/{ruleID}/edit", assertPerm(rbac.PermInvitesRead)(http.HandlerFunc(h.getEditEnrollmentRulePage)))
+	h.mux.Handle("POST /{orgSlug}/admin/enrollment-rules/{ruleID}/edit", assertPerm(rbac.PermInvitesWrite)(http.HandlerFunc(h.updateEnrollmentRule)))
+	h.mux.Handle("POST /{orgSlug}/admin/enrollment-rules/{ruleID}/delete", assertPerm(rbac.PermInvitesWrite)(http.HandlerFunc(h.deleteEnrollmentRule)))
 
 	// usage:read held on the organization shows every request; held on teams
 	// only, the requests of those teams (see usageScope).

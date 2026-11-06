@@ -44,6 +44,7 @@ func (h *Handler) getRolesPage(w http.ResponseWriter, r *http.Request) {
 		Query:   strings.TrimSpace(r.URL.Query().Get("q")),
 		RoleID:  r.URL.Query().Get("role"),
 		Success: r.URL.Query().Get("success"),
+		Error:   roleErrorMessage(ctx, r.URL.Query().Get("error")),
 		AppLayoutVModel: common.AppLayoutVModel{
 			User:         user,
 			SelectedItem: "org-" + orgSlug + "-roles",
@@ -307,6 +308,23 @@ func togglePermission(current []string, code rbac.Permission, granted bool) []st
 	return out
 }
 
+const (
+	roleErrorGrantedByEnrollment = "granted_by_enrollment"
+	roleErrorNotDeletable        = "not_deletable"
+)
+
+// roleErrorMessage words a known ?error= code and ignores any other value, so
+// a link can not put its own text on the page.
+func roleErrorMessage(ctx context.Context, code string) string {
+	switch code {
+	case roleErrorGrantedByEnrollment:
+		return i18n.T(ctx, "org.errors.roles.granted_by_enrollment")
+	case roleErrorNotDeletable:
+		return i18n.T(ctx, "org.errors.roles.not_deletable")
+	}
+	return ""
+}
+
 func (h *Handler) deleteRole(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	orgSlug := r.PathValue("orgSlug")
@@ -337,8 +355,13 @@ func (h *Handler) deleteRole(w http.ResponseWriter, r *http.Request) {
 		if webcommon.RejectLocked(w, r, err) {
 			return
 		}
+		// The list page shows why: a 4xx body would replace its content.
+		if errors.Is(err, port.ErrRoleGrantedByEnrollment) {
+			http.Redirect(w, r, "/orgs/"+orgSlug+"/admin/roles?error="+roleErrorGrantedByEnrollment, http.StatusSeeOther)
+			return
+		}
 		if errors.Is(err, port.ErrNotAllowed) {
-			http.Error(w, i18n.T(ctx, "org.errors.roles.not_deletable"), http.StatusBadRequest)
+			http.Redirect(w, r, "/orgs/"+orgSlug+"/admin/roles?error="+roleErrorNotDeletable, http.StatusSeeOther)
 			return
 		}
 		slog.ErrorContext(ctx, "could not delete role", slogx.Error(err))
