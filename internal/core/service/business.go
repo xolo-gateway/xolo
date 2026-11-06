@@ -243,6 +243,45 @@ func (s *ProvisioningService) PutAlert(ctx context.Context, tenantID model.Tenan
 	})
 }
 
+// PutEnrollmentRule creates the rule or brings it to the given representation.
+// The other replicas see the change within enrollmentRulesTTL.
+func (s *ProvisioningService) PutEnrollmentRule(ctx context.Context, tenantID model.TenantID, orgID model.OrgID, key string, condition model.MatchCondition, v model.EnrollmentRuleSettings) (model.CommonItem, error) {
+	rule := model.NewEnrollmentRule(orgID, v.Name, v.Kind, v.Claim, v.Value, v.Role, v.Enabled)
+	rule.SetID(model.EnrollmentRuleID(key))
+	normalized := normalizedEnrollmentRule(rule)
+	if err := ValidateEnrollmentRule(normalized); err != nil {
+		return model.CommonItem{}, err
+	}
+	v.Claim, v.Value = normalized.Claim(), normalized.Value()
+	scope := model.CommonScope{Family: model.FamilyEnrollmentRule, TenantID: string(tenantID), OrganizationID: string(orgID)}
+	return s.PutCommon(ctx, scope, key, condition, func(ctx context.Context, tx *ProvisioningService) error {
+		target, err := tx.businessTarget(ctx, scope, key, v, func() (string, error) {
+			current, err := tx.tx.GetEnrollmentRuleByID(ctx, model.EnrollmentRuleID(key))
+			if err != nil {
+				return "", err
+			}
+			return string(current.OrgID()), nil
+		})
+		if err != nil || target.unchanged {
+			return err
+		}
+		if _, err := checkEnrollmentRole(ctx, tx.tx, normalized); err != nil {
+			return err
+		}
+		if !target.exists {
+			return errors.WithStack(tx.tx.CreateEnrollmentRule(ctx, normalized))
+		}
+		current, err := tx.tx.GetEnrollmentRuleByID(ctx, normalized.ID())
+		if err != nil {
+			return errors.WithStack(err)
+		}
+		return errors.WithStack(tx.tx.UpdateEnrollmentRule(ctx, model.UpdateEnrollmentRule(current,
+			model.WithEnrollmentRuleName(normalized.Name()), model.WithEnrollmentRuleKind(normalized.Kind()),
+			model.WithEnrollmentRuleClaim(normalized.Claim()), model.WithEnrollmentRuleValue(normalized.Value()),
+			model.WithEnrollmentRuleRole(normalized.Role()), model.WithEnrollmentRuleEnabled(normalized.Enabled()))))
+	})
+}
+
 // PutProvider creates the provider or brings it to the given representation.
 // Its key is write-only: required at creation, kept when omitted, encrypted
 // at rest and never returned.
@@ -348,6 +387,8 @@ func (s *ProvisioningService) DeleteBusiness(ctx context.Context, scope model.Co
 			err = tx.tx.DeleteQuota(ctx, model.QuotaID(key))
 		case model.FamilyAlert:
 			err = tx.tx.DeleteAlert(ctx, model.AlertID(key))
+		case model.FamilyEnrollmentRule:
+			err = tx.tx.DeleteEnrollmentRule(ctx, model.EnrollmentRuleID(key))
 		case model.FamilyProvider:
 			err = tx.tx.DeleteProvider(ctx, model.ProviderID(key))
 		case model.FamilyVirtualModel, model.FamilyMiddleware:

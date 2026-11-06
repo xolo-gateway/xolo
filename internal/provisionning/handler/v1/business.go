@@ -44,6 +44,7 @@ var businessRoutes = []businessRoute{
 		required: []string{"name", "type", "base_url", "active", "currency", "cloud_tier", "billing_mode", "subscription_plan", "retry_config", "rate_limit_config"},
 		nullable: []string{"subscription_plan", "retry_config", "rate_limit_config", "request_headers"},
 		optional: []string{"api_key", "request_headers"}},
+	{family: model.FamilyEnrollmentRule, required: []string{"name", "kind", "claim", "value", "role", "enabled"}},
 	{family: model.FamilyLLMModel, readOnly: true},
 	{family: model.FamilyVirtualModel, required: []string{"name", "description", "catalog_overrides", "graph"}, nullable: []string{"catalog_overrides"}},
 	{family: model.FamilyMiddleware, required: []string{"name", "description", "enabled", "priority", "applies_to_all", "targets", "graph"}},
@@ -57,6 +58,7 @@ var businessCollections = map[string]string{
 	model.FamilyApplication:          "applications",
 	model.FamilyQuota:                "quotas",
 	model.FamilyAlert:                "alerts",
+	model.FamilyEnrollmentRule:       "enrollment-rules",
 	model.FamilyProvider:             "providers",
 	model.FamilyLLMModel:             "llm-models",
 	model.FamilyVirtualModel:         "virtual-models",
@@ -249,6 +251,12 @@ func (h *Handler) putBusiness(ctx context.Context, scope model.CommonScope, key 
 			return model.CommonItem{}, err
 		}
 		return h.provisioning.PutAlert(ctx, tenantID, orgID, key, condition, v)
+	case model.FamilyEnrollmentRule:
+		var v model.EnrollmentRuleSettings
+		if err := decode(&v); err != nil {
+			return model.CommonItem{}, err
+		}
+		return h.provisioning.PutEnrollmentRule(ctx, tenantID, orgID, key, condition, v)
 	case model.FamilyVirtualModel:
 		var v model.VirtualModelSettings
 		if err := decode(&v); err != nil {

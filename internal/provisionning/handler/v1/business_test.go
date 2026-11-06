@@ -7,6 +7,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
+	"github.com/xolo-gateway/xolo/internal/core/model"
 	"github.com/xolo-gateway/xolo/internal/core/service"
 )
 
@@ -101,6 +102,59 @@ func TestBusinessEndpoints(t *testing.T) {
 
 	rec = call(t, env.handler, http.MethodGet, strings.Replace(providers, orgID, uuid.NewString(), 1), nil)
 	assertStatus(t, rec, http.StatusNotFound)
+}
+
+func TestEnrollmentRuleEndpoints(t *testing.T) {
+	env := newEnv(t, service.WithSecretKey(testSecretKey))
+	orgID, _ := createOrganization(t, env.handler, env.tenantID, "acme", false)
+	rules := env.xoloBase + "/organizations/" + orgID + "/enrollment-rules"
+	key := uuid.NewString()
+	body := func(role string) map[string]any {
+		return map[string]any{"name": "Everyone", "kind": "claim", "claim": "iss", "value": "https://id.example.test/", "role": role, "enabled": true}
+	}
+
+	rec := call(t, env.handler, http.MethodPut, rules+"/"+key, body("member"))
+	assertStatus(t, rec, http.StatusOK)
+	etag := rec.Header().Get("ETag")
+	require.NotEmpty(t, etag)
+
+	rec = call(t, env.handler, http.MethodPut, rules+"/"+key, body("member"))
+	assertStatus(t, rec, http.StatusOK)
+	require.Equal(t, etag, rec.Header().Get("ETag"), "a replay is a no-op")
+
+	rec = call(t, env.handler, http.MethodGet, rules+"/"+key, nil)
+	assertStatus(t, rec, http.StatusOK)
+	require.Equal(t, "iss", decodeBody(t, rec)["claim"])
+
+	created, err := env.store.GetEnrollmentRuleByID(t.Context(), model.EnrollmentRuleID(key))
+	require.NoError(t, err)
+	renamed := body("member")
+	renamed["name"] = "Everyone else"
+	assertStatus(t, call(t, env.handler, http.MethodPut, rules+"/"+key, renamed), http.StatusOK)
+	updated, err := env.store.GetEnrollmentRuleByID(t.Context(), model.EnrollmentRuleID(key))
+	require.NoError(t, err)
+	require.Equal(t, "Everyone else", updated.Name())
+	require.True(t, created.CreatedAt().Equal(updated.CreatedAt()), "an update keeps the creation date")
+	assertStatus(t, call(t, env.handler, http.MethodPut, rules+"/"+key, body("member")), http.StatusOK)
+	etag = call(t, env.handler, http.MethodGet, rules+"/"+key, nil).Header().Get("ETag")
+
+	rec = call(t, env.handler, http.MethodPut, rules+"/"+uuid.NewString(), body("org:owner"))
+	require.GreaterOrEqual(t, rec.Code, 400, "a rule never hands out the organization")
+
+	domain := body("member")
+	domain["kind"], domain["claim"], domain["value"] = "email_domain", "", "@Example.ORG"
+	domainKey := uuid.NewString()
+	rec = call(t, env.handler, http.MethodPut, rules+"/"+domainKey, domain)
+	assertStatus(t, rec, http.StatusOK)
+	require.Equal(t, "example.org", decodeBody(t, call(t, env.handler, http.MethodGet, rules+"/"+domainKey, nil))["value"])
+	etag = call(t, env.handler, http.MethodGet, rules+"/"+domainKey, nil).Header().Get("ETag")
+	rec = call(t, env.handler, http.MethodPut, rules+"/"+domainKey, domain)
+	assertStatus(t, rec, http.StatusOK)
+	require.Equal(t, etag, rec.Header().Get("ETag"), "the stored form is the representation")
+
+	rec = call(t, env.handler, http.MethodDelete, rules+"/"+key, nil)
+	assertStatus(t, rec, http.StatusNoContent)
+	assertStatus(t, call(t, env.handler, http.MethodGet, rules+"/"+key, nil), http.StatusNotFound)
 }
 
 func TestTeamEndpoints(t *testing.T) {
