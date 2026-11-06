@@ -55,6 +55,15 @@ type Handler struct {
 	resolveProvider   ProviderResolver
 	sessions          port.SessionRegistry
 	sessionTTL        time.Duration
+	comparedClaims    ComparedClaims
+}
+
+// SetComparedClaims gives the session room for the claims the enrollment
+// rules compare; without it, claims are kept in name order. It is set after
+// construction, as the store the rules live in is built from this handler.
+// Call it before serving.
+func (h *Handler) SetComparedClaims(compared ComparedClaims) {
+	h.comparedClaims = compared
 }
 
 // ServeHTTP implements http.Handler.

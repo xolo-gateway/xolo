@@ -1,9 +1,11 @@
 package oidctoken
 
 import (
+	"bytes"
 	"context"
 	"crypto/rsa"
 	"encoding/base64"
+	"encoding/json"
 	"log/slog"
 	"math/big"
 	"net/http"
@@ -24,6 +26,20 @@ type claims struct {
 	EmailVerified     authn.BoolClaim `json:"email_verified"`
 	PreferredUsername string          `json:"preferred_username"`
 	Name              string          `json:"name"`
+
+	// raw is the payload, decoded only when an enrollment rule compares a
+	// claim.
+	raw []byte
+}
+
+// UnmarshalJSON also keeps the payload the parser decodes.
+func (c *claims) UnmarshalJSON(data []byte) error {
+	type fields claims
+	if err := json.Unmarshal(data, (*fields)(c)); err != nil {
+		return err
+	}
+	c.raw = bytes.Clone(data)
+	return nil
 }
 
 type Options struct {
@@ -204,6 +220,7 @@ func (h *Handler) validateToken(ctx context.Context, rawToken string, provider P
 		EmailVerified: bool(cl.EmailVerified),
 		Provider:      provider.ID,
 		Subject:       cl.Subject,
+		ClaimsSource:  authn.PayloadClaims(cl.raw),
 	}
 	// The parser already required the iss claim to equal it.
 	if provider.ProvesIssuer {
