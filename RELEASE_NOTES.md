@@ -1,3 +1,15 @@
+# Unreleased — API keys no longer depend on the OIDC provider
+
+An API request authenticated by an API key no longer calls the OIDC provider:
+the key is looked up before the OIDC tokens are checked. Until now a provider
+that was down made every API request answer 500, API keys included.
+
+OIDC ID tokens also cope with an unavailable provider. Its key set is
+downloaded only for a JWT it issued, within 10 seconds. While it cannot serve
+a new one, the last key set stays in use for up to 24 hours past its expiry,
+and a failed download is retried after 10 seconds, not on every request. A
+token whose keys are unknown is answered 401 instead of 500. No migration.
+
 # Unreleased — subscription plan checks read hourly sums
 
 The subscription plan checks no longer sum every usage record of their window

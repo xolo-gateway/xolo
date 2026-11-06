@@ -3,7 +3,6 @@ package oidctoken
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -43,11 +42,9 @@ func VerifyLogoutToken(ctx context.Context, raw, issuer, audience, jwksURL strin
 	if issuer == "" || audience == "" || jwksURL == "" {
 		return nil, errInvalidToken
 	}
-	ctx, cancel := context.WithTimeout(ctx, jwksFetchTimeout)
-	defer cancel()
 	jwks, err := fetchJWKS(ctx, jwksURL)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %w", ErrKeysUnavailable, err)
+		return nil, err
 	}
 
 	var claims LogoutClaims

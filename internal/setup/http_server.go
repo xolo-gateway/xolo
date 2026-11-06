@@ -53,15 +53,19 @@ func NewHTTPServerFromConfig(ctx context.Context, conf *config.Config) (*http.Se
 		authenticators = append([]authn.Authenticator{oidcTokenAuthn}, authenticators...)
 	}
 
-	// API auth chain ordering (cheapest / most specific first):
-	//   oidctoken (local JWT ID token) → oauth2token (remote introspection) →
-	//   tokenAuthn (DB API token) → oidcAuthn (session).
+	// API auth chain ordering:
+	//   tokenAuthn (DB API token) → oidctoken (local JWT ID token) →
+	//   oauth2token (remote introspection) → oidcAuthn (session).
+	// The API key comes first: it is found in the database, and an API key
+	// must never reach the OIDC provider, neither to fetch its keys nor to be
+	// introspected. A request authenticated by API key then keeps working
+	// while the provider is down.
 	apiAuthenticators := []authn.Authenticator{tokenAuthn}
-	if oauth2TokenAuthn != nil {
-		apiAuthenticators = append([]authn.Authenticator{oauth2TokenAuthn}, apiAuthenticators...)
-	}
 	if oidcTokenAuthn != nil {
-		apiAuthenticators = append([]authn.Authenticator{oidcTokenAuthn}, apiAuthenticators...)
+		apiAuthenticators = append(apiAuthenticators, oidcTokenAuthn)
+	}
+	if oauth2TokenAuthn != nil {
+		apiAuthenticators = append(apiAuthenticators, oauth2TokenAuthn)
 	}
 	apiAuthenticators = append(apiAuthenticators, oidcAuthn)
 
