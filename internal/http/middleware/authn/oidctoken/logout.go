@@ -3,6 +3,7 @@ package oidctoken
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -47,18 +48,47 @@ func VerifyLogoutToken(ctx context.Context, raw, issuer, audience, jwksURL strin
 		return nil, err
 	}
 
+	findSigningKey := func(jwks JWKS, kid string) (JWK, bool) {
+		for _, key := range jwks.Keys {
+			if key.Kid == kid && key.Kty == "RSA" && (key.Use == "" || key.Use == "sig") {
+				return key, true
+			}
+		}
+		return JWK{}, false
+	}
+
+	// keysUnavailable is set when the token names a key the cached set does
+	// not hold and the provider cannot serve a newer one: it may have rotated
+	// its keys during an outage, and the logout must be retried, not refused.
+	var keysUnavailable error
 	var claims LogoutClaims
 	_, err = jwt.ParseWithClaims(raw, &claims, func(t *jwt.Token) (any, error) {
 		kid, ok := t.Header["kid"].(string)
 		if !ok || kid == "" {
 			return nil, errInvalidToken
 		}
-		for _, key := range jwks.Keys {
-			if key.Kid == kid && key.Kty == "RSA" && (key.Use == "" || key.Use == "sig") {
-				return parseRSAPublicKey(key)
+		key, found := findSigningKey(jwks, kid)
+		if !found {
+			refreshed, ok, err := refetchJWKS(ctx, jwksURL)
+			switch {
+			case err != nil:
+				keysUnavailable = fmt.Errorf("%w: %w", ErrKeysUnavailable, err)
+				return nil, keysUnavailable
+			case ok:
+				key, found = findSigningKey(refreshed, kid)
+			default:
+				// No refetch allowed yet: an expired key set says nothing
+				// of the keys the provider holds now.
+				if _, fresh, _ := cache.Get(jwksURL); !fresh {
+					keysUnavailable = errors.Wrapf(ErrKeysUnavailable, "%s: key %q not in the expired key set", jwksURL, kid)
+					return nil, keysUnavailable
+				}
 			}
 		}
-		return nil, errInvalidToken
+		if !found {
+			return nil, errInvalidToken
+		}
+		return parseRSAPublicKey(key)
 	},
 		jwt.WithValidMethods([]string{"RS256", "RS384", "RS512"}),
 		jwt.WithIssuer(issuer),
@@ -67,6 +97,9 @@ func VerifyLogoutToken(ctx context.Context, raw, issuer, audience, jwksURL strin
 		jwt.WithIssuedAt(),
 		jwt.WithLeeway(model.LogoutClockSkew),
 	)
+	if keysUnavailable != nil {
+		return nil, keysUnavailable
+	}
 	if err != nil {
 		return nil, errInvalidToken
 	}

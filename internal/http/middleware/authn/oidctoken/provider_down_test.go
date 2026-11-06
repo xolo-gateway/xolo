@@ -8,15 +8,17 @@ import (
 	"testing"
 	"time"
 
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/pkg/errors"
 )
 
-// flakyProvider serves the key set of a rotating signer, or fails while down,
-// counting the requests it receives.
+// flakyProvider serves the key set of a rotating signer, fails while down,
+// and holds its answers while held, counting the requests it receives.
 type flakyProvider struct {
 	signer *rotatingSigner
 	url    string
 	down   atomic.Bool
+	held   atomic.Pointer[chan struct{}]
 	hits   atomic.Int32
 }
 
@@ -26,6 +28,9 @@ func newFlakyProvider(t *testing.T) *flakyProvider {
 	p := &flakyProvider{signer: s}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		p.hits.Add(1)
+		if held := p.held.Load(); held != nil {
+			<-*held
+		}
 		if p.down.Load() {
 			http.Error(w, "not found", http.StatusNotFound)
 			return
@@ -40,12 +45,48 @@ func newFlakyProvider(t *testing.T) *flakyProvider {
 		_, _ = io.Copy(w, resp.Body)
 	}))
 	t.Cleanup(srv.Close)
+	// Registered after srv.Close, so it runs before it.
+	t.Cleanup(p.release)
 	p.url = srv.URL
 	return p
 }
 
 func (p *flakyProvider) provider() Provider {
 	return Provider{ID: "dex", Issuer: testIssuer, JWKSURL: p.url}
+}
+
+// hold makes the provider answer nothing until release.
+func (p *flakyProvider) hold() {
+	ch := make(chan struct{})
+	p.held.Store(&ch)
+}
+
+func (p *flakyProvider) release() {
+	if held := p.held.Swap(nil); held != nil {
+		close(*held)
+	}
+}
+
+func (p *flakyProvider) waitForHits(t *testing.T, want int32) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for p.hits.Load() < want {
+		if time.Now().After(deadline) {
+			t.Fatalf("provider called %d times, want %d", p.hits.Load(), want)
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+}
+
+// expire makes the cached key set of the provider expired by that much, and
+// forgets the failed downloads.
+func (p *flakyProvider) expire(by time.Duration) {
+	cache.mu.Lock()
+	defer cache.mu.Unlock()
+	item := cache.items[p.url]
+	item.ExpiresAt = time.Now().Add(-by)
+	cache.items[p.url] = item
+	delete(cache.attempted, p.url)
 }
 
 func bearerRequest(token string) *http.Request {
@@ -97,7 +138,7 @@ func TestAuthenticateWhileTheProviderIsDown(t *testing.T) {
 
 	// Let jwksDownloadBackoff pass, the provider being back.
 	cache.mu.Lock()
-	cache.failed[p.url] = cache.failed[p.url].Add(-jwksDownloadBackoff)
+	cache.attempted[p.url] = cache.attempted[p.url].Add(-jwksDownloadBackoff)
 	cache.mu.Unlock()
 	p.down.Store(false)
 
@@ -110,8 +151,36 @@ func TestAuthenticateWhileTheProviderIsDown(t *testing.T) {
 	}
 }
 
-// An expired key set keeps validating tokens while the provider is down, up
-// to jwksStaleLimit past its expiry.
+// A request arriving while the key set is being downloaded does not start
+// another download nor wait on it.
+func TestValidateTokenDoesNotWaitOnADownloadUnderWay(t *testing.T) {
+	p := newFlakyProvider(t)
+	h := NewHandler(nil)
+	provider := p.provider()
+	p.hold()
+
+	first := make(chan error, 1)
+	go func() {
+		_, err := h.validateToken(t.Context(), p.signer.sign(t, testIssuer), provider)
+		first <- err
+	}()
+	p.waitForHits(t, 1)
+
+	if _, err := h.validateToken(t.Context(), p.signer.sign(t, testIssuer), provider); !errors.Is(err, ErrKeysUnavailable) {
+		t.Fatalf("expected ErrKeysUnavailable while the download is under way, got %v", err)
+	}
+	if got := p.hits.Load(); got != 1 {
+		t.Fatalf("provider called %d times, want 1", got)
+	}
+
+	p.release()
+	if err := <-first; err != nil {
+		t.Fatalf("expected the first request to get the keys, got %v", err)
+	}
+}
+
+// An expired key set keeps validating tokens at once while a new one is
+// downloaded in the background, up to jwksStaleLimit past its expiry.
 func TestValidateTokenUsesTheExpiredKeySetWhileTheProviderIsDown(t *testing.T) {
 	p := newFlakyProvider(t)
 	h := NewHandler(nil)
@@ -121,26 +190,51 @@ func TestValidateTokenUsesTheExpiredKeySetWhileTheProviderIsDown(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	expire := func(by time.Duration) {
-		cache.mu.Lock()
-		defer cache.mu.Unlock()
-		item := cache.items[p.url]
-		item.ExpiresAt = time.Now().Add(-by)
-		cache.items[p.url] = item
-		delete(cache.failed, p.url)
-	}
-
+	// The provider hangs: the request must not wait on it.
 	p.down.Store(true)
-	expire(time.Minute)
+	p.hold()
+	p.expire(time.Minute)
+	start := time.Now()
 	if _, err := h.validateToken(t.Context(), p.signer.sign(t, testIssuer), provider); err != nil {
 		t.Fatalf("expected the expired key set to be used, got %v", err)
 	}
-	if got := p.hits.Load(); got != 2 {
-		t.Fatalf("provider called %d times, want 2", got)
+	if elapsed := time.Since(start); elapsed > time.Second {
+		t.Fatalf("the request waited %s on the provider", elapsed)
 	}
+	p.waitForHits(t, 2)
+	p.release()
 
-	expire(jwksStaleLimit + time.Minute)
+	p.expire(jwksStaleLimit + time.Minute)
 	if _, err := h.validateToken(t.Context(), p.signer.sign(t, testIssuer), provider); !errors.Is(err, ErrKeysUnavailable) {
 		t.Fatalf("expected ErrKeysUnavailable past the stale limit, got %v", err)
+	}
+}
+
+// A logout token signed by a key the provider rotated in during an outage is
+// deferred, not refused: the provider retries it.
+func TestVerifyLogoutTokenWithAKeyRotatedDuringAnOutage(t *testing.T) {
+	p := newFlakyProvider(t)
+	h := NewHandler(nil)
+	if _, err := h.validateToken(t.Context(), p.signer.sign(t, testIssuer), p.provider()); err != nil {
+		t.Fatal(err)
+	}
+
+	p.signer.rotate(t, "k2")
+	p.down.Store(true)
+	p.expire(time.Minute)
+
+	p.signer.mu.Lock()
+	token := jwt.NewWithClaims(jwt.SigningMethodRS256, logoutClaims())
+	token.Header["kid"] = p.signer.kid
+	raw, err := token.SignedString(p.signer.key)
+	p.signer.mu.Unlock()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for range 2 {
+		if _, err := VerifyLogoutToken(t.Context(), raw, testIssuer, testClientID, p.url); !errors.Is(err, ErrKeysUnavailable) {
+			t.Fatalf("expected ErrKeysUnavailable, got %v", err)
+		}
 	}
 }
