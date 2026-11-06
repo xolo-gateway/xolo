@@ -11,8 +11,9 @@ downloaded within 10 seconds, at most once every 10 seconds while it fails.
 Once expired, the last key set keeps verifying tokens at once, up to 24 hours,
 while a new one is downloaded in the background. A token whose keys are
 unknown is answered 401 instead of 500, and a back-channel logout signed by a
-key Xolo cannot retrieve is deferred so that the provider retries it. No
-migration.
+key Xolo cannot retrieve is deferred so that the provider retries it. The
+introspection and userinfo calls of the OAuth2 token check now time out after
+10 seconds. No migration.
 
 # Unreleased — subscription plan checks read hourly sums
 

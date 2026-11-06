@@ -19,13 +19,19 @@ import (
 
 var errInvalidToken = errors.New("invalid token")
 
+// defaultHTTPClient bounds each call to the provider: one that hangs would
+// otherwise hold every request carrying an opaque token, http.DefaultClient
+// having no timeout.
+var defaultHTTPClient = &http.Client{Timeout: 10 * time.Second}
+
 // Options configures a Handler.
 type Options struct {
 	// CacheTTL bounds how long a positive introspection result is cached.
 	CacheTTL time.Duration
 	// CacheSize is the maximum number of cached results.
 	CacheSize int
-	// HTTPClient is used for introspection requests (defaults to http.DefaultClient).
+	// HTTPClient is used for introspection and userinfo requests (defaults to
+	// defaultHTTPClient, which times out after 10 seconds).
 	HTTPClient *http.Client
 }
 
@@ -77,7 +83,7 @@ func NewHandler(providers []Provider, funcs ...OptionFunc) *Handler {
 	opts := Options{
 		CacheTTL:   60 * time.Second,
 		CacheSize:  1024,
-		HTTPClient: http.DefaultClient,
+		HTTPClient: defaultHTTPClient,
 	}
 	for _, f := range funcs {
 		f(&opts)
@@ -86,7 +92,7 @@ func NewHandler(providers []Provider, funcs ...OptionFunc) *Handler {
 		opts.CacheSize = 1024
 	}
 	if opts.HTTPClient == nil {
-		opts.HTTPClient = http.DefaultClient
+		opts.HTTPClient = defaultHTTPClient
 	}
 
 	return &Handler{

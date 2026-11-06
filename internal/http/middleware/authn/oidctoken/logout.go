@@ -68,7 +68,10 @@ func VerifyLogoutToken(ctx context.Context, raw, issuer, audience, jwksURL strin
 			return nil, errInvalidToken
 		}
 		key, found := findSigningKey(jwks, kid)
-		if !found {
+		// Only a token claiming the provider's issuer may make it be called:
+		// the logout endpoint is reached without authentication. The issuer
+		// is read before the signature is checked, as in validateToken.
+		if iss, err := t.Claims.GetIssuer(); !found && err == nil && iss == issuer {
 			refreshed, ok, err := refetchJWKS(ctx, jwksURL)
 			switch {
 			case err != nil:
@@ -77,12 +80,10 @@ func VerifyLogoutToken(ctx context.Context, raw, issuer, audience, jwksURL strin
 			case ok:
 				key, found = findSigningKey(refreshed, kid)
 			default:
-				// No refetch allowed yet: an expired key set says nothing
-				// of the keys the provider holds now.
-				if _, fresh, _ := cache.Get(jwksURL); !fresh {
-					keysUnavailable = errors.Wrapf(ErrKeysUnavailable, "%s: key %q not in the expired key set", jwksURL, kid)
-					return nil, keysUnavailable
-				}
+				// No refetch allowed yet: the cached set, fresh or not,
+				// cannot tell the key does not exist.
+				keysUnavailable = errors.Wrapf(ErrKeysUnavailable, "%s: key %q unknown and no refetch allowed yet", jwksURL, kid)
+				return nil, keysUnavailable
 			}
 		}
 		if !found {

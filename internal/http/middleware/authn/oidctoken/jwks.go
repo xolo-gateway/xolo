@@ -22,9 +22,9 @@ const jwksRefetchInterval = 1 * time.Minute
 // must not block picking up a rotated key for a whole jwksRefetchInterval.
 const jwksRefetchRetryDelay = 5 * time.Second
 
-// jwksDownloadBackoff is the wait after a download of a key set started or
-// failed before another is tried: while the provider is down, requests do not
-// each wait on it.
+// jwksDownloadBackoff is the wait after a failed download of a key set
+// before another is tried: while the provider is down, requests do not each
+// wait on it.
 const jwksDownloadBackoff = 10 * time.Second
 
 // jwksStaleLimit bounds how long a key set is still used past its expiry when
@@ -40,9 +40,11 @@ type jwksCache struct {
 	mu        sync.RWMutex
 	items     map[string]cachedJWKS
 	refetched map[string]time.Time
-	// attempted holds when the last download of a key set that did not
-	// succeed started or failed, until one succeeds.
-	attempted map[string]time.Time
+	// failed holds when the last download of a key set failed, until one
+	// succeeds.
+	failed map[string]time.Time
+	// inflight holds the downloads under way, closed when they end.
+	inflight map[string]chan struct{}
 }
 
 var cache jwksCache
@@ -50,7 +52,8 @@ var cache jwksCache
 func init() {
 	cache.items = map[string]cachedJWKS{}
 	cache.refetched = map[string]time.Time{}
-	cache.attempted = map[string]time.Time{}
+	cache.failed = map[string]time.Time{}
+	cache.inflight = map[string]chan struct{}{}
 }
 
 // Get returns the key set cached for jwksURL, whether it is still fresh, and
@@ -80,30 +83,40 @@ func (c *jwksCache) Set(jwksURL string, jwks JWKS) {
 		JWKS:      jwks,
 		ExpiresAt: time.Now().Add(jwksCacheDuration),
 	}
-	delete(c.attempted, jwksURL)
+	delete(c.failed, jwksURL)
 }
 
 // startDownload reports whether jwksURL may be downloaded now and, when it
-// may, records the attempt: the requests arriving while it runs, or within
-// jwksDownloadBackoff of it, do not start their own.
-func (c *jwksCache) startDownload(jwksURL string) bool {
+// may, records the download as under way. Otherwise it returns the download
+// under way to wait for, or how long ago the last one failed, within
+// jwksDownloadBackoff.
+func (c *jwksCache) startDownload(jwksURL string) (start bool, underWay <-chan struct{}, failedAgo time.Duration) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	if last, ok := c.attempted[jwksURL]; ok && time.Since(last) < jwksDownloadBackoff {
-		return false
+	if done, ok := c.inflight[jwksURL]; ok {
+		return false, done, 0
 	}
-	c.attempted[jwksURL] = time.Now()
-	return true
+	if last, ok := c.failed[jwksURL]; ok && time.Since(last) < jwksDownloadBackoff {
+		return false, nil, time.Since(last)
+	}
+	c.inflight[jwksURL] = make(chan struct{})
+	return true, nil, 0
 }
 
-// downloadFailed starts jwksDownloadBackoff again from the failure, which may
-// come jwksFetchTimeout after the attempt.
-func (c *jwksCache) downloadFailed(jwksURL string) {
+// downloadEnded ends the download startDownload allowed and, when it failed,
+// starts jwksDownloadBackoff.
+func (c *jwksCache) downloadEnded(jwksURL string, failed bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	c.attempted[jwksURL] = time.Now()
+	if failed {
+		c.failed[jwksURL] = time.Now()
+	}
+	if done, ok := c.inflight[jwksURL]; ok {
+		close(done)
+		delete(c.inflight, jwksURL)
+	}
 }
 
 func (c *jwksCache) Clear() {
@@ -112,7 +125,8 @@ func (c *jwksCache) Clear() {
 
 	c.items = map[string]cachedJWKS{}
 	c.refetched = map[string]time.Time{}
-	c.attempted = map[string]time.Time{}
+	c.failed = map[string]time.Time{}
+	c.inflight = map[string]chan struct{}{}
 }
 
 // allowRefetch reports whether a forced refetch of jwksURL may happen now and,
@@ -138,28 +152,39 @@ func (c *jwksCache) refetchFailed(jwksURL string) {
 }
 
 // fetchJWKS returns the key set of jwksURL, downloading it when the cached
-// one expired. At most one download runs per jwksDownloadBackoff, so requests
-// do not each wait on a provider that is down or slow.
+// one expired. One download runs at a time, and none within
+// jwksDownloadBackoff of a failed one, so requests do not each wait on a
+// provider that is down or slow.
 //
 // An expired key set, up to jwksStaleLimit, is returned at once while a new
 // one is downloaded in the background: the tokens signed by the known keys
 // keep working, without waiting on the provider. Without any key set, the
-// download is waited for, and the error wraps ErrKeysUnavailable when it
-// fails or another one is under way.
+// request waits for the download, its own or the one under way. The error
+// wraps ErrKeysUnavailable when the download fails or failed less than
+// jwksDownloadBackoff ago.
 func fetchJWKS(ctx context.Context, jwksURL string) (JWKS, error) {
 	cached, fresh, known := cache.Get(jwksURL)
 	if fresh {
 		return cached, nil
 	}
 
-	if !cache.startDownload(jwksURL) {
-		if known {
-			return cached, nil
+	start, underWay, failedAgo := cache.startDownload(jwksURL)
+	switch {
+	case !start && known:
+		return cached, nil
+	case !start && underWay != nil:
+		select {
+		case <-underWay:
+		case <-ctx.Done():
+			return JWKS{}, fmt.Errorf("%w: %w", ErrKeysUnavailable, ctx.Err())
 		}
-		return JWKS{}, errors.Wrapf(ErrKeysUnavailable, "%s: a download is under way or failed less than %s ago", jwksURL, jwksDownloadBackoff)
-	}
-
-	if known {
+		if jwks, _, ok := cache.Get(jwksURL); ok {
+			return jwks, nil
+		}
+		return JWKS{}, errors.Wrapf(ErrKeysUnavailable, "%s: the download under way failed", jwksURL)
+	case !start:
+		return JWKS{}, errors.Wrapf(ErrKeysUnavailable, "%s: last download failed %s ago", jwksURL, failedAgo.Round(time.Millisecond))
+	case known:
 		go func() {
 			_, _ = downloadAttempt(context.WithoutCancel(ctx), jwksURL, true)
 		}()
@@ -174,13 +199,13 @@ func fetchJWKS(ctx context.Context, jwksURL string) (JWKS, error) {
 }
 
 // downloadAttempt runs the download startDownload allowed, bounded by
-// jwksFetchTimeout, and logs its failure.
+// jwksFetchTimeout, ends it and logs its failure.
 func downloadAttempt(ctx context.Context, jwksURL string, usingExpiredKeySet bool) (JWKS, error) {
 	ctx, cancel := context.WithTimeout(ctx, jwksFetchTimeout)
 	defer cancel()
 	jwks, err := downloadJWKS(ctx, jwksURL)
+	cache.downloadEnded(jwksURL, err != nil)
 	if err != nil {
-		cache.downloadFailed(jwksURL)
 		slog.WarnContext(ctx, "could not download the key set of an OIDC provider",
 			slog.String("url", jwksURL),
 			slog.Bool("usingExpiredKeySet", usingExpiredKeySet),

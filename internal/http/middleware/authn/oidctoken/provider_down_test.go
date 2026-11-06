@@ -86,7 +86,7 @@ func (p *flakyProvider) expire(by time.Duration) {
 	item := cache.items[p.url]
 	item.ExpiresAt = time.Now().Add(-by)
 	cache.items[p.url] = item
-	delete(cache.attempted, p.url)
+	delete(cache.failed, p.url)
 }
 
 func bearerRequest(token string) *http.Request {
@@ -138,7 +138,7 @@ func TestAuthenticateWhileTheProviderIsDown(t *testing.T) {
 
 	// Let jwksDownloadBackoff pass, the provider being back.
 	cache.mu.Lock()
-	cache.attempted[p.url] = cache.attempted[p.url].Add(-jwksDownloadBackoff)
+	cache.failed[p.url] = cache.failed[p.url].Add(-jwksDownloadBackoff)
 	cache.mu.Unlock()
 	p.down.Store(false)
 
@@ -151,31 +151,37 @@ func TestAuthenticateWhileTheProviderIsDown(t *testing.T) {
 	}
 }
 
-// A request arriving while the key set is being downloaded does not start
-// another download nor wait on it.
-func TestValidateTokenDoesNotWaitOnADownloadUnderWay(t *testing.T) {
+// Without any key set, a request arriving while it is being downloaded waits
+// for that download instead of starting its own or failing.
+func TestValidateTokenWaitsForTheDownloadUnderWay(t *testing.T) {
 	p := newFlakyProvider(t)
 	h := NewHandler(nil)
 	provider := p.provider()
 	p.hold()
 
-	first := make(chan error, 1)
-	go func() {
+	results := make(chan error, 2)
+	validate := func() {
 		_, err := h.validateToken(t.Context(), p.signer.sign(t, testIssuer), provider)
-		first <- err
-	}()
-	p.waitForHits(t, 1)
-
-	if _, err := h.validateToken(t.Context(), p.signer.sign(t, testIssuer), provider); !errors.Is(err, ErrKeysUnavailable) {
-		t.Fatalf("expected ErrKeysUnavailable while the download is under way, got %v", err)
+		results <- err
 	}
-	if got := p.hits.Load(); got != 1 {
-		t.Fatalf("provider called %d times, want 1", got)
+	go validate()
+	p.waitForHits(t, 1)
+	go validate()
+
+	select {
+	case err := <-results:
+		t.Fatalf("a request did not wait for the download under way: %v", err)
+	case <-time.After(100 * time.Millisecond):
 	}
 
 	p.release()
-	if err := <-first; err != nil {
-		t.Fatalf("expected the first request to get the keys, got %v", err)
+	for range 2 {
+		if err := <-results; err != nil {
+			t.Fatalf("expected both requests to get the keys, got %v", err)
+		}
+	}
+	if got := p.hits.Load(); got != 1 {
+		t.Fatalf("provider called %d times, want 1", got)
 	}
 }
 
@@ -223,18 +229,54 @@ func TestVerifyLogoutTokenWithAKeyRotatedDuringAnOutage(t *testing.T) {
 	p.down.Store(true)
 	p.expire(time.Minute)
 
-	p.signer.mu.Lock()
-	token := jwt.NewWithClaims(jwt.SigningMethodRS256, logoutClaims())
-	token.Header["kid"] = p.signer.kid
-	raw, err := token.SignedString(p.signer.key)
-	p.signer.mu.Unlock()
-	if err != nil {
-		t.Fatal(err)
-	}
+	raw := signLogout(t, p.signer, logoutClaims())
 
 	for range 2 {
 		if _, err := VerifyLogoutToken(t.Context(), raw, testIssuer, testClientID, p.url); !errors.Is(err, ErrKeysUnavailable) {
 			t.Fatalf("expected ErrKeysUnavailable, got %v", err)
 		}
+	}
+}
+
+// signLogout signs logout claims with the signer's current key.
+func signLogout(t *testing.T, s *rotatingSigner, claims jwt.MapClaims) string {
+	t.Helper()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	token := jwt.NewWithClaims(jwt.SigningMethodRS256, claims)
+	token.Header["kid"] = s.kid
+	raw, err := token.SignedString(s.key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return raw
+}
+
+// The logout endpoint is reached without authentication: a token naming an
+// unknown key makes the provider be called only when it claims its issuer.
+// When no refetch is allowed yet, the logout is deferred whether the cached
+// set is fresh or not: it cannot tell the key does not exist.
+func TestVerifyLogoutTokenRefetchesOnlyForTheProviderIssuer(t *testing.T) {
+	p := newFlakyProvider(t)
+	h := NewHandler(nil)
+	if _, err := h.validateToken(t.Context(), p.signer.sign(t, testIssuer), p.provider()); err != nil {
+		t.Fatal(err)
+	}
+	p.signer.rotate(t, "k2")
+
+	foreign := logoutClaims()
+	foreign["iss"] = "https://other.example.test/"
+	if _, err := VerifyLogoutToken(t.Context(), signLogout(t, p.signer, foreign), testIssuer, testClientID, p.url); err == nil || errors.Is(err, ErrKeysUnavailable) {
+		t.Fatalf("expected an invalid token, got %v", err)
+	}
+	if got := p.hits.Load(); got != 1 {
+		t.Fatalf("provider called %d times, want 1", got)
+	}
+
+	cache.mu.Lock()
+	cache.refetched[p.url] = time.Now()
+	cache.mu.Unlock()
+	if _, err := VerifyLogoutToken(t.Context(), signLogout(t, p.signer, logoutClaims()), testIssuer, testClientID, p.url); !errors.Is(err, ErrKeysUnavailable) {
+		t.Fatalf("expected ErrKeysUnavailable while no refetch is allowed, got %v", err)
 	}
 }
