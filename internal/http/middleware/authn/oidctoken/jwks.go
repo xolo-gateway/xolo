@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/pkg/errors"
@@ -54,11 +55,14 @@ type jwksDownload struct {
 	done chan struct{}
 	jwks JWKS
 	err  error
+	// waiters counts the requests that waited for the download.
+	waiters atomic.Int32
 }
 
 // wait returns the key set the download got, or an error wrapping
 // ErrKeysUnavailable when it failed or ctx ends first.
 func (d *jwksDownload) wait(ctx context.Context, jwksURL string) (JWKS, error) {
+	d.waiters.Add(1)
 	select {
 	case <-d.done:
 	case <-ctx.Done():

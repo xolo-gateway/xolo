@@ -100,6 +100,25 @@ func (p *flakyProvider) downloadFailed() bool {
 	return failed && !underWay
 }
 
+// waitForWaiters waits until want requests wait for the download of the
+// provider's key set under way.
+func (p *flakyProvider) waitForWaiters(t *testing.T, want int32) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		cache.mu.RLock()
+		d := cache.inflight[p.url]
+		cache.mu.RUnlock()
+		if d != nil && d.waiters.Load() >= want {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("no request waits for the download under way")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+}
+
 func bearerRequest(token string) *http.Request {
 	r := httptest.NewRequest(http.MethodGet, "/api/v1/models", nil)
 	r.Header.Set("Authorization", "Bearer "+token)
@@ -382,8 +401,7 @@ func TestValidateTokenWithAKeyRotatedDuringTheBackgroundRefresh(t *testing.T) {
 		result <- err
 	}()
 	p.waitForHits(t, 2)
-	// Let the request reach the refetch, which joins the download under way.
-	time.Sleep(50 * time.Millisecond)
+	p.waitForWaiters(t, 1)
 	p.release()
 
 	if err := <-result; err != nil {
