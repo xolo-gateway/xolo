@@ -570,7 +570,7 @@ se rechazan.
 
 ## Recursos de negocio
 
-Diez familias propias de Xolo siguen el mismo contrato que las familias
+Once familias propias de Xolo siguen el mismo contrato que las familias
 comunes: lectura unitaria con `ETag`, listas paginadas, `PUT` condicionales y
 eventos. `llm_model` y `personal_virtual_model` son de solo lectura: ni `PUT`
 ni `DELETE` (`405`), véase [Modelos LLM](#modelos-llm) y
@@ -582,6 +582,7 @@ ni `DELETE` (`405`), véase [Modelos LLM](#modelos-llm) y
 | `GET`, `GET`, `PUT` | `/v1/xolo/tenants/{tenantID}/organizations/{orgID}/team-settings[/{teamID}]` |
 | `GET`, `GET`, `PUT`, `DELETE` | `/v1/xolo/tenants/{tenantID}/organizations/{orgID}/applications[/{key}]` |
 | `GET`, `GET`, `PUT`, `DELETE` | `/v1/xolo/tenants/{tenantID}/organizations/{orgID}/alerts[/{key}]` |
+| `GET`, `GET`, `PUT`, `DELETE` | `/v1/xolo/tenants/{tenantID}/organizations/{orgID}/enrollment-rules[/{key}]` |
 | `GET`, `GET`, `PUT`, `DELETE` | `/v1/xolo/tenants/{tenantID}/organizations/{orgID}/providers[/{key}]` |
 | `GET`, `GET` | `/v1/xolo/tenants/{tenantID}/organizations/{orgID}/llm-models[/{key}]` |
 | `GET`, `GET` | `/v1/xolo/tenants/{tenantID}/members/{memberID}/personal-models[/{key}]` |
@@ -602,6 +603,7 @@ obligatorio, `null` solo donde se indica.
 | `application` | `{"name","description","active","role_ids":[…]}`, más un `"team_id"` opcional (vacío para ningún equipo) |
 | `quota` | `{"scope","scope_id","currency","daily_budget","monthly_budget","yearly_budget"}`, presupuestos en microcéntimos o `null`, más un `"cascade"` opcional (`free` por defecto, `capped` o `split`) |
 | `alert` | `{"name","description","scope","owner_id","query","aggregation","window_seconds","comparator","threshold","for_seconds","enabled"}` |
+| `enrollment_rule` | `{"name","kind","claim","value","role","enabled"}`, `kind` vale `email_domain` o `claim`, `role` vale `member`, `org:admin` o el identificador de un rol personalizado, véase [Reglas de inscripción](../organisation/inscription/inscription.md) |
 | `virtual_model` | `{"name","description","catalog_overrides","graph"}`, `catalog_overrides` a `null` o `{"contextWindow","maxOutputTokens","capabilities"}`, como en la interfaz web |
 | `middleware` | `{"name","description","enabled","priority","applies_to_all","targets":[{"kind","id"}],"graph"}` |
 | `llm_model` | `{"provider_id","proxy_name","kind","enabled"}`, de solo lectura |

@@ -554,7 +554,7 @@ one: the same person signing in on two tenants owns two distinct accounts.
 
 ## Business resources
 
-Ten families specific to Xolo follow the same contract as the common
+Eleven families specific to Xolo follow the same contract as the common
 families: unit reads with an `ETag`, paginated lists, conditional `PUT`s and
 events. `llm_model` and `personal_virtual_model` are read-only: no `PUT` nor
 `DELETE` (`405`), see [LLM models](#llm-models) and
@@ -566,6 +566,7 @@ events. `llm_model` and `personal_virtual_model` are read-only: no `PUT` nor
 | `GET`, `GET`, `PUT` | `/v1/xolo/tenants/{tenantID}/organizations/{orgID}/team-settings[/{teamID}]` |
 | `GET`, `GET`, `PUT`, `DELETE` | `/v1/xolo/tenants/{tenantID}/organizations/{orgID}/applications[/{key}]` |
 | `GET`, `GET`, `PUT`, `DELETE` | `/v1/xolo/tenants/{tenantID}/organizations/{orgID}/alerts[/{key}]` |
+| `GET`, `GET`, `PUT`, `DELETE` | `/v1/xolo/tenants/{tenantID}/organizations/{orgID}/enrollment-rules[/{key}]` |
 | `GET`, `GET`, `PUT`, `DELETE` | `/v1/xolo/tenants/{tenantID}/organizations/{orgID}/providers[/{key}]` |
 | `GET`, `GET` | `/v1/xolo/tenants/{tenantID}/organizations/{orgID}/llm-models[/{key}]` |
 | `GET`, `GET` | `/v1/xolo/tenants/{tenantID}/members/{memberID}/personal-models[/{key}]` |
@@ -586,6 +587,7 @@ only where shown.
 | `application` | `{"name","description","active","role_ids":[…]}`, plus an optional `"team_id"` (empty for no team) |
 | `quota` | `{"scope","scope_id","currency","daily_budget","monthly_budget","yearly_budget"}`, budgets in microcents or `null`, plus an optional `"cascade"` (`free` by default, `capped` or `split`) |
 | `alert` | `{"name","description","scope","owner_id","query","aggregation","window_seconds","comparator","threshold","for_seconds","enabled"}` |
+| `enrollment_rule` | `{"name","kind","claim","value","role","enabled"}`, `kind` being `email_domain` or `claim`, `role` being `member`, `org:admin` or the ID of a custom role, see [Enrollment rules](../organisation/inscription/inscription.md) |
 | `virtual_model` | `{"name","description","catalog_overrides","graph"}`, `catalog_overrides` `null` or `{"contextWindow","maxOutputTokens","capabilities"}`, as in the web UI |
 | `middleware` | `{"name","description","enabled","priority","applies_to_all","targets":[{"kind","id"}],"graph"}` |
 | `llm_model` | `{"provider_id","proxy_name","kind","enabled"}`, read-only |

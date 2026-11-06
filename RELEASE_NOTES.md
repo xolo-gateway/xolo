@@ -1,3 +1,26 @@
+# Unreleased: enrollment rules
+
+An organization can enroll identities at sign-in, with no invitation: a rule
+pairs a condition, a verified email domain or the value of an OIDC claim, with
+a role. A matching identity becomes a member, and the account its sign-in
+creates is activated, also when it only presents an ID token to the API. Rules
+are managed under `/{org}/admin/enrollment-rules` with `invites:read` and
+`invites:write`, and as the business family `enrollment_rule` of the
+provisioning API, under
+`/v1/xolo/tenants/{tenantID}/organizations/{orgID}/enrollment-rules`.
+
+A rule acts once per account: what an administrator changes prevails, so a
+removed member stays out, whichever rule of the organization matches later, and
+a rule never activates an account that already existed. A custom role can not be
+deleted while a rule grants it. Rules, and their pages, are left out when
+members or memberships belong to the control plane. The migration
+`202611160001` adds three tables and needs no downtime.
+
+Details:
+[English](docs/en/administration/organisation/inscription/inscription.md),
+[Français](docs/fr/administration/organisation/inscription/inscription.md),
+[Español](docs/es/administration/organisation/inscription/inscription.md).
+
 # Unreleased — plan reads without parallel workers
 
 On PostgreSQL, each read of a subscription plan's usage now runs in a
