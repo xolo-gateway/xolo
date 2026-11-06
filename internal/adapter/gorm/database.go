@@ -149,7 +149,7 @@ func MigrateDatabase(ctx context.Context, db *gorm.DB, artifact *RecoveryArtifac
 					// Personal virtual model store
 					&PersonalVirtualModel{},
 					// Quota store
-					&Quota{}, &QuotaUsage{}, &UsageDaily{},
+					&Quota{}, &QuotaUsage{}, &UsageDaily{}, &PlanUsageHourly{},
 					// Usage store
 					&UsageRecord{},
 					// Invite store
@@ -792,6 +792,16 @@ func schemaMigrations(artifact *RecoveryArtifact) []*gormigrate.Migration {
 				return errors.WithStack(tx.Migrator().DropColumn(&UsageDaily{}, "co2_grams"))
 			},
 		},
+		{
+			// Add plan_usage_hourly, the hourly sums of the subscription-covered
+			// usage records the plan checks read for the whole hours of their
+			// window, and fill it from the usage history.
+			ID:      planUsageHourlyMigrationID,
+			Migrate: migratePlanUsageHourly,
+			Rollback: func(tx *gorm.DB) error {
+				return errors.WithStack(tx.Migrator().DropTable(&PlanUsageHourly{}))
+			},
+		},
 	}
 }
 
@@ -806,4 +816,5 @@ const (
 	userUsageIndexMigrationID         = "202610300002"
 	usageDailyMigrationID             = "202610300003"
 	usageEnergyMigrationID            = "202610300004"
+	planUsageHourlyMigrationID        = "202611060001"
 )

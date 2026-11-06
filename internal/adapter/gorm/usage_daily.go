@@ -148,6 +148,10 @@ func migrateUsageDaily(tx *gorm.DB) error {
 //
 // The energy of every day is estimated again, with the models as they are at
 // the rebuild: the energy kept as the requests were recorded is lost.
+//
+// Nothing else may record usage while it runs: it empties the table before
+// summing the records, so the daily increment of a request recorded in
+// between can be lost, and its day under-reported for good.
 func RebuildUsageDaily(db *gorm.DB) error {
 	return db.Transaction(backfillUsageDaily)
 }
@@ -404,7 +408,13 @@ func usageSources(filter port.UsageFilter, now time.Time) []usageSource {
 // neither. SQLite gives a transaction its snapshot; PostgreSQL needs REPEATABLE
 // READ for that.
 func readPeriod(db *gorm.DB, sources []usageSource, fn func(db *gorm.DB) error) error {
-	if len(sources) < 2 {
+	return readSnapshot(db, len(sources) > 1, fn)
+}
+
+// readSnapshot runs fn in a read-only transaction holding one snapshot of the
+// database when several is set, see readPeriod, and as is otherwise.
+func readSnapshot(db *gorm.DB, several bool, fn func(db *gorm.DB) error) error {
+	if !several {
 		return fn(db)
 	}
 	var opts []*sql.TxOptions
