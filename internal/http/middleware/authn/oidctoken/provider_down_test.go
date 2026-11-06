@@ -361,3 +361,35 @@ func TestVerifyLogoutTokenDoesNotRefetchWithinTheBackoff(t *testing.T) {
 		t.Fatalf("provider called %d times, want 2", got)
 	}
 }
+
+// A token signed by a key rotated in while the expired key set is being
+// refreshed in the background waits for that download instead of being
+// refused.
+func TestValidateTokenWithAKeyRotatedDuringTheBackgroundRefresh(t *testing.T) {
+	p := newFlakyProvider(t)
+	h := NewHandler(nil)
+	provider := p.provider()
+	if _, err := h.validateToken(t.Context(), p.signer.sign(t, testIssuer), provider); err != nil {
+		t.Fatal(err)
+	}
+
+	p.signer.rotate(t, "k2")
+	p.expire(time.Minute)
+	p.hold()
+	result := make(chan error, 1)
+	go func() {
+		_, err := h.validateToken(t.Context(), p.signer.sign(t, testIssuer), provider)
+		result <- err
+	}()
+	p.waitForHits(t, 2)
+	// Let the request reach the refetch, which joins the download under way.
+	time.Sleep(50 * time.Millisecond)
+	p.release()
+
+	if err := <-result; err != nil {
+		t.Fatalf("expected the token signed by the rotated key accepted, got %v", err)
+	}
+	if got := p.hits.Load(); got != 2 {
+		t.Fatalf("provider called %d times, want 2", got)
+	}
+}
