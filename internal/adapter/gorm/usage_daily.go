@@ -404,7 +404,13 @@ func usageSources(filter port.UsageFilter, now time.Time) []usageSource {
 // neither. SQLite gives a transaction its snapshot; PostgreSQL needs REPEATABLE
 // READ for that.
 func readPeriod(db *gorm.DB, sources []usageSource, fn func(db *gorm.DB) error) error {
-	if len(sources) < 2 {
+	return readSnapshot(db, len(sources) > 1, fn)
+}
+
+// readSnapshot runs fn in a read-only transaction holding one snapshot of the
+// database when several is set, see readPeriod, and as is otherwise.
+func readSnapshot(db *gorm.DB, several bool, fn func(db *gorm.DB) error) error {
+	if !several {
 		return fn(db)
 	}
 	var opts []*sql.TxOptions

@@ -184,9 +184,13 @@ func (s *seeder) seedUsage(ctx context.Context) error {
 
 	// The records were written in bulk, not through the store, so the budget
 	// counters the quota enforcer reads were never incremented, nor the daily
-	// sums the usage pages read. Rebuilding them here is what makes a seeded
-	// instance enforce the quotas and chart the usage its history implies.
+	// sums the usage pages read, nor the hourly sums the plan checks read.
+	// Rebuilding them here is what makes a seeded instance enforce the quotas
+	// and plans and chart the usage its history implies.
 	if err := gormadapter.RebuildQuotaUsage(s.db); err != nil {
+		return errors.WithStack(err)
+	}
+	if err := gormadapter.RebuildPlanUsageHourly(s.db); err != nil {
 		return errors.WithStack(err)
 	}
 	return errors.WithStack(gormadapter.RebuildUsageDaily(s.db))

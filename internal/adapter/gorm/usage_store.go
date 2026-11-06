@@ -29,6 +29,9 @@ func (s *Store) RecordUsage(ctx context.Context, record model.UsageRecord) error
 		if err := incrementQuotaUsage(db, quotaUsageRows(record)); err != nil {
 			return err
 		}
+		if err := incrementPlanUsageHourly(db, row); err != nil {
+			return err
+		}
 		return incrementUsageDaily(db, row, record.Energy())
 	})
 }
@@ -352,23 +355,33 @@ func (s *Store) SumPlanUsageByKeySince(ctx context.Context, scope model.PlanUsag
 		ProviderValue int64
 	}
 
-	err := s.read(ctx, func(ctx context.Context, db *gorm.DB) error {
-		return errors.WithStack(planUsageQuery(db, scope, since).
-			Select("provider_key_id as provider_key_id, model_id as model_id, COALESCE(SUM(total_tokens), 0) as tokens, COALESCE(SUM(provider_cost), 0) as provider_value").
-			Group("provider_key_id, model_id").
-			Scan(&rows).Error)
+	var result map[model.ProviderKeyID]map[model.LLMModelID]port.PlanUsageTotals
+	err := s.readPlanUsage(ctx, scope, since, func(queries []*gorm.DB) error {
+		// Each attempt of a replayed read starts from zero.
+		result = make(map[model.ProviderKeyID]map[model.LLMModelID]port.PlanUsageTotals)
+		for _, query := range queries {
+			rows = rows[:0]
+			if err := query.
+				Select("provider_key_id as provider_key_id, model_id as model_id, " + planUsageSums).
+				Group("provider_key_id, model_id").
+				Scan(&rows).Error; err != nil {
+				return errors.WithStack(err)
+			}
+			for _, r := range rows {
+				key := model.ProviderKeyID(r.ProviderKeyID)
+				if result[key] == nil {
+					result[key] = make(map[model.LLMModelID]port.PlanUsageTotals)
+				}
+				totals := result[key][model.LLMModelID(r.ModelID)]
+				totals.Tokens += r.Tokens
+				totals.Value += r.ProviderValue
+				result[key][model.LLMModelID(r.ModelID)] = totals
+			}
+		}
+		return nil
 	})
 	if err != nil {
 		return nil, err
-	}
-
-	result := make(map[model.ProviderKeyID]map[model.LLMModelID]port.PlanUsageTotals)
-	for _, r := range rows {
-		key := model.ProviderKeyID(r.ProviderKeyID)
-		if result[key] == nil {
-			result[key] = make(map[model.LLMModelID]port.PlanUsageTotals)
-		}
-		result[key][model.LLMModelID(r.ModelID)] = port.PlanUsageTotals{Tokens: r.Tokens, Value: r.ProviderValue}
 	}
 	return result, nil
 }
@@ -398,20 +411,7 @@ func (s *Store) LastPlanUsageKey(ctx context.Context, scope model.PlanUsageScope
 
 // SumPlanUsageSince implements port.UsageStore.
 func (s *Store) SumPlanUsageSince(ctx context.Context, scope model.PlanUsageScope, since time.Time) (tokens int64, providerValue int64, err error) {
-	var row struct {
-		Tokens        int64
-		ProviderValue int64
-	}
-
-	err = s.read(ctx, func(ctx context.Context, db *gorm.DB) error {
-		return errors.WithStack(planUsageQuery(db, scope, since).
-			Select("COALESCE(SUM(total_tokens), 0) as tokens, COALESCE(SUM(provider_cost), 0) as provider_value").
-			Scan(&row).Error)
-	})
-	if err != nil {
-		return 0, 0, err
-	}
-	return row.Tokens, row.ProviderValue, nil
+	return s.sumPlanUsage(ctx, scope, "", since)
 }
 
 // SumPlanUsageByModelSince implements port.UsageStore.
@@ -422,56 +422,117 @@ func (s *Store) SumPlanUsageByModelSince(ctx context.Context, scope model.PlanUs
 		ProviderValue int64
 	}
 
-	err := s.read(ctx, func(ctx context.Context, db *gorm.DB) error {
-		query := planUsageQuery(db, scope, since).
-			Select("model_id as model_id, COALESCE(SUM(total_tokens), 0) as tokens, COALESCE(SUM(provider_cost), 0) as provider_value")
-		if userID != "" {
-			query = query.Where("user_id = ?", string(userID))
+	var result map[model.LLMModelID]port.PlanUsageTotals
+	err := s.readPlanUsage(ctx, scope, since, func(queries []*gorm.DB) error {
+		// Each attempt of a replayed read starts from zero.
+		result = make(map[model.LLMModelID]port.PlanUsageTotals)
+		for _, query := range queries {
+			query = query.Select("model_id as model_id, " + planUsageSums)
+			if userID != "" {
+				query = query.Where("user_id = ?", string(userID))
+			}
+			rows = rows[:0]
+			if err := query.Group("model_id").Scan(&rows).Error; err != nil {
+				return errors.WithStack(err)
+			}
+			for _, r := range rows {
+				totals := result[model.LLMModelID(r.ModelID)]
+				totals.Tokens += r.Tokens
+				totals.Value += r.ProviderValue
+				result[model.LLMModelID(r.ModelID)] = totals
+			}
 		}
-		return errors.WithStack(query.Group("model_id").Scan(&rows).Error)
+		return nil
 	})
 	if err != nil {
 		return nil, err
-	}
-
-	result := make(map[model.LLMModelID]port.PlanUsageTotals, len(rows))
-	for _, r := range rows {
-		result[model.LLMModelID(r.ModelID)] = port.PlanUsageTotals{Tokens: r.Tokens, Value: r.ProviderValue}
 	}
 	return result, nil
 }
 
 // SumUserPlanUsageSince implements port.UsageStore.
 func (s *Store) SumUserPlanUsageSince(ctx context.Context, userID model.UserID, scope model.PlanUsageScope, since time.Time) (tokens int64, providerValue int64, err error) {
-	var row struct {
-		Tokens        int64
-		ProviderValue int64
-	}
+	return s.sumPlanUsage(ctx, scope, userID, since)
+}
 
-	err = s.read(ctx, func(ctx context.Context, db *gorm.DB) error {
-		return errors.WithStack(planUsageQuery(db, scope, since).
-			Select("COALESCE(SUM(total_tokens), 0) as tokens, COALESCE(SUM(provider_cost), 0) as provider_value").
-			Where("user_id = ?", string(userID)).
-			Scan(&row).Error)
+// planUsageSums selects the totals of a plan scope's usage, from the records
+// or their hourly sums alike.
+const planUsageSums = "COALESCE(SUM(total_tokens), 0) as tokens, COALESCE(SUM(provider_cost), 0) as provider_value"
+
+// sumPlanUsage totals the usage of a plan scope since a time, for the whole
+// scope or, when userID is set, for one user.
+func (s *Store) sumPlanUsage(ctx context.Context, scope model.PlanUsageScope, userID model.UserID, since time.Time) (tokens int64, providerValue int64, err error) {
+	err = s.readPlanUsage(ctx, scope, since, func(queries []*gorm.DB) error {
+		// Each attempt of a replayed read starts from zero.
+		tokens, providerValue = 0, 0
+		for _, query := range queries {
+			var row struct {
+				Tokens        int64
+				ProviderValue int64
+			}
+			query = query.Select(planUsageSums)
+			if userID != "" {
+				query = query.Where("user_id = ?", string(userID))
+			}
+			if err := query.Scan(&row).Error; err != nil {
+				return errors.WithStack(err)
+			}
+			tokens += row.Tokens
+			providerValue += row.ProviderValue
+		}
+		return nil
 	})
 	if err != nil {
 		return 0, 0, err
 	}
-	return row.Tokens, row.ProviderValue, nil
+	return tokens, providerValue, nil
+}
+
+// readPlanUsage runs fn on the queries of every source of a plan scope's
+// usage since a time (see planUsageSources), on one snapshot of the database
+// when there are several, see readPeriod.
+func (s *Store) readPlanUsage(ctx context.Context, scope model.PlanUsageScope, since time.Time, fn func(queries []*gorm.DB) error) error {
+	sources := planUsageSources(scope, since, time.Now())
+	return s.read(ctx, func(ctx context.Context, db *gorm.DB) error {
+		return readSnapshot(db, len(sources) > 1, func(db *gorm.DB) error {
+			queries := make([]*gorm.DB, len(sources))
+			for i, src := range sources {
+				queries[i] = src(db)
+			}
+			return fn(queries)
+		})
+	})
 }
 
 // CountActivePlanUsersSince implements port.UsageStore.
 func (s *Store) CountActivePlanUsersSince(ctx context.Context, scope model.PlanUsageScope, since time.Time, excludeUserID model.UserID) (int64, error) {
 	var count int64
 
-	err := s.read(ctx, func(ctx context.Context, db *gorm.DB) error {
-		query := planUsageQuery(db, scope, since).
-			Select("COUNT(DISTINCT user_id)").
-			Where("user_id <> ''")
-		if excludeUserID != "" {
-			query = query.Where("user_id <> ?", string(excludeUserID))
+	err := s.readPlanUsage(ctx, scope, since, func(queries []*gorm.DB) error {
+		filter := func(query *gorm.DB) *gorm.DB {
+			query = query.Where("user_id <> ''")
+			if excludeUserID != "" {
+				query = query.Where("user_id <> ?", string(excludeUserID))
+			}
+			return query
 		}
-		return errors.WithStack(query.Scan(&count).Error)
+		if len(queries) == 1 {
+			return errors.WithStack(filter(queries[0]).Select("COUNT(DISTINCT user_id)").Scan(&count).Error)
+		}
+		// A user active in several sources counts once: the distinct users of
+		// each are merged here rather than counted apart.
+		users := make(map[string]struct{})
+		for _, query := range queries {
+			var ids []string
+			if err := filter(query).Distinct("user_id").Pluck("user_id", &ids).Error; err != nil {
+				return errors.WithStack(err)
+			}
+			for _, id := range ids {
+				users[id] = struct{}{}
+			}
+		}
+		count = int64(len(users))
+		return nil
 	})
 	if err != nil {
 		return 0, err
