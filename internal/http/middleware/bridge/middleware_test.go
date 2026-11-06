@@ -16,6 +16,7 @@ import (
 	xologorm "github.com/xolo-gateway/xolo/internal/adapter/gorm"
 	"github.com/xolo-gateway/xolo/internal/core/model"
 	"github.com/xolo-gateway/xolo/internal/core/port"
+	"github.com/xolo-gateway/xolo/internal/core/service"
 	httpCtx "github.com/xolo-gateway/xolo/internal/http/context"
 	"github.com/xolo-gateway/xolo/internal/http/middleware/authn"
 	"github.com/xolo-gateway/xolo/internal/http/middleware/authz"
@@ -662,4 +663,95 @@ func loginFailedReason(result callResult) string {
 		}
 	}
 	return ""
+}
+
+// enrollmentSetup is a store with an organization and an issuer rule.
+func enrollmentSetup(t *testing.T) (*xologorm.Store, bridge.Options, model.Organization) {
+	t.Helper()
+	store := newStore(t)
+	org := model.NewOrganization(testTenant.ID(), "acme", "Acme", "")
+	if err := store.CreateOrg(t.Context(), org); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.EnsureBuiltinRoles(t.Context(), org.ID()); err != nil {
+		t.Fatal(err)
+	}
+	enrollment := service.NewEnrollmentService(store, store)
+	rule := model.NewEnrollmentRule(org.ID(), "Staff", model.EnrollmentKindClaim, "groups", "staff", model.RoleMember, true)
+	if err := enrollment.SaveRule(t.Context(), testTenant.ID(), rule, true); err != nil {
+		t.Fatal(err)
+	}
+	return store, bridge.Options{AutoCreateUsers: true, Enrollment: enrollment}, org
+}
+
+// An identity a rule matches is an active member of the organization by the
+// time the request reaches the handlers.
+func TestEnrollment(t *testing.T) {
+	store, opts, org := enrollmentSetup(t)
+	identity := &authn.User{
+		Provider: "oidc", Subject: "alice", Issuer: "https://id.example.test/", Email: "alice@example.org",
+		Claims: authn.Claims{"groups": {"staff"}},
+	}
+
+	result := call(t, store, opts, identity)
+	if !result.served || result.user == nil || !result.user.Active() {
+		t.Fatalf("status=%d user=%v", result.status, result.user)
+	}
+	if !slices.Contains(result.emitter.types(), model.EventTypeMemberEnrolled) {
+		t.Fatalf("events: %v", result.emitter.types())
+	}
+	if _, err := store.GetUserOrgMembership(t.Context(), result.user.ID(), org.ID()); err != nil {
+		t.Fatalf("membership: %v", err)
+	}
+
+	again := call(t, store, opts, identity)
+	if !again.served || slices.Contains(again.emitter.types(), model.EventTypeMemberEnrolled) {
+		t.Fatalf("second request: status=%d events=%v", again.status, again.emitter.types())
+	}
+}
+
+func TestEnrollmentLeavesOut(t *testing.T) {
+	for name, identity := range map[string]*authn.User{
+		"a provider proving no issuer": {
+			Provider: "github", Subject: "bob", Email: "bob@example.org", Claims: authn.Claims{"groups": {"staff"}},
+		},
+		"an application": {
+			Provider: model.ApplicationProvider, Subject: "app", Issuer: "https://id.example.test/", Email: "app@example.org",
+			Claims: authn.Claims{"groups": {"staff"}},
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			store, opts, org := enrollmentSetup(t)
+			result := call(t, store, opts, identity)
+			if !result.served || result.user == nil {
+				t.Fatalf("status=%d", result.status)
+			}
+			if _, err := store.GetUserOrgMembership(t.Context(), result.user.ID(), org.ID()); !errors.Is(err, port.ErrNotFound) {
+				t.Fatalf("membership: %v", err)
+			}
+		})
+	}
+}
+
+// Only the account the sign-in creates is activated: one that already existed
+// inactive may have been deactivated by an administrator.
+func TestEnrollmentKeepsAnExistingAccountInactive(t *testing.T) {
+	store, opts, org := enrollmentSetup(t)
+	existing := model.NewUser(testTenant.ID(), "oidc", "carol", "carol@example.org", "", false, model.PlatformRoleUser)
+	if err := store.SaveUser(t.Context(), existing); err != nil {
+		t.Fatal(err)
+	}
+	result := call(t, store, opts, &authn.User{
+		Provider: "oidc", Subject: "carol", Issuer: "https://id.example.test/", Email: "carol@example.org",
+		Claims: authn.Claims{"groups": {"staff"}},
+	})
+	if result.user == nil || result.user.ID() != existing.ID() {
+		t.Fatalf("status=%d user=%v", result.status, result.user)
+	}
+	if result.user.Active() {
+		t.Fatal("a rule activated an account that already existed")
+	}
+	if _, err := store.GetUserOrgMembership(t.Context(), existing.ID(), org.ID()); err != nil {
+		t.Fatalf("membership: %v", err)
+	}
 }

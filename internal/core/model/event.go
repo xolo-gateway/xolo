@@ -69,6 +69,8 @@ const (
 	EventTypeMemberAdded   = "member.added"
 	EventTypeMemberUpdated = "member.updated"
 	EventTypeMemberRemoved = "member.removed"
+	// EventTypeMemberEnrolled names the enrollment rule behind a member.added.
+	EventTypeMemberEnrolled = "member.enrolled"
 
 	// Emitted by pipeline nodes; see internal/pipeline.
 	EventTypePipelineTrace  = "pipeline.trace"
@@ -127,6 +129,7 @@ func PlatformEventTypes() []EventTypeDef {
 		{EventTypeMemberAdded, "Membre ajouté", SeverityInfo},
 		{EventTypeMemberUpdated, "Rôles de membre modifiés", SeverityInfo},
 		{EventTypeMemberRemoved, "Membre retiré", SeverityWarning},
+		{EventTypeMemberEnrolled, "Membre inscrit par une règle", SeverityInfo},
 	}
 }
 
