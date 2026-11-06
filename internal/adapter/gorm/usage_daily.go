@@ -148,6 +148,10 @@ func migrateUsageDaily(tx *gorm.DB) error {
 //
 // The energy of every day is estimated again, with the models as they are at
 // the rebuild: the energy kept as the requests were recorded is lost.
+//
+// Nothing else may record usage while it runs: it empties the table before
+// summing the records, so the daily increment of a request recorded in
+// between can be lost, and its day under-reported for good.
 func RebuildUsageDaily(db *gorm.DB) error {
 	return db.Transaction(backfillUsageDaily)
 }

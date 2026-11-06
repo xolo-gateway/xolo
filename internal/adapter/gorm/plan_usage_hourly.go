@@ -105,6 +105,11 @@ func migratePlanUsageHourly(tx *gorm.DB) error {
 // RebuildPlanUsageHourly rebuilds the hourly plan sums from the usage
 // records, for the tooling that writes usage records in bulk rather than
 // through the store — the seeder.
+//
+// Nothing else may record usage while it runs: it empties the table before
+// summing the records, so the hourly increment of a request recorded in
+// between can be lost, and its hour under-counted until the plan windows move
+// past it.
 func RebuildPlanUsageHourly(db *gorm.DB) error {
 	return db.Transaction(backfillPlanUsageHourly)
 }
