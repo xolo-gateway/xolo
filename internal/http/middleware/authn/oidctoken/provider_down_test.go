@@ -1,6 +1,7 @@
 package oidctoken
 
 import (
+	"context"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -179,6 +180,43 @@ func TestValidateTokenWaitsForTheDownloadUnderWay(t *testing.T) {
 		if err := <-results; err != nil {
 			t.Fatalf("expected both requests to get the keys, got %v", err)
 		}
+	}
+	if got := p.hits.Load(); got != 1 {
+		t.Fatalf("provider called %d times, want 1", got)
+	}
+}
+
+// A client giving up while the key set is downloaded for it does not make the
+// download fail for the requests waiting for it, nor start the backoff.
+func TestValidateTokenDownloadOutlivesTheClientThatStartedIt(t *testing.T) {
+	p := newFlakyProvider(t)
+	h := NewHandler(nil)
+	provider := p.provider()
+	p.hold()
+
+	ctx, cancel := context.WithCancel(t.Context())
+	first := make(chan error, 1)
+	go func() {
+		_, err := h.validateToken(ctx, p.signer.sign(t, testIssuer), provider)
+		first <- err
+	}()
+	p.waitForHits(t, 1)
+	second := make(chan error, 1)
+	go func() {
+		_, err := h.validateToken(t.Context(), p.signer.sign(t, testIssuer), provider)
+		second <- err
+	}()
+
+	cancel()
+	if err := <-first; !errors.Is(err, ErrKeysUnavailable) {
+		t.Fatalf("expected the client that gave up to get ErrKeysUnavailable, got %v", err)
+	}
+	p.release()
+	if err := <-second; err != nil {
+		t.Fatalf("expected the waiting request to get the keys, got %v", err)
+	}
+	if _, err := h.validateToken(t.Context(), p.signer.sign(t, testIssuer), provider); err != nil {
+		t.Fatalf("expected no backoff after the client gave up, got %v", err)
 	}
 	if got := p.hits.Load(); got != 1 {
 		t.Fatalf("provider called %d times, want 1", got)

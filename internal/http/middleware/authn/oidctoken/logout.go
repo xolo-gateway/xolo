@@ -68,9 +68,10 @@ func VerifyLogoutToken(ctx context.Context, raw, issuer, audience, jwksURL strin
 			return nil, errInvalidToken
 		}
 		key, found := findSigningKey(jwks, kid)
-		// Only a token claiming the provider's issuer may make it be called:
-		// the logout endpoint is reached without authentication. The issuer
-		// is read before the signature is checked, as in validateToken.
+		// The logout endpoint is reached without authentication: a token of
+		// another issuer never makes the provider be called. The issuer is
+		// read before the signature is checked, as in validateToken, so a
+		// forged token claiming it still can, once per jwksRefetchInterval.
 		if iss, err := t.Claims.GetIssuer(); !found && err == nil && iss == issuer {
 			refreshed, ok, err := refetchJWKS(ctx, jwksURL)
 			switch {
