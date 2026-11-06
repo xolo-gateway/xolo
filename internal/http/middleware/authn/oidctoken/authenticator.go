@@ -92,6 +92,15 @@ func (h *Handler) Authenticate(w http.ResponseWriter, r *http.Request) (*authn.U
 				continue
 			}
 
+			// The provider cannot serve its keys and none are known: the
+			// token can be neither accepted nor refused. It is left to the
+			// next authenticators, then to the unauthenticated handler,
+			// rather than failing the request. fetchJWKS logged the failure.
+			if errors.Is(err, ErrKeysUnavailable) {
+				slog.DebugContext(r.Context(), "oidctoken.Authenticate: provider keys unavailable", "provider", provider.ID, "error", err)
+				continue
+			}
+
 			slog.Debug("oidctoken.Authenticate: error", "error", err)
 			return nil, errors.WithStack(err)
 		}
@@ -119,6 +128,13 @@ func extractTokens(r *http.Request, cookieNames []string) []string {
 
 func (h *Handler) validateToken(ctx context.Context, rawToken string, provider Provider) (*authn.User, error) {
 	if provider.JWKSURL == "" {
+		return nil, errInvalidToken
+	}
+
+	// Only a JWT issued by this provider needs its keys: any other bearer
+	// token, a Xolo API key among them, is refused without calling it.
+	var unverified jwt.RegisteredClaims
+	if _, _, err := jwt.NewParser().ParseUnverified(rawToken, &unverified); err != nil || unverified.Issuer != provider.Issuer {
 		return nil, errInvalidToken
 	}
 

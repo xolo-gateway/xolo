@@ -155,7 +155,8 @@ func TestValidateTokenDoesNotRefetchForForeignIssuer(t *testing.T) {
 }
 
 // A failed refetch does not hold the slot for a whole jwksRefetchInterval: a
-// rotated key is picked up once jwksRefetchRetryDelay has passed.
+// rotated key is picked up once jwksRefetchRetryDelay and the
+// jwksDownloadBackoff the failure started have passed.
 func TestValidateTokenRetriesFailedJWKSRefetch(t *testing.T) {
 	s, jwksURL := newRotatingSigner(t)
 	var failing atomic.Bool
@@ -187,9 +188,10 @@ func TestValidateTokenRetriesFailedJWKSRefetch(t *testing.T) {
 		t.Fatalf("expected errInvalidToken while the provider fails, got %v", err)
 	}
 
-	// Let jwksRefetchRetryDelay pass.
+	// Let jwksRefetchRetryDelay and jwksDownloadBackoff pass.
 	cache.mu.Lock()
 	cache.refetched[srv.URL] = cache.refetched[srv.URL].Add(-jwksRefetchRetryDelay)
+	cache.failed[srv.URL] = cache.failed[srv.URL].Add(-jwksDownloadBackoff)
 	cache.mu.Unlock()
 
 	failing.Store(false)
