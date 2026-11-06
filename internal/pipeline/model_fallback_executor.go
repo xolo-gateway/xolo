@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"sync"
+	"time"
 
 	"github.com/bornholm/genai/llm"
 	"github.com/pkg/errors"
@@ -62,8 +63,9 @@ func (e *ModelFallbackExecutor) Forward(ctx context.Context, node model.Pipeline
 	fc := &fallbackClient{
 		candidates: candidates,
 		resolve:    resolve,
+		nodeID:     node.ID,
+		resolved:   map[int]*resolvedCandidate{0: {client: primary, realModel: realModel, modelID: modelID}},
 	}
-	fc.resolved = []resolvedCandidate{{client: primary, realModel: realModel, modelID: modelID}}
 
 	return &ForwardResult{
 		ResolvedClient:  fc,
@@ -87,9 +89,10 @@ type resolvedCandidate struct {
 type fallbackClient struct {
 	candidates []string
 	resolve    func(ctx context.Context, name string) (llm.Client, string, model.LLMModelID, error)
+	nodeID     string
 
 	mu       sync.Mutex
-	resolved []resolvedCandidate
+	resolved map[int]*resolvedCandidate
 	used     *resolvedCandidate
 }
 
@@ -106,15 +109,17 @@ func (c *fallbackClient) UsedModel() (string, model.LLMModelID, bool) {
 func (c *fallbackClient) candidate(ctx context.Context, i int) (*resolvedCandidate, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	for len(c.resolved) <= i {
-		name := c.candidates[len(c.resolved)]
-		client, realModel, modelID, err := c.resolve(ctx, name)
-		if err != nil {
-			return nil, errors.Wrapf(err, "resolve fallback model %q", name)
-		}
-		c.resolved = append(c.resolved, resolvedCandidate{client: client, realModel: realModel, modelID: modelID})
+	if rc := c.resolved[i]; rc != nil {
+		return rc, nil
 	}
-	return &c.resolved[i], nil
+	name := c.candidates[i]
+	client, realModel, modelID, err := c.resolve(ctx, name)
+	if err != nil {
+		return nil, errors.Wrapf(err, "resolve fallback model %q", name)
+	}
+	rc := &resolvedCandidate{client: client, realModel: realModel, modelID: modelID}
+	c.resolved[i] = rc
+	return rc, nil
 }
 
 func (c *fallbackClient) markUsed(rc *resolvedCandidate) {
@@ -124,11 +129,18 @@ func (c *fallbackClient) markUsed(rc *resolvedCandidate) {
 }
 
 func (c *fallbackClient) ChatCompletion(ctx context.Context, funcs ...llm.ChatCompletionOptionFunc) (llm.ChatCompletionResponse, error) {
-	var lastErr error
+	var lastErr, resolveErr error
 	for i := range c.candidates {
+		if ctx.Err() != nil {
+			break
+		}
 		rc, err := c.candidate(ctx, i)
 		if err != nil {
-			lastErr = err
+			resolveErr = err
+			slog.WarnContext(ctx, "model fallback: could not resolve candidate", slog.String("node", c.nodeID), slog.String("model", c.candidates[i]), slog.Any("error", err))
+			if ctx.Err() != nil {
+				break
+			}
 			continue
 		}
 		resp, err := rc.client.ChatCompletion(ctx, funcs...)
@@ -143,28 +155,84 @@ func (c *fallbackClient) ChatCompletion(ctx context.Context, funcs ...llm.ChatCo
 		slog.WarnContext(ctx, "model fallback: candidate failed, trying next",
 			slog.String("model", c.candidates[i]), slog.Any("error", err))
 	}
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
+	if lastErr == nil {
+		lastErr = resolveErr
+	}
 	return nil, errors.Wrap(lastErr, "all fallback models failed")
 }
 
 func (c *fallbackClient) ChatCompletionStream(ctx context.Context, funcs ...llm.ChatCompletionOptionFunc) (<-chan llm.StreamChunk, error) {
-	var lastErr error
+	var lastErr, resolveErr error
 	for i := range c.candidates {
+		if ctx.Err() != nil {
+			break
+		}
 		rc, err := c.candidate(ctx, i)
 		if err != nil {
-			lastErr = err
+			resolveErr = err
+			slog.WarnContext(ctx, "model fallback: could not resolve candidate", slog.String("node", c.nodeID), slog.String("model", c.candidates[i]), slog.Any("error", err))
+			if ctx.Err() != nil {
+				break
+			}
 			continue
 		}
-		ch, err := rc.client.ChatCompletionStream(ctx, funcs...)
+		candidateCtx, cancel := context.WithCancel(ctx)
+		ch, err := rc.client.ChatCompletionStream(candidateCtx, funcs...)
 		if err == nil {
-			c.markUsed(rc)
-			return ch, nil
+			select {
+			case <-ctx.Done():
+				cancel()
+				go llm.DrainStream(ch, time.Second)
+				return nil, ctx.Err()
+			case first, ok := <-ch:
+				if !ok {
+					cancel()
+					c.markUsed(rc)
+					return ch, nil
+				}
+				if first.Error() == nil {
+					c.markUsed(rc)
+					out := make(chan llm.StreamChunk, 1)
+					out <- first
+					go func() {
+						defer close(out)
+						defer func() {
+							cancel()
+							llm.DrainStream(ch, time.Second)
+						}()
+						for {
+							select {
+							case <-ctx.Done():
+								return
+							case chunk, ok := <-ch:
+								if !ok || !llm.SendChunk(ctx, out, chunk) {
+									return
+								}
+							}
+						}
+					}()
+					return out, nil
+				}
+				err = first.Error()
+				go llm.DrainStream(ch, time.Second)
+			}
 		}
+		cancel()
 		lastErr = err
 		if ctx.Err() != nil {
 			break
 		}
 		slog.WarnContext(ctx, "model fallback: candidate failed to start stream, trying next",
 			slog.String("model", c.candidates[i]), slog.Any("error", err))
+	}
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
+	if lastErr == nil {
+		lastErr = resolveErr
 	}
 	return nil, errors.Wrap(lastErr, "all fallback models failed")
 }
