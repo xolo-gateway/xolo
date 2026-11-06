@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -37,6 +38,24 @@ func (waitingClient) ChatCompletionStream(context.Context, ...llm.ChatCompletion
 type abandonedClient struct {
 	dummyClient
 	done chan struct{}
+}
+
+type delayedAbandonedClient struct {
+	dummyClient
+	release chan struct{}
+	done    chan struct{}
+}
+
+func (c *delayedAbandonedClient) ChatCompletionStream(context.Context, ...llm.ChatCompletionOptionFunc) (<-chan llm.StreamChunk, error) {
+	ch := make(chan llm.StreamChunk)
+	go func() {
+		defer close(c.done)
+		defer close(ch)
+		ch <- llm.NewErrorStreamChunk(errors.New("upstream"))
+		<-c.release
+		ch <- llm.NewCompleteStreamChunk(nil)
+	}()
+	return ch, nil
 }
 
 func (c *abandonedClient) ChatCompletionStream(context.Context, ...llm.ChatCompletionOptionFunc) (<-chan llm.StreamChunk, error) {
@@ -180,6 +199,41 @@ func TestModelFallback_StreamFirstErrorFallsBack(t *testing.T) {
 	}
 }
 
+func TestModelFallback_EmptyStreamFallsBack(t *testing.T) {
+	r := &fakeResolver{clients: map[string]llm.Client{"a": &chunksClient{}, "b": newDummyClient("from b")}}
+	res, err := NewModelFallbackExecutor(r).Forward(context.Background(), fallbackNode("a", "b"), nil, ExecutionContext{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ch, err := res.ResolvedClient.ChatCompletionStream(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first := <-ch; first.Delta().Content() != "from b" {
+		t.Fatalf("first chunk = %v", first)
+	}
+	for range ch {
+	}
+	if real, _, ok := res.ModelOutcome.UsedModel(); !ok || real != "real-b" {
+		t.Fatalf("used model = %q, %v", real, ok)
+	}
+}
+
+func TestModelFallback_AllEmptyStreamsFail(t *testing.T) {
+	r := &fakeResolver{clients: map[string]llm.Client{"a": &chunksClient{}, "b": &chunksClient{}}}
+	res, err := NewModelFallbackExecutor(r).Forward(context.Background(), fallbackNode("a", "b"), nil, ExecutionContext{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = res.ResolvedClient.ChatCompletionStream(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "stream closed before the first chunk") {
+		t.Fatalf("error = %v", err)
+	}
+	if _, _, ok := res.ModelOutcome.UsedModel(); ok {
+		t.Fatal("empty stream attributed to a model")
+	}
+}
+
 func TestModelFallback_StreamErrorAfterContentDoesNotSwitch(t *testing.T) {
 	upstream := errors.New("late error")
 	r := &fakeResolver{clients: map[string]llm.Client{
@@ -278,5 +332,27 @@ func TestModelFallback_DrainsAbandonedStream(t *testing.T) {
 	case <-a.done:
 	case <-time.After(2 * time.Second):
 		t.Fatal("abandoned producer did not finish")
+	}
+}
+
+func TestModelFallback_ConfiguredDrainTimeout(t *testing.T) {
+	a := &delayedAbandonedClient{release: make(chan struct{}), done: make(chan struct{})}
+	r := &fakeResolver{clients: map[string]llm.Client{"a": a, "b": newDummyClient("from b")}}
+	res, err := NewModelFallbackExecutor(r).WithDrainTimeout(3*time.Second).Forward(context.Background(), fallbackNode("a", "b"), nil, ExecutionContext{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ch, err := res.ResolvedClient.ChatCompletionStream(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for range ch {
+	}
+	time.Sleep(1200 * time.Millisecond)
+	close(a.release)
+	select {
+	case <-a.done:
+	case <-time.After(time.Second):
+		t.Fatal("configured drain did not consume delayed chunk")
 	}
 }

@@ -22,11 +22,18 @@ import (
 // inside a fallback chain.
 type ModelFallbackExecutor struct {
 	noopBackwardExecutor
-	resolver ModelResolver
+	resolver     ModelResolver
+	drainTimeout time.Duration
 }
 
 func NewModelFallbackExecutor(resolver ModelResolver) *ModelFallbackExecutor {
-	return &ModelFallbackExecutor{resolver: resolver}
+	return &ModelFallbackExecutor{resolver: resolver, drainTimeout: 30 * time.Second}
+}
+
+// WithDrainTimeout bounds draining abandoned streams. Zero or less means no limit.
+func (e *ModelFallbackExecutor) WithDrainTimeout(timeout time.Duration) *ModelFallbackExecutor {
+	e.drainTimeout = timeout
+	return e
 }
 
 func (e *ModelFallbackExecutor) Forward(ctx context.Context, node model.PipelineNode, inputs map[string]interface{}, ec ExecutionContext) (*ForwardResult, error) {
@@ -61,10 +68,11 @@ func (e *ModelFallbackExecutor) Forward(ctx context.Context, node model.Pipeline
 	}
 
 	fc := &fallbackClient{
-		candidates: candidates,
-		resolve:    resolve,
-		nodeID:     node.ID,
-		resolved:   map[int]*resolvedCandidate{0: {client: primary, realModel: realModel, modelID: modelID}},
+		candidates:   candidates,
+		resolve:      resolve,
+		nodeID:       node.ID,
+		drainTimeout: e.drainTimeout,
+		resolved:     map[int]*resolvedCandidate{0: {client: primary, realModel: realModel, modelID: modelID}},
 	}
 
 	return &ForwardResult{
@@ -83,13 +91,16 @@ type resolvedCandidate struct {
 }
 
 // fallbackClient tries each candidate in turn. A candidate fails when its call
-// returns an error; a cancelled context is not retried, since the caller has
-// gone. Streaming is retried only while the stream has not started: once
-// chunks have been forwarded, switching model would splice two answers.
+// returns an error or its stream closes or errors before its first chunk.
+// Cancellation is not retried. The first non-error chunk commits the stream,
+// including a preamble or usage-only chunk, to avoid splicing two answers.
+// Only the request deadline, if any, bounds the wait. Usage on an abandoned
+// error chunk is not forwarded or attributed to the successful model.
 type fallbackClient struct {
-	candidates []string
-	resolve    func(ctx context.Context, name string) (llm.Client, string, model.LLMModelID, error)
-	nodeID     string
+	candidates   []string
+	resolve      func(ctx context.Context, name string) (llm.Client, string, model.LLMModelID, error)
+	nodeID       string
+	drainTimeout time.Duration
 
 	mu       sync.Mutex
 	resolved map[int]*resolvedCandidate
@@ -137,10 +148,10 @@ func (c *fallbackClient) ChatCompletion(ctx context.Context, funcs ...llm.ChatCo
 		rc, err := c.candidate(ctx, i)
 		if err != nil {
 			resolveErr = err
-			slog.WarnContext(ctx, "model fallback: could not resolve candidate", slog.String("node", c.nodeID), slog.String("model", c.candidates[i]), slog.Any("error", err))
 			if ctx.Err() != nil {
 				break
 			}
+			slog.WarnContext(ctx, "model fallback: could not resolve candidate", slog.String("node", c.nodeID), slog.String("model", c.candidates[i]), slog.Any("error", err))
 			continue
 		}
 		resp, err := rc.client.ChatCompletion(ctx, funcs...)
@@ -173,10 +184,10 @@ func (c *fallbackClient) ChatCompletionStream(ctx context.Context, funcs ...llm.
 		rc, err := c.candidate(ctx, i)
 		if err != nil {
 			resolveErr = err
-			slog.WarnContext(ctx, "model fallback: could not resolve candidate", slog.String("node", c.nodeID), slog.String("model", c.candidates[i]), slog.Any("error", err))
 			if ctx.Err() != nil {
 				break
 			}
+			slog.WarnContext(ctx, "model fallback: could not resolve candidate", slog.String("node", c.nodeID), slog.String("model", c.candidates[i]), slog.Any("error", err))
 			continue
 		}
 		candidateCtx, cancel := context.WithCancel(ctx)
@@ -185,15 +196,12 @@ func (c *fallbackClient) ChatCompletionStream(ctx context.Context, funcs ...llm.
 			select {
 			case <-ctx.Done():
 				cancel()
-				go llm.DrainStream(ch, time.Second)
+				go llm.DrainStream(ch, c.drainTimeout)
 				return nil, ctx.Err()
 			case first, ok := <-ch:
 				if !ok {
-					cancel()
-					c.markUsed(rc)
-					return ch, nil
-				}
-				if first.Error() == nil {
+					err = errors.New("stream closed before the first chunk")
+				} else if first.Error() == nil {
 					c.markUsed(rc)
 					out := make(chan llm.StreamChunk, 1)
 					out <- first
@@ -201,7 +209,7 @@ func (c *fallbackClient) ChatCompletionStream(ctx context.Context, funcs ...llm.
 						defer close(out)
 						defer func() {
 							cancel()
-							llm.DrainStream(ch, time.Second)
+							llm.DrainStream(ch, c.drainTimeout)
 						}()
 						for {
 							select {
@@ -215,9 +223,10 @@ func (c *fallbackClient) ChatCompletionStream(ctx context.Context, funcs ...llm.
 						}
 					}()
 					return out, nil
+				} else {
+					err = first.Error()
+					go llm.DrainStream(ch, c.drainTimeout)
 				}
-				err = first.Error()
-				go llm.DrainStream(ch, time.Second)
 			}
 		}
 		cancel()
