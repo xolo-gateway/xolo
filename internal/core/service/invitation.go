@@ -114,7 +114,7 @@ func prepareInvitation(ctx context.Context, tx port.InvitationTx, tenantID model
 	if !org.Active() || !model.IsInviteValid(invite) || (invite.InviteeEmail() != nil && invite.UsesCount() > 0) {
 		return nil, port.ErrInvalid
 	}
-	role, err := resolveInvitationRole(ctx, tx, org.ID(), invite.Role())
+	role, err := resolveOrgRole(ctx, tx, org.ID(), invite.Role())
 	if err != nil {
 		return nil, err
 	}
@@ -124,7 +124,15 @@ func prepareInvitation(ctx context.Context, tx port.InvitationTx, tenantID model
 	return &InvitationView{Invite: invite, Org: org, Role: role}, nil
 }
 
-func resolveInvitationRole(ctx context.Context, tx port.InvitationTx, orgID model.OrgID, value string) (model.Role, error) {
+// orgRoleReader is what resolving a role needs, inside any transaction.
+type orgRoleReader interface {
+	GetRoleByID(ctx context.Context, id model.RoleID) (model.Role, error)
+	ListOrgRoles(ctx context.Context, orgID model.OrgID) ([]model.Role, error)
+}
+
+// resolveOrgRole turns the role value of an invitation or an enrollment rule
+// into a role of the organization.
+func resolveOrgRole(ctx context.Context, tx orgRoleReader, orgID model.OrgID, value string) (model.Role, error) {
 	var kind string
 	switch value {
 	case model.RoleMember:
@@ -139,7 +147,7 @@ func resolveInvitationRole(ctx context.Context, tx port.InvitationTx, orgID mode
 			return nil, port.ErrInvalid
 		}
 		if err != nil {
-			return nil, fmt.Errorf("get invitation role: %w", err)
+			return nil, fmt.Errorf("get organization role: %w", err)
 		}
 		if role.OrgID() != orgID {
 			return nil, port.ErrInvalid
@@ -148,7 +156,7 @@ func resolveInvitationRole(ctx context.Context, tx port.InvitationTx, orgID mode
 	}
 	roles, err := tx.ListOrgRoles(ctx, orgID)
 	if err != nil {
-		return nil, fmt.Errorf("list invitation roles: %w", err)
+		return nil, fmt.Errorf("list organization roles: %w", err)
 	}
 	for _, role := range roles {
 		if role.OrgID() == orgID && role.Builtin() && role.BuiltinKind() == kind {
@@ -188,7 +196,7 @@ func (s *InvitationService) Create(ctx context.Context, tenantID model.TenantID,
 			(input.TeamID == "" || value != model.RoleMember || !input.Perms.HasInTeam(string(input.TeamID), rbac.PermInvitesWrite)) {
 			return port.ErrNotAllowed
 		}
-		role, err := resolveInvitationRole(ctx, tx, orgID, value)
+		role, err := resolveOrgRole(ctx, tx, orgID, value)
 		if err != nil {
 			return err
 		}

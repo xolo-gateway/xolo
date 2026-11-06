@@ -168,6 +168,8 @@ func MigrateDatabase(ctx context.Context, db *gorm.DB, artifact *RecoveryArtifac
 					&ProvisioningProjection{}, &ProvisioningEvent{}, &ProvisioningFeed{},
 					// Event system
 					&Event{}, &Alert{}, &AlertIncident{}, &EventSettings{},
+					// Enrollment rules
+					&EnrollmentRule{}, &EnrollmentApplication{}, &EnrollmentPendingActivation{},
 					// Interactive OIDC sessions
 					&OIDCIdentity{}, &OIDCSession{}, &OIDCLogoutReplay{},
 					// Cross-instance cache invalidation
@@ -842,6 +844,15 @@ func schemaMigrations(artifact *RecoveryArtifact) []*gormigrate.Migration {
 				return errors.WithStack(tx.Migrator().DropTable(&PlanUsageMinutely{}))
 			},
 		},
+		{
+			ID: enrollmentRulesMigrationID,
+			Migrate: func(tx *gorm.DB) error {
+				return errors.WithStack(tx.AutoMigrate(&EnrollmentRule{}, &EnrollmentApplication{}, &EnrollmentPendingActivation{}))
+			},
+			Rollback: func(tx *gorm.DB) error {
+				return errors.WithStack(tx.Migrator().DropTable(&EnrollmentPendingActivation{}, &EnrollmentApplication{}, &EnrollmentRule{}))
+			},
+		},
 	}
 }
 
@@ -860,4 +871,5 @@ const (
 	cacheGenerationsMigrationID       = "202611100001"
 	pluginUIConfigsMigrationID        = "202611100002"
 	planUsageMinutelyMigrationID      = "202611110001"
+	enrollmentRulesMigrationID        = "202611160001"
 )

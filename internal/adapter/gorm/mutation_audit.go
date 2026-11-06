@@ -35,7 +35,7 @@ type mutationKey struct{ kind, id string }
 var resourceTables = map[string]string{
 	"tenant": "tenants", "organization": "organizations", "user": "users", "membership": "memberships", "role": "roles", "domain": "domains",
 	// The quota table keeps the singular name GORM gave it.
-	"application": "applications", "quota": "quota", "alert": "alerts", "provider": "providers", "llm_model": "llm_models",
+	"application": "applications", "quota": "quota", "alert": "alerts", "enrollment_rule": "enrollment_rules", "provider": "providers", "llm_model": "llm_models",
 	"team": "teams", "team_settings": "teams", "team_member": "team_members",
 	"virtual_model": "virtual_models", "middleware": "middlewares", "personal_virtual_model": "personal_virtual_models",
 }
@@ -64,7 +64,8 @@ var mutationColumns = map[string]string{
 	"team_settings": "id, org_id, description, share_quota_equally",
 	// The evaluation state (state, pending_since, last_evaluated_at) is left
 	// out: the evaluator rewrites it on every tick, outside the recorder.
-	"alert": "id, org_id, owner_id, scope, name, description, query, aggregation, window_seconds, comparator, threshold, for_seconds, enabled",
+	"alert":           "id, org_id, owner_id, scope, name, description, query, aggregation, window_seconds, comparator, threshold, for_seconds, enabled",
+	"enrollment_rule": "id, org_id, name, kind, claim, value, role, enabled",
 	// api_key is replaced by its fingerprint before leaving the snapshot.
 	"provider": "id, org_id, name, type, base_url, api_key, active, currency, cloud_tier, billing_mode, subscription_plan, retry_config, rate_limit_config, request_headers",
 	// Only what designates a model: its routing (real model, base URL, extra
@@ -197,7 +198,7 @@ func mutationSnapshot(db *gorm.DB, key mutationKey) ([]byte, error) {
 	if err := businessSnapshot(db, key, row); err != nil {
 		return nil, err
 	}
-	if key.kind == "membership" || key.kind == "role" || key.kind == "application" || key.kind == "alert" || key.kind == "provider" || key.kind == "team" || key.kind == "team_settings" ||
+	if key.kind == "membership" || key.kind == "role" || key.kind == "application" || key.kind == "alert" || key.kind == "enrollment_rule" || key.kind == "provider" || key.kind == "team" || key.kind == "team_settings" ||
 		key.kind == "virtual_model" || key.kind == "middleware" || key.kind == "llm_model" {
 		var tenantID string
 		if err := db.Table("organizations").Where("id = ?", row["org_id"]).Pluck("tenant_id", &tenantID).Error; err != nil {
@@ -396,7 +397,7 @@ func (r *mutationRecorder) trackDependents(kind, id string) error {
 		if err := trackIDs("role", "org_id"); err != nil {
 			return err
 		}
-		for _, resource := range []string{"application", "alert", "provider", "llm_model", "team", "virtual_model", "middleware"} {
+		for _, resource := range []string{"application", "alert", "enrollment_rule", "provider", "llm_model", "team", "virtual_model", "middleware"} {
 			if err := trackIDs(resource, "org_id"); err != nil {
 				return err
 			}

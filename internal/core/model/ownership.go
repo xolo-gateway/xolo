@@ -39,6 +39,7 @@ var OwnershipFamilies = []string{
 	FamilyApplication,
 	FamilyQuota,
 	FamilyAlert,
+	FamilyEnrollmentRule,
 	FamilyProvider,
 	FamilyVirtualModel,
 	FamilyMiddleware,

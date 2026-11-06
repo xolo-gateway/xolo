@@ -186,6 +186,8 @@ func deleteOrgWithin(db *gorm.DB, id model.OrgID) error {
 		&Application{},
 		&Membership{},
 		&InviteToken{},
+		&EnrollmentApplication{},
+		&EnrollmentRule{},
 		&Role{},
 		&Alert{},
 		&AlertIncident{},
