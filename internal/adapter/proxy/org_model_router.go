@@ -14,6 +14,8 @@ import (
 	llmretry "github.com/bornholm/genai/llm/retry"
 	"github.com/bornholm/genai/llm/tokenlimit"
 	genaiProxy "github.com/bornholm/genai/proxy"
+	"github.com/hashicorp/golang-lru/v2/expirable"
+	"github.com/pkg/errors"
 	xologenai "github.com/xolo-gateway/xolo/internal/adapter/genai"
 	"github.com/xolo-gateway/xolo/internal/core/model"
 	"github.com/xolo-gateway/xolo/internal/core/port"
@@ -21,8 +23,6 @@ import (
 	"github.com/xolo-gateway/xolo/internal/core/service"
 	"github.com/xolo-gateway/xolo/internal/crypto"
 	httpCtx "github.com/xolo-gateway/xolo/internal/http/context"
-	"github.com/hashicorp/golang-lru/v2/expirable"
-	"github.com/pkg/errors"
 
 	_ "github.com/bornholm/genai/llm/provider/anthropic"
 	_ "github.com/bornholm/genai/llm/provider/gemini"
@@ -49,6 +49,9 @@ type OrgModelRouter struct {
 
 	// upstreamTimeout bounds each provider call; zero leaves it unbounded.
 	upstreamTimeout time.Duration
+
+	// drainTimeout bounds abandoned streams inside retry clients.
+	drainTimeout time.Duration
 
 	// keyExhausted is told of the keys a request moved away from after an
 	// upstream exhaustion, see keyFailoverClient.
@@ -80,6 +83,14 @@ func WithUpstreamTimeout(timeout time.Duration) OrgModelRouterOption {
 	}
 }
 
+// WithDrainTimeout bounds cleanup of abandoned provider streams, including
+// streams abandoned by a retry client. Zero or less leaves them unbounded.
+func WithDrainTimeout(timeout time.Duration) OrgModelRouterOption {
+	return func(r *OrgModelRouter) {
+		r.drainTimeout = timeout
+	}
+}
+
 // WithKeyExhaustionHandler sets what is told of the API keys a request moved
 // away from after an upstream exhaustion.
 func WithKeyExhaustionHandler(handler KeyExhaustionHandler) OrgModelRouterOption {
@@ -94,6 +105,7 @@ func NewOrgModelRouter(providerStore port.ProviderStore, orgStore port.OrgStore,
 		orgStore:      orgStore,
 		secretKey:     secretKey,
 		clients:       expirable.NewLRU[clientKey, *cachedClient](256, nil, time.Hour),
+		drainTimeout:  llmretry.DefaultDrainTimeout,
 	}
 	for _, fn := range funcs {
 		fn(r)
@@ -320,7 +332,7 @@ func (r *OrgModelRouter) clientForProvider(ctx context.Context, llmModel model.L
 	// Retry wraps everything (outermost): each retry attempt goes through
 	// rate-limit and token-limit, preventing burst hammering during retries.
 	if cfg := p.RetryConfig(); cfg != nil && cfg.Enabled {
-		client = llmretry.NewClient(client, cfg.Delay, cfg.MaxAttempts)
+		client = llmretry.NewClient(client, cfg.Delay, cfg.MaxAttempts, llmretry.WithDrainTimeout(r.drainTimeout))
 	}
 
 	// Timeout wraps the whole chain so the bound covers retries too and a

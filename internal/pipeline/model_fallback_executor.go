@@ -94,8 +94,11 @@ type resolvedCandidate struct {
 // returns an error or its stream closes or errors before its first chunk.
 // Cancellation is not retried. The first non-error chunk commits the stream,
 // including a preamble or usage-only chunk, to avoid splicing two answers.
-// Only the request deadline, if any, bounds the wait. Usage on an abandoned
-// error chunk is not forwarded or attributed to the successful model.
+// A per-candidate upstream timeout bounds the wait when configured; otherwise
+// the request deadline does, if any. Without either bound, a provider that
+// never emits or closes can hold the fallback until its stream ends. Usage on
+// an abandoned error chunk is not forwarded or attributed to the successful
+// model.
 type fallbackClient struct {
 	candidates   []string
 	resolve      func(ctx context.Context, name string) (llm.Client, string, model.LLMModelID, error)
