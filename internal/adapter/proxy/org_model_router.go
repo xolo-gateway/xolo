@@ -50,7 +50,7 @@ type OrgModelRouter struct {
 	// upstreamTimeout bounds each provider call; zero leaves it unbounded.
 	upstreamTimeout time.Duration
 
-	// drainTimeout bounds abandoned streams inside retry clients.
+	// drainTimeout bounds abandoned streams inside resilience clients.
 	drainTimeout time.Duration
 
 	// keyExhausted is told of the keys a request moved away from after an
@@ -315,6 +315,7 @@ func (r *OrgModelRouter) clientForProvider(ctx context.Context, llmModel model.L
 	if cfg := llmModel.TokenLimitConfig(); cfg != nil && cfg.Enabled {
 		client = tokenlimit.NewClient(client,
 			tokenlimit.WithChatCompletionLimit(cfg.MaxTokens, cfg.Interval),
+			tokenlimit.WithDrainTimeout(r.drainTimeout),
 		)
 	}
 
