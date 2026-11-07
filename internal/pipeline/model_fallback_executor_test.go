@@ -43,17 +43,27 @@ type abandonedClient struct {
 type delayedAbandonedClient struct {
 	dummyClient
 	release chan struct{}
+	stop    chan struct{}
+	sent    chan struct{}
 	done    chan struct{}
 }
 
 func (c *delayedAbandonedClient) ChatCompletionStream(context.Context, ...llm.ChatCompletionOptionFunc) (<-chan llm.StreamChunk, error) {
-	ch := make(chan llm.StreamChunk, 1)
+	ch := make(chan llm.StreamChunk)
 	go func() {
 		defer close(c.done)
 		defer close(ch)
 		ch <- llm.NewErrorStreamChunk(errors.New("upstream"))
-		<-c.release
-		ch <- llm.NewCompleteStreamChunk(nil)
+		select {
+		case <-c.release:
+		case <-c.stop:
+			return
+		}
+		select {
+		case ch <- llm.NewCompleteStreamChunk(nil):
+			close(c.sent)
+		case <-c.stop:
+		}
 	}()
 	return ch, nil
 }
@@ -336,7 +346,8 @@ func TestModelFallback_DrainsAbandonedStream(t *testing.T) {
 }
 
 func TestModelFallback_ConfiguredDrainTimeout(t *testing.T) {
-	a := &delayedAbandonedClient{release: make(chan struct{}), done: make(chan struct{})}
+	a := &delayedAbandonedClient{release: make(chan struct{}), stop: make(chan struct{}), sent: make(chan struct{}), done: make(chan struct{})}
+	t.Cleanup(func() { close(a.stop); <-a.done })
 	r := &fakeResolver{clients: map[string]llm.Client{"a": a, "b": newDummyClient("from b")}}
 	res, err := NewModelFallbackExecutor(r).WithDrainTimeout(3*time.Second).Forward(context.Background(), fallbackNode("a", "b"), nil, ExecutionContext{})
 	if err != nil {
@@ -351,14 +362,15 @@ func TestModelFallback_ConfiguredDrainTimeout(t *testing.T) {
 	time.Sleep(1200 * time.Millisecond)
 	close(a.release)
 	select {
-	case <-a.done:
+	case <-a.sent:
 	case <-time.After(time.Second):
 		t.Fatal("configured drain did not consume delayed chunk")
 	}
 }
 
 func TestModelFallback_ConfiguredDrainTimeoutStopsWaiting(t *testing.T) {
-	a := &delayedAbandonedClient{release: make(chan struct{}), done: make(chan struct{})}
+	a := &delayedAbandonedClient{release: make(chan struct{}), stop: make(chan struct{}), sent: make(chan struct{}), done: make(chan struct{})}
+	t.Cleanup(func() { close(a.stop); <-a.done })
 	r := &fakeResolver{clients: map[string]llm.Client{"a": a, "b": newDummyClient("from b")}}
 	res, err := NewModelFallbackExecutor(r).WithDrainTimeout(50*time.Millisecond).Forward(context.Background(), fallbackNode("a", "b"), nil, ExecutionContext{})
 	if err != nil {
@@ -370,15 +382,11 @@ func TestModelFallback_ConfiguredDrainTimeoutStopsWaiting(t *testing.T) {
 	}
 	for range ch {
 	}
-	select {
-	case <-a.done:
-		t.Fatal("drain completed before its configured timeout")
-	case <-time.After(200 * time.Millisecond):
-	}
+	time.Sleep(200 * time.Millisecond)
 	close(a.release)
 	select {
-	case <-a.done:
-	case <-time.After(time.Second):
-		t.Fatal("abandoned producer did not finish after release")
+	case <-a.sent:
+		t.Fatal("drain consumed a chunk after its configured timeout")
+	case <-time.After(200 * time.Millisecond):
 	}
 }
