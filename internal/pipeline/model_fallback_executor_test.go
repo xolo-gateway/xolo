@@ -47,7 +47,7 @@ type delayedAbandonedClient struct {
 }
 
 func (c *delayedAbandonedClient) ChatCompletionStream(context.Context, ...llm.ChatCompletionOptionFunc) (<-chan llm.StreamChunk, error) {
-	ch := make(chan llm.StreamChunk)
+	ch := make(chan llm.StreamChunk, 1)
 	go func() {
 		defer close(c.done)
 		defer close(ch)
@@ -354,5 +354,31 @@ func TestModelFallback_ConfiguredDrainTimeout(t *testing.T) {
 	case <-a.done:
 	case <-time.After(time.Second):
 		t.Fatal("configured drain did not consume delayed chunk")
+	}
+}
+
+func TestModelFallback_ConfiguredDrainTimeoutStopsWaiting(t *testing.T) {
+	a := &delayedAbandonedClient{release: make(chan struct{}), done: make(chan struct{})}
+	r := &fakeResolver{clients: map[string]llm.Client{"a": a, "b": newDummyClient("from b")}}
+	res, err := NewModelFallbackExecutor(r).WithDrainTimeout(50*time.Millisecond).Forward(context.Background(), fallbackNode("a", "b"), nil, ExecutionContext{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ch, err := res.ResolvedClient.ChatCompletionStream(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for range ch {
+	}
+	select {
+	case <-a.done:
+		t.Fatal("drain completed before its configured timeout")
+	case <-time.After(200 * time.Millisecond):
+	}
+	close(a.release)
+	select {
+	case <-a.done:
+	case <-time.After(time.Second):
+		t.Fatal("abandoned producer did not finish after release")
 	}
 }

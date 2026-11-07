@@ -2,6 +2,10 @@ package setup
 
 import (
 	"context"
+	"log/slog"
+	gohttp "net/http"
+	"time"
+
 	"github.com/bornholm/genai/proxy"
 	"github.com/pkg/errors"
 	proxyAdapter "github.com/xolo-gateway/xolo/internal/adapter/proxy"
@@ -22,9 +26,6 @@ import (
 	"github.com/xolo-gateway/xolo/internal/http/middleware/ratelimit"
 	"github.com/xolo-gateway/xolo/internal/http/middleware/tenant"
 	"github.com/xolo-gateway/xolo/internal/i18n"
-
-	gohttp "net/http"
-	"time"
 )
 
 func NewHTTPServerFromConfig(ctx context.Context, conf *config.Config) (*http.Server, error) {
@@ -194,9 +195,13 @@ func NewHTTPServerFromConfig(ctx context.Context, conf *config.Config) (*http.Se
 	}
 
 	subscriptionEnforcer := proxyAdapter.NewXoloSubscriptionEnforcer(providerStore, usageStore, fairShareService, subscriptionState, orgStore)
+	if conf.Proxy.DrainTimeout <= 0 {
+		slog.WarnContext(ctx, "proxy abandoned stream draining is unbounded", slog.Duration("drain_timeout", conf.Proxy.DrainTimeout))
+	}
 
 	orgModelRouter := proxyAdapter.NewOrgModelRouter(providerStore, orgStore, conf.SecretKey,
 		proxyAdapter.WithUpstreamTimeout(conf.Proxy.UpstreamTimeout),
+		proxyAdapter.WithDrainTimeout(conf.Proxy.DrainTimeout),
 		proxyAdapter.WithKeyExhaustionHandler(subscriptionEnforcer.MarkKeyExhausted),
 	)
 
