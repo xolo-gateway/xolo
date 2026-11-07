@@ -5,6 +5,8 @@ import "time"
 // ProxyConfig tunes how the OpenAI-compatible proxy talks to the upstream
 // providers.
 type ProxyConfig struct {
+	// DrainTimeout bounds cleanup of abandoned provider streams. Zero is unbounded.
+	DrainTimeout time.Duration `env:"DRAIN_TIMEOUT,expand" envDefault:"30s"`
 	// UpstreamTimeout bounds a call to an upstream provider. For a plain
 	// completion or an embeddings call it caps the whole call, retries
 	// included. For a streamed completion it caps the wait for the first chunk
