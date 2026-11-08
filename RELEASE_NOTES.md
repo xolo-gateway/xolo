@@ -1,3 +1,20 @@
+# Unreleased — API keys no longer depend on the OIDC provider
+
+An API request authenticated by an API key no longer calls the OIDC provider.
+The ID token check refuses any bearer token that is no JWT of the provider
+without calling it, and a valid API key is found before the token
+introspection. Until now a provider that was down made every API request
+answer 500, API keys included.
+
+OIDC ID tokens also cope with an unavailable provider. Its key set is
+downloaded within 10 seconds, at most once every 10 seconds while it fails.
+Once expired, the last key set keeps verifying tokens at once, up to 24 hours,
+while a new one is downloaded in the background. A token whose keys are
+unknown is answered 401 instead of 500, and a back-channel logout signed by a
+key Xolo cannot retrieve is deferred so that the provider retries it. The
+introspection and userinfo calls of the OAuth2 token check now time out after
+10 seconds. No migration.
+
 # Unreleased — subscription plan checks read hourly sums
 
 The subscription plan checks no longer sum every usage record of their window

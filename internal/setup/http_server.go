@@ -53,17 +53,7 @@ func NewHTTPServerFromConfig(ctx context.Context, conf *config.Config) (*http.Se
 		authenticators = append([]authn.Authenticator{oidcTokenAuthn}, authenticators...)
 	}
 
-	// API auth chain ordering (cheapest / most specific first):
-	//   oidctoken (local JWT ID token) → oauth2token (remote introspection) →
-	//   tokenAuthn (DB API token) → oidcAuthn (session).
-	apiAuthenticators := []authn.Authenticator{tokenAuthn}
-	if oauth2TokenAuthn != nil {
-		apiAuthenticators = append([]authn.Authenticator{oauth2TokenAuthn}, apiAuthenticators...)
-	}
-	if oidcTokenAuthn != nil {
-		apiAuthenticators = append([]authn.Authenticator{oidcTokenAuthn}, apiAuthenticators...)
-	}
-	apiAuthenticators = append(apiAuthenticators, oidcAuthn)
+	apiAuthenticators := apiAuthenticatorChain(tokenAuthn, oidcTokenAuthn, oauth2TokenAuthn, oidcAuthn)
 
 	authnMiddleware := authn.Middleware(oidcAuthn.LoginRedirect, authenticators...)
 

@@ -43,25 +43,59 @@ func VerifyLogoutToken(ctx context.Context, raw, issuer, audience, jwksURL strin
 	if issuer == "" || audience == "" || jwksURL == "" {
 		return nil, errInvalidToken
 	}
-	ctx, cancel := context.WithTimeout(ctx, jwksFetchTimeout)
-	defer cancel()
 	jwks, err := fetchJWKS(ctx, jwksURL)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %w", ErrKeysUnavailable, err)
+		return nil, err
 	}
 
+	findSigningKey := func(jwks JWKS, kid string) (JWK, bool) {
+		for _, key := range jwks.Keys {
+			if key.Kid == kid && key.Kty == "RSA" && (key.Use == "" || key.Use == "sig") {
+				return key, true
+			}
+		}
+		return JWK{}, false
+	}
+
+	// keysUnavailable is set when the token names a key the cached set does
+	// not hold and the provider cannot serve a newer one: it may have rotated
+	// its keys during an outage, and the logout must be retried, not refused.
+	var keysUnavailable error
 	var claims LogoutClaims
 	_, err = jwt.ParseWithClaims(raw, &claims, func(t *jwt.Token) (any, error) {
 		kid, ok := t.Header["kid"].(string)
 		if !ok || kid == "" {
 			return nil, errInvalidToken
 		}
-		for _, key := range jwks.Keys {
-			if key.Kid == kid && key.Kty == "RSA" && (key.Use == "" || key.Use == "sig") {
-				return parseRSAPublicKey(key)
+		key, found := findSigningKey(jwks, kid)
+		// The logout endpoint is reached without authentication: a token of
+		// another issuer never makes the provider be called. The issuer is
+		// read before the signature is checked, as in validateToken, so a
+		// forged token claiming it still can, once per jwksRefetchInterval.
+		if iss, err := t.Claims.GetIssuer(); !found && err == nil && iss == issuer {
+			refreshed, ok, err := refetchJWKS(ctx, jwksURL)
+			switch {
+			case err != nil:
+				keysUnavailable = fmt.Errorf("%w: %w", ErrKeysUnavailable, err)
+				return nil, keysUnavailable
+			case ok:
+				// The provider has just served its keys: a key it does not
+				// hold does not exist, and the token is refused for good.
+				// Deferring it would let a forged key ID hold a logout
+				// forever. A logout is deferred only while the keys cannot
+				// be downloaded.
+				key, found = findSigningKey(refreshed, kid)
+			default:
+				// No refetch allowed yet: the cached set, fresh or not,
+				// cannot tell the key does not exist.
+				keysUnavailable = errors.Wrapf(ErrKeysUnavailable, "%s: key %q unknown and no refetch allowed yet", jwksURL, kid)
+				return nil, keysUnavailable
 			}
 		}
-		return nil, errInvalidToken
+		if !found {
+			return nil, errInvalidToken
+		}
+		return parseRSAPublicKey(key)
 	},
 		jwt.WithValidMethods([]string{"RS256", "RS384", "RS512"}),
 		jwt.WithIssuer(issuer),
@@ -70,6 +104,9 @@ func VerifyLogoutToken(ctx context.Context, raw, issuer, audience, jwksURL strin
 		jwt.WithIssuedAt(),
 		jwt.WithLeeway(model.LogoutClockSkew),
 	)
+	if keysUnavailable != nil {
+		return nil, keysUnavailable
+	}
 	if err != nil {
 		return nil, errInvalidToken
 	}
