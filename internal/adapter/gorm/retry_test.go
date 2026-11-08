@@ -18,11 +18,11 @@ func TestRetryStopsDuringBackoffWhenContextCanceled(t *testing.T) {
 	firstFailure := make(chan struct{})
 	go func() {
 		<-firstFailure
-		time.Sleep(25 * time.Millisecond)
+		time.Sleep(2 * time.Millisecond)
 		cancel()
 	}()
 	started := time.Now()
-	err := (&Store{}).retry(ctx, nil, false, func(context.Context, *gorm.DB) error {
+	err := (&Store{retryBackoff: func(int) time.Duration { return 20 * time.Millisecond }}).retry(ctx, nil, false, func(context.Context, *gorm.DB) error {
 		calls++
 		if calls == 1 {
 			close(firstFailure)
@@ -37,8 +37,26 @@ func TestRetryStopsDuringBackoffWhenContextCanceled(t *testing.T) {
 	if calls != 1 {
 		t.Fatalf("retry callback calls = %d, want 1", calls)
 	}
-	if elapsed := time.Since(started); elapsed >= 250*time.Millisecond {
-		t.Fatalf("canceled retry waited %s, want less than 250ms", elapsed)
+	if elapsed := time.Since(started); elapsed >= 100*time.Millisecond {
+		t.Fatalf("canceled retry waited %s, want less than 100ms", elapsed)
+	}
+}
+
+func TestRetryDoesNotCallBackForPreCanceledContext(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	calls := 0
+	err := (&Store{}).retry(ctx, nil, false, func(context.Context, *gorm.DB) error {
+		calls++
+		return nil
+	})
+
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("retry error = %v, want context.Canceled", err)
+	}
+	if calls != 0 {
+		t.Fatalf("retry callback calls = %d, want 0", calls)
 	}
 }
 
@@ -51,15 +69,15 @@ func TestWaitForRetryReturnsWhenContextIsAlreadyCanceled(t *testing.T) {
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("wait error = %v, want context.Canceled", err)
 	}
-	if elapsed := time.Since(started); elapsed >= 250*time.Millisecond {
-		t.Fatalf("canceled wait took %s, want less than 250ms", elapsed)
+	if elapsed := time.Since(started); elapsed >= 100*time.Millisecond {
+		t.Fatalf("canceled wait took %s, want less than 100ms", elapsed)
 	}
 }
 
 func TestRetryWaitsAndRetriesWhenContextRemainsActive(t *testing.T) {
 	calls := 0
 	started := time.Now()
-	err := (&Store{}).retry(context.Background(), nil, false, func(context.Context, *gorm.DB) error {
+	err := (&Store{retryBackoff: func(int) time.Duration { return 5 * time.Millisecond }}).retry(context.Background(), nil, false, func(context.Context, *gorm.DB) error {
 		calls++
 		if calls == 1 {
 			return sqlite3.BUSY
@@ -73,7 +91,13 @@ func TestRetryWaitsAndRetriesWhenContextRemainsActive(t *testing.T) {
 	if calls != 2 {
 		t.Fatalf("retry callback calls = %d, want 2", calls)
 	}
-	if elapsed := time.Since(started); elapsed < 450*time.Millisecond {
-		t.Fatalf("retry waited %s, want at least 450ms", elapsed)
+	if elapsed := time.Since(started); elapsed < 5*time.Millisecond {
+		t.Fatalf("retry waited %s, want at least 5ms", elapsed)
+	}
+}
+
+func TestRetryDelayCapsDefaultBackoff(t *testing.T) {
+	if got := (&Store{}).retryDelay(10); got != 30*time.Second {
+		t.Fatalf("retry delay = %s, want 30s", got)
 	}
 }

@@ -35,6 +35,8 @@ type Store struct {
 	lifecycleRetention time.Duration
 	// purgeBatch bounds the rows one purge transaction removes.
 	purgeBatch int
+	// retryBackoff overrides the default retry delay for deterministic tests.
+	retryBackoff func(retries int) time.Duration
 }
 
 func (s *Store) issuers() model.IdentityIssuers {
@@ -145,11 +147,15 @@ func (s *Store) retry(ctx context.Context, db *gorm.DB, withTx bool, fn func(ctx
 		return lifecycleError(fn(ctx, db.WithContext(ctx)))
 	}
 
-	backoff := 500 * time.Millisecond
 	maxRetries := 10
 	retries := 0
 
 	for {
+		if err := ctx.Err(); err != nil {
+			return errors.WithStack(err)
+		}
+
+		backoff := s.retryDelay(retries)
 		var err error
 		if withTx {
 			err = db.Transaction(func(tx *gorm.DB) error {
@@ -169,13 +175,12 @@ func (s *Store) retry(ctx context.Context, db *gorm.DB, withTx bool, fn func(ctx
 			}
 
 			if isRetryableError(err) {
-				slog.DebugContext(ctx, "transaction failed, will retry", slog.Int("retries", retries), slog.Duration("backoff", backoff), slog.Any("error", errors.WithStack(err)))
+				slog.DebugContext(ctx, "transaction failed, backing off", slog.Int("retries", retries), slog.Duration("backoff", backoff), slog.Any("error", errors.WithStack(err)))
 
 				retries++
 				if err := waitForRetry(ctx, backoff); err != nil {
 					return err
 				}
-				backoff *= 2
 				continue
 			}
 
@@ -184,6 +189,13 @@ func (s *Store) retry(ctx context.Context, db *gorm.DB, withTx bool, fn func(ctx
 
 		return nil
 	}
+}
+
+func (s *Store) retryDelay(retries int) time.Duration {
+	if s.retryBackoff != nil {
+		return s.retryBackoff(retries)
+	}
+	return min(500*time.Millisecond<<retries, 30*time.Second)
 }
 
 type StoreOption func(*storeOptions)

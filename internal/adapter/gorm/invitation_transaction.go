@@ -133,12 +133,8 @@ func retryTransaction(ctx context.Context, operation func() error) error {
 		if err == nil || !isRetryableError(err) || attempt >= 10 {
 			return lifecycleError(err)
 		}
-		timer := time.NewTimer(min(10*time.Millisecond<<attempt, 500*time.Millisecond))
-		select {
-		case <-ctx.Done():
-			timer.Stop()
-			return ctx.Err()
-		case <-timer.C:
+		if err := waitForRetry(ctx, min(10*time.Millisecond<<attempt, 500*time.Millisecond)); err != nil {
+			return err
 		}
 	}
 }
