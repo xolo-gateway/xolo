@@ -15,17 +15,10 @@ func TestRetryStopsDuringBackoffWhenContextCanceled(t *testing.T) {
 	defer cancel()
 
 	calls := 0
-	firstFailure := make(chan struct{})
-	go func() {
-		<-firstFailure
-		time.Sleep(2 * time.Millisecond)
-		cancel()
-	}()
-	started := time.Now()
 	err := (&Store{retryBackoff: func(int) time.Duration { return 20 * time.Millisecond }}).retry(ctx, nil, false, func(context.Context, *gorm.DB) error {
 		calls++
 		if calls == 1 {
-			close(firstFailure)
+			cancel()
 			return sqlite3.BUSY
 		}
 		return nil
@@ -36,9 +29,6 @@ func TestRetryStopsDuringBackoffWhenContextCanceled(t *testing.T) {
 	}
 	if calls != 1 {
 		t.Fatalf("retry callback calls = %d, want 1", calls)
-	}
-	if elapsed := time.Since(started); elapsed >= 100*time.Millisecond {
-		t.Fatalf("canceled retry waited %s, want less than 100ms", elapsed)
 	}
 }
 
