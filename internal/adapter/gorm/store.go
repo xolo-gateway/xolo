@@ -119,6 +119,24 @@ func (s *Store) readDatabase(ctx context.Context) (*gorm.DB, error) {
 	return s.reader, nil
 }
 
+func waitForRetry(ctx context.Context, backoff time.Duration) error {
+	if err := ctx.Err(); err != nil {
+		return errors.WithStack(err)
+	}
+
+	timer := time.NewTimer(backoff)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return errors.WithStack(ctx.Err())
+	case <-timer.C:
+		if err := ctx.Err(); err != nil {
+			return errors.WithStack(err)
+		}
+		return nil
+	}
+}
+
 func (s *Store) retry(ctx context.Context, db *gorm.DB, withTx bool, fn func(ctx context.Context, db *gorm.DB) error) error {
 	if s.transactionBound {
 		// db is already bound: withTx is ignored and a
@@ -154,7 +172,9 @@ func (s *Store) retry(ctx context.Context, db *gorm.DB, withTx bool, fn func(ctx
 				slog.DebugContext(ctx, "transaction failed, will retry", slog.Int("retries", retries), slog.Duration("backoff", backoff), slog.Any("error", errors.WithStack(err)))
 
 				retries++
-				time.Sleep(backoff)
+				if err := waitForRetry(ctx, backoff); err != nil {
+					return err
+				}
 				backoff *= 2
 				continue
 			}
