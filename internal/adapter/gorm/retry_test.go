@@ -10,12 +10,12 @@ import (
 	"gorm.io/gorm"
 )
 
-func TestRetryStopsDuringBackoffWhenContextCanceled(t *testing.T) {
+func TestRetryStopsWhenCallbackCancelsContext(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	calls := 0
-	err := (&Store{retryBackoff: func(int) time.Duration { return 20 * time.Millisecond }}).retry(ctx, nil, false, func(context.Context, *gorm.DB) error {
+	err := (&Store{}).retry(ctx, nil, false, func(context.Context, *gorm.DB) error {
 		calls++
 		if calls == 1 {
 			cancel()
@@ -29,6 +29,51 @@ func TestRetryStopsDuringBackoffWhenContextCanceled(t *testing.T) {
 	}
 	if calls != 1 {
 		t.Fatalf("retry callback calls = %d, want 1", calls)
+	}
+}
+
+type observedDoneContext struct {
+	context.Context
+	observed chan struct{}
+}
+
+func (ctx observedDoneContext) Done() <-chan struct{} {
+	close(ctx.observed)
+	return ctx.Context.Done()
+}
+
+func TestWaitForRetryStopsWhenCanceledDuringWait(t *testing.T) {
+	parent, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	ctx := observedDoneContext{Context: parent, observed: make(chan struct{})}
+	done := make(chan error, 1)
+	go func() { done <- waitForRetry(ctx, time.Hour) }()
+	select {
+	case <-ctx.observed:
+	case <-time.After(time.Second):
+		t.Fatal("wait did not observe the context")
+	}
+	cancel()
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("wait error = %v, want context.Canceled", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("wait did not stop after cancellation")
+	}
+}
+
+func TestRetryDoesNotCallBackForPreCanceledTransaction(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	calls := 0
+	err := (&Store{transactionBound: true}).retry(ctx, nil, false, func(context.Context, *gorm.DB) error {
+		calls++
+		return nil
+	})
+	if !errors.Is(err, context.Canceled) || calls != 0 {
+		t.Fatalf("retry error = %v, callback calls = %d; want context.Canceled and 0 calls", err, calls)
 	}
 }
 

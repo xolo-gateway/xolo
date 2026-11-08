@@ -141,6 +141,9 @@ func waitForRetry(ctx context.Context, backoff time.Duration) error {
 
 func (s *Store) retry(ctx context.Context, db *gorm.DB, withTx bool, fn func(ctx context.Context, db *gorm.DB) error) error {
 	if s.transactionBound {
+		if err := ctx.Err(); err != nil {
+			return errors.WithStack(err)
+		}
 		// db is already bound: withTx is ignored and a
 		// failure goes back to the transaction adapter, which replays the
 		// whole callback.
