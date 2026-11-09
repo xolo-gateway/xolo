@@ -69,10 +69,8 @@ func withMigrationLock(ctx context.Context, db *gorm.DB, migrate func(*gorm.DB) 
 		if err == nil || !isRetryableError(err) || attempt >= 10 {
 			return err
 		}
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-time.After(100 * time.Millisecond):
+		if err := waitForRetry(ctx, 100*time.Millisecond); err != nil {
+			return err
 		}
 	}
 }
