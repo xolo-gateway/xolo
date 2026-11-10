@@ -48,10 +48,25 @@ func (c *MultiIndexCache[V]) Get(key string) (V, bool) {
 // instances: they may hold the entry even when this one does not.
 func (c *MultiIndexCache[V]) Remove(key string) {
 	c.removeLocal(key)
+	c.announce()
+}
 
-	if c.invalidated != nil {
-		c.invalidated()
+// announce runs the invalidation hook, read under the lock it is set under.
+func (c *MultiIndexCache[V]) announce() {
+	c.mu.RLock()
+	invalidated := c.invalidated
+	c.mu.RUnlock()
+
+	if invalidated != nil {
+		invalidated()
 	}
+}
+
+// onInvalidate sets the hook announce runs.
+func (c *MultiIndexCache[V]) onInvalidate(fn func()) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.invalidated = fn
 }
 
 // removeLocal drops the entry on this instance only, for a removal every
@@ -113,9 +128,7 @@ func (c *MultiIndexCache[V]) RemoveMatching(matches func(V) bool) {
 	}
 	c.mu.Unlock()
 
-	if c.invalidated != nil {
-		c.invalidated()
-	}
+	c.announce()
 }
 
 // Flush empties the cache after another instance changed one of its entries.

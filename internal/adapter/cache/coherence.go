@@ -67,7 +67,7 @@ func share[V Cacheable](coherence *Coherence, name string, cache *MultiIndexCach
 	coherence.caches[name] = append(coherence.caches[name], cache)
 	coherence.mu.Unlock()
 
-	cache.invalidated = func() { coherence.invalidated(name) }
+	cache.onInvalidate(func() { coherence.invalidated(name) })
 }
 
 func (c *Coherence) invalidated(name string) {
