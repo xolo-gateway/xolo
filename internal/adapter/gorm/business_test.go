@@ -414,7 +414,9 @@ func TestBusinessAlertState(t *testing.T) {
 
 		published := eventCount(t, db)
 		now := time.Now()
-		require.NoError(t, store.UpdateAlertState(ctx, model.AlertID(key), model.AlertStateFiring, &now, &now))
+		updated, err := store.UpdateAlertState(ctx, model.AlertID(key), model.AlertStateOK, model.AlertStateFiring, &now, &now)
+		require.NoError(t, err)
+		require.True(t, updated)
 		require.Equal(t, published, eventCount(t, db))
 
 		_, err = svc.PutAlert(ctx, testTenantID, fixture.org, key, noCondition, alertSettings(fixture.user, 3))

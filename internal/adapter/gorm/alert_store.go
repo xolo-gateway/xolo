@@ -93,16 +93,23 @@ func (s *Store) ListEnabledAlerts(ctx context.Context) ([]model.Alert, error) {
 	return result, nil
 }
 
-// UpdateAlertState implements port.AlertStore.
-func (s *Store) UpdateAlertState(ctx context.Context, id model.AlertID, state model.AlertState, pendingSince *time.Time, lastEvaluatedAt *time.Time) error {
-	return s.withRetry(ctx, true, func(ctx context.Context, db *gorm.DB) error {
-		return errors.WithStack(db.Model(&Alert{}).Where("id = ?", string(id)).
+// UpdateAlertState implements port.AlertStore. A single conditional UPDATE.
+func (s *Store) UpdateAlertState(ctx context.Context, id model.AlertID, from, state model.AlertState, pendingSince *time.Time, lastEvaluatedAt *time.Time) (bool, error) {
+	var updated bool
+	err := s.withRetry(ctx, true, func(ctx context.Context, db *gorm.DB) error {
+		result := db.Model(&Alert{}).Where("id = ? AND state = ?", string(id), string(from)).
 			Updates(map[string]any{
 				"state":             string(state),
 				"pending_since":     pendingSince,
 				"last_evaluated_at": lastEvaluatedAt,
-			}).Error)
+			})
+		if result.Error != nil {
+			return errors.WithStack(result.Error)
+		}
+		updated = result.RowsAffected == 1
+		return nil
 	})
+	return updated, err
 }
 
 // ClaimAlertEvaluation implements port.AlertStore. A single conditional

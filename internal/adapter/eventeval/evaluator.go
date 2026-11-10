@@ -177,7 +177,10 @@ func (e *Evaluator) evaluateAlert(ctx context.Context, alert model.Alert) error 
 		pendingSince = nil
 	}
 
-	return errors.WithStack(e.alertStore.UpdateAlertState(ctx, alert.ID(), newState, pendingSince, &now))
+	// Conditional on the state decided from: another instance that moved the
+	// alert meanwhile wins, and this stale decision is dropped.
+	_, err = e.alertStore.UpdateAlertState(ctx, alert.ID(), alert.State(), newState, pendingSince, &now)
+	return errors.WithStack(err)
 }
 
 // fire opens a new incident and pins the contributing events to it, unless

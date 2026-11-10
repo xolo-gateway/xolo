@@ -102,3 +102,37 @@ func TestOpenIncidentOnEachBackend(t *testing.T) {
 		}
 	})
 }
+
+// A transition decided from a state another instance has since changed is
+// dropped, not written over the other one.
+func TestUpdateAlertStateIsConditionalOnEachBackend(t *testing.T) {
+	eachBackend(t, func(t *testing.T, store *xologorm.Store) {
+		ctx := context.Background()
+		alert := model.NewAlert(model.OrgID("org-state"), "u1", "state",
+			model.WithAlertQuery(`{type="proxy.request"}`),
+			model.WithAlertWindow(time.Hour),
+			model.WithAlertEnabled(true),
+		)
+		if err := store.CreateAlert(ctx, alert); err != nil {
+			t.Fatalf("CreateAlert: %v", err)
+		}
+		now := time.Now()
+
+		// The fast instance fires.
+		if ok, err := store.UpdateAlertState(ctx, alert.ID(), alert.State(), model.AlertStateFiring, nil, &now); err != nil || !ok {
+			t.Fatalf("expected the first transition to be written, got %v (%v)", ok, err)
+		}
+		// The slow one decided ok -> ok from the state it reloaded earlier.
+		if ok, err := store.UpdateAlertState(ctx, alert.ID(), alert.State(), model.AlertStateOK, nil, &now); err != nil || ok {
+			t.Fatalf("expected the stale transition to be dropped, got %v (%v)", ok, err)
+		}
+
+		current, err := store.GetAlertByID(ctx, alert.ID())
+		if err != nil {
+			t.Fatalf("GetAlertByID: %v", err)
+		}
+		if current.State() != model.AlertStateFiring {
+			t.Fatalf("expected firing to survive, got %q", current.State())
+		}
+	})
+}

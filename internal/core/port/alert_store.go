@@ -17,8 +17,12 @@ type AlertStore interface {
 	// periodic evaluator.
 	ListEnabledAlerts(ctx context.Context) ([]model.Alert, error)
 	// UpdateAlertState persists only the evaluation state of an alert, without
-	// touching its configuration or updated_at.
-	UpdateAlertState(ctx context.Context, id model.AlertID, state model.AlertState, pendingSince *time.Time, lastEvaluatedAt *time.Time) error
+	// touching its configuration or updated_at, when the alert is still in the
+	// state from which the transition was decided, and reports whether it
+	// wrote it. An evaluation outlasting its claim may find that another
+	// instance moved the alert meanwhile: its decision is then stale and is
+	// dropped instead of overwriting the other one.
+	UpdateAlertState(ctx context.Context, id model.AlertID, from, state model.AlertState, pendingSince *time.Time, lastEvaluatedAt *time.Time) (bool, error)
 	// ClaimAlertEvaluation reserves the evaluation of an alert at now for the
 	// caller: it moves last_evaluated_at to now when the alert was never
 	// evaluated or not within minAge, atomically, and reports whether it did.
