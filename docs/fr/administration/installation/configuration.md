@@ -19,6 +19,7 @@ Xolo se configure entièrement par variables d'environnement, préfixées `XOLO_
 | `XOLO_HTTP_SHUTDOWN_TIMEOUT` | `30s` | Délai d'arrêt gracieux : sur SIGTERM/SIGINT le serveur cesse d'accepter des connexions puis laisse ce délai aux requêtes en cours (complétions streamées comprises) avant de les couper. Le délai de grâce du conteneur (`stop_grace_period` Docker, `TimeoutStopSec` systemd) doit lui être supérieur. |
 | `XOLO_HTTP_SESSION_COOKIE_SECURE` | `false` | Passez à `true` derrière HTTPS. |
 | `XOLO_HTTP_RATE_LIMIT_*` | — | Limitation de débit HTTP par IP. |
+| `XOLO_HTTP_RATE_LIMIT_TRUSTED_PROXIES` | — | Adresses ou plages CIDR des mandataires placés devant l'instance (contrôleur d'ingress, répartiteur de charge), séparées par des virgules, par exemple la plage des pods d'un cluster Kubernetes. Renseignée, l'adresse du client est la première entrée de `X-Forwarded-For` qui n'est pas l'un d'eux en partant de la droite, et les en-têtes ne sont lus que sur une connexion venue d'un mandataire de confiance. Vide, c'est l'entrée la plus à gauche, que le client peut forger pour échapper à la limite. |
 
 ## Authentification
 

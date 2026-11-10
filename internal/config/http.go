@@ -1,6 +1,12 @@
 package config
 
-import "time"
+import (
+	"net/netip"
+	"strings"
+	"time"
+
+	"github.com/pkg/errors"
+)
 
 type HTTP struct {
 	BaseURL string `env:"BASE_URL,expand" envDefault:"/"`
@@ -116,8 +122,36 @@ type GiteaProvider struct {
 
 type HTTPRateLimit struct {
 	TrustHeaders    bool          `env:"TRUST_HEADERS" envDefault:"true"`
+	// TrustedProxies lists the addresses or CIDR ranges of the proxies in front
+	// of the instance (an ingress controller, a load balancer). Set, the client
+	// address is the right-most X-Forwarded-For entry outside them, which a
+	// client cannot forge; empty, it is the left-most entry, which it can.
+	TrustedProxies []string `env:"TRUSTED_PROXIES" envSeparator:","`
 	RequestInterval time.Duration `env:"REQUEST_INTERVAL,expand" envDefault:"1s"`
 	RequestMaxBurst int           `env:"REQUEST_MAX_BURST,expand" envDefault:"10"`
 	CacheSize       int           `env:"CACHE_SIZE,expand" envDefault:"50"`
 	CacheTTL        time.Duration `env:"CACHE_TTL,expand" envDefault:"1h"`
+}
+
+// TrustedProxyPrefixes parses TrustedProxies, a bare address standing for
+// itself alone.
+func (r HTTPRateLimit) TrustedProxyPrefixes() ([]netip.Prefix, error) {
+	prefixes := make([]netip.Prefix, 0, len(r.TrustedProxies))
+	for _, raw := range r.TrustedProxies {
+		raw = strings.TrimSpace(raw)
+		if raw == "" {
+			continue
+		}
+		if prefix, err := netip.ParsePrefix(raw); err == nil {
+			prefixes = append(prefixes, prefix.Masked())
+			continue
+		}
+		addr, err := netip.ParseAddr(raw)
+		if err != nil {
+			return nil, errors.Errorf("XOLO_HTTP_RATE_LIMIT_TRUSTED_PROXIES: %q is neither an address nor a CIDR range", raw)
+		}
+		addr = addr.Unmap()
+		prefixes = append(prefixes, netip.PrefixFrom(addr, addr.BitLen()))
+	}
+	return prefixes, nil
 }

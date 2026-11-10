@@ -27,3 +27,24 @@ func TestParse_SessionCookieMaxAge(t *testing.T) {
 		t.Errorf("max age: got %v, want 8h", got)
 	}
 }
+
+func TestTrustedProxyPrefixes(t *testing.T) {
+	limit := HTTPRateLimit{TrustedProxies: []string{"10.244.0.0/16", " 192.0.2.10 ", "", "2001:db8::/32", "10.1.2.3/8"}}
+	prefixes, err := limit.TrustedProxyPrefixes()
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	want := []string{"10.244.0.0/16", "192.0.2.10/32", "2001:db8::/32", "10.0.0.0/8"}
+	if len(prefixes) != len(want) {
+		t.Fatalf("got %v", prefixes)
+	}
+	for i, prefix := range prefixes {
+		if prefix.String() != want[i] {
+			t.Fatalf("prefix %d: got %s, want %s", i, prefix, want[i])
+		}
+	}
+
+	if _, err := (HTTPRateLimit{TrustedProxies: []string{"ingress"}}).TrustedProxyPrefixes(); err == nil {
+		t.Fatal("expected an error for a value that is no address")
+	}
+}

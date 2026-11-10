@@ -5,6 +5,7 @@ import (
 	"math"
 	"net"
 	"net/http"
+	"net/netip"
 	"strconv"
 	"strings"
 	"time"
@@ -14,7 +15,9 @@ import (
 	"golang.org/x/time/rate"
 )
 
-func Middleware(trustHeaders bool, interval time.Duration, maxBurst int, cacheSize int, ttl time.Duration) func(http.Handler) http.Handler {
+// Middleware limits the request rate per client address. With trustHeaders,
+// the address comes from X-Forwarded-For or X-Real-Ip (see clientAddr).
+func Middleware(trustHeaders bool, trustedProxies []netip.Prefix, interval time.Duration, maxBurst int, cacheSize int, ttl time.Duration) func(http.Handler) http.Handler {
 	cache := expirable.NewLRU[string, *rate.Limiter](cacheSize, nil, ttl)
 
 	getLimiter := func(remoteAddr string) *rate.Limiter {
@@ -28,27 +31,7 @@ func Middleware(trustHeaders bool, interval time.Duration, maxBurst int, cacheSi
 	}
 
 	getRemoteAddr := func(r *http.Request) string {
-		if trustHeaders {
-			xff := r.Header.Get("X-Forwarded-For")
-			if xff != "" {
-				ips := strings.Split(xff, ",")
-				if len(ips) > 0 {
-					return strings.TrimSpace(ips[0])
-				}
-			}
-
-			xri := r.Header.Get("X-Real-Ip")
-			if xri != "" {
-				return xri
-			}
-		}
-
-		ip, _, err := net.SplitHostPort(r.RemoteAddr)
-		if err != nil {
-			return r.RemoteAddr
-		}
-
-		return ip
+		return clientAddr(r, trustHeaders, trustedProxies)
 	}
 
 	return func(next http.Handler) http.Handler {
@@ -86,4 +69,78 @@ func Middleware(trustHeaders bool, interval time.Duration, maxBurst int, cacheSi
 			next.ServeHTTP(w, r)
 		})
 	}
+}
+
+// clientAddr returns the address a request is limited by.
+//
+// Without trusted proxies, the left-most X-Forwarded-For entry is taken, as
+// before: it is the client's own claim, which any client can forge to get a
+// fresh limit, but it keeps every client apart behind any number of proxies.
+//
+// With trusted proxies, the headers are only read when the connection comes
+// from one of them, and X-Forwarded-For is walked from the right, where each
+// proxy appends the address it received the request from: the first entry
+// that is not a trusted proxy is the client, whatever it wrote to the left.
+func clientAddr(r *http.Request, trustHeaders bool, trustedProxies []netip.Prefix) string {
+	peer := r.RemoteAddr
+	if host, _, err := net.SplitHostPort(r.RemoteAddr); err == nil {
+		peer = host
+	}
+
+	if !trustHeaders {
+		return peer
+	}
+
+	if len(trustedProxies) == 0 {
+		if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+			return strings.TrimSpace(strings.Split(xff, ",")[0])
+		}
+		if xri := r.Header.Get("X-Real-Ip"); xri != "" {
+			return xri
+		}
+		return peer
+	}
+
+	trusted := func(addr string) bool {
+		ip, err := netip.ParseAddr(strings.TrimSpace(addr))
+		if err != nil {
+			return false
+		}
+		ip = ip.Unmap()
+		for _, prefix := range trustedProxies {
+			if prefix.Contains(ip) {
+				return true
+			}
+		}
+		return false
+	}
+
+	if !trusted(peer) {
+		return peer
+	}
+
+	// Every X-Forwarded-For header counts, in order: a proxy may add its own
+	// header line instead of appending to the existing one.
+	var hops []string
+	for _, line := range r.Header.Values("X-Forwarded-For") {
+		for _, hop := range strings.Split(line, ",") {
+			if hop = strings.TrimSpace(hop); hop != "" {
+				hops = append(hops, hop)
+			}
+		}
+	}
+	for i := len(hops) - 1; i >= 0; i-- {
+		if !trusted(hops[i]) {
+			return hops[i]
+		}
+	}
+	if len(hops) > 0 {
+		// Every hop is a trusted proxy: the request started inside.
+		return hops[0]
+	}
+
+	if xri := strings.TrimSpace(r.Header.Get("X-Real-Ip")); xri != "" {
+		return xri
+	}
+	return peer
 }

@@ -71,8 +71,14 @@ func NewHTTPServerFromConfig(ctx context.Context, conf *config.Config) (*http.Se
 
 	assets := common.NewHandler()
 
+	trustedProxies, err := conf.HTTP.RateLimit.TrustedProxyPrefixes()
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+
 	rateLimiter := ratelimit.Middleware(
 		conf.HTTP.RateLimit.TrustHeaders,
+		trustedProxies,
 		conf.HTTP.RateLimit.RequestInterval,
 		conf.HTTP.RateLimit.RequestMaxBurst,
 		conf.HTTP.RateLimit.CacheSize,
