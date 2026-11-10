@@ -96,40 +96,37 @@ func TestReadinessCheckWiring(t *testing.T) {
 
 // Probes arriving together, or within the period, share one check: an
 // unauthenticated flood of /readyz must not become as many database pings.
+// The period is an hour so the assertion does not depend on scheduling.
 func TestReadinessCheckIsShared(t *testing.T) {
 	var calls atomic.Int32
 	release := make(chan struct{})
-	handler := withHealthProbes(http.NotFoundHandler(), func(context.Context) error {
+	shared := newSharedCheck(func(context.Context) error {
 		calls.Add(1)
 		<-release
 		return nil
-	})
+	}, time.Hour)
 
 	var wg sync.WaitGroup
-	codes := make(chan int, 20)
+	errs := make(chan error, 20)
 	for range 20 {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			recorder := httptest.NewRecorder()
-			handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, ReadinessPath, nil))
-			codes <- recorder.Code
+			errs <- shared.run(context.Background())
 		}()
 	}
-	// Let the probes queue behind the first check before it returns.
-	time.Sleep(50 * time.Millisecond)
 	close(release)
 	wg.Wait()
-	close(codes)
+	close(errs)
 
-	for code := range codes {
-		if code != http.StatusOK {
-			t.Fatalf("expected 200, got %d", code)
+	for err := range errs {
+		if err != nil {
+			t.Fatalf("expected success, got %v", err)
 		}
 	}
-
-	recorder := httptest.NewRecorder()
-	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, ReadinessPath, nil))
+	if err := shared.run(context.Background()); err != nil {
+		t.Fatalf("expected the cached success, got %v", err)
+	}
 	if got := calls.Load(); got != 1 {
 		t.Fatalf("expected one check for every probe of the period, got %d", got)
 	}

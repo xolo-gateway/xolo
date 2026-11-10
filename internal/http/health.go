@@ -61,7 +61,6 @@ func withHealthProbes(next http.Handler, check ReadinessCheck) http.Handler {
 
 		if r.URL.Path == ReadinessPath {
 			if err := ready.run(r.Context()); err != nil {
-				slog.WarnContext(r.Context(), "readiness check failed", slog.Any("error", errors.WithStack(err)))
 				http.Error(w, "not ready", http.StatusServiceUnavailable)
 				return
 			}
@@ -110,6 +109,11 @@ func (s *sharedCheck) run(ctx context.Context) error {
 
 		// Detached from the probe that started it: the others wait for it.
 		err := s.runOnce(context.WithoutCancel(ctx))
+		if err != nil {
+			// Logged where the check runs, not per probe: probes reusing the
+			// result would otherwise log a flood of identical failures.
+			slog.WarnContext(ctx, "readiness check failed", slog.Any("error", err))
+		}
 
 		s.mu.Lock()
 		s.err, s.checked, s.flight = err, time.Now(), nil
