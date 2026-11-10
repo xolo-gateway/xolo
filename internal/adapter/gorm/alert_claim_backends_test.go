@@ -151,4 +151,3 @@ func TestTransitionAlertOnEachBackend(t *testing.T) {
 		}
 	})
 }
-
