@@ -183,6 +183,10 @@ func (e *Evaluator) evaluateAlert(ctx context.Context, alert model.Alert) error 
 func (e *Evaluator) fire(ctx context.Context, alert model.Alert, events []model.Event, value float64) error {
 	incident := model.NewAlertIncident(alert.ID(), alert.OrgID(), value)
 	opened, err := e.incidentStore.OpenIncident(ctx, incident)
+	if errors.Is(err, port.ErrNotFound) {
+		// The alert was deleted since it was reloaded: nothing to fire.
+		return nil
+	}
 	if err != nil {
 		return errors.WithStack(err)
 	}
