@@ -149,10 +149,16 @@ func clientAddr(r *http.Request, trustHeaders bool, trustedProxies []netip.Prefi
 // normalizeHop trims an X-Forwarded-For entry and drops the port some load
 // balancers append ("203.0.113.9:4711", "[2001:db8::1]:4711"), so the entry
 // matches the trusted ranges and keys the limiter by address alone.
+//
+// An address is also written in its canonical, unmapped form: one client must
+// key one limiter whichever notation a proxy uses.
 func normalizeHop(hop string) string {
 	hop = strings.TrimSpace(hop)
 	if addrPort, err := netip.ParseAddrPort(hop); err == nil {
-		return addrPort.Addr().String()
+		return addrPort.Addr().Unmap().String()
+	}
+	if addr, err := netip.ParseAddr(hop); err == nil {
+		return addr.Unmap().String()
 	}
 	return hop
 }
