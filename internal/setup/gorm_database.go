@@ -70,12 +70,12 @@ var getGormDatabaseFromConfig = createFromConfigOnce(func(ctx context.Context, c
 	if usePostgres {
 		pool := conf.Storage.Database.Pool
 		internalDB.SetMaxOpenConns(pool.MaxOpenConns)
-		internalDB.SetMaxIdleConns(pool.MaxIdleConns)
+		internalDB.SetMaxIdleConns(pool.IdleConns())
 		internalDB.SetConnMaxLifetime(pool.ConnMaxLifetime)
 
 		slog.DebugContext(ctx, "using postgresql storage backend",
 			slog.Int("maxOpenConns", pool.MaxOpenConns),
-			slog.Int("maxIdleConns", pool.MaxIdleConns),
+			slog.Int("maxIdleConns", pool.IdleConns()),
 		)
 
 		return db, nil
@@ -135,12 +135,12 @@ var getGormReaderFromConfig = createFromConfigOnce(func(ctx context.Context, con
 
 	pool := conf.Storage.Database.Pool
 	internalDB.SetMaxOpenConns(pool.MaxOpenConns)
-	internalDB.SetMaxIdleConns(pool.MaxIdleConns)
+	internalDB.SetMaxIdleConns(pool.IdleConns())
 	internalDB.SetConnMaxLifetime(pool.ConnMaxLifetime)
 
 	slog.DebugContext(ctx, "using sqlite read pool",
 		slog.Int("maxOpenConns", pool.MaxOpenConns),
-		slog.Int("maxIdleConns", pool.MaxIdleConns),
+		slog.Int("maxIdleConns", pool.IdleConns()),
 	)
 
 	return db, nil
