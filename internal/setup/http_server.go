@@ -23,6 +23,7 @@ import (
 	"github.com/xolo-gateway/xolo/internal/http/middleware/tenant"
 	"github.com/xolo-gateway/xolo/internal/i18n"
 
+	"log/slog"
 	gohttp "net/http"
 	"time"
 )
@@ -71,8 +72,27 @@ func NewHTTPServerFromConfig(ctx context.Context, conf *config.Config) (*http.Se
 
 	assets := common.NewHandler()
 
+	trustedProxies, err := conf.HTTP.RateLimit.TrustedProxyPrefixes()
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+	if conf.HTTP.RateLimit.TrustHeaders && len(trustedProxies) == 0 {
+		slog.WarnContext(ctx, "the rate limiter trusts X-Forwarded-For without XOLO_HTTP_RATE_LIMIT_TRUSTED_PROXIES: any client can forge it to escape the limit")
+	}
+	if !conf.HTTP.RateLimit.TrustHeaders && len(trustedProxies) != 0 {
+		slog.WarnContext(ctx, "XOLO_HTTP_RATE_LIMIT_TRUSTED_PROXIES has no effect while XOLO_HTTP_RATE_LIMIT_TRUST_HEADERS is false")
+	}
+	for _, prefix := range trustedProxies {
+		// Trusting every address is trusting every client.
+		if conf.HTTP.RateLimit.TrustHeaders && prefix.Bits() == 0 {
+			slog.WarnContext(ctx, "XOLO_HTTP_RATE_LIMIT_TRUSTED_PROXIES trusts every address: any client can forge X-Forwarded-For to escape the limit", slog.String("range", prefix.String()))
+			break
+		}
+	}
+
 	rateLimiter := ratelimit.Middleware(
 		conf.HTTP.RateLimit.TrustHeaders,
+		trustedProxies,
 		conf.HTTP.RateLimit.RequestInterval,
 		conf.HTTP.RateLimit.RequestMaxBurst,
 		conf.HTTP.RateLimit.CacheSize,
