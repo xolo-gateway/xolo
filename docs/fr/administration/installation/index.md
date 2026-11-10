@@ -32,6 +32,26 @@ Deux points spécifiques à l'image :
 - `XOLO_PLUGINS_DIR` vaut `/plugins` par défaut. L'image embarque déjà les plugins officiels (`time-restriction`, `dummy-model`, `fuzzy-evaluator`, `request-inspector`, `complexity-scorer`, `text-classifier`, `llm-classifier`, `energy-estimator`, `budget-pressure`, `script-processor`, `pseudonymizer`, `mcp-bridge`, `system-prompt`) à cet emplacement.
 - Le port exposé est `3002`.
 
+### Sondes de santé
+
+Chaque instance répond sans authentification sur deux chemins, à destination
+d'un répartiteur de charge ou d'un orchestrateur :
+
+| Chemin     | Répond `200` quand…                                  | Usage                          |
+| ---------- | ---------------------------------------------------- | ------------------------------ |
+| `/healthz` | le processus sert des requêtes HTTP                  | sonde de vivacité (*liveness*) |
+| `/readyz`  | l'instance joint aussi sa base de données (en 1 s)   | sonde de disponibilité         |
+
+`/readyz` répond `503` tant que la base est injoignable : l'instance sort du
+répartiteur sans être redémarrée. Les deux chemins passent avant la résolution
+du locataire, la journalisation et les métriques HTTP : une sonde vise
+l'instance par son adresse, qui n'est le domaine d'aucun locataire.
+
+```yaml
+healthcheck:
+  test: ["CMD", "wget", "-qO-", "http://localhost:3002/readyz"]
+```
+
 Pour un déploiement avec `docker-compose`, ajoutez un service pointant vers cette image, un volume nommé pour `/data`, et les variables d'environnement décrites dans [Configuration](./configuration.md).
 
 ## Option 2 : binaire compilé depuis les sources
