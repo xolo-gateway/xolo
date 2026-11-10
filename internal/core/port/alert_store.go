@@ -24,7 +24,9 @@ type AlertStore interface {
 	// evaluated or not within minAge, atomically, and reports whether it did.
 	// Every instance sharing the database runs the evaluator; the claim makes
 	// one of them evaluate each alert per period, so two cannot each open an
-	// incident for the same crossing.
+	// incident for the same crossing. It compares timestamps written by
+	// different hosts: their clocks must agree well within minAge, which NTP
+	// gives by orders of magnitude.
 	ClaimAlertEvaluation(ctx context.Context, id model.AlertID, now time.Time, minAge time.Duration) (bool, error)
 }
 

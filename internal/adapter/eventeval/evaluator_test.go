@@ -244,3 +244,72 @@ func TestEvaluator_OneInstanceFires(t *testing.T) {
 		t.Fatalf("expected 1 incident, got %d", len(incidents))
 	}
 }
+
+// blockingEvents holds the first evaluation inside its event query until told
+// to go on, so another instance evaluates the same alert meanwhile.
+type blockingEvents struct {
+	*xologorm.Store
+	entered chan struct{}
+	release chan struct{}
+}
+
+func (s blockingEvents) QueryEvents(ctx context.Context, filter port.EventFilter) ([]model.Event, error) {
+	close(s.entered)
+	<-s.release
+	return s.Store.QueryEvents(ctx, filter)
+}
+
+// An evaluation outlasting the claim lets a second instance claim and fire the
+// same crossing while the first is still evaluating: the first must then
+// find the incident open instead of opening another one.
+func TestEvaluator_OverlappingEvaluationsOpenOneIncident(t *testing.T) {
+	db, err := gormpkg.Open(gormlite.Open(":memory:"), &gormpkg.Config{})
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	sqlDB, err := db.DB()
+	if err != nil {
+		t.Fatalf("db: %v", err)
+	}
+	// One connection: an in-memory SQLite database is per connection.
+	sqlDB.SetMaxOpenConns(1)
+	store := xologorm.NewStore(db)
+	ctx := context.Background()
+	org := model.OrgID("org5")
+
+	alert := model.NewAlert(org, "u1", "slow",
+		model.WithAlertQuery(`{type="proxy.request"}`),
+		model.WithAlertWindow(time.Hour),
+		model.WithAlertComparator(model.ComparatorGT),
+		model.WithAlertThreshold(0),
+		model.WithAlertEnabled(true),
+	)
+	if err := store.CreateAlert(ctx, alert); err != nil {
+		t.Fatalf("CreateAlert: %v", err)
+	}
+	recordN(t, store, ctx, org, model.EventTypeProxyRequest, 1)
+
+	blocking := blockingEvents{Store: store, entered: make(chan struct{}), release: make(chan struct{})}
+	slow := eventeval.NewEvaluator(store, store, blocking, time.Nanosecond)
+	fast := eventeval.NewEvaluator(store, store, store, time.Nanosecond)
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		slow.EvaluateAllForTest(ctx)
+	}()
+	<-blocking.entered
+	fast.EvaluateAllForTest(ctx)
+	close(blocking.release)
+	<-done
+
+	assertState(t, store, alert.ID(), model.AlertStateFiring)
+	orgID := org
+	incidents, err := store.ListIncidents(ctx, port.IncidentFilter{OrgID: &orgID})
+	if err != nil {
+		t.Fatalf("ListIncidents: %v", err)
+	}
+	if len(incidents) != 1 {
+		t.Fatalf("expected 1 incident, got %d", len(incidents))
+	}
+}
