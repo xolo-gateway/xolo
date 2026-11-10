@@ -32,6 +32,10 @@ type AlertStore interface {
 
 type AlertIncidentStore interface {
 	CreateIncident(ctx context.Context, incident model.AlertIncident) error
+	// OpenIncident creates incident unless its alert already has an open one,
+	// atomically, and reports whether it did: two instances firing the same
+	// crossing open a single incident. ErrNotFound when the alert is gone.
+	OpenIncident(ctx context.Context, incident model.AlertIncident) (bool, error)
 	ResolveIncident(ctx context.Context, id model.AlertIncidentID, resolvedAt time.Time) error
 	UpdateIncidentPeak(ctx context.Context, id model.AlertIncidentID, peak float64) error
 	// GetOpenIncident returns the currently firing (unresolved) incident for an

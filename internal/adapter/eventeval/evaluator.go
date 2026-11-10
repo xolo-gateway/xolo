@@ -81,13 +81,18 @@ func (e *Evaluator) evaluateAll(ctx context.Context) {
 		}
 		// Decide on the state as it is now, not as listed at the start of the
 		// pass: another instance may have evaluated it in between.
-		alert, err = e.alertStore.GetAlertByID(ctx, alert.ID())
+		alertID := alert.ID()
+		reloaded, err := e.alertStore.GetAlertByID(ctx, alertID)
 		if err != nil {
-			slog.ErrorContext(ctx, "alert evaluator: could not reload the claimed alert",
-				slog.String("alertID", string(alert.ID())),
-				slog.Any("error", errors.WithStack(err)))
+			// Deleted since the listing, typically: nothing to evaluate.
+			if !errors.Is(err, port.ErrNotFound) {
+				slog.ErrorContext(ctx, "alert evaluator: could not reload the claimed alert",
+					slog.String("alertID", string(alertID)),
+					slog.Any("error", errors.WithStack(err)))
+			}
 			continue
 		}
+		alert = reloaded
 		if err := e.evaluateAlert(ctx, alert); err != nil {
 			slog.ErrorContext(ctx, "alert evaluator: evaluation failed",
 				slog.String("alertID", string(alert.ID())),
@@ -174,16 +179,15 @@ func (e *Evaluator) evaluateAlert(ctx context.Context, alert model.Alert) error 
 // one is already open: an evaluation outlasting half the interval lets
 // another instance claim and fire the same crossing, and two open incidents
 // would leave one open for ever (GetOpenIncident only returns the newest).
+// The store makes the check and the insert one atomic step.
 func (e *Evaluator) fire(ctx context.Context, alert model.Alert, events []model.Event, value float64) error {
-	if _, err := e.incidentStore.GetOpenIncident(ctx, alert.ID()); err == nil {
-		return nil
-	} else if !errors.Is(err, port.ErrNotFound) {
+	incident := model.NewAlertIncident(alert.ID(), alert.OrgID(), value)
+	opened, err := e.incidentStore.OpenIncident(ctx, incident)
+	if err != nil {
 		return errors.WithStack(err)
 	}
-
-	incident := model.NewAlertIncident(alert.ID(), alert.OrgID(), value)
-	if err := e.incidentStore.CreateIncident(ctx, incident); err != nil {
-		return errors.WithStack(err)
+	if !opened {
+		return nil
 	}
 
 	ids := make([]model.EventID, 0, len(events))

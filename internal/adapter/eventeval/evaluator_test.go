@@ -298,7 +298,11 @@ func TestEvaluator_OverlappingEvaluationsOpenOneIncident(t *testing.T) {
 		defer close(done)
 		slow.EvaluateAllForTest(ctx)
 	}()
-	<-blocking.entered
+	select {
+	case <-blocking.entered:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the first evaluation never reached its event query")
+	}
 	fast.EvaluateAllForTest(ctx)
 	close(blocking.release)
 	<-done
@@ -312,4 +316,31 @@ func TestEvaluator_OverlappingEvaluationsOpenOneIncident(t *testing.T) {
 	if len(incidents) != 1 {
 		t.Fatalf("expected 1 incident, got %d", len(incidents))
 	}
+}
+
+// An alert deleted between the listing and the reload is skipped, not
+// dereferenced.
+func TestEvaluator_AlertDeletedAfterListing(t *testing.T) {
+	store := newStore(t)
+	ctx := context.Background()
+	alert := model.NewAlert(model.OrgID("org6"), "u1", "gone",
+		model.WithAlertQuery(`{type="proxy.request"}`),
+		model.WithAlertWindow(time.Hour),
+		model.WithAlertEnabled(true),
+	)
+	if err := store.CreateAlert(ctx, alert); err != nil {
+		t.Fatalf("CreateAlert: %v", err)
+	}
+	snapshot, err := store.ListEnabledAlerts(ctx)
+	if err != nil {
+		t.Fatalf("ListEnabledAlerts: %v", err)
+	}
+	listed := deletedOnReload{staleAlerts: staleAlerts{Store: store, snapshot: snapshot}}
+	eventeval.NewEvaluator(listed, store, store, time.Nanosecond).EvaluateAllForTest(ctx)
+}
+
+type deletedOnReload struct{ staleAlerts }
+
+func (deletedOnReload) GetAlertByID(context.Context, model.AlertID) (model.Alert, error) {
+	return nil, port.ErrNotFound
 }

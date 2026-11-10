@@ -8,6 +8,7 @@ import (
 	"github.com/xolo-gateway/xolo/internal/core/port"
 	"github.com/pkg/errors"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // CreateAlert implements port.AlertStore.
@@ -127,6 +128,46 @@ func (s *Store) CreateIncident(ctx context.Context, incident model.AlertIncident
 	return s.withRetry(ctx, true, func(ctx context.Context, db *gorm.DB) error {
 		return errors.WithStack(db.Create(fromAlertIncident(incident)).Error)
 	})
+}
+
+// OpenIncident implements port.AlertIncidentStore. The alert row is locked
+// for the transaction (PostgreSQL; SQLite runs one write transaction at a
+// time): the check for an open incident and the insert cannot interleave
+// with another instance's. Only that alert's row is locked.
+func (s *Store) OpenIncident(ctx context.Context, incident model.AlertIncident) (bool, error) {
+	var opened bool
+	err := s.withRetry(ctx, true, func(ctx context.Context, db *gorm.DB) error {
+		opened = false
+
+		query := db.Model(&Alert{}).Select("id").Where("id = ?", string(incident.AlertID()))
+		if !isSQLite(db) {
+			query = query.Clauses(clause.Locking{Strength: "UPDATE"})
+		}
+		var alert Alert
+		if err := query.First(&alert).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return errors.WithStack(port.ErrNotFound)
+			}
+			return errors.WithStack(err)
+		}
+
+		var open int64
+		if err := db.Model(&AlertIncident{}).
+			Where("alert_id = ? AND resolved_at IS NULL", string(incident.AlertID())).
+			Count(&open).Error; err != nil {
+			return errors.WithStack(err)
+		}
+		if open > 0 {
+			return nil
+		}
+
+		if err := db.Create(fromAlertIncident(incident)).Error; err != nil {
+			return errors.WithStack(err)
+		}
+		opened = true
+		return nil
+	})
+	return opened, err
 }
 
 // ResolveIncident implements port.AlertIncidentStore.
