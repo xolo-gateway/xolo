@@ -132,7 +132,12 @@ func localDayExpr(tx *gorm.DB) (string, []any) {
 	// PostgreSQL: AT TIME ZONE 'UTC' turns the timestamptz into a plain UTC
 	// timestamp regardless of the session timezone — without it the result would
 	// depend on how the connection is configured, and could be shifted twice.
-	return "to_char(created_at AT TIME ZONE 'UTC' + make_interval(secs => ?), 'YYYY-MM-DD')", []any{offsetSeconds}
+	//
+	// The offset is written as a literal, not bound: the expression appears in
+	// both the SELECT and the GROUP BY, and PostgreSQL refuses to group by an
+	// expression bound to another parameter than the selected one, even with
+	// the same value. It is an integer computed here, never user input.
+	return "to_char(created_at AT TIME ZONE 'UTC' + make_interval(secs => " + strconv.Itoa(offsetSeconds) + "), 'YYYY-MM-DD')", nil
 }
 
 // formatSecondsModifier renders a seconds offset the way SQLite's date
