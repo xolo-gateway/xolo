@@ -26,6 +26,9 @@ type Options struct {
 	// outermost. Tenant resolution lives here: authentication resolves a user
 	// within a tenant, so the tenant has to be known before any route runs.
 	Middlewares []func(http.Handler) http.Handler
+
+	// ReadinessCheck backs the readiness probe (see health.go).
+	ReadinessCheck ReadinessCheck
 }
 
 type OptionFunc func(opts *Options)

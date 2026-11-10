@@ -342,8 +342,14 @@ func NewHTTPServerFromConfig(ctx context.Context, conf *config.Config) (*http.Se
 		}),
 	)
 
+	readinessCheck, err := getReadinessCheckFromConfig(ctx, conf)
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+
 	options := []http.OptionFunc{
 		http.WithAddress(conf.HTTP.Address),
+		http.WithReadinessCheck(readinessCheck),
 		http.WithShutdownTimeout(conf.HTTP.ShutdownTimeout),
 		http.WithBaseURL(conf.HTTP.BaseURL),
 		// The language is resolved first so the tenant's error pages are
