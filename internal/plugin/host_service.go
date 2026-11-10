@@ -44,7 +44,15 @@ type XoloHostService struct {
 // UseConfigStore keeps the plugin UI config handoff in store instead of in
 // memory, so every instance sharing the database sees the same one.
 func (s *XoloHostService) UseConfigStore(store port.PluginUIConfigStore) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.configStore = store
+}
+
+func (s *XoloHostService) uiConfigStore() port.PluginUIConfigStore {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.configStore
 }
 
 // NewXoloHostService creates an XoloHostService.
@@ -174,8 +182,8 @@ func (s *XoloHostService) SaveConfig(ctx context.Context, req *proto.SaveConfigR
 // SeedConfig stores the config handed to the plugin UI (called before opening
 // it, and by the plugin UI when it saves).
 func (s *XoloHostService) SeedConfig(ctx context.Context, orgID, pluginName, configJSON string) error {
-	if s.configStore != nil {
-		return s.configStore.SavePluginUIConfig(ctx, orgID, pluginName, configJSON)
+	if store := s.uiConfigStore(); store != nil {
+		return store.SavePluginUIConfig(ctx, orgID, pluginName, configJSON)
 	}
 	s.mu.Lock()
 	s.configs[s.configKey(orgID, pluginName)] = configJSON
@@ -187,8 +195,8 @@ func (s *XoloHostService) SeedConfig(ctx context.Context, orgID, pluginName, con
 // after the plugin UI saves).
 func (s *XoloHostService) ReadConfig(ctx context.Context, orgID, pluginName string) (string, error) {
 	var cfg string
-	if s.configStore != nil {
-		stored, err := s.configStore.GetPluginUIConfig(ctx, orgID, pluginName)
+	if store := s.uiConfigStore(); store != nil {
+		stored, err := store.GetPluginUIConfig(ctx, orgID, pluginName)
 		if err != nil {
 			return "", err
 		}
