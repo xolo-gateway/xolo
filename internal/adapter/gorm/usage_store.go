@@ -20,19 +20,30 @@ import (
 // The record and the quota counters it feeds are written in the same
 // transaction: a counter that missed an insert would under-report spending
 // until the next backfill, and there is no backfill on the hot path.
+//
+// On PostgreSQL the counters are hot rows every request of an organization
+// updates: the record and every counter go in a single statement (see
+// recordUsagePostgres), so their row locks are held while it runs only.
 func (s *Store) RecordUsage(ctx context.Context, record model.UsageRecord) error {
-	return s.withRetry(ctx, true, func(ctx context.Context, db *gorm.DB) error {
-		row := fromUsageRecord(record)
-		if err := db.Create(row).Error; err != nil {
-			return errors.WithStack(err)
+	// withTx is false: one statement is atomic on its own on PostgreSQL, and
+	// SQLite opens its transaction below.
+	return s.withRetry(ctx, false, func(ctx context.Context, db *gorm.DB) error {
+		if !isSQLite(db) {
+			return recordUsagePostgres(ctx, db, record)
 		}
-		if err := incrementQuotaUsage(db, quotaUsageRows(record)); err != nil {
-			return err
-		}
-		if err := incrementPlanUsageHourly(db, row); err != nil {
-			return err
-		}
-		return incrementUsageDaily(db, row, record.Energy())
+		return db.Transaction(func(tx *gorm.DB) error {
+			row := fromUsageRecord(record)
+			if err := tx.Create(row).Error; err != nil {
+				return errors.WithStack(err)
+			}
+			if err := incrementQuotaUsage(tx, quotaUsageRows(record)); err != nil {
+				return err
+			}
+			if err := incrementPlanUsageHourly(tx, row); err != nil {
+				return err
+			}
+			return incrementUsageDaily(tx, row, record.Energy())
+		})
 	})
 }
 
