@@ -60,3 +60,24 @@ func TestTrustedProxyPrefixes(t *testing.T) {
 		t.Fatal("expected an error for a mapped range wider than the IPv4-mapped space")
 	}
 }
+
+// The list goes through the env tag and its comma separator, and a bad entry
+// stops the configuration from loading.
+func TestParse_TrustedProxies(t *testing.T) {
+	t.Setenv("XOLO_SECRET_KEY", testSecretKey)
+	t.Setenv("XOLO_HTTP_RATE_LIMIT_TRUSTED_PROXIES", "10.244.1.10,10.244.2.0/24")
+
+	conf, err := Parse()
+	if err != nil {
+		t.Fatalf("Parse failed: %v", err)
+	}
+	prefixes, err := conf.HTTP.RateLimit.TrustedProxyPrefixes()
+	if err != nil || len(prefixes) != 2 || prefixes[0].String() != "10.244.1.10/32" || prefixes[1].String() != "10.244.2.0/24" {
+		t.Fatalf("unexpected trusted proxies %v (%v)", prefixes, err)
+	}
+
+	t.Setenv("XOLO_HTTP_RATE_LIMIT_TRUSTED_PROXIES", "ingress-nginx")
+	if _, err := Parse(); err == nil {
+		t.Fatal("expected Parse to refuse an entry that is no address")
+	}
+}

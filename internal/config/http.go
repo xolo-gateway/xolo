@@ -128,7 +128,8 @@ type HTTPRateLimit struct {
 	// client outside them cannot forge; empty, it is the left-most entry, which
 	// any client can. A range that also covers clients (a whole pod network
 	// whose pods call the gateway) lets those clients forge it again: list the
-	// proxies' own addresses.
+	// proxies' own addresses. An IPv6 range spanning the IPv4-mapped space
+	// (::/0, ::ffff:0:0/96) covers the IPv4 addresses too.
 	TrustedProxies  []string      `env:"TRUSTED_PROXIES" envSeparator:","`
 	RequestInterval time.Duration `env:"REQUEST_INTERVAL,expand" envDefault:"1s"`
 	RequestMaxBurst int           `env:"REQUEST_MAX_BURST,expand" envDefault:"10"`
