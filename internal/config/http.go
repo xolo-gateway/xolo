@@ -170,6 +170,11 @@ func (r HTTPRateLimit) TrustedProxyPrefixes() ([]netip.Prefix, error) {
 		if err != nil {
 			return nil, errors.Errorf("XOLO_HTTP_RATE_LIMIT_TRUSTED_PROXIES: %q is neither an address nor a CIDR range", raw)
 		}
+		// A zone would be dropped by the prefix and match the address on any
+		// interface: refuse it rather than widen the trust silently.
+		if addr.Zone() != "" {
+			return nil, errors.Errorf("XOLO_HTTP_RATE_LIMIT_TRUSTED_PROXIES: %q carries a zone, which is not supported", raw)
+		}
 		addr = addr.Unmap()
 		prefixes = append(prefixes, netip.PrefixFrom(addr, addr.BitLen()))
 	}

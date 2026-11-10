@@ -1,6 +1,7 @@
 package config
 
 import (
+	"strings"
 	"testing"
 	"time"
 )
@@ -77,7 +78,12 @@ func TestParse_TrustedProxies(t *testing.T) {
 	}
 
 	t.Setenv("XOLO_HTTP_RATE_LIMIT_TRUSTED_PROXIES", "ingress-nginx")
-	if _, err := Parse(); err == nil {
-		t.Fatal("expected Parse to refuse an entry that is no address")
+	if _, err := Parse(); err == nil || !strings.Contains(err.Error(), `"ingress-nginx" is neither an address nor a CIDR range`) {
+		t.Fatalf("expected Parse to refuse the entry by name, got %v", err)
+	}
+
+	t.Setenv("XOLO_HTTP_RATE_LIMIT_TRUSTED_PROXIES", "fe80::1%eth0")
+	if _, err := Parse(); err == nil || !strings.Contains(err.Error(), "carries a zone") {
+		t.Fatalf("expected Parse to refuse a zoned address, got %v", err)
 	}
 }
