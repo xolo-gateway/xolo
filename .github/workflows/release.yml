@@ -38,16 +38,26 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO_OWNER: ${{ github.repository_owner }}
+
+  # A job of its own so that a failed announcement can be re-run alone,
+  # without running goreleaser again on a published tag.
+  announce:
+    needs: release
+    # Only for real tags. Secrets cannot be read from a job condition, so the
+    # missing-token check lives in the script call below.
+    if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
       - name: Announce on Matrix
-        # Only for real tags. Secrets cannot be read from a step condition, so
-        # the missing-token check lives in the script call below.
-        if: ${{ startsWith(github.ref, 'refs/tags/v') }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           MATRIX_ACCESS_TOKEN: ${{ secrets.MATRIX_ACCESS_TOKEN }}
           MATRIX_HOMESERVER: ${{ vars.MATRIX_HOMESERVER || 'https://matrix.org' }}
           MATRIX_ROOM: ${{ vars.MATRIX_ROOM || '#xolo-announces:matrix.org' }}
-          MATRIX_TXN_ID: ${{ github.ref_name }}-${{ github.run_id }}-${{ github.run_attempt }}
+          MATRIX_TXN_ID: ${{ github.ref_name }}-${{ github.run_id }}
         run: |
           if [ -z "$MATRIX_ACCESS_TOKEN" ]; then
             echo "MATRIX_ACCESS_TOKEN is not configured, skipping the announcement."

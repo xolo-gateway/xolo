@@ -24,7 +24,10 @@ room="${MATRIX_ROOM:?MATRIX_ROOM is required}"
 api() {
   local method="$1" path="$2"
   shift 2
+  # matrix.org answers 502/503 now and then: --retry covers them (and 429,
+  # honouring Retry-After) with an exponential backoff.
   curl --fail-with-body --silent --show-error \
+    --retry 6 --retry-max-time 300 \
     -X "$method" \
     -H "Authorization: Bearer ${MATRIX_ACCESS_TOKEN}" \
     -H "Content-Type: application/json" \
