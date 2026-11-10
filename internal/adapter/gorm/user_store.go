@@ -507,6 +507,14 @@ func deleteUsersWithin(db *gorm.DB, userIDs []string) (int64, error) {
 		}
 	}
 
+	// The personal plugin UI handoff is scoped "~:<user id>".
+	personalScopes := make([]string, 0, len(userIDs))
+	for _, id := range userIDs {
+		personalScopes = append(personalScopes, "~:"+id)
+	}
+	if err := db.Where("org_id IN ?", personalScopes).Delete(&PluginUIConfig{}).Error; err != nil {
+		return 0, errors.WithStack(err)
+	}
 	if err := db.Where("owner_id IN ?", userIDs).Delete(&AuthToken{}).Error; err != nil {
 		return 0, errors.WithStack(err)
 	}

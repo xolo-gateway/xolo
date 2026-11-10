@@ -197,6 +197,7 @@ func deleteOrgWithin(db *gorm.DB, id model.OrgID) error {
 		&VirtualModel{},
 		&Middleware{},
 		&PluginNodeSecret{},
+		&PluginUIConfig{},
 		&Provider{},
 		&LLMModel{},
 	}

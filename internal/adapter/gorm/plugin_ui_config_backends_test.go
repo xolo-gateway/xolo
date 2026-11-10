@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	xologorm "github.com/xolo-gateway/xolo/internal/adapter/gorm"
+	gormpkg "gorm.io/gorm"
 )
 
 func TestPluginUIConfigOnEachBackend(t *testing.T) {
@@ -43,6 +44,38 @@ func TestPluginUIConfigOnEachBackend(t *testing.T) {
 		}
 		if got, _ := store.GetPluginUIConfig(ctx, "org-1", "system-prompt"); got != large {
 			t.Fatalf("large config not round-tripped (%d bytes back)", len(got))
+		}
+	})
+}
+
+// Deleting an organization or a user removes its handoff rows, like the
+// other rows of its scope.
+func TestPluginUIConfigFollowsHardDeletes(t *testing.T) {
+	eachBackendDB(t, func(t *testing.T, db *gormpkg.DB) {
+		ctx := t.Context()
+		store := newSeededStore(t, db)
+		fixture := newOwnershipFixture(t, store)
+		personal := "~:" + string(fixture.user)
+
+		if err := store.SavePluginUIConfig(ctx, string(fixture.org), "mcp-bridge", `{"org":true}`); err != nil {
+			t.Fatalf("save org: %v", err)
+		}
+		if err := store.SavePluginUIConfig(ctx, personal, "mcp-bridge", `{"me":true}`); err != nil {
+			t.Fatalf("save personal: %v", err)
+		}
+
+		if err := store.DeleteOrg(ctx, fixture.org); err != nil {
+			t.Fatalf("DeleteOrg: %v", err)
+		}
+		if got, _ := store.GetPluginUIConfig(ctx, string(fixture.org), "mcp-bridge"); got != "" {
+			t.Fatalf("the deleted organization's handoff survived: %q", got)
+		}
+
+		if err := store.DeleteUser(ctx, fixture.user); err != nil {
+			t.Fatalf("DeleteUser: %v", err)
+		}
+		if got, _ := store.GetPluginUIConfig(ctx, personal, "mcp-bridge"); got != "" {
+			t.Fatalf("the deleted user's handoff survived: %q", got)
 		}
 	})
 }
