@@ -106,6 +106,11 @@ func recoveryReferences() []recoveryReference {
 			where: "org_id LIKE '~:%'", prefix: "~:", historical: true},
 		recoveryReference{table: "plugin_node_secrets", column: "key", family: "users",
 			where: "plugin_name = 'mcp-bridge' AND key LIKE 'oauth:%'", prefix: "oauth:", historical: true},
+		// The plugin UI config handoff is scoped like the plugin secrets.
+		recoveryReference{table: "plugin_ui_configs", column: "org_id", family: "organizations",
+			where: "org_id NOT LIKE '~:%'"},
+		recoveryReference{table: "plugin_ui_configs", column: "org_id", family: "users",
+			where: "org_id LIKE '~:%'", prefix: "~:", historical: true},
 	)
 	for _, t := range []string{"quota", "quota_usages"} {
 		for scope, family := range map[string]string{"org": "organizations", "user": "users"} {

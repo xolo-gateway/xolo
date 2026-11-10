@@ -37,6 +37,14 @@ func getPluginManagerFromConfig(ctx context.Context, conf *config.Config) (*plug
 			return
 		}
 		mgr := plugin.NewManager(conf.Plugins.Dir, conf.Plugins.MemLimit, conf.Plugins.MaxMessageSize, conf.Plugins.RestartCooldown, providerStore, virtualModelStore, secretStore, eventEmitter, conf.SecretKey)
+		// The handoff with the plugin UIs spans several requests, which
+		// several instances may serve: it lives in the shared database.
+		uiConfigStore, err := getGormStoreFromConfig(ctx, conf)
+		if err != nil {
+			pluginManagerErr = err
+			return
+		}
+		mgr.HostService().UseConfigStore(uiConfigStore)
 		if err := mgr.Start(ctx); err != nil {
 			pluginManagerErr = err
 			return

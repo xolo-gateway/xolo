@@ -158,6 +158,8 @@ func MigrateDatabase(ctx context.Context, db *gorm.DB, artifact *RecoveryArtifac
 					&ExchangeRate{},
 					// Plugin node secrets
 					&PluginNodeSecret{},
+					// Plugin UI config handoff
+					&PluginUIConfig{},
 					// Provisioning audit
 					&MutationAudit{},
 					// Domain routing
@@ -817,6 +819,19 @@ func schemaMigrations(artifact *RecoveryArtifact) []*gormigrate.Migration {
 				return errors.WithStack(tx.Migrator().DropTable(&CacheGeneration{}))
 			},
 		},
+		{
+			// Add plugin_ui_configs, the handoff between the pipeline editor and
+			// the plugin UIs, kept in memory before: with several instances, its
+			// steps landed on instances that did not hold it. An old server
+			// keeps its own copy in memory, as before.
+			ID: pluginUIConfigsMigrationID,
+			Migrate: func(tx *gorm.DB) error {
+				return errors.WithStack(tx.AutoMigrate(&PluginUIConfig{}))
+			},
+			Rollback: func(tx *gorm.DB) error {
+				return errors.WithStack(tx.Migrator().DropTable(&PluginUIConfig{}))
+			},
+		},
 	}
 }
 
@@ -833,4 +848,5 @@ const (
 	usageEnergyMigrationID            = "202610300004"
 	planUsageHourlyMigrationID        = "202611060001"
 	cacheGenerationsMigrationID       = "202611100001"
+	pluginUIConfigsMigrationID        = "202611100002"
 )

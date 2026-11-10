@@ -16,8 +16,10 @@ import (
 )
 
 // XoloHostService implements proto.XoloHostServiceServer.
-// Config persistence uses an in-memory store keyed by (orgID, pluginName).
-// This config is used by the plugin HTTP UI for display/edit; the authoritative
+// The config handed to the plugin HTTP UI for display/edit, keyed by (orgID,
+// pluginName), lives in a port.PluginUIConfigStore once UseConfigStore is
+// called, which the server does with the shared database; an in-memory map
+// stands in for it otherwise, for one instance only. The authoritative
 // per-node config lives in the pipeline graph (PluginNodeData.Config).
 //
 // GetSecret/SetSecret/DeleteSecret are a separate, persisted channel scoped
@@ -32,8 +34,25 @@ type XoloHostService struct {
 	secretStore       port.SecretStore
 	eventEmitter      port.EventEmitter
 	secretKey         string
-	mu                sync.RWMutex
-	configs           map[string]string // key: orgID+":"+pluginName → JSON
+	// configStore holds the UI config handoff when set; configs stands in
+	// for it otherwise, in tests and tools, and only works on one instance.
+	configStore port.PluginUIConfigStore
+	mu          sync.RWMutex
+	configs     map[string]string // key: orgID+":"+pluginName → JSON
+}
+
+// UseConfigStore keeps the plugin UI config handoff in store instead of in
+// memory, so every instance sharing the database sees the same one.
+func (s *XoloHostService) UseConfigStore(store port.PluginUIConfigStore) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.configStore = store
+}
+
+func (s *XoloHostService) uiConfigStore() port.PluginUIConfigStore {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.configStore
 }
 
 // NewXoloHostService creates an XoloHostService.
@@ -88,11 +107,18 @@ type ModelCompletionResult struct {
 
 // SetModelCompleter enables the ChatCompletion RPC. Without it the RPC answers
 // Unavailable, which plugins must treat as "no model access on this host".
-func (s *XoloHostService) SetModelCompleter(c ModelCompleter) { s.completer = c }
+func (s *XoloHostService) SetModelCompleter(c ModelCompleter) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.completer = c
+}
 
 // ChatCompletion calls a model of the org for a plugin.
 func (s *XoloHostService) ChatCompletion(ctx context.Context, req *proto.HostChatCompletionRequest) (*proto.HostChatCompletionResponse, error) {
-	if s.completer == nil {
+	s.mu.RLock()
+	completer := s.completer
+	s.mu.RUnlock()
+	if completer == nil {
 		return nil, status.Error(codes.Unavailable, "chat completion is not available on this host")
 	}
 	if req.GetOrgId() == "" || req.GetModel() == "" {
@@ -120,7 +146,7 @@ func (s *XoloHostService) ChatCompletion(ctx context.Context, req *proto.HostCha
 		mreq.MaxTokens = &n
 	}
 
-	res, err := s.completer.Complete(ctx, mreq)
+	res, err := completer.Complete(ctx, mreq)
 	if err != nil {
 		slog.WarnContext(ctx, "host service: chat completion failed", slog.String("model", req.Model), slog.Any("error", err))
 		// A model of another kind is the plugin's configuration mistake: a
@@ -142,42 +168,55 @@ func (s *XoloHostService) configKey(orgID, pluginName string) string {
 	return orgID + ":" + pluginName
 }
 
-// GetConfig returns the in-memory config for the plugin (defaults to "{}").
-func (s *XoloHostService) GetConfig(_ context.Context, req *proto.GetConfigRequest) (*proto.GetConfigResponse, error) {
-	s.mu.RLock()
-	cfg, ok := s.configs[s.configKey(req.OrgId, req.PluginName)]
-	s.mu.RUnlock()
-	if !ok || cfg == "" {
-		cfg = "{}"
+// GetConfig returns the config seeded for the plugin UI (defaults to "{}").
+func (s *XoloHostService) GetConfig(ctx context.Context, req *proto.GetConfigRequest) (*proto.GetConfigResponse, error) {
+	cfg, err := s.ReadConfig(ctx, req.OrgId, req.PluginName)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "read config: %v", err)
 	}
 	return &proto.GetConfigResponse{ConfigJson: cfg}, nil
 }
 
-// SaveConfig persists the plugin config in memory so the UI can read it back.
-func (s *XoloHostService) SaveConfig(_ context.Context, req *proto.SaveConfigRequest) (*proto.SaveConfigResponse, error) {
-	s.mu.Lock()
-	s.configs[s.configKey(req.OrgId, req.PluginName)] = req.ConfigJson
-	s.mu.Unlock()
+// SaveConfig stores the plugin config so the editor can read it back.
+func (s *XoloHostService) SaveConfig(ctx context.Context, req *proto.SaveConfigRequest) (*proto.SaveConfigResponse, error) {
+	if err := s.SeedConfig(ctx, req.OrgId, req.PluginName, req.ConfigJson); err != nil {
+		return nil, status.Errorf(codes.Internal, "save config: %v", err)
+	}
 	slog.Debug("host service: config saved", slog.String("plugin", req.PluginName))
 	return &proto.SaveConfigResponse{}, nil
 }
 
-// SeedConfig pre-populates the in-memory config (called before opening the plugin UI).
-func (s *XoloHostService) SeedConfig(orgID, pluginName, configJSON string) {
+// SeedConfig stores the config handed to the plugin UI (called before opening
+// it, and by the plugin UI when it saves).
+func (s *XoloHostService) SeedConfig(ctx context.Context, orgID, pluginName, configJSON string) error {
+	if store := s.uiConfigStore(); store != nil {
+		return store.SavePluginUIConfig(ctx, orgID, pluginName, configJSON)
+	}
 	s.mu.Lock()
 	s.configs[s.configKey(orgID, pluginName)] = configJSON
 	s.mu.Unlock()
+	return nil
 }
 
-// ReadConfig retrieves the in-memory config (called after the plugin UI saves).
-func (s *XoloHostService) ReadConfig(orgID, pluginName string) string {
-	s.mu.RLock()
-	cfg := s.configs[s.configKey(orgID, pluginName)]
-	s.mu.RUnlock()
-	if cfg == "" {
-		return "{}"
+// ReadConfig retrieves the stored config, "{}" when there is none (called
+// after the plugin UI saves).
+func (s *XoloHostService) ReadConfig(ctx context.Context, orgID, pluginName string) (string, error) {
+	var cfg string
+	if store := s.uiConfigStore(); store != nil {
+		stored, err := store.GetPluginUIConfig(ctx, orgID, pluginName)
+		if err != nil {
+			return "", err
+		}
+		cfg = stored
+	} else {
+		s.mu.RLock()
+		cfg = s.configs[s.configKey(orgID, pluginName)]
+		s.mu.RUnlock()
 	}
-	return cfg
+	if cfg == "" {
+		return "{}", nil
+	}
+	return cfg, nil
 }
 
 func (s *XoloHostService) ListModels(ctx context.Context, req *proto.ListModelsForOrgRequest) (*proto.ListModelsForOrgResponse, error) {
