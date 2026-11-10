@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/pkg/errors"
 	"github.com/xolo-gateway/xolo/internal/core/model"
@@ -58,10 +59,19 @@ func recordUsagePostgres(ctx context.Context, db *gorm.DB, record model.UsageRec
 	if err != nil {
 		return err
 	}
-	if _, err := db.Statement.ConnPool.ExecContext(ctx, query, vars...); err != nil {
-		return errors.WithStack(err)
-	}
-	return nil
+	// Run on the connection pool directly — gorm's Exec would rewrite the
+	// $n placeholders — but traced through its logger, like any statement,
+	// for the SQL and slow query logs.
+	begin := time.Now()
+	result, err := db.Statement.ConnPool.ExecContext(ctx, query, vars...)
+	db.Logger.Trace(ctx, begin, func() (string, int64) {
+		var rows int64
+		if result != nil {
+			rows, _ = result.RowsAffected()
+		}
+		return db.Dialector.Explain(query, vars...), rows
+	}, err)
+	return errors.WithStack(err)
 }
 
 var placeholder = regexp.MustCompile(`\$(\d+)`)

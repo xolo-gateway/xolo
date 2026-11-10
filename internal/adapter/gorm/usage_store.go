@@ -25,28 +25,25 @@ import (
 // updates: the record and every counter go in a single statement (see
 // recordUsagePostgres), so their row locks are held while it runs only.
 func (s *Store) RecordUsage(ctx context.Context, record model.UsageRecord) error {
-	db, err := s.getDatabase(ctx)
-	if err != nil {
-		return errors.WithStack(err)
-	}
-	if !isSQLite(db) {
-		// One statement is atomic on its own: no transaction to open.
-		return s.withRetry(ctx, false, func(ctx context.Context, db *gorm.DB) error {
+	// withTx is false: one statement is atomic on its own on PostgreSQL, and
+	// SQLite opens its transaction below.
+	return s.withRetry(ctx, false, func(ctx context.Context, db *gorm.DB) error {
+		if !isSQLite(db) {
 			return recordUsagePostgres(ctx, db, record)
+		}
+		return db.Transaction(func(tx *gorm.DB) error {
+			row := fromUsageRecord(record)
+			if err := tx.Create(row).Error; err != nil {
+				return errors.WithStack(err)
+			}
+			if err := incrementQuotaUsage(tx, quotaUsageRows(record)); err != nil {
+				return err
+			}
+			if err := incrementPlanUsageHourly(tx, row); err != nil {
+				return err
+			}
+			return incrementUsageDaily(tx, row, record.Energy())
 		})
-	}
-	return s.withRetry(ctx, true, func(ctx context.Context, db *gorm.DB) error {
-		row := fromUsageRecord(record)
-		if err := db.Create(row).Error; err != nil {
-			return errors.WithStack(err)
-		}
-		if err := incrementQuotaUsage(db, quotaUsageRows(record)); err != nil {
-			return err
-		}
-		if err := incrementPlanUsageHourly(db, row); err != nil {
-			return err
-		}
-		return incrementUsageDaily(db, row, record.Energy())
 	})
 }
 
