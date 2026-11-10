@@ -67,6 +67,8 @@ var lifecycleTables = []lifecycleTable{
 	{table: "event_settings", org: "r.org_id", key: []string{"org_id"}},
 	// A personal secret is scoped "~:<user id>" instead of an organization.
 	{table: "plugin_node_secrets", org: "CASE WHEN r.org_id NOT LIKE '~:%' THEN r.org_id END", member: "CASE WHEN r.org_id LIKE '~:%' THEN substr(r.org_id, 3) END", secret: []string{"value_encrypted"}},
+	// Transient editor state, scoped like the secrets: purged, not exported.
+	{table: "plugin_ui_configs", org: "CASE WHEN r.org_id NOT LIKE '~:%' THEN r.org_id END", member: "CASE WHEN r.org_id LIKE '~:%' THEN substr(r.org_id, 3) END", key: []string{"org_id", "plugin_name"}, unexported: true},
 	{table: "alerts", org: "r.org_id", member: "CASE WHEN r.scope = 'personal' THEN r.owner_id END", family: model.FamilyAlert},
 	{table: "alert_incidents", org: "r.org_id"},
 	// A team member budget is scoped "<team id>:<user id>". The LIKE patterns
@@ -179,7 +181,7 @@ func (t lifecycleTable) scopePredicate(d ResourceDeletion) (string, []any) {
 var purgeOrder = []string{
 	"webhook_deliveries", "webhook_subscriptions", "oidc_sessions",
 	"events", "usage_records", "usage_daily", "plan_usage_hourly", "quota_usages", "alert_incidents", "alerts", "quota",
-	"plugin_node_secrets", "event_settings",
+	"plugin_node_secrets", "plugin_ui_configs", "event_settings",
 	"team_member_roles", "team_members", "team_middlewares", "team_model_grants", "teams",
 	"middlewares", "virtual_models", "role_permissions", "llm_models", "providers",
 	"invite_tokens", "auth_tokens", "application_roles", "membership_roles",

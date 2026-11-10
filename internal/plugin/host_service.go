@@ -32,8 +32,17 @@ type XoloHostService struct {
 	secretStore       port.SecretStore
 	eventEmitter      port.EventEmitter
 	secretKey         string
-	mu                sync.RWMutex
-	configs           map[string]string // key: orgID+":"+pluginName → JSON
+	// configStore holds the UI config handoff when set; configs stands in
+	// for it otherwise, in tests and tools, and only works on one instance.
+	configStore port.PluginUIConfigStore
+	mu          sync.RWMutex
+	configs     map[string]string // key: orgID+":"+pluginName → JSON
+}
+
+// UseConfigStore keeps the plugin UI config handoff in store instead of in
+// memory, so every instance sharing the database sees the same one.
+func (s *XoloHostService) UseConfigStore(store port.PluginUIConfigStore) {
+	s.configStore = store
 }
 
 // NewXoloHostService creates an XoloHostService.
@@ -142,42 +151,55 @@ func (s *XoloHostService) configKey(orgID, pluginName string) string {
 	return orgID + ":" + pluginName
 }
 
-// GetConfig returns the in-memory config for the plugin (defaults to "{}").
-func (s *XoloHostService) GetConfig(_ context.Context, req *proto.GetConfigRequest) (*proto.GetConfigResponse, error) {
-	s.mu.RLock()
-	cfg, ok := s.configs[s.configKey(req.OrgId, req.PluginName)]
-	s.mu.RUnlock()
-	if !ok || cfg == "" {
-		cfg = "{}"
+// GetConfig returns the config seeded for the plugin UI (defaults to "{}").
+func (s *XoloHostService) GetConfig(ctx context.Context, req *proto.GetConfigRequest) (*proto.GetConfigResponse, error) {
+	cfg, err := s.ReadConfig(ctx, req.OrgId, req.PluginName)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "read config: %v", err)
 	}
 	return &proto.GetConfigResponse{ConfigJson: cfg}, nil
 }
 
-// SaveConfig persists the plugin config in memory so the UI can read it back.
-func (s *XoloHostService) SaveConfig(_ context.Context, req *proto.SaveConfigRequest) (*proto.SaveConfigResponse, error) {
-	s.mu.Lock()
-	s.configs[s.configKey(req.OrgId, req.PluginName)] = req.ConfigJson
-	s.mu.Unlock()
+// SaveConfig stores the plugin config so the editor can read it back.
+func (s *XoloHostService) SaveConfig(ctx context.Context, req *proto.SaveConfigRequest) (*proto.SaveConfigResponse, error) {
+	if err := s.SeedConfig(ctx, req.OrgId, req.PluginName, req.ConfigJson); err != nil {
+		return nil, status.Errorf(codes.Internal, "save config: %v", err)
+	}
 	slog.Debug("host service: config saved", slog.String("plugin", req.PluginName))
 	return &proto.SaveConfigResponse{}, nil
 }
 
-// SeedConfig pre-populates the in-memory config (called before opening the plugin UI).
-func (s *XoloHostService) SeedConfig(orgID, pluginName, configJSON string) {
+// SeedConfig stores the config handed to the plugin UI (called before opening
+// it, and by the plugin UI when it saves).
+func (s *XoloHostService) SeedConfig(ctx context.Context, orgID, pluginName, configJSON string) error {
+	if s.configStore != nil {
+		return s.configStore.SavePluginUIConfig(ctx, orgID, pluginName, configJSON)
+	}
 	s.mu.Lock()
 	s.configs[s.configKey(orgID, pluginName)] = configJSON
 	s.mu.Unlock()
+	return nil
 }
 
-// ReadConfig retrieves the in-memory config (called after the plugin UI saves).
-func (s *XoloHostService) ReadConfig(orgID, pluginName string) string {
-	s.mu.RLock()
-	cfg := s.configs[s.configKey(orgID, pluginName)]
-	s.mu.RUnlock()
-	if cfg == "" {
-		return "{}"
+// ReadConfig retrieves the stored config, "{}" when there is none (called
+// after the plugin UI saves).
+func (s *XoloHostService) ReadConfig(ctx context.Context, orgID, pluginName string) (string, error) {
+	var cfg string
+	if s.configStore != nil {
+		stored, err := s.configStore.GetPluginUIConfig(ctx, orgID, pluginName)
+		if err != nil {
+			return "", err
+		}
+		cfg = stored
+	} else {
+		s.mu.RLock()
+		cfg = s.configs[s.configKey(orgID, pluginName)]
+		s.mu.RUnlock()
 	}
-	return cfg
+	if cfg == "" {
+		return "{}", nil
+	}
+	return cfg, nil
 }
 
 func (s *XoloHostService) ListModels(ctx context.Context, req *proto.ListModelsForOrgRequest) (*proto.ListModelsForOrgResponse, error) {

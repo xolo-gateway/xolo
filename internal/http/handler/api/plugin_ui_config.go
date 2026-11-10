@@ -59,7 +59,10 @@ func (h *Handler) handleSeedPluginUIConfig(w http.ResponseWriter, r *http.Reques
 		body.ConfigJSON = "{}"
 	}
 
-	hs.HostService().SeedConfig(string(org.ID()), pluginName, body.ConfigJSON)
+	if err := hs.HostService().SeedConfig(r.Context(), string(org.ID()), pluginName, body.ConfigJSON); err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -95,7 +98,10 @@ func (h *Handler) handleSeedPersonalPluginUIConfig(w http.ResponseWriter, r *htt
 		body.ConfigJSON = "{}"
 	}
 
-	hs.HostService().SeedConfig("~:"+string(user.ID()), pluginName, body.ConfigJSON)
+	if err := hs.HostService().SeedConfig(r.Context(), "~:"+string(user.ID()), pluginName, body.ConfigJSON); err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -120,7 +126,11 @@ func (h *Handler) handleReadPersonalPluginUIConfig(w http.ResponseWriter, r *htt
 		return
 	}
 
-	cfgJSON := hs.HostService().ReadConfig("~:"+string(user.ID()), pluginName)
+	cfgJSON, err := hs.HostService().ReadConfig(r.Context(), "~:"+string(user.ID()), pluginName)
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]string{"configJson": cfgJSON})
 }
 
@@ -151,6 +161,10 @@ func (h *Handler) handleReadPluginUIConfig(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	cfgJSON := hs.HostService().ReadConfig(string(org.ID()), pluginName)
+	cfgJSON, err := hs.HostService().ReadConfig(r.Context(), string(org.ID()), pluginName)
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]string{"configJson": cfgJSON})
 }
