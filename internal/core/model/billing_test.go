@@ -1,6 +1,7 @@
 package model
 
 import (
+	"math"
 	"testing"
 	"time"
 )
@@ -783,5 +784,114 @@ func TestComputeFairShare_ShareThresholdNeverNarrowsAShare(t *testing.T) {
 	without.ShareThreshold = 0
 	if got, want := ComputeFairShare(p), ComputeFairShare(without); got != want {
 		t.Errorf("allocation = %+v, want %+v: the threshold only widens", got, want)
+	}
+}
+
+func TestComputeFairShare_OpenPlanIsPacedOnAMultipleOfTheShare(t *testing.T) {
+	// The production case of November: a pool 60 % full, ten active members
+	// of seventeen, one of them holding most of it. Unbounded, the open plan
+	// let them reach the threshold, then refused them until the reset.
+	p := FairShareParams{
+		Budget:              120_000_000,
+		TotalMembers:        17,
+		ActiveUsers:         10,
+		UsedTotal:           72_000_000,
+		UserUsed:            40_000_000,
+		Elapsed:             0.6,
+		Reserve:             DefaultReserveRatio,
+		Slack:               DefaultPaceSlack,
+		HappyHourStart:      DefaultHappyHourStart,
+		ShareThreshold:      0.7,
+		OpenShareMultiplier: 2,
+	}
+	got := ComputeFairShare(p)
+	if got.Share <= 0 || got.Share >= p.UserUsed {
+		t.Fatalf("share = %d, want a positive share under the user's %d", got.Share, p.UserUsed)
+	}
+	want := int64(2 * float64(got.Share) * (0.6 + DefaultPaceSlack))
+	if got.Mode != FairShareModeOpenPaced || got.Allowance != want {
+		t.Errorf("allocation = %d (%s), want %d open_paced: twice the share at 75 %% of the window", got.Allowance, got.Mode, want)
+	}
+
+	// The ceiling is released as the window elapses, up to the whole multiple.
+	p.Elapsed = 0.9
+	if late := ComputeFairShare(p); late.Allowance != 2*late.Share {
+		t.Errorf("allowance = %d, want %d: the whole multiple once elapsed+slack reaches 1", late.Allowance, 2*late.Share)
+	}
+
+	// A user under the ceiling keeps the room under the threshold.
+	p.Elapsed = 0.6
+	p.UserUsed = 1_000_000
+	if open := ComputeFairShare(p); open.Mode != FairShareModeOpen && open.Mode != FairShareModeOpenPaced {
+		t.Errorf("mode = %s, want an open plan for a light user", open.Mode)
+	}
+}
+
+func TestComputeFairShare_OpenCeilingNeverNarrowsAShare(t *testing.T) {
+	// Early in the window, the paced ceiling falls under the share itself:
+	// the share stands, as without a threshold.
+	p := FairShareParams{
+		Budget:              1000,
+		TotalMembers:        2,
+		ActiveUsers:         2,
+		UsedTotal:           100,
+		UserUsed:            100,
+		Elapsed:             0,
+		Reserve:             DefaultReserveRatio,
+		Slack:               0,
+		HappyHourStart:      DefaultHappyHourStart,
+		ShareThreshold:      0.7,
+		OpenShareMultiplier: 2,
+	}
+	without := p
+	without.ShareThreshold = 0
+	if got, want := ComputeFairShare(p), ComputeFairShare(without); got != want {
+		t.Errorf("allocation = %+v, want %+v: the ceiling only bounds what the threshold widens", got, want)
+	}
+}
+
+func TestComputeFairShare_OpenCeilingIsNotPacedOnASlidingWindow(t *testing.T) {
+	p := FairShareParams{
+		Budget:              1000,
+		TotalMembers:        4,
+		ActiveUsers:         4,
+		UsedTotal:           400,
+		UserUsed:            400,
+		Elapsed:             -1,
+		Reserve:             DefaultReserveRatio,
+		HappyHourStart:      DefaultHappyHourStart,
+		ShareThreshold:      0.9,
+		OpenShareMultiplier: 3,
+	}
+	got := ComputeFairShare(p)
+	if got.Allowance != 3*got.Share || got.Mode != FairShareModeOpenPaced {
+		t.Errorf("allocation = %d (%s), want %d open_paced: no clock to pace a sliding window on", got.Allowance, got.Mode, 3*got.Share)
+	}
+}
+
+func TestPlanConstraint_FairShareParamsFor_OpenShareMultiplier(t *testing.T) {
+	var c PlanConstraint
+	if p := c.FairShareParamsFor(FairShareParams{}); p.OpenShareMultiplier != DefaultOpenShareMultiplier {
+		t.Errorf("multiplier = %v, want the default %v", p.OpenShareMultiplier, DefaultOpenShareMultiplier)
+	}
+	m := 5.0
+	c.OpenShareMultiplier = &m
+	if p := c.FairShareParamsFor(FairShareParams{}); p.OpenShareMultiplier != 5 {
+		t.Errorf("multiplier = %v, want 5", p.OpenShareMultiplier)
+	}
+}
+
+func TestValidOpenShareMultiplier(t *testing.T) {
+	for _, tc := range []struct {
+		v    float64
+		want bool
+	}{{1, true}, {2.5, true}, {MaxOpenShareMultiplier, true}, {0.5, false}, {0, false}, {-1, false}, {MaxOpenShareMultiplier + 1, false}, {math.NaN(), false}} {
+		v := tc.v
+		if got := ValidOpenShareMultiplier(&v); got != tc.want {
+			t.Errorf("ValidOpenShareMultiplier(%v) = %v, want %v", tc.v, got, tc.want)
+		}
+	}
+	if !ValidOpenShareMultiplier(nil) {
+		t.Error("unset multiplier refused, want accepted: it means the default")
 	}
 }

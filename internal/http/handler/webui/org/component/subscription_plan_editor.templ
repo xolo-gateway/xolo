@@ -40,6 +40,7 @@ import (
 //   - plan_c{i}_happy_hour_start     (percent 1-100, empty = allocator default; 100 disables)
 //   - plan_c{i}_happy_hour_max_lead  (duration, e.g. "1h", "2d"; empty = allocator default)
 //   - plan_c{i}_share_threshold      (percent 0-100, empty = shares from the first request)
+//   - plan_c{i}_open_share_multiplier (shares 1-100, empty = allocator default)
 //   - plan_c{i}_scope                ("provider", "model": each upstream model metered on its own, or "shared": one budget, each model weighted by its own)
 //   - plan_c{i}_model_budgets        (one "model = budget" override per line, see parsePlanModelBudgets)
 // submitted, when not nil, is the form as it was posted: the page is being
@@ -122,6 +123,7 @@ templ planConstraintRow(idx int, c model.PlanConstraint, readonly bool, submitte
 	{{ happyStartName := "plan_c" + idxKey + "_happy_hour_start" }}
 	{{ happyLeadName := "plan_c" + idxKey + "_happy_hour_max_lead" }}
 	{{ shareThresholdName := "plan_c" + idxKey + "_share_threshold" }}
+	{{ openMultiplierName := "plan_c" + idxKey + "_open_share_multiplier" }}
 	{{ scopeName := "plan_c" + idxKey + "_scope" }}
 	{{ modelBudgetsName := "plan_c" + idxKey + "_model_budgets" }}
 	// A form rendered back reads the scope from the submission alone, never
@@ -163,6 +165,7 @@ templ planConstraintRow(idx int, c model.PlanConstraint, readonly bool, submitte
 	{{ paceSlackStr := submittedOr(submitted, paceSlackName, formatRatioField(c.PaceSlack)) }}
 	{{ happyStartStr := submittedOr(submitted, happyStartName, formatRatioField(c.HappyHourStart)) }}
 	{{ shareThresholdStr := submittedOr(submitted, shareThresholdName, formatRatioField(c.ShareThreshold)) }}
+	{{ openMultiplierStr := submittedOr(submitted, openMultiplierName, formatMultiplierField(c.OpenShareMultiplier)) }}
 	{{ happyLeadStr := "" }}
 	if c.HappyHourMaxLead != nil {
 		{{ happyLeadStr = c.HappyHourMaxLead.Duration().String() }}
@@ -467,6 +470,22 @@ templ planConstraintRow(idx int, c model.PlanConstraint, readonly bool, submitte
 									Attributes:  templ.Attributes{"data-xolo-name": "plan_c{i}_share_threshold", "min": "0", "max": "100", "step": "any"},
 								})
 							</div>
+							<div class="space-y-1">
+								@form.Label() {
+									{ i18n.T(ctx, "org.plan.open_share_multiplier") }
+								}
+								@form.Description() {
+									{ i18n.T(ctx, "org.plan.open_share_multiplier_help") }
+								}
+								@input.Input(input.Props{
+									Name:        openMultiplierName,
+									Type:        input.TypeNumber,
+									Value:       openMultiplierStr,
+									Placeholder: "2",
+									Disabled:    readonly,
+									Attributes:  templ.Attributes{"data-xolo-name": "plan_c{i}_open_share_multiplier", "min": "1", "max": "100", "step": "any"},
+								})
+							</div>
 						</div>
 					</div>
 				}
@@ -548,6 +567,14 @@ func formatModelBudgets(budgets map[string]model.PlanBudget) string {
 
 // formatRatioField renders a stored fraction as the percentage the form edits,
 // trimming the trailing ".0" of whole values. Empty means "use the default".
+// formatMultiplierField renders a number of shares, empty when unset.
+func formatMultiplierField(m *float64) string {
+	if m == nil {
+		return ""
+	}
+	return strconv.FormatFloat(*m, 'f', -1, 64)
+}
+
 func formatRatioField(ratio *float64) string {
 	if ratio == nil {
 		return ""

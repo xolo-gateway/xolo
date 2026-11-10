@@ -114,6 +114,11 @@ type PlanConstraint struct {
 	// the users' shares apply: below it any user may consume, the plan having
 	// room for everyone. Nil or zero applies the shares from the first request.
 	ShareThreshold *float64 `json:"share_threshold,omitempty"`
+	// OpenShareMultiplier bounds what a user may consume under the share
+	// threshold: a multiple of their nominal share, paced on the window clock
+	// (see FairShareParams.OpenShareMultiplier). Nil means
+	// DefaultOpenShareMultiplier.
+	OpenShareMultiplier *float64 `json:"open_share_multiplier,omitempty"`
 	// WindowAnchor aligns a rolling_window constraint on a fixed (tumbling) schedule.
 	// It records any instant at which a window opened; combined with Duration it lets us
 	// compute the current window boundaries so they match the upstream provider's real
@@ -356,6 +361,16 @@ const (
 	DefaultHappyHourLeadRatio = 0.05
 	MinHappyHourLead          = 30 * time.Minute
 	MaxHappyHourLead          = 4 * time.Hour
+
+	// DefaultOpenShareMultiplier is how many nominal shares a user may reach
+	// under the share threshold, once the window is far enough along. Without
+	// a bound, the open plan let one user take most of the threshold, then
+	// locked them out until the reset the moment it was crossed: their
+	// consumption stood far above the share that applies past it.
+	DefaultOpenShareMultiplier = 2.0
+	// MaxOpenShareMultiplier bounds the setting. Past it, the bound no longer
+	// prevents the lock-out it exists for.
+	MaxOpenShareMultiplier = 100.0
 )
 
 // DefaultHappyHourLead returns the lead used when a constraint sets none:
@@ -398,6 +413,11 @@ const (
 	// with room for everyone, the user may consume up to that threshold
 	// whatever their share.
 	FairShareModeOpen FairShareMode = "open"
+	// FairShareModeOpenPaced means the plan is under its share threshold, but
+	// the user already consumed past what the open plan hands out at this
+	// point of the window: a multiple of their share, released as the window
+	// elapses. Their allowance still exceeds their share, and grows with time.
+	FairShareModeOpenPaced FairShareMode = "open_paced"
 )
 
 // FairShareParams describes the state of a plan constraint at decision time.
@@ -439,6 +459,11 @@ type FairShareParams struct {
 	// ShareThreshold is the fraction of the budget under which the plan is
 	// open to anyone (see PlanConstraint.ShareThreshold). Zero disables it.
 	ShareThreshold float64
+	// OpenShareMultiplier caps what the share threshold hands out: a user may
+	// consume up to this many times their share, times the elapsed fraction
+	// of the window plus Slack, before the plan reaches the threshold. A
+	// value below 1 leaves the open plan unbounded.
+	OpenShareMultiplier float64
 }
 
 // FairShareAllocation is the outcome of the allocator for a single user.
@@ -446,6 +471,10 @@ type FairShareAllocation struct {
 	// Allowance is how much of the budget this user may consume in the window.
 	Allowance int64
 	Mode      FairShareMode
+	// Share is the allowance the shares grant, before the happy hour and the
+	// share threshold widen it: what the user is held to once the plan fills
+	// past its threshold.
+	Share int64
 }
 
 // ComputeFairShare returns how much of a plan budget a single user may consume
@@ -469,8 +498,11 @@ type FairShareAllocation struct {
 // budget fills up, collapsing the allowance back onto the guaranteed floor.
 //
 // While the plan as a whole stays under its share threshold, the shares do not
-// apply at all: any user may consume until the plan reaches it, the plan
-// having room for everyone. Past it, the allocation below takes over.
+// bind: any user may consume past their share until the plan reaches it, the
+// plan having room for everyone — up to a multiple of that share released as
+// the window elapses, so that no one stands so far above their share when the
+// plan crosses the threshold that they are refused until the reset. Past it,
+// the allocation below takes over.
 //
 // In the last moments of a window the leftover budget would be destroyed by the
 // upcoming reset, so it is shared out between the active users on top of what
@@ -546,18 +578,21 @@ func ComputeFairShare(p FairShareParams) FairShareAllocation {
 	// destroyed must never be the reason a request is refused — and since it is
 	// the nominal allowance that carries the floor above, deferring to it also
 	// keeps an exhausted window from allocating zero to everyone.
-	result := FairShareAllocation{Allowance: allowance, Mode: mode}
+	result := FairShareAllocation{Allowance: allowance, Mode: mode, Share: allowance}
 	if anchored && p.inHappyHour() {
 		if hh := p.happyHourAllowance(int64(active)); hh > result.Allowance {
-			result = FairShareAllocation{Allowance: hh, Mode: FairShareModeHappyHour}
+			result.Allowance, result.Mode = hh, FairShareModeHappyHour
 		}
 	}
 
 	// Under the share threshold the plan has room for everyone: the shares
 	// only take over once it fills past it. Like the happy hour this only ever
 	// widens an allowance.
-	if open := p.openAllowance(); open > result.Allowance {
-		result = FairShareAllocation{Allowance: open, Mode: FairShareModeOpen}
+	if open, paced := p.openAllowance(allowance); open > result.Allowance {
+		result.Allowance, result.Mode = open, FairShareModeOpen
+		if paced {
+			result.Mode = FairShareModeOpenPaced
+		}
 	}
 	return result
 }
@@ -569,15 +604,42 @@ func ComputeFairShare(p FairShareParams) FairShareAllocation {
 // usage already recorded, so the ones in flight when it is crossed may take
 // the plan past it by what they consume; the shares then apply to everyone.
 // Zero when the threshold is unset or reached.
-func (p FairShareParams) openAllowance() int64 {
+//
+// The room is bounded per user by openCeiling, a multiple of their share
+// paced on the window clock: an unbounded open plan let a single user take
+// most of the threshold, and that user, standing far above their share when
+// the plan crossed it, was then refused until the reset. paced reports that
+// this bound is the one that holds.
+func (p FairShareParams) openAllowance(share int64) (allowance int64, paced bool) {
 	if p.ShareThreshold <= 0 || p.Budget <= 0 {
-		return 0
+		return 0, false
 	}
 	room := int64(math.Round(clampUnit(p.ShareThreshold)*float64(p.Budget))) - p.UsedTotal
 	if room <= 0 {
-		return 0
+		return 0, false
 	}
-	return max(p.UserUsed, 0) + room
+	allowance = max(p.UserUsed, 0) + room
+	if ceiling, ok := p.openCeiling(share); ok && ceiling < allowance {
+		return ceiling, true
+	}
+	return allowance, false
+}
+
+// openCeiling is the most a user may consume under the share threshold at
+// this point of the window: OpenShareMultiplier times their share, released
+// as the window elapses, at the pace the plan-wide pacing tolerates (elapsed
+// fraction plus Slack). A sliding window has no clock to pace on and gets the
+// whole multiple at once. ok is false when the multiplier leaves the open
+// plan unbounded.
+func (p FairShareParams) openCeiling(share int64) (ceiling int64, ok bool) {
+	if p.OpenShareMultiplier < 1 || math.IsNaN(p.OpenShareMultiplier) {
+		return 0, false
+	}
+	pace := 1.0
+	if p.Elapsed >= 0 {
+		pace = math.Min(1, clampUnit(p.Elapsed)+max(p.Slack, 0))
+	}
+	return int64(p.OpenShareMultiplier * float64(share) * pace), true
 }
 
 // inHappyHour reports whether the window is close enough to its reset for the
@@ -672,6 +734,13 @@ func clampUnit(v float64) float64 {
 	return v
 }
 
+// ValidOpenShareMultiplier reports whether v may be stored as a constraint's
+// OpenShareMultiplier: unset, or a number of shares in [1, MaxOpenShareMultiplier].
+// Below one share, the open plan would hand out less than the shares do.
+func ValidOpenShareMultiplier(v *float64) bool {
+	return v == nil || (!math.IsNaN(*v) && *v >= 1 && *v <= MaxOpenShareMultiplier)
+}
+
 // FairShareParamsFor fills the tuning fields of p from the constraint, applying
 // the defaults for every field the plan leaves unset.
 func (c PlanConstraint) FairShareParamsFor(p FairShareParams) FairShareParams {
@@ -691,6 +760,10 @@ func (c PlanConstraint) FairShareParamsFor(p FairShareParams) FairShareParams {
 	}
 	if c.ShareThreshold != nil {
 		p.ShareThreshold = *c.ShareThreshold
+	}
+	p.OpenShareMultiplier = DefaultOpenShareMultiplier
+	if c.OpenShareMultiplier != nil && *c.OpenShareMultiplier >= 1 {
+		p.OpenShareMultiplier = *c.OpenShareMultiplier
 	}
 	p.WindowDuration = c.Duration.Duration()
 	p.HappyHourMaxLead = DefaultHappyHourLead(p.WindowDuration)

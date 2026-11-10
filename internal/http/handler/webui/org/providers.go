@@ -608,6 +608,20 @@ func parsePlanRatioField(value string) (*float64, error) {
 	return &fraction, nil
 }
 
+// parsePlanMultiplierField reads a number of shares, between 1 and
+// model.MaxOpenShareMultiplier. Empty means nil: the allocator default.
+func parsePlanMultiplierField(value string) (*float64, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return nil, nil
+	}
+	m, err := strconv.ParseFloat(value, 64)
+	if err != nil || !model.ValidOpenShareMultiplier(&m) {
+		return nil, formError{key: "org.errors.providers.multiplier_range", args: []any{value}}
+	}
+	return &m, nil
+}
+
 // parseSubscriptionPlanFromForm reads the structured subscription plan fields
 // submitted by the SubscriptionPlanEditor component. It returns an error the
 // caller is expected to show, rather than dropping a field it cannot read: a
@@ -680,6 +694,9 @@ func parseSubscriptionPlanFromForm(r *http.Request) (*model.SubscriptionPlan, er
 			}
 			if c.ShareThreshold, err = parsePlanRatioField(r.FormValue(prefix + "share_threshold")); err != nil {
 				fail(errors.New(i18n.T(ctx, "org.errors.providers.constraint_share_threshold", c.Label, localizedError(ctx, err))))
+			}
+			if c.OpenShareMultiplier, err = parsePlanMultiplierField(r.FormValue(prefix + "open_share_multiplier")); err != nil {
+				fail(errors.New(i18n.T(ctx, "org.errors.providers.constraint_open_share_multiplier", c.Label, localizedError(ctx, err))))
 			}
 			if c.HappyHourStart, err = parsePlanRatioField(r.FormValue(prefix + "happy_hour_start")); err != nil {
 				fail(errors.New(i18n.T(ctx, "org.errors.providers.constraint_happy_hour_start", c.Label, localizedError(ctx, err))))

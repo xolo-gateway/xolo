@@ -95,3 +95,18 @@ func TestValidatePlanConstraint_ShareThreshold(t *testing.T) {
 		}
 	}
 }
+
+func TestValidatePlanConstraint_OpenShareMultiplier(t *testing.T) {
+	budget := int64(30_000_000)
+	c := model.PlanConstraint{Kind: model.ConstraintRollingWindow, Label: "week", Duration: model.PlanDuration(168 * time.Hour), ValueBudget: &budget}
+	for _, tc := range []struct {
+		multiplier float64
+		valid      bool
+	}{{1, true}, {2, true}, {100, true}, {0, false}, {0.9, false}, {101, false}} {
+		multiplier := tc.multiplier
+		c.OpenShareMultiplier = &multiplier
+		if err := validatePlanConstraint(c); (err == nil) != tc.valid {
+			t.Errorf("multiplier %v: err = %v, want valid %v", multiplier, err, tc.valid)
+		}
+	}
+}

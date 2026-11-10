@@ -267,15 +267,22 @@ Deux mécanismes complètent cette répartition :
   part courante, c'est la part courante qui s'applique.
 
 Un **seuil de partage** peut enfin suspendre ces parts tant que le forfait a de
-la place pour tous : sous ce seuil de remplissage, chacun consomme librement,
-même au-delà de sa part, jusqu'à ce que le forfait l'atteigne ; au-delà, les
-parts s'appliquent comme décrit plus haut. Avec un seuil de 70 %, un forfait
-rempli à 40 % reste ouvert à tous ; un utilisateur qui a déjà dépassé sa part
-peut consommer jusqu'à ce que le forfait atteigne 70 %, puis il est arrêté et
-la marge restante revient aux autres. Laissé vide, ou à 0, les parts
+la place pour tous : sous ce seuil de remplissage, chacun peut consommer
+au-delà de sa part, jusqu'à ce que le forfait l'atteigne ; au-delà, les parts
+s'appliquent comme décrit plus haut. Laissé vide, ou à 0, les parts
 s'appliquent dès la première requête.
 
-Ces cinq réglages sont facultatifs et se trouvent sous « Répartition entre
+Cet accès libre est **plafonné au rythme de la fenêtre** : un utilisateur peut
+y atteindre au plus un multiple de sa part (2 par défaut), débloqué à mesure
+que la fenêtre s'écoule (fraction écoulée plus la tolérance de rythme). Sans
+ce plafond, un seul utilisateur pouvait prendre l'essentiel du forfait sous le
+seuil, puis, au franchissement de celui-ci, se retrouver si loin au-delà de sa
+part qu'il restait bloqué jusqu'à la réinitialisation. Avec un seuil de 70 %
+et un plafond de 2 parts, un utilisateur arrivé à 60 % d'une fenêtre peut
+consommer jusqu'à 2 × 75 % = 1,5 fois sa part tant que le forfait reste sous
+70 % ; sa limite remonte ensuite avec le temps, jusqu'à 2 parts.
+
+Ces six réglages sont facultatifs et se trouvent sous « Répartition entre
 utilisateurs » dans le formulaire de la contrainte. Laissés vides, ils prennent
 leurs valeurs par défaut.
 
@@ -286,6 +293,7 @@ leurs valeurs par défaut.
 | **Ouverture de fin de fenêtre**    | 90 %   | Fraction de la fenêtre au-delà de laquelle le reliquat est réparti entre les actifs ; 100 désactive |
 | **Avance maximale de l'ouverture** | 5 % de la fenêtre, entre 30 min et 4 h | Borne absolue de cette ouverture : 30 min avant le reset d'une fenêtre de 5 h, 4 h avant celui d'une fenêtre hebdomadaire |
 | **Seuil de partage**               | 0 %    | Remplissage du forfait sous lequel les parts ne s'appliquent pas ; 0 les applique dès la première requête |
+| **Plafond en accès libre**         | 2 parts | Multiple de sa part qu'un utilisateur peut atteindre sous le seuil de partage, débloqué au rythme de la fenêtre ; entre 1 et 100 |
 
 Une valeur illisible ou hors bornes est refusée à l'enregistrement, avec un
 message nommant la contrainte concernée : un réglage affiché doit être celui que
@@ -298,7 +306,10 @@ la baisse. Le tableau de bord affiche, sous chaque jauge d'abonnement, le nombre
 d'utilisateurs actifs sur lequel la part a été calculée, ainsi qu'une mention
 lorsque le rythme resserre la part, lorsque le forfait déjà consommé par les
 autres la plafonne, lorsque la fin de fenêtre l'élargit, ou lorsque le forfait,
-sous son seuil de partage, est en accès libre.
+sous son seuil de partage, est en accès libre, ou ralenti par le plafond de
+cet accès libre. Quand la part est élargie (accès libre, fin de fenêtre) ou
+dépassée, la jauge indique aussi la consommation rapportée à la part : c'est
+la part, et non la jauge élargie, qui s'applique une fois le seuil franchi.
 
 ### Plusieurs clés pour un même abonnement
 

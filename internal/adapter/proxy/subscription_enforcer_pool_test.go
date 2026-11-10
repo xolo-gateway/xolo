@@ -533,3 +533,22 @@ func TestSubscriptionEnforcer_ShareThresholdLetsAUserPastTheirShare(t *testing.T
 		t.Errorf("alice denied (%q), want granted: the pool, at 17$ of 30$, is under its 70%% threshold", msg)
 	}
 }
+
+func TestSubscriptionEnforcer_OpenShareMultiplierBoundsTheOpenPlan(t *testing.T) {
+	f := newPoolFixture(t, 2)
+	f.consume("bob", "k3", 1_000_000)
+	f.consume("alice", model.PrimaryProviderKey, 8_000_000)
+	f.consume("alice", "k2", 8_000_000)
+
+	// Under the 70 % threshold, but one share is all the open plan hands out:
+	// alice, past hers, stays refused.
+	threshold, multiplier := 0.7, 1.0
+	plan := *f.provider.SubscriptionPlan()
+	plan.Constraints = slices.Clone(plan.Constraints)
+	plan.Constraints[0].ShareThreshold = &threshold
+	plan.Constraints[0].OpenShareMultiplier = &multiplier
+	f.provider.SetSubscriptionPlan(&plan)
+	if _, msg := f.check(t, "alice"); !strings.Contains(msg, "fair-share") {
+		t.Errorf("message = %q, want a fair-share denial: the open plan is bounded at one share", msg)
+	}
+}

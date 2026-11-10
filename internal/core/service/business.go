@@ -687,6 +687,9 @@ func validatePlanConstraint(c model.PlanConstraint) error {
 	if c.HappyHourStart != nil && *c.HappyHourStart == 0 {
 		return invalid
 	}
+	if !model.ValidOpenShareMultiplier(c.OpenShareMultiplier) {
+		return invalid
+	}
 	if c.HappyHourMaxLead != nil && c.HappyHourMaxLead.Duration() <= 0 {
 		return invalid
 	}

@@ -64,6 +64,11 @@ type FairShareResult struct {
 	ValueAllowance *int64
 	TokenMode      model.FairShareMode
 	ValueMode      model.FairShareMode
+	// TokenShare and ValueShare are the shares the allowances above widen,
+	// under the share threshold or in the happy hour: what the user is held
+	// to once the plan fills past its threshold. Nil with the allowance.
+	TokenShare *int64
+	ValueShare *int64
 
 	// PlanTokens and PlanValue are the plan-wide consumption of the window.
 	PlanTokens int64
@@ -342,6 +347,7 @@ func (s *FairShareService) Resolve(ctx context.Context, req FairShareRequest) (*
 		alloc := model.ComputeFairShare(p)
 		res.TokenAllowance = &alloc.Allowance
 		res.TokenMode = alloc.Mode
+		res.TokenShare = &alloc.Share
 	}
 
 	if c.ValueBudget != nil {
@@ -350,6 +356,7 @@ func (s *FairShareService) Resolve(ctx context.Context, req FairShareRequest) (*
 		alloc := model.ComputeFairShare(p)
 		res.ValueAllowance = &alloc.Allowance
 		res.ValueMode = alloc.Mode
+		res.ValueShare = &alloc.Share
 	}
 
 	return res, nil
