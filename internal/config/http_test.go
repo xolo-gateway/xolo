@@ -47,4 +47,7 @@ func TestTrustedProxyPrefixes(t *testing.T) {
 	if _, err := (HTTPRateLimit{TrustedProxies: []string{"ingress"}}).TrustedProxyPrefixes(); err == nil {
 		t.Fatal("expected an error for a value that is no address")
 	}
+	if _, err := (HTTPRateLimit{TrustedProxies: []string{"::ffff:0:0/90"}}).TrustedProxyPrefixes(); err == nil {
+		t.Fatal("expected an error for a mapped range wider than the IPv4-mapped space")
+	}
 }
