@@ -123,13 +123,6 @@ func (s *Store) ClaimAlertEvaluation(ctx context.Context, id model.AlertID, now 
 	return claimed, err
 }
 
-// CreateIncident implements port.AlertIncidentStore.
-func (s *Store) CreateIncident(ctx context.Context, incident model.AlertIncident) error {
-	return s.withRetry(ctx, true, func(ctx context.Context, db *gorm.DB) error {
-		return errors.WithStack(db.Create(fromAlertIncident(incident)).Error)
-	})
-}
-
 // OpenIncident implements port.AlertIncidentStore. The alert row is locked
 // for the transaction (PostgreSQL; SQLite runs one write transaction at a
 // time): the check for an open incident and the insert cannot interleave

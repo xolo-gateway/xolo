@@ -24,14 +24,16 @@ type AlertStore interface {
 	// evaluated or not within minAge, atomically, and reports whether it did.
 	// Every instance sharing the database runs the evaluator; the claim makes
 	// one of them evaluate each alert per period, so two cannot each open an
-	// incident for the same crossing. It compares timestamps written by
+	// incident for the same crossing. It is best-effort on the refusing side:
+	// a claim whose transaction had to be retried after it committed reports
+	// false, which skips one period and never doubles one. It compares
+	// timestamps written by
 	// different hosts: their clocks must agree well within minAge, which NTP
 	// gives by orders of magnitude.
 	ClaimAlertEvaluation(ctx context.Context, id model.AlertID, now time.Time, minAge time.Duration) (bool, error)
 }
 
 type AlertIncidentStore interface {
-	CreateIncident(ctx context.Context, incident model.AlertIncident) error
 	// OpenIncident creates incident unless its alert already has an open one,
 	// atomically, and reports whether it did: two instances firing the same
 	// crossing open a single incident. ErrNotFound when the alert is gone.

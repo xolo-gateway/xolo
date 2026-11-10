@@ -2,6 +2,7 @@ package eventeval_test
 
 import (
 	"context"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -204,8 +205,10 @@ func (s staleAlerts) ListEnabledAlerts(context.Context) ([]model.Alert, error) {
 	return s.snapshot, nil
 }
 
-// Two instances listing the alerts at the same time both see it ok: without
-// the claim, each would open its own incident for the same crossing.
+// Two instances listing the alerts at the same time both see it ok: the
+// claim lets only the first one evaluate it this period. The second one would
+// otherwise evaluate again (reloading the alert keeps it from firing twice,
+// OpenIncident too, but every alert would be evaluated N times per period).
 func TestEvaluator_OneInstanceFires(t *testing.T) {
 	store := newStore(t)
 	ctx := context.Background()
@@ -343,4 +346,46 @@ type deletedOnReload struct{ staleAlerts }
 
 func (deletedOnReload) GetAlertByID(context.Context, model.AlertID) (model.Alert, error) {
 	return nil, port.ErrNotFound
+}
+
+// countingEvents counts the evaluations reaching the event query.
+type countingEvents struct {
+	*xologorm.Store
+	queries *atomic.Int32
+}
+
+func (s countingEvents) QueryEvents(ctx context.Context, filter port.EventFilter) ([]model.Event, error) {
+	s.queries.Add(1)
+	return s.Store.QueryEvents(ctx, filter)
+}
+
+// The claim itself: with a normal interval, two instances passing over the
+// same stale listing evaluate the alert once.
+func TestEvaluator_ClaimEvaluatesOncePerPeriod(t *testing.T) {
+	store := newStore(t)
+	ctx := context.Background()
+	alert := model.NewAlert(model.OrgID("org7"), "u1", "once",
+		model.WithAlertQuery(`{type="proxy.request"}`),
+		model.WithAlertWindow(time.Hour),
+		model.WithAlertComparator(model.ComparatorGT),
+		model.WithAlertThreshold(0),
+		model.WithAlertEnabled(true),
+	)
+	if err := store.CreateAlert(ctx, alert); err != nil {
+		t.Fatalf("CreateAlert: %v", err)
+	}
+	snapshot, err := store.ListEnabledAlerts(ctx)
+	if err != nil {
+		t.Fatalf("ListEnabledAlerts: %v", err)
+	}
+	listed := staleAlerts{Store: store, snapshot: snapshot}
+
+	var queries atomic.Int32
+	events := countingEvents{Store: store, queries: &queries}
+	eventeval.NewEvaluator(listed, store, events, time.Minute).EvaluateAllForTest(ctx)
+	eventeval.NewEvaluator(listed, store, events, time.Minute).EvaluateAllForTest(ctx)
+
+	if got := queries.Load(); got != 1 {
+		t.Fatalf("expected one evaluation in the period, got %d", got)
+	}
 }

@@ -69,7 +69,12 @@ func (e *Evaluator) evaluateAll(ctx context.Context) {
 		// the interval lets the next pass through even when the instances'
 		// tickers drift, and keeps a second instance from evaluating again
 		// right after the first.
-		claimed, err := e.alertStore.ClaimAlertEvaluation(ctx, alert.ID(), time.Now(), e.interval/2)
+		now := time.Now()
+		// Evaluated too recently for anyone to claim it: spare the write.
+		if last := alert.LastEvaluatedAt(); last != nil && now.Sub(*last) < e.interval/2 {
+			continue
+		}
+		claimed, err := e.alertStore.ClaimAlertEvaluation(ctx, alert.ID(), now, e.interval/2)
 		if err != nil {
 			slog.ErrorContext(ctx, "alert evaluator: could not claim the evaluation",
 				slog.String("alertID", string(alert.ID())),
