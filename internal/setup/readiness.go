@@ -12,39 +12,60 @@ import (
 )
 
 // getReadinessCheckFromConfig makes an instance ready while it reaches its
-// database.
-//
-// On PostgreSQL the ping goes through a connection of its own, outside the
-// pool the stores share: a pool saturated by traffic would otherwise make
-// every replica unready at the same moment, and pull them all out of the load
-// balancer when they are needed most. The probe measures whether the database
-// answers, not whether the instance is busy.
-//
-// On SQLite it goes through the reader pool, not the single writer
-// connection, which a long write would hold past the probe's deadline.
+// database (see readinessDB for the handle the ping goes through).
 func getReadinessCheckFromConfig(ctx context.Context, conf *config.Config) (http.ReadinessCheck, error) {
-	if IsPostgresDSN(conf.Storage.Database.DSN) {
-		return postgresReadinessCheck(conf)
+	var reader, writer *gorm.DB
+	if !IsPostgresDSN(conf.Storage.Database.DSN) {
+		var err error
+		if reader, err = getGormReaderFromConfig(ctx, conf); err != nil {
+			return nil, errors.WithStack(err)
+		}
+		if reader == nil {
+			if writer, err = getGormDatabaseFromConfig(ctx, conf); err != nil {
+				return nil, errors.WithStack(err)
+			}
+		}
 	}
 
-	reader, err := getGormReaderFromConfig(ctx, conf)
+	db, err := readinessDB(conf, reader, writer)
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
-	if reader != nil {
-		return pingCheck(reader)
-	}
-	// An in-memory SQLite database: reads share the writer connection.
-	writer, err := getGormDatabaseFromConfig(ctx, conf)
-	if err != nil {
-		return nil, errors.WithStack(err)
-	}
-	return pingCheck(writer)
+	return pingCheck(db)
 }
 
-// postgresReadinessCheck pings through a pool of one connection of its own.
-func postgresReadinessCheck(conf *config.Config) (http.ReadinessCheck, error) {
-	db, err := gorm.Open(postgres.Open(conf.Storage.Database.DSN), &gorm.Config{Logger: logger.Discard})
+// readinessDB picks the handle the readiness ping goes through.
+//
+// On PostgreSQL, a connection of its own, outside the pool the stores share:
+// a pool saturated by traffic would otherwise make every replica unready at
+// the same moment, and pull them all out of the load balancer when they are
+// needed most. The probe measures whether the database answers, not whether
+// the instance is busy.
+//
+// On SQLite, the reader pool, not the single writer connection, which a long
+// write would hold past the probe's deadline; the writer only for an
+// in-memory database, which has no reader.
+func readinessDB(conf *config.Config, reader, writer *gorm.DB) (*gorm.DB, error) {
+	if IsPostgresDSN(conf.Storage.Database.DSN) {
+		return postgresReadinessDB(conf)
+	}
+	if reader != nil {
+		return reader, nil
+	}
+	if writer == nil {
+		return nil, errors.New("readiness: no database handle")
+	}
+	return writer, nil
+}
+
+// postgresReadinessDB opens a pool of one connection. It does not connect
+// here: the first probe does.
+func postgresReadinessDB(conf *config.Config) (*gorm.DB, error) {
+	db, err := gorm.Open(postgres.Open(conf.Storage.Database.DSN), &gorm.Config{
+		Logger:                 logger.Discard,
+		DisableAutomaticPing:   true,
+		SkipDefaultTransaction: true,
+	})
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
@@ -55,7 +76,7 @@ func postgresReadinessCheck(conf *config.Config) (http.ReadinessCheck, error) {
 	sqlDB.SetMaxOpenConns(1)
 	sqlDB.SetMaxIdleConns(1)
 	sqlDB.SetConnMaxLifetime(conf.Storage.Database.Pool.ConnMaxLifetime)
-	return pingCheck(db)
+	return db, nil
 }
 
 func pingCheck(db *gorm.DB) (http.ReadinessCheck, error) {

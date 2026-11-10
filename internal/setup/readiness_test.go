@@ -9,6 +9,7 @@ import (
 	"github.com/ncruces/go-sqlite3/gormlite"
 	"github.com/stretchr/testify/require"
 	adapter "github.com/xolo-gateway/xolo/internal/adapter/gorm"
+	"github.com/xolo-gateway/xolo/internal/config"
 	"gorm.io/gorm"
 )
 
@@ -50,4 +51,43 @@ func TestReadinessCheckPingsTheReaderOnSQLite(t *testing.T) {
 	ctx, cancel = context.WithTimeout(t.Context(), 200*time.Millisecond)
 	defer cancel()
 	require.Error(t, writerCheck(ctx), "the writer is held: this is what the reader avoids")
+}
+
+func TestReadinessDBSelection(t *testing.T) {
+	reader, writer := &gorm.DB{}, &gorm.DB{}
+	sqlite := &config.Config{}
+	sqlite.Storage.Database.DSN = "data.sqlite"
+
+	got, err := readinessDB(sqlite, reader, writer)
+	require.NoError(t, err)
+	require.Same(t, reader, got, "a SQLite file pings its reader pool")
+
+	got, err = readinessDB(sqlite, nil, writer)
+	require.NoError(t, err)
+	require.Same(t, writer, got, "an in-memory database, without reader, pings the writer")
+
+	_, err = readinessDB(sqlite, nil, nil)
+	require.Error(t, err)
+}
+
+// On PostgreSQL the ping has a pool of its own, of one connection, whatever
+// the application's pool, and it reports an unreachable server.
+func TestReadinessDBOnPostgreSQL(t *testing.T) {
+	conf := &config.Config{}
+	// Nothing listens on port 1: the probe must fail, and fast.
+	conf.Storage.Database.DSN = "postgres://xolo:xolo@127.0.0.1:1/xolo?sslmode=disable&connect_timeout=1"
+	conf.Storage.Database.Pool.MaxOpenConns = 40
+
+	db, err := readinessDB(conf, nil, nil)
+	require.NoError(t, err, "opening must not connect")
+	pool, err := db.DB()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = pool.Close() })
+	require.Equal(t, 1, pool.Stats().MaxOpenConnections)
+
+	check, err := pingCheck(db)
+	require.NoError(t, err)
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
+	defer cancel()
+	require.Error(t, check(ctx))
 }
