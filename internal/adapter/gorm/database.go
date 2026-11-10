@@ -168,6 +168,8 @@ func MigrateDatabase(ctx context.Context, db *gorm.DB, artifact *RecoveryArtifac
 					&Event{}, &Alert{}, &AlertIncident{}, &EventSettings{},
 					// Interactive OIDC sessions
 					&OIDCIdentity{}, &OIDCSession{}, &OIDCLogoutReplay{},
+					// Cross-instance cache invalidation
+					&CacheGeneration{},
 				)
 				if err != nil {
 					return errors.WithStack(err)
@@ -802,6 +804,19 @@ func schemaMigrations(artifact *RecoveryArtifact) []*gormigrate.Migration {
 				return errors.WithStack(tx.Migrator().DropTable(&PlanUsageHourly{}))
 			},
 		},
+		{
+			// Add cache_generations, through which the instances sharing the
+			// database tell each other to flush their in-process caches. An old
+			// server neither bumps nor reads it: until it is stopped, it keeps
+			// serving its entries until their TTL expires, as before.
+			ID: cacheGenerationsMigrationID,
+			Migrate: func(tx *gorm.DB) error {
+				return errors.WithStack(tx.AutoMigrate(&CacheGeneration{}))
+			},
+			Rollback: func(tx *gorm.DB) error {
+				return errors.WithStack(tx.Migrator().DropTable(&CacheGeneration{}))
+			},
+		},
 	}
 }
 
@@ -817,4 +832,5 @@ const (
 	usageDailyMigrationID             = "202610300003"
 	usageEnergyMigrationID            = "202610300004"
 	planUsageHourlyMigrationID        = "202611060001"
+	cacheGenerationsMigrationID       = "202611100001"
 )

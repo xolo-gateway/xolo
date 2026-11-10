@@ -6,6 +6,12 @@ This page has not been translated yet. See the [French version](https://xolo-gat
 
 Apply migrations at startup (default: `true`). With `false`, schema compatibility is checked without migration. See the [UUID upgrade procedure](./uuid-migration.md); all old replicas must be stopped.
 
+## In-process caches across replicas
+
+Each instance caches users, API tokens (with their owner's application), providers and LLM models in memory. Every write that invalidates one of these caches is announced through the database, and every instance checks for announcements every `XOLO_STORAGE_DATABASE_CACHE_COHERENCE_INTERVAL` (default: `1s`). A revoked token, a deactivated application or a changed provider key therefore stops being served by the other instances within that interval. This covers writes from the web UI, the API and the provisioning API alike.
+
+`0` turns the check off: the other instances then keep their entries until the cache TTL (`XOLO_STORAGE_DATABASE_CACHE_USERS_TTL`, `_PROVIDERS_TTL`, 60 min by default), which is only safe with a single instance. Every instance of a deployment must share these settings.
+
 ## OIDC sessions and back-channel logout
 
 An interactive sign-in through an OAuth2/OIDC provider opens a session stored in the database; the cookie only carries its identifier. A copied cookie does not survive the logout, and a session stays valid across restarts and replicas as long as they all share `XOLO_HTTP_SESSION_KEYS`. A session expires after `XOLO_HTTP_SESSION_COOKIE_MAX_AGE` (default: `24h`), which must be positive or the server refuses to start. Every replica removes the expired entries every 10 minutes.

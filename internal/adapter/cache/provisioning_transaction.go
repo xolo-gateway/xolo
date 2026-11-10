@@ -35,8 +35,18 @@ func (s *ProvisioningTransaction) WithProvisioningTransaction(ctx context.Contex
 		return err
 	}
 	if s.providers != nil {
-		for id := range committed.providers {
-			s.providers.providerCache.Remove(string(id))
+		// One sweep per cache, so a commit touching many providers announces
+		// it once. A deleted provider takes its models with it (foreign key cascade),
+		// and a deleted organization its providers and models. A deleted
+		// tenant, whose organizations are not listed here, flushes both
+		// caches: it is rare, and they reload on demand.
+		if len(committed.providers) != 0 || len(committed.orgs) != 0 || len(committed.tenants) != 0 {
+			s.providers.providerCache.RemoveMatching(func(p *CacheableProvider) bool {
+				return len(committed.tenants) != 0 || committed.orgs[p.OrgID()] || committed.providers[p.ID()]
+			})
+			s.providers.modelCache.RemoveMatching(func(m *CacheableLLMModel) bool {
+				return len(committed.tenants) != 0 || committed.orgs[m.OrgID()] || committed.providers[m.ProviderID()]
+			})
 		}
 	}
 	if s.users == nil || (len(committed.users) == 0 && len(committed.tenants) == 0 && len(committed.orgs) == 0 && len(committed.apps) == 0) {

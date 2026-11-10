@@ -29,7 +29,15 @@ var getProviderStoreFromConfig = createFromConfigOnce(func(ctx context.Context, 
 		slog.DebugContext(ctx, "using cached provider store",
 			slog.Duration("ttl", conf.Storage.Database.Cache.Providers.TTL),
 			slog.Int("cache_size", conf.Storage.Database.Cache.Providers.Size))
-		providerStore = cache.NewProviderStore(providerStore, conf.Storage.Database.Cache.Providers.Size, conf.Storage.Database.Cache.Providers.TTL)
+		cached := cache.NewProviderStore(providerStore, conf.Storage.Database.Cache.Providers.Size, conf.Storage.Database.Cache.Providers.TTL)
+
+		coherence, err := getCacheCoherenceFromConfig(ctx, conf)
+		if err != nil {
+			return nil, errors.WithStack(err)
+		}
+		cached.ShareInvalidations(coherence)
+
+		providerStore = cached
 	}
 
 	return providerStore, nil

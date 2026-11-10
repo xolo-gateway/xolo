@@ -659,9 +659,10 @@ only where shown.
   published as `team`, `team_settings` and `team_membership` resources; the
   former `/v1/xolo/…/teams` route, which embedded the members, is gone.
 
-Known limit: the cache of each process keeps a deactivated application's
-tokens valid until its entries expire (`XOLO_STORAGE_DATABASE_CACHE_USERS_TTL`):
-a write through this listener clears the cache of its own process only.
+A write through this listener invalidates the caches of every instance
+sharing the database: a deactivated application's tokens stop authenticating
+within `XOLO_STORAGE_DATABASE_CACHE_COHERENCE_INTERVAL` (1 s by default), or
+within the cache TTL when that interval is `0`.
 
 ### Virtual models and middlewares
 
