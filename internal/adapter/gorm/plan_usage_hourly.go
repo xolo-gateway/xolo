@@ -62,6 +62,12 @@ func incrementPlanUsageHourly(db *gorm.DB, r *UsageRecord) error {
 	if r.PlanCovered == 0 {
 		return nil
 	}
+	return errors.WithStack(upsertPlanUsageHourly(db, r).Error)
+}
+
+// upsertPlanUsageHourly runs (or, on a dry-run session, renders) the upsert of
+// the hour a plan-covered record falls into.
+func upsertPlanUsageHourly(db *gorm.DB, r *UsageRecord) *gorm.DB {
 	row := &PlanUsageHourly{
 		OrgID:         r.OrgID,
 		ProviderID:    r.ProviderID,
@@ -76,7 +82,7 @@ func incrementPlanUsageHourly(db *gorm.DB, r *UsageRecord) error {
 	add := func(column string, value int64) clause.Expr {
 		return gorm.Expr(planUsageHourlyTable+"."+column+" + ?", value)
 	}
-	return errors.WithStack(db.Clauses(clause.OnConflict{
+	return db.Clauses(clause.OnConflict{
 		Columns: []clause.Column{
 			{Name: "org_id"}, {Name: "provider_id"}, {Name: "hour"}, {Name: "provider_key_id"}, {Name: "model_id"}, {Name: "user_id"},
 		},
@@ -85,7 +91,7 @@ func incrementPlanUsageHourly(db *gorm.DB, r *UsageRecord) error {
 			"total_tokens":  add("total_tokens", row.TotalTokens),
 			"provider_cost": add("provider_cost", row.ProviderCost),
 		}),
-	}).Create(row).Error)
+	}).Create(row)
 }
 
 // migratePlanUsageHourly creates the plan_usage_hourly table and fills it

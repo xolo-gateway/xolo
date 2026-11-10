@@ -101,12 +101,18 @@ func usageDailyRow(r *UsageRecord, energy model.UsageEnergy) *UsageDaily {
 // statement so two concurrent requests add up instead of overwriting each
 // other; the columns are qualified by the table, see incrementQuotaUsage.
 func incrementUsageDaily(db *gorm.DB, record *UsageRecord, energy model.UsageEnergy) error {
+	return errors.WithStack(upsertUsageDaily(db, record, energy).Error)
+}
+
+// upsertUsageDaily runs (or, on a dry-run session, renders) the upsert of the
+// day a record falls into.
+func upsertUsageDaily(db *gorm.DB, record *UsageRecord, energy model.UsageEnergy) *gorm.DB {
 	row := usageDailyRow(record, energy)
 	// COALESCE keeps a column a former row left NULL from swallowing the sum.
 	add := func(column string, value any) clause.Expr {
 		return gorm.Expr("COALESCE("+usageDailyTable+"."+column+", 0) + ?", value)
 	}
-	return errors.WithStack(db.Clauses(clause.OnConflict{
+	return db.Clauses(clause.OnConflict{
 		Columns: []clause.Column{
 			{Name: "org_id"}, {Name: "day"}, {Name: "user_id"}, {Name: "application_id"}, {Name: "team_id"},
 			{Name: "provider_id"}, {Name: "model_id"}, {Name: "model_name"}, {Name: "currency"}, {Name: "plan_covered"},
@@ -121,7 +127,7 @@ func incrementUsageDaily(db *gorm.DB, record *UsageRecord, energy model.UsageEne
 			"energy_wh":         add("energy_wh", row.EnergyWh),
 			"co2_grams":         add("co2_grams", row.CO2Grams),
 		}),
-	}).Create(row).Error)
+	}).Create(row)
 }
 
 // migrateUsageDaily creates the usage_daily table and fills it from the usage
