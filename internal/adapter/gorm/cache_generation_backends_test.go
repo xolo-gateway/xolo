@@ -14,7 +14,7 @@ func TestCacheGenerationsOnEachBackend(t *testing.T) {
 		if err := db.AutoMigrate(&xologorm.CacheGeneration{}); err != nil {
 			t.Fatalf("migrate: %v", err)
 		}
-		store := xologorm.NewCacheGenerationStore(db)
+		store := xologorm.NewCacheGenerationStore(db, nil)
 		ctx := context.Background()
 
 		generations, err := store.Generations(ctx)

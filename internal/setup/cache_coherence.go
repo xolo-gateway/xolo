@@ -23,7 +23,12 @@ var getCacheCoherenceFromConfig = createFromConfigOnce(func(ctx context.Context,
 		return nil, errors.WithStack(err)
 	}
 
-	coherence := cache.NewCoherence(gormAdapter.NewCacheGenerationStore(db), interval)
+	reader, err := getGormReaderFromConfig(ctx, conf)
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+
+	coherence := cache.NewCoherence(gormAdapter.NewCacheGenerationStore(db, reader), interval)
 
 	// Stops with the server: ctx is the root context the instance runs on.
 	go func() { _ = coherence.Run(ctx) }()

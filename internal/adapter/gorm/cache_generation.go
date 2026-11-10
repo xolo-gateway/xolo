@@ -20,11 +20,18 @@ type CacheGeneration struct {
 
 // CacheGenerationStore reads and bumps the cache generations.
 type CacheGenerationStore struct {
-	db *gorm.DB
+	db     *gorm.DB
+	reader *gorm.DB
 }
 
-func NewCacheGenerationStore(db *gorm.DB) *CacheGenerationStore {
-	return &CacheGenerationStore{db: db}
+// NewCacheGenerationStore bumps through db and polls through reader, the
+// read pool when the database has one (SQLite), so the poll of every second
+// never waits for the single writer connection. A nil reader polls through db.
+func NewCacheGenerationStore(db, reader *gorm.DB) *CacheGenerationStore {
+	if reader == nil {
+		reader = db
+	}
+	return &CacheGenerationStore{db: db, reader: reader}
 }
 
 // Bump increments the generation of the named cache, creating it on first use.
@@ -44,7 +51,7 @@ func (s *CacheGenerationStore) Bump(ctx context.Context, name string) error {
 // Generations returns the generation of every cache bumped at least once.
 func (s *CacheGenerationStore) Generations(ctx context.Context) (map[string]int64, error) {
 	var rows []CacheGeneration
-	if err := s.db.WithContext(ctx).Select("name", "generation").Find(&rows).Error; err != nil {
+	if err := s.reader.WithContext(ctx).Select("name", "generation").Find(&rows).Error; err != nil {
 		return nil, errors.WithStack(err)
 	}
 
