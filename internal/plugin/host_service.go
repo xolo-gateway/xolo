@@ -107,11 +107,18 @@ type ModelCompletionResult struct {
 
 // SetModelCompleter enables the ChatCompletion RPC. Without it the RPC answers
 // Unavailable, which plugins must treat as "no model access on this host".
-func (s *XoloHostService) SetModelCompleter(c ModelCompleter) { s.completer = c }
+func (s *XoloHostService) SetModelCompleter(c ModelCompleter) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.completer = c
+}
 
 // ChatCompletion calls a model of the org for a plugin.
 func (s *XoloHostService) ChatCompletion(ctx context.Context, req *proto.HostChatCompletionRequest) (*proto.HostChatCompletionResponse, error) {
-	if s.completer == nil {
+	s.mu.RLock()
+	completer := s.completer
+	s.mu.RUnlock()
+	if completer == nil {
 		return nil, status.Error(codes.Unavailable, "chat completion is not available on this host")
 	}
 	if req.GetOrgId() == "" || req.GetModel() == "" {
@@ -139,7 +146,7 @@ func (s *XoloHostService) ChatCompletion(ctx context.Context, req *proto.HostCha
 		mreq.MaxTokens = &n
 	}
 
-	res, err := s.completer.Complete(ctx, mreq)
+	res, err := completer.Complete(ctx, mreq)
 	if err != nil {
 		slog.WarnContext(ctx, "host service: chat completion failed", slog.String("model", req.Model), slog.Any("error", err))
 		// A model of another kind is the plugin's configuration mistake: a
