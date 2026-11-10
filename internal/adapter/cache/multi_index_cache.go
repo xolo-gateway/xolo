@@ -1,6 +1,7 @@
 package cache
 
 import (
+	"slices"
 	"sync"
 	"time"
 
@@ -80,15 +81,24 @@ func (c *MultiIndexCache[V]) removeLocal(key string) {
 
 	c.generation++
 
-	val, ok := c.cache.Peek(key)
-	if !ok {
+	if val, ok := c.cache.Peek(key); ok {
+		for _, k := range val.CacheKeys() {
+			c.cache.Remove(k)
+		}
 		return
 	}
 
-	allKeys := val.CacheKeys()
-
-	for _, k := range allKeys {
-		c.cache.Remove(k)
+	// Each key is its own LRU entry: the one asked for may have been evicted
+	// while another key of the same item is still served. Look for the items
+	// still carrying it; the caches are small.
+	for _, k := range c.cache.Keys() {
+		val, ok := c.cache.Peek(k)
+		if !ok || !slices.Contains(val.CacheKeys(), key) {
+			continue
+		}
+		for _, other := range val.CacheKeys() {
+			c.cache.Remove(other)
+		}
 	}
 }
 

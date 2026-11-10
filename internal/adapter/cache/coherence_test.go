@@ -207,3 +207,16 @@ func TestRemoveRejectsReadsStartedBefore(t *testing.T) {
 		t.Fatal("a read started before the removal repopulated the cache")
 	}
 }
+
+// Removing by a key the LRU already evicted still drops the item's other keys:
+// a revoked token must not stay reachable by its hash.
+func TestRemoveAfterEvictionDropsTheOtherKeys(t *testing.T) {
+	cache := NewMultiIndexCache[entry](10, time.Hour)
+	cache.Add(entry{keys: []string{"tok-8", "hash-8"}})
+	cache.cache.Remove("tok-8")
+
+	cache.Remove("tok-8")
+	if _, ok := cache.Get("hash-8"); ok {
+		t.Fatal("the hash key of a removed token is still cached")
+	}
+}
