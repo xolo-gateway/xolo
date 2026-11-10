@@ -26,10 +26,11 @@ func TestRebuildQuotaUsageOnEachBackend(t *testing.T) {
 			{ID: "u2", CreatedAt: now, UserID: "user-a", OrgID: "org-1", ProviderID: "p", ModelID: "m", Cost: 2_000, Currency: "USD"},
 			{ID: "u3", CreatedAt: now, ApplicationID: "app-1", OrgID: "org-1", ProviderID: "p", ModelID: "m", Cost: 300, Currency: "USD"},
 			{ID: "u4", CreatedAt: now, UserID: "user-c", TeamID: "team-1", OrgID: "org-1", ProviderID: "p", ModelID: "m", Cost: 70, Currency: "USD"},
-			// Either side of local midnight: the rebuild must bucket them in the
-			// server's local days, as the store does when recording.
-			{ID: "u5", CreatedAt: midnight.Add(-30 * time.Minute), UserID: "user-d", OrgID: "org-2", ProviderID: "p", ModelID: "m", Cost: 5, Currency: "USD"},
-			{ID: "u6", CreatedAt: midnight.Add(30 * time.Minute), UserID: "user-d", OrgID: "org-2", ProviderID: "p", ModelID: "m", Cost: 7, Currency: "USD"},
+			// Either side of local midnight, far enough from it that a DST
+			// shift of the current offset cannot move them into the same day:
+			// the rebuild must bucket them in the server's local days.
+			{ID: "u5", CreatedAt: midnight.Add(-6 * time.Hour), UserID: "user-d", OrgID: "org-2", ProviderID: "p", ModelID: "m", Cost: 5, Currency: "USD"},
+			{ID: "u6", CreatedAt: midnight.Add(6 * time.Hour), UserID: "user-d", OrgID: "org-2", ProviderID: "p", ModelID: "m", Cost: 7, Currency: "USD"},
 		}
 		for _, r := range records {
 			if err := db.Create(r).Error; err != nil {
@@ -82,8 +83,8 @@ func TestRebuildQuotaUsageOnEachBackend(t *testing.T) {
 		bucket := func(at time.Time) string {
 			return at.UTC().Add(time.Duration(offset) * time.Second).Format("2006-01-02")
 		}
-		before := bucket(midnight.Add(-30 * time.Minute))
-		after := bucket(midnight.Add(30 * time.Minute))
+		before := bucket(midnight.Add(-6 * time.Hour))
+		after := bucket(midnight.Add(6 * time.Hour))
 		if len(days) != 2 || days[0].Day != before || days[0].Cost != 5 || days[1].Day != after || days[1].Cost != 7 {
 			t.Fatalf("expected %s=5 and %s=7, got %+v", before, after, days)
 		}
