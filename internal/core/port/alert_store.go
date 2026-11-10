@@ -41,6 +41,9 @@ type AlertIncidentStore interface {
 	// OpenIncident creates incident unless its alert already has an open one,
 	// atomically, and reports whether it did: two instances firing the same
 	// crossing open a single incident. ErrNotFound when the alert is gone.
+	// Like the claim it is best-effort on the refusing side: replayed after a
+	// commit the client could not confirm, it finds its own incident open and
+	// reports false, so the events of that crossing are not pinned to it.
 	OpenIncident(ctx context.Context, incident model.AlertIncident) (bool, error)
 	ResolveIncident(ctx context.Context, id model.AlertIncidentID, resolvedAt time.Time) error
 	UpdateIncidentPeak(ctx context.Context, id model.AlertIncidentID, peak float64) error
