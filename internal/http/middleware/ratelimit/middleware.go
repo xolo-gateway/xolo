@@ -16,7 +16,8 @@ import (
 )
 
 // Middleware limits the request rate per client address. With trustHeaders,
-// the address comes from X-Forwarded-For or X-Real-Ip (see clientAddr).
+// the address comes from the forwarding headers: X-Forwarded-For or X-Real-Ip
+// without trusted proxies, X-Forwarded-For only with them (see clientAddr).
 func Middleware(trustHeaders bool, trustedProxies []netip.Prefix, interval time.Duration, maxBurst int, cacheSize int, ttl time.Duration) func(http.Handler) http.Handler {
 	cache := expirable.NewLRU[string, *rate.Limiter](cacheSize, nil, ttl)
 
