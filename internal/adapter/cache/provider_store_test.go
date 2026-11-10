@@ -122,3 +122,22 @@ func TestProviderStoreModelSaveInvalidatesProxyNameKey(t *testing.T) {
 		t.Fatalf("expected 2 proxy-name backend hits (cache invalidated by save), got %d", backend.getModelByProxy)
 	}
 }
+
+// Deleting a provider deletes its models in the database: their cached
+// entries must go too.
+func TestDeleteProviderDropsItsCachedModels(t *testing.T) {
+	store := NewProviderStore(deletingBackend{}, 10, time.Hour)
+	m := model.NewLLMModel("prov-1", "org-1", "fast", "fast-real", "", 0, 0)
+	store.modelCache.Add(NewCacheableLLMModel(m))
+
+	if err := store.DeleteProvider(context.Background(), "prov-1"); err != nil {
+		t.Fatalf("delete: %v", err)
+	}
+	if _, cached := store.modelCache.Get(string(m.ID())); cached {
+		t.Fatal("a model of the deleted provider is still cached")
+	}
+}
+
+type deletingBackend struct{ port.ProviderStore }
+
+func (deletingBackend) DeleteProvider(context.Context, model.ProviderID) error { return nil }

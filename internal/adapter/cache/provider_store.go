@@ -75,6 +75,9 @@ func (s *ProviderStore) SaveProvider(ctx context.Context, p model.Provider) erro
 // DeleteProvider implements [port.ProviderStore].
 func (s *ProviderStore) DeleteProvider(ctx context.Context, id model.ProviderID) error {
 	defer s.providerCache.Remove(string(id))
+	// Its models go with it (foreign key cascade): drop them too, here and,
+	// through the announced invalidation, on the other instances.
+	defer s.modelCache.RemoveMatching(func(m *CacheableLLMModel) bool { return m.ProviderID() == id })
 	return s.backend.DeleteProvider(ctx, id)
 }
 
