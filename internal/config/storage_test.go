@@ -44,3 +44,14 @@ func TestDatabasePoolIdleConns(t *testing.T) {
 		}
 	}
 }
+
+// An unbounded pool (MAX_OPEN_CONNS at 0) still keeps idle connections.
+func TestDatabasePoolIdleConnsUnbounded(t *testing.T) {
+	if got := (DatabasePool{MaxOpenConns: 0}).IdleConns(); got != 25 {
+		t.Errorf("unbounded pool: got %d idle connections, want 25", got)
+	}
+	zero := 0
+	if got := (DatabasePool{MaxOpenConns: 0, MaxIdleConns: &zero}).IdleConns(); got != 0 {
+		t.Errorf("explicit 0: got %d", got)
+	}
+}

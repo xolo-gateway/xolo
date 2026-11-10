@@ -77,9 +77,18 @@ type CacheCoherence struct {
 // PostgreSQL at 300 req/s, about 40 new sessions per second, a quarter of the
 // blocked time spent waiting for a connection, and a 2 vCPU instance capped at
 // 420 req/s instead of 500.
+//
+// MaxOpenConns at 0 or below leaves the pool unbounded, with nothing to follow:
+// the idle connections then default to unboundedPoolIdleConns.
 func (p DatabasePool) IdleConns() int {
 	if p.MaxIdleConns != nil {
 		return *p.MaxIdleConns
 	}
+	if p.MaxOpenConns <= 0 {
+		return unboundedPoolIdleConns
+	}
 	return p.MaxOpenConns
 }
+
+// unboundedPoolIdleConns is the default of MaxOpenConns.
+const unboundedPoolIdleConns = 25
