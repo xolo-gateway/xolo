@@ -47,6 +47,15 @@ func TestTrustedProxyPrefixes(t *testing.T) {
 	if _, err := (HTTPRateLimit{TrustedProxies: []string{"ingress"}}).TrustedProxyPrefixes(); err == nil {
 		t.Fatal("expected an error for a value that is no address")
 	}
+	all, err := (HTTPRateLimit{TrustedProxies: []string{"::/0"}}).TrustedProxyPrefixes()
+	if err != nil || len(all) != 2 || all[1].String() != "0.0.0.0/0" {
+		t.Fatalf("expected ::/0 to cover IPv4 too, got %v (%v)", all, err)
+	}
+	narrow, _ := (HTTPRateLimit{TrustedProxies: []string{"2001:db8::/32"}}).TrustedProxyPrefixes()
+	if len(narrow) != 1 {
+		t.Fatalf("a range outside the mapped space must not add IPv4, got %v", narrow)
+	}
+
 	if _, err := (HTTPRateLimit{TrustedProxies: []string{"::ffff:0:0/90"}}).TrustedProxyPrefixes(); err == nil {
 		t.Fatal("expected an error for a mapped range wider than the IPv4-mapped space")
 	}

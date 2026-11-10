@@ -136,6 +136,9 @@ type HTTPRateLimit struct {
 	CacheTTL        time.Duration `env:"CACHE_TTL,expand" envDefault:"1h"`
 }
 
+// ipv4MappedSpace is ::ffff:0:0/96, where IPv4 addresses live in IPv6.
+var ipv4MappedSpace = netip.MustParsePrefix("::ffff:0:0/96")
+
 // TrustedProxyPrefixes parses TrustedProxies, a bare address standing for
 // itself alone.
 func (r HTTPRateLimit) TrustedProxyPrefixes() ([]netip.Prefix, error) {
@@ -155,6 +158,11 @@ func (r HTTPRateLimit) TrustedProxyPrefixes() ([]netip.Prefix, error) {
 				prefix = netip.PrefixFrom(prefix.Addr().Unmap(), prefix.Bits()-96)
 			}
 			prefixes = append(prefixes, prefix.Masked())
+			// An IPv6 range spanning the whole IPv4-mapped space, such as ::/0,
+			// also covers the IPv4 addresses, which are matched unmapped.
+			if prefix.Addr().Is6() && prefix.Bits() <= 96 && prefix.Contains(ipv4MappedSpace.Addr()) {
+				prefixes = append(prefixes, netip.PrefixFrom(netip.IPv4Unspecified(), 0))
+			}
 			continue
 		}
 		addr, err := netip.ParseAddr(raw)
