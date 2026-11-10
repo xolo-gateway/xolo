@@ -34,10 +34,12 @@ func (s *ProvisioningTransaction) WithProvisioningTransaction(ctx context.Contex
 	if err != nil {
 		return err
 	}
-	if s.providers != nil {
+	if s.providers != nil && len(committed.providers) != 0 {
 		for id := range committed.providers {
 			s.providers.providerCache.Remove(string(id))
 		}
+		// A deleted provider takes its models with it (foreign key cascade).
+		s.providers.modelCache.RemoveMatching(func(m *CacheableLLMModel) bool { return committed.providers[m.ProviderID()] })
 	}
 	if s.users == nil || (len(committed.users) == 0 && len(committed.tenants) == 0 && len(committed.orgs) == 0 && len(committed.apps) == 0) {
 		return nil
