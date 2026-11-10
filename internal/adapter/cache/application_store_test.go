@@ -11,7 +11,7 @@ import (
 
 type applicationBackend struct{ port.ApplicationStore }
 
-func (applicationBackend) UpdateApplication(context.Context, model.Application) error  { return nil }
+func (applicationBackend) UpdateApplication(context.Context, model.Application) error   { return nil }
 func (applicationBackend) DeleteApplication(context.Context, model.ApplicationID) error { return nil }
 func (applicationBackend) DeleteApplicationAuthToken(context.Context, model.AuthTokenID) error {
 	return nil
