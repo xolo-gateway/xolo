@@ -141,3 +141,23 @@ func TestDeleteProviderDropsItsCachedModels(t *testing.T) {
 type deletingBackend struct{ port.ProviderStore }
 
 func (deletingBackend) DeleteProvider(context.Context, model.ProviderID) error { return nil }
+
+// A model whose ID key was evicted keeps its proxy-name key: saving it must
+// drop that one too.
+func TestSaveLLMModelDropsAnEntryWhoseIDKeyWasEvicted(t *testing.T) {
+	store := NewProviderStore(savingBackend{}, 10, time.Hour)
+	m := model.NewLLMModel("prov-1", "org-1", "fast", "fast-real", "", 0, 0)
+	store.modelCache.Add(NewCacheableLLMModel(m))
+	store.modelCache.cache.Remove(string(m.ID()))
+
+	if err := store.SaveLLMModel(context.Background(), m); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+	if _, cached := store.modelCache.Get(getLLMModelProxyNameCacheKey("org-1", "fast")); cached {
+		t.Fatal("the proxy-name key of the saved model is still cached")
+	}
+}
+
+type savingBackend struct{ port.ProviderStore }
+
+func (savingBackend) SaveLLMModel(context.Context, model.LLMModel) error { return nil }

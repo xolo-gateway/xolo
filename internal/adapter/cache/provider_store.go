@@ -85,7 +85,7 @@ func (s *ProviderStore) DeleteProvider(ctx context.Context, id model.ProviderID)
 
 // CreateLLMModel implements [port.ProviderStore].
 func (s *ProviderStore) CreateLLMModel(ctx context.Context, m model.LLMModel) error {
-	defer s.modelCache.Remove(string(m.ID()))
+	defer s.removeModel(m.ID())
 	return s.backend.CreateLLMModel(ctx, m)
 }
 
@@ -133,14 +133,21 @@ func (s *ProviderStore) ListEnabledLLMModels(ctx context.Context, orgID model.Or
 
 // SaveLLMModel implements [port.ProviderStore].
 func (s *ProviderStore) SaveLLMModel(ctx context.Context, m model.LLMModel) error {
-	defer s.modelCache.Remove(string(m.ID()))
+	defer s.removeModel(m.ID())
 	return s.backend.SaveLLMModel(ctx, m)
 }
 
 // DeleteLLMModel implements [port.ProviderStore].
 func (s *ProviderStore) DeleteLLMModel(ctx context.Context, id model.LLMModelID) error {
-	defer s.modelCache.Remove(string(id))
+	defer s.removeModel(id)
 	return s.backend.DeleteLLMModel(ctx, id)
 }
 
 var _ port.ProviderStore = &ProviderStore{}
+
+// removeModel drops a model under all its keys. Remove by ID would leave its
+// proxy-name key behind when the LRU already evicted the ID key, and that
+// stale entry would keep being served by proxy name.
+func (s *ProviderStore) removeModel(id model.LLMModelID) {
+	s.modelCache.RemoveMatching(func(m *CacheableLLMModel) bool { return m.ID() == id })
+}
