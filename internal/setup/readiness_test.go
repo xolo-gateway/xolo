@@ -26,6 +26,13 @@ func TestReadinessCheckPingsTheReaderOnSQLite(t *testing.T) {
 	require.NoError(t, err)
 	pool, err := writer.DB()
 	require.NoError(t, err)
+	// The handles are memoised for conf: close them with the test's database.
+	t.Cleanup(func() { _ = pool.Close() })
+	if reader, err := getGormReaderFromConfig(t.Context(), conf); err == nil && reader != nil {
+		if readerPool, err := reader.DB(); err == nil {
+			t.Cleanup(func() { _ = readerPool.Close() })
+		}
+	}
 
 	// Hold the only writer connection, as a long write would.
 	held, err := pool.Conn(t.Context())

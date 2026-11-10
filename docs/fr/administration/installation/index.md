@@ -40,14 +40,19 @@ d'un répartiteur de charge ou d'un orchestrateur :
 | Chemin     | Répond `200` quand…                                  | Usage                          |
 | ---------- | ---------------------------------------------------- | ------------------------------ |
 | `/healthz` | le processus sert des requêtes HTTP                  | sonde de vivacité (*liveness*) |
-| `/readyz`  | l'instance joint aussi sa base de données (en 1 s)   | sonde de disponibilité         |
+| `/readyz`  | l'instance joint aussi sa base de données (en 0,8 s) | sonde de disponibilité         |
 
 `/readyz` répond `503` tant que la base est injoignable : l'instance sort du
-répartiteur sans être redémarrée. Son résultat est partagé pendant une seconde :
+répartiteur sans être redémarrée. Son résultat est partagé pendant 0,8 s :
 un afflux de sondes ne coûte qu'une vérification à la base. Les deux chemins
 passent avant la résolution du locataire, la journalisation, les métriques HTTP
 et la limitation de débit : une sonde vise l'instance par son adresse, qui n'est
 le domaine d'aucun locataire.
+
+Sur PostgreSQL, `/readyz` passe par une connexion qui lui est propre, hors du
+pool de l'application : un pool saturé par le trafic ne fait pas sortir toutes
+les instances du répartiteur en même temps. La sonde dit si la base répond, pas
+si l'instance est occupée. Comptez une connexion de plus par instance.
 
 ```yaml
 healthcheck:

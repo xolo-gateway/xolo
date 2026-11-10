@@ -23,9 +23,10 @@ const (
 	ReadinessPath = "/readyz"
 )
 
-// readinessTimeout bounds a readiness check so a probe never outlives the
-// orchestrator's own timeout, which defaults to one second on Kubernetes.
-const readinessTimeout = time.Second
+// readinessTimeout bounds a readiness check below the orchestrator's own
+// probe timeout, one second by default on Kubernetes: the probe gets an
+// answer, 503 included, before it gives up on its own.
+const readinessTimeout = 800 * time.Millisecond
 
 // ReadinessCheck reports whether the instance can serve traffic, typically by
 // reaching its database. A nil check makes readiness equal to liveness.
