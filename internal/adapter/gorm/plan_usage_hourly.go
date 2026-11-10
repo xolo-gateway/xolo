@@ -200,9 +200,10 @@ type planUsageSource func(db *gorm.DB) *gorm.DB
 //   - the hourly sums of the whole hours after it;
 //   - the records of the current hour.
 //
-// A window starting in the current hour reads the records alone. The
-// conditions of every window share one query per source, bounded by the
-// earliest and latest of their times so the indexes keep bounding the range.
+// A window starting in the current hour reads the records alone. Each window
+// reads its head in a query of its own, bounded by that part of an hour; the
+// hourly sums and the current hour, close for every window, share one query
+// each, bounded by the earliest of their times.
 func planUsageSources(scope model.PlanUsageScope, since, now time.Time) []planUsageSource {
 	currentHour := now.Truncate(time.Hour).In(time.Local)
 
@@ -262,14 +263,14 @@ func planUsageSources(scope model.PlanUsageScope, since, now time.Time) []planUs
 	}
 
 	var sources []planUsageSource
-	if len(heads) > 0 {
-		from, to := heads[0].from, heads[0].to
-		for _, p := range heads[1:] {
-			from, to = earliest(from, p.from), latest(to, p.to)
-		}
+	// One query per head, each bounded by its own part of an hour: the heads
+	// of a key window and of the window it overrides can lie days apart, and
+	// one query bounded by the earliest and the latest of them read every
+	// record in between (#230).
+	for _, head := range heads {
 		sources = append(sources, func(db *gorm.DB) *gorm.DB {
-			query := records(db).Where("created_at >= ? AND created_at < ?", from, to)
-			return filter(within(db, query, heads, func(p part) (string, []any) {
+			query := records(db).Where("created_at >= ? AND created_at < ?", head.from, head.to)
+			return filter(within(db, query, []part{head}, func(p part) (string, []any) {
 				return "created_at >= ? AND created_at < ?", []any{p.from, p.to}
 			}))
 		})
@@ -303,13 +304,6 @@ func planUsageSources(scope model.PlanUsageScope, since, now time.Time) []planUs
 
 func earliest(a, b time.Time) time.Time {
 	if b.Before(a) {
-		return b
-	}
-	return a
-}
-
-func latest(a, b time.Time) time.Time {
-	if b.After(a) {
 		return b
 	}
 	return a
