@@ -11,6 +11,8 @@ import (
 	"github.com/xolo-gateway/xolo/internal/core/model"
 )
 
+const defaultFirstChunkTimeout = 30 * time.Second
+
 // ModelFallbackExecutor handles NodeTypeModelFallback: an ordered list of real
 // models where the next one is called when the previous fails. Resolution is
 // eager for the first model, so a misconfigured primary fails at pipeline time
@@ -22,12 +24,17 @@ import (
 // inside a fallback chain.
 type ModelFallbackExecutor struct {
 	noopBackwardExecutor
-	resolver     ModelResolver
-	drainTimeout time.Duration
+	resolver          ModelResolver
+	drainTimeout      time.Duration
+	firstChunkTimeout time.Duration
 }
 
 func NewModelFallbackExecutor(resolver ModelResolver) *ModelFallbackExecutor {
-	return &ModelFallbackExecutor{resolver: resolver, drainTimeout: 30 * time.Second}
+	return &ModelFallbackExecutor{
+		resolver:          resolver,
+		drainTimeout:      30 * time.Second,
+		firstChunkTimeout: defaultFirstChunkTimeout,
+	}
 }
 
 // WithDrainTimeout bounds draining abandoned streams. Zero or less means no limit.
@@ -68,11 +75,12 @@ func (e *ModelFallbackExecutor) Forward(ctx context.Context, node model.Pipeline
 	}
 
 	fc := &fallbackClient{
-		candidates:   candidates,
-		resolve:      resolve,
-		nodeID:       node.ID,
-		drainTimeout: e.drainTimeout,
-		resolved:     map[int]*resolvedCandidate{0: {client: primary, realModel: realModel, modelID: modelID}},
+		candidates:        candidates,
+		resolve:           resolve,
+		nodeID:            node.ID,
+		drainTimeout:      e.drainTimeout,
+		firstChunkTimeout: e.firstChunkTimeout,
+		resolved:          map[int]*resolvedCandidate{0: {client: primary, realModel: realModel, modelID: modelID}},
 	}
 
 	return &ForwardResult{
@@ -94,16 +102,16 @@ type resolvedCandidate struct {
 // returns an error or its stream closes or errors before its first chunk.
 // Cancellation is not retried. The first non-error chunk commits the stream,
 // including a preamble or usage-only chunk, to avoid splicing two answers.
-// A per-candidate upstream timeout bounds the wait when configured; otherwise
-// the request deadline does, if any. Without either bound, a provider that
-// never emits or closes can hold the fallback until its stream ends. Usage on
-// an abandoned error chunk is not forwarded or attributed to the successful
-// model.
+// The first chunk has a per-candidate timeout independent of the upstream
+// client timeout. Once a non-error chunk arrives, the stream continues under
+// the request context. Cancellation is not retried. Usage on an abandoned
+// error chunk is not forwarded or attributed to the successful model.
 type fallbackClient struct {
-	candidates   []string
-	resolve      func(ctx context.Context, name string) (llm.Client, string, model.LLMModelID, error)
-	nodeID       string
-	drainTimeout time.Duration
+	candidates        []string
+	resolve           func(ctx context.Context, name string) (llm.Client, string, model.LLMModelID, error)
+	nodeID            string
+	drainTimeout      time.Duration
+	firstChunkTimeout time.Duration
 
 	mu       sync.Mutex
 	resolved map[int]*resolvedCandidate
@@ -196,11 +204,17 @@ func (c *fallbackClient) ChatCompletionStream(ctx context.Context, funcs ...llm.
 		candidateCtx, cancel := context.WithCancel(ctx)
 		ch, err := rc.client.ChatCompletionStream(candidateCtx, funcs...)
 		if err == nil {
+			firstChunkTimer := time.NewTimer(c.firstChunkTimeout)
 			select {
 			case <-ctx.Done():
+				firstChunkTimer.Stop()
 				cancel()
 				go llm.DrainStream(ch, c.drainTimeout)
 				return nil, ctx.Err()
+			case <-firstChunkTimer.C:
+				cancel()
+				go llm.DrainStream(ch, c.drainTimeout)
+				err = errors.Wrap(context.DeadlineExceeded, "timed out waiting for first chunk")
 			case first, ok := <-ch:
 				if !ok {
 					err = errors.New("stream closed before the first chunk")
@@ -225,12 +239,14 @@ func (c *fallbackClient) ChatCompletionStream(ctx context.Context, funcs ...llm.
 							}
 						}
 					}()
+					firstChunkTimer.Stop()
 					return out, nil
 				} else {
 					err = first.Error()
 					go llm.DrainStream(ch, c.drainTimeout)
 				}
 			}
+			firstChunkTimer.Stop()
 		}
 		cancel()
 		lastErr = err

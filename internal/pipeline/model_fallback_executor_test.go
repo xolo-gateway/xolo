@@ -35,6 +35,21 @@ func (waitingClient) ChatCompletionStream(context.Context, ...llm.ChatCompletion
 	return make(chan llm.StreamChunk), nil
 }
 
+type cancellableWaitingClient struct {
+	dummyClient
+	canceled chan struct{}
+}
+
+func (c *cancellableWaitingClient) ChatCompletionStream(ctx context.Context, _ ...llm.ChatCompletionOptionFunc) (<-chan llm.StreamChunk, error) {
+	ch := make(chan llm.StreamChunk)
+	go func() {
+		<-ctx.Done()
+		close(c.canceled)
+		close(ch)
+	}()
+	return ch, nil
+}
+
 type abandonedClient struct {
 	dummyClient
 	done chan struct{}
@@ -322,6 +337,51 @@ func TestModelFallback_StreamWaitHonorsCancellation(t *testing.T) {
 	}
 	if len(r.resolved) != 1 {
 		t.Fatalf("unexpected fallback: %v", r.resolved)
+	}
+}
+
+func TestModelFallback_StreamWaitTimesOutWithoutUpstreamDeadline(t *testing.T) {
+	primary := &cancellableWaitingClient{canceled: make(chan struct{})}
+	r := &fakeResolver{clients: map[string]llm.Client{"a": primary, "b": newDummyClient("from b")}}
+	executor := NewModelFallbackExecutor(r)
+	executor.firstChunkTimeout = 50 * time.Millisecond
+	res, err := executor.Forward(context.Background(), fallbackNode("a", "b"), nil, ExecutionContext{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	type streamResult struct {
+		stream <-chan llm.StreamChunk
+		err    error
+	}
+	started := make(chan streamResult, 1)
+	go func() {
+		stream, err := res.ResolvedClient.ChatCompletionStream(context.Background())
+		started <- streamResult{stream: stream, err: err}
+	}()
+
+	var result streamResult
+	select {
+	case result = <-started:
+	case <-time.After(time.Second):
+		t.Fatal("fallback did not advance after the first-chunk timeout")
+	}
+	if result.err != nil {
+		t.Fatal(result.err)
+	}
+	first, ok := <-result.stream
+	if !ok || first.Error() != nil || first.Delta().Content() != "from b" {
+		t.Fatalf("unexpected fallback chunk: %v", first)
+	}
+	for range result.stream {
+	}
+	select {
+	case <-primary.canceled:
+	case <-time.After(time.Second):
+		t.Fatal("timed-out candidate was not canceled")
+	}
+	if real, _, ok := res.ModelOutcome.UsedModel(); !ok || real != "real-b" {
+		t.Fatalf("used model = %q, %v", real, ok)
 	}
 }
 
