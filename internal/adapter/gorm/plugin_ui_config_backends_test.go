@@ -2,6 +2,7 @@ package gorm_test
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	xologorm "github.com/xolo-gateway/xolo/internal/adapter/gorm"
@@ -33,6 +34,15 @@ func TestPluginUIConfigOnEachBackend(t *testing.T) {
 		}
 		if got, _ := store.GetPluginUIConfig(ctx, "org-1", "other"); got != "" {
 			t.Fatalf("plugins mixed up, got %q", got)
+		}
+
+		// A real node config is far longer than the key columns.
+		large := `{"prompt":"` + strings.Repeat("x", 64*1024) + `"}`
+		if err := store.SavePluginUIConfig(ctx, "org-1", "system-prompt", large); err != nil {
+			t.Fatalf("save large: %v", err)
+		}
+		if got, _ := store.GetPluginUIConfig(ctx, "org-1", "system-prompt"); got != large {
+			t.Fatalf("large config not round-tripped (%d bytes back)", len(got))
 		}
 	})
 }

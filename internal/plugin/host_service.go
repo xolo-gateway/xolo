@@ -16,8 +16,10 @@ import (
 )
 
 // XoloHostService implements proto.XoloHostServiceServer.
-// Config persistence uses an in-memory store keyed by (orgID, pluginName).
-// This config is used by the plugin HTTP UI for display/edit; the authoritative
+// The config handed to the plugin HTTP UI for display/edit, keyed by (orgID,
+// pluginName), lives in a port.PluginUIConfigStore once UseConfigStore is
+// called, which the server does with the shared database; an in-memory map
+// stands in for it otherwise, for one instance only. The authoritative
 // per-node config lives in the pipeline graph (PluginNodeData.Config).
 //
 // GetSecret/SetSecret/DeleteSecret are a separate, persisted channel scoped

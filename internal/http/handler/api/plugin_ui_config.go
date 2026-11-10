@@ -21,8 +21,9 @@ type pluginManagerWithHostService interface {
 	HostService() *plugin.XoloHostService
 }
 
-// handleSeedPluginUIConfig pre-populates the host service in-memory store with
-// the current node config before the plugin UI iframe is opened.
+// handleSeedPluginUIConfig hands the current node config to the plugin UI
+// through the host service (the shared store on a server) before its iframe
+// is opened.
 // PUT /api/orgs/{orgSlug}/plugin-ui-config?plugin=<name>
 func (h *Handler) handleSeedPluginUIConfig(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()

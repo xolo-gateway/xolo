@@ -17,7 +17,7 @@ type PluginUIConfig struct {
 	// OrgID stores the scope: an organization ID or "~:<userID>".
 	OrgID      string `gorm:"primaryKey;size:255"`
 	PluginName string `gorm:"primaryKey;size:255"`
-	ConfigJSON string `gorm:"not null"`
+	ConfigJSON string `gorm:"type:text;not null"`
 	UpdatedAt  time.Time
 }
 
