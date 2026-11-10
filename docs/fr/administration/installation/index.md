@@ -43,9 +43,11 @@ d'un répartiteur de charge ou d'un orchestrateur :
 | `/readyz`  | l'instance joint aussi sa base de données (en 1 s)   | sonde de disponibilité         |
 
 `/readyz` répond `503` tant que la base est injoignable : l'instance sort du
-répartiteur sans être redémarrée. Les deux chemins passent avant la résolution
-du locataire, la journalisation et les métriques HTTP : une sonde vise
-l'instance par son adresse, qui n'est le domaine d'aucun locataire.
+répartiteur sans être redémarrée. Son résultat est partagé pendant une seconde :
+un afflux de sondes ne coûte qu'une vérification à la base. Les deux chemins
+passent avant la résolution du locataire, la journalisation, les métriques HTTP
+et la limitation de débit : une sonde vise l'instance par son adresse, qui n'est
+le domaine d'aucun locataire.
 
 ```yaml
 healthcheck:
