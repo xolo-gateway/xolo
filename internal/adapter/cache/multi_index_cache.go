@@ -56,9 +56,14 @@ func (c *MultiIndexCache[V]) Remove(key string) {
 
 // removeLocal drops the entry on this instance only, for a removal every
 // instance decides on its own, such as an expired token.
+//
+// The generation moves even when the key is absent: a read of that entry may
+// be in flight, and must not put back what it loaded before the change.
 func (c *MultiIndexCache[V]) removeLocal(key string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+
+	c.generation++
 
 	val, ok := c.cache.Peek(key)
 	if !ok {

@@ -47,6 +47,9 @@ func (s *ProviderStore) CreateProvider(ctx context.Context, p model.Provider) er
 
 // GetProviderByID implements [port.ProviderStore].
 func (s *ProviderStore) GetProviderByID(ctx context.Context, id model.ProviderID) (model.Provider, error) {
+	// Captured before the read: an invalidation, local or from another
+	// instance, landing while it runs keeps its result out of the cache.
+	generation := s.providerCache.Generation()
 	if p, exists := s.providerCache.Get(string(id)); exists {
 		return p, nil
 	}
@@ -54,7 +57,7 @@ func (s *ProviderStore) GetProviderByID(ctx context.Context, id model.ProviderID
 	if err != nil {
 		return nil, err
 	}
-	s.providerCache.Add(NewCacheableProvider(p))
+	s.providerCache.AddIfGeneration(NewCacheableProvider(p), generation)
 	return p, nil
 }
 
@@ -85,6 +88,9 @@ func (s *ProviderStore) CreateLLMModel(ctx context.Context, m model.LLMModel) er
 
 // GetLLMModelByID implements [port.ProviderStore].
 func (s *ProviderStore) GetLLMModelByID(ctx context.Context, id model.LLMModelID) (model.LLMModel, error) {
+	// Captured before the read: an invalidation, local or from another
+	// instance, landing while it runs keeps its result out of the cache.
+	generation := s.modelCache.Generation()
 	if m, exists := s.modelCache.Get(string(id)); exists {
 		return m, nil
 	}
@@ -92,12 +98,15 @@ func (s *ProviderStore) GetLLMModelByID(ctx context.Context, id model.LLMModelID
 	if err != nil {
 		return nil, err
 	}
-	s.modelCache.Add(NewCacheableLLMModel(m))
+	s.modelCache.AddIfGeneration(NewCacheableLLMModel(m), generation)
 	return m, nil
 }
 
 // GetLLMModelByProxyName implements [port.ProviderStore].
 func (s *ProviderStore) GetLLMModelByProxyName(ctx context.Context, orgID model.OrgID, proxyName string) (model.LLMModel, error) {
+	// Captured before the read: an invalidation, local or from another
+	// instance, landing while it runs keeps its result out of the cache.
+	generation := s.modelCache.Generation()
 	if m, exists := s.modelCache.Get(getLLMModelProxyNameCacheKey(orgID, proxyName)); exists {
 		return m, nil
 	}
@@ -105,7 +114,7 @@ func (s *ProviderStore) GetLLMModelByProxyName(ctx context.Context, orgID model.
 	if err != nil {
 		return nil, err
 	}
-	s.modelCache.Add(NewCacheableLLMModel(m))
+	s.modelCache.AddIfGeneration(NewCacheableLLMModel(m), generation)
 	return m, nil
 }
 

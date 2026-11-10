@@ -2,7 +2,6 @@ package setup
 
 import (
 	"context"
-	"log/slog"
 
 	"github.com/pkg/errors"
 	"github.com/xolo-gateway/xolo/internal/adapter/cache"
@@ -26,12 +25,8 @@ var getCacheCoherenceFromConfig = createFromConfigOnce(func(ctx context.Context,
 
 	coherence := cache.NewCoherence(gormAdapter.NewCacheGenerationStore(db), interval)
 
-	go func() {
-		runCtx := context.Background()
-		if err := coherence.Run(runCtx); err != nil {
-			slog.ErrorContext(runCtx, "cache coherence stopped", slog.Any("error", errors.WithStack(err)))
-		}
-	}()
+	// Stops with the server: ctx is the root context the instance runs on.
+	go func() { _ = coherence.Run(ctx) }()
 
 	return coherence, nil
 })

@@ -5,6 +5,9 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/xolo-gateway/xolo/internal/core/model"
+	"github.com/xolo-gateway/xolo/internal/core/port"
 )
 
 // sharedGenerations stands for the database the instances share.
@@ -153,5 +156,54 @@ func TestCacheWithoutCoherenceStaysLocal(t *testing.T) {
 	cache.Remove("tok-6")
 	if _, ok := cache.Get("tok-6"); ok {
 		t.Fatal("remove did not remove")
+	}
+}
+
+type fakeProviderBackend struct {
+	port.ProviderStore
+	read func() model.Provider
+}
+
+func (b fakeProviderBackend) GetProviderByID(context.Context, model.ProviderID) (model.Provider, error) {
+	return b.read(), nil
+}
+
+// A provider read in flight on B while A changes the provider must not put the
+// old provider back after B flushed: B would use the old key or URL until the
+// TTL expires.
+func TestCoherenceProviderReadStraddlingAFlush(t *testing.T) {
+	store := &sharedGenerations{generations: map[string]int64{}}
+
+	var b *ProviderStore
+	var coherenceB *Coherence
+	stale := model.NewProvider("org-1", "openai", "openai", "https://old.example", "old-key", "EUR")
+	b = NewProviderStore(fakeProviderBackend{read: func() model.Provider {
+		// While the read runs: A commits the change, B polls and flushes.
+		_ = store.Bump(context.Background(), "providers")
+		if err := coherenceB.sync(context.Background()); err != nil {
+			t.Fatalf("sync: %v", err)
+		}
+		return stale
+	}}, 10, time.Hour)
+	coherenceB = NewCoherence(store, time.Hour)
+	b.ShareInvalidations(coherenceB)
+	_ = coherenceB.sync(context.Background())
+
+	if _, err := b.GetProviderByID(context.Background(), stale.ID()); err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	if _, cached := b.providerCache.Get(string(stale.ID())); cached {
+		t.Fatal("a read started before the flush cached the old provider")
+	}
+}
+
+// The same holds for a local invalidation: Remove moves the generation too.
+func TestRemoveRejectsReadsStartedBefore(t *testing.T) {
+	cache := NewMultiIndexCache[entry](10, time.Hour)
+	generation := cache.Generation()
+	cache.Remove("tok-7")
+	cache.AddIfGeneration(entry{keys: []string{"tok-7"}}, generation)
+	if _, ok := cache.Get("tok-7"); ok {
+		t.Fatal("a read started before the removal repopulated the cache")
 	}
 }
