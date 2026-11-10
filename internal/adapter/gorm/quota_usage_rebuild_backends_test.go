@@ -76,8 +76,14 @@ func TestRebuildQuotaUsageOnEachBackend(t *testing.T) {
 			Where("scope = ? AND scope_id = ?", "user", "user-d").Order("day").Scan(&days).Error; err != nil {
 			t.Fatalf("days: %v", err)
 		}
-		before := midnight.Add(-30 * time.Minute).Format("2006-01-02")
-		after := midnight.Format("2006-01-02")
+		// The rebuild shifts by the server's current offset, not by the offset
+		// each timestamp had: expect the same, or a DST transition day fails.
+		_, offset := time.Now().Zone()
+		bucket := func(at time.Time) string {
+			return at.UTC().Add(time.Duration(offset) * time.Second).Format("2006-01-02")
+		}
+		before := bucket(midnight.Add(-30 * time.Minute))
+		after := bucket(midnight.Add(30 * time.Minute))
 		if len(days) != 2 || days[0].Day != before || days[0].Cost != 5 || days[1].Day != after || days[1].Cost != 7 {
 			t.Fatalf("expected %s=5 and %s=7, got %+v", before, after, days)
 		}
