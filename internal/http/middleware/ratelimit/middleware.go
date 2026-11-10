@@ -81,6 +81,7 @@ func Middleware(trustHeaders bool, trustedProxies []netip.Prefix, interval time.
 // from one of them, and X-Forwarded-For is walked from the right, where each
 // proxy appends the address it received the request from: the first entry
 // that is not a trusted proxy is the client, whatever it wrote to the left.
+// X-Real-Ip is then ignored, since a proxy may pass the client's own on.
 func clientAddr(r *http.Request, trustHeaders bool, trustedProxies []netip.Prefix) string {
 	peer := r.RemoteAddr
 	if host, _, err := net.SplitHostPort(r.RemoteAddr); err == nil {
@@ -139,8 +140,7 @@ func clientAddr(r *http.Request, trustHeaders bool, trustedProxies []netip.Prefi
 		return hops[0]
 	}
 
-	if xri := strings.TrimSpace(r.Header.Get("X-Real-Ip")); xri != "" {
-		return xri
-	}
+	// X-Real-Ip is not read here: a proxy that does not rewrite it passes on
+	// the client's own value. Trusted proxies append to X-Forwarded-For.
 	return peer
 }

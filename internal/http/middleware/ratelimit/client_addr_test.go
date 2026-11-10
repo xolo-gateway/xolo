@@ -30,7 +30,8 @@ func TestClientAddr(t *testing.T) {
 		// Not from a trusted proxy: its headers say nothing.
 		{name: "untrusted peer", trust: true, proxies: ingress, remote: "203.0.113.5:1234", xff: []string{"198.51.100.1"}, want: "203.0.113.5"},
 		{name: "only trusted hops", trust: true, proxies: ingress, remote: "10.244.1.2:1234", xff: []string{"10.244.3.3"}, want: "10.244.3.3"},
-		{name: "real ip from trusted peer", trust: true, proxies: ingress, remote: "10.244.1.2:1234", xri: "198.51.100.7", want: "198.51.100.7"},
+		// A proxy that does not rewrite X-Real-Ip passes the client's own on.
+		{name: "real ip ignored with trusted proxies", trust: true, proxies: ingress, remote: "10.244.1.2:1234", xri: "198.51.100.7", want: "10.244.1.2"},
 		{name: "no header from trusted peer", trust: true, proxies: ingress, remote: "10.244.1.2:1234", want: "10.244.1.2"},
 		{name: "ipv4-mapped peer", trust: true, proxies: ingress, remote: "[::ffff:10.244.1.2]:1234", xff: []string{"203.0.113.9"}, want: "203.0.113.9"},
 	}
