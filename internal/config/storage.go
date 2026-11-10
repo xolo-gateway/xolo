@@ -21,6 +21,9 @@ type Database struct {
 		Users     StoreCache `envPrefix:"USERS_"`
 		Providers StoreCache `envPrefix:"PROVIDERS_"`
 		Quota     QuotaCache `envPrefix:"QUOTA_"`
+		// Coherence keeps the user, token, provider and model caches of the
+		// instances sharing the database consistent.
+		Coherence CacheCoherence `envPrefix:"COHERENCE_"`
 	} `envPrefix:"CACHE_"`
 }
 
@@ -52,4 +55,13 @@ type QuotaCache struct {
 	// is how long one may miss another's spending. "0" disables reuse and reads
 	// the counters on every check.
 	TTL time.Duration `env:"TTL,expand" envDefault:"10s"`
+}
+
+// CacheCoherence sets how often an instance checks whether another one changed
+// a cached entry. That is how long a revoked token, a deactivated user or a
+// changed provider key may still be served by the other instances. Zero turns
+// it off: entries then live until their TTL on every other instance, which is
+// only safe with a single instance.
+type CacheCoherence struct {
+	Interval time.Duration `env:"INTERVAL,expand" envDefault:"1s"`
 }

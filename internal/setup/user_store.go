@@ -25,7 +25,15 @@ func createUserStoreFromConfig(ctx context.Context, conf *config.Config) (port.U
 
 	if conf.Storage.Database.Cache.Users.Enabled {
 		slog.DebugContext(ctx, "using cached user store", slog.Duration("ttl", conf.Storage.Database.Cache.Users.TTL), slog.Int("cache_size", conf.Storage.Database.Cache.Users.Size))
-		store = cache.NewUserStore(store, conf.Storage.Database.Cache.Users.Size, conf.Storage.Database.Cache.Users.TTL)
+		cached := cache.NewUserStore(store, conf.Storage.Database.Cache.Users.Size, conf.Storage.Database.Cache.Users.TTL)
+
+		coherence, err := getCacheCoherenceFromConfig(ctx, conf)
+		if err != nil {
+			return nil, errors.WithStack(err)
+		}
+		cached.ShareInvalidations(coherence)
+
+		store = cached
 	}
 
 	return store, nil

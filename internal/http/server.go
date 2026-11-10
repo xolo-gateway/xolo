@@ -24,6 +24,57 @@ func (s *Server) Run(ctx context.Context) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
+	server := http.Server{
+		Addr:    s.opts.Address,
+		Handler: s.handler(),
+		// Bounds the time a client may take to send its headers so a stalled
+		// or malicious connection cannot hold a goroutine for ever. Bodies and
+		// responses stay unbounded: completions legitimately run for minutes.
+		ReadHeaderTimeout: 30 * time.Second,
+	}
+
+	shutdownDone := make(chan struct{})
+	// serveDone releases the watcher when serving stops on its own (a failed
+	// bind, typically) instead of leaving it parked on ctx.
+	serveDone := make(chan struct{})
+	defer close(serveDone)
+
+	go func() {
+		defer close(shutdownDone)
+
+		select {
+		case <-ctx.Done():
+		case <-serveDone:
+			return
+		}
+
+		// Shutdown stops accepting connections at once, then waits for the
+		// in-flight requests — long streamed completions included — up to the
+		// configured timeout. Detached from ctx, which is already canceled.
+		shutdownCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), s.opts.ShutdownTimeout)
+		defer cancel()
+
+		if err := server.Shutdown(shutdownCtx); err != nil {
+			slog.WarnContext(ctx, "graceful shutdown timed out, closing remaining connections", slog.Any("error", errors.WithStack(err)))
+			if err := server.Close(); err != nil {
+				slog.ErrorContext(ctx, "could not close server", slog.Any("error", errors.WithStack(err)))
+			}
+		}
+	}()
+
+	if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		return errors.WithStack(err)
+	}
+
+	if ctx.Err() != nil {
+		<-shutdownDone
+	}
+
+	return nil
+}
+
+// handler assembles the mux and its middlewares into the served handler.
+func (s *Server) handler() http.Handler {
 	mux := &http.ServeMux{}
 	for mountpoint, handler := range s.opts.Mounts {
 		mount(mux, mountpoint, handler)
@@ -74,53 +125,11 @@ func (s *Server) Run(ctx context.Context) error {
 
 	handler = colorScheme(handler)
 
-	server := http.Server{
-		Addr:    s.opts.Address,
-		Handler: handler,
-		// Bounds the time a client may take to send its headers so a stalled
-		// or malicious connection cannot hold a goroutine for ever. Bodies and
-		// responses stay unbounded: completions legitimately run for minutes.
-		ReadHeaderTimeout: 30 * time.Second,
-	}
+	// Outermost, so the probes skip tenant resolution, CORS, logging and the
+	// HTTP metrics (see health.go).
+	handler = withHealthProbes(handler, s.opts.ReadinessCheck)
 
-	shutdownDone := make(chan struct{})
-	// serveDone releases the watcher when serving stops on its own (a failed
-	// bind, typically) instead of leaving it parked on ctx.
-	serveDone := make(chan struct{})
-	defer close(serveDone)
-
-	go func() {
-		defer close(shutdownDone)
-
-		select {
-		case <-ctx.Done():
-		case <-serveDone:
-			return
-		}
-
-		// Shutdown stops accepting connections at once, then waits for the
-		// in-flight requests — long streamed completions included — up to the
-		// configured timeout. Detached from ctx, which is already canceled.
-		shutdownCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), s.opts.ShutdownTimeout)
-		defer cancel()
-
-		if err := server.Shutdown(shutdownCtx); err != nil {
-			slog.WarnContext(ctx, "graceful shutdown timed out, closing remaining connections", slog.Any("error", errors.WithStack(err)))
-			if err := server.Close(); err != nil {
-				slog.ErrorContext(ctx, "could not close server", slog.Any("error", errors.WithStack(err)))
-			}
-		}
-	}()
-
-	if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-		return errors.WithStack(err)
-	}
-
-	if ctx.Err() != nil {
-		<-shutdownDone
-	}
-
-	return nil
+	return handler
 }
 
 func mount(mux *http.ServeMux, prefix string, handler http.Handler) {

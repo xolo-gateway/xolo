@@ -1,6 +1,12 @@
 package config
 
-import "time"
+import (
+	"net/netip"
+	"strings"
+	"time"
+
+	"github.com/pkg/errors"
+)
 
 type HTTP struct {
 	BaseURL string `env:"BASE_URL,expand" envDefault:"/"`
@@ -115,9 +121,62 @@ type GiteaProvider struct {
 }
 
 type HTTPRateLimit struct {
-	TrustHeaders    bool          `env:"TRUST_HEADERS" envDefault:"true"`
+	TrustHeaders bool `env:"TRUST_HEADERS" envDefault:"true"`
+	// TrustedProxies lists the addresses or CIDR ranges of the proxies in front
+	// of the instance (an ingress controller, a load balancer). Set, the client
+	// address is the right-most X-Forwarded-For entry outside them, which a
+	// client outside them cannot forge; empty, it is the left-most entry, which
+	// any client can. A range that also covers clients (a whole pod network
+	// whose pods call the gateway) lets those clients forge it again: list the
+	// proxies' own addresses. An IPv6 range spanning the IPv4-mapped space
+	// (::/0, ::ffff:0:0/96) covers the IPv4 addresses too.
+	TrustedProxies  []string      `env:"TRUSTED_PROXIES" envSeparator:","`
 	RequestInterval time.Duration `env:"REQUEST_INTERVAL,expand" envDefault:"1s"`
 	RequestMaxBurst int           `env:"REQUEST_MAX_BURST,expand" envDefault:"10"`
 	CacheSize       int           `env:"CACHE_SIZE,expand" envDefault:"50"`
 	CacheTTL        time.Duration `env:"CACHE_TTL,expand" envDefault:"1h"`
+}
+
+// ipv4MappedSpace is ::ffff:0:0/96, where IPv4 addresses live in IPv6.
+var ipv4MappedSpace = netip.MustParsePrefix("::ffff:0:0/96")
+
+// TrustedProxyPrefixes parses TrustedProxies, a bare address standing for
+// itself alone.
+func (r HTTPRateLimit) TrustedProxyPrefixes() ([]netip.Prefix, error) {
+	prefixes := make([]netip.Prefix, 0, len(r.TrustedProxies))
+	for _, raw := range r.TrustedProxies {
+		raw = strings.TrimSpace(raw)
+		if raw == "" {
+			continue
+		}
+		if prefix, err := netip.ParsePrefix(raw); err == nil {
+			// Addresses are unmapped before matching: a mapped range must be
+			// unmapped too, or it would never match.
+			if prefix.Addr().Is4In6() {
+				if prefix.Bits() < 96 {
+					return nil, errors.Errorf("XOLO_HTTP_RATE_LIMIT_TRUSTED_PROXIES: %q spans beyond the IPv4-mapped range", raw)
+				}
+				prefix = netip.PrefixFrom(prefix.Addr().Unmap(), prefix.Bits()-96)
+			}
+			prefixes = append(prefixes, prefix.Masked())
+			// An IPv6 range spanning the whole IPv4-mapped space, such as ::/0,
+			// also covers the IPv4 addresses, which are matched unmapped.
+			if prefix.Addr().Is6() && prefix.Bits() <= 96 && prefix.Contains(ipv4MappedSpace.Addr()) {
+				prefixes = append(prefixes, netip.PrefixFrom(netip.IPv4Unspecified(), 0))
+			}
+			continue
+		}
+		addr, err := netip.ParseAddr(raw)
+		if err != nil {
+			return nil, errors.Errorf("XOLO_HTTP_RATE_LIMIT_TRUSTED_PROXIES: %q is neither an address nor a CIDR range", raw)
+		}
+		// A zone would be dropped by the prefix and match the address on any
+		// interface: refuse it rather than widen the trust silently.
+		if addr.Zone() != "" {
+			return nil, errors.Errorf("XOLO_HTTP_RATE_LIMIT_TRUSTED_PROXIES: %q carries a zone, which is not supported", raw)
+		}
+		addr = addr.Unmap()
+		prefixes = append(prefixes, netip.PrefixFrom(addr, addr.BitLen()))
+	}
+	return prefixes, nil
 }
