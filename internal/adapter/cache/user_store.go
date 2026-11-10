@@ -42,7 +42,8 @@ func (s *UserStore) FindAuthToken(ctx context.Context, token string) (model.Auth
 
 	if authToken, exists := s.authTokenCache.Get(lookupKey); exists {
 		if isExpired(authToken) {
-			s.authTokenCache.Remove(string(authToken.ID()))
+			// Every instance sees the same expiry date: nothing to tell them.
+			s.authTokenCache.removeLocal(string(authToken.ID()))
 			return nil, errors.WithStack(port.ErrNotFound)
 		}
 
@@ -156,6 +157,13 @@ func NewUserStore(backend port.UserStore, size int, ttl time.Duration) *UserStor
 		userCache:      NewMultiIndexCache[*CacheableUser](size, ttl),
 		authTokenCache: NewMultiIndexCache[*CacheableAuthToken](size, ttl),
 	}
+}
+
+// ShareInvalidations makes every invalidation of the user and token caches
+// reach the other instances sharing the database, through coherence.
+func (s *UserStore) ShareInvalidations(coherence *Coherence) {
+	share(coherence, "users", s.userCache)
+	share(coherence, "auth_tokens", s.authTokenCache)
 }
 
 var _ port.UserStore = &UserStore{}

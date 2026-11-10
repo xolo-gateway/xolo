@@ -30,6 +30,13 @@ func NewProviderStore(backend port.ProviderStore, size int, ttl time.Duration) *
 	}
 }
 
+// ShareInvalidations makes every invalidation of the provider and model
+// caches reach the other instances sharing the database, through coherence.
+func (s *ProviderStore) ShareInvalidations(coherence *Coherence) {
+	share(coherence, "providers", s.providerCache)
+	share(coherence, "llm_models", s.modelCache)
+}
+
 // ── Providers ───────────────────────────────────────────────────────────────
 
 // CreateProvider implements [port.ProviderStore].
