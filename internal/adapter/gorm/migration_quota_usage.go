@@ -22,8 +22,11 @@ func migrateQuotaUsageCounters(tx *gorm.DB) error {
 // what the migration runs, exported for the tooling that writes usage records
 // in bulk rather than through the store — the seeder — and would otherwise
 // leave every budget reading zero.
+//
+// It runs in a transaction, like the other rebuilds: the backfill empties the
+// counters first, and an aborted rebuild must leave the previous ones.
 func RebuildQuotaUsage(db *gorm.DB) error {
-	return backfillQuotaUsage(db)
+	return errors.WithStack(db.Transaction(backfillQuotaUsage))
 }
 
 // backfillQuotaUsage rebuilds every counter from usage_records in a single
@@ -132,7 +135,12 @@ func localDayExpr(tx *gorm.DB) (string, []any) {
 	// PostgreSQL: AT TIME ZONE 'UTC' turns the timestamptz into a plain UTC
 	// timestamp regardless of the session timezone — without it the result would
 	// depend on how the connection is configured, and could be shifted twice.
-	return "to_char(created_at AT TIME ZONE 'UTC' + make_interval(secs => ?), 'YYYY-MM-DD')", []any{offsetSeconds}
+	//
+	// The offset is written as a literal, not bound: the expression appears in
+	// both the SELECT and the GROUP BY, and PostgreSQL refuses to group by an
+	// expression bound to another parameter than the selected one, even with
+	// the same value. It is an integer computed here, never user input.
+	return "to_char(created_at AT TIME ZONE 'UTC' + make_interval(secs => " + strconv.Itoa(offsetSeconds) + "), 'YYYY-MM-DD')", nil
 }
 
 // formatSecondsModifier renders a seconds offset the way SQLite's date
