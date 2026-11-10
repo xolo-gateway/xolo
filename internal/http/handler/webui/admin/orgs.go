@@ -124,6 +124,9 @@ func (h *Handler) getNewOrgPage(w http.ResponseWriter, r *http.Request) {
 	templ.Handler(component.OrgForm(vmodel)).ServeHTTP(w, r)
 }
 
+// createOrg creates the organisation of the submitted form, re-rendered with the
+// reason when the submit is refused: the shell is hx-boosted and selects
+// #content, which a bare http.Error does not carry.
 func (h *Handler) createOrg(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
@@ -132,18 +135,29 @@ func (h *Handler) createOrg(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	name := r.FormValue("name")
-	slug := r.FormValue("slug")
-	description := r.FormValue("description")
+	name := strings.TrimSpace(r.FormValue("name"))
+	slug := strings.TrimSpace(r.FormValue("slug"))
+	description := strings.TrimSpace(r.FormValue("description"))
 
-	if name == "" || slug == "" {
-		http.Error(w, "Name and slug are required", http.StatusBadRequest)
+	switch {
+	case name == "":
+		h.renderOrgFormError(w, r, i18n.T(ctx, "admin.orgs.form.name_required"))
+		return
+	case slug == "":
+		h.renderOrgFormError(w, r, i18n.T(ctx, "admin.orgs.form.slug_required"))
+		return
+	case !model.IsValidSlug(slug):
+		h.renderOrgFormError(w, r, i18n.T(ctx, "admin.orgs.form.slug_invalid", model.MaxSlugLength))
 		return
 	}
 
 	org := model.NewOrganization(httpCtx.TenantID(ctx), slug, name, description)
 	if err := h.orgStore.CreateOrg(ctx, org); err != nil {
 		if webcommon.RejectLocked(w, r, err) {
+			return
+		}
+		if errors.Is(err, port.ErrAlreadyExists) {
+			h.renderOrgFormError(w, r, i18n.T(ctx, "admin.orgs.form.slug_taken", slug))
 			return
 		}
 		slog.ErrorContext(ctx, "could not create org", slogx.Error(err))
@@ -159,6 +173,31 @@ func (h *Handler) createOrg(w http.ResponseWriter, r *http.Request) {
 	}
 
 	http.Redirect(w, r, "/admin/orgs?success=created", http.StatusSeeOther)
+}
+
+// renderOrgFormError re-renders the creation form with errMsg and the submitted
+// values, at 422.
+func (h *Handler) renderOrgFormError(w http.ResponseWriter, r *http.Request, errMsg string) {
+	ctx := r.Context()
+
+	vmodel := component.OrgFormVModel{
+		IsNew:     true,
+		Error:     errMsg,
+		Submitted: r.PostForm,
+		AppLayoutVModel: common.AppLayoutVModel{
+			User:         httpCtx.User(ctx),
+			SelectedItem: "orgs",
+			Breadcrumbs: []common.BreadcrumbItem{
+				{Label: i18n.T(ctx, "admin.breadcrumb.platform"), Href: "/admin/"},
+				{Label: i18n.T(ctx, "admin.breadcrumb.orgs"), Href: "/admin/orgs"},
+				{Label: i18n.T(ctx, "admin.breadcrumb.new_org"), Href: ""},
+			},
+			Context: common.ContextPlatform,
+		},
+	}
+
+	w.WriteHeader(http.StatusUnprocessableEntity)
+	templ.Handler(component.OrgForm(vmodel)).ServeHTTP(w, r)
 }
 
 func (h *Handler) getEditOrgPage(w http.ResponseWriter, r *http.Request) {

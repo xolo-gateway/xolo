@@ -2,6 +2,7 @@ package component
 
 import (
 	"fmt"
+	"net/url"
 
 	"github.com/xolo-gateway/xolo/internal/core/model"
 	common "github.com/xolo-gateway/xolo/internal/http/handler/webui/common/component"
@@ -37,6 +38,9 @@ type OrgFormVModel struct {
 	Org   model.Organization
 	IsNew bool
 	Error string
+	// Submitted is the form as posted, refilled when the page comes back with an
+	// error.
+	Submitted url.Values
 }
 
 templ OrgsPage(vmodel OrgsPageVModel) {
@@ -274,7 +278,7 @@ templ OrgForm(vmodel OrgFormVModel) {
 							if !vmodel.IsNew && vmodel.Org != nil {
 								@input.Input(input.Props{ID: "org-name", Name: "name", Value: vmodel.Org.Name()})
 							} else {
-								@input.Input(input.Props{ID: "org-name", Name: "name", Placeholder: i18n.T(ctx, "admin.orgs.form.name_placeholder")})
+								@input.Input(input.Props{ID: "org-name", Name: "name", Value: orgFormValue(vmodel, "name"), Placeholder: i18n.T(ctx, "admin.orgs.form.name_placeholder"), Attributes: templ.Attributes{"required": "required"}})
 							}
 						}
 						@form.Item() {
@@ -287,7 +291,7 @@ templ OrgForm(vmodel OrgFormVModel) {
 									{ i18n.T(ctx, "admin.orgs.form.slug_frozen") }
 								}
 							} else {
-								@input.Input(input.Props{ID: "org-slug", Name: "slug", Placeholder: i18n.T(ctx, "admin.orgs.form.slug_placeholder")})
+								@input.Input(input.Props{ID: "org-slug", Name: "slug", Value: orgFormValue(vmodel, "slug"), Placeholder: i18n.T(ctx, "admin.orgs.form.slug_placeholder"), Attributes: templ.Attributes{"required": "required", "pattern": "[a-z0-9]([a-z0-9-]*[a-z0-9])?", "maxlength": "63"}})
 								@form.Description() {
 									{ i18n.T(ctx, "admin.orgs.form.slug_hint") }
 								}
@@ -300,7 +304,7 @@ templ OrgForm(vmodel OrgFormVModel) {
 							if !vmodel.IsNew && vmodel.Org != nil {
 								@input.Input(input.Props{ID: "org-description", Name: "description", Value: vmodel.Org.Description()})
 							} else {
-								@input.Input(input.Props{ID: "org-description", Name: "description"})
+								@input.Input(input.Props{ID: "org-description", Name: "description", Value: orgFormValue(vmodel, "description")})
 							}
 						}
 						if !vmodel.IsNew && vmodel.Org != nil {

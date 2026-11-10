@@ -14,6 +14,15 @@ const (
 	OrgStatusInactive = "inactive"
 )
 
+// orgFormValue reads a creation field from the submitted form, empty on a fresh
+// GET.
+func orgFormValue(vmodel OrgFormVModel, field string) string {
+	if vmodel.Submitted == nil {
+		return ""
+	}
+	return vmodel.Submitted.Get(field)
+}
+
 // orgsSegments builds the filter segments of the organisation list.
 //
 // "En dépassement" is present but inert: selecting it would mean comparing every
