@@ -2,6 +2,7 @@ package eventeval_test
 
 import (
 	"context"
+	"errors"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -387,5 +388,34 @@ func TestEvaluator_ClaimEvaluatesOncePerPeriod(t *testing.T) {
 
 	if got := queries.Load(); got != 1 {
 		t.Fatalf("expected one evaluation in the period, got %d", got)
+	}
+}
+
+// An incident left open on an alert that reads ok, by two overlapping
+// evaluations deciding differently, is closed by the next evaluation below
+// the threshold.
+func TestEvaluator_ResolvesAnOrphanIncident(t *testing.T) {
+	store := newStore(t)
+	ctx := context.Background()
+	org := model.OrgID("org8")
+	alert := model.NewAlert(org, "u1", "orphan",
+		model.WithAlertQuery(`{type="proxy.request"}`),
+		model.WithAlertWindow(time.Hour),
+		model.WithAlertComparator(model.ComparatorGT),
+		model.WithAlertThreshold(0),
+		model.WithAlertEnabled(true),
+	)
+	if err := store.CreateAlert(ctx, alert); err != nil {
+		t.Fatalf("CreateAlert: %v", err)
+	}
+	if ok, err := store.OpenIncident(ctx, model.NewAlertIncident(alert.ID(), org, 1)); err != nil || !ok {
+		t.Fatalf("OpenIncident: %v (%v)", ok, err)
+	}
+
+	// No event: the condition does not hold, and the alert reads ok.
+	eventeval.NewEvaluator(store, store, store, time.Nanosecond).EvaluateAllForTest(ctx)
+
+	if _, err := store.GetOpenIncident(ctx, alert.ID()); !errors.Is(err, port.ErrNotFound) {
+		t.Fatalf("expected the orphan incident resolved, got %v", err)
 	}
 }

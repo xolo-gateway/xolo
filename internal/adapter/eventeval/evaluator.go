@@ -166,12 +166,15 @@ func (e *Evaluator) evaluateAlert(ctx context.Context, alert model.Alert) error 
 			}
 		}
 	} else {
-		if alert.State() == model.AlertStateFiring {
-			if incident, err := e.incidentStore.GetOpenIncident(ctx, alert.ID()); err == nil {
-				if err := e.incidentStore.ResolveIncident(ctx, incident.ID(), now); err != nil {
-					slog.ErrorContext(ctx, "alert evaluator: could not resolve incident", slog.Any("error", errors.WithStack(err)))
-				}
+		// Whatever the recorded state: two overlapping evaluations deciding
+		// differently can leave an incident open on an alert that reads ok,
+		// and the next period below the threshold must close it.
+		if incident, err := e.incidentStore.GetOpenIncident(ctx, alert.ID()); err == nil {
+			if err := e.incidentStore.ResolveIncident(ctx, incident.ID(), now); err != nil {
+				slog.ErrorContext(ctx, "alert evaluator: could not resolve incident", slog.Any("error", errors.WithStack(err)))
 			}
+		} else if !errors.Is(err, port.ErrNotFound) {
+			return errors.WithStack(err)
 		}
 		newState = model.AlertStateOK
 		pendingSince = nil
