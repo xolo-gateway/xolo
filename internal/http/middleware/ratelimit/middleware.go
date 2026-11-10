@@ -104,7 +104,7 @@ func clientAddr(r *http.Request, trustHeaders bool, trustedProxies []netip.Prefi
 	}
 
 	trusted := func(addr string) bool {
-		ip, err := netip.ParseAddr(strings.TrimSpace(addr))
+		ip, err := netip.ParseAddr(addr)
 		if err != nil {
 			return false
 		}
@@ -126,7 +126,7 @@ func clientAddr(r *http.Request, trustHeaders bool, trustedProxies []netip.Prefi
 	var hops []string
 	for _, line := range r.Header.Values("X-Forwarded-For") {
 		for _, hop := range strings.Split(line, ",") {
-			if hop = strings.TrimSpace(hop); hop != "" {
+			if hop = normalizeHop(hop); hop != "" {
 				hops = append(hops, hop)
 			}
 		}
@@ -144,4 +144,15 @@ func clientAddr(r *http.Request, trustHeaders bool, trustedProxies []netip.Prefi
 	// X-Real-Ip is not read here: a proxy that does not rewrite it passes on
 	// the client's own value. Trusted proxies append to X-Forwarded-For.
 	return peer
+}
+
+// normalizeHop trims an X-Forwarded-For entry and drops the port some load
+// balancers append ("203.0.113.9:4711", "[2001:db8::1]:4711"), so the entry
+// matches the trusted ranges and keys the limiter by address alone.
+func normalizeHop(hop string) string {
+	hop = strings.TrimSpace(hop)
+	if addrPort, err := netip.ParseAddrPort(hop); err == nil {
+		return addrPort.Addr().String()
+	}
+	return hop
 }

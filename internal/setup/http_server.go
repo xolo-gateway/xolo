@@ -79,6 +79,9 @@ func NewHTTPServerFromConfig(ctx context.Context, conf *config.Config) (*http.Se
 	if conf.HTTP.RateLimit.TrustHeaders && len(trustedProxies) == 0 {
 		slog.WarnContext(ctx, "the rate limiter trusts X-Forwarded-For without XOLO_HTTP_RATE_LIMIT_TRUSTED_PROXIES: any client can forge it to escape the limit")
 	}
+	if !conf.HTTP.RateLimit.TrustHeaders && len(trustedProxies) != 0 {
+		slog.WarnContext(ctx, "XOLO_HTTP_RATE_LIMIT_TRUSTED_PROXIES has no effect while XOLO_HTTP_RATE_LIMIT_TRUST_HEADERS is false")
+	}
 	for _, prefix := range trustedProxies {
 		// Trusting every address is trusting every client.
 		if conf.HTTP.RateLimit.TrustHeaders && prefix.Bits() == 0 {
