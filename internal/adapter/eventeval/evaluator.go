@@ -64,6 +64,21 @@ func (e *Evaluator) evaluateAll(ctx context.Context) {
 		return
 	}
 	for _, alert := range alerts {
+		// Every instance runs this loop: only the one that claims the alert
+		// evaluates it, the others would act on the state it is changing. Half
+		// the interval lets the next pass through even when the instances'
+		// tickers drift, and keeps a second instance from evaluating again
+		// right after the first.
+		claimed, err := e.alertStore.ClaimAlertEvaluation(ctx, alert.ID(), time.Now(), e.interval/2)
+		if err != nil {
+			slog.ErrorContext(ctx, "alert evaluator: could not claim the evaluation",
+				slog.String("alertID", string(alert.ID())),
+				slog.Any("error", errors.WithStack(err)))
+			continue
+		}
+		if !claimed {
+			continue
+		}
 		if err := e.evaluateAlert(ctx, alert); err != nil {
 			slog.ErrorContext(ctx, "alert evaluator: evaluation failed",
 				slog.String("alertID", string(alert.ID())),

@@ -19,6 +19,13 @@ type AlertStore interface {
 	// UpdateAlertState persists only the evaluation state of an alert, without
 	// touching its configuration or updated_at.
 	UpdateAlertState(ctx context.Context, id model.AlertID, state model.AlertState, pendingSince *time.Time, lastEvaluatedAt *time.Time) error
+	// ClaimAlertEvaluation reserves the evaluation of an alert at now for the
+	// caller: it moves last_evaluated_at to now when the alert was never
+	// evaluated or not within minAge, atomically, and reports whether it did.
+	// Every instance sharing the database runs the evaluator; the claim makes
+	// one of them evaluate each alert per period, so two cannot each open an
+	// incident for the same crossing.
+	ClaimAlertEvaluation(ctx context.Context, id model.AlertID, now time.Time, minAge time.Duration) (bool, error)
 }
 
 type AlertIncidentStore interface {

@@ -104,6 +104,24 @@ func (s *Store) UpdateAlertState(ctx context.Context, id model.AlertID, state mo
 	})
 }
 
+// ClaimAlertEvaluation implements port.AlertStore. A single conditional
+// UPDATE: the row lock (PostgreSQL) or the write lock (SQLite) lets one
+// claimant through, the others find last_evaluated_at already moved.
+func (s *Store) ClaimAlertEvaluation(ctx context.Context, id model.AlertID, now time.Time, minAge time.Duration) (bool, error) {
+	var claimed bool
+	err := s.withRetry(ctx, true, func(ctx context.Context, db *gorm.DB) error {
+		result := db.Model(&Alert{}).
+			Where("id = ? AND (last_evaluated_at IS NULL OR last_evaluated_at <= ?)", string(id), now.Add(-minAge)).
+			Update("last_evaluated_at", now)
+		if result.Error != nil {
+			return errors.WithStack(result.Error)
+		}
+		claimed = result.RowsAffected == 1
+		return nil
+	})
+	return claimed, err
+}
+
 // CreateIncident implements port.AlertIncidentStore.
 func (s *Store) CreateIncident(ctx context.Context, incident model.AlertIncident) error {
 	return s.withRetry(ctx, true, func(ctx context.Context, db *gorm.DB) error {

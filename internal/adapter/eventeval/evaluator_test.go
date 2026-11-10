@@ -14,6 +14,9 @@ import (
 	gormpkg "gorm.io/gorm"
 )
 
+// These tests evaluate the same alert back to back: a nanosecond interval
+// leaves the claim nothing to refuse (see TestEvaluator_OneInstanceFires).
+
 func newStore(t *testing.T) *xologorm.Store {
 	t.Helper()
 	db, err := gormpkg.Open(gormlite.Open(":memory:"), &gormpkg.Config{})
@@ -51,7 +54,7 @@ func TestEvaluator_StateMachine(t *testing.T) {
 		t.Fatalf("CreateAlert: %v", err)
 	}
 
-	ev := eventeval.NewEvaluator(store, store, store, time.Minute)
+	ev := eventeval.NewEvaluator(store, store, store, time.Nanosecond)
 
 	// Only 2 events → threshold not exceeded → ok.
 	recordN(t, store, ctx, org, model.EventTypeAuthLoginFailed, 2)
@@ -115,7 +118,7 @@ func TestEvaluator_PersonalScopeCountsOnlyOwnerEvents(t *testing.T) {
 	if err := store.CreateAlert(ctx, alert); err != nil {
 		t.Fatalf("CreateAlert: %v", err)
 	}
-	ev := eventeval.NewEvaluator(store, store, store, time.Minute)
+	ev := eventeval.NewEvaluator(store, store, store, time.Nanosecond)
 
 	// 1 owner event and 5 from another user: only the owner's 1 counts → 1 > 1 is
 	// false → OK (the other user's events must not leak into a personal alert).
@@ -148,7 +151,7 @@ func TestEvaluator_Resolve(t *testing.T) {
 		t.Fatalf("CreateAlert: %v", err)
 	}
 
-	ev := eventeval.NewEvaluator(store, store, store, time.Minute)
+	ev := eventeval.NewEvaluator(store, store, store, time.Nanosecond)
 
 	recordN(t, store, ctx, org, model.EventTypeProxyRequest, 1)
 	evaluateOnce(t, ev, ctx)
@@ -186,5 +189,58 @@ func assertState(t *testing.T, store *xologorm.Store, id model.AlertID, want mod
 	}
 	if a.State() != want {
 		t.Fatalf("expected state %q, got %q", want, a.State())
+	}
+}
+
+// staleAlerts returns the alerts as they were listed before any instance
+// evaluated them, like an instance whose pass started at the same time as
+// another one's.
+type staleAlerts struct {
+	*xologorm.Store
+	snapshot []model.Alert
+}
+
+func (s staleAlerts) ListEnabledAlerts(context.Context) ([]model.Alert, error) {
+	return s.snapshot, nil
+}
+
+// Two instances listing the alerts at the same time both see it ok: without
+// the claim, each would open its own incident for the same crossing.
+func TestEvaluator_OneInstanceFires(t *testing.T) {
+	store := newStore(t)
+	ctx := context.Background()
+	org := model.OrgID("org4")
+
+	alert := model.NewAlert(org, "u1", "shared",
+		model.WithAlertQuery(`{type="proxy.request"}`),
+		model.WithAlertWindow(time.Hour),
+		model.WithAlertComparator(model.ComparatorGT),
+		model.WithAlertThreshold(0),
+		model.WithAlertEnabled(true),
+	)
+	if err := store.CreateAlert(ctx, alert); err != nil {
+		t.Fatalf("CreateAlert: %v", err)
+	}
+	recordN(t, store, ctx, org, model.EventTypeProxyRequest, 1)
+
+	snapshot, err := store.ListEnabledAlerts(ctx)
+	if err != nil {
+		t.Fatalf("ListEnabledAlerts: %v", err)
+	}
+	listed := staleAlerts{Store: store, snapshot: snapshot}
+
+	first := eventeval.NewEvaluator(listed, store, store, time.Minute)
+	second := eventeval.NewEvaluator(listed, store, store, time.Minute)
+	first.EvaluateAllForTest(ctx)
+	second.EvaluateAllForTest(ctx)
+
+	assertState(t, store, alert.ID(), model.AlertStateFiring)
+	orgID := org
+	incidents, err := store.ListIncidents(ctx, port.IncidentFilter{OrgID: &orgID})
+	if err != nil {
+		t.Fatalf("ListIncidents: %v", err)
+	}
+	if len(incidents) != 1 {
+		t.Fatalf("expected 1 incident, got %d", len(incidents))
 	}
 }
