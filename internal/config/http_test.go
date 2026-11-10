@@ -29,12 +29,12 @@ func TestParse_SessionCookieMaxAge(t *testing.T) {
 }
 
 func TestTrustedProxyPrefixes(t *testing.T) {
-	limit := HTTPRateLimit{TrustedProxies: []string{"10.244.0.0/16", " 192.0.2.10 ", "", "2001:db8::/32", "10.1.2.3/8"}}
+	limit := HTTPRateLimit{TrustedProxies: []string{"10.244.0.0/16", " 192.0.2.10 ", "", "2001:db8::/32", "10.1.2.3/8", "::ffff:10.96.0.0/108"}}
 	prefixes, err := limit.TrustedProxyPrefixes()
 	if err != nil {
 		t.Fatalf("parse: %v", err)
 	}
-	want := []string{"10.244.0.0/16", "192.0.2.10/32", "2001:db8::/32", "10.0.0.0/8"}
+	want := []string{"10.244.0.0/16", "192.0.2.10/32", "2001:db8::/32", "10.0.0.0/8", "10.96.0.0/12"}
 	if len(prefixes) != len(want) {
 		t.Fatalf("got %v", prefixes)
 	}

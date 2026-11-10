@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/xolo-gateway/xolo/internal/metrics"
 	"github.com/hashicorp/golang-lru/v2/expirable"
+	"github.com/xolo-gateway/xolo/internal/metrics"
 	"golang.org/x/time/rate"
 )
 

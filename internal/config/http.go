@@ -121,12 +121,15 @@ type GiteaProvider struct {
 }
 
 type HTTPRateLimit struct {
-	TrustHeaders    bool          `env:"TRUST_HEADERS" envDefault:"true"`
+	TrustHeaders bool `env:"TRUST_HEADERS" envDefault:"true"`
 	// TrustedProxies lists the addresses or CIDR ranges of the proxies in front
 	// of the instance (an ingress controller, a load balancer). Set, the client
 	// address is the right-most X-Forwarded-For entry outside them, which a
-	// client cannot forge; empty, it is the left-most entry, which it can.
-	TrustedProxies []string `env:"TRUSTED_PROXIES" envSeparator:","`
+	// client outside them cannot forge; empty, it is the left-most entry, which
+	// any client can. A range that also covers clients (a whole pod network
+	// whose pods call the gateway) lets those clients forge it again: list the
+	// proxies' own addresses.
+	TrustedProxies  []string      `env:"TRUSTED_PROXIES" envSeparator:","`
 	RequestInterval time.Duration `env:"REQUEST_INTERVAL,expand" envDefault:"1s"`
 	RequestMaxBurst int           `env:"REQUEST_MAX_BURST,expand" envDefault:"10"`
 	CacheSize       int           `env:"CACHE_SIZE,expand" envDefault:"50"`
@@ -143,6 +146,14 @@ func (r HTTPRateLimit) TrustedProxyPrefixes() ([]netip.Prefix, error) {
 			continue
 		}
 		if prefix, err := netip.ParsePrefix(raw); err == nil {
+			// Addresses are unmapped before matching: a mapped range must be
+			// unmapped too, or it would never match.
+			if prefix.Addr().Is4In6() {
+				if prefix.Bits() < 96 {
+					return nil, errors.Errorf("XOLO_HTTP_RATE_LIMIT_TRUSTED_PROXIES: %q spans beyond the IPv4-mapped range", raw)
+				}
+				prefix = netip.PrefixFrom(prefix.Addr().Unmap(), prefix.Bits()-96)
+			}
 			prefixes = append(prefixes, prefix.Masked())
 			continue
 		}
