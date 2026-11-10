@@ -6,21 +6,44 @@ import (
 	"github.com/pkg/errors"
 	"github.com/xolo-gateway/xolo/internal/config"
 	"github.com/xolo-gateway/xolo/internal/http"
+	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 )
 
 // getReadinessCheckFromConfig makes an instance ready while it reaches its
-// database through the pool its stores read from: every request but the
-// static assets reads it, so an instance that lost it can only answer errors.
-// On SQLite that is the reader pool, not the single writer connection, which
-// a long write would hold past the probe's deadline.
+// database.
+//
+// On PostgreSQL the ping goes through a connection of its own, outside the
+// pool the stores share: a pool saturated by traffic would otherwise make
+// every replica unready at the same moment, and pull them all out of the load
+// balancer when they are needed most. The probe measures whether the database
+// answers, not whether the instance is busy.
+//
+// On SQLite it goes through the reader pool, not the single writer
+// connection, which a long write would hold past the probe's deadline.
 func getReadinessCheckFromConfig(ctx context.Context, conf *config.Config) (http.ReadinessCheck, error) {
+	if IsPostgresDSN(conf.Storage.Database.DSN) {
+		db, err := gorm.Open(postgres.Open(conf.Storage.Database.DSN), &gorm.Config{Logger: logger.Discard})
+		if err != nil {
+			return nil, errors.WithStack(err)
+		}
+		sqlDB, err := db.DB()
+		if err != nil {
+			return nil, errors.WithStack(err)
+		}
+		sqlDB.SetMaxOpenConns(1)
+		sqlDB.SetMaxIdleConns(1)
+		sqlDB.SetConnMaxLifetime(conf.Storage.Database.Pool.ConnMaxLifetime)
+		return pingCheck(db)
+	}
+
 	db, err := getGormReaderFromConfig(ctx, conf)
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
 	if db == nil {
-		// PostgreSQL, or an in-memory SQLite database: reads share the handle.
+		// An in-memory SQLite database: reads share the writer connection.
 		db, err = getGormDatabaseFromConfig(ctx, conf)
 		if err != nil {
 			return nil, errors.WithStack(err)
