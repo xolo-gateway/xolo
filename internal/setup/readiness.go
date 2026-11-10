@@ -24,32 +24,37 @@ import (
 // connection, which a long write would hold past the probe's deadline.
 func getReadinessCheckFromConfig(ctx context.Context, conf *config.Config) (http.ReadinessCheck, error) {
 	if IsPostgresDSN(conf.Storage.Database.DSN) {
-		db, err := gorm.Open(postgres.Open(conf.Storage.Database.DSN), &gorm.Config{Logger: logger.Discard})
-		if err != nil {
-			return nil, errors.WithStack(err)
-		}
-		sqlDB, err := db.DB()
-		if err != nil {
-			return nil, errors.WithStack(err)
-		}
-		sqlDB.SetMaxOpenConns(1)
-		sqlDB.SetMaxIdleConns(1)
-		sqlDB.SetConnMaxLifetime(conf.Storage.Database.Pool.ConnMaxLifetime)
-		return pingCheck(db)
+		return postgresReadinessCheck(conf)
 	}
 
-	db, err := getGormReaderFromConfig(ctx, conf)
+	reader, err := getGormReaderFromConfig(ctx, conf)
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
-	if db == nil {
-		// An in-memory SQLite database: reads share the writer connection.
-		db, err = getGormDatabaseFromConfig(ctx, conf)
-		if err != nil {
-			return nil, errors.WithStack(err)
-		}
+	if reader != nil {
+		return pingCheck(reader)
 	}
+	// An in-memory SQLite database: reads share the writer connection.
+	writer, err := getGormDatabaseFromConfig(ctx, conf)
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+	return pingCheck(writer)
+}
 
+// postgresReadinessCheck pings through a pool of one connection of its own.
+func postgresReadinessCheck(conf *config.Config) (http.ReadinessCheck, error) {
+	db, err := gorm.Open(postgres.Open(conf.Storage.Database.DSN), &gorm.Config{Logger: logger.Discard})
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+	sqlDB, err := db.DB()
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+	sqlDB.SetMaxOpenConns(1)
+	sqlDB.SetMaxIdleConns(1)
+	sqlDB.SetConnMaxLifetime(conf.Storage.Database.Pool.ConnMaxLifetime)
 	return pingCheck(db)
 }
 

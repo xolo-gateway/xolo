@@ -6,40 +6,48 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ncruces/go-sqlite3/gormlite"
 	"github.com/stretchr/testify/require"
-	"github.com/xolo-gateway/xolo/internal/config"
+	adapter "github.com/xolo-gateway/xolo/internal/adapter/gorm"
+	"gorm.io/gorm"
 )
 
 // On a SQLite file the check pings the reader pool, which stays usable while
-// the single writer connection is held by a long write.
+// the single writer connection is held by a long write. The handles are the
+// test's own: the getters are memoised process-wide.
 func TestReadinessCheckPingsTheReaderOnSQLite(t *testing.T) {
-	conf := &config.Config{}
-	conf.Storage.AutoMigrate = true
-	conf.Storage.Database.DSN = filepath.Join(t.TempDir(), "ready.sqlite")
-	conf.Storage.Database.Pool = config.DatabasePool{MaxOpenConns: 4, MaxIdleConns: 1}
+	dsn := filepath.Join(t.TempDir(), "ready.sqlite")
 
-	check, err := getReadinessCheckFromConfig(t.Context(), conf)
+	writer, err := gorm.Open(gormlite.Open(dsn), &gorm.Config{})
 	require.NoError(t, err)
-	require.NoError(t, check(t.Context()))
+	writerPool, err := writer.DB()
+	require.NoError(t, err)
+	writerPool.SetMaxOpenConns(1)
+	t.Cleanup(func() { _ = writerPool.Close() })
+	require.NoError(t, writer.Exec("PRAGMA journal_mode=WAL").Error)
 
-	writer, err := getGormDatabaseFromConfig(t.Context(), conf)
+	reader, err := adapter.OpenSQLiteReader(dsn, time.Second, &gorm.Config{})
 	require.NoError(t, err)
-	pool, err := writer.DB()
+	readerPool, err := reader.DB()
 	require.NoError(t, err)
-	// The handles are memoised for conf: close them with the test's database.
-	t.Cleanup(func() { _ = pool.Close() })
-	if reader, err := getGormReaderFromConfig(t.Context(), conf); err == nil && reader != nil {
-		if readerPool, err := reader.DB(); err == nil {
-			t.Cleanup(func() { _ = readerPool.Close() })
-		}
-	}
+	t.Cleanup(func() { _ = readerPool.Close() })
+
+	check, err := pingCheck(reader)
+	require.NoError(t, err)
 
 	// Hold the only writer connection, as a long write would.
-	held, err := pool.Conn(t.Context())
+	held, err := writerPool.Conn(t.Context())
 	require.NoError(t, err)
 	defer held.Close()
 
 	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
 	defer cancel()
 	require.NoError(t, check(ctx), "readiness must not wait for the writer connection")
+
+	// The writer ping, by contrast, waits for the held connection.
+	writerCheck, err := pingCheck(writer)
+	require.NoError(t, err)
+	ctx, cancel = context.WithTimeout(t.Context(), 200*time.Millisecond)
+	defer cancel()
+	require.Error(t, writerCheck(ctx), "the writer is held: this is what the reader avoids")
 }
