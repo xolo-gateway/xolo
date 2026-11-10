@@ -22,8 +22,11 @@ func migrateQuotaUsageCounters(tx *gorm.DB) error {
 // what the migration runs, exported for the tooling that writes usage records
 // in bulk rather than through the store — the seeder — and would otherwise
 // leave every budget reading zero.
+//
+// It runs in a transaction, like the other rebuilds: the backfill empties the
+// counters first, and an aborted rebuild must leave the previous ones.
 func RebuildQuotaUsage(db *gorm.DB) error {
-	return backfillQuotaUsage(db)
+	return errors.WithStack(db.Transaction(backfillQuotaUsage))
 }
 
 // backfillQuotaUsage rebuilds every counter from usage_records in a single

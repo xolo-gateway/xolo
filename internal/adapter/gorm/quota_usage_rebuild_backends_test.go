@@ -19,11 +19,17 @@ func TestRebuildQuotaUsageOnEachBackend(t *testing.T) {
 		}
 
 		now := time.Now()
+		year, month, day := now.Date()
+		midnight := time.Date(year, month, day, 0, 0, 0, 0, time.Local)
 		records := []*xologorm.UsageRecord{
 			{ID: "u1", CreatedAt: now, UserID: "user-a", OrgID: "org-1", ProviderID: "p", ModelID: "m", Cost: 1_000, Currency: "USD"},
 			{ID: "u2", CreatedAt: now, UserID: "user-a", OrgID: "org-1", ProviderID: "p", ModelID: "m", Cost: 2_000, Currency: "USD"},
 			{ID: "u3", CreatedAt: now, ApplicationID: "app-1", OrgID: "org-1", ProviderID: "p", ModelID: "m", Cost: 300, Currency: "USD"},
 			{ID: "u4", CreatedAt: now, UserID: "user-c", TeamID: "team-1", OrgID: "org-1", ProviderID: "p", ModelID: "m", Cost: 70, Currency: "USD"},
+			// Either side of local midnight: the rebuild must bucket them in the
+			// server's local days, as the store does when recording.
+			{ID: "u5", CreatedAt: midnight.Add(-30 * time.Minute), UserID: "user-d", OrgID: "org-2", ProviderID: "p", ModelID: "m", Cost: 5, Currency: "USD"},
+			{ID: "u6", CreatedAt: midnight.Add(30 * time.Minute), UserID: "user-d", OrgID: "org-2", ProviderID: "p", ModelID: "m", Cost: 7, Currency: "USD"},
 		}
 		for _, r := range records {
 			if err := db.Create(r).Error; err != nil {
@@ -60,6 +66,20 @@ func TestRebuildQuotaUsageOnEachBackend(t *testing.T) {
 			if got := sum(tc.scope, tc.scopeID); got != tc.want {
 				t.Errorf("%s %s: got %d, want %d", tc.scope, tc.scopeID, got, tc.want)
 			}
+		}
+
+		var days []struct {
+			Day  string
+			Cost int64
+		}
+		if err := db.Model(&xologorm.QuotaUsage{}).Select("day, cost").
+			Where("scope = ? AND scope_id = ?", "user", "user-d").Order("day").Scan(&days).Error; err != nil {
+			t.Fatalf("days: %v", err)
+		}
+		before := midnight.Add(-30 * time.Minute).Format("2006-01-02")
+		after := midnight.Format("2006-01-02")
+		if len(days) != 2 || days[0].Day != before || days[0].Cost != 5 || days[1].Day != after || days[1].Cost != 7 {
+			t.Fatalf("expected %s=5 and %s=7, got %+v", before, after, days)
 		}
 	})
 }
