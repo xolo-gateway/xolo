@@ -69,7 +69,7 @@ func (e *Evaluator) evaluateAll(ctx context.Context) {
 		// the interval lets the next pass through even when the instances'
 		// tickers drift, and keeps a second instance from evaluating again
 		// right after the first.
-		now := time.Now()
+		now := time.Now().Truncate(time.Microsecond)
 		// Evaluated too recently for anyone to claim it: spare the write.
 		if last := alert.LastEvaluatedAt(); last != nil && now.Sub(*last) < e.interval/2 {
 			continue
@@ -98,7 +98,7 @@ func (e *Evaluator) evaluateAll(ctx context.Context) {
 			continue
 		}
 		alert = reloaded
-		if err := e.evaluateAlert(ctx, alert); err != nil {
+		if err := e.evaluateAlert(ctx, alert, now); err != nil {
 			slog.ErrorContext(ctx, "alert evaluator: evaluation failed",
 				slog.String("alertID", string(alert.ID())),
 				slog.Any("error", errors.WithStack(err)))
@@ -106,7 +106,11 @@ func (e *Evaluator) evaluateAll(ctx context.Context) {
 	}
 }
 
-func (e *Evaluator) evaluateAlert(ctx context.Context, alert model.Alert) error {
+// evaluateAlert decides the outcome of the evaluation claimed at claimedAt and
+// applies it through TransitionAlert, which drops it when another instance
+// claimed the alert since: a stale decision then has no effect at all, on the
+// state or on the incidents.
+func (e *Evaluator) evaluateAlert(ctx context.Context, alert model.Alert, claimedAt time.Time) error {
 	compiled, err := eventql.Compile(alert.Query())
 	if err != nil {
 		return errors.Wrapf(err, "invalid query for alert %s", alert.ID())
@@ -138,73 +142,52 @@ func (e *Evaluator) evaluateAlert(ctx context.Context, alert model.Alert) error 
 	conditionMet := model.CompareThreshold(alert.Comparator(), value, alert.Threshold())
 
 	now := time.Now()
-	newState := alert.State()
-	pendingSince := alert.PendingSince()
+	transition := port.AlertTransition{
+		AlertID:   alert.ID(),
+		ClaimedAt: claimedAt,
+		From:      alert.State(),
+		To:        alert.State(),
+	}
 
 	if conditionMet {
 		switch alert.State() {
 		case model.AlertStateFiring:
-			// Still firing: bump the incident peak value.
-			if incident, err := e.incidentStore.GetOpenIncident(ctx, alert.ID()); err == nil {
-				if value > incident.PeakValue() {
-					_ = e.incidentStore.UpdateIncidentPeak(ctx, incident.ID(), value)
-				}
-			}
+			// Still firing: raise the incident peak, and open one should none
+			// be open, so a firing alert always has its incident.
+			transition.Peak = &value
+			transition.Open = model.NewAlertIncident(alert.ID(), alert.OrgID(), value)
 		default:
 			// ok or pending: start/continue the dwell period.
+			pendingSince := alert.PendingSince()
 			if alert.State() != model.AlertStatePending || pendingSince == nil {
 				pendingSince = &now
 			}
 			if now.Sub(*pendingSince) >= alert.For() {
-				if err := e.fire(ctx, alert, events, value); err != nil {
-					return err
-				}
-				newState = model.AlertStateFiring
-				pendingSince = nil
+				transition.To = model.AlertStateFiring
+				transition.Open = model.NewAlertIncident(alert.ID(), alert.OrgID(), value)
 			} else {
-				newState = model.AlertStatePending
+				transition.To = model.AlertStatePending
+				transition.PendingSince = pendingSince
 			}
 		}
 	} else {
-		// Whatever the recorded state: two overlapping evaluations deciding
-		// differently can leave an incident open on an alert that reads ok,
-		// and the next period below the threshold must close it.
-		if incident, err := e.incidentStore.GetOpenIncident(ctx, alert.ID()); err == nil {
-			if err := e.incidentStore.ResolveIncident(ctx, incident.ID(), now); err != nil {
-				slog.ErrorContext(ctx, "alert evaluator: could not resolve incident", slog.Any("error", errors.WithStack(err)))
-			}
-		} else if !errors.Is(err, port.ErrNotFound) {
-			return errors.WithStack(err)
-		}
-		newState = model.AlertStateOK
-		pendingSince = nil
+		// Whatever the recorded state, an incident still open is closed.
+		transition.To = model.AlertStateOK
+		transition.ResolveAt = &now
 	}
 
-	// Conditional on the state decided from: another instance that moved the
-	// alert meanwhile wins, and this stale decision is dropped.
-	_, err = e.alertStore.UpdateAlertState(ctx, alert.ID(), alert.State(), newState, pendingSince, &now)
-	return errors.WithStack(err)
-}
-
-// fire opens a new incident and pins the contributing events to it, unless
-// one is already open: an evaluation outlasting half the interval lets
-// another instance claim and fire the same crossing, and two open incidents
-// would leave one open for ever (GetOpenIncident only returns the newest).
-// The store makes the check and the insert one atomic step.
-func (e *Evaluator) fire(ctx context.Context, alert model.Alert, events []model.Event, value float64) error {
-	incident := model.NewAlertIncident(alert.ID(), alert.OrgID(), value)
-	opened, err := e.incidentStore.OpenIncident(ctx, incident)
-	if errors.Is(err, port.ErrNotFound) {
-		// The alert was deleted since it was reloaded: nothing to fire.
-		return nil
-	}
+	result, err := e.alertStore.TransitionAlert(ctx, transition)
 	if err != nil {
 		return errors.WithStack(err)
 	}
-	if !opened {
-		return nil
+	if result.Opened != nil {
+		e.pin(ctx, alert, result.Opened, events, value)
 	}
+	return nil
+}
 
+// pin attaches the contributing events to the incident just opened.
+func (e *Evaluator) pin(ctx context.Context, alert model.Alert, incident model.AlertIncident, events []model.Event, value float64) {
 	ids := make([]model.EventID, 0, len(events))
 	for _, ev := range events {
 		ids = append(ids, ev.ID())
@@ -217,5 +200,4 @@ func (e *Evaluator) fire(ctx context.Context, alert model.Alert, events []model.
 		slog.String("alertID", string(alert.ID())),
 		slog.String("incidentID", string(incident.ID())),
 		slog.Float64("value", value))
-	return nil
 }

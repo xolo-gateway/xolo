@@ -408,8 +408,17 @@ func TestEvaluator_ResolvesAnOrphanIncident(t *testing.T) {
 	if err := store.CreateAlert(ctx, alert); err != nil {
 		t.Fatalf("CreateAlert: %v", err)
 	}
-	if ok, err := store.OpenIncident(ctx, model.NewAlertIncident(alert.ID(), org, 1)); err != nil || !ok {
-		t.Fatalf("OpenIncident: %v (%v)", ok, err)
+	// What two diverging decisions could leave behind before transitions
+	// were fenced: an open incident on an alert that reads ok.
+	claimed := time.Now().Add(-time.Hour)
+	if ok, err := store.ClaimAlertEvaluation(ctx, alert.ID(), claimed, 0); err != nil || !ok {
+		t.Fatalf("claim: %v (%v)", ok, err)
+	}
+	if res, err := store.TransitionAlert(ctx, port.AlertTransition{
+		AlertID: alert.ID(), ClaimedAt: claimed, From: model.AlertStateOK, To: model.AlertStateOK,
+		Open: model.NewAlertIncident(alert.ID(), org, 1),
+	}); err != nil || res.Opened == nil {
+		t.Fatalf("open the orphan: %+v (%v)", res, err)
 	}
 
 	// No event: the condition does not hold, and the alert reads ok.
@@ -417,5 +426,73 @@ func TestEvaluator_ResolvesAnOrphanIncident(t *testing.T) {
 
 	if _, err := store.GetOpenIncident(ctx, alert.ID()); !errors.Is(err, port.ErrNotFound) {
 		t.Fatalf("expected the orphan incident resolved, got %v", err)
+	}
+}
+
+// quietEvents holds the evaluation in its event query, then sees no event:
+// that evaluation decides the alert is below its threshold.
+type quietEvents struct {
+	*xologorm.Store
+	entered chan struct{}
+	release chan struct{}
+}
+
+func (s quietEvents) QueryEvents(context.Context, port.EventFilter) ([]model.Event, error) {
+	close(s.entered)
+	<-s.release
+	return nil, nil
+}
+
+// Two overlapping evaluations deciding differently: the slow one, below the
+// threshold, is overtaken by a fast one that fires. The slow decision must be
+// dropped whole: resolving the incident the fast one opened would leave a
+// firing alert without an incident.
+func TestEvaluator_StaleDecisionDoesNotResolveTheWinnersIncident(t *testing.T) {
+	db, err := gormpkg.Open(gormlite.Open(":memory:"), &gormpkg.Config{})
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	sqlDB, err := db.DB()
+	if err != nil {
+		t.Fatalf("db: %v", err)
+	}
+	sqlDB.SetMaxOpenConns(1)
+	store := xologorm.NewStore(db)
+	ctx := context.Background()
+	org := model.OrgID("org9")
+
+	alert := model.NewAlert(org, "u1", "diverging",
+		model.WithAlertQuery(`{type="proxy.request"}`),
+		model.WithAlertWindow(time.Hour),
+		model.WithAlertComparator(model.ComparatorGT),
+		model.WithAlertThreshold(0),
+		model.WithAlertEnabled(true),
+	)
+	if err := store.CreateAlert(ctx, alert); err != nil {
+		t.Fatalf("CreateAlert: %v", err)
+	}
+	recordN(t, store, ctx, org, model.EventTypeProxyRequest, 1)
+
+	quiet := quietEvents{Store: store, entered: make(chan struct{}), release: make(chan struct{})}
+	slow := eventeval.NewEvaluator(store, store, quiet, time.Nanosecond)
+	fast := eventeval.NewEvaluator(store, store, store, time.Nanosecond)
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		slow.EvaluateAllForTest(ctx)
+	}()
+	select {
+	case <-quiet.entered:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the slow evaluation never reached its event query")
+	}
+	fast.EvaluateAllForTest(ctx)
+	close(quiet.release)
+	<-done
+
+	assertState(t, store, alert.ID(), model.AlertStateFiring)
+	if _, err := store.GetOpenIncident(ctx, alert.ID()); err != nil {
+		t.Fatalf("expected the fast evaluation's incident still open, got %v", err)
 	}
 }

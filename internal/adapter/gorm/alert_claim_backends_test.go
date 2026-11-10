@@ -9,6 +9,7 @@ import (
 
 	xologorm "github.com/xolo-gateway/xolo/internal/adapter/gorm"
 	"github.com/xolo-gateway/xolo/internal/core/model"
+	"github.com/xolo-gateway/xolo/internal/core/port"
 )
 
 func TestClaimAlertEvaluationOnEachBackend(t *testing.T) {
@@ -56,10 +57,10 @@ func TestClaimAlertEvaluationOnEachBackend(t *testing.T) {
 	})
 }
 
-func TestOpenIncidentOnEachBackend(t *testing.T) {
+func TestTransitionAlertOnEachBackend(t *testing.T) {
 	eachBackend(t, func(t *testing.T, store *xologorm.Store) {
 		ctx := context.Background()
-		alert := model.NewAlert(model.OrgID("org-open"), "u1", "opened",
+		alert := model.NewAlert(model.OrgID("org-transition"), "u1", "transition",
 			model.WithAlertQuery(`{type="proxy.request"}`),
 			model.WithAlertWindow(time.Hour),
 			model.WithAlertEnabled(true),
@@ -67,72 +68,87 @@ func TestOpenIncidentOnEachBackend(t *testing.T) {
 		if err := store.CreateAlert(ctx, alert); err != nil {
 			t.Fatalf("CreateAlert: %v", err)
 		}
+		open := func() int {
+			t.Helper()
+			incidents, err := store.ListIncidents(ctx, port.IncidentFilter{AlertID: ptr(alert.ID())})
+			if err != nil {
+				t.Fatalf("ListIncidents: %v", err)
+			}
+			n := 0
+			for _, i := range incidents {
+				if i.ResolvedAt() == nil {
+					n++
+				}
+			}
+			return n
+		}
 
-		// Instances firing the same crossing together: one incident.
-		var opened atomic.Int32
+		first := time.Now()
+		if ok, err := store.ClaimAlertEvaluation(ctx, alert.ID(), first, 0); err != nil || !ok {
+			t.Fatalf("claim: %v (%v)", ok, err)
+		}
+
+		// Decisions sharing that claim, applied together: one wins.
+		var applied atomic.Int32
 		var wg sync.WaitGroup
 		for range 6 {
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
-				ok, err := store.OpenIncident(ctx, model.NewAlertIncident(alert.ID(), alert.OrgID(), 1))
+				res, err := store.TransitionAlert(ctx, port.AlertTransition{
+					AlertID: alert.ID(), ClaimedAt: first, From: model.AlertStateOK, To: model.AlertStateFiring,
+					Open: model.NewAlertIncident(alert.ID(), alert.OrgID(), 1),
+				})
 				if err != nil {
-					t.Errorf("open: %v", err)
+					t.Errorf("transition: %v", err)
 				}
-				if ok {
-					opened.Add(1)
+				if res.Applied {
+					applied.Add(1)
 				}
 			}()
 		}
 		wg.Wait()
-		if got := opened.Load(); got != 1 {
-			t.Fatalf("expected one incident opened, got %d", got)
+		if got := applied.Load(); got != 1 || open() != 1 {
+			t.Fatalf("expected one applied transition and one open incident, got %d and %d", got, open())
 		}
 
-		// Once resolved, the next crossing opens a new one.
-		open, err := store.GetOpenIncident(ctx, alert.ID())
-		if err != nil {
-			t.Fatalf("GetOpenIncident: %v", err)
+		// Another instance claims the next period; the first one's late
+		// decision to resolve is dropped and leaves its incident alone.
+		second := first.Add(time.Minute)
+		if ok, _ := store.ClaimAlertEvaluation(ctx, alert.ID(), second, 0); !ok {
+			t.Fatal("second claim refused")
 		}
-		if err := store.ResolveIncident(ctx, open.ID(), time.Now()); err != nil {
-			t.Fatalf("ResolveIncident: %v", err)
+		resolveAt := time.Now()
+		res, err := store.TransitionAlert(ctx, port.AlertTransition{
+			AlertID: alert.ID(), ClaimedAt: first, From: model.AlertStateFiring, To: model.AlertStateOK, ResolveAt: &resolveAt,
+		})
+		if err != nil || res.Applied || open() != 1 {
+			t.Fatalf("expected the stale transition dropped, got %+v (%v), %d open", res, err, open())
 		}
-		if ok, err := store.OpenIncident(ctx, model.NewAlertIncident(alert.ID(), alert.OrgID(), 1)); err != nil || !ok {
-			t.Fatalf("expected a new incident after resolution, got %v (%v)", ok, err)
+
+		// The current claim raises the peak, without a second incident.
+		peak := 5.0
+		res, err = store.TransitionAlert(ctx, port.AlertTransition{
+			AlertID: alert.ID(), ClaimedAt: second, From: model.AlertStateFiring, To: model.AlertStateFiring,
+			Peak: &peak, Open: model.NewAlertIncident(alert.ID(), alert.OrgID(), 5),
+		})
+		if err != nil || !res.Applied || res.Opened != nil || open() != 1 {
+			t.Fatalf("expected the peak raised on the open incident, got %+v (%v), %d open", res, err, open())
+		}
+		current, err := store.GetOpenIncident(ctx, alert.ID())
+		if err != nil || current.PeakValue() != 5 {
+			t.Fatalf("expected peak 5, got %v (%v)", current, err)
+		}
+
+		// And resolves it once below the threshold.
+		third := second.Add(time.Minute)
+		_, _ = store.ClaimAlertEvaluation(ctx, alert.ID(), third, 0)
+		res, err = store.TransitionAlert(ctx, port.AlertTransition{
+			AlertID: alert.ID(), ClaimedAt: third, From: model.AlertStateFiring, To: model.AlertStateOK, ResolveAt: &resolveAt,
+		})
+		if err != nil || !res.Applied || open() != 0 {
+			t.Fatalf("expected the incident resolved, got %+v (%v), %d open", res, err, open())
 		}
 	})
 }
 
-// A transition decided from a state another instance has since changed is
-// dropped, not written over the other one.
-func TestUpdateAlertStateIsConditionalOnEachBackend(t *testing.T) {
-	eachBackend(t, func(t *testing.T, store *xologorm.Store) {
-		ctx := context.Background()
-		alert := model.NewAlert(model.OrgID("org-state"), "u1", "state",
-			model.WithAlertQuery(`{type="proxy.request"}`),
-			model.WithAlertWindow(time.Hour),
-			model.WithAlertEnabled(true),
-		)
-		if err := store.CreateAlert(ctx, alert); err != nil {
-			t.Fatalf("CreateAlert: %v", err)
-		}
-		now := time.Now()
-
-		// The fast instance fires.
-		if ok, err := store.UpdateAlertState(ctx, alert.ID(), alert.State(), model.AlertStateFiring, nil, &now); err != nil || !ok {
-			t.Fatalf("expected the first transition to be written, got %v (%v)", ok, err)
-		}
-		// The slow one decided ok -> ok from the state it reloaded earlier.
-		if ok, err := store.UpdateAlertState(ctx, alert.ID(), alert.State(), model.AlertStateOK, nil, &now); err != nil || ok {
-			t.Fatalf("expected the stale transition to be dropped, got %v (%v)", ok, err)
-		}
-
-		current, err := store.GetAlertByID(ctx, alert.ID())
-		if err != nil {
-			t.Fatalf("GetAlertByID: %v", err)
-		}
-		if current.State() != model.AlertStateFiring {
-			t.Fatalf("expected firing to survive, got %q", current.State())
-		}
-	})
-}

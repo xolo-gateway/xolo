@@ -93,29 +93,26 @@ func (s *Store) ListEnabledAlerts(ctx context.Context) ([]model.Alert, error) {
 	return result, nil
 }
 
-// UpdateAlertState implements port.AlertStore. A single conditional UPDATE.
-func (s *Store) UpdateAlertState(ctx context.Context, id model.AlertID, from, state model.AlertState, pendingSince *time.Time, lastEvaluatedAt *time.Time) (bool, error) {
-	var updated bool
-	err := s.withRetry(ctx, true, func(ctx context.Context, db *gorm.DB) error {
-		result := db.Model(&Alert{}).Where("id = ? AND state = ?", string(id), string(from)).
+// UpdateAlertState persists only the evaluation state of an alert, without
+// touching its configuration or updated_at.
+func (s *Store) UpdateAlertState(ctx context.Context, id model.AlertID, state model.AlertState, pendingSince *time.Time, lastEvaluatedAt *time.Time) error {
+	return s.withRetry(ctx, true, func(ctx context.Context, db *gorm.DB) error {
+		return errors.WithStack(db.Model(&Alert{}).Where("id = ?", string(id)).
 			Updates(map[string]any{
 				"state":             string(state),
 				"pending_since":     pendingSince,
 				"last_evaluated_at": lastEvaluatedAt,
-			})
-		if result.Error != nil {
-			return errors.WithStack(result.Error)
-		}
-		updated = result.RowsAffected == 1
-		return nil
+			}).Error)
 	})
-	return updated, err
 }
 
 // ClaimAlertEvaluation implements port.AlertStore. A single conditional
 // UPDATE: the row lock (PostgreSQL) or the write lock (SQLite) lets one
 // claimant through, the others find last_evaluated_at already moved.
 func (s *Store) ClaimAlertEvaluation(ctx context.Context, id model.AlertID, now time.Time, minAge time.Duration) (bool, error) {
+	// Kept to the microsecond, the precision both databases store, so the
+	// transition can find it back by equality.
+	now = now.Truncate(time.Microsecond)
 	var claimed bool
 	err := s.withRetry(ctx, true, func(ctx context.Context, db *gorm.DB) error {
 		result := db.Model(&Alert{}).
@@ -130,44 +127,67 @@ func (s *Store) ClaimAlertEvaluation(ctx context.Context, id model.AlertID, now 
 	return claimed, err
 }
 
-// OpenIncident implements port.AlertIncidentStore. The alert row is locked
-// for the transaction (PostgreSQL; SQLite runs one write transaction at a
-// time): the check for an open incident and the insert cannot interleave
-// with another instance's. Only that alert's row is locked.
-func (s *Store) OpenIncident(ctx context.Context, incident model.AlertIncident) (bool, error) {
-	var opened bool
+// TransitionAlert implements port.AlertStore. One transaction holding the
+// alert's row lock (PostgreSQL; SQLite runs one write transaction at a time):
+// the check that the claim still holds, the incident change and the state
+// write cannot interleave with another instance's. Only that alert's row is
+// locked.
+func (s *Store) TransitionAlert(ctx context.Context, t port.AlertTransition) (port.AlertTransitionResult, error) {
+	var result port.AlertTransitionResult
+	claimedAt := t.ClaimedAt.Truncate(time.Microsecond)
 	err := s.withRetry(ctx, true, func(ctx context.Context, db *gorm.DB) error {
-		opened = false
+		result = port.AlertTransitionResult{}
 
-		query := db.Model(&Alert{}).Select("id").Where("id = ?", string(incident.AlertID()))
+		query := db.Model(&Alert{}).Select("id").
+			Where("id = ? AND state = ? AND last_evaluated_at = ?", string(t.AlertID), string(t.From), claimedAt)
 		if !isSQLite(db) {
 			query = query.Clauses(clause.Locking{Strength: "UPDATE"})
 		}
-		var alert Alert
-		if err := query.First(&alert).Error; err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				return errors.WithStack(port.ErrNotFound)
-			}
+		var held []Alert
+		if err := query.Limit(1).Find(&held).Error; err != nil {
 			return errors.WithStack(err)
 		}
-
-		var open int64
-		if err := db.Model(&AlertIncident{}).
-			Where("alert_id = ? AND resolved_at IS NULL", string(incident.AlertID())).
-			Count(&open).Error; err != nil {
-			return errors.WithStack(err)
-		}
-		if open > 0 {
+		if len(held) == 0 {
+			// Claimed again since, or moved: this decision is stale.
 			return nil
 		}
 
-		if err := db.Create(fromAlertIncident(incident)).Error; err != nil {
+		var open []AlertIncident
+		if err := db.Where("alert_id = ? AND resolved_at IS NULL", string(t.AlertID)).
+			Order("started_at DESC").Find(&open).Error; err != nil {
 			return errors.WithStack(err)
 		}
-		opened = true
+
+		switch {
+		case t.ResolveAt != nil:
+			if len(open) > 0 {
+				if err := db.Model(&AlertIncident{}).Where("alert_id = ? AND resolved_at IS NULL", string(t.AlertID)).
+					Updates(map[string]any{"status": model.IncidentStatusResolved, "resolved_at": *t.ResolveAt}).Error; err != nil {
+					return errors.WithStack(err)
+				}
+			}
+		case len(open) > 0:
+			if t.Peak != nil {
+				if err := db.Model(&AlertIncident{}).Where("id = ? AND peak_value < ?", open[0].ID, *t.Peak).
+					Update("peak_value", *t.Peak).Error; err != nil {
+					return errors.WithStack(err)
+				}
+			}
+		case t.Open != nil:
+			if err := db.Create(fromAlertIncident(t.Open)).Error; err != nil {
+				return errors.WithStack(err)
+			}
+			result.Opened = t.Open
+		}
+
+		if err := db.Model(&Alert{}).Where("id = ?", string(t.AlertID)).
+			Updates(map[string]any{"state": string(t.To), "pending_since": t.PendingSince}).Error; err != nil {
+			return errors.WithStack(err)
+		}
+		result.Applied = true
 		return nil
 	})
-	return opened, err
+	return result, err
 }
 
 // ResolveIncident implements port.AlertIncidentStore.
