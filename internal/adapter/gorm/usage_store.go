@@ -521,14 +521,30 @@ func (s *Store) sumPlanUsage(ctx context.Context, scope model.PlanUsageScope, us
 // each narrowed by narrow when it is set. fn aggregates them in one
 // statement: the plan checks of a proxied request run several reads, and a
 // statement per source multiplied them (#236). One statement also reads its
-// sources on one snapshot, without a transaction.
+// sources on one snapshot.
 //
 // Each source is wrapped in SELECT * FROM (…): SQLite refuses a
 // parenthesized member of a compound SELECT, and GORM parenthesizes the
 // subqueries it renders.
+//
+// On PostgreSQL the statement runs in a transaction without parallel workers.
+// It reads a few hundred rows at most, but the planner overestimates the rows
+// of a minute range of plan_usage_minutely as the table grows, and started
+// two workers for each read: about 5 ms of CPU to read for 0.3 ms (#239). A
+// bound store reads in its own transaction, which keeps its settings.
 func (s *Store) readPlanUsage(ctx context.Context, scope model.PlanUsageScope, since time.Time, narrow func(*gorm.DB) *gorm.DB, fn func(usage *gorm.DB) error) error {
 	sources := planUsageSources(scope, since, time.Now())
-	return s.read(ctx, func(ctx context.Context, db *gorm.DB) error {
+	db, err := s.readDatabase(ctx)
+	if err != nil {
+		return errors.WithStack(err)
+	}
+	serial := isPostgres(db) && !s.transactionBound
+	return s.retry(ctx, db, serial, func(ctx context.Context, db *gorm.DB) error {
+		if serial {
+			if err := db.Exec("SET LOCAL max_parallel_workers_per_gather = 0").Error; err != nil {
+				return errors.WithStack(err)
+			}
+		}
 		parts := make([]string, len(sources))
 		args := make([]any, len(sources))
 		for i, src := range sources {

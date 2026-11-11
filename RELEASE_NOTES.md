@@ -1,3 +1,18 @@
+# Unreleased — plan reads without parallel workers
+
+On PostgreSQL, each read of a subscription plan's usage now runs in a
+transaction with `max_parallel_workers_per_gather` set to 0. A read gathers a
+few hundred rows at most, but the planner overestimated the rows of the
+`plan_usage_minutely` range as the table grew and started two parallel
+workers for each one: about 5 ms of database CPU for 0.3 ms of work (#239).
+
+0.96.0 also reads each plan window once per request (#238), a part of the
+release its notes left out: the plan checks of a request ran 38 statements,
+and now run 3. On the Helm chart's bench, under a plan, the two changes bring
+PostgreSQL from about 20 ms to 7-10 ms of CPU per request, and one replica
+from 140 to 180 req/s at 1 vCPU, from 240 to 400 req/s at 4 vCPU. No
+migration.
+
 # Unreleased — subscription plan checks read per-minute sums
 
 The subscription plan checks no longer read the start of their windows from
