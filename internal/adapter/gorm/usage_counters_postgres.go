@@ -17,7 +17,8 @@ import (
 )
 
 // recordUsagePostgres writes a usage record and adds it to every counter it
-// feeds — the budget counters, the hourly plan sums, the daily sums — in one
+// feeds — the budget counters, the hourly and per-minute plan sums, the daily
+// sums — in one
 // statement, atomic on its own.
 //
 // Every request of an organization updates the same rows: its counters for
@@ -51,7 +52,7 @@ func recordUsagePostgres(ctx context.Context, db *gorm.DB, record model.UsageRec
 		}).Create(&counters).Statement)
 	}
 	if row.PlanCovered != 0 {
-		statements = append(statements, upsertPlanUsageHourly(dry, row).Statement)
+		statements = append(statements, upsertPlanUsageHourly(dry, row).Statement, upsertPlanUsageMinutely(dry, row).Statement)
 	}
 	statements = append(statements, upsertUsageDaily(dry, row, record.Energy()).Statement)
 

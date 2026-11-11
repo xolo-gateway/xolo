@@ -76,9 +76,10 @@ func expectedPlanUsage(records []planRecord, scope model.PlanUsageScope, user st
 	return out
 }
 
-// The plan checks read the whole hours of their window from plan_usage_hourly
-// and the rest from usage_records: every aggregate must be the one the records
-// alone give, whatever the window, key windows and filters.
+// The plan checks read the whole hours of their window from plan_usage_hourly,
+// its first minutes from plan_usage_minutely and the seconds before them from
+// usage_records: every aggregate must be the one the records alone give,
+// whatever the window, key windows and filters.
 func TestPlanUsageHourly_WindowReadsMatchTheRecords(t *testing.T) {
 	eachBackendDB(t, func(t *testing.T, db *gormpkg.DB) {
 		ctx := context.Background()
@@ -91,7 +92,7 @@ func TestPlanUsageHourly_WindowReadsMatchTheRecords(t *testing.T) {
 		// the current hour included.
 		offsets := []time.Duration{
 			-70*time.Hour - 20*time.Minute, -50 * time.Hour, -30*time.Hour + 17*time.Minute,
-			-26*time.Hour - time.Second, -26 * time.Hour, -5*time.Hour - 10*time.Minute,
+			-26*time.Hour - 40*time.Second, -26*time.Hour - time.Second, -26 * time.Hour, -5*time.Hour - 10*time.Minute,
 			-3*time.Hour + 5*time.Minute, -2 * time.Hour, -time.Hour + 59*time.Minute,
 		}
 		var records []planRecord
@@ -128,7 +129,7 @@ func TestPlanUsageHourly_WindowReadsMatchTheRecords(t *testing.T) {
 		require.NoError(t, store.RecordUsage(ctx, live))
 		records = append(records, planRecord{at: live.CreatedAt(), org: "org-1", provider: "p1", key: "k2", model: "m2", user: "u2", covered: true, tokens: live.TotalTokens(), value: 77})
 
-		require.NoError(t, xologorm.RebuildPlanUsageHourly(db))
+		require.NoError(t, xologorm.RebuildPlanUsage(db))
 
 		base := model.PlanUsageScope{OrgID: "org-1", ProviderID: "p1"}
 		scopes := map[string]model.PlanUsageScope{
@@ -140,6 +141,10 @@ func TestPlanUsageHourly_WindowReadsMatchTheRecords(t *testing.T) {
 				"k2": hour.Add(-3*time.Hour + 5*time.Minute),
 				"k3": hour.Add(-26 * time.Hour),
 			}},
+			"key windows within a minute": {OrgID: "org-1", ProviderID: "p1", KeyWindows: map[model.ProviderKeyID]time.Time{
+				"k2": hour.Add(-26*time.Hour - 30*time.Second),
+				"k3": hour.Add(-3*time.Hour + 4*time.Minute + 59*time.Second),
+			}},
 			"key window in the current hour": {OrgID: "org-1", ProviderID: "p1", KeyWindows: map[model.ProviderKeyID]time.Time{
 				"k2": hour.Add(time.Minute),
 			}},
@@ -149,6 +154,7 @@ func TestPlanUsageHourly_WindowReadsMatchTheRecords(t *testing.T) {
 			"mid hour":           hour.Add(-30*time.Hour + 17*time.Minute),
 			"on the hour":        hour.Add(-26 * time.Hour),
 			"one second before":  hour.Add(-26*time.Hour - time.Second),
+			"within a minute":    hour.Add(-26*time.Hour - 30*time.Second),
 			"previous hour":      hour.Add(-time.Hour + 30*time.Minute),
 			"current hour":       hour,
 			"after every record": now.Add(time.Hour),
@@ -221,7 +227,8 @@ func TestPlanUsageHourly_WindowReadsMatchTheRecords(t *testing.T) {
 	})
 }
 
-// Recording usage through the store must leave plan_usage_hourly as a rebuild
+// Recording usage through the store must leave plan_usage_hourly and
+// plan_usage_minutely as a rebuild
 // from the records does: the checks would otherwise drift from the records
 // until the window moves past the hour.
 func TestPlanUsageHourly_RecordingMatchesARebuild(t *testing.T) {
@@ -243,14 +250,21 @@ func TestPlanUsageHourly_RecordingMatchesARebuild(t *testing.T) {
 			require.NoError(t, store.RecordUsage(ctx, rec))
 		}
 
-		read := func() []xologorm.PlanUsageHourly {
+		hours := func() []xologorm.PlanUsageHourly {
 			var rows []xologorm.PlanUsageHourly
 			require.NoError(t, db.Order("org_id, provider_id, hour, provider_key_id, model_id, user_id").Find(&rows).Error)
 			return rows
 		}
-		recorded := read()
-		require.Len(t, recorded, 3, "one row per user and key, PAYG left out")
-		require.NoError(t, xologorm.RebuildPlanUsageHourly(db))
-		require.Equal(t, recorded, read())
+		minutes := func() []xologorm.PlanUsageMinutely {
+			var rows []xologorm.PlanUsageMinutely
+			require.NoError(t, db.Order("org_id, provider_id, minute, provider_key_id, model_id, user_id").Find(&rows).Error)
+			return rows
+		}
+		recordedHours, recordedMinutes := hours(), minutes()
+		require.Len(t, recordedHours, 3, "one row per user and key, PAYG left out")
+		require.GreaterOrEqual(t, len(recordedMinutes), 3, "at least one row per user and key, PAYG left out")
+		require.NoError(t, xologorm.RebuildPlanUsage(db))
+		require.Equal(t, recordedHours, hours())
+		require.Equal(t, recordedMinutes, minutes())
 	})
 }

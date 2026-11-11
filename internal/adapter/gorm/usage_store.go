@@ -39,7 +39,7 @@ func (s *Store) RecordUsage(ctx context.Context, record model.UsageRecord) error
 			if err := incrementQuotaUsage(tx, quotaUsageRows(record)); err != nil {
 				return err
 			}
-			if err := incrementPlanUsageHourly(tx, row); err != nil {
+			if err := incrementPlanUsage(tx, row); err != nil {
 				return err
 			}
 			return incrementUsageDaily(tx, row, record.Energy())
