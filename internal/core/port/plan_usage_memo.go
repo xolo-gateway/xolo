@@ -16,8 +16,11 @@ import (
 // of UserID, and serves the other reads of that window from it (#236). A read
 // for another user, or a store that ignores the memo, reads as usual.
 //
-// The memo lives as long as the request's context: what it holds is the
-// usage at the start of the request, which is what its checks decide on.
+// The memo covers the plan checks of one request, before it is proxied: the
+// subscription enforcer opens it in its pre-request hook and drops it with
+// that hook's context. What it holds is the usage at the start of the
+// request, which is what those checks decide on; a read after the response
+// reads afresh.
 type PlanUsageMemo struct {
 	// UserID is the user of the request, whose part of each window the memo
 	// keeps. Empty for a request without a user.
