@@ -343,8 +343,7 @@ func TestModelFallback_StreamWaitHonorsCancellation(t *testing.T) {
 func TestModelFallback_StreamWaitTimesOutWithoutUpstreamDeadline(t *testing.T) {
 	primary := &cancellableWaitingClient{canceled: make(chan struct{})}
 	r := &fakeResolver{clients: map[string]llm.Client{"a": primary, "b": newDummyClient("from b")}}
-	executor := NewModelFallbackExecutor(r)
-	executor.firstChunkTimeout = 50 * time.Millisecond
+	executor := NewModelFallbackExecutor(r).WithFirstChunkTimeout(50 * time.Millisecond)
 	res, err := executor.Forward(context.Background(), fallbackNode("a", "b"), nil, ExecutionContext{})
 	if err != nil {
 		t.Fatal(err)
@@ -382,6 +381,28 @@ func TestModelFallback_StreamWaitTimesOutWithoutUpstreamDeadline(t *testing.T) {
 	}
 	if real, _, ok := res.ModelOutcome.UsedModel(); !ok || real != "real-b" {
 		t.Fatalf("used model = %q, %v", real, ok)
+	}
+}
+
+func TestModelFallback_NonPositiveFirstChunkTimeoutWaitsForCancellation(t *testing.T) {
+	for _, timeout := range []time.Duration{0, -time.Second} {
+		t.Run(timeout.String(), func(t *testing.T) {
+			r := &fakeResolver{clients: map[string]llm.Client{"a": &waitingClient{}}}
+			executor := NewModelFallbackExecutor(r).WithFirstChunkTimeout(timeout)
+			res, err := executor.Forward(context.Background(), fallbackNode("a"), nil, ExecutionContext{})
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			ctx, cancel := context.WithCancel(context.Background())
+			done := make(chan error, 1)
+			go func() { _, err := res.ResolvedClient.ChatCompletionStream(ctx); done <- err }()
+			time.Sleep(20 * time.Millisecond)
+			cancel()
+			if err := <-done; !errors.Is(err, context.Canceled) {
+				t.Fatalf("got %v, want context cancellation", err)
+			}
+		})
 	}
 }
 

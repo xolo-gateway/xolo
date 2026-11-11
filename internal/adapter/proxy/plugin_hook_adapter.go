@@ -100,6 +100,12 @@ func (a *PipelineHookAdapter) WithDrainTimeout(timeout time.Duration) *PipelineH
 	return a
 }
 
+// WithFirstChunkTimeout sets the fallback candidate first-chunk timeout.
+func (a *PipelineHookAdapter) WithFirstChunkTimeout(timeout time.Duration) *PipelineHookAdapter {
+	a.fallbackExecutor.WithFirstChunkTimeout(timeout)
+	return a
+}
+
 // WithQuotaInfo enables the resolution of the requesting user's remaining
 // budget, exposed to plugins through PreRequestInput.quota and
 // ResolveModelInput.quota. Without it plugins receive no quota.

@@ -219,7 +219,9 @@ func NewHTTPServerFromConfig(ctx context.Context, conf *config.Config) (*http.Se
 		middlewareStore,
 		orgModelRouter,
 	).WithQuotaInfo(proxyAdapter.NewQuotaInfoResolver(quotaService, usageStore)).WithTeams(teamStore).
-		WithBackwardTimeout(conf.Proxy.PipelineBackwardTimeout).WithDrainTimeout(conf.Proxy.DrainTimeout)
+		WithBackwardTimeout(conf.Proxy.PipelineBackwardTimeout).
+		WithDrainTimeout(conf.Proxy.DrainTimeout).
+		WithFirstChunkTimeout(conf.Proxy.UpstreamTimeout)
 	// Plugins may ask the host for a completion (e.g. llm-classifier); it goes
 	// through the same model resolution as a proxied request.
 	pluginManager.HostService().SetModelCompleter(pipelineHookAdapter)
