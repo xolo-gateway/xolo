@@ -75,7 +75,7 @@ func (r *OrgModelRouter) decisionClient(ctx context.Context, m model.LLMModel, p
 		client = llmratelimit.NewClient(client, llmratelimit.WithChatLimit(cfg.Interval, cfg.MaxBurst))
 	}
 	if cfg := p.RetryConfig(); cfg != nil && cfg.Enabled {
-		client = llmretry.NewClient(client, cfg.Delay, cfg.MaxAttempts)
+		client = llmretry.NewClient(client, cfg.Delay, cfg.MaxAttempts, llmretry.WithDrainTimeout(r.drainTimeout))
 	}
 	return newTimeoutClient(client, r.upstreamTimeout), nil
 }

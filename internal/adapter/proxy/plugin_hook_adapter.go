@@ -30,6 +30,7 @@ type PipelineHookAdapter struct {
 	engine            *pipeline.Engine
 	registry          *pipeline.Registry
 	modelExecutor     *pipeline.ModelExecutor
+	fallbackExecutor  *pipeline.ModelFallbackExecutor
 	virtualModelStore port.VirtualModelStore
 	personalVMStore   port.PersonalVirtualModelStore
 	orgStore          port.OrgStore
@@ -93,6 +94,18 @@ func (a *PipelineHookAdapter) WithBackwardTimeout(timeout time.Duration) *Pipeli
 	return a
 }
 
+// WithDrainTimeout sets the abandoned fallback stream drain timeout.
+func (a *PipelineHookAdapter) WithDrainTimeout(timeout time.Duration) *PipelineHookAdapter {
+	a.fallbackExecutor.WithDrainTimeout(timeout)
+	return a
+}
+
+// WithFirstChunkTimeout sets the fallback candidate first-chunk timeout.
+func (a *PipelineHookAdapter) WithFirstChunkTimeout(timeout time.Duration) *PipelineHookAdapter {
+	a.fallbackExecutor.WithFirstChunkTimeout(timeout)
+	return a
+}
+
 // WithQuotaInfo enables the resolution of the requesting user's remaining
 // budget, exposed to plugins through PreRequestInput.quota and
 // ResolveModelInput.quota. Without it plugins receive no quota.
@@ -126,7 +139,8 @@ func NewPipelineHookAdapter(
 	reg.Register(model.NodeTypeNote, pipeline.NewNoteExecutor())
 	reg.Register(model.NodeTypeTrace, pipeline.NewTraceExecutor(nil))
 	reg.Register(model.NodeTypeBlock, pipeline.NewBlockExecutor(nil))
-	reg.Register(model.NodeTypeModelFallback, pipeline.NewModelFallbackExecutor(orgModelRouter))
+	fallbackExecutor := pipeline.NewModelFallbackExecutor(orgModelRouter)
+	reg.Register(model.NodeTypeModelFallback, fallbackExecutor)
 	reg.Register(model.NodeTypePlugin, pipeline.NewPluginExecutor(pluginProvider))
 	// ModelExecutor needs the engine for recursive VirtualModel resolution.
 	modelExecutor := pipeline.NewModelExecutor(orgModelRouter, virtualModelStore, eng)
@@ -136,6 +150,7 @@ func NewPipelineHookAdapter(
 		engine:            eng,
 		registry:          reg,
 		modelExecutor:     modelExecutor,
+		fallbackExecutor:  fallbackExecutor,
 		virtualModelStore: virtualModelStore,
 		personalVMStore:   personalVMStore,
 		orgStore:          orgStore,
