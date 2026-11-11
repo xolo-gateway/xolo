@@ -3,6 +3,7 @@ package gorm_test
 import (
 	"context"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -350,5 +351,52 @@ func TestPlanUsageReadsAreOneStatement(t *testing.T) {
 		_, _, err = store.SumPlanUsageSince(ctx, oneKey, since)
 		require.NoError(t, err)
 		require.Len(t, statements, 1, "the reads of one window ran %d statements: %v", len(statements), statements)
+	})
+}
+
+// On PostgreSQL a plan read runs without parallel workers, and the setting
+// ends with its transaction (#239).
+func TestPlanUsageReadsRunWithoutParallelWorkers(t *testing.T) {
+	eachBackendDB(t, func(t *testing.T, db *gormpkg.DB) {
+		if db.Dialector.Name() != "postgres" {
+			t.Skip("parallel query is a PostgreSQL planner feature")
+		}
+		ctx := context.Background()
+		store := newStoreOn(t, db)
+		migrateSchema(t, store)
+
+		// The setting the plan read runs with, read on its connection, in its
+		// transaction, before the read opens its rows.
+		var settings []string
+		probe := func(tx *gormpkg.DB) {
+			if tx.DryRun || tx.Statement.TableExpr == nil || !strings.HasSuffix(tx.Statement.TableExpr.SQL, "AS plan_usage") {
+				return
+			}
+			var setting string
+			if err := tx.Statement.ConnPool.QueryRowContext(tx.Statement.Context, "SHOW max_parallel_workers_per_gather").Scan(&setting); err != nil {
+				setting = err.Error()
+			}
+			settings = append(settings, setting)
+		}
+		require.NoError(t, db.Callback().Query().Before("gorm:query").Register("test:probe_query", probe))
+		require.NoError(t, db.Callback().Row().Before("gorm:row").Register("test:probe_row", probe))
+		t.Cleanup(func() {
+			_ = db.Callback().Query().Remove("test:probe_query")
+			_ = db.Callback().Row().Remove("test:probe_row")
+		})
+
+		scope := model.PlanUsageScope{OrgID: "org-1", ProviderID: "p1"}
+		since := time.Now().Add(-50 * time.Hour)
+		_, _, err := store.SumPlanUsageSince(ctx, scope, since)
+		require.NoError(t, err)
+		_, err = store.SumPlanUsageByKeySince(ctx, scope, since)
+		require.NoError(t, err)
+		_, err = store.CountActivePlanUsersSince(ctx, scope, since, "")
+		require.NoError(t, err)
+		require.Equal(t, []string{"0", "0", "0"}, settings)
+
+		var setting string
+		require.NoError(t, db.Raw("SHOW max_parallel_workers_per_gather").Scan(&setting).Error)
+		require.NotEqual(t, "0", setting, "the setting outlived the plan read")
 	})
 }
