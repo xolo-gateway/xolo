@@ -22,8 +22,8 @@ const usageHourLayout = "2006-01-02T15"
 // PlanUsageHourly sums, per UTC hour, the subscription-covered usage records
 // sharing every attribute a plan constraint filters or groups on. The plan
 // checks run on every proxied request and their window spans days or weeks:
-// they read the whole hours of it here and the records for the rest, the
-// start of the window and the current hour, see planUsageSources.
+// they read its hours here, the current one included, and the records for
+// the part of an hour it starts with, see planUsageSources.
 //
 // A row is written as usage is recorded, in the same transaction as the
 // record. The records stay the source of truth; RebuildPlanUsageHourly
@@ -197,13 +197,20 @@ type planUsageSource func(db *gorm.DB) *gorm.DB
 //
 //   - the records from its start to the end of that hour, unless it starts on
 //     the hour;
-//   - the hourly sums of the whole hours after it;
-//   - the records of the current hour.
+//   - the hourly sums of every hour after it, the current one included: its
+//     row is written in the transaction of each record, so it holds every
+//     record of the hour so far.
 //
-// A window starting in the current hour reads the records alone. Each window
-// reads its head in a query of its own, bounded by that part of an hour; the
-// hourly sums and the current hour, close for every window, share one query
-// each, bounded by the earliest of their times.
+// A window starting in the current hour reads the records alone, from its
+// start. Each window reads its head in a query of its own, bounded by that
+// part of an hour; the hourly sums, and the records of the windows starting
+// in the current hour, share one query each, bounded by the earliest of
+// their times.
+//
+// The current hour comes from its hourly row rather than from the records:
+// every proxied request runs these reads, and the records of the hour grow
+// with the traffic, so reading them made each check cost more as the hour
+// filled, up to every request of the hour on a busy plan.
 func planUsageSources(scope model.PlanUsageScope, since, now time.Time) []planUsageSource {
 	currentHour := now.Truncate(time.Hour).In(time.Local)
 
@@ -223,10 +230,7 @@ func planUsageSources(scope model.PlanUsageScope, since, now time.Time) []planUs
 			firstHour = firstHour.Add(time.Hour)
 			heads = append(heads, part{w: w, from: w.since, to: firstHour})
 		}
-		if firstHour.Before(currentHour) {
-			hours = append(hours, part{w: w, from: firstHour})
-		}
-		tails = append(tails, part{w: w, from: currentHour})
+		hours = append(hours, part{w: w, from: firstHour})
 	}
 
 	// filter applies what every source shares: the models and the key a
@@ -281,24 +285,28 @@ func planUsageSources(scope model.PlanUsageScope, since, now time.Time) []planUs
 			from = earliest(from, p.from)
 		}
 		sources = append(sources, func(db *gorm.DB) *gorm.DB {
+			// No upper bound, as on the records: a row a replica whose clock
+			// runs ahead wrote for the next hour is counted, not lost.
 			query := db.Model(&PlanUsageHourly{}).
-				Where("org_id = ? AND provider_id = ? AND hour >= ? AND hour < ?",
-					string(scope.OrgID), string(scope.ProviderID), usageHour(from), usageHour(currentHour))
+				Where("org_id = ? AND provider_id = ? AND hour >= ?",
+					string(scope.OrgID), string(scope.ProviderID), usageHour(from))
 			return filter(within(db, query, hours, func(p part) (string, []any) {
 				return "hour >= ?", []any{usageHour(p.from)}
 			}))
 		})
 	}
-	from := tails[0].from
-	for _, p := range tails[1:] {
-		from = earliest(from, p.from)
+	if len(tails) > 0 {
+		from := tails[0].from
+		for _, p := range tails[1:] {
+			from = earliest(from, p.from)
+		}
+		sources = append(sources, func(db *gorm.DB) *gorm.DB {
+			query := records(db).Where("created_at >= ?", from)
+			return filter(within(db, query, tails, func(p part) (string, []any) {
+				return "created_at >= ?", []any{p.from}
+			}))
+		})
 	}
-	sources = append(sources, func(db *gorm.DB) *gorm.DB {
-		query := records(db).Where("created_at >= ?", from)
-		return filter(within(db, query, tails, func(p part) (string, []any) {
-			return "created_at >= ?", []any{p.from}
-		}))
-	})
 	return sources
 }
 

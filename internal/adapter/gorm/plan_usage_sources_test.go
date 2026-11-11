@@ -53,12 +53,66 @@ func TestPlanUsageSourcesBoundEachHead(t *testing.T) {
 		if last.Sub(first) > time.Hour {
 			t.Errorf("a records query spans %s: %s", last.Sub(first), statement.SQL.String())
 		}
-		// A head is bounded on both sides; the current hour only from below.
-		if strings.Contains(statement.SQL.String(), "created_at <") {
-			heads++
+		// Both windows start before the current hour: every records query
+		// is a head, bounded on both sides.
+		if !strings.Contains(statement.SQL.String(), "created_at <") {
+			t.Errorf("a records query has no upper bound: %s", statement.SQL.String())
 		}
+		heads++
 	}
 	if heads < 2 {
 		t.Fatalf("expected a head query per window, got %d", heads)
+	}
+}
+
+// The current hour is read from its hourly row: its records grow with the
+// traffic, and every proxied request runs these reads. Only a window starting
+// in the current hour reads records past its head, from its own start.
+func TestPlanUsageSourcesReadTheCurrentHourFromItsRow(t *testing.T) {
+	db, err := gormpkg.Open(gormlite.Open(":memory:"), &gormpkg.Config{DryRun: true})
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	now := time.Date(2026, 10, 30, 15, 20, 0, 0, time.Local)
+	statements := func(scope model.PlanUsageScope, since time.Time) (records []*gormpkg.Statement, hourly []*gormpkg.Statement) {
+		for _, source := range planUsageSources(scope, since, now) {
+			statement := source(db.Session(&gormpkg.Session{})).Find(&[]map[string]any{}).Statement
+			if statement.Table == "usage_records" {
+				records = append(records, statement)
+			} else {
+				hourly = append(hourly, statement)
+			}
+		}
+		return records, hourly
+	}
+
+	scope := model.PlanUsageScope{OrgID: "org-1", ProviderID: "p1"}
+	records, hourly := statements(scope, now.Add(-5*time.Hour))
+	if len(records) != 1 || !strings.Contains(records[0].SQL.String(), "created_at <") {
+		t.Fatalf("expected the head alone from the records, got %d queries", len(records))
+	}
+	if len(hourly) != 1 || strings.Contains(hourly[0].SQL.String(), "hour <") {
+		t.Fatalf("expected one hourly query reaching the current hour, got %d", len(hourly))
+	}
+
+	// A key window opened 5 minutes ago: its records from then, nothing
+	// earlier.
+	start := now.Add(-5 * time.Minute)
+	scope.KeyWindows = map[model.ProviderKeyID]time.Time{"k2": start}
+	records, _ = statements(scope, now.Add(-5*time.Hour))
+	tails := 0
+	for _, statement := range records {
+		if strings.Contains(statement.SQL.String(), "created_at <") {
+			continue
+		}
+		tails++
+		for _, v := range statement.Vars {
+			if at, ok := v.(time.Time); ok && at.Before(start) {
+				t.Errorf("the current hour's records are read from %s, before the window opened: %s", at, statement.SQL.String())
+			}
+		}
+	}
+	if tails != 1 {
+		t.Fatalf("expected one records query for the window opened in the current hour, got %d", tails)
 	}
 }
