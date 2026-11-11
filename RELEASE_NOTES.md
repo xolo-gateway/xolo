@@ -1,3 +1,41 @@
+# Unreleased — subscription plan checks read per-minute sums
+
+The subscription plan checks no longer read the start of their windows from
+the usage records. Usage covered by a plan is now also summed per UTC minute in
+a new `plan_usage_minutely` table, written with `plan_usage_hourly` in the
+same statement as the record. Each window reads the seconds before its first
+minute from the records, its first minutes from the new table and its hours
+from `plan_usage_hourly`: a check reads at most a minute of records, whatever
+the traffic. Totals stay exact.
+
+The start of a window holds up to an hour of records, so its cost grew with
+the traffic of the plan. On the Helm chart's bench, under a production-shaped
+plan, these reads cost about 20 ms of PostgreSQL CPU per request, and capped
+the gateway at 200-240 req/s whatever the number of replicas.
+
+Migration `202611110001` creates the table and fills it from the usage
+history; it requires every server to be stopped. A record an older server
+writes after it never reaches its minute, and the checks under-count that
+minute until the plan windows move past it. `RebuildPlanUsageHourly` is
+renamed `RebuildPlanUsage` and rebuilds both tables.
+
+# Unreleased — API keys no longer depend on the OIDC provider
+
+An API request authenticated by an API key no longer calls the OIDC provider.
+The ID token check refuses any bearer token that is no JWT of the provider
+without calling it, and a valid API key is found before the token
+introspection. Until now a provider that was down made every API request
+answer 500, API keys included.
+
+OIDC ID tokens also cope with an unavailable provider. Its key set is
+downloaded within 10 seconds, at most once every 10 seconds while it fails.
+Once expired, the last key set keeps verifying tokens at once, up to 24 hours,
+while a new one is downloaded in the background. A token whose keys are
+unknown is answered 401 instead of 500, and a back-channel logout signed by a
+key Xolo cannot retrieve is deferred so that the provider retries it. The
+introspection and userinfo calls of the OAuth2 token check now time out after
+10 seconds. No migration.
+
 # Unreleased — subscription plan checks read hourly sums
 
 The subscription plan checks no longer sum every usage record of their window

@@ -149,7 +149,7 @@ func MigrateDatabase(ctx context.Context, db *gorm.DB, artifact *RecoveryArtifac
 					// Personal virtual model store
 					&PersonalVirtualModel{},
 					// Quota store
-					&Quota{}, &QuotaUsage{}, &UsageDaily{}, &PlanUsageHourly{},
+					&Quota{}, &QuotaUsage{}, &UsageDaily{}, &PlanUsageHourly{}, &PlanUsageMinutely{},
 					// Usage store
 					&UsageRecord{},
 					// Invite store
@@ -158,6 +158,8 @@ func MigrateDatabase(ctx context.Context, db *gorm.DB, artifact *RecoveryArtifac
 					&ExchangeRate{},
 					// Plugin node secrets
 					&PluginNodeSecret{},
+					// Plugin UI config handoff
+					&PluginUIConfig{},
 					// Provisioning audit
 					&MutationAudit{},
 					// Domain routing
@@ -168,6 +170,8 @@ func MigrateDatabase(ctx context.Context, db *gorm.DB, artifact *RecoveryArtifac
 					&Event{}, &Alert{}, &AlertIncident{}, &EventSettings{},
 					// Interactive OIDC sessions
 					&OIDCIdentity{}, &OIDCSession{}, &OIDCLogoutReplay{},
+					// Cross-instance cache invalidation
+					&CacheGeneration{},
 				)
 				if err != nil {
 					return errors.WithStack(err)
@@ -802,6 +806,42 @@ func schemaMigrations(artifact *RecoveryArtifact) []*gormigrate.Migration {
 				return errors.WithStack(tx.Migrator().DropTable(&PlanUsageHourly{}))
 			},
 		},
+		{
+			// Add cache_generations, through which the instances sharing the
+			// database tell each other to flush their in-process caches. An old
+			// server neither bumps nor reads it: until it is stopped, it keeps
+			// serving its entries until their TTL expires, as before.
+			ID: cacheGenerationsMigrationID,
+			Migrate: func(tx *gorm.DB) error {
+				return errors.WithStack(tx.AutoMigrate(&CacheGeneration{}))
+			},
+			Rollback: func(tx *gorm.DB) error {
+				return errors.WithStack(tx.Migrator().DropTable(&CacheGeneration{}))
+			},
+		},
+		{
+			// Add plugin_ui_configs, the handoff between the pipeline editor and
+			// the plugin UIs, kept in memory before: with several instances, its
+			// steps landed on instances that did not hold it. An old server
+			// keeps its own copy in memory, as before.
+			ID: pluginUIConfigsMigrationID,
+			Migrate: func(tx *gorm.DB) error {
+				return errors.WithStack(tx.AutoMigrate(&PluginUIConfig{}))
+			},
+			Rollback: func(tx *gorm.DB) error {
+				return errors.WithStack(tx.Migrator().DropTable(&PluginUIConfig{}))
+			},
+		},
+		{
+			// Add plan_usage_minutely, the per-minute sums the plan checks read
+			// for the part of an hour each window starts with, and fill it
+			// from the usage history (#234).
+			ID:      planUsageMinutelyMigrationID,
+			Migrate: migratePlanUsageMinutely,
+			Rollback: func(tx *gorm.DB) error {
+				return errors.WithStack(tx.Migrator().DropTable(&PlanUsageMinutely{}))
+			},
+		},
 	}
 }
 
@@ -817,4 +857,7 @@ const (
 	usageDailyMigrationID             = "202610300003"
 	usageEnergyMigrationID            = "202610300004"
 	planUsageHourlyMigrationID        = "202611060001"
+	cacheGenerationsMigrationID       = "202611100001"
+	pluginUIConfigsMigrationID        = "202611100002"
+	planUsageMinutelyMigrationID      = "202611110001"
 )

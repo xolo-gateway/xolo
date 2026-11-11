@@ -190,7 +190,7 @@ func (s *seeder) seedUsage(ctx context.Context) error {
 	if err := gormadapter.RebuildQuotaUsage(s.db); err != nil {
 		return errors.WithStack(err)
 	}
-	if err := gormadapter.RebuildPlanUsageHourly(s.db); err != nil {
+	if err := gormadapter.RebuildPlanUsage(s.db); err != nil {
 		return errors.WithStack(err)
 	}
 	return errors.WithStack(gormadapter.RebuildUsageDaily(s.db))

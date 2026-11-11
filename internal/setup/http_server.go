@@ -54,17 +54,7 @@ func NewHTTPServerFromConfig(ctx context.Context, conf *config.Config) (*http.Se
 		authenticators = append([]authn.Authenticator{oidcTokenAuthn}, authenticators...)
 	}
 
-	// API auth chain ordering (cheapest / most specific first):
-	//   oidctoken (local JWT ID token) → oauth2token (remote introspection) →
-	//   tokenAuthn (DB API token) → oidcAuthn (session).
-	apiAuthenticators := []authn.Authenticator{tokenAuthn}
-	if oauth2TokenAuthn != nil {
-		apiAuthenticators = append([]authn.Authenticator{oauth2TokenAuthn}, apiAuthenticators...)
-	}
-	if oidcTokenAuthn != nil {
-		apiAuthenticators = append([]authn.Authenticator{oidcTokenAuthn}, apiAuthenticators...)
-	}
-	apiAuthenticators = append(apiAuthenticators, oidcAuthn)
+	apiAuthenticators := apiAuthenticatorChain(tokenAuthn, oidcTokenAuthn, oauth2TokenAuthn, oidcAuthn)
 
 	authnMiddleware := authn.Middleware(oidcAuthn.LoginRedirect, authenticators...)
 
@@ -82,8 +72,27 @@ func NewHTTPServerFromConfig(ctx context.Context, conf *config.Config) (*http.Se
 
 	assets := common.NewHandler()
 
+	trustedProxies, err := conf.HTTP.RateLimit.TrustedProxyPrefixes()
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+	if conf.HTTP.RateLimit.TrustHeaders && len(trustedProxies) == 0 {
+		slog.WarnContext(ctx, "the rate limiter trusts X-Forwarded-For without XOLO_HTTP_RATE_LIMIT_TRUSTED_PROXIES: any client can forge it to escape the limit")
+	}
+	if !conf.HTTP.RateLimit.TrustHeaders && len(trustedProxies) != 0 {
+		slog.WarnContext(ctx, "XOLO_HTTP_RATE_LIMIT_TRUSTED_PROXIES has no effect while XOLO_HTTP_RATE_LIMIT_TRUST_HEADERS is false")
+	}
+	for _, prefix := range trustedProxies {
+		// Trusting every address is trusting every client.
+		if conf.HTTP.RateLimit.TrustHeaders && prefix.Bits() == 0 {
+			slog.WarnContext(ctx, "XOLO_HTTP_RATE_LIMIT_TRUSTED_PROXIES trusts every address: any client can forge X-Forwarded-For to escape the limit", slog.String("range", prefix.String()))
+			break
+		}
+	}
+
 	rateLimiter := ratelimit.Middleware(
 		conf.HTTP.RateLimit.TrustHeaders,
+		trustedProxies,
 		conf.HTTP.RateLimit.RequestInterval,
 		conf.HTTP.RateLimit.RequestMaxBurst,
 		conf.HTTP.RateLimit.CacheSize,
@@ -360,8 +369,14 @@ func NewHTTPServerFromConfig(ctx context.Context, conf *config.Config) (*http.Se
 		}),
 	)
 
+	readinessCheck, err := getReadinessCheckFromConfig(ctx, conf)
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+
 	options := []http.OptionFunc{
 		http.WithAddress(conf.HTTP.Address),
+		http.WithReadinessCheck(readinessCheck),
 		http.WithShutdownTimeout(conf.HTTP.ShutdownTimeout),
 		http.WithBaseURL(conf.HTTP.BaseURL),
 		// The language is resolved first so the tenant's error pages are

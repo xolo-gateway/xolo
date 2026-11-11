@@ -85,11 +85,11 @@ func recoveryReferences() []recoveryReference {
 	refs := []recoveryReference{
 		{"organizations", "tenant_id", "tenants", "", "", false}, {"users", "tenant_id", "tenants", "", "", false},
 	}
-	for _, t := range []string{"memberships", "applications", "roles", "providers", "llm_models", "virtual_models", "middlewares", "auth_tokens", "invite_tokens", "alerts", "alert_incidents", "usage_records", "usage_daily", "plan_usage_hourly", "events", "event_settings", "quota_usages"} {
-		refs = append(refs, recoveryReference{t, "org_id", "organizations", "", "", t == "events" || t == "usage_records" || t == "usage_daily" || t == "plan_usage_hourly" || t == "quota_usages"})
+	for _, t := range []string{"memberships", "applications", "roles", "providers", "llm_models", "virtual_models", "middlewares", "auth_tokens", "invite_tokens", "alerts", "alert_incidents", "usage_records", "usage_daily", "plan_usage_hourly", "plan_usage_minutely", "events", "event_settings", "quota_usages"} {
+		refs = append(refs, recoveryReference{t, "org_id", "organizations", "", "", t == "events" || t == "usage_records" || t == "usage_daily" || t == "plan_usage_hourly" || t == "plan_usage_minutely" || t == "quota_usages"})
 	}
-	for _, t := range []string{"memberships", "user_roles", "user_preferences", "personal_virtual_models", "usage_records", "usage_daily", "plan_usage_hourly", "events"} {
-		refs = append(refs, recoveryReference{t, "user_id", "users", "", "", t == "events" || t == "usage_records" || t == "usage_daily" || t == "plan_usage_hourly"})
+	for _, t := range []string{"memberships", "user_roles", "user_preferences", "personal_virtual_models", "usage_records", "usage_daily", "plan_usage_hourly", "plan_usage_minutely", "events"} {
+		refs = append(refs, recoveryReference{t, "user_id", "users", "", "", t == "events" || t == "usage_records" || t == "usage_daily" || t == "plan_usage_hourly" || t == "plan_usage_minutely"})
 	}
 	refs = append(refs,
 		recoveryReference{table: "auth_tokens", column: "owner_id", family: "users"},
@@ -106,6 +106,11 @@ func recoveryReferences() []recoveryReference {
 			where: "org_id LIKE '~:%'", prefix: "~:", historical: true},
 		recoveryReference{table: "plugin_node_secrets", column: "key", family: "users",
 			where: "plugin_name = 'mcp-bridge' AND key LIKE 'oauth:%'", prefix: "oauth:", historical: true},
+		// The plugin UI config handoff is scoped like the plugin secrets.
+		recoveryReference{table: "plugin_ui_configs", column: "org_id", family: "organizations",
+			where: "org_id NOT LIKE '~:%'"},
+		recoveryReference{table: "plugin_ui_configs", column: "org_id", family: "users",
+			where: "org_id LIKE '~:%'", prefix: "~:", historical: true},
 	)
 	for _, t := range []string{"quota", "quota_usages"} {
 		for scope, family := range map[string]string{"org": "organizations", "user": "users"} {

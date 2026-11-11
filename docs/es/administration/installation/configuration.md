@@ -6,6 +6,12 @@ Esta pagina aun no ha sido traducida. Consulte la [version en frances](https://x
 
 Aplica migraciones al arrancar (por defecto: `true`). Con `false`, comprueba el esquema sin migrarlo. Consulte el [procedimiento UUID](./uuid-migration.md); detenga todas las réplicas antiguas.
 
+## Cachés en memoria entre réplicas
+
+Cada instancia guarda en memoria los usuarios, los tokens de API (con la aplicación de su propietario), los proveedores y los modelos LLM. Toda escritura que invalida una de estas cachés se anuncia a través de la base de datos, y cada instancia comprueba los anuncios cada `XOLO_STORAGE_DATABASE_CACHE_COHERENCE_INTERVAL` (por defecto: `1s`). Un token revocado, una aplicación desactivada o una clave de proveedor cambiada dejan así de servirse en las demás instancias dentro de ese intervalo. Esto vale para las escrituras de la interfaz web, de la API y de la API de aprovisionamiento.
+
+`0` desactiva la comprobación: las demás instancias conservan entonces sus entradas hasta el TTL de la caché (`XOLO_STORAGE_DATABASE_CACHE_USERS_TTL`, `_PROVIDERS_TTL`, 60 min por defecto), lo que solo es seguro con una única instancia. Todas las instancias de un despliegue deben compartir estos ajustes.
+
 ## Sesiones OIDC y cierre de sesión back-channel
 
 Un navegador no autenticado que pide una página de la interfaz vuelve a ella tras iniciar sesión. Con un único proveedor interactivo, se le envía directamente a ese proveedor sin la página de elección; para evitar un bucle si el inicio de sesión falla, esto ocurre como máximo una vez cada 30 segundos (cookie `xolo_auto_sign_in`).

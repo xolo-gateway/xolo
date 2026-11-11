@@ -682,10 +682,10 @@ obligatorio, `null` solo donde se indica.
   `team_settings` y `team_membership`; la antigua ruta `/v1/xolo/…/teams`, que
   incluía los miembros, desaparece.
 
-Límite conocido: la caché de cada proceso mantiene válidos los tokens de una
-aplicación desactivada hasta que caducan sus entradas
-(`XOLO_STORAGE_DATABASE_CACHE_USERS_TTL`): una escritura mediante este
-listener solo vacía la caché de su propio proceso.
+Una escritura mediante este listener invalida las cachés de todas las
+instancias que comparten la base: los tokens de una aplicación desactivada
+dejan de aceptarse en `XOLO_STORAGE_DATABASE_CACHE_COHERENCE_INTERVAL` (1 s por
+defecto), o al caducar la caché cuando ese intervalo vale `0`.
 
 ### Modelos virtuales y middlewares
 

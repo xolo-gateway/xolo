@@ -702,10 +702,10 @@ Les représentations sont en snake_case et complètes : chaque champ est requis,
   `team_settings` et `team_membership` ; l'ancienne route `/v1/xolo/…/teams`,
   qui intégrait les membres, disparaît.
 
-Limite connue : le cache de chaque processus garde valides les jetons d'une
-application désactivée jusqu'à l'expiration de ses entrées
-(`XOLO_STORAGE_DATABASE_CACHE_USERS_TTL`) : une écriture via cet écouteur ne
-vide que le cache de son propre processus.
+Une écriture via cet écouteur invalide les caches de toutes les instances qui
+partagent la base : les jetons d'une application désactivée cessent d'être
+acceptés en `XOLO_STORAGE_DATABASE_CACHE_COHERENCE_INTERVAL` (1 s par défaut),
+ou à l'expiration du cache quand cet intervalle vaut `0`.
 
 ### Modèles virtuels et middlewares
 
