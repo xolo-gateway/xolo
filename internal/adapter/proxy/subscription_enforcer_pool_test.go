@@ -28,6 +28,10 @@ type poolUsageStore struct {
 	byKeyReads int
 	// scopes records the scope of every plan read.
 	scopes []model.PlanUsageScope
+	// memos and sinces record the request memo and the window start of the
+	// plan-wide reads and of the reads by key.
+	memos  []*port.PlanUsageMemo
+	sinces []time.Time
 }
 
 func (s *poolUsageStore) sum(scope model.PlanUsageScope, user model.UserID) int64 {
@@ -45,8 +49,9 @@ func (s *poolUsageStore) sum(scope model.PlanUsageScope, user model.UserID) int6
 	return total
 }
 
-func (s *poolUsageStore) SumPlanUsageSince(_ context.Context, scope model.PlanUsageScope, _ time.Time) (int64, int64, error) {
+func (s *poolUsageStore) SumPlanUsageSince(ctx context.Context, scope model.PlanUsageScope, since time.Time) (int64, int64, error) {
 	s.scopes = append(s.scopes, scope)
+	s.memos, s.sinces = append(s.memos, port.PlanUsageMemoFrom(ctx)), append(s.sinces, since)
 	return 0, s.sum(scope, ""), nil
 }
 
@@ -69,9 +74,10 @@ func (s *poolUsageStore) HasPlanUsageSince(_ context.Context, user model.UserID,
 	return ok, nil
 }
 
-func (s *poolUsageStore) SumPlanUsageByKeySince(_ context.Context, scope model.PlanUsageScope, _ time.Time) (map[model.ProviderKeyID]map[model.LLMModelID]port.PlanUsageTotals, error) {
+func (s *poolUsageStore) SumPlanUsageByKeySince(ctx context.Context, scope model.PlanUsageScope, since time.Time) (map[model.ProviderKeyID]map[model.LLMModelID]port.PlanUsageTotals, error) {
 	s.byKeyReads++
 	s.scopes = append(s.scopes, scope)
+	s.memos, s.sinces = append(s.memos, port.PlanUsageMemoFrom(ctx)), append(s.sinces, since)
 	result := map[model.ProviderKeyID]map[model.LLMModelID]port.PlanUsageTotals{}
 	for _, byKey := range s.value {
 		for key, v := range byKey {
@@ -531,5 +537,40 @@ func TestSubscriptionEnforcer_ShareThresholdLetsAUserPastTheirShare(t *testing.T
 	f.provider.SetSubscriptionPlan(&plan)
 	if _, msg := f.check(t, "alice"); msg != "" {
 		t.Errorf("alice denied (%q), want granted: the pool, at 17$ of 30$, is under its 70%% threshold", msg)
+	}
+}
+
+// The reads of one request share the memo of that request, opened for its
+// user, and the same window start, even on a sliding window: the store then
+// reads the window once for the plan's total and for the split over the keys
+// (#236).
+func TestSubscriptionEnforcer_ReadsOfARequestShareItsMemo(t *testing.T) {
+	f := newPoolFixture(t, 3)
+	f.consume("alice", "k2", 1_000_000)
+
+	if _, msg := f.check(t, "alice"); msg != "" {
+		t.Fatalf("alice denied (%q), want granted", msg)
+	}
+	if len(f.usage.memos) < 2 {
+		t.Fatalf("expected the plan-wide read and the read by key, got %d reads", len(f.usage.memos))
+	}
+	for i, memo := range f.usage.memos {
+		if memo == nil || memo != f.usage.memos[0] {
+			t.Fatalf("read %d did not get the request's memo", i)
+		}
+		if !f.usage.sinces[i].Equal(f.usage.sinces[0]) {
+			t.Errorf("read %d starts its window at %s, the first at %s", i, f.usage.sinces[i], f.usage.sinces[0])
+		}
+	}
+	if f.usage.memos[0].UserID != "alice" {
+		t.Errorf("memo opened for %q, want alice", f.usage.memos[0].UserID)
+	}
+
+	// The next request reads afresh: a memo lives as long as its request.
+	first := f.usage.memos[0]
+	f.usage.memos = nil
+	f.check(t, "alice")
+	if len(f.usage.memos) == 0 || f.usage.memos[0] == first {
+		t.Error("the next request reused the memo of the previous one")
 	}
 }
