@@ -41,6 +41,18 @@ type planScope struct {
 	// on the whole pool, never per key.
 	ByKey bool
 	KeyID model.ProviderKeyID
+	// Now is the time the request is checked at. Every window of the request
+	// starts from it, so that the reads of one window are the same read.
+	Now time.Time
+}
+
+// now returns the time the request is checked at, or the current time for a
+// scope built without one.
+func (s planScope) now() time.Time {
+	if s.Now.IsZero() {
+		return time.Now()
+	}
+	return s.Now
 }
 
 // usageScope is the usage a constraint counts: the whole provider, or the
@@ -158,7 +170,7 @@ func (e *rollingWindowEvaluator) Acquire(ctx context.Context, scope planScope, c
 
 	// Window start is aligned on the constraint's anchor (fixed/tumbling window matching the
 	// upstream provider's reset schedule) or falls back to a sliding window when unset.
-	now := time.Now()
+	now := scope.now()
 	since := c.CurrentWindowStart(now)
 	usage := scope.usageScope(c)
 	name := scope.constraintName(c)
@@ -261,7 +273,7 @@ func budgetDenial(scope planScope, c model.PlanConstraint, name string, tokens, 
 func (e *rollingWindowEvaluator) keysUsage(ctx context.Context, scope planScope, c model.PlanConstraint) (map[model.ProviderKeyID]map[model.LLMModelID]port.PlanUsageTotals, error) {
 	usage := scope.usageScope(c)
 	usage.ByKey, usage.KeyID = false, ""
-	return e.usageStore.SumPlanUsageByKeySince(ctx, usage, c.CurrentWindowStart(time.Now()))
+	return e.usageStore.SumPlanUsageByKeySince(ctx, usage, c.CurrentWindowStart(scope.now()))
 }
 
 // keyUsage totals what a key consumed of a constraint, weighed like planUsage

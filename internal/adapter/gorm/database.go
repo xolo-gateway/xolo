@@ -149,7 +149,7 @@ func MigrateDatabase(ctx context.Context, db *gorm.DB, artifact *RecoveryArtifac
 					// Personal virtual model store
 					&PersonalVirtualModel{},
 					// Quota store
-					&Quota{}, &QuotaUsage{}, &UsageDaily{}, &PlanUsageHourly{},
+					&Quota{}, &QuotaUsage{}, &UsageDaily{}, &PlanUsageHourly{}, &PlanUsageMinutely{},
 					// Usage store
 					&UsageRecord{},
 					// Invite store
@@ -832,6 +832,16 @@ func schemaMigrations(artifact *RecoveryArtifact) []*gormigrate.Migration {
 				return errors.WithStack(tx.Migrator().DropTable(&PluginUIConfig{}))
 			},
 		},
+		{
+			// Add plan_usage_minutely, the per-minute sums the plan checks read
+			// for the part of an hour each window starts with, and fill it
+			// from the usage history (#234).
+			ID:      planUsageMinutelyMigrationID,
+			Migrate: migratePlanUsageMinutely,
+			Rollback: func(tx *gorm.DB) error {
+				return errors.WithStack(tx.Migrator().DropTable(&PlanUsageMinutely{}))
+			},
+		},
 	}
 }
 
@@ -849,4 +859,5 @@ const (
 	planUsageHourlyMigrationID        = "202611060001"
 	cacheGenerationsMigrationID       = "202611100001"
 	pluginUIConfigsMigrationID        = "202611100002"
+	planUsageMinutelyMigrationID      = "202611110001"
 )

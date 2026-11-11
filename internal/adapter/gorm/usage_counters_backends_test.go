@@ -81,7 +81,7 @@ func TestRecordedCountersMatchTheHistoryOnEachBackend(t *testing.T) {
 		if recorded.quota == "" || recorded.daily == "" || recorded.hourly == "" {
 			t.Fatalf("expected every counter family to be written, got %+v", recorded)
 		}
-		for _, rebuild := range []func(*gormpkg.DB) error{xologorm.RebuildQuotaUsage, xologorm.RebuildUsageDaily, xologorm.RebuildPlanUsageHourly} {
+		for _, rebuild := range []func(*gormpkg.DB) error{xologorm.RebuildQuotaUsage, xologorm.RebuildUsageDaily, xologorm.RebuildPlanUsage} {
 			if err := rebuild(db); err != nil {
 				t.Fatalf("rebuild: %v", err)
 			}

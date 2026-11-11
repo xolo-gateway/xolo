@@ -103,7 +103,12 @@ func (e *XoloSubscriptionEnforcer) PreRequest(ctx context.Context, req *genaiPro
 		UserID:      userID,
 		MemberCount: memberCount,
 		Currency:    p.Currency(),
+		Now:         time.Now(),
 	}
+	// The checks below read each window of the plan several times: the plan's
+	// total, the user's part, the split over the keys of a pool. The memo lets
+	// the store read each window once for all of them (#236).
+	ctx = port.WithPlanUsageMemo(ctx, userID)
 	if plan.HasPerModelConstraint() || plan.HasSharedConstraint() {
 		// Read once for both: a failure is not cached, and reading it twice
 		// would double both the load on a struggling store and the metric.
@@ -124,9 +129,8 @@ func (e *XoloSubscriptionEnforcer) PreRequest(ctx context.Context, req *genaiPro
 	pooled := len(keys) > 1
 	shared := model.PooledPlan(p)
 	if pooled {
-		now := time.Now()
 		for _, c := range plan.Constraints {
-			if windows := model.KeyWindows(p, c.Label, now); windows != nil {
+			if windows := model.KeyWindows(p, c.Label, scope.Now); windows != nil {
 				if scope.KeyWindows == nil {
 					scope.KeyWindows = map[string]map[model.ProviderKeyID]time.Time{}
 				}

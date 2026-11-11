@@ -1,3 +1,24 @@
+# Unreleased — subscription plan checks read per-minute sums
+
+The subscription plan checks no longer read the start of their windows from
+the usage records. Usage covered by a plan is now also summed per UTC minute in
+a new `plan_usage_minutely` table, written with `plan_usage_hourly` in the
+same statement as the record. Each window reads the seconds before its first
+minute from the records, its first minutes from the new table and its hours
+from `plan_usage_hourly`: a check reads at most a minute of records, whatever
+the traffic. Totals stay exact.
+
+The start of a window holds up to an hour of records, so its cost grew with
+the traffic of the plan. On the Helm chart's bench, under a production-shaped
+plan, these reads cost about 20 ms of PostgreSQL CPU per request, and capped
+the gateway at 200-240 req/s whatever the number of replicas.
+
+Migration `202611110001` creates the table and fills it from the usage
+history; it requires every server to be stopped. A record an older server
+writes after it never reaches its minute, and the checks under-count that
+minute until the plan windows move past it. `RebuildPlanUsageHourly` is
+renamed `RebuildPlanUsage` and rebuilds both tables.
+
 # Unreleased — API keys no longer depend on the OIDC provider
 
 An API request authenticated by an API key no longer calls the OIDC provider.
