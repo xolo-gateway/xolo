@@ -2,6 +2,10 @@ package setup
 
 import (
 	"context"
+	"log/slog"
+	gohttp "net/http"
+	"time"
+
 	"github.com/bornholm/genai/proxy"
 	"github.com/pkg/errors"
 	proxyAdapter "github.com/xolo-gateway/xolo/internal/adapter/proxy"
@@ -22,10 +26,6 @@ import (
 	"github.com/xolo-gateway/xolo/internal/http/middleware/ratelimit"
 	"github.com/xolo-gateway/xolo/internal/http/middleware/tenant"
 	"github.com/xolo-gateway/xolo/internal/i18n"
-
-	"log/slog"
-	gohttp "net/http"
-	"time"
 )
 
 func NewHTTPServerFromConfig(ctx context.Context, conf *config.Config) (*http.Server, error) {
@@ -204,9 +204,13 @@ func NewHTTPServerFromConfig(ctx context.Context, conf *config.Config) (*http.Se
 	}
 
 	subscriptionEnforcer := proxyAdapter.NewXoloSubscriptionEnforcer(providerStore, usageStore, fairShareService, subscriptionState, orgStore)
+	if conf.Proxy.DrainTimeout <= 0 {
+		slog.WarnContext(ctx, "proxy abandoned stream draining is unbounded", slog.Duration("drain_timeout", conf.Proxy.DrainTimeout))
+	}
 
 	orgModelRouter := proxyAdapter.NewOrgModelRouter(providerStore, orgStore, conf.SecretKey,
 		proxyAdapter.WithUpstreamTimeout(conf.Proxy.UpstreamTimeout),
+		proxyAdapter.WithDrainTimeout(conf.Proxy.DrainTimeout),
 		proxyAdapter.WithKeyExhaustionHandler(subscriptionEnforcer.MarkKeyExhausted),
 	)
 
@@ -224,7 +228,9 @@ func NewHTTPServerFromConfig(ctx context.Context, conf *config.Config) (*http.Se
 		middlewareStore,
 		orgModelRouter,
 	).WithQuotaInfo(proxyAdapter.NewQuotaInfoResolver(quotaService, usageStore)).WithTeams(teamStore).
-		WithBackwardTimeout(conf.Proxy.PipelineBackwardTimeout)
+		WithBackwardTimeout(conf.Proxy.PipelineBackwardTimeout).
+		WithDrainTimeout(conf.Proxy.DrainTimeout).
+		WithFirstChunkTimeout(conf.Proxy.UpstreamTimeout)
 	// Plugins may ask the host for a completion (e.g. llm-classifier); it goes
 	// through the same model resolution as a proxied request.
 	pluginManager.HostService().SetModelCompleter(pipelineHookAdapter)
@@ -309,6 +315,7 @@ func NewHTTPServerFromConfig(ctx context.Context, conf *config.Config) (*http.Se
 	apiHandler := api.NewHandler(providerStore, orgStore, virtualModelStore, personalVMStore, middlewareStore, secretStore, exchangeRateService, pluginManager).WithTeams(teamStore).WithUserQuota(quotaService, usageStore, time.Now).WithCatalog(catalogSource)
 
 	proxyServer := proxy.NewServer(
+		proxy.WithDrainTimeout(conf.Proxy.DrainTimeout),
 		proxy.WithAuthExtractor(proxyAdapter.XoloAuthExtractor()),
 		proxy.WithHook(proxyAdapter.NewXoloMetricsHook()),
 		proxy.WithHook(&proxyAdapter.SessionIDHook{}),

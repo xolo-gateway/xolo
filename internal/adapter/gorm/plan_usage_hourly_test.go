@@ -3,6 +3,7 @@ package gorm_test
 import (
 	"context"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -76,9 +77,10 @@ func expectedPlanUsage(records []planRecord, scope model.PlanUsageScope, user st
 	return out
 }
 
-// The plan checks read the whole hours of their window from plan_usage_hourly
-// and the rest from usage_records: every aggregate must be the one the records
-// alone give, whatever the window, key windows and filters.
+// The plan checks read the whole hours of their window from plan_usage_hourly,
+// its first minutes from plan_usage_minutely and the seconds before them from
+// usage_records: every aggregate must be the one the records alone give,
+// whatever the window, key windows and filters.
 func TestPlanUsageHourly_WindowReadsMatchTheRecords(t *testing.T) {
 	eachBackendDB(t, func(t *testing.T, db *gormpkg.DB) {
 		ctx := context.Background()
@@ -91,7 +93,7 @@ func TestPlanUsageHourly_WindowReadsMatchTheRecords(t *testing.T) {
 		// the current hour included.
 		offsets := []time.Duration{
 			-70*time.Hour - 20*time.Minute, -50 * time.Hour, -30*time.Hour + 17*time.Minute,
-			-26*time.Hour - time.Second, -26 * time.Hour, -5*time.Hour - 10*time.Minute,
+			-26*time.Hour - 40*time.Second, -26*time.Hour - time.Second, -26 * time.Hour, -5*time.Hour - 10*time.Minute,
 			-3*time.Hour + 5*time.Minute, -2 * time.Hour, -time.Hour + 59*time.Minute,
 		}
 		var records []planRecord
@@ -128,7 +130,7 @@ func TestPlanUsageHourly_WindowReadsMatchTheRecords(t *testing.T) {
 		require.NoError(t, store.RecordUsage(ctx, live))
 		records = append(records, planRecord{at: live.CreatedAt(), org: "org-1", provider: "p1", key: "k2", model: "m2", user: "u2", covered: true, tokens: live.TotalTokens(), value: 77})
 
-		require.NoError(t, xologorm.RebuildPlanUsageHourly(db))
+		require.NoError(t, xologorm.RebuildPlanUsage(db))
 
 		base := model.PlanUsageScope{OrgID: "org-1", ProviderID: "p1"}
 		scopes := map[string]model.PlanUsageScope{
@@ -140,6 +142,10 @@ func TestPlanUsageHourly_WindowReadsMatchTheRecords(t *testing.T) {
 				"k2": hour.Add(-3*time.Hour + 5*time.Minute),
 				"k3": hour.Add(-26 * time.Hour),
 			}},
+			"key windows within a minute": {OrgID: "org-1", ProviderID: "p1", KeyWindows: map[model.ProviderKeyID]time.Time{
+				"k2": hour.Add(-26*time.Hour - 30*time.Second),
+				"k3": hour.Add(-3*time.Hour + 4*time.Minute + 59*time.Second),
+			}},
 			"key window in the current hour": {OrgID: "org-1", ProviderID: "p1", KeyWindows: map[model.ProviderKeyID]time.Time{
 				"k2": hour.Add(time.Minute),
 			}},
@@ -149,79 +155,103 @@ func TestPlanUsageHourly_WindowReadsMatchTheRecords(t *testing.T) {
 			"mid hour":           hour.Add(-30*time.Hour + 17*time.Minute),
 			"on the hour":        hour.Add(-26 * time.Hour),
 			"one second before":  hour.Add(-26*time.Hour - time.Second),
+			"within a minute":    hour.Add(-26*time.Hour - 30*time.Second),
 			"previous hour":      hour.Add(-time.Hour + 30*time.Minute),
 			"current hour":       hour,
 			"after every record": now.Add(time.Hour),
 		}
 
+		// Every read runs without a memo, then with the memo of a request of
+		// u1, which serves the reads of a window from one read of it and
+		// reads as usual for u2 (see port.PlanUsageMemo).
 		for scopeName, scope := range scopes {
 			for sinceName, since := range sinces {
-				t.Run(fmt.Sprintf("%s since %s", scopeName, sinceName), func(t *testing.T) {
-					want := expectedPlanUsage(records, scope, "", since)
-					var wantTokens, wantValue int64
-					wantByKey := map[model.ProviderKeyID]map[model.LLMModelID]port.PlanUsageTotals{}
-					wantUsers := map[string]bool{}
-					for _, r := range want {
-						wantTokens += int64(r.tokens)
-						wantValue += r.value
-						key := model.ProviderKeyID(r.key)
-						if wantByKey[key] == nil {
-							wantByKey[key] = map[model.LLMModelID]port.PlanUsageTotals{}
+				for _, memo := range []bool{false, true} {
+					t.Run(fmt.Sprintf("%s since %s (memo %v)", scopeName, sinceName, memo), func(t *testing.T) {
+						ctx := ctx
+						if memo {
+							ctx = port.WithPlanUsageMemo(ctx, "u1")
 						}
-						totals := wantByKey[key][model.LLMModelID(r.model)]
-						totals.Tokens += int64(r.tokens)
-						totals.Value += r.value
-						wantByKey[key][model.LLMModelID(r.model)] = totals
-						if r.user != "" {
-							wantUsers[r.user] = true
-						}
-					}
-
-					tokens, value, err := store.SumPlanUsageSince(ctx, scope, since)
-					require.NoError(t, err)
-					require.Equal(t, wantTokens, tokens, "tokens")
-					require.Equal(t, wantValue, value, "value")
-
-					byKey, err := store.SumPlanUsageByKeySince(ctx, scope, since)
-					require.NoError(t, err)
-					require.Equal(t, wantByKey, byKey)
-
-					count, err := store.CountActivePlanUsersSince(ctx, scope, since, "")
-					require.NoError(t, err)
-					require.Equal(t, int64(len(wantUsers)), count, "active users")
-
-					count, err = store.CountActivePlanUsersSince(ctx, scope, since, "u1")
-					require.NoError(t, err)
-					delete(wantUsers, "u1")
-					require.Equal(t, int64(len(wantUsers)), count, "active users but u1")
-
-					for _, user := range []string{"u1", "u2"} {
-						var userTokens, userValue int64
-						wantByModel := map[model.LLMModelID]port.PlanUsageTotals{}
-						for _, r := range expectedPlanUsage(records, scope, user, since) {
-							userTokens += int64(r.tokens)
-							userValue += r.value
-							totals := wantByModel[model.LLMModelID(r.model)]
+						want := expectedPlanUsage(records, scope, "", since)
+						var wantTokens, wantValue int64
+						wantByKey := map[model.ProviderKeyID]map[model.LLMModelID]port.PlanUsageTotals{}
+						wantUsers := map[string]bool{}
+						for _, r := range want {
+							wantTokens += int64(r.tokens)
+							wantValue += r.value
+							key := model.ProviderKeyID(r.key)
+							if wantByKey[key] == nil {
+								wantByKey[key] = map[model.LLMModelID]port.PlanUsageTotals{}
+							}
+							totals := wantByKey[key][model.LLMModelID(r.model)]
 							totals.Tokens += int64(r.tokens)
 							totals.Value += r.value
-							wantByModel[model.LLMModelID(r.model)] = totals
+							wantByKey[key][model.LLMModelID(r.model)] = totals
+							if r.user != "" {
+								wantUsers[r.user] = true
+							}
 						}
-						tokens, value, err := store.SumUserPlanUsageSince(ctx, model.UserID(user), scope, since)
-						require.NoError(t, err)
-						require.Equal(t, userTokens, tokens, "%s tokens", user)
-						require.Equal(t, userValue, value, "%s value", user)
 
-						byModel, err := store.SumPlanUsageByModelSince(ctx, scope, model.UserID(user), since)
+						tokens, value, err := store.SumPlanUsageSince(ctx, scope, since)
 						require.NoError(t, err)
-						require.Equal(t, wantByModel, byModel, "%s by model", user)
-					}
-				})
+						require.Equal(t, wantTokens, tokens, "tokens")
+						require.Equal(t, wantValue, value, "value")
+
+						byKey, err := store.SumPlanUsageByKeySince(ctx, scope, since)
+						require.NoError(t, err)
+						require.Equal(t, wantByKey, byKey)
+
+						wantByModel := map[model.LLMModelID]port.PlanUsageTotals{}
+						for _, models := range wantByKey {
+							for id, totals := range models {
+								sum := wantByModel[id]
+								sum.Tokens += totals.Tokens
+								sum.Value += totals.Value
+								wantByModel[id] = sum
+							}
+						}
+						byModel, err := store.SumPlanUsageByModelSince(ctx, scope, "", since)
+						require.NoError(t, err)
+						require.Equal(t, wantByModel, byModel, "by model")
+
+						count, err := store.CountActivePlanUsersSince(ctx, scope, since, "")
+						require.NoError(t, err)
+						require.Equal(t, int64(len(wantUsers)), count, "active users")
+
+						count, err = store.CountActivePlanUsersSince(ctx, scope, since, "u1")
+						require.NoError(t, err)
+						delete(wantUsers, "u1")
+						require.Equal(t, int64(len(wantUsers)), count, "active users but u1")
+
+						for _, user := range []string{"u1", "u2"} {
+							var userTokens, userValue int64
+							wantByModel := map[model.LLMModelID]port.PlanUsageTotals{}
+							for _, r := range expectedPlanUsage(records, scope, user, since) {
+								userTokens += int64(r.tokens)
+								userValue += r.value
+								totals := wantByModel[model.LLMModelID(r.model)]
+								totals.Tokens += int64(r.tokens)
+								totals.Value += r.value
+								wantByModel[model.LLMModelID(r.model)] = totals
+							}
+							tokens, value, err := store.SumUserPlanUsageSince(ctx, model.UserID(user), scope, since)
+							require.NoError(t, err)
+							require.Equal(t, userTokens, tokens, "%s tokens", user)
+							require.Equal(t, userValue, value, "%s value", user)
+
+							byModel, err := store.SumPlanUsageByModelSince(ctx, scope, model.UserID(user), since)
+							require.NoError(t, err)
+							require.Equal(t, wantByModel, byModel, "%s by model", user)
+						}
+					})
+				}
 			}
 		}
 	})
 }
 
-// Recording usage through the store must leave plan_usage_hourly as a rebuild
+// Recording usage through the store must leave plan_usage_hourly and
+// plan_usage_minutely as a rebuild
 // from the records does: the checks would otherwise drift from the records
 // until the window moves past the hour.
 func TestPlanUsageHourly_RecordingMatchesARebuild(t *testing.T) {
@@ -243,14 +273,130 @@ func TestPlanUsageHourly_RecordingMatchesARebuild(t *testing.T) {
 			require.NoError(t, store.RecordUsage(ctx, rec))
 		}
 
-		read := func() []xologorm.PlanUsageHourly {
+		hours := func() []xologorm.PlanUsageHourly {
 			var rows []xologorm.PlanUsageHourly
 			require.NoError(t, db.Order("org_id, provider_id, hour, provider_key_id, model_id, user_id").Find(&rows).Error)
 			return rows
 		}
-		recorded := read()
-		require.Len(t, recorded, 3, "one row per user and key, PAYG left out")
-		require.NoError(t, xologorm.RebuildPlanUsageHourly(db))
-		require.Equal(t, recorded, read())
+		minutes := func() []xologorm.PlanUsageMinutely {
+			var rows []xologorm.PlanUsageMinutely
+			require.NoError(t, db.Order("org_id, provider_id, minute, provider_key_id, model_id, user_id").Find(&rows).Error)
+			return rows
+		}
+		recordedHours, recordedMinutes := hours(), minutes()
+		require.Len(t, recordedHours, 3, "one row per user and key, PAYG left out")
+		require.GreaterOrEqual(t, len(recordedMinutes), 3, "at least one row per user and key, PAYG left out")
+		require.NoError(t, xologorm.RebuildPlanUsage(db))
+		require.Equal(t, recordedHours, hours())
+		require.Equal(t, recordedMinutes, minutes())
+	})
+}
+
+// Every plan read is one statement, whatever its windows: the plan checks of
+// a proxied request run several reads, and a statement per source of each
+// multiplied the round trips (#236).
+func TestPlanUsageReadsAreOneStatement(t *testing.T) {
+	eachBackendDB(t, func(t *testing.T, db *gormpkg.DB) {
+		ctx := context.Background()
+		store := newStoreOn(t, db)
+		migrateSchema(t, store)
+
+		var statements []string
+		// GORM runs the callbacks in dry-run mode to render a subquery: only
+		// the statements sent to the database count.
+		count := func(tx *gormpkg.DB) {
+			if !tx.DryRun {
+				statements = append(statements, tx.Statement.SQL.String())
+			}
+		}
+		require.NoError(t, db.Callback().Query().After("gorm:query").Register("test:count_query", count))
+		require.NoError(t, db.Callback().Row().After("gorm:row").Register("test:count_row", count))
+		t.Cleanup(func() {
+			_ = db.Callback().Query().Remove("test:count_query")
+			_ = db.Callback().Row().Remove("test:count_row")
+		})
+
+		now := time.Now()
+		// A window starting mid-minute days ago, and a key window opened in
+		// the current hour: records, minutes and hours for each.
+		since := now.Add(-50*time.Hour - 90*time.Second)
+		scope := model.PlanUsageScope{OrgID: "org-1", ProviderID: "p1", KeyWindows: map[model.ProviderKeyID]time.Time{
+			"k2": now.Add(-90 * time.Second),
+		}}
+		reads := map[string]func() error{
+			"sum":          func() error { _, _, err := store.SumPlanUsageSince(ctx, scope, since); return err },
+			"user sum":     func() error { _, _, err := store.SumUserPlanUsageSince(ctx, "u1", scope, since); return err },
+			"by model":     func() error { _, err := store.SumPlanUsageByModelSince(ctx, scope, "u1", since); return err },
+			"by key":       func() error { _, err := store.SumPlanUsageByKeySince(ctx, scope, since); return err },
+			"active users": func() error { _, err := store.CountActivePlanUsersSince(ctx, scope, since, "u1"); return err },
+		}
+		for name, read := range reads {
+			statements = statements[:0]
+			require.NoError(t, read(), name)
+			require.Len(t, statements, 1, "%s ran %d statements: %v", name, len(statements), statements)
+			require.Contains(t, statements[0], "UNION ALL", name)
+		}
+
+		// Within a request's memo, the reads of one window share one statement,
+		// whether narrowed to one key of the pool or not.
+		ctx = port.WithPlanUsageMemo(ctx, "u1")
+		statements = statements[:0]
+		for _, name := range []string{"sum", "user sum", "by model", "by key"} {
+			require.NoError(t, reads[name](), name)
+		}
+		_, err := store.SumPlanUsageByModelSince(ctx, scope, "", since)
+		require.NoError(t, err)
+		oneKey := scope
+		oneKey.ByKey, oneKey.KeyID = true, "k2"
+		_, _, err = store.SumPlanUsageSince(ctx, oneKey, since)
+		require.NoError(t, err)
+		require.Len(t, statements, 1, "the reads of one window ran %d statements: %v", len(statements), statements)
+	})
+}
+
+// On PostgreSQL a plan read runs without parallel workers, and the setting
+// ends with its transaction (#239).
+func TestPlanUsageReadsRunWithoutParallelWorkers(t *testing.T) {
+	eachBackendDB(t, func(t *testing.T, db *gormpkg.DB) {
+		if db.Dialector.Name() != "postgres" {
+			t.Skip("parallel query is a PostgreSQL planner feature")
+		}
+		ctx := context.Background()
+		store := newStoreOn(t, db)
+		migrateSchema(t, store)
+
+		// The setting the plan read runs with, read on its connection, in its
+		// transaction, before the read opens its rows.
+		var settings []string
+		probe := func(tx *gormpkg.DB) {
+			if tx.DryRun || tx.Statement.TableExpr == nil || !strings.HasSuffix(tx.Statement.TableExpr.SQL, "AS plan_usage") {
+				return
+			}
+			var setting string
+			if err := tx.Statement.ConnPool.QueryRowContext(tx.Statement.Context, "SHOW max_parallel_workers_per_gather").Scan(&setting); err != nil {
+				setting = err.Error()
+			}
+			settings = append(settings, setting)
+		}
+		require.NoError(t, db.Callback().Query().Before("gorm:query").Register("test:probe_query", probe))
+		require.NoError(t, db.Callback().Row().Before("gorm:row").Register("test:probe_row", probe))
+		t.Cleanup(func() {
+			_ = db.Callback().Query().Remove("test:probe_query")
+			_ = db.Callback().Row().Remove("test:probe_row")
+		})
+
+		scope := model.PlanUsageScope{OrgID: "org-1", ProviderID: "p1"}
+		since := time.Now().Add(-50 * time.Hour)
+		_, _, err := store.SumPlanUsageSince(ctx, scope, since)
+		require.NoError(t, err)
+		_, err = store.SumPlanUsageByKeySince(ctx, scope, since)
+		require.NoError(t, err)
+		_, err = store.CountActivePlanUsersSince(ctx, scope, since, "")
+		require.NoError(t, err)
+		require.Equal(t, []string{"0", "0", "0"}, settings)
+
+		var setting string
+		require.NoError(t, db.Raw("SHOW max_parallel_workers_per_gather").Scan(&setting).Error)
+		require.NotEqual(t, "0", setting, "the setting outlived the plan read")
 	})
 }

@@ -85,11 +85,11 @@ func recoveryReferences() []recoveryReference {
 	refs := []recoveryReference{
 		{"organizations", "tenant_id", "tenants", "", "", false}, {"users", "tenant_id", "tenants", "", "", false},
 	}
-	for _, t := range []string{"memberships", "applications", "roles", "providers", "llm_models", "virtual_models", "middlewares", "auth_tokens", "invite_tokens", "alerts", "alert_incidents", "usage_records", "usage_daily", "plan_usage_hourly", "events", "event_settings", "quota_usages"} {
-		refs = append(refs, recoveryReference{t, "org_id", "organizations", "", "", t == "events" || t == "usage_records" || t == "usage_daily" || t == "plan_usage_hourly" || t == "quota_usages"})
+	for _, t := range []string{"memberships", "applications", "roles", "providers", "llm_models", "virtual_models", "middlewares", "auth_tokens", "invite_tokens", "alerts", "alert_incidents", "usage_records", "usage_daily", "plan_usage_hourly", "plan_usage_minutely", "events", "event_settings", "quota_usages"} {
+		refs = append(refs, recoveryReference{t, "org_id", "organizations", "", "", t == "events" || t == "usage_records" || t == "usage_daily" || t == "plan_usage_hourly" || t == "plan_usage_minutely" || t == "quota_usages"})
 	}
-	for _, t := range []string{"memberships", "user_roles", "user_preferences", "personal_virtual_models", "usage_records", "usage_daily", "plan_usage_hourly", "events"} {
-		refs = append(refs, recoveryReference{t, "user_id", "users", "", "", t == "events" || t == "usage_records" || t == "usage_daily" || t == "plan_usage_hourly"})
+	for _, t := range []string{"memberships", "user_roles", "user_preferences", "personal_virtual_models", "usage_records", "usage_daily", "plan_usage_hourly", "plan_usage_minutely", "events"} {
+		refs = append(refs, recoveryReference{t, "user_id", "users", "", "", t == "events" || t == "usage_records" || t == "usage_daily" || t == "plan_usage_hourly" || t == "plan_usage_minutely"})
 	}
 	refs = append(refs,
 		recoveryReference{table: "auth_tokens", column: "owner_id", family: "users"},

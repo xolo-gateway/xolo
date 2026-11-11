@@ -2,18 +2,67 @@ package proxy
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"testing"
 	"time"
 
 	"github.com/bornholm/genai/llm"
+	"github.com/xolo-gateway/xolo/internal/core/model"
+	"github.com/xolo-gateway/xolo/internal/pipeline"
 )
 
 // stallingClient never answers until its context is done, and streams chunks
 // on demand through the chunks channel.
 type stallingClient struct {
 	chunks chan llm.StreamChunk
+}
+
+type fallbackTimeoutResolver struct {
+	primary llm.Client
+	backup  llm.Client
+}
+
+func (r fallbackTimeoutResolver) ResolveRealModel(_ context.Context, _ model.OrgID, name string) (llm.Client, string, model.LLMModelID, error) {
+	if name == "primary" {
+		return r.primary, name, model.LLMModelID(name), nil
+	}
+	return r.backup, name, model.LLMModelID(name), nil
+}
+
+type fallbackAnswerClient struct{ stallingClient }
+
+func (fallbackAnswerClient) ChatCompletionStream(context.Context, ...llm.ChatCompletionOptionFunc) (<-chan llm.StreamChunk, error) {
+	ch := make(chan llm.StreamChunk, 1)
+	ch <- llm.NewStreamChunk(llm.NewStreamDelta(llm.RoleAssistant, "backup"))
+	close(ch)
+	return ch, nil
+}
+
+func TestFallbackWaitsForUpstreamTimeout(t *testing.T) {
+	primary := newTimeoutClient(&stallingClient{chunks: make(chan llm.StreamChunk)}, 30*time.Millisecond)
+	resolver := fallbackTimeoutResolver{primary: primary, backup: &fallbackAnswerClient{}}
+	data, err := json.Marshal(model.ModelFallbackNodeData{Models: []string{"primary", "backup"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := pipeline.NewModelFallbackExecutor(resolver).Forward(context.Background(), model.PipelineNode{ID: "fallback", Type: model.NodeTypeModelFallback, Data: data}, nil, pipeline.ExecutionContext{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	stream, err := result.ResolvedClient.ChatCompletionStream(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	chunk, ok := <-stream
+	if !ok || chunk.Error() != nil || chunk.Delta().Content() != "backup" {
+		t.Fatalf("unexpected fallback chunk: %v", chunk)
+	}
+	for range stream {
+	}
 }
 
 func (s *stallingClient) ChatCompletion(ctx context.Context, _ ...llm.ChatCompletionOptionFunc) (llm.ChatCompletionResponse, error) {

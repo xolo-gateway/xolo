@@ -20,19 +20,30 @@ import (
 // The record and the quota counters it feeds are written in the same
 // transaction: a counter that missed an insert would under-report spending
 // until the next backfill, and there is no backfill on the hot path.
+//
+// On PostgreSQL the counters are hot rows every request of an organization
+// updates: the record and every counter go in a single statement (see
+// recordUsagePostgres), so their row locks are held while it runs only.
 func (s *Store) RecordUsage(ctx context.Context, record model.UsageRecord) error {
-	return s.withRetry(ctx, true, func(ctx context.Context, db *gorm.DB) error {
-		row := fromUsageRecord(record)
-		if err := db.Create(row).Error; err != nil {
-			return errors.WithStack(err)
+	// withTx is false: one statement is atomic on its own on PostgreSQL, and
+	// SQLite opens its transaction below.
+	return s.withRetry(ctx, false, func(ctx context.Context, db *gorm.DB) error {
+		if !isSQLite(db) {
+			return recordUsagePostgres(ctx, db, record)
 		}
-		if err := incrementQuotaUsage(db, quotaUsageRows(record)); err != nil {
-			return err
-		}
-		if err := incrementPlanUsageHourly(db, row); err != nil {
-			return err
-		}
-		return incrementUsageDaily(db, row, record.Energy())
+		return db.Transaction(func(tx *gorm.DB) error {
+			row := fromUsageRecord(record)
+			if err := tx.Create(row).Error; err != nil {
+				return errors.WithStack(err)
+			}
+			if err := incrementQuotaUsage(tx, quotaUsageRows(record)); err != nil {
+				return err
+			}
+			if err := incrementPlanUsage(tx, row); err != nil {
+				return err
+			}
+			return incrementUsageDaily(tx, row, record.Energy())
+		})
 	})
 }
 
@@ -348,40 +359,42 @@ func planUsageQuery(db *gorm.DB, scope model.PlanUsageScope, since time.Time) *g
 
 // SumPlanUsageByKeySince implements port.UsageStore.
 func (s *Store) SumPlanUsageByKeySince(ctx context.Context, scope model.PlanUsageScope, since time.Time) (map[model.ProviderKeyID]map[model.LLMModelID]port.PlanUsageTotals, error) {
+	if splits, ok, err := s.memoizedPlanUsage(ctx, scope, "", since); err != nil {
+		return nil, err
+	} else if ok {
+		result := make(map[model.ProviderKeyID]map[model.LLMModelID]port.PlanUsageTotals)
+		for r := range splitsOf(scope, splits) {
+			key := model.ProviderKeyID(r.ProviderKeyID)
+			if result[key] == nil {
+				result[key] = make(map[model.LLMModelID]port.PlanUsageTotals)
+			}
+			result[key][model.LLMModelID(r.ModelID)] = r.totals(false)
+		}
+		return result, nil
+	}
 	var rows []struct {
 		ProviderKeyID string
 		ModelID       string
 		Tokens        int64
 		ProviderValue int64
 	}
-
-	var result map[model.ProviderKeyID]map[model.LLMModelID]port.PlanUsageTotals
-	err := s.readPlanUsage(ctx, scope, since, func(queries []*gorm.DB) error {
-		// Each attempt of a replayed read starts from zero.
-		result = make(map[model.ProviderKeyID]map[model.LLMModelID]port.PlanUsageTotals)
-		for _, query := range queries {
-			rows = rows[:0]
-			if err := query.
-				Select("provider_key_id as provider_key_id, model_id as model_id, " + planUsageSums).
-				Group("provider_key_id, model_id").
-				Scan(&rows).Error; err != nil {
-				return errors.WithStack(err)
-			}
-			for _, r := range rows {
-				key := model.ProviderKeyID(r.ProviderKeyID)
-				if result[key] == nil {
-					result[key] = make(map[model.LLMModelID]port.PlanUsageTotals)
-				}
-				totals := result[key][model.LLMModelID(r.ModelID)]
-				totals.Tokens += r.Tokens
-				totals.Value += r.ProviderValue
-				result[key][model.LLMModelID(r.ModelID)] = totals
-			}
-		}
-		return nil
+	err := s.readPlanUsage(ctx, scope, since, nil, func(usage *gorm.DB) error {
+		rows = rows[:0]
+		return errors.WithStack(usage.
+			Select("provider_key_id as provider_key_id, model_id as model_id, " + planUsageSums).
+			Group("provider_key_id, model_id").
+			Scan(&rows).Error)
 	})
 	if err != nil {
 		return nil, err
+	}
+	result := make(map[model.ProviderKeyID]map[model.LLMModelID]port.PlanUsageTotals)
+	for _, r := range rows {
+		key := model.ProviderKeyID(r.ProviderKeyID)
+		if result[key] == nil {
+			result[key] = make(map[model.LLMModelID]port.PlanUsageTotals)
+		}
+		result[key][model.LLMModelID(r.ModelID)] = port.PlanUsageTotals{Tokens: r.Tokens, Value: r.ProviderValue}
 	}
 	return result, nil
 }
@@ -416,36 +429,41 @@ func (s *Store) SumPlanUsageSince(ctx context.Context, scope model.PlanUsageScop
 
 // SumPlanUsageByModelSince implements port.UsageStore.
 func (s *Store) SumPlanUsageByModelSince(ctx context.Context, scope model.PlanUsageScope, userID model.UserID, since time.Time) (map[model.LLMModelID]port.PlanUsageTotals, error) {
+	if splits, ok, err := s.memoizedPlanUsage(ctx, scope, userID, since); err != nil {
+		return nil, err
+	} else if ok {
+		result := make(map[model.LLMModelID]port.PlanUsageTotals)
+		for r := range splitsOf(scope, splits) {
+			if userID != "" && r.UserRows == 0 {
+				// A model the user did not use is absent, as from a read.
+				continue
+			}
+			t := r.totals(userID != "")
+			sum := result[model.LLMModelID(r.ModelID)]
+			sum.Tokens += t.Tokens
+			sum.Value += t.Value
+			result[model.LLMModelID(r.ModelID)] = sum
+		}
+		return result, nil
+	}
 	var rows []struct {
 		ModelID       string
 		Tokens        int64
 		ProviderValue int64
 	}
-
-	var result map[model.LLMModelID]port.PlanUsageTotals
-	err := s.readPlanUsage(ctx, scope, since, func(queries []*gorm.DB) error {
-		// Each attempt of a replayed read starts from zero.
-		result = make(map[model.LLMModelID]port.PlanUsageTotals)
-		for _, query := range queries {
-			query = query.Select("model_id as model_id, " + planUsageSums)
-			if userID != "" {
-				query = query.Where("user_id = ?", string(userID))
-			}
-			rows = rows[:0]
-			if err := query.Group("model_id").Scan(&rows).Error; err != nil {
-				return errors.WithStack(err)
-			}
-			for _, r := range rows {
-				totals := result[model.LLMModelID(r.ModelID)]
-				totals.Tokens += r.Tokens
-				totals.Value += r.ProviderValue
-				result[model.LLMModelID(r.ModelID)] = totals
-			}
-		}
-		return nil
+	err := s.readPlanUsage(ctx, scope, since, ofUser(userID), func(usage *gorm.DB) error {
+		rows = rows[:0]
+		return errors.WithStack(usage.
+			Select("model_id as model_id, " + planUsageSums).
+			Group("model_id").
+			Scan(&rows).Error)
 	})
 	if err != nil {
 		return nil, err
+	}
+	result := make(map[model.LLMModelID]port.PlanUsageTotals, len(rows))
+	for _, r := range rows {
+		result[model.LLMModelID(r.ModelID)] = port.PlanUsageTotals{Tokens: r.Tokens, Value: r.ProviderValue}
 	}
 	return result, nil
 }
@@ -455,84 +473,106 @@ func (s *Store) SumUserPlanUsageSince(ctx context.Context, userID model.UserID, 
 	return s.sumPlanUsage(ctx, scope, userID, since)
 }
 
-// planUsageSums selects the totals of a plan scope's usage, from the records
-// or their hourly sums alike.
+// planUsageSums selects the totals of a plan scope's usage, over the rows
+// readPlanUsage gathers.
 const planUsageSums = "COALESCE(SUM(total_tokens), 0) as tokens, COALESCE(SUM(provider_cost), 0) as provider_value"
+
+// planUsageColumns are the columns every source of a plan scope's usage
+// contributes, under the same names in the records and in their sums.
+const planUsageColumns = "provider_key_id, model_id, user_id, total_tokens, provider_cost"
+
+// ofUser narrows the usage read to one user, or leaves it whole when userID
+// is empty.
+func ofUser(userID model.UserID) func(*gorm.DB) *gorm.DB {
+	if userID == "" {
+		return nil
+	}
+	return func(query *gorm.DB) *gorm.DB { return query.Where("user_id = ?", string(userID)) }
+}
 
 // sumPlanUsage totals the usage of a plan scope since a time, for the whole
 // scope or, when userID is set, for one user.
 func (s *Store) sumPlanUsage(ctx context.Context, scope model.PlanUsageScope, userID model.UserID, since time.Time) (tokens int64, providerValue int64, err error) {
-	err = s.readPlanUsage(ctx, scope, since, func(queries []*gorm.DB) error {
-		// Each attempt of a replayed read starts from zero.
-		tokens, providerValue = 0, 0
-		for _, query := range queries {
-			var row struct {
-				Tokens        int64
-				ProviderValue int64
-			}
-			query = query.Select(planUsageSums)
-			if userID != "" {
-				query = query.Where("user_id = ?", string(userID))
-			}
-			if err := query.Scan(&row).Error; err != nil {
-				return errors.WithStack(err)
-			}
-			tokens += row.Tokens
-			providerValue += row.ProviderValue
+	if splits, ok, err := s.memoizedPlanUsage(ctx, scope, userID, since); err != nil {
+		return 0, 0, err
+	} else if ok {
+		for r := range splitsOf(scope, splits) {
+			t := r.totals(userID != "")
+			tokens += t.Tokens
+			providerValue += t.Value
 		}
-		return nil
+		return tokens, providerValue, nil
+	}
+	var row struct {
+		Tokens        int64
+		ProviderValue int64
+	}
+	err = s.readPlanUsage(ctx, scope, since, ofUser(userID), func(usage *gorm.DB) error {
+		return errors.WithStack(usage.Select(planUsageSums).Scan(&row).Error)
 	})
 	if err != nil {
 		return 0, 0, err
 	}
-	return tokens, providerValue, nil
+	return row.Tokens, row.ProviderValue, nil
 }
 
-// readPlanUsage runs fn on the queries of every source of a plan scope's
-// usage since a time (see planUsageSources), on one snapshot of the database
-// when there are several, see readPeriod.
-func (s *Store) readPlanUsage(ctx context.Context, scope model.PlanUsageScope, since time.Time, fn func(queries []*gorm.DB) error) error {
+// readPlanUsage runs fn on one query gathering, with UNION ALL, the rows of
+// every source of a plan scope's usage since a time (see planUsageSources),
+// each narrowed by narrow when it is set. fn aggregates them in one
+// statement: the plan checks of a proxied request run several reads, and a
+// statement per source multiplied them (#236). One statement also reads its
+// sources on one snapshot.
+//
+// Each source is wrapped in SELECT * FROM (…): SQLite refuses a
+// parenthesized member of a compound SELECT, and GORM parenthesizes the
+// subqueries it renders.
+//
+// On PostgreSQL the statement runs in a transaction without parallel workers.
+// It reads a few hundred rows at most, but the planner overestimates the rows
+// of a minute range of plan_usage_minutely as the table grows, and started
+// two workers for each read: about 5 ms of CPU to read for 0.3 ms (#239). A
+// bound store reads in its own transaction, which keeps its settings.
+func (s *Store) readPlanUsage(ctx context.Context, scope model.PlanUsageScope, since time.Time, narrow func(*gorm.DB) *gorm.DB, fn func(usage *gorm.DB) error) error {
 	sources := planUsageSources(scope, since, time.Now())
-	return s.read(ctx, func(ctx context.Context, db *gorm.DB) error {
-		return readSnapshot(db, len(sources) > 1, func(db *gorm.DB) error {
-			queries := make([]*gorm.DB, len(sources))
-			for i, src := range sources {
-				queries[i] = src(db)
+	db, err := s.readDatabase(ctx)
+	if err != nil {
+		return errors.WithStack(err)
+	}
+	serial := isPostgres(db) && !s.transactionBound
+	return s.retry(ctx, db, serial, func(ctx context.Context, db *gorm.DB) error {
+		if serial {
+			if err := db.Exec("SET LOCAL max_parallel_workers_per_gather = 0").Error; err != nil {
+				return errors.WithStack(err)
 			}
-			return fn(queries)
-		})
+		}
+		parts := make([]string, len(sources))
+		args := make([]any, len(sources))
+		for i, src := range sources {
+			query := src(db).Select(planUsageColumns)
+			if narrow != nil {
+				query = narrow(query)
+			}
+			parts[i] = "SELECT * FROM (?) AS plan_usage_part"
+			args[i] = query
+		}
+		union := db.Raw(strings.Join(parts, " UNION ALL "), args...)
+		return fn(db.Table("(?) AS plan_usage", union))
 	})
 }
 
 // CountActivePlanUsersSince implements port.UsageStore.
 func (s *Store) CountActivePlanUsersSince(ctx context.Context, scope model.PlanUsageScope, since time.Time, excludeUserID model.UserID) (int64, error) {
 	var count int64
-
-	err := s.readPlanUsage(ctx, scope, since, func(queries []*gorm.DB) error {
-		filter := func(query *gorm.DB) *gorm.DB {
-			query = query.Where("user_id <> ''")
-			if excludeUserID != "" {
-				query = query.Where("user_id <> ?", string(excludeUserID))
-			}
-			return query
+	narrow := func(query *gorm.DB) *gorm.DB {
+		query = query.Where("user_id <> ''")
+		if excludeUserID != "" {
+			query = query.Where("user_id <> ?", string(excludeUserID))
 		}
-		if len(queries) == 1 {
-			return errors.WithStack(filter(queries[0]).Select("COUNT(DISTINCT user_id)").Scan(&count).Error)
-		}
-		// A user active in several sources counts once: the distinct users of
-		// each are merged here rather than counted apart.
-		users := make(map[string]struct{})
-		for _, query := range queries {
-			var ids []string
-			if err := filter(query).Distinct("user_id").Pluck("user_id", &ids).Error; err != nil {
-				return errors.WithStack(err)
-			}
-			for _, id := range ids {
-				users[id] = struct{}{}
-			}
-		}
-		count = int64(len(users))
-		return nil
+		return query
+	}
+	// A user active in several sources counts once.
+	err := s.readPlanUsage(ctx, scope, since, narrow, func(usage *gorm.DB) error {
+		return errors.WithStack(usage.Select("COUNT(DISTINCT user_id)").Scan(&count).Error)
 	})
 	if err != nil {
 		return 0, err
