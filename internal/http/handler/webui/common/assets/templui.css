@@ -3065,6 +3065,18 @@
       }
     }
   }
+  .focus\:not-sr-only {
+    &:focus {
+      position: static;
+      width: auto;
+      height: auto;
+      padding: 0;
+      margin: 0;
+      overflow: visible;
+      clip-path: none;
+      white-space: normal;
+    }
+  }
   .focus\:bg-accent {
     &:focus {
       background-color: var(--accent);

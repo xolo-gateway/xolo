@@ -156,7 +156,10 @@ templ middlewareToggle(vmodel MiddlewaresPageVModel, mw model.Middleware, writab
 					"title":                      middlewareToggleTitle(ctx, mw),
 				},
 			})
-			@button.Button(button.Props{Type: button.TypeSubmit, Class: "sr-only"}) {
+			{{/* Le bouton porte le nom exigé par H32.2 ; il reste masqué, mais
+			réapparaît dès qu'il reçoit le focus, sinon le parcours au clavier
+			s'arrête sur une cible invisible. */}}
+			@button.Button(button.Props{Type: button.TypeSubmit, Class: "sr-only focus:not-sr-only"}) {
 				{ middlewareToggleTitle(ctx, mw) }
 			}
 		</form>
