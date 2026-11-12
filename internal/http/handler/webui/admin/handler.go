@@ -5,7 +5,9 @@ import (
 
 	"github.com/xolo-gateway/xolo/internal/core/port"
 	"github.com/xolo-gateway/xolo/internal/core/service"
+	webcommon "github.com/xolo-gateway/xolo/internal/http/handler/webui/common"
 	"github.com/xolo-gateway/xolo/internal/http/middleware/authz"
+	"github.com/xolo-gateway/xolo/internal/i18n"
 	proto "github.com/xolo-gateway/xolo/pkg/pluginsdk/proto"
 )
 
@@ -71,8 +73,15 @@ func NewHandler(userStore port.UserStore, orgStore port.OrgStore, roleStore port
 	return h
 }
 
+// getForbiddenPage answers a non-admin with the shared error page, not a bare
+// text body: the console's routes sit under the boosted shell, which only swaps
+// #content.
 func (h *Handler) getForbiddenPage(w http.ResponseWriter, r *http.Request) {
-	http.Error(w, "Forbidden", http.StatusForbidden)
+	webcommon.HandleError(w, r, webcommon.NewError(
+		"forbidden",
+		i18n.T(r.Context(), "error.forbidden_page"),
+		http.StatusForbidden,
+	))
 }
 
 var _ http.Handler = &Handler{}
