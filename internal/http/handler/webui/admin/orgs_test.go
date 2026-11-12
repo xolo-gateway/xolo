@@ -377,3 +377,53 @@ func TestUpdateOrg_SavesTheSubmittedFields(t *testing.T) {
 		t.Error("the organization was not activated")
 	}
 }
+
+// TestUpdateOrg_EmptyNameRendersTheForm : la création refuse un nom vide, pas
+// l'édition — vider le champ enregistrait une organisation sans nom.
+func TestUpdateOrg_EmptyNameRendersTheForm(t *testing.T) {
+	rec, store := postUpdateOrg(t, url.Values{"name": {"   "}, "description": {"Renamed"}})
+
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("status = %d, want 422: %s", rec.Code, rec.Body.String())
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, `id="content"`) {
+		t.Error("the response carries no #content")
+	}
+	if !strings.Contains(body, "Le nom de l&#39;organisation est requis.") {
+		t.Error("the response does not state that the name is required")
+	}
+	if len(store.saved) != 0 {
+		t.Fatalf("saved %d organizations with an empty name, want none", len(store.saved))
+	}
+
+	// Le champ porte aussi la contrainte côté navigateur, comme en création.
+	nameInput := regexp.MustCompile(`(?s)<input[^>]*id="org-name"[^>]*>`).FindString(body)
+	if nameInput == "" {
+		t.Fatal("the name input is missing from the re-rendered form")
+	}
+	if !strings.Contains(nameInput, "required") {
+		t.Errorf("the name input does not carry required: %s", nameInput)
+	}
+}
+
+func TestUpdateOrg_StoresTheTrimmedFields(t *testing.T) {
+	rec, store := postUpdateOrg(t, url.Values{
+		"name":        {"  Acme Renamed  "},
+		"description": {"  Renamed  "},
+		"active":      {"on"},
+	})
+
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("status = %d, want a redirect: %s", rec.Code, rec.Body.String())
+	}
+	if len(store.saved) != 1 {
+		t.Fatalf("saved %d organizations, want 1", len(store.saved))
+	}
+	if got, want := store.saved[0].Name(), "Acme Renamed"; got != want {
+		t.Errorf("name = %q, want %q", got, want)
+	}
+	if got, want := store.saved[0].Description(), "Renamed"; got != want {
+		t.Errorf("description = %q, want %q", got, want)
+	}
+}

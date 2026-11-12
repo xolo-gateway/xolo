@@ -276,7 +276,7 @@ templ OrgForm(vmodel OrgFormVModel) {
 								{ i18n.T(ctx, "admin.orgs.form.name") }
 							}
 							if !vmodel.IsNew && vmodel.Org != nil {
-								@input.Input(input.Props{ID: "org-name", Name: "name", Value: orgFormValue(vmodel, "name", vmodel.Org.Name())})
+								@input.Input(input.Props{ID: "org-name", Name: "name", Value: orgFormValue(vmodel, "name", vmodel.Org.Name()), Attributes: templ.Attributes{"required": "required"}})
 							} else {
 								@input.Input(input.Props{ID: "org-name", Name: "name", Value: orgFormValue(vmodel, "name", ""), Placeholder: i18n.T(ctx, "admin.orgs.form.name_placeholder"), Attributes: templ.Attributes{"required": "required"}})
 							}

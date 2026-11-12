@@ -296,9 +296,19 @@ func (h *Handler) updateOrg(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	name := strings.TrimSpace(r.FormValue("name"))
+	description := strings.TrimSpace(r.FormValue("description"))
+
+	// La création valide déjà le nom : sans le même contrôle ici, vider le
+	// champ en édition enregistrait une organisation sans nom dans les listes.
+	if name == "" {
+		h.renderOrgFormError(w, r, org, i18n.T(ctx, "admin.orgs.form.name_required"))
+		return
+	}
+
 	updated := model.UpdateOrganization(org,
-		model.WithOrgName(r.FormValue("name")),
-		model.WithOrgDescription(r.FormValue("description")),
+		model.WithOrgName(name),
+		model.WithOrgDescription(description),
 		model.WithOrgActive(r.FormValue("active") == "on"),
 	)
 

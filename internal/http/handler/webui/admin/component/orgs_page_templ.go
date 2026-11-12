@@ -1420,7 +1420,7 @@ func OrgForm(vmodel OrgFormVModel) templ.Component {
 							return templ_7745c5c3_Err
 						}
 						if !vmodel.IsNew && vmodel.Org != nil {
-							templ_7745c5c3_Err = input.Input(input.Props{ID: "org-name", Name: "name", Value: orgFormValue(vmodel, "name", vmodel.Org.Name())}).Render(ctx, templ_7745c5c3_Buffer)
+							templ_7745c5c3_Err = input.Input(input.Props{ID: "org-name", Name: "name", Value: orgFormValue(vmodel, "name", vmodel.Org.Name()), Attributes: templ.Attributes{"required": "required"}}).Render(ctx, templ_7745c5c3_Buffer)
 							if templ_7745c5c3_Err != nil {
 								return templ_7745c5c3_Err
 							}
