@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -274,8 +275,10 @@ func TestUpdateOrg_SaveFailureKeepsTheSubmittedValues(t *testing.T) {
 		func(s *orgFormStore) { s.saveErr = errors.New("store is down") },
 	)
 
-	if rec.Code != http.StatusUnprocessableEntity {
-		t.Fatalf("status = %d, want 422: %s", rec.Code, rec.Body.String())
+	// Un store en panne est une panne, pas un refus de validation : le corps est
+	// le formulaire, mais le statut ne doit pas se lire comme un 422.
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500: %s", rec.Code, rec.Body.String())
 	}
 	body := rec.Body.String()
 	if !strings.Contains(body, `id="content"`) {
@@ -287,9 +290,55 @@ func TestUpdateOrg_SaveFailureKeepsTheSubmittedValues(t *testing.T) {
 	if !strings.Contains(body, `value="Acme Renamed"`) {
 		t.Error("the submitted name is not refilled into the form")
 	}
+	box := activeBox(t, body)
+	if !boxChecked(box) {
+		t.Error("the ticked box is not kept ticked on the redisplay")
+	}
 	if len(store.saved) != 0 {
 		t.Fatalf("saved %d organizations on a failed save, want none", len(store.saved))
 	}
+}
+
+// TestUpdateOrg_SaveFailureKeepsAnUncheckedBoxUnchecked : un navigateur ne poste
+// aucun « active » pour une case décochée. Revenir à l'état stocké dans ce cas
+// recochait la case et défaisait silencieusement le changement de l'opérateur.
+func TestUpdateOrg_SaveFailureKeepsAnUncheckedBoxUnchecked(t *testing.T) {
+	rec, _ := postUpdateOrg(t,
+		url.Values{"name": {"Acme Renamed"}, "description": {"Renamed"}},
+		func(s *orgFormStore) { s.saveErr = errors.New("store is down") },
+	)
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500: %s", rec.Code, rec.Body.String())
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, `value="Acme Renamed"`) {
+		t.Error("the submitted name is not refilled into the form")
+	}
+
+	box := activeBox(t, body)
+	if boxChecked(box) {
+		t.Errorf("the box comes back ticked although the operator left it unchecked: %s", box)
+	}
+}
+
+// activeBox returns the rendered "active" checkbox, or fails.
+//
+// The attribute is looked for as a word: "checked" also appears in the component
+// CSS classes (checked:bg-primary), so a plain substring would always match.
+func activeBox(t *testing.T, body string) string {
+	t.Helper()
+
+	box := regexp.MustCompile(`(?s)<input[^>]*name="active"[^>]*>`).FindString(body)
+	if box == "" {
+		t.Fatal("the active box is missing from the re-rendered form")
+	}
+
+	return box
+}
+
+func boxChecked(box string) bool {
+	return regexp.MustCompile(`\schecked(\s|/?>)`).MatchString(box)
 }
 
 func TestUpdateOrg_UnknownOrgRendersTheErrorPage(t *testing.T) {

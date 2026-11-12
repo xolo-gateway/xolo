@@ -27,17 +27,17 @@ func orgFormValue(vmodel OrgFormVModel, field, fallback string) string {
 	return fallback
 }
 
-// orgFormActive reports whether the edit form's "active" checkbox must be ticked:
-// what was posted when the form comes back with an error, the stored state
-// otherwise.
+// orgFormActive reports whether the edit form's "active" checkbox must be ticked.
+//
+// A GET — no submitted form — falls back on the stored state. A POST replay does
+// not: a browser sends no key at all for an unchecked box, so an absent "active"
+// means the operator unchecked it. Falling back to the stored value there would
+// re-tick the box and silently undo the change the re-render exists to preserve.
 func orgFormActive(vmodel OrgFormVModel, fallback bool) bool {
 	if vmodel.Submitted == nil {
 		return fallback
 	}
-	if _, posted := vmodel.Submitted["active"]; posted {
-		return vmodel.Submitted.Get("active") == "on"
-	}
-	return fallback
+	return vmodel.Submitted.Get("active") == "on"
 }
 
 // orgsSegments builds the filter segments of the organisation list.

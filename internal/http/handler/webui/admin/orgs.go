@@ -192,6 +192,18 @@ func (h *Handler) createOrg(w http.ResponseWriter, r *http.Request) {
 // org is nil for the creation form; the edition form keeps the organisation it
 // edits, so the action and the frozen slug stay right.
 func (h *Handler) renderOrgFormError(w http.ResponseWriter, r *http.Request, org model.Organization, errMsg string) {
+	h.renderOrgForm(w, r, org, errMsg, http.StatusUnprocessableEntity)
+}
+
+// renderOrgFormFailure renders the same form for a store failure at 500: an
+// outage is not a refused submission, and monitoring must not read it as one.
+func (h *Handler) renderOrgFormFailure(w http.ResponseWriter, r *http.Request, org model.Organization, errMsg string) {
+	h.renderOrgForm(w, r, org, errMsg, http.StatusInternalServerError)
+}
+
+// renderOrgForm re-renders the organisation form with errMsg, the submitted
+// values, and the given status.
+func (h *Handler) renderOrgForm(w http.ResponseWriter, r *http.Request, org model.Organization, errMsg string, status int) {
 	ctx := r.Context()
 
 	vmodel := component.OrgFormVModel{
@@ -207,7 +219,7 @@ func (h *Handler) renderOrgFormError(w http.ResponseWriter, r *http.Request, org
 		},
 	}
 
-	w.WriteHeader(http.StatusUnprocessableEntity)
+	w.WriteHeader(status)
 	templ.Handler(component.OrgForm(vmodel)).ServeHTTP(w, r)
 }
 
@@ -297,7 +309,8 @@ func (h *Handler) updateOrg(w http.ResponseWriter, r *http.Request) {
 		slog.ErrorContext(ctx, "could not save org", slogx.Error(err))
 		// Le formulaire revient avec ce qui a été soumis : la coquille ne
 		// remplace que #content, et une erreur en texte brut viderait la page.
-		h.renderOrgFormError(w, r, org, i18n.T(ctx, "admin.orgs.form.save_failed"))
+		// 500 : un store en panne n'est pas un refus de validation.
+		h.renderOrgFormFailure(w, r, org, i18n.T(ctx, "admin.orgs.form.save_failed"))
 		return
 	}
 
