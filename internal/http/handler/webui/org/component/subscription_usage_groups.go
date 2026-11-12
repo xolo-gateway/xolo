@@ -42,6 +42,13 @@ type subscriptionGaugeRow struct {
 	// OtherMode is the regime of the second budget. When it equals Mode, the
 	// regime holds for both budgets and is said by a single badge.
 	OtherMode model.FairShareMode
+	// SharePct is the consumption of the bar's budget as a percentage of the
+	// viewer's share, unclamped; zero when it is not worth showing. The bar
+	// reads against the allowance, which the open plan and the happy hour
+	// widen past the share: without this figure, a viewer consuming far past
+	// their share sees a half-full gauge until the plan crosses its threshold,
+	// then a full one until the reset.
+	SharePct int
 }
 
 // pinned reports whether the row must stay visible whatever its rank: an
@@ -145,22 +152,43 @@ func newSubscriptionGaugeRow(cu SubscriptionConstraintUsage) subscriptionGaugeRo
 
 	hasTokens := c.TokenBudget != nil && *c.TokenBudget > 0
 	hasValue := c.ValueBudget != nil && *c.ValueBudget > 0
-	tokens := subscriptionGaugeRow{Kind: gaugeTokens, Pct: clampPct(cu.TokensUsed, budgetOrZero(c.TokenBudget)), Mode: cu.TokenMode}
-	value := subscriptionGaugeRow{Kind: gaugeValue, Pct: clampPct(cu.ValueUsed, budgetOrZero(c.ValueBudget)), Mode: cu.ValueMode}
+	tokens := subscriptionGaugeRow{Kind: gaugeTokens, Pct: clampPct(cu.TokensUsed, budgetOrZero(c.TokenBudget)), Mode: cu.TokenMode,
+		SharePct: sharePct(cu.TokenMode, cu.TokensUsed, cu.TokenShare)}
+	value := subscriptionGaugeRow{Kind: gaugeValue, Pct: clampPct(cu.ValueUsed, budgetOrZero(c.ValueBudget)), Mode: cu.ValueMode,
+		SharePct: sharePct(cu.ValueMode, cu.ValueUsed, cu.ValueShare)}
 	switch {
 	case hasTokens && hasValue:
 		bar, other := tokens, value
 		if value.Pct > tokens.Pct {
 			bar, other = value, tokens
 		}
-		row.Kind, row.Pct, row.Mode = bar.Kind, bar.Pct, bar.Mode
+		row.Kind, row.Pct, row.Mode, row.SharePct = bar.Kind, bar.Pct, bar.Mode, bar.SharePct
 		row.OtherKind, row.OtherPct, row.OtherMode = other.Kind, other.Pct, other.Mode
 	case hasTokens:
-		row.Kind, row.Pct, row.Mode = tokens.Kind, tokens.Pct, tokens.Mode
+		row.Kind, row.Pct, row.Mode, row.SharePct = tokens.Kind, tokens.Pct, tokens.Mode, tokens.SharePct
 	case hasValue:
-		row.Kind, row.Pct, row.Mode = value.Kind, value.Pct, value.Mode
+		row.Kind, row.Pct, row.Mode, row.SharePct = value.Kind, value.Pct, value.Mode, value.SharePct
 	}
 	return row
+}
+
+// sharePct is the consumption as a percentage of the share, when the gauge
+// does not already say it: the allowance is widened past the share (open
+// plan, happy hour), or the consumption stands past the share, which a full
+// bar cannot tell apart from a share just reached. Zero otherwise.
+func sharePct(mode model.FairShareMode, used, share int64) int {
+	if share <= 0 || used <= 0 {
+		return 0
+	}
+	if !widenedFairShare(mode) && used <= share {
+		return 0
+	}
+	return int(min(used*100/share, 99_999))
+}
+
+// widenedFairShare reports whether a regime hands out more than the share.
+func widenedFairShare(mode model.FairShareMode) bool {
+	return mode == model.FairShareModeOpen || mode == model.FairShareModeOpenPaced || mode == model.FairShareModeHappyHour
 }
 
 func budgetOrZero(b *int64) int64 {
@@ -246,5 +274,6 @@ func peakOf(groups []subscriptionConstraintGroup) (subscriptionPeak, bool) {
 // notableFairShare reports whether an allocation regime carries a badge: the
 // nominal one does not.
 func notableFairShare(mode model.FairShareMode) bool {
-	return mode == model.FairShareModeThrottled || mode == model.FairShareModeCapped || mode == model.FairShareModeHappyHour || mode == model.FairShareModeOpen
+	return mode == model.FairShareModeThrottled || mode == model.FairShareModeCapped || mode == model.FairShareModeHappyHour ||
+		mode == model.FairShareModeOpen || mode == model.FairShareModeOpenPaced
 }

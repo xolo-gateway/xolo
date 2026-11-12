@@ -242,6 +242,11 @@ type SubscriptionConstraintUsage struct {
 	// or the allocation could not be computed.
 	TokenMode model.FairShareMode
 	ValueMode model.FairShareMode
+	// TokenShare and ValueShare are the viewer's shares, which the regimes
+	// above may widen: what they are held to once the plan fills past its
+	// share threshold. Zero when unknown.
+	TokenShare int64
+	ValueShare int64
 	// ActiveUsers and MemberCount are the basis of the allocation, displayed so a
 	// share that moves between two visits can be accounted for.
 	ActiveUsers int

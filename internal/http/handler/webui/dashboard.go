@@ -833,6 +833,12 @@ func applyFairShare(
 	cu.ValueUsed = share.UserValue
 	cu.TokenMode = share.TokenMode
 	cu.ValueMode = share.ValueMode
+	if share.TokenShare != nil {
+		cu.TokenShare = *share.TokenShare
+	}
+	if share.ValueShare != nil {
+		cu.ValueShare = *share.ValueShare
+	}
 	cu.ActiveUsers = share.ActiveUsers
 	cu.MemberCount = int(memberCount)
 	cu.ShareDegraded = share.CountDegraded

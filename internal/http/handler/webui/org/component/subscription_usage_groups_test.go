@@ -298,3 +298,46 @@ func TestGroupSubscriptionConstraints_DoesNotDependOnEntryOrder(t *testing.T) {
 		t.Errorf("first group = %s with %d rows, want 5h with both of its models", groups[0].Constraint.Label, len(groups[0].Rows))
 	}
 }
+
+func TestSubscriptionUsageSection_SaysTheConsumptionAgainstTheShare(t *testing.T) {
+	// An open plan widens the allowance: the bar reads half full while the
+	// viewer already stands at three times their share.
+	threshold := 0.7
+	cu := perModelUsage("Mois", 600, "m", 300)
+	cu.Constraint.ShareThreshold = &threshold
+	cu.TokenMode = model.FairShareModeOpenPaced
+	cu.TokenShare = 100
+
+	provider := model.NewProvider("org-1", "Acme", "openai", "", "", "EUR")
+	var out strings.Builder
+	err := SubscriptionUsageSection([]SubscriptionProviderUsage{{Provider: provider, Constraints: []SubscriptionConstraintUsage{cu}}}).Render(context.Background(), &out)
+	if err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	html := stdhtml.UnescapeString(out.String())
+	for _, want := range []string{"300% de votre part", "Accès libre ralenti", "seuil de partage (70 %)", "jusqu'à 2 fois votre part"} {
+		if !strings.Contains(html, want) {
+			t.Errorf("rendered gauge lacks %q", want)
+		}
+	}
+}
+
+func TestSharePct(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		mode        model.FairShareMode
+		used, share int64
+		want        int
+	}{
+		{"nominal under the share", model.FairShareModeShared, 50, 100, 0},
+		{"nominal past the share", model.FairShareModeShared, 530, 100, 530},
+		{"open under the share", model.FairShareModeOpen, 50, 100, 50},
+		{"happy hour", model.FairShareModeHappyHour, 150, 100, 150},
+		{"unknown share", model.FairShareModeOpen, 50, 0, 0},
+		{"nothing consumed", model.FairShareModeOpen, 0, 100, 0},
+	} {
+		if got := sharePct(tc.mode, tc.used, tc.share); got != tc.want {
+			t.Errorf("%s: sharePct = %d, want %d", tc.name, got, tc.want)
+		}
+	}
+}

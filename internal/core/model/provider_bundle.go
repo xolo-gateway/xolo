@@ -433,6 +433,9 @@ func validateBundlePlan(plan *SubscriptionPlan) error {
 			if !ratio(c.ReserveRatio) || !ratio(c.PaceSlack) || !ratio(c.HappyHourStart) {
 				return bad("has a fair-share ratio out of 0..1")
 			}
+			if !ValidOpenShareMultiplier(c.OpenShareMultiplier) {
+				return bad("has an open share multiplier out of 1..100")
+			}
 			if c.HappyHourStart != nil && *c.HappyHourStart <= 0 {
 				return bad("needs a positive happy hour start")
 			}

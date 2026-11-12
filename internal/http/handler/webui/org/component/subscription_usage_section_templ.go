@@ -831,7 +831,7 @@ func subscriptionGaugeLine(g subscriptionConstraintGroup, r subscriptionGaugeRow
 			}
 		}
 		if r.OtherKind != gaugeNone && r.OtherMode != r.Mode {
-			templ_7745c5c3_Err = fairShareBadge(r.Mode, subscriptionGaugeKindLabel(ctx, r.Kind)).Render(ctx, templ_7745c5c3_Buffer)
+			templ_7745c5c3_Err = fairShareBadge(cu.Constraint, r.Mode, subscriptionGaugeKindLabel(ctx, r.Kind)).Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -839,12 +839,12 @@ func subscriptionGaugeLine(g subscriptionConstraintGroup, r subscriptionGaugeRow
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = fairShareBadge(r.OtherMode, subscriptionGaugeKindLabel(ctx, r.OtherKind)).Render(ctx, templ_7745c5c3_Buffer)
+			templ_7745c5c3_Err = fairShareBadge(cu.Constraint, r.OtherMode, subscriptionGaugeKindLabel(ctx, r.OtherKind)).Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		} else {
-			templ_7745c5c3_Err = fairShareBadge(r.Mode, "").Render(ctx, templ_7745c5c3_Buffer)
+			templ_7745c5c3_Err = fairShareBadge(cu.Constraint, r.Mode, "").Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -934,7 +934,7 @@ func subscriptionGaugeLine(g subscriptionConstraintGroup, r subscriptionGaugeRow
 // a tap away, prefixed with the budget it applies to when one is given. The
 // nominal regime carries no badge: only a share that is narrower or wider than
 // usual needs accounting for.
-func fairShareBadge(mode model.FairShareMode, budget string) templ.Component {
+func fairShareBadge(c model.PlanConstraint, mode model.FairShareMode, budget string) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
@@ -956,7 +956,7 @@ func fairShareBadge(mode model.FairShareMode, budget string) templ.Component {
 		}
 		ctx = templ.ClearChildren(ctx)
 		if notableFairShare(mode) {
-			note := fairShareNote(ctx, mode)
+			note := fairShareNote(ctx, c, mode)
 			if budget != "" {
 				note = i18n.T(ctx, "org.subscription.share_note_of", budget, note)
 			}
@@ -983,6 +983,11 @@ func fairShareBadge(mode model.FairShareMode, budget string) templ.Component {
 					}
 				} else if mode == model.FairShareModeOpen {
 					templ_7745c5c3_Err = common.Badge(common.TonePositive, i18n.T(ctx, "org.subscription.share_open")).Render(ctx, templ_7745c5c3_Buffer)
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+				} else if mode == model.FairShareModeOpenPaced {
+					templ_7745c5c3_Err = common.Badge(common.ToneWarning, i18n.T(ctx, "org.subscription.share_open_paced")).Render(ctx, templ_7745c5c3_Buffer)
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
@@ -1069,7 +1074,7 @@ func subscriptionExplanation(text string) templ.Component {
 			var templ_7745c5c3_Var47 string
 			templ_7745c5c3_Var47, templ_7745c5c3_Err = templ.JoinStringErrs(text)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/subscription_usage_section.templ`, Line: 241, Col: 8}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/subscription_usage_section.templ`, Line: 243, Col: 8}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var47))
 			if templ_7745c5c3_Err != nil {
@@ -1156,7 +1161,8 @@ func subscriptionGaugeKindLabel(ctx context.Context, kind subscriptionGaugeKind)
 }
 
 // subscriptionGaugeFigures returns the secondary figures of a gauge line, in
-// reading order: the other budget, the tokens consumed, the release countdown.
+// reading order: the consumption against the share, the other budget, the
+// tokens consumed, the release countdown.
 func subscriptionGaugeFigures(ctx context.Context, g subscriptionConstraintGroup, r subscriptionGaugeRow) []string {
 	cu := r.Usage
 	var parts []string
@@ -1165,6 +1171,9 @@ func subscriptionGaugeFigures(ctx context.Context, g subscriptionConstraintGroup
 			parts = append(parts, i18n.T(ctx, "org.subscription.concurrent_in_flight", strconv.Itoa(cu.InFlight)))
 		}
 		return parts
+	}
+	if r.SharePct > 0 {
+		parts = append(parts, i18n.T(ctx, "org.subscription.of_share", fmt.Sprintf("%d%%", r.SharePct)))
 	}
 	if r.OtherKind != gaugeNone {
 		parts = append(parts, i18n.T(ctx, "org.subscription.other_gauge", subscriptionGaugeKindLabel(ctx, r.OtherKind), fmt.Sprintf("%d%%", r.OtherPct)))
@@ -1182,6 +1191,24 @@ func subscriptionGaugeFigures(ctx context.Context, g subscriptionConstraintGroup
 		parts = append(parts, i18n.T(ctx, "org.subscription.no_usage"))
 	}
 	return parts
+}
+
+// shareThresholdLabel renders a constraint's share threshold as a percentage.
+func shareThresholdLabel(c model.PlanConstraint) string {
+	if c.ShareThreshold == nil {
+		return "0 %"
+	}
+	return strconv.FormatFloat(*c.ShareThreshold*100, 'f', -1, 64) + " %"
+}
+
+// openShareMultiplierLabel renders the multiple of their share a user may
+// reach under the share threshold.
+func openShareMultiplierLabel(c model.PlanConstraint) string {
+	m := model.DefaultOpenShareMultiplier
+	if c.OpenShareMultiplier != nil && *c.OpenShareMultiplier >= 1 {
+		m = *c.OpenShareMultiplier
+	}
+	return strconv.FormatFloat(m, 'f', -1, 64)
 }
 
 // subscriptionFoldLabel sums up the folded rows on their toggle: the highest
@@ -1207,7 +1234,7 @@ func subscriptionPeakLabel(p subscriptionPeak) string {
 	return label
 }
 
-func fairShareNote(ctx context.Context, mode model.FairShareMode) string {
+func fairShareNote(ctx context.Context, c model.PlanConstraint, mode model.FairShareMode) string {
 	switch mode {
 	case model.FairShareModeThrottled:
 		return i18n.T(ctx, "org.subscription.note_throttled")
@@ -1216,7 +1243,9 @@ func fairShareNote(ctx context.Context, mode model.FairShareMode) string {
 	case model.FairShareModeHappyHour:
 		return i18n.T(ctx, "org.subscription.note_happy_hour")
 	case model.FairShareModeOpen:
-		return i18n.T(ctx, "org.subscription.note_open")
+		return i18n.T(ctx, "org.subscription.note_open", shareThresholdLabel(c))
+	case model.FairShareModeOpenPaced:
+		return i18n.T(ctx, "org.subscription.note_open_paced", shareThresholdLabel(c), openShareMultiplierLabel(c))
 	default:
 		return ""
 	}

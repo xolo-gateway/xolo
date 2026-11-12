@@ -395,17 +395,18 @@ func TestParseSubscriptionPlanFromForm_FairShareTuning(t *testing.T) {
 	// The form is the only writer of a subscription plan: a tuning field it does
 	// not read is a field the next save of the provider silently erases.
 	r := makeRequest(map[string]string{
-		"plan_label":                  "Pro",
-		"plan_constraint_count":       "1",
-		"plan_c0_kind":                "rolling_window",
-		"plan_c0_label":               "5h",
-		"plan_c0_duration":            "5h",
-		"plan_c0_token_budget":        "1000000",
-		"plan_c0_reserve_ratio":       "40",
-		"plan_c0_pace_slack":          "5",
-		"plan_c0_happy_hour_start":    "80",
-		"plan_c0_happy_hour_max_lead": "30m",
-		"plan_c0_share_threshold":     "70",
+		"plan_label":                    "Pro",
+		"plan_constraint_count":         "1",
+		"plan_c0_kind":                  "rolling_window",
+		"plan_c0_label":                 "5h",
+		"plan_c0_duration":              "5h",
+		"plan_c0_token_budget":          "1000000",
+		"plan_c0_reserve_ratio":         "40",
+		"plan_c0_pace_slack":            "5",
+		"plan_c0_happy_hour_start":      "80",
+		"plan_c0_happy_hour_max_lead":   "30m",
+		"plan_c0_share_threshold":       "70",
+		"plan_c0_open_share_multiplier": "3",
 	})
 
 	plan, err := parseSubscriptionPlanFromForm(r)
@@ -431,6 +432,34 @@ func TestParseSubscriptionPlanFromForm_FairShareTuning(t *testing.T) {
 	}
 	if c.ShareThreshold == nil || *c.ShareThreshold != 0.7 {
 		t.Errorf("ShareThreshold = %v, want 0.7", c.ShareThreshold)
+	}
+	if c.OpenShareMultiplier == nil || *c.OpenShareMultiplier != 3 {
+		t.Errorf("OpenShareMultiplier = %v, want 3", c.OpenShareMultiplier)
+	}
+}
+
+func TestParsePlanMultiplierField(t *testing.T) {
+	for _, tc := range []struct {
+		in    string
+		want  float64
+		unset bool
+		fails bool
+	}{{in: "", unset: true}, {in: "1", want: 1}, {in: " 2.5 ", want: 2.5}, {in: "0.5", fails: true}, {in: "101", fails: true}, {in: "NaN", fails: true}, {in: "x", fails: true}} {
+		got, err := parsePlanMultiplierField(tc.in)
+		switch {
+		case tc.fails:
+			if err == nil {
+				t.Errorf("%q: got %v, want an error", tc.in, got)
+			}
+		case err != nil:
+			t.Errorf("%q: unexpected error %v", tc.in, err)
+		case tc.unset:
+			if got != nil {
+				t.Errorf("%q: got %v, want nil", tc.in, *got)
+			}
+		case got == nil || *got != tc.want:
+			t.Errorf("%q: got %v, want %v", tc.in, got, tc.want)
+		}
 	}
 }
 
