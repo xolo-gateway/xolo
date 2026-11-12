@@ -245,6 +245,7 @@ templ ModelForm(vmodel ModelFormVModel) {
 									<div class="space-y-2">
 										<div class="flex items-center gap-2">
 											@form.Label(form.LabelProps{For: "prompt_cost"}) {
+												{ i18n.T(ctx, "org.model.prompt_cost", vmodel.Provider.Currency()) }
 											}
 											@catalogEstimatedBadge(vmodel, "prompt_cost")
 										</div>
@@ -257,6 +258,7 @@ templ ModelForm(vmodel ModelFormVModel) {
 									<div class="space-y-2">
 										<div class="flex items-center gap-2">
 											@form.Label(form.LabelProps{For: "cached_prompt_cost"}) {
+												{ i18n.T(ctx, "org.model.cached_prompt_cost", vmodel.Provider.Currency()) }
 											}
 											@catalogEstimatedBadge(vmodel, "cached_prompt_cost")
 										</div>
@@ -272,6 +274,7 @@ templ ModelForm(vmodel ModelFormVModel) {
 									<div class="space-y-2">
 										<div class="flex items-center gap-2">
 											@form.Label(form.LabelProps{For: "completion_cost"}) {
+												{ i18n.T(ctx, "org.model.completion_cost", vmodel.Provider.Currency()) }
 											}
 											@catalogEstimatedBadge(vmodel, "completion_cost")
 										</div>
@@ -297,6 +300,7 @@ templ ModelForm(vmodel ModelFormVModel) {
 									<div class="space-y-2">
 										<div class="flex items-center gap-2">
 											@form.Label(form.LabelProps{For: "active_params"}) {
+												{ i18n.T(ctx, "org.model.active_params") }
 											}
 											@catalogEstimatedBadge(vmodel, "active_params")
 										</div>
@@ -309,6 +313,7 @@ templ ModelForm(vmodel ModelFormVModel) {
 									<div class="space-y-2">
 										<div class="flex items-center gap-2">
 											@form.Label(form.LabelProps{For: "tokens_per_sec_low"}) {
+												{ i18n.T(ctx, "org.model.throughput_min") }
 											}
 											@catalogEstimatedBadge(vmodel, "tokens_per_sec_low")
 										</div>
@@ -321,6 +326,7 @@ templ ModelForm(vmodel ModelFormVModel) {
 									<div class="space-y-2">
 										<div class="flex items-center gap-2">
 											@form.Label(form.LabelProps{For: "tokens_per_sec_high"}) {
+												{ i18n.T(ctx, "org.model.throughput_max") }
 											}
 											@catalogEstimatedBadge(vmodel, "tokens_per_sec_high")
 										</div>

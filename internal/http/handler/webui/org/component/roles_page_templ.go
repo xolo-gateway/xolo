@@ -969,7 +969,7 @@ func roleColumnHeader(vmodel RolesPageVModel, role model.Role, writable bool) te
 				Tooltip:     i18n.T(ctx, "org.roles.delete_tooltip"),
 				Title:       i18n.T(ctx, "org.roles.delete_title"),
 				Description: i18n.T(ctx, "org.roles.delete_description"),
-				Class:       "size-5 rounded-sm [&_svg]:size-3.5",
+				Class:       "size-6 rounded-sm [&_svg]:size-3.5",
 			}).Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
@@ -1106,7 +1106,7 @@ func permissionCellControl(vmodel RolesPageVModel, role model.Role, perm rbac.Pe
 		cell := permissionCell(role, perm, writable)
 		switch {
 		case cell.AlwaysGranted:
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 31, "<span class=\"inline-flex size-4.5 items-center justify-center rounded-sm bg-success-tint text-success\" title=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 31, "<span class=\"inline-flex size-6 items-center justify-center rounded-sm bg-success-tint text-success\" title=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -1123,7 +1123,7 @@ func permissionCellControl(vmodel RolesPageVModel, role model.Role, perm rbac.Pe
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = icon.Check(icon.Props{Class: "size-3"}).Render(ctx, templ_7745c5c3_Buffer)
+			templ_7745c5c3_Err = icon.Check(icon.Props{Class: "size-3.5"}).Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -1132,7 +1132,7 @@ func permissionCellControl(vmodel RolesPageVModel, role model.Role, perm rbac.Pe
 				return templ_7745c5c3_Err
 			}
 		case cell.ImpliedBy != "":
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 34, "<!-- Accordée par une autre permission : une case à cocher serait un\n\t\t\tpiège, elle se recocherait seule à la lecture suivante. --> <span class=\"inline-flex size-4.5 items-center justify-center rounded-sm bg-success-tint text-success/60\" title=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 34, "<!-- Accordée par une autre permission : une case à cocher serait un\n\t\t\tpiège, elle se recocherait seule à la lecture suivante. --> <span class=\"inline-flex size-6 items-center justify-center rounded-sm bg-success-tint text-success/60\" title=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -1149,7 +1149,7 @@ func permissionCellControl(vmodel RolesPageVModel, role model.Role, perm rbac.Pe
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = icon.Check(icon.Props{Class: "size-3"}).Render(ctx, templ_7745c5c3_Buffer)
+			templ_7745c5c3_Err = icon.Check(icon.Props{Class: "size-3.5"}).Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -1294,7 +1294,7 @@ func permissionMark(granted bool) templ.Component {
 		}
 		ctx = templ.ClearChildren(ctx)
 		if granted {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 44, "<span class=\"inline-flex size-4.5 items-center justify-center rounded-sm bg-success-tint text-success\" title=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 44, "<span class=\"inline-flex size-6 items-center justify-center rounded-sm bg-success-tint text-success\" title=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -1311,7 +1311,7 @@ func permissionMark(granted bool) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = icon.Check(icon.Props{Class: "size-3"}).Render(ctx, templ_7745c5c3_Buffer)
+			templ_7745c5c3_Err = icon.Check(icon.Props{Class: "size-3.5"}).Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -1320,14 +1320,14 @@ func permissionMark(granted bool) templ.Component {
 				return templ_7745c5c3_Err
 			}
 		} else {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 47, "<span class=\"inline-block text-muted-foreground/40\" title=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 47, "<span class=\"inline-flex size-6 items-center justify-center text-muted-foreground/40\" title=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var62 string
 			templ_7745c5c3_Var62, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.roles.not_granted"))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/roles_page.templ`, Line: 337, Col: 98}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/roles_page.templ`, Line: 337, Col: 132}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var62))
 			if templ_7745c5c3_Err != nil {

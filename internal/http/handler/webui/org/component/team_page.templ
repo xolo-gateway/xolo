@@ -323,7 +323,7 @@ templ teamMembersSection(vmodel TeamPageVModel) {
 							@selectbox.Trigger(selectbox.TriggerProps{Name: "membership_id"}) {
 								@selectbox.Value(selectbox.ValueProps{Placeholder: i18n.T(ctx, "org.team.members.candidate_placeholder")})
 							}
-							@selectbox.Content() {
+							@selectbox.Content(selectbox.ContentProps{SearchPlaceholder: i18n.T(ctx, "common.search")}) {
 								@selectbox.Group() {
 									for _, m := range vmodel.Candidates {
 										if m.User() != nil {
