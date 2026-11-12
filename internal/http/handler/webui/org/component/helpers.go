@@ -530,10 +530,13 @@ func permissionToggleTitle(ctx context.Context, cell PermissionCell, perm rbac.P
 
 // permissionToggleClass draws a matrix toggle as the checkbox it replaces.
 //
-// size-6 is the 24px pointer target WCAG 2.2 asks for, the same as
-// checkbox.templ; the cell padding (table.Cell's "p-2") leaves the targets 40px
-// apart centre to centre, so the spacing exception of the criterion is met
-// without shrinking the table's density.
+// size-6 is the largest control size the design system offers, the same as
+// checkbox.templ. Under the theme's density scale (--spacing: 0.2222rem, see
+// misc/tailwind/templui.css) it renders at about 21.3px, short of the 24px of
+// WCAG 2.2 criterion 2.5.8 — which is why the spacing exception is what makes
+// the matrix pass, and why the padding matters: table.Cell's "p-2" leaves the
+// targets 40px apart centre to centre. Cutting that padding, or reusing this
+// class outside a table, would break the criterion silently.
 func permissionToggleClass(cell PermissionCell) string {
 	class := "size-6 shrink-0 rounded-[4px] border border-input p-0 has-[>svg]:px-0 shadow-xs"
 	if cell.Granted {
