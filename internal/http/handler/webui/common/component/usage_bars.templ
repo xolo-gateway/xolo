@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/progress"
+	"github.com/xolo-gateway/xolo/internal/i18n"
 )
 
 // BudgetBar renders the consumption bar of a budget, coloured by how close to
@@ -12,10 +13,13 @@ import (
 // `heightClass` overrides the bar thickness (progress.Progress ships h-2.5):
 // the dashboards want a thinner bar than the dedicated budget screen. It is
 // merged after the component's own size class, so it wins.
-templ BudgetBar(pct int, heightClass string) {
+//
+// `ariaLabel` is the text of the caption the caller draws next to the bar.
+templ BudgetBar(pct int, heightClass string, ariaLabel ...string) {
 	@progress.Progress(progress.Props{
-		Value:    pct,
-		BarClass: QuotaBarClass(pct) + " " + heightClass,
+		Value:     pct,
+		AriaLabel: defaultString(ariaLabel, ""),
+		BarClass:  QuotaBarClass(pct) + " " + heightClass,
 	})
 }
 
@@ -29,9 +33,10 @@ templ ChartShareRow(share ChartShare, labelWidth string) {
 		<span class={ "w-2.5 h-2.5 rounded-xs shrink-0 " + share.ColorClass }></span>
 		<span class={ "text-sm font-mono text-foreground overflow-hidden text-ellipsis whitespace-nowrap " + labelWidth }>{ share.Label }</span>
 		@progress.Progress(progress.Props{
-			Value:    share.Pct,
-			Class:    "flex-1",
-			BarClass: "h-1.5 " + share.ColorClass,
+			Value:     share.Pct,
+			AriaLabel: defaultString([]string{share.Label}, i18n.T(ctx, "common.unidentified")),
+			Class:     "flex-1",
+			BarClass:  "h-1.5 " + share.ColorClass,
 		})
 		<span class="text-xs text-muted-foreground w-10 text-right">{ fmt.Sprintf("%d%%", share.Pct) }</span>
 	</div>
@@ -79,9 +84,10 @@ templ RankedRow(row Ranked, props RankedRowProps) {
 			{ row.Label }
 		</span>
 		@progress.Progress(progress.Props{
-			Value:    row.Pct,
-			Class:    "flex-1",
-			BarClass: "h-1.5 " + rankedBarClass(row.ColorClass),
+			Value:     row.Pct,
+			AriaLabel: defaultString([]string{row.Label}, i18n.T(ctx, "common.unidentified")),
+			Class:     "flex-1",
+			BarClass:  "h-1.5 " + rankedBarClass(row.ColorClass),
 		})
 		<span class="w-20 shrink-0 text-right text-xs tnum text-muted-foreground">{ props.Value }</span>
 	</div>

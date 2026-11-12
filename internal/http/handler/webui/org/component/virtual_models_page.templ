@@ -28,6 +28,7 @@ templ VirtualModelsPage(vmodel VirtualModelsPageVModel) {
 						Type:       input.TypeFile,
 						FileAccept: ".json,application/json",
 						Attributes: templ.Attributes{
+							"aria-label":         i18n.T(ctx, "org.virtual_models.import_bundle"),
 							"data-xolo-import":   vmodel.BaseURL + "/api/orgs/" + vmodel.Org.Slug() + "/virtual-models/import",
 							"data-redirect-base": common.BaseURLString(ctx, common.WithPath("/orgs/", vmodel.Org.Slug(), "/admin/virtual-models/")),
 						},
@@ -252,11 +253,12 @@ templ VirtualModelFormPage(vmodel VirtualModelFormVModel) {
 					@card.Content() {
 						<div class="space-y-4 pt-4">
 							<div class="space-y-2">
-								@form.Label(form.LabelProps{}) {
+								@form.Label(form.LabelProps{For: "name"}) {
 									{ i18n.T(ctx, "org.virtual_models.name") }
 								}
 								if vmodel.IsNew {
 									@input.Input(input.Props{
+										ID:          "name",
 										Name:        "name",
 										Placeholder: i18n.T(ctx, "org.virtual_models.name_placeholder"),
 										Attributes:  templ.Attributes{"required": true},
@@ -266,6 +268,7 @@ templ VirtualModelFormPage(vmodel VirtualModelFormVModel) {
 									}
 								} else {
 									@input.Input(input.Props{
+										ID:          "name",
 										Name:        "name",
 										Value:       vmodel.Name,
 										Placeholder: i18n.T(ctx, "org.virtual_models.name_placeholder"),
@@ -277,10 +280,10 @@ templ VirtualModelFormPage(vmodel VirtualModelFormVModel) {
 								}
 							</div>
 							<div class="space-y-2">
-								@form.Label(form.LabelProps{}) {
+								@form.Label(form.LabelProps{For: "description"}) {
 									{ i18n.T(ctx, "org.virtual_models.description") }
 								}
-								@textarea.Textarea(textarea.Props{Name: "description", Rows: 3, Value: vmodel.Description})
+								@textarea.Textarea(textarea.Props{ID: "description", Name: "description", Rows: 3, Value: vmodel.Description})
 							</div>
 							if vmodel.VirtualModel != nil {
 								@common.CatalogOverridesFields(vmodel.VirtualModel.CatalogOverrides())

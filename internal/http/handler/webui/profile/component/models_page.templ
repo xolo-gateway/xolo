@@ -173,7 +173,7 @@ templ ModelsPage(vmodel ModelsPageVModel) {
 templ modelsAPIAccess(models []CatalogModel) {
 	@card.Card() {
 		@card.Header() {
-			@card.Title() {
+			@card.Title(card.TitleProps{Level: 2}) {
 				{ i18n.T(ctx, "profile.models.api.title") }
 			}
 			<p class="text-sm text-muted-foreground">{ i18n.T(ctx, "profile.models.api.intro") }</p>
@@ -315,13 +315,16 @@ templ modelsFilterBar(vmodel ModelsPageVModel) {
 			if len(vmodel.Facets.Kinds) > 1 {
 				@modelsSelect("models-kind", "kind", vmodel.Filter.Kind, kindOptions(ctx, vmodel.Facets.Kinds))
 			}
-			<div class="sm:ml-auto">
+			<div class="flex items-center gap-2 sm:ml-auto">
 				@modelsSelect("models-sort", "sort", vmodel.Filter.Sort, []modelsOption{
 					{Value: ModelsSortName, Label: i18n.T(ctx, "profile.models.sort.name")},
 					{Value: ModelsSortPrice, Label: i18n.T(ctx, "profile.models.sort.price")},
 					{Value: ModelsSortNewest, Label: i18n.T(ctx, "profile.models.sort.newest")},
 					{Value: ModelsSortContext, Label: i18n.T(ctx, "profile.models.sort.context")},
 				})
+				@button.Button(button.Props{Type: button.TypeSubmit, Size: button.SizeSm, Variant: button.VariantOutline}) {
+					{ i18n.T(ctx, "profile.models.filter.apply") }
+				}
 			</div>
 		}
 		<fieldset class="mb-3 flex flex-wrap items-center gap-x-4 gap-y-2">

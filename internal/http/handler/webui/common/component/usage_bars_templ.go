@@ -12,6 +12,7 @@ import (
 	"fmt"
 
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/progress"
+	"github.com/xolo-gateway/xolo/internal/i18n"
 )
 
 // BudgetBar renders the consumption bar of a budget, coloured by how close to
@@ -20,7 +21,9 @@ import (
 // `heightClass` overrides the bar thickness (progress.Progress ships h-2.5):
 // the dashboards want a thinner bar than the dedicated budget screen. It is
 // merged after the component's own size class, so it wins.
-func BudgetBar(pct int, heightClass string) templ.Component {
+//
+// `ariaLabel` is the text of the caption the caller draws next to the bar.
+func BudgetBar(pct int, heightClass string, ariaLabel ...string) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
@@ -42,8 +45,9 @@ func BudgetBar(pct int, heightClass string) templ.Component {
 		}
 		ctx = templ.ClearChildren(ctx)
 		templ_7745c5c3_Err = progress.Progress(progress.Props{
-			Value:    pct,
-			BarClass: QuotaBarClass(pct) + " " + heightClass,
+			Value:     pct,
+			AriaLabel: defaultString(ariaLabel, ""),
+			BarClass:  QuotaBarClass(pct) + " " + heightClass,
 		}).Render(ctx, templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
@@ -129,7 +133,7 @@ func ChartShareRow(share ChartShare, labelWidth string) templ.Component {
 		var templ_7745c5c3_Var7 string
 		templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.JoinStringErrs(share.Label)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/common/component/usage_bars.templ`, Line: 30, Col: 129}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/common/component/usage_bars.templ`, Line: 34, Col: 129}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var7))
 		if templ_7745c5c3_Err != nil {
@@ -140,9 +144,10 @@ func ChartShareRow(share ChartShare, labelWidth string) templ.Component {
 			return templ_7745c5c3_Err
 		}
 		templ_7745c5c3_Err = progress.Progress(progress.Props{
-			Value:    share.Pct,
-			Class:    "flex-1",
-			BarClass: "h-1.5 " + share.ColorClass,
+			Value:     share.Pct,
+			AriaLabel: defaultString([]string{share.Label}, i18n.T(ctx, "common.unidentified")),
+			Class:     "flex-1",
+			BarClass:  "h-1.5 " + share.ColorClass,
 		}).Render(ctx, templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
@@ -154,7 +159,7 @@ func ChartShareRow(share ChartShare, labelWidth string) templ.Component {
 		var templ_7745c5c3_Var8 string
 		templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("%d%%", share.Pct))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/common/component/usage_bars.templ`, Line: 36, Col: 94}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/common/component/usage_bars.templ`, Line: 41, Col: 94}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var8))
 		if templ_7745c5c3_Err != nil {
@@ -276,7 +281,7 @@ func RankedRow(row Ranked, props RankedRowProps) templ.Component {
 		var templ_7745c5c3_Var14 string
 		templ_7745c5c3_Var14, templ_7745c5c3_Err = templ.JoinStringErrs(row.Label)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/common/component/usage_bars.templ`, Line: 79, Col: 14}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/common/component/usage_bars.templ`, Line: 84, Col: 14}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var14))
 		if templ_7745c5c3_Err != nil {
@@ -287,9 +292,10 @@ func RankedRow(row Ranked, props RankedRowProps) templ.Component {
 			return templ_7745c5c3_Err
 		}
 		templ_7745c5c3_Err = progress.Progress(progress.Props{
-			Value:    row.Pct,
-			Class:    "flex-1",
-			BarClass: "h-1.5 " + rankedBarClass(row.ColorClass),
+			Value:     row.Pct,
+			AriaLabel: defaultString([]string{row.Label}, i18n.T(ctx, "common.unidentified")),
+			Class:     "flex-1",
+			BarClass:  "h-1.5 " + rankedBarClass(row.ColorClass),
 		}).Render(ctx, templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
@@ -301,7 +307,7 @@ func RankedRow(row Ranked, props RankedRowProps) templ.Component {
 		var templ_7745c5c3_Var15 string
 		templ_7745c5c3_Var15, templ_7745c5c3_Err = templ.JoinStringErrs(props.Value)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/common/component/usage_bars.templ`, Line: 86, Col: 89}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/common/component/usage_bars.templ`, Line: 92, Col: 89}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var15))
 		if templ_7745c5c3_Err != nil {

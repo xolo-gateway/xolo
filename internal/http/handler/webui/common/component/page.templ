@@ -157,10 +157,18 @@ templ Page(funcs ...PageOptionFunc) {
 					Xolo
 				}
 			</title>
-			if opts.Description != "" {
-				<meta name="description" content={ opts.Description }/>
+			{{ description := opts.Description }}
+			if description == "" {
+				{{ description = i18n.T(ctx, "layout.description") }}
+				if opts.Title != "" {
+					{{ description = opts.Title + " · " + description }}
+				}
 			}
+			<meta name="description" content={ description }/>
 			<link rel="icon" type="image/png" href={ string(BaseURL(ctx, WithPath("/assets/favicon.png"))) }/>
+			<!-- Le thème de coloration est chargé avant notre feuille : les
+			corrections de contraste de templui.css s'appliquent donc après lui. -->
+			<link rel="stylesheet" href={ asset(ctx, "/assets/vendor/highlight-atom-one-light.min.css") }/>
 			<link rel="stylesheet" href={ asset(ctx, "/assets/templui.css") }/>
 			<script src={ asset(ctx, "/assets/htmx.min.js") }></script>
 			<!-- xolo.js règle aussi htmx.config.responseHandling : le défaut

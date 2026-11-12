@@ -124,7 +124,7 @@ func SearchFilter(props SearchFilterProps) templ.Component {
 			Value:       props.Value,
 			Placeholder: props.Placeholder,
 			Class:       "h-8 pl-8",
-			Attributes:  props.Attributes,
+			Attributes:  searchFilterAttributes(props),
 		}).Render(ctx, templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
@@ -135,6 +135,15 @@ func SearchFilter(props SearchFilterProps) templ.Component {
 		}
 		return nil
 	})
+}
+
+// searchFilterAttributes names the field: a search field shows no label, so its placeholder serves unless the call site sets one.
+func searchFilterAttributes(props SearchFilterProps) templ.Attributes {
+	attrs := templ.Attributes{"aria-label": props.Placeholder}
+	for k, v := range props.Attributes {
+		attrs[k] = v
+	}
+	return attrs
 }
 
 // defaultSearchWidth keeps the filter from stretching to the full page width when

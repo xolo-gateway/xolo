@@ -236,6 +236,7 @@ templ Content(props ...ContentProps) {
 		Exclusive: true,
 	}) {
 		if !p.NoSearch {
+			{{ searchPlaceholder := utils.IfElse(p.SearchPlaceholder != "", p.SearchPlaceholder, "Search...") }}
 			<div class="sticky top-0 bg-popover p-1">
 				<div class="relative">
 					<span class="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground z-10 pointer-events-none">
@@ -244,9 +245,10 @@ templ Content(props ...ContentProps) {
 					@input.Input(input.Props{
 						Type:        input.TypeSearch,
 						Class:       "pl-8",
-						Placeholder: utils.IfElse(p.SearchPlaceholder != "", p.SearchPlaceholder, "Search..."),
+						Placeholder: searchPlaceholder,
 						Attributes: templ.Attributes{
 							"data-tui-selectbox-search": "",
+							"aria-label":                searchPlaceholder,
 						},
 					})
 				</div>

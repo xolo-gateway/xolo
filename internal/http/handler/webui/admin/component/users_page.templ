@@ -183,13 +183,11 @@ templ usersPagination(vmodel UsersPageVModel) {
 					Label:    i18n.T(ctx, "admin.pagination.previous"),
 				})
 				for _, page := range paginator.Pages {
-					@pagination.Item() {
-						@pagination.Link(pagination.LinkProps{
-							Href:     usersPageURL(ctx, vmodel, page),
-							IsActive: page == vmodel.CurrentPage,
-						}) {
-							{ strconv.Itoa(page) }
-						}
+					@pagination.Link(pagination.LinkProps{
+						Href:     usersPageURL(ctx, vmodel, page),
+						IsActive: page == vmodel.CurrentPage,
+					}) {
+						{ strconv.Itoa(page) }
 					}
 				}
 				@pagination.Next(pagination.NextProps{

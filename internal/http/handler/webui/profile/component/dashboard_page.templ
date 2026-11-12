@@ -386,7 +386,7 @@ templ personalOrgBudget(ou OrgUsage) {
 			<span class="ml-auto tnum text-xs text-muted-foreground">{ vm.SpentLabel(ctx) }</span>
 		</div>
 		if vm.Budget != nil {
-			@common.BudgetGauge(vm.Percent, 0, "")
+			@common.BudgetGauge(vm.Percent, 0, "", vm.Name)
 		}
 	</div>
 }

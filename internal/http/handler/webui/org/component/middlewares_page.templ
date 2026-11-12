@@ -68,7 +68,11 @@ templ MiddlewaresPage(vmodel MiddlewaresPageVModel) {
 // identity, scope, then the enable switch and the pipeline shortcut.
 templ middlewareRow(vmodel MiddlewaresPageVModel, mw model.Middleware) {
 	{{ writable := common.HasPermission(ctx, vmodel.Org.ID(), rbac.PermMiddlewaresWrite) }}
-	<div class={ "flex flex-wrap items-center gap-3 rounded-lg border bg-card px-3.5 py-2.5", templ.KV("opacity-60", !mw.Enabled()) }>
+	{{ rowBackground := "bg-card" }}
+	if !mw.Enabled() {
+		{{ rowBackground = "bg-muted" }}
+	}
+	<div class={ "flex flex-wrap items-center gap-3 rounded-lg border px-3.5 py-2.5", rowBackground }>
 		<span class="w-6 shrink-0 text-right font-mono text-xs text-muted-foreground" title={ i18n.T(ctx, "org.middlewares.priority") }>
 			{ strconv.Itoa(mw.Priority()) }
 		</span>
@@ -152,6 +156,12 @@ templ middlewareToggle(vmodel MiddlewaresPageVModel, mw model.Middleware, writab
 					"title":                      middlewareToggleTitle(ctx, mw),
 				},
 			})
+			{{/* Le bouton porte le nom exigé par H32.2 ; il reste masqué, mais
+			réapparaît dès qu'il reçoit le focus, sinon le parcours au clavier
+			s'arrête sur une cible invisible. */}}
+			@button.Button(button.Props{Type: button.TypeSubmit, Class: "sr-only focus:not-sr-only"}) {
+				{ middlewareToggleTitle(ctx, mw) }
+			}
 		</form>
 	} else {
 		if mw.Enabled() {

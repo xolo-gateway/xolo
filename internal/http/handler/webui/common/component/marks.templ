@@ -101,7 +101,11 @@ func defaultString(values []string, fallback string) string {
 //
 // `projection` is the end-of-period forecast as a percentage of the ceiling; a
 // black tick is drawn at that position when it is above zero.
-templ BudgetGauge(pct int, projection int, label string) {
+//
+// A caller that already shows the budget's name nearby leaves `label` empty and
+// passes that same text in `ariaLabel`.
+templ BudgetGauge(pct int, projection int, label string, ariaLabel ...string) {
+	{{ name := defaultString(ariaLabel, label) }}
 	<div class="flex flex-col gap-1.5">
 		if label != "" {
 			<div class="flex items-baseline gap-2">
@@ -113,9 +117,10 @@ templ BudgetGauge(pct int, projection int, label string) {
 		}
 		<div class="relative">
 			@progress.Progress(progress.Props{
-				Value:    min(pct, 100),
-				BarClass: "h-1.5 " + BudgetBarClass(pct),
-				Class:    "h-1.5",
+				Value:     min(pct, 100),
+				AriaLabel: name,
+				BarClass:  "h-1.5 " + BudgetBarClass(pct),
+				Class:     "h-1.5",
 			})
 			if projection > 0 && projection <= 100 {
 				<!-- Repère de projection de fin de période. La position dépend

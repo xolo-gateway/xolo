@@ -325,7 +325,7 @@ func ModelForm(vmodel ModelFormVModel) templ.Component {
 						}
 						return nil
 					})
-					templ_7745c5c3_Err = form.Label(form.LabelProps{}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var16), templ_7745c5c3_Buffer)
+					templ_7745c5c3_Err = form.Label(form.LabelProps{For: "proxy_name"}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var16), templ_7745c5c3_Buffer)
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
@@ -387,12 +387,12 @@ func ModelForm(vmodel ModelFormVModel) templ.Component {
 						return templ_7745c5c3_Err
 					}
 					if !vmodel.IsNew && vmodel.Model != nil {
-						templ_7745c5c3_Err = input.Input(input.Props{Name: "proxy_name", Value: vmodel.Model.ProxyName(), Disabled: readonly}).Render(ctx, templ_7745c5c3_Buffer)
+						templ_7745c5c3_Err = input.Input(input.Props{ID: "proxy_name", Name: "proxy_name", Value: vmodel.Model.ProxyName(), Disabled: readonly}).Render(ctx, templ_7745c5c3_Buffer)
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
 					} else {
-						templ_7745c5c3_Err = input.Input(input.Props{Name: "proxy_name", Placeholder: "gpt-4o", Disabled: readonly}).Render(ctx, templ_7745c5c3_Buffer)
+						templ_7745c5c3_Err = input.Input(input.Props{ID: "proxy_name", Name: "proxy_name", Placeholder: "gpt-4o", Disabled: readonly}).Render(ctx, templ_7745c5c3_Buffer)
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
@@ -424,7 +424,7 @@ func ModelForm(vmodel ModelFormVModel) templ.Component {
 						}
 						return nil
 					})
-					templ_7745c5c3_Err = form.Label(form.LabelProps{}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var22), templ_7745c5c3_Buffer)
+					templ_7745c5c3_Err = form.Label(form.LabelProps{For: "real_model"}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var22), templ_7745c5c3_Buffer)
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
@@ -483,12 +483,12 @@ func ModelForm(vmodel ModelFormVModel) templ.Component {
 						return templ_7745c5c3_Err
 					}
 					if !vmodel.IsNew && vmodel.Model != nil {
-						templ_7745c5c3_Err = input.Input(input.Props{Name: "real_model", Value: vmodel.Model.RealModel(), Disabled: readonly}).Render(ctx, templ_7745c5c3_Buffer)
+						templ_7745c5c3_Err = input.Input(input.Props{ID: "real_model", Name: "real_model", Value: vmodel.Model.RealModel(), Disabled: readonly}).Render(ctx, templ_7745c5c3_Buffer)
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
 					} else {
-						templ_7745c5c3_Err = input.Input(input.Props{Name: "real_model", Placeholder: "gpt-4o-2024-11-20", Disabled: readonly}).Render(ctx, templ_7745c5c3_Buffer)
+						templ_7745c5c3_Err = input.Input(input.Props{ID: "real_model", Name: "real_model", Placeholder: "gpt-4o-2024-11-20", Disabled: readonly}).Render(ctx, templ_7745c5c3_Buffer)
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
@@ -520,17 +520,17 @@ func ModelForm(vmodel ModelFormVModel) templ.Component {
 						}
 						return nil
 					})
-					templ_7745c5c3_Err = form.Label(form.LabelProps{}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var26), templ_7745c5c3_Buffer)
+					templ_7745c5c3_Err = form.Label(form.LabelProps{For: "description"}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var26), templ_7745c5c3_Buffer)
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 					if !vmodel.IsNew && vmodel.Model != nil {
-						templ_7745c5c3_Err = textarea.Textarea(textarea.Props{Name: "description", Value: vmodel.Model.Description(), Disabled: readonly}).Render(ctx, templ_7745c5c3_Buffer)
+						templ_7745c5c3_Err = textarea.Textarea(textarea.Props{ID: "description", Name: "description", Value: vmodel.Model.Description(), Disabled: readonly}).Render(ctx, templ_7745c5c3_Buffer)
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
 					} else {
-						templ_7745c5c3_Err = textarea.Textarea(textarea.Props{Name: "description", Disabled: readonly}).Render(ctx, templ_7745c5c3_Buffer)
+						templ_7745c5c3_Err = textarea.Textarea(textarea.Props{ID: "description", Name: "description", Disabled: readonly}).Render(ctx, templ_7745c5c3_Buffer)
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
@@ -753,12 +753,12 @@ func ModelForm(vmodel ModelFormVModel) templ.Component {
 						return templ_7745c5c3_Err
 					}
 					if !vmodel.IsNew && vmodel.Model != nil {
-						templ_7745c5c3_Err = input.Input(input.Props{Name: "context_window", Type: "number", Value: fmtInt(vmodel.Model.ContextWindow()), Placeholder: "128000", Disabled: readonly}).Render(ctx, templ_7745c5c3_Buffer)
+						templ_7745c5c3_Err = input.Input(input.Props{Name: "context_window", Type: "number", Value: fmtInt(vmodel.Model.ContextWindow()), Placeholder: "128000", Disabled: readonly, Attributes: templ.Attributes{"aria-label": i18n.T(ctx, "org.model.context_window")}}).Render(ctx, templ_7745c5c3_Buffer)
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
 					} else {
-						templ_7745c5c3_Err = input.Input(input.Props{Name: "context_window", Type: "number", Placeholder: "128000", Disabled: readonly}).Render(ctx, templ_7745c5c3_Buffer)
+						templ_7745c5c3_Err = input.Input(input.Props{Name: "context_window", Type: "number", Placeholder: "128000", Disabled: readonly, Attributes: templ.Attributes{"aria-label": i18n.T(ctx, "org.model.context_window")}}).Render(ctx, templ_7745c5c3_Buffer)
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
@@ -772,12 +772,12 @@ func ModelForm(vmodel ModelFormVModel) templ.Component {
 						return templ_7745c5c3_Err
 					}
 					if !vmodel.IsNew && vmodel.Model != nil {
-						templ_7745c5c3_Err = input.Input(input.Props{Name: "output_window", Type: "number", Value: fmtInt(vmodel.Model.OutputWindow()), Placeholder: "8192", Disabled: readonly}).Render(ctx, templ_7745c5c3_Buffer)
+						templ_7745c5c3_Err = input.Input(input.Props{Name: "output_window", Type: "number", Value: fmtInt(vmodel.Model.OutputWindow()), Placeholder: "8192", Disabled: readonly, Attributes: templ.Attributes{"aria-label": i18n.T(ctx, "org.model.output_window")}}).Render(ctx, templ_7745c5c3_Buffer)
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
 					} else {
-						templ_7745c5c3_Err = input.Input(input.Props{Name: "output_window", Type: "number", Placeholder: "8192", Disabled: readonly}).Render(ctx, templ_7745c5c3_Buffer)
+						templ_7745c5c3_Err = input.Input(input.Props{Name: "output_window", Type: "number", Placeholder: "8192", Disabled: readonly, Attributes: templ.Attributes{"aria-label": i18n.T(ctx, "org.model.output_window")}}).Render(ctx, templ_7745c5c3_Buffer)
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
@@ -1235,7 +1235,7 @@ func ModelForm(vmodel ModelFormVModel) templ.Component {
 						}
 						return nil
 					})
-					templ_7745c5c3_Err = form.Label(form.LabelProps{}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var62), templ_7745c5c3_Buffer)
+					templ_7745c5c3_Err = form.Label(form.LabelProps{For: "prompt_cost"}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var62), templ_7745c5c3_Buffer)
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
@@ -1248,12 +1248,12 @@ func ModelForm(vmodel ModelFormVModel) templ.Component {
 						return templ_7745c5c3_Err
 					}
 					if !vmodel.IsNew && vmodel.Model != nil {
-						templ_7745c5c3_Err = input.Input(input.Props{Name: "prompt_cost", Type: "number", Value: formatCostField(vmodel.Model.PromptCostPer1KTokens()), Placeholder: "2.50", Disabled: readonly, Attributes: templ.Attributes{"step": "any"}}).Render(ctx, templ_7745c5c3_Buffer)
+						templ_7745c5c3_Err = input.Input(input.Props{ID: "prompt_cost", Name: "prompt_cost", Type: "number", Value: formatCostField(vmodel.Model.PromptCostPer1KTokens()), Placeholder: "2.50", Disabled: readonly, Attributes: templ.Attributes{"step": "any"}}).Render(ctx, templ_7745c5c3_Buffer)
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
 					} else {
-						templ_7745c5c3_Err = input.Input(input.Props{Name: "prompt_cost", Type: "number", Placeholder: "2.50", Disabled: readonly, Attributes: templ.Attributes{"step": "any"}}).Render(ctx, templ_7745c5c3_Buffer)
+						templ_7745c5c3_Err = input.Input(input.Props{ID: "prompt_cost", Name: "prompt_cost", Type: "number", Placeholder: "2.50", Disabled: readonly, Attributes: templ.Attributes{"step": "any"}}).Render(ctx, templ_7745c5c3_Buffer)
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
@@ -1285,7 +1285,7 @@ func ModelForm(vmodel ModelFormVModel) templ.Component {
 						}
 						return nil
 					})
-					templ_7745c5c3_Err = form.Label(form.LabelProps{}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var64), templ_7745c5c3_Buffer)
+					templ_7745c5c3_Err = form.Label(form.LabelProps{For: "cached_prompt_cost"}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var64), templ_7745c5c3_Buffer)
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
@@ -1325,12 +1325,12 @@ func ModelForm(vmodel ModelFormVModel) templ.Component {
 						return templ_7745c5c3_Err
 					}
 					if !vmodel.IsNew && vmodel.Model != nil {
-						templ_7745c5c3_Err = input.Input(input.Props{Name: "cached_prompt_cost", Type: "number", Value: formatCostField(vmodel.Model.CachedPromptCostPer1KTokens()), Placeholder: "0.25", Disabled: readonly, Attributes: templ.Attributes{"step": "any"}}).Render(ctx, templ_7745c5c3_Buffer)
+						templ_7745c5c3_Err = input.Input(input.Props{ID: "cached_prompt_cost", Name: "cached_prompt_cost", Type: "number", Value: formatCostField(vmodel.Model.CachedPromptCostPer1KTokens()), Placeholder: "0.25", Disabled: readonly, Attributes: templ.Attributes{"step": "any"}}).Render(ctx, templ_7745c5c3_Buffer)
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
 					} else {
-						templ_7745c5c3_Err = input.Input(input.Props{Name: "cached_prompt_cost", Type: "number", Placeholder: "0.25", Disabled: readonly, Attributes: templ.Attributes{"step": "any"}}).Render(ctx, templ_7745c5c3_Buffer)
+						templ_7745c5c3_Err = input.Input(input.Props{ID: "cached_prompt_cost", Name: "cached_prompt_cost", Type: "number", Placeholder: "0.25", Disabled: readonly, Attributes: templ.Attributes{"step": "any"}}).Render(ctx, templ_7745c5c3_Buffer)
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
@@ -1362,7 +1362,7 @@ func ModelForm(vmodel ModelFormVModel) templ.Component {
 						}
 						return nil
 					})
-					templ_7745c5c3_Err = form.Label(form.LabelProps{}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var68), templ_7745c5c3_Buffer)
+					templ_7745c5c3_Err = form.Label(form.LabelProps{For: "completion_cost"}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var68), templ_7745c5c3_Buffer)
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
@@ -1375,12 +1375,12 @@ func ModelForm(vmodel ModelFormVModel) templ.Component {
 						return templ_7745c5c3_Err
 					}
 					if !vmodel.IsNew && vmodel.Model != nil {
-						templ_7745c5c3_Err = input.Input(input.Props{Name: "completion_cost", Type: "number", Value: formatCostField(vmodel.Model.CompletionCostPer1KTokens()), Placeholder: "10.00", Disabled: readonly, Attributes: templ.Attributes{"step": "any"}}).Render(ctx, templ_7745c5c3_Buffer)
+						templ_7745c5c3_Err = input.Input(input.Props{ID: "completion_cost", Name: "completion_cost", Type: "number", Value: formatCostField(vmodel.Model.CompletionCostPer1KTokens()), Placeholder: "10.00", Disabled: readonly, Attributes: templ.Attributes{"step": "any"}}).Render(ctx, templ_7745c5c3_Buffer)
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
 					} else {
-						templ_7745c5c3_Err = input.Input(input.Props{Name: "completion_cost", Type: "number", Placeholder: "10.00", Disabled: readonly, Attributes: templ.Attributes{"step": "any"}}).Render(ctx, templ_7745c5c3_Buffer)
+						templ_7745c5c3_Err = input.Input(input.Props{ID: "completion_cost", Name: "completion_cost", Type: "number", Placeholder: "10.00", Disabled: readonly, Attributes: templ.Attributes{"step": "any"}}).Render(ctx, templ_7745c5c3_Buffer)
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
@@ -1513,7 +1513,7 @@ func ModelForm(vmodel ModelFormVModel) templ.Component {
 						}
 						return nil
 					})
-					templ_7745c5c3_Err = form.Label(form.LabelProps{}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var75), templ_7745c5c3_Buffer)
+					templ_7745c5c3_Err = form.Label(form.LabelProps{For: "active_params"}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var75), templ_7745c5c3_Buffer)
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
@@ -1526,12 +1526,12 @@ func ModelForm(vmodel ModelFormVModel) templ.Component {
 						return templ_7745c5c3_Err
 					}
 					if !vmodel.IsNew && vmodel.Model != nil && vmodel.Model.ActiveParams() > 0 {
-						templ_7745c5c3_Err = input.Input(input.Props{Name: "active_params", Type: "number", Value: formatActiveParamsBillions(vmodel.Model.ActiveParams()), Placeholder: "7", Disabled: readonly, Attributes: templ.Attributes{"step": "any", "min": "0"}}).Render(ctx, templ_7745c5c3_Buffer)
+						templ_7745c5c3_Err = input.Input(input.Props{ID: "active_params", Name: "active_params", Type: "number", Value: formatActiveParamsBillions(vmodel.Model.ActiveParams()), Placeholder: "7", Disabled: readonly, Attributes: templ.Attributes{"step": "any", "min": "0"}}).Render(ctx, templ_7745c5c3_Buffer)
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
 					} else {
-						templ_7745c5c3_Err = input.Input(input.Props{Name: "active_params", Type: "number", Placeholder: "7", Disabled: readonly, Attributes: templ.Attributes{"step": "any", "min": "0"}}).Render(ctx, templ_7745c5c3_Buffer)
+						templ_7745c5c3_Err = input.Input(input.Props{ID: "active_params", Name: "active_params", Type: "number", Placeholder: "7", Disabled: readonly, Attributes: templ.Attributes{"step": "any", "min": "0"}}).Render(ctx, templ_7745c5c3_Buffer)
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
@@ -1563,7 +1563,7 @@ func ModelForm(vmodel ModelFormVModel) templ.Component {
 						}
 						return nil
 					})
-					templ_7745c5c3_Err = form.Label(form.LabelProps{}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var77), templ_7745c5c3_Buffer)
+					templ_7745c5c3_Err = form.Label(form.LabelProps{For: "tokens_per_sec_low"}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var77), templ_7745c5c3_Buffer)
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
@@ -1576,12 +1576,12 @@ func ModelForm(vmodel ModelFormVModel) templ.Component {
 						return templ_7745c5c3_Err
 					}
 					if !vmodel.IsNew && vmodel.Model != nil && vmodel.Model.TokensPerSecLow() > 0 {
-						templ_7745c5c3_Err = input.Input(input.Props{Name: "tokens_per_sec_low", Type: "number", Value: strconv.FormatFloat(vmodel.Model.TokensPerSecLow(), 'f', -1, 64), Placeholder: "30", Disabled: readonly, Attributes: templ.Attributes{"step": "any", "min": "0"}}).Render(ctx, templ_7745c5c3_Buffer)
+						templ_7745c5c3_Err = input.Input(input.Props{ID: "tokens_per_sec_low", Name: "tokens_per_sec_low", Type: "number", Value: strconv.FormatFloat(vmodel.Model.TokensPerSecLow(), 'f', -1, 64), Placeholder: "30", Disabled: readonly, Attributes: templ.Attributes{"step": "any", "min": "0"}}).Render(ctx, templ_7745c5c3_Buffer)
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
 					} else {
-						templ_7745c5c3_Err = input.Input(input.Props{Name: "tokens_per_sec_low", Type: "number", Placeholder: "30", Disabled: readonly, Attributes: templ.Attributes{"step": "any", "min": "0"}}).Render(ctx, templ_7745c5c3_Buffer)
+						templ_7745c5c3_Err = input.Input(input.Props{ID: "tokens_per_sec_low", Name: "tokens_per_sec_low", Type: "number", Placeholder: "30", Disabled: readonly, Attributes: templ.Attributes{"step": "any", "min": "0"}}).Render(ctx, templ_7745c5c3_Buffer)
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
@@ -1613,7 +1613,7 @@ func ModelForm(vmodel ModelFormVModel) templ.Component {
 						}
 						return nil
 					})
-					templ_7745c5c3_Err = form.Label(form.LabelProps{}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var79), templ_7745c5c3_Buffer)
+					templ_7745c5c3_Err = form.Label(form.LabelProps{For: "tokens_per_sec_high"}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var79), templ_7745c5c3_Buffer)
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
@@ -1626,12 +1626,12 @@ func ModelForm(vmodel ModelFormVModel) templ.Component {
 						return templ_7745c5c3_Err
 					}
 					if !vmodel.IsNew && vmodel.Model != nil && vmodel.Model.TokensPerSecHigh() > 0 {
-						templ_7745c5c3_Err = input.Input(input.Props{Name: "tokens_per_sec_high", Type: "number", Value: strconv.FormatFloat(vmodel.Model.TokensPerSecHigh(), 'f', -1, 64), Placeholder: "100", Disabled: readonly, Attributes: templ.Attributes{"step": "any", "min": "0"}}).Render(ctx, templ_7745c5c3_Buffer)
+						templ_7745c5c3_Err = input.Input(input.Props{ID: "tokens_per_sec_high", Name: "tokens_per_sec_high", Type: "number", Value: strconv.FormatFloat(vmodel.Model.TokensPerSecHigh(), 'f', -1, 64), Placeholder: "100", Disabled: readonly, Attributes: templ.Attributes{"step": "any", "min": "0"}}).Render(ctx, templ_7745c5c3_Buffer)
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
 					} else {
-						templ_7745c5c3_Err = input.Input(input.Props{Name: "tokens_per_sec_high", Type: "number", Placeholder: "100", Disabled: readonly, Attributes: templ.Attributes{"step": "any", "min": "0"}}).Render(ctx, templ_7745c5c3_Buffer)
+						templ_7745c5c3_Err = input.Input(input.Props{ID: "tokens_per_sec_high", Name: "tokens_per_sec_high", Type: "number", Placeholder: "100", Disabled: readonly, Attributes: templ.Attributes{"step": "any", "min": "0"}}).Render(ctx, templ_7745c5c3_Buffer)
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
@@ -1847,17 +1847,17 @@ func ModelForm(vmodel ModelFormVModel) templ.Component {
 							}
 							return nil
 						})
-						templ_7745c5c3_Err = form.Label(form.LabelProps{}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var91), templ_7745c5c3_Buffer)
+						templ_7745c5c3_Err = form.Label(form.LabelProps{For: "token_limit_max_tokens"}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var91), templ_7745c5c3_Buffer)
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
 						if tlCfg != nil {
-							templ_7745c5c3_Err = input.Input(input.Props{Name: "token_limit_max_tokens", Type: "number", Value: fmt.Sprintf("%d", tlCfg.MaxTokens), Placeholder: "100000", Disabled: readonly, Attributes: templ.Attributes{"min": "1"}}).Render(ctx, templ_7745c5c3_Buffer)
+							templ_7745c5c3_Err = input.Input(input.Props{ID: "token_limit_max_tokens", Name: "token_limit_max_tokens", Type: "number", Value: fmt.Sprintf("%d", tlCfg.MaxTokens), Placeholder: "100000", Disabled: readonly, Attributes: templ.Attributes{"min": "1"}}).Render(ctx, templ_7745c5c3_Buffer)
 							if templ_7745c5c3_Err != nil {
 								return templ_7745c5c3_Err
 							}
 						} else {
-							templ_7745c5c3_Err = input.Input(input.Props{Name: "token_limit_max_tokens", Type: "number", Placeholder: "100000", Disabled: readonly, Attributes: templ.Attributes{"min": "1"}}).Render(ctx, templ_7745c5c3_Buffer)
+							templ_7745c5c3_Err = input.Input(input.Props{ID: "token_limit_max_tokens", Name: "token_limit_max_tokens", Type: "number", Placeholder: "100000", Disabled: readonly, Attributes: templ.Attributes{"min": "1"}}).Render(ctx, templ_7745c5c3_Buffer)
 							if templ_7745c5c3_Err != nil {
 								return templ_7745c5c3_Err
 							}
@@ -1898,12 +1898,12 @@ func ModelForm(vmodel ModelFormVModel) templ.Component {
 							return templ_7745c5c3_Err
 						}
 						if tlCfg != nil {
-							templ_7745c5c3_Err = input.Input(input.Props{Name: "token_limit_interval_value", Type: "number", Value: durationValue(tlCfg.Interval), Placeholder: "1", Disabled: readonly, Attributes: templ.Attributes{"min": "1", "class": "flex-1"}}).Render(ctx, templ_7745c5c3_Buffer)
+							templ_7745c5c3_Err = input.Input(input.Props{Name: "token_limit_interval_value", Type: "number", Value: durationValue(tlCfg.Interval), Placeholder: "1", Disabled: readonly, Attributes: templ.Attributes{"min": "1", "class": "flex-1", "aria-label": i18n.T(ctx, "org.model.token_limit_interval")}}).Render(ctx, templ_7745c5c3_Buffer)
 							if templ_7745c5c3_Err != nil {
 								return templ_7745c5c3_Err
 							}
 						} else {
-							templ_7745c5c3_Err = input.Input(input.Props{Name: "token_limit_interval_value", Type: "number", Placeholder: "1", Disabled: readonly, Attributes: templ.Attributes{"min": "1", "class": "flex-1"}}).Render(ctx, templ_7745c5c3_Buffer)
+							templ_7745c5c3_Err = input.Input(input.Props{Name: "token_limit_interval_value", Type: "number", Placeholder: "1", Disabled: readonly, Attributes: templ.Attributes{"min": "1", "class": "flex-1", "aria-label": i18n.T(ctx, "org.model.token_limit_interval")}}).Render(ctx, templ_7745c5c3_Buffer)
 							if templ_7745c5c3_Err != nil {
 								return templ_7745c5c3_Err
 							}
@@ -2382,11 +2382,11 @@ func ModelForm(vmodel ModelFormVModel) templ.Component {
 						}
 						return nil
 					})
-					templ_7745c5c3_Err = form.Label(form.LabelProps{}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var118), templ_7745c5c3_Buffer)
+					templ_7745c5c3_Err = form.Label(form.LabelProps{For: "api_base_url"}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var118), templ_7745c5c3_Buffer)
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
-					templ_7745c5c3_Err = input.Input(input.Props{Name: "api_base_url", Value: modelBaseURL(vmodel.Model), Placeholder: vmodel.Provider.BaseURL(), Class: "font-mono", Disabled: readonly}).Render(ctx, templ_7745c5c3_Buffer)
+					templ_7745c5c3_Err = input.Input(input.Props{ID: "api_base_url", Name: "api_base_url", Value: modelBaseURL(vmodel.Model), Placeholder: vmodel.Provider.BaseURL(), Class: "font-mono", Disabled: readonly}).Render(ctx, templ_7745c5c3_Buffer)
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}

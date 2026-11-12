@@ -52,9 +52,9 @@ templ Code(props ...Props) {
 
 templ Script() {
 	// highlight.js is vendored under assets/vendor/ rather than pulled from a CDN.
-	// Only the light theme is served: the product is light-only, so code.min.js
-	// has no theme to switch.
-	<link id="highlight-theme" rel="stylesheet" href={ utils.ScriptURL("/assets/vendor/highlight-atom-one-light.min.css") }/>
+	// Only the light theme is served — the product is light-only — and its
+	// stylesheet is linked from the page head, before ours, so the corrections
+	// this project makes to it win.
 	<script defer nonce={ templ.GetNonce(ctx) } src={ utils.ScriptURL("/assets/vendor/highlight.min.js") }></script>
 	<script defer nonce={ templ.GetNonce(ctx) } src={ utils.ScriptURL("/assets/js/code.min.js") }></script>
 }

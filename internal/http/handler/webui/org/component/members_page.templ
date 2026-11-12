@@ -159,13 +159,11 @@ templ membersPagination(vmodel MembersPageVModel) {
 					Label:    i18n.T(ctx, "org.members.pagination.previous"),
 				})
 				for _, page := range paginator.Pages {
-					@pagination.Item() {
-						@pagination.Link(pagination.LinkProps{
-							Href:     common.BaseURLString(ctx, common.WithPath("/orgs/", vmodel.Org.Slug(), "/admin/members"), common.WithValues("page", strconv.Itoa(page))),
-							IsActive: page == vmodel.CurrentPage,
-						}) {
-							{ strconv.Itoa(page) }
-						}
+					@pagination.Link(pagination.LinkProps{
+						Href:     common.BaseURLString(ctx, common.WithPath("/orgs/", vmodel.Org.Slug(), "/admin/members"), common.WithValues("page", strconv.Itoa(page))),
+						IsActive: page == vmodel.CurrentPage,
+					}) {
+						{ strconv.Itoa(page) }
 					}
 				}
 				@pagination.Next(pagination.NextProps{

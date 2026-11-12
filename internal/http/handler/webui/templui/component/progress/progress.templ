@@ -29,6 +29,9 @@ type Props struct {
 	Max        int
 	Value      int
 	Label      string
+	// AriaLabel names the bar; emitted only when set, since an empty aria-label
+	// leaves the progressbar nameless.
+	AriaLabel string
 	ShowValue  bool
 	Size       Size
 	Variant    Variant
@@ -50,6 +53,9 @@ templ Progress(props ...Props) {
 		aria-valuemax={ fmt.Sprintf("%d", maxValue(p.Max)) }
 		aria-valuenow={ fmt.Sprintf("%d", p.Value) }
 		role="progressbar"
+		if p.AriaLabel != "" {
+			aria-label={ p.AriaLabel }
+		}
 		{ p.Attributes... }
 	>
 		if p.Label != "" || p.ShowValue {

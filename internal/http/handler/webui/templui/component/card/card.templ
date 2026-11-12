@@ -20,6 +20,9 @@ type TitleProps struct {
 	ID         string
 	Class      string
 	Attributes templ.Attributes
+	// Level is the heading level to render: 3 by default, 2 when the card title
+	// is itself the page's first heading under the h1.
+	Level int
 }
 
 type DescriptionProps struct {
@@ -87,20 +90,37 @@ templ Title(props ...TitleProps) {
 	if len(props) > 0 {
 		{{ p = props[0] }}
 	}
-	<h3
-		if p.ID != "" {
-			id={ p.ID }
-		}
-		class={
-			utils.TwMerge(
-				"text-lg font-semibold leading-none tracking-tight",
-				p.Class,
-			),
-		}
-		{ p.Attributes... }
-	>
-		{ children... }
-	</h3>
+	if p.Level == 2 {
+		<h2
+			if p.ID != "" {
+				id={ p.ID }
+			}
+			class={
+				utils.TwMerge(
+					"text-lg font-semibold leading-none tracking-tight",
+					p.Class,
+				),
+			}
+			{ p.Attributes... }
+		>
+			{ children... }
+		</h2>
+	} else {
+		<h3
+			if p.ID != "" {
+				id={ p.ID }
+			}
+			class={
+				utils.TwMerge(
+					"text-lg font-semibold leading-none tracking-tight",
+					p.Class,
+				),
+			}
+			{ p.Attributes... }
+		>
+			{ children... }
+		</h3>
+	}
 }
 
 templ Description(props ...DescriptionProps) {

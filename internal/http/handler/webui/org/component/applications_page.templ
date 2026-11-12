@@ -335,7 +335,7 @@ templ ApplicationForm(vmodel ApplicationFormVModel) {
 								@selectbox.Trigger(selectbox.TriggerProps{Name: "team_id", Disabled: readonly}) {
 									@selectbox.Value(selectbox.ValueProps{Placeholder: i18n.T(ctx, "org.applications.form.no_team")})
 								}
-								@selectbox.Content(selectbox.ContentProps{NoSearch: len(vmodel.Teams) < 8}) {
+								@selectbox.Content(selectbox.ContentProps{NoSearch: len(vmodel.Teams) < 8, SearchPlaceholder: i18n.T(ctx, "common.search")}) {
 									@selectbox.Group() {
 										@selectbox.Item(selectbox.ItemProps{Value: "", Selected: applicationTeamID(vmodel) == ""}) {
 											{ i18n.T(ctx, "org.applications.form.no_team") }

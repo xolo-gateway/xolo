@@ -239,15 +239,16 @@ templ planConstraintRow(idx int, c model.PlanConstraint, readonly bool, submitte
 		</div>
 		// ── Label (all kinds) ──────────────────────────────────────────────
 		<div class="space-y-1">
-			@form.Label() {
+			@form.Label(form.LabelProps{For: labelName}) {
 				{ i18n.T(ctx, "org.plan.constraint_label") }
 			}
 			@input.Input(input.Props{
+				ID:          labelName,
 				Name:        labelName,
 				Value:       c.Label,
 				Placeholder: i18n.T(ctx, "org.plan.constraint_label_placeholder"),
 				Disabled:    readonly,
-				Attributes:  templ.Attributes{"data-xolo-name": "plan_c{i}_label"},
+				Attributes:  templ.Attributes{"data-xolo-name": "plan_c{i}_label", "data-xolo-id": "plan_c{i}_label"},
 			})
 		</div>
 		// ── Rolling window fields ──────────────────────────────────────────
@@ -258,61 +259,65 @@ templ planConstraintRow(idx int, c model.PlanConstraint, readonly bool, submitte
 		>
 			<div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
 				<div class="space-y-1">
-					@form.Label() {
+					@form.Label(form.LabelProps{For: durationName}) {
 						{ i18n.T(ctx, "org.plan.duration") }
 					}
 					@form.Description() {
 						@templ.Raw(i18n.T(ctx, "org.plan.duration_help", planCode("5h"), planCode("168h"), planCode("30m")))
 					}
 					@input.Input(input.Props{
+						ID:          durationName,
 						Name:        durationName,
 						Value:       durStr,
 						Placeholder: i18n.T(ctx, "org.plan.duration_placeholder"),
 						Disabled:    readonly,
-						Attributes:  templ.Attributes{"data-xolo-name": "plan_c{i}_duration"},
+						Attributes:  templ.Attributes{"data-xolo-name": "plan_c{i}_duration", "data-xolo-id": "plan_c{i}_duration"},
 					})
 				</div>
 				<div class="space-y-1">
-					@form.Label() {
+					@form.Label(form.LabelProps{For: resetInName}) {
 						{ i18n.T(ctx, "org.plan.reset_in") }
 					}
 					@form.Description() {
 						@templ.Raw(i18n.T(ctx, "org.plan.reset_in_help", planCode("4h29m"), planCode("4d13h")))
 					}
 					@input.Input(input.Props{
+						ID:          resetInName,
 						Name:        resetInName,
 						Value:       resetInStr,
 						Placeholder: i18n.T(ctx, "org.plan.reset_in_placeholder"),
 						Disabled:    readonly,
-						Attributes:  templ.Attributes{"data-xolo-name": "plan_c{i}_reset_in"},
+						Attributes:  templ.Attributes{"data-xolo-name": "plan_c{i}_reset_in", "data-xolo-id": "plan_c{i}_reset_in"},
 					})
 				</div>
 			</div>
 			<div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
 				<div class="space-y-1">
-					@form.Label() {
+					@form.Label(form.LabelProps{For: tokenBudgetName}) {
 						{ i18n.T(ctx, "org.plan.token_budget") }
 					}
 					@input.Input(input.Props{
+						ID:          tokenBudgetName,
 						Name:        tokenBudgetName,
 						Type:        input.TypeNumber,
 						Value:       tokenBudgetStr,
 						Placeholder: i18n.T(ctx, "org.plan.token_budget_placeholder"),
 						Disabled:    readonly,
-						Attributes:  templ.Attributes{"data-xolo-name": "plan_c{i}_token_budget", "min": "0"},
+						Attributes:  templ.Attributes{"data-xolo-name": "plan_c{i}_token_budget", "data-xolo-id": "plan_c{i}_token_budget", "min": "0"},
 					})
 				</div>
 				<div class="space-y-1">
-					@form.Label() {
+					@form.Label(form.LabelProps{For: valueBudgetName}) {
 						{ i18n.T(ctx, "org.plan.value_budget") }
 					}
 					@input.Input(input.Props{
+						ID:          valueBudgetName,
 						Name:        valueBudgetName,
 						Type:        input.TypeNumber,
 						Value:       valueBudgetStr,
 						Placeholder: i18n.T(ctx, "org.plan.value_budget_placeholder"),
 						Disabled:    readonly,
-						Attributes:  templ.Attributes{"data-xolo-name": "plan_c{i}_value_budget", "min": "0", "step": "any"},
+						Attributes:  templ.Attributes{"data-xolo-name": "plan_c{i}_value_budget", "data-xolo-id": "plan_c{i}_value_budget", "min": "0", "step": "any"},
 					})
 				</div>
 			</div>
@@ -344,7 +349,7 @@ templ planConstraintRow(idx int, c model.PlanConstraint, readonly bool, submitte
 					}
 				</div>
 				<div class="space-y-1">
-					@form.Label() {
+					@form.Label(form.LabelProps{For: modelBudgetsName}) {
 						{ i18n.T(ctx, "org.plan.model_budgets") }
 					}
 					@form.Description() {
@@ -392,98 +397,104 @@ templ planConstraintRow(idx int, c model.PlanConstraint, readonly bool, submitte
 						}
 						<div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
 							<div class="space-y-1">
-								@form.Label() {
+								@form.Label(form.LabelProps{For: reserveName}) {
 									{ i18n.T(ctx, "org.plan.reserve") }
 								}
 								@form.Description() {
 									{ i18n.T(ctx, "org.plan.reserve_help") }
 								}
 								@input.Input(input.Props{
+									ID:          reserveName,
 									Name:        reserveName,
 									Type:        input.TypeNumber,
 									Value:       reserveStr,
 									Placeholder: "30",
 									Disabled:    readonly,
-									Attributes:  templ.Attributes{"data-xolo-name": "plan_c{i}_reserve_ratio", "min": "0", "max": "100", "step": "any"},
+									Attributes:  templ.Attributes{"data-xolo-name": "plan_c{i}_reserve_ratio", "data-xolo-id": "plan_c{i}_reserve_ratio", "min": "0", "max": "100", "step": "any"},
 								})
 							</div>
 							<div class="space-y-1">
-								@form.Label() {
+								@form.Label(form.LabelProps{For: paceSlackName}) {
 									{ i18n.T(ctx, "org.plan.pace_slack") }
 								}
 								@form.Description() {
 									{ i18n.T(ctx, "org.plan.pace_slack_help") }
 								}
 								@input.Input(input.Props{
+									ID:          paceSlackName,
 									Name:        paceSlackName,
 									Type:        input.TypeNumber,
 									Value:       paceSlackStr,
 									Placeholder: "15",
 									Disabled:    readonly,
-									Attributes:  templ.Attributes{"data-xolo-name": "plan_c{i}_pace_slack", "min": "0", "max": "100", "step": "any"},
+									Attributes:  templ.Attributes{"data-xolo-name": "plan_c{i}_pace_slack", "data-xolo-id": "plan_c{i}_pace_slack", "min": "0", "max": "100", "step": "any"},
 								})
 							</div>
 							<div class="space-y-1">
-								@form.Label() {
+								@form.Label(form.LabelProps{For: happyStartName}) {
 									{ i18n.T(ctx, "org.plan.happy_start") }
 								}
 								@form.Description() {
 									{ i18n.T(ctx, "org.plan.happy_start_help") }
 								}
 								@input.Input(input.Props{
+									ID:          happyStartName,
 									Name:        happyStartName,
 									Type:        input.TypeNumber,
 									Value:       happyStartStr,
 									Placeholder: "90",
 									Disabled:    readonly,
-									Attributes:  templ.Attributes{"data-xolo-name": "plan_c{i}_happy_hour_start", "min": "1", "max": "100", "step": "any"},
+									Attributes:  templ.Attributes{"data-xolo-name": "plan_c{i}_happy_hour_start", "data-xolo-id": "plan_c{i}_happy_hour_start", "min": "1", "max": "100", "step": "any"},
 								})
 							</div>
 							<div class="space-y-1">
-								@form.Label() {
+								@form.Label(form.LabelProps{For: happyLeadName}) {
 									{ i18n.T(ctx, "org.plan.happy_lead") }
 								}
 								@form.Description() {
 									{ i18n.T(ctx, "org.plan.happy_lead_help") }
 								}
 								@input.Input(input.Props{
+									ID:          happyLeadName,
 									Name:        happyLeadName,
 									Value:       happyLeadStr,
 									Placeholder: i18n.T(ctx, "org.plan.happy_lead_placeholder"),
 									Disabled:    readonly,
-									Attributes:  templ.Attributes{"data-xolo-name": "plan_c{i}_happy_hour_max_lead"},
+									Attributes:  templ.Attributes{"data-xolo-name": "plan_c{i}_happy_hour_max_lead", "data-xolo-id": "plan_c{i}_happy_hour_max_lead"},
 								})
 							</div>
 							<div class="space-y-1">
-								@form.Label() {
+								@form.Label(form.LabelProps{For: shareThresholdName}) {
 									{ i18n.T(ctx, "org.plan.share_threshold") }
 								}
 								@form.Description() {
 									{ i18n.T(ctx, "org.plan.share_threshold_help") }
 								}
 								@input.Input(input.Props{
+									ID:          shareThresholdName,
 									Name:        shareThresholdName,
 									Type:        input.TypeNumber,
 									Value:       shareThresholdStr,
 									Placeholder: "0",
 									Disabled:    readonly,
-									Attributes:  templ.Attributes{"data-xolo-name": "plan_c{i}_share_threshold", "min": "0", "max": "100", "step": "any"},
+									Attributes:  templ.Attributes{"data-xolo-name": "plan_c{i}_share_threshold", "data-xolo-id": "plan_c{i}_share_threshold", "min": "0", "max": "100", "step": "any"},
 								})
 							</div>
 							<div class="space-y-1">
-								@form.Label() {
+								@form.Label(form.LabelProps{For: openMultiplierName}) {
 									{ i18n.T(ctx, "org.plan.open_share_multiplier") }
 								}
 								@form.Description() {
 									{ i18n.T(ctx, "org.plan.open_share_multiplier_help") }
 								}
 								@input.Input(input.Props{
+									ID:          openMultiplierName,
 									Name:        openMultiplierName,
 									Type:        input.TypeNumber,
 									Value:       openMultiplierStr,
 									Placeholder: "2",
 									Disabled:    readonly,
-									Attributes:  templ.Attributes{"data-xolo-name": "plan_c{i}_open_share_multiplier", "min": "1", "max": "100", "step": "any"},
+									Attributes:  templ.Attributes{"data-xolo-name": "plan_c{i}_open_share_multiplier", "data-xolo-id": "plan_c{i}_open_share_multiplier", "min": "1", "max": "100", "step": "any"},
 								})
 							</div>
 						</div>
@@ -497,16 +508,17 @@ templ planConstraintRow(idx int, c model.PlanConstraint, readonly bool, submitte
 			class="space-y-1"
 			hidden?={ !showConcurrency }
 		>
-			@form.Label() {
+			@form.Label(form.LabelProps{For: maxConcName}) {
 				{ i18n.T(ctx, "org.plan.max_concurrent") }
 			}
 			@input.Input(input.Props{
+				ID:          maxConcName,
 				Name:        maxConcName,
 				Type:        input.TypeNumber,
 				Value:       maxConcStr,
 				Placeholder: i18n.T(ctx, "org.plan.max_concurrent_placeholder"),
 				Disabled:    readonly,
-				Attributes:  templ.Attributes{"data-xolo-name": "plan_c{i}_max_concurrent", "min": "1"},
+				Attributes:  templ.Attributes{"data-xolo-name": "plan_c{i}_max_concurrent", "data-xolo-id": "plan_c{i}_max_concurrent", "min": "1"},
 			})
 		</div>
 	</div>

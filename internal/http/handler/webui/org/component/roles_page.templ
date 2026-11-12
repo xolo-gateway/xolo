@@ -7,7 +7,6 @@ import (
 	"github.com/xolo-gateway/xolo/internal/core/rbac"
 	common "github.com/xolo-gateway/xolo/internal/http/handler/webui/common/component"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/button"
-	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/checkbox"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/icon"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/selectbox"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/table"
@@ -227,7 +226,7 @@ templ roleColumnHeader(vmodel RolesPageVModel, role model.Role, writable bool) {
 					Tooltip:     i18n.T(ctx, "org.roles.delete_tooltip"),
 					Title:       i18n.T(ctx, "org.roles.delete_title"),
 					Description: i18n.T(ctx, "org.roles.delete_description"),
-					Class:       "size-5 rounded-sm [&_svg]:size-3.5",
+					Class:       "size-6 rounded-sm [&_svg]:size-3.5",
 				})
 			}
 		</span>
@@ -261,31 +260,29 @@ templ permissionGroupRow(label string, roleCount int) {
 	}
 }
 
-// permissionCellControl renders one cell of the matrix: a checkbox when the
+// permissionCellControl renders one cell of the matrix: a toggle when the
 // reader may change it, a static mark otherwise.
 //
-// Each cell is its own form posting a single permission. A click then means
-// exactly what it looks like — one permission, one role — and it works without
-// JavaScript: the endpoint answers with a redirect, and hx-boost swaps the page
-// content in place when it is available.
+// Each cell is its own form posting a single permission: the toggle is a submit
+// button, since the click saves at once and no later submission follows.
 templ permissionCellControl(vmodel RolesPageVModel, role model.Role, perm rbac.Permission, writable bool) {
 	{{ cell := permissionCell(role, perm, writable) }}
 	switch {
 		case cell.AlwaysGranted:
 			<span
-				class="inline-flex size-4.5 items-center justify-center rounded-sm bg-success-tint text-success"
+				class="inline-flex size-6 items-center justify-center rounded-sm bg-success-tint text-success"
 				title={ i18n.T(ctx, "org.roles.owner_grants_all") }
 			>
-				@icon.Check(icon.Props{Class: "size-3"})
+				@icon.Check(icon.Props{Class: "size-3.5"})
 			</span>
 		case cell.ImpliedBy != "":
 			<!-- Accordée par une autre permission : une case à cocher serait un
 			piège, elle se recocherait seule à la lecture suivante. -->
 			<span
-				class="inline-flex size-4.5 items-center justify-center rounded-sm bg-success-tint text-success/60"
+				class="inline-flex size-6 items-center justify-center rounded-sm bg-success-tint text-success/60"
 				title={ i18n.T(ctx, "org.roles.implied_by", cell.ImpliedBy) }
 			>
-				@icon.Check(icon.Props{Class: "size-3"})
+				@icon.Check(icon.Props{Class: "size-3.5"})
 			</span>
 		case cell.Editable:
 			<form
@@ -299,16 +296,24 @@ templ permissionCellControl(vmodel RolesPageVModel, role model.Role, perm rbac.P
 				était en train de lire. -->
 				<input type="hidden" name="q" value={ vmodel.Query }/>
 				<input type="hidden" name="role" value={ vmodel.RoleID }/>
-				@checkbox.Checkbox(checkbox.Props{
-					ID:      "perm-" + string(role.ID()) + "-" + string(perm),
-					Name:    "granted",
-					Value:   "1",
-					Checked: cell.Granted,
+				if !cell.Granted {
+					<!-- Le bouton poste l'état visé : accorder se dit, révoquer se tait. -->
+					<input type="hidden" name="granted" value="1"/>
+				}
+				@button.Button(button.Props{
+					Type:    button.TypeSubmit,
+					Variant: button.VariantGhost,
+					Class:   permissionToggleClass(cell),
 					Attributes: templ.Attributes{
-						"data-xolo-submit-on-change": true,
-						"title":                      permissionToggleTitle(ctx, cell, perm),
+						"aria-pressed": strconv.FormatBool(cell.Granted),
+						"aria-label":   permissionToggleTitle(ctx, cell, perm),
+						"title":        permissionToggleTitle(ctx, cell, perm),
 					},
-				})
+				}) {
+					if cell.Granted {
+						@icon.Check(icon.Props{Size: 14})
+					}
+				}
 			</form>
 		default:
 			@permissionMark(cell.Effective())
@@ -323,12 +328,12 @@ templ permissionCellControl(vmodel RolesPageVModel, role model.Role, perm rbac.P
 templ permissionMark(granted bool) {
 	if granted {
 		<span
-			class="inline-flex size-4.5 items-center justify-center rounded-sm bg-success-tint text-success"
+			class="inline-flex size-6 items-center justify-center rounded-sm bg-success-tint text-success"
 			title={ i18n.T(ctx, "org.roles.granted") }
 		>
-			@icon.Check(icon.Props{Class: "size-3"})
+			@icon.Check(icon.Props{Class: "size-3.5"})
 		</span>
 	} else {
-		<span class="inline-block text-muted-foreground/40" title={ i18n.T(ctx, "org.roles.not_granted") }>·</span>
+		<span class="inline-flex size-6 items-center justify-center text-muted-foreground/40" title={ i18n.T(ctx, "org.roles.not_granted") }>·</span>
 	}
 }

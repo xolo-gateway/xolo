@@ -13,6 +13,7 @@ type JoinPageVModel struct {
 	Org        model.Organization
 	RoleName   string
 	LoginURL   string
+	AcceptURL  string
 	DeclineURL string
 }
 
@@ -40,7 +41,7 @@ templ JoinPage(vmodel JoinPageVModel) {
 						}
 					} else {
 						<div class="flex gap-2.5">
-							<form method="POST" class="flex-1">
+							<form method="POST" action={ templ.SafeURL(vmodel.AcceptURL) } class="flex-1">
 								@button.Button(button.Props{Type: button.TypeSubmit, Class: "w-full"}) {
 									{ i18n.T(ctx, "join.page.accept") }
 								}

@@ -104,7 +104,7 @@ templ OrgUsagePage(vmodel OrgUsagePageVModel) {
 								</div>
 							</div>
 							if budget != nil {
-								@common.BudgetGauge(pct, projectionPct, "")
+								@common.BudgetGauge(pct, projectionPct, "", usageBudgetTitle(ctx, periodLabel)+vmodel.BudgetTitle)
 							}
 							<div class="grid grid-cols-2 gap-3.5 sm:grid-cols-4">
 								@budgetPeriodCell(i18n.T(ctx, "org.usage.budget.today"), common.FormatCost(ctx, vmodel.DailyCost, vmodel.Currency))
@@ -469,7 +469,7 @@ templ orgUsageFilters(vmodel OrgUsagePageVModel) {
 			}
 		}
 		@popover.Content(popover.ContentProps{ID: "usage-filters", Placement: popover.PlacementBottomEnd, Class: "w-80 p-3.5"}) {
-			<form method="GET" class="flex flex-col gap-3">
+			<form method="GET" action={ templ.SafeURL(common.BaseURLString(ctx, common.WithPath("/orgs/", vmodel.Org.Slug(), "/usage"))) } class="flex flex-col gap-3">
 				<input type="hidden" name="range" value={ vmodel.Range }/>
 				if len(vmodel.Teams) > 0 {
 					@form.Item() {
@@ -480,7 +480,7 @@ templ orgUsageFilters(vmodel OrgUsagePageVModel) {
 							@selectbox.Trigger(selectbox.TriggerProps{ID: "team-trigger", Name: "team"}) {
 								@selectbox.Value(selectbox.ValueProps{Placeholder: i18n.T(ctx, "org.usage.filters.all_teams")})
 							}
-							@selectbox.Content(selectbox.ContentProps{NoSearch: len(vmodel.Teams) < 8}) {
+							@selectbox.Content(selectbox.ContentProps{NoSearch: len(vmodel.Teams) < 8, SearchPlaceholder: i18n.T(ctx, "common.search")}) {
 								@selectbox.Group() {
 									if !vmodel.TeamOnly {
 										@selectbox.Item(selectbox.ItemProps{Value: "", Selected: vmodel.TeamFilter == ""}) {

@@ -8,6 +8,7 @@ import (
 	common "github.com/xolo-gateway/xolo/internal/http/handler/webui/common/component"
 	"github.com/xolo-gateway/xolo/internal/i18n"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/button"
+	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/form"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/icon"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/input"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/pagination"
@@ -38,8 +39,12 @@ templ EventsExplorerPage(vmodel EventsExplorerVModel) {
 					<input type="hidden" name="view" value={ vmodel.View }/>
 				}
 				<div class="relative min-w-64 flex-1">
+					@form.Label(form.LabelProps{For: "query", Class: "sr-only"}) {
+						{ i18n.T(ctx, "org.events.search") }
+					}
 					<span class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 font-mono text-sm text-muted-foreground">&gt;</span>
 					@input.Input(input.Props{
+						ID:          "query",
 						Name:        "query",
 						Value:       vmodel.Query,
 						Placeholder: `{type="proxy.request"} | model="gpt-4o"`,
@@ -104,25 +109,19 @@ templ EventsExplorerPage(vmodel EventsExplorerVModel) {
 				// only the two arrows and the current page as a marker.
 				@pagination.Pagination() {
 					@pagination.Content() {
-						@pagination.Item() {
-							@pagination.Previous(pagination.PreviousProps{
-								Label:    i18n.T(ctx, "org.events.previous"),
-								Href:     explorerHref(base, vmodel.Scope, vmodel.Query, vmodel.Page-1, vmodel.View),
-								Disabled: !vmodel.HasPrev,
-							})
+						@pagination.Previous(pagination.PreviousProps{
+							Label:    i18n.T(ctx, "org.events.previous"),
+							Href:     explorerHref(base, vmodel.Scope, vmodel.Query, vmodel.Page-1, vmodel.View),
+							Disabled: !vmodel.HasPrev,
+						})
+						@pagination.Link(pagination.LinkProps{IsActive: true, Disabled: true}) {
+							{ strconv.Itoa(vmodel.Page) }
 						}
-						@pagination.Item() {
-							@pagination.Link(pagination.LinkProps{IsActive: true, Disabled: true}) {
-								{ strconv.Itoa(vmodel.Page) }
-							}
-						}
-						@pagination.Item() {
-							@pagination.Next(pagination.NextProps{
-								Label:    i18n.T(ctx, "org.events.next"),
-								Href:     explorerHref(base, vmodel.Scope, vmodel.Query, vmodel.Page+1, vmodel.View),
-								Disabled: !vmodel.HasNext,
-							})
-						}
+						@pagination.Next(pagination.NextProps{
+							Label:    i18n.T(ctx, "org.events.next"),
+							Href:     explorerHref(base, vmodel.Scope, vmodel.Query, vmodel.Page+1, vmodel.View),
+							Disabled: !vmodel.HasNext,
+						})
 					}
 				}
 			}

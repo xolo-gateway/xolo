@@ -255,6 +255,14 @@
       row.querySelectorAll("[data-xolo-id]").forEach(function (el) {
         el.id = el.dataset.xoloId.replace(/\{i\}/g, index);
       });
+      // Et les étiquettes qui visent ces identifiants : `for` doit suivre l'id,
+      // sinon la ligne clonée garde un libellé qui pointe sur le champ de la
+      // ligne modèle (ou sur rien) et le champ perd son nom accessible.
+      row.querySelectorAll("label[for]").forEach(function (label) {
+        if (label.htmlFor.indexOf("{i}") !== -1) {
+          label.htmlFor = label.htmlFor.replace(/\{i\}/g, index);
+        }
+      });
       syncRowVariant(row);
     });
 

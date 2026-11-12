@@ -41,6 +41,9 @@ type Props struct {
 	FileAccept       string
 	HasError         bool
 	NoTogglePassword bool
+	// PasswordToggleLabel is the translated name of the show/hide button, which
+	// the component cannot translate itself (no request context).
+	PasswordToggleLabel string
 }
 
 templ Input(props ...Props) {
@@ -104,11 +107,15 @@ templ Input(props ...Props) {
 			{ p.Attributes... }
 		/>
 		if p.Type == TypePassword && !p.NoTogglePassword {
+			{{ toggleAttributes := templ.Attributes{"data-tui-input-toggle-password": p.ID} }}
+			if p.PasswordToggleLabel != "" {
+				{{ toggleAttributes["aria-label"] = p.PasswordToggleLabel }}
+			}
 			@button.Button(button.Props{
 				Size:       button.SizeIcon,
 				Variant:    button.VariantGhost,
 				Class:      "absolute right-0 top-1/2 -translate-y-1/2 opacity-50 cursor-pointer",
-				Attributes: templ.Attributes{"data-tui-input-toggle-password": p.ID},
+				Attributes: toggleAttributes,
 			}) {
 				<span class="icon-open block">
 					@icon.Eye(icon.Props{

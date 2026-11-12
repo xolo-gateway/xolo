@@ -612,16 +612,17 @@ func planConstraintRow(idx int, c model.PlanConstraint, readonly bool, submitted
 			}
 			return nil
 		})
-		templ_7745c5c3_Err = form.Label().Render(templ.WithChildren(ctx, templ_7745c5c3_Var24), templ_7745c5c3_Buffer)
+		templ_7745c5c3_Err = form.Label(form.LabelProps{For: labelName}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var24), templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		templ_7745c5c3_Err = input.Input(input.Props{
+			ID:          labelName,
 			Name:        labelName,
 			Value:       c.Label,
 			Placeholder: i18n.T(ctx, "org.plan.constraint_label_placeholder"),
 			Disabled:    readonly,
-			Attributes:  templ.Attributes{"data-xolo-name": "plan_c{i}_label"},
+			Attributes:  templ.Attributes{"data-xolo-name": "plan_c{i}_label", "data-xolo-id": "plan_c{i}_label"},
 		}).Render(ctx, templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
@@ -655,7 +656,7 @@ func planConstraintRow(idx int, c model.PlanConstraint, readonly bool, submitted
 			var templ_7745c5c3_Var27 string
 			templ_7745c5c3_Var27, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.plan.duration"))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/subscription_plan_editor.templ`, Line: 262, Col: 40}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/subscription_plan_editor.templ`, Line: 263, Col: 40}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var27))
 			if templ_7745c5c3_Err != nil {
@@ -663,7 +664,7 @@ func planConstraintRow(idx int, c model.PlanConstraint, readonly bool, submitted
 			}
 			return nil
 		})
-		templ_7745c5c3_Err = form.Label().Render(templ.WithChildren(ctx, templ_7745c5c3_Var26), templ_7745c5c3_Buffer)
+		templ_7745c5c3_Err = form.Label(form.LabelProps{For: durationName}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var26), templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -690,11 +691,12 @@ func planConstraintRow(idx int, c model.PlanConstraint, readonly bool, submitted
 			return templ_7745c5c3_Err
 		}
 		templ_7745c5c3_Err = input.Input(input.Props{
+			ID:          durationName,
 			Name:        durationName,
 			Value:       durStr,
 			Placeholder: i18n.T(ctx, "org.plan.duration_placeholder"),
 			Disabled:    readonly,
-			Attributes:  templ.Attributes{"data-xolo-name": "plan_c{i}_duration"},
+			Attributes:  templ.Attributes{"data-xolo-name": "plan_c{i}_duration", "data-xolo-id": "plan_c{i}_duration"},
 		}).Render(ctx, templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
@@ -718,7 +720,7 @@ func planConstraintRow(idx int, c model.PlanConstraint, readonly bool, submitted
 			var templ_7745c5c3_Var30 string
 			templ_7745c5c3_Var30, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.plan.reset_in"))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/subscription_plan_editor.templ`, Line: 277, Col: 40}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/subscription_plan_editor.templ`, Line: 279, Col: 40}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var30))
 			if templ_7745c5c3_Err != nil {
@@ -726,7 +728,7 @@ func planConstraintRow(idx int, c model.PlanConstraint, readonly bool, submitted
 			}
 			return nil
 		})
-		templ_7745c5c3_Err = form.Label().Render(templ.WithChildren(ctx, templ_7745c5c3_Var29), templ_7745c5c3_Buffer)
+		templ_7745c5c3_Err = form.Label(form.LabelProps{For: resetInName}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var29), templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -753,11 +755,12 @@ func planConstraintRow(idx int, c model.PlanConstraint, readonly bool, submitted
 			return templ_7745c5c3_Err
 		}
 		templ_7745c5c3_Err = input.Input(input.Props{
+			ID:          resetInName,
 			Name:        resetInName,
 			Value:       resetInStr,
 			Placeholder: i18n.T(ctx, "org.plan.reset_in_placeholder"),
 			Disabled:    readonly,
-			Attributes:  templ.Attributes{"data-xolo-name": "plan_c{i}_reset_in"},
+			Attributes:  templ.Attributes{"data-xolo-name": "plan_c{i}_reset_in", "data-xolo-id": "plan_c{i}_reset_in"},
 		}).Render(ctx, templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
@@ -781,7 +784,7 @@ func planConstraintRow(idx int, c model.PlanConstraint, readonly bool, submitted
 			var templ_7745c5c3_Var33 string
 			templ_7745c5c3_Var33, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.plan.token_budget"))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/subscription_plan_editor.templ`, Line: 294, Col: 44}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/subscription_plan_editor.templ`, Line: 297, Col: 44}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var33))
 			if templ_7745c5c3_Err != nil {
@@ -789,17 +792,18 @@ func planConstraintRow(idx int, c model.PlanConstraint, readonly bool, submitted
 			}
 			return nil
 		})
-		templ_7745c5c3_Err = form.Label().Render(templ.WithChildren(ctx, templ_7745c5c3_Var32), templ_7745c5c3_Buffer)
+		templ_7745c5c3_Err = form.Label(form.LabelProps{For: tokenBudgetName}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var32), templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		templ_7745c5c3_Err = input.Input(input.Props{
+			ID:          tokenBudgetName,
 			Name:        tokenBudgetName,
 			Type:        input.TypeNumber,
 			Value:       tokenBudgetStr,
 			Placeholder: i18n.T(ctx, "org.plan.token_budget_placeholder"),
 			Disabled:    readonly,
-			Attributes:  templ.Attributes{"data-xolo-name": "plan_c{i}_token_budget", "min": "0"},
+			Attributes:  templ.Attributes{"data-xolo-name": "plan_c{i}_token_budget", "data-xolo-id": "plan_c{i}_token_budget", "min": "0"},
 		}).Render(ctx, templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
@@ -823,7 +827,7 @@ func planConstraintRow(idx int, c model.PlanConstraint, readonly bool, submitted
 			var templ_7745c5c3_Var35 string
 			templ_7745c5c3_Var35, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.plan.value_budget"))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/subscription_plan_editor.templ`, Line: 307, Col: 44}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/subscription_plan_editor.templ`, Line: 311, Col: 44}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var35))
 			if templ_7745c5c3_Err != nil {
@@ -831,17 +835,18 @@ func planConstraintRow(idx int, c model.PlanConstraint, readonly bool, submitted
 			}
 			return nil
 		})
-		templ_7745c5c3_Err = form.Label().Render(templ.WithChildren(ctx, templ_7745c5c3_Var34), templ_7745c5c3_Buffer)
+		templ_7745c5c3_Err = form.Label(form.LabelProps{For: valueBudgetName}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var34), templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		templ_7745c5c3_Err = input.Input(input.Props{
+			ID:          valueBudgetName,
 			Name:        valueBudgetName,
 			Type:        input.TypeNumber,
 			Value:       valueBudgetStr,
 			Placeholder: i18n.T(ctx, "org.plan.value_budget_placeholder"),
 			Disabled:    readonly,
-			Attributes:  templ.Attributes{"data-xolo-name": "plan_c{i}_value_budget", "min": "0", "step": "any"},
+			Attributes:  templ.Attributes{"data-xolo-name": "plan_c{i}_value_budget", "data-xolo-id": "plan_c{i}_value_budget", "min": "0", "step": "any"},
 		}).Render(ctx, templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
@@ -865,7 +870,7 @@ func planConstraintRow(idx int, c model.PlanConstraint, readonly bool, submitted
 			var templ_7745c5c3_Var37 string
 			templ_7745c5c3_Var37, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.plan.scope"))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/subscription_plan_editor.templ`, Line: 323, Col: 37}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/subscription_plan_editor.templ`, Line: 328, Col: 37}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var37))
 			if templ_7745c5c3_Err != nil {
@@ -901,7 +906,7 @@ func planConstraintRow(idx int, c model.PlanConstraint, readonly bool, submitted
 			var templ_7745c5c3_Var38 string
 			templ_7745c5c3_Var38, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, opt.LabelKey))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/subscription_plan_editor.templ`, Line: 337, Col: 67}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/subscription_plan_editor.templ`, Line: 342, Col: 67}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var38))
 			if templ_7745c5c3_Err != nil {
@@ -914,7 +919,7 @@ func planConstraintRow(idx int, c model.PlanConstraint, readonly bool, submitted
 			var templ_7745c5c3_Var39 string
 			templ_7745c5c3_Var39, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, opt.HelpKey))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/subscription_plan_editor.templ`, Line: 338, Col: 84}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/subscription_plan_editor.templ`, Line: 343, Col: 84}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var39))
 			if templ_7745c5c3_Err != nil {
@@ -940,7 +945,7 @@ func planConstraintRow(idx int, c model.PlanConstraint, readonly bool, submitted
 			var templ_7745c5c3_Var41 string
 			templ_7745c5c3_Var41, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.plan.scope_help"))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/subscription_plan_editor.templ`, Line: 343, Col: 42}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/subscription_plan_editor.templ`, Line: 348, Col: 42}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var41))
 			if templ_7745c5c3_Err != nil {
@@ -971,7 +976,7 @@ func planConstraintRow(idx int, c model.PlanConstraint, readonly bool, submitted
 			var templ_7745c5c3_Var43 string
 			templ_7745c5c3_Var43, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.plan.model_budgets"))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/subscription_plan_editor.templ`, Line: 348, Col: 45}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/subscription_plan_editor.templ`, Line: 353, Col: 45}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var43))
 			if templ_7745c5c3_Err != nil {
@@ -979,7 +984,7 @@ func planConstraintRow(idx int, c model.PlanConstraint, readonly bool, submitted
 			}
 			return nil
 		})
-		templ_7745c5c3_Err = form.Label().Render(templ.WithChildren(ctx, templ_7745c5c3_Var42), templ_7745c5c3_Buffer)
+		templ_7745c5c3_Err = form.Label(form.LabelProps{For: modelBudgetsName}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var42), templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -1049,7 +1054,7 @@ func planConstraintRow(idx int, c model.PlanConstraint, readonly bool, submitted
 				var templ_7745c5c3_Var47 string
 				templ_7745c5c3_Var47, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.plan.fairshare"))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/subscription_plan_editor.templ`, Line: 386, Col: 40}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/subscription_plan_editor.templ`, Line: 391, Col: 40}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var47))
 				if templ_7745c5c3_Err != nil {
@@ -1096,7 +1101,7 @@ func planConstraintRow(idx int, c model.PlanConstraint, readonly bool, submitted
 					var templ_7745c5c3_Var50 string
 					templ_7745c5c3_Var50, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.plan.fairshare_help"))
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/subscription_plan_editor.templ`, Line: 391, Col: 47}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/subscription_plan_editor.templ`, Line: 396, Col: 47}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var50))
 					if templ_7745c5c3_Err != nil {
@@ -1127,7 +1132,7 @@ func planConstraintRow(idx int, c model.PlanConstraint, readonly bool, submitted
 					var templ_7745c5c3_Var52 string
 					templ_7745c5c3_Var52, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.plan.reserve"))
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/subscription_plan_editor.templ`, Line: 396, Col: 42}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/subscription_plan_editor.templ`, Line: 401, Col: 42}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var52))
 					if templ_7745c5c3_Err != nil {
@@ -1135,7 +1140,7 @@ func planConstraintRow(idx int, c model.PlanConstraint, readonly bool, submitted
 					}
 					return nil
 				})
-				templ_7745c5c3_Err = form.Label().Render(templ.WithChildren(ctx, templ_7745c5c3_Var51), templ_7745c5c3_Buffer)
+				templ_7745c5c3_Err = form.Label(form.LabelProps{For: reserveName}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var51), templ_7745c5c3_Buffer)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -1154,7 +1159,7 @@ func planConstraintRow(idx int, c model.PlanConstraint, readonly bool, submitted
 					var templ_7745c5c3_Var54 string
 					templ_7745c5c3_Var54, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.plan.reserve_help"))
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/subscription_plan_editor.templ`, Line: 399, Col: 47}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/subscription_plan_editor.templ`, Line: 404, Col: 47}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var54))
 					if templ_7745c5c3_Err != nil {
@@ -1167,12 +1172,13 @@ func planConstraintRow(idx int, c model.PlanConstraint, readonly bool, submitted
 					return templ_7745c5c3_Err
 				}
 				templ_7745c5c3_Err = input.Input(input.Props{
+					ID:          reserveName,
 					Name:        reserveName,
 					Type:        input.TypeNumber,
 					Value:       reserveStr,
 					Placeholder: "30",
 					Disabled:    readonly,
-					Attributes:  templ.Attributes{"data-xolo-name": "plan_c{i}_reserve_ratio", "min": "0", "max": "100", "step": "any"},
+					Attributes:  templ.Attributes{"data-xolo-name": "plan_c{i}_reserve_ratio", "data-xolo-id": "plan_c{i}_reserve_ratio", "min": "0", "max": "100", "step": "any"},
 				}).Render(ctx, templ_7745c5c3_Buffer)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
@@ -1196,7 +1202,7 @@ func planConstraintRow(idx int, c model.PlanConstraint, readonly bool, submitted
 					var templ_7745c5c3_Var56 string
 					templ_7745c5c3_Var56, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.plan.pace_slack"))
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/subscription_plan_editor.templ`, Line: 412, Col: 45}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/subscription_plan_editor.templ`, Line: 418, Col: 45}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var56))
 					if templ_7745c5c3_Err != nil {
@@ -1204,7 +1210,7 @@ func planConstraintRow(idx int, c model.PlanConstraint, readonly bool, submitted
 					}
 					return nil
 				})
-				templ_7745c5c3_Err = form.Label().Render(templ.WithChildren(ctx, templ_7745c5c3_Var55), templ_7745c5c3_Buffer)
+				templ_7745c5c3_Err = form.Label(form.LabelProps{For: paceSlackName}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var55), templ_7745c5c3_Buffer)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -1223,7 +1229,7 @@ func planConstraintRow(idx int, c model.PlanConstraint, readonly bool, submitted
 					var templ_7745c5c3_Var58 string
 					templ_7745c5c3_Var58, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.plan.pace_slack_help"))
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/subscription_plan_editor.templ`, Line: 415, Col: 50}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/subscription_plan_editor.templ`, Line: 421, Col: 50}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var58))
 					if templ_7745c5c3_Err != nil {
@@ -1236,12 +1242,13 @@ func planConstraintRow(idx int, c model.PlanConstraint, readonly bool, submitted
 					return templ_7745c5c3_Err
 				}
 				templ_7745c5c3_Err = input.Input(input.Props{
+					ID:          paceSlackName,
 					Name:        paceSlackName,
 					Type:        input.TypeNumber,
 					Value:       paceSlackStr,
 					Placeholder: "15",
 					Disabled:    readonly,
-					Attributes:  templ.Attributes{"data-xolo-name": "plan_c{i}_pace_slack", "min": "0", "max": "100", "step": "any"},
+					Attributes:  templ.Attributes{"data-xolo-name": "plan_c{i}_pace_slack", "data-xolo-id": "plan_c{i}_pace_slack", "min": "0", "max": "100", "step": "any"},
 				}).Render(ctx, templ_7745c5c3_Buffer)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
@@ -1265,7 +1272,7 @@ func planConstraintRow(idx int, c model.PlanConstraint, readonly bool, submitted
 					var templ_7745c5c3_Var60 string
 					templ_7745c5c3_Var60, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.plan.happy_start"))
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/subscription_plan_editor.templ`, Line: 428, Col: 46}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/subscription_plan_editor.templ`, Line: 435, Col: 46}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var60))
 					if templ_7745c5c3_Err != nil {
@@ -1273,7 +1280,7 @@ func planConstraintRow(idx int, c model.PlanConstraint, readonly bool, submitted
 					}
 					return nil
 				})
-				templ_7745c5c3_Err = form.Label().Render(templ.WithChildren(ctx, templ_7745c5c3_Var59), templ_7745c5c3_Buffer)
+				templ_7745c5c3_Err = form.Label(form.LabelProps{For: happyStartName}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var59), templ_7745c5c3_Buffer)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -1292,7 +1299,7 @@ func planConstraintRow(idx int, c model.PlanConstraint, readonly bool, submitted
 					var templ_7745c5c3_Var62 string
 					templ_7745c5c3_Var62, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.plan.happy_start_help"))
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/subscription_plan_editor.templ`, Line: 431, Col: 51}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/subscription_plan_editor.templ`, Line: 438, Col: 51}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var62))
 					if templ_7745c5c3_Err != nil {
@@ -1305,12 +1312,13 @@ func planConstraintRow(idx int, c model.PlanConstraint, readonly bool, submitted
 					return templ_7745c5c3_Err
 				}
 				templ_7745c5c3_Err = input.Input(input.Props{
+					ID:          happyStartName,
 					Name:        happyStartName,
 					Type:        input.TypeNumber,
 					Value:       happyStartStr,
 					Placeholder: "90",
 					Disabled:    readonly,
-					Attributes:  templ.Attributes{"data-xolo-name": "plan_c{i}_happy_hour_start", "min": "1", "max": "100", "step": "any"},
+					Attributes:  templ.Attributes{"data-xolo-name": "plan_c{i}_happy_hour_start", "data-xolo-id": "plan_c{i}_happy_hour_start", "min": "1", "max": "100", "step": "any"},
 				}).Render(ctx, templ_7745c5c3_Buffer)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
@@ -1334,7 +1342,7 @@ func planConstraintRow(idx int, c model.PlanConstraint, readonly bool, submitted
 					var templ_7745c5c3_Var64 string
 					templ_7745c5c3_Var64, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.plan.happy_lead"))
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/subscription_plan_editor.templ`, Line: 444, Col: 45}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/subscription_plan_editor.templ`, Line: 452, Col: 45}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var64))
 					if templ_7745c5c3_Err != nil {
@@ -1342,7 +1350,7 @@ func planConstraintRow(idx int, c model.PlanConstraint, readonly bool, submitted
 					}
 					return nil
 				})
-				templ_7745c5c3_Err = form.Label().Render(templ.WithChildren(ctx, templ_7745c5c3_Var63), templ_7745c5c3_Buffer)
+				templ_7745c5c3_Err = form.Label(form.LabelProps{For: happyLeadName}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var63), templ_7745c5c3_Buffer)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -1361,7 +1369,7 @@ func planConstraintRow(idx int, c model.PlanConstraint, readonly bool, submitted
 					var templ_7745c5c3_Var66 string
 					templ_7745c5c3_Var66, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.plan.happy_lead_help"))
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/subscription_plan_editor.templ`, Line: 447, Col: 50}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/subscription_plan_editor.templ`, Line: 455, Col: 50}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var66))
 					if templ_7745c5c3_Err != nil {
@@ -1374,11 +1382,12 @@ func planConstraintRow(idx int, c model.PlanConstraint, readonly bool, submitted
 					return templ_7745c5c3_Err
 				}
 				templ_7745c5c3_Err = input.Input(input.Props{
+					ID:          happyLeadName,
 					Name:        happyLeadName,
 					Value:       happyLeadStr,
 					Placeholder: i18n.T(ctx, "org.plan.happy_lead_placeholder"),
 					Disabled:    readonly,
-					Attributes:  templ.Attributes{"data-xolo-name": "plan_c{i}_happy_hour_max_lead"},
+					Attributes:  templ.Attributes{"data-xolo-name": "plan_c{i}_happy_hour_max_lead", "data-xolo-id": "plan_c{i}_happy_hour_max_lead"},
 				}).Render(ctx, templ_7745c5c3_Buffer)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
@@ -1402,7 +1411,7 @@ func planConstraintRow(idx int, c model.PlanConstraint, readonly bool, submitted
 					var templ_7745c5c3_Var68 string
 					templ_7745c5c3_Var68, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.plan.share_threshold"))
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/subscription_plan_editor.templ`, Line: 459, Col: 50}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/subscription_plan_editor.templ`, Line: 468, Col: 50}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var68))
 					if templ_7745c5c3_Err != nil {
@@ -1410,7 +1419,7 @@ func planConstraintRow(idx int, c model.PlanConstraint, readonly bool, submitted
 					}
 					return nil
 				})
-				templ_7745c5c3_Err = form.Label().Render(templ.WithChildren(ctx, templ_7745c5c3_Var67), templ_7745c5c3_Buffer)
+				templ_7745c5c3_Err = form.Label(form.LabelProps{For: shareThresholdName}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var67), templ_7745c5c3_Buffer)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -1429,7 +1438,7 @@ func planConstraintRow(idx int, c model.PlanConstraint, readonly bool, submitted
 					var templ_7745c5c3_Var70 string
 					templ_7745c5c3_Var70, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.plan.share_threshold_help"))
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/subscription_plan_editor.templ`, Line: 462, Col: 55}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/subscription_plan_editor.templ`, Line: 471, Col: 55}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var70))
 					if templ_7745c5c3_Err != nil {
@@ -1442,12 +1451,13 @@ func planConstraintRow(idx int, c model.PlanConstraint, readonly bool, submitted
 					return templ_7745c5c3_Err
 				}
 				templ_7745c5c3_Err = input.Input(input.Props{
+					ID:          shareThresholdName,
 					Name:        shareThresholdName,
 					Type:        input.TypeNumber,
 					Value:       shareThresholdStr,
 					Placeholder: "0",
 					Disabled:    readonly,
-					Attributes:  templ.Attributes{"data-xolo-name": "plan_c{i}_share_threshold", "min": "0", "max": "100", "step": "any"},
+					Attributes:  templ.Attributes{"data-xolo-name": "plan_c{i}_share_threshold", "data-xolo-id": "plan_c{i}_share_threshold", "min": "0", "max": "100", "step": "any"},
 				}).Render(ctx, templ_7745c5c3_Buffer)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
@@ -1471,7 +1481,7 @@ func planConstraintRow(idx int, c model.PlanConstraint, readonly bool, submitted
 					var templ_7745c5c3_Var72 string
 					templ_7745c5c3_Var72, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.plan.open_share_multiplier"))
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/subscription_plan_editor.templ`, Line: 475, Col: 56}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/subscription_plan_editor.templ`, Line: 485, Col: 56}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var72))
 					if templ_7745c5c3_Err != nil {
@@ -1479,7 +1489,7 @@ func planConstraintRow(idx int, c model.PlanConstraint, readonly bool, submitted
 					}
 					return nil
 				})
-				templ_7745c5c3_Err = form.Label().Render(templ.WithChildren(ctx, templ_7745c5c3_Var71), templ_7745c5c3_Buffer)
+				templ_7745c5c3_Err = form.Label(form.LabelProps{For: openMultiplierName}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var71), templ_7745c5c3_Buffer)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -1498,7 +1508,7 @@ func planConstraintRow(idx int, c model.PlanConstraint, readonly bool, submitted
 					var templ_7745c5c3_Var74 string
 					templ_7745c5c3_Var74, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.plan.open_share_multiplier_help"))
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/subscription_plan_editor.templ`, Line: 478, Col: 61}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/subscription_plan_editor.templ`, Line: 488, Col: 61}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var74))
 					if templ_7745c5c3_Err != nil {
@@ -1511,12 +1521,13 @@ func planConstraintRow(idx int, c model.PlanConstraint, readonly bool, submitted
 					return templ_7745c5c3_Err
 				}
 				templ_7745c5c3_Err = input.Input(input.Props{
+					ID:          openMultiplierName,
 					Name:        openMultiplierName,
 					Type:        input.TypeNumber,
 					Value:       openMultiplierStr,
 					Placeholder: "2",
 					Disabled:    readonly,
-					Attributes:  templ.Attributes{"data-xolo-name": "plan_c{i}_open_share_multiplier", "min": "1", "max": "100", "step": "any"},
+					Attributes:  templ.Attributes{"data-xolo-name": "plan_c{i}_open_share_multiplier", "data-xolo-id": "plan_c{i}_open_share_multiplier", "min": "1", "max": "100", "step": "any"},
 				}).Render(ctx, templ_7745c5c3_Buffer)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
@@ -1574,7 +1585,7 @@ func planConstraintRow(idx int, c model.PlanConstraint, readonly bool, submitted
 			var templ_7745c5c3_Var76 string
 			templ_7745c5c3_Var76, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.plan.max_concurrent"))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/subscription_plan_editor.templ`, Line: 501, Col: 44}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/subscription_plan_editor.templ`, Line: 512, Col: 44}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var76))
 			if templ_7745c5c3_Err != nil {
@@ -1582,17 +1593,18 @@ func planConstraintRow(idx int, c model.PlanConstraint, readonly bool, submitted
 			}
 			return nil
 		})
-		templ_7745c5c3_Err = form.Label().Render(templ.WithChildren(ctx, templ_7745c5c3_Var75), templ_7745c5c3_Buffer)
+		templ_7745c5c3_Err = form.Label(form.LabelProps{For: maxConcName}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var75), templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		templ_7745c5c3_Err = input.Input(input.Props{
+			ID:          maxConcName,
 			Name:        maxConcName,
 			Type:        input.TypeNumber,
 			Value:       maxConcStr,
 			Placeholder: i18n.T(ctx, "org.plan.max_concurrent_placeholder"),
 			Disabled:    readonly,
-			Attributes:  templ.Attributes{"data-xolo-name": "plan_c{i}_max_concurrent", "min": "1"},
+			Attributes:  templ.Attributes{"data-xolo-name": "plan_c{i}_max_concurrent", "data-xolo-id": "plan_c{i}_max_concurrent", "min": "1"},
 		}).Render(ctx, templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err

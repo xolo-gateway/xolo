@@ -519,13 +519,30 @@ func permissionCell(role model.Role, perm rbac.Permission, writable bool) Permis
 	return cell
 }
 
-// permissionToggleTitle words the tooltip of a matrix checkbox, stating the
-// action rather than the state — the checkbox already shows the state.
+// permissionToggleTitle words the accessible name of a matrix toggle, stating
+// the action rather than the state — the toggle already shows the state.
 func permissionToggleTitle(ctx context.Context, cell PermissionCell, perm rbac.Permission) string {
 	if cell.Granted {
 		return i18n.T(ctx, "org.permissions.toggle_revoke", string(perm))
 	}
 	return i18n.T(ctx, "org.permissions.toggle_grant", string(perm))
+}
+
+// permissionToggleClass draws a matrix toggle as the checkbox it replaces.
+//
+// size-6 is the largest control size the design system offers, the same as
+// checkbox.templ. Under the theme's density scale (--spacing: 0.2222rem, see
+// misc/tailwind/templui.css) it renders at about 21.3px, short of the 24px of
+// WCAG 2.2 criterion 2.5.8 — which is why the spacing exception is what makes
+// the matrix pass, and why the padding matters: table.Cell's "p-2" leaves the
+// targets 40px apart centre to centre. Cutting that padding, or reusing this
+// class outside a table, would break the criterion silently.
+func permissionToggleClass(cell PermissionCell) string {
+	class := "size-6 shrink-0 rounded-[4px] border border-input p-0 has-[>svg]:px-0 shadow-xs"
+	if cell.Granted {
+		return class + " border-primary bg-primary text-primary-foreground"
+	}
+	return class
 }
 
 // roleGrants reports whether a role authorizes a permission, for one cell of the
