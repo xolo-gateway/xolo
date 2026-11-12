@@ -14,6 +14,7 @@ import (
 	"github.com/xolo-gateway/xolo/internal/core/port"
 	httpCtx "github.com/xolo-gateway/xolo/internal/http/context"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/admin/component"
+	webcommon "github.com/xolo-gateway/xolo/internal/http/handler/webui/common"
 	common "github.com/xolo-gateway/xolo/internal/http/handler/webui/common/component"
 	"github.com/xolo-gateway/xolo/internal/i18n"
 )
@@ -37,7 +38,9 @@ func (h *Handler) getIndexPage(w http.ResponseWriter, r *http.Request) {
 	orgs, _, err := h.orgStore.ListOrgs(ctx, port.ListOrgsOptions{TenantID: &tenantID})
 	if err != nil {
 		slog.ErrorContext(ctx, "could not list orgs", slogx.Error(err))
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		// La coquille est hx-boostée et ne remplace que #content : une réponse
+		// en texte brut viderait la page.
+		webcommon.HandleError(w, r, errors.WithStack(err))
 		return
 	}
 

@@ -14,13 +14,30 @@ const (
 	OrgStatusInactive = "inactive"
 )
 
-// orgFormValue reads a creation field from the submitted form, empty on a fresh
-// GET.
-func orgFormValue(vmodel OrgFormVModel, field string) string {
+// orgFormValue returns the value a form field must show: what was posted when the
+// form comes back with an error, the fallback otherwise. The creation form and
+// the edit form share it, so a refused submit never drops the operator's input.
+func orgFormValue(vmodel OrgFormVModel, field, fallback string) string {
 	if vmodel.Submitted == nil {
-		return ""
+		return fallback
 	}
-	return vmodel.Submitted.Get(field)
+	if _, posted := vmodel.Submitted[field]; posted {
+		return vmodel.Submitted.Get(field)
+	}
+	return fallback
+}
+
+// orgFormActive reports whether the edit form's "active" checkbox must be ticked:
+// what was posted when the form comes back with an error, the stored state
+// otherwise.
+func orgFormActive(vmodel OrgFormVModel, fallback bool) bool {
+	if vmodel.Submitted == nil {
+		return fallback
+	}
+	if _, posted := vmodel.Submitted["active"]; posted {
+		return vmodel.Submitted.Get("active") == "on"
+	}
+	return fallback
 }
 
 // orgsSegments builds the filter segments of the organisation list.

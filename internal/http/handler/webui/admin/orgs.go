@@ -1,6 +1,7 @@
 package admin
 
 import (
+	"context"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -29,7 +30,9 @@ func (h *Handler) getOrgsPage(w http.ResponseWriter, r *http.Request) {
 	orgs, _, err := h.orgStore.ListOrgs(ctx, port.ListOrgsOptions{TenantID: &tenantID})
 	if err != nil {
 		slog.ErrorContext(ctx, "could not list orgs", slogx.Error(err))
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		// La coquille est hx-boostée et ne remplace que #content : une réponse
+		// en texte brut viderait la page.
+		webcommon.HandleError(w, r, errors.WithStack(err))
 		return
 	}
 
@@ -112,12 +115,8 @@ func (h *Handler) getNewOrgPage(w http.ResponseWriter, r *http.Request) {
 		AppLayoutVModel: common.AppLayoutVModel{
 			User:         user,
 			SelectedItem: "orgs",
-			Breadcrumbs: []common.BreadcrumbItem{
-				{Label: i18n.T(ctx, "admin.breadcrumb.platform"), Href: "/admin/"},
-				{Label: i18n.T(ctx, "admin.breadcrumb.orgs"), Href: "/admin/orgs"},
-				{Label: i18n.T(ctx, "admin.breadcrumb.new_org"), Href: ""},
-			},
-			Context: common.ContextPlatform,
+			Breadcrumbs:  orgFormBreadcrumbs(ctx, nil),
+			Context:      common.ContextPlatform,
 		},
 	}
 
@@ -131,7 +130,7 @@ func (h *Handler) createOrg(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
 	if err := r.ParseForm(); err != nil {
-		http.Error(w, "Invalid form", http.StatusBadRequest)
+		h.renderOrgFormError(w, r, nil, i18n.T(ctx, "admin.orgs.form.invalid_form"))
 		return
 	}
 
@@ -141,13 +140,13 @@ func (h *Handler) createOrg(w http.ResponseWriter, r *http.Request) {
 
 	switch {
 	case name == "":
-		h.renderOrgFormError(w, r, i18n.T(ctx, "admin.orgs.form.name_required"))
+		h.renderOrgFormError(w, r, nil, i18n.T(ctx, "admin.orgs.form.name_required"))
 		return
 	case slug == "":
-		h.renderOrgFormError(w, r, i18n.T(ctx, "admin.orgs.form.slug_required"))
+		h.renderOrgFormError(w, r, nil, i18n.T(ctx, "admin.orgs.form.slug_required"))
 		return
 	case !model.IsValidSlug(slug):
-		h.renderOrgFormError(w, r, i18n.T(ctx, "admin.orgs.form.slug_invalid", model.MaxSlugLength))
+		h.renderOrgFormError(w, r, nil, i18n.T(ctx, "admin.orgs.form.slug_invalid", model.MaxSlugLength))
 		return
 	}
 
@@ -157,47 +156,84 @@ func (h *Handler) createOrg(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if errors.Is(err, port.ErrAlreadyExists) {
-			h.renderOrgFormError(w, r, i18n.T(ctx, "admin.orgs.form.slug_taken", slug))
+			h.renderOrgFormError(w, r, nil, i18n.T(ctx, "admin.orgs.form.slug_taken", slug))
 			return
 		}
 		slog.ErrorContext(ctx, "could not create org", slogx.Error(err))
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		webcommon.HandleError(w, r, errors.WithStack(err))
 		return
 	}
 
 	// Provision the builtin roles (owner/admin/member) for the new org.
 	if err := h.roleStore.EnsureBuiltinRoles(ctx, org.ID()); err != nil {
+		// L'organisation est déjà enregistrée : sans message distinct, l'opérateur
+		// recharge, resoumet, et tombe sur « identifiant déjà utilisé » au lieu du
+		// vrai problème (rôles non provisionnés).
 		slog.ErrorContext(ctx, "could not provision builtin roles", slogx.Error(err))
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		webcommon.HandleError(w, r, webcommon.NewError(
+			err.Error(),
+			i18n.T(ctx, "admin.orgs.form.roles_failed"),
+			http.StatusInternalServerError,
+			common.LinkItem{
+				URL:   common.BaseURLString(ctx, common.WithPath("/admin/orgs")),
+				Label: i18n.T(ctx, "admin.orgs.title"),
+			},
+		))
 		return
 	}
 
 	http.Redirect(w, r, "/admin/orgs?success=created", http.StatusSeeOther)
 }
 
-// renderOrgFormError re-renders the creation form with errMsg and the submitted
-// values, at 422.
-func (h *Handler) renderOrgFormError(w http.ResponseWriter, r *http.Request, errMsg string) {
+// renderOrgFormError re-renders the organisation form with errMsg and the
+// submitted values, at 422. Creation and edition share it: the shell is
+// hx-boosted and only swaps #content, which a bare http.Error does not carry.
+//
+// org is nil for the creation form; the edition form keeps the organisation it
+// edits, so the action and the frozen slug stay right.
+func (h *Handler) renderOrgFormError(w http.ResponseWriter, r *http.Request, org model.Organization, errMsg string) {
 	ctx := r.Context()
 
 	vmodel := component.OrgFormVModel{
-		IsNew:     true,
+		Org:       org,
+		IsNew:     org == nil,
 		Error:     errMsg,
 		Submitted: r.PostForm,
 		AppLayoutVModel: common.AppLayoutVModel{
 			User:         httpCtx.User(ctx),
 			SelectedItem: "orgs",
-			Breadcrumbs: []common.BreadcrumbItem{
-				{Label: i18n.T(ctx, "admin.breadcrumb.platform"), Href: "/admin/"},
-				{Label: i18n.T(ctx, "admin.breadcrumb.orgs"), Href: "/admin/orgs"},
-				{Label: i18n.T(ctx, "admin.breadcrumb.new_org"), Href: ""},
-			},
-			Context: common.ContextPlatform,
+			Breadcrumbs:  orgFormBreadcrumbs(ctx, org),
+			Context:      common.ContextPlatform,
 		},
 	}
 
 	w.WriteHeader(http.StatusUnprocessableEntity)
 	templ.Handler(component.OrgForm(vmodel)).ServeHTTP(w, r)
+}
+
+// orgNotFound answers the organisation form asked for an organisation that does
+// not exist, with the shared error page rather than a bare text body.
+func orgNotFound(w http.ResponseWriter, r *http.Request) {
+	webcommon.HandleError(w, r, webcommon.NewError(
+		"organization not found",
+		i18n.T(r.Context(), "admin.orgs.form.not_found"),
+		http.StatusNotFound,
+	))
+}
+
+// orgFormBreadcrumbs is the trail of the creation and edition forms: they end on
+// the screen the form belongs to, "new" for the first, the organisation's name
+// for the second.
+func orgFormBreadcrumbs(ctx context.Context, org model.Organization) []common.BreadcrumbItem {
+	crumbs := []common.BreadcrumbItem{
+		{Label: i18n.T(ctx, "admin.breadcrumb.platform"), Href: "/admin/"},
+		{Label: i18n.T(ctx, "admin.breadcrumb.orgs"), Href: "/admin/orgs"},
+	}
+	if org == nil {
+		return append(crumbs, common.BreadcrumbItem{Label: i18n.T(ctx, "admin.breadcrumb.new_org"), Href: ""})
+	}
+
+	return append(crumbs, common.BreadcrumbItem{Label: org.Name(), Href: ""})
 }
 
 func (h *Handler) getEditOrgPage(w http.ResponseWriter, r *http.Request) {
@@ -208,10 +244,10 @@ func (h *Handler) getEditOrgPage(w http.ResponseWriter, r *http.Request) {
 	org, err := h.orgStore.GetOrgByID(ctx, model.OrgID(orgID))
 	if err != nil {
 		if errors.Is(err, port.ErrNotFound) {
-			http.Error(w, "Organization not found", http.StatusNotFound)
+			orgNotFound(w, r)
 			return
 		}
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		webcommon.HandleError(w, r, errors.WithStack(err))
 		return
 	}
 
@@ -221,12 +257,8 @@ func (h *Handler) getEditOrgPage(w http.ResponseWriter, r *http.Request) {
 		AppLayoutVModel: common.AppLayoutVModel{
 			User:         user,
 			SelectedItem: "orgs",
-			Breadcrumbs: []common.BreadcrumbItem{
-				{Label: i18n.T(ctx, "admin.breadcrumb.platform"), Href: "/admin/"},
-				{Label: i18n.T(ctx, "admin.breadcrumb.orgs"), Href: "/admin/orgs"},
-				{Label: org.Name(), Href: ""},
-			},
-			Context: common.ContextPlatform,
+			Breadcrumbs:  orgFormBreadcrumbs(ctx, org),
+			Context:      common.ContextPlatform,
 		},
 	}
 
@@ -240,15 +272,15 @@ func (h *Handler) updateOrg(w http.ResponseWriter, r *http.Request) {
 	org, err := h.orgStore.GetOrgByID(ctx, model.OrgID(orgID))
 	if err != nil {
 		if errors.Is(err, port.ErrNotFound) {
-			http.Error(w, "Organization not found", http.StatusNotFound)
+			orgNotFound(w, r)
 			return
 		}
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		webcommon.HandleError(w, r, errors.WithStack(err))
 		return
 	}
 
 	if err := r.ParseForm(); err != nil {
-		http.Error(w, "Invalid form", http.StatusBadRequest)
+		h.renderOrgFormError(w, r, org, i18n.T(ctx, "admin.orgs.form.invalid_form"))
 		return
 	}
 
@@ -263,7 +295,9 @@ func (h *Handler) updateOrg(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		slog.ErrorContext(ctx, "could not save org", slogx.Error(err))
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		// Le formulaire revient avec ce qui a été soumis : la coquille ne
+		// remplace que #content, et une erreur en texte brut viderait la page.
+		h.renderOrgFormError(w, r, org, i18n.T(ctx, "admin.orgs.form.save_failed"))
 		return
 	}
 

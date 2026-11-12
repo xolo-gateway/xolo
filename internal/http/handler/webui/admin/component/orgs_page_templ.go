@@ -1420,12 +1420,12 @@ func OrgForm(vmodel OrgFormVModel) templ.Component {
 							return templ_7745c5c3_Err
 						}
 						if !vmodel.IsNew && vmodel.Org != nil {
-							templ_7745c5c3_Err = input.Input(input.Props{ID: "org-name", Name: "name", Value: vmodel.Org.Name()}).Render(ctx, templ_7745c5c3_Buffer)
+							templ_7745c5c3_Err = input.Input(input.Props{ID: "org-name", Name: "name", Value: orgFormValue(vmodel, "name", vmodel.Org.Name())}).Render(ctx, templ_7745c5c3_Buffer)
 							if templ_7745c5c3_Err != nil {
 								return templ_7745c5c3_Err
 							}
 						} else {
-							templ_7745c5c3_Err = input.Input(input.Props{ID: "org-name", Name: "name", Value: orgFormValue(vmodel, "name"), Placeholder: i18n.T(ctx, "admin.orgs.form.name_placeholder"), Attributes: templ.Attributes{"required": "required"}}).Render(ctx, templ_7745c5c3_Buffer)
+							templ_7745c5c3_Err = input.Input(input.Props{ID: "org-name", Name: "name", Value: orgFormValue(vmodel, "name", ""), Placeholder: i18n.T(ctx, "admin.orgs.form.name_placeholder"), Attributes: templ.Attributes{"required": "required"}}).Render(ctx, templ_7745c5c3_Buffer)
 							if templ_7745c5c3_Err != nil {
 								return templ_7745c5c3_Err
 							}
@@ -1520,7 +1520,7 @@ func OrgForm(vmodel OrgFormVModel) templ.Component {
 								return templ_7745c5c3_Err
 							}
 						} else {
-							templ_7745c5c3_Err = input.Input(input.Props{ID: "org-slug", Name: "slug", Value: orgFormValue(vmodel, "slug"), Placeholder: i18n.T(ctx, "admin.orgs.form.slug_placeholder"), Attributes: templ.Attributes{"required": "required", "pattern": "[a-z0-9]([a-z0-9-]*[a-z0-9])?", "maxlength": "63"}}).Render(ctx, templ_7745c5c3_Buffer)
+							templ_7745c5c3_Err = input.Input(input.Props{ID: "org-slug", Name: "slug", Value: orgFormValue(vmodel, "slug", ""), Placeholder: i18n.T(ctx, "admin.orgs.form.slug_placeholder"), Attributes: templ.Attributes{"required": "required", "pattern": "[a-z0-9]([a-z0-9-]*[a-z0-9])?", "maxlength": "63"}}).Render(ctx, templ_7745c5c3_Buffer)
 							if templ_7745c5c3_Err != nil {
 								return templ_7745c5c3_Err
 							}
@@ -1610,12 +1610,12 @@ func OrgForm(vmodel OrgFormVModel) templ.Component {
 							return templ_7745c5c3_Err
 						}
 						if !vmodel.IsNew && vmodel.Org != nil {
-							templ_7745c5c3_Err = input.Input(input.Props{ID: "org-description", Name: "description", Value: vmodel.Org.Description()}).Render(ctx, templ_7745c5c3_Buffer)
+							templ_7745c5c3_Err = input.Input(input.Props{ID: "org-description", Name: "description", Value: orgFormValue(vmodel, "description", vmodel.Org.Description())}).Render(ctx, templ_7745c5c3_Buffer)
 							if templ_7745c5c3_Err != nil {
 								return templ_7745c5c3_Err
 							}
 						} else {
-							templ_7745c5c3_Err = input.Input(input.Props{ID: "org-description", Name: "description", Value: orgFormValue(vmodel, "description")}).Render(ctx, templ_7745c5c3_Buffer)
+							templ_7745c5c3_Err = input.Input(input.Props{ID: "org-description", Name: "description", Value: orgFormValue(vmodel, "description", "")}).Render(ctx, templ_7745c5c3_Buffer)
 							if templ_7745c5c3_Err != nil {
 								return templ_7745c5c3_Err
 							}
@@ -1635,7 +1635,7 @@ func OrgForm(vmodel OrgFormVModel) templ.Component {
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
-						templ_7745c5c3_Err = checkbox.Checkbox(checkbox.Props{ID: "active", Name: "active", Checked: vmodel.Org.Active()}).Render(ctx, templ_7745c5c3_Buffer)
+						templ_7745c5c3_Err = checkbox.Checkbox(checkbox.Props{ID: "active", Name: "active", Checked: orgFormActive(vmodel, vmodel.Org.Active())}).Render(ctx, templ_7745c5c3_Buffer)
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
