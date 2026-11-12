@@ -521,6 +521,7 @@ func Content(props ...ContentProps) templ.Component {
 			}
 			ctx = templ.InitializeContext(ctx)
 			if !p.NoSearch {
+				searchPlaceholder := utils.IfElse(p.SearchPlaceholder != "", p.SearchPlaceholder, "Search...")
 				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 25, "<div class=\"sticky top-0 bg-popover p-1\"><div class=\"relative\"><span class=\"absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground z-10 pointer-events-none\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
@@ -536,9 +537,10 @@ func Content(props ...ContentProps) templ.Component {
 				templ_7745c5c3_Err = input.Input(input.Props{
 					Type:        input.TypeSearch,
 					Class:       "pl-8",
-					Placeholder: utils.IfElse(p.SearchPlaceholder != "", p.SearchPlaceholder, "Search..."),
+					Placeholder: searchPlaceholder,
 					Attributes: templ.Attributes{
 						"data-tui-selectbox-search": "",
+						"aria-label":                searchPlaceholder,
 					},
 				}).Render(ctx, templ_7745c5c3_Buffer)
 				if templ_7745c5c3_Err != nil {
@@ -636,7 +638,7 @@ func Group(props ...GroupProps) templ.Component {
 			var templ_7745c5c3_Var20 string
 			templ_7745c5c3_Var20, templ_7745c5c3_Err = templ.JoinStringErrs(p.ID)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/templui/component/selectbox/selectbox.templ`, Line: 268, Col: 12}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/templui/component/selectbox/selectbox.templ`, Line: 270, Col: 12}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var20))
 			if templ_7745c5c3_Err != nil {
@@ -726,7 +728,7 @@ func Label(props ...LabelProps) templ.Component {
 			var templ_7745c5c3_Var24 string
 			templ_7745c5c3_Var24, templ_7745c5c3_Err = templ.JoinStringErrs(p.ID)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/templui/component/selectbox/selectbox.templ`, Line: 285, Col: 12}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/templui/component/selectbox/selectbox.templ`, Line: 287, Col: 12}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var24))
 			if templ_7745c5c3_Err != nil {
@@ -824,7 +826,7 @@ func Item(props ...ItemProps) templ.Component {
 			var templ_7745c5c3_Var28 string
 			templ_7745c5c3_Var28, templ_7745c5c3_Err = templ.JoinStringErrs(p.ID)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/templui/component/selectbox/selectbox.templ`, Line: 301, Col: 12}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/templui/component/selectbox/selectbox.templ`, Line: 303, Col: 12}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var28))
 			if templ_7745c5c3_Err != nil {
@@ -855,7 +857,7 @@ func Item(props ...ItemProps) templ.Component {
 		var templ_7745c5c3_Var30 string
 		templ_7745c5c3_Var30, templ_7745c5c3_Err = templ.JoinStringErrs(p.Value)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/templui/component/selectbox/selectbox.templ`, Line: 314, Col: 36}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/templui/component/selectbox/selectbox.templ`, Line: 316, Col: 36}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var30))
 		if templ_7745c5c3_Err != nil {
@@ -868,7 +870,7 @@ func Item(props ...ItemProps) templ.Component {
 		var templ_7745c5c3_Var31 string
 		templ_7745c5c3_Var31, templ_7745c5c3_Err = templ.JoinStringErrs(strconv.FormatBool(p.Selected))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/templui/component/selectbox/selectbox.templ`, Line: 315, Col: 62}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/templui/component/selectbox/selectbox.templ`, Line: 317, Col: 62}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var31))
 		if templ_7745c5c3_Err != nil {
@@ -881,7 +883,7 @@ func Item(props ...ItemProps) templ.Component {
 		var templ_7745c5c3_Var32 string
 		templ_7745c5c3_Var32, templ_7745c5c3_Err = templ.JoinStringErrs(strconv.FormatBool(p.Disabled))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/templui/component/selectbox/selectbox.templ`, Line: 316, Col: 62}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/templui/component/selectbox/selectbox.templ`, Line: 318, Col: 62}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var32))
 		if templ_7745c5c3_Err != nil {
@@ -973,7 +975,7 @@ func Script() templ.Component {
 		var templ_7745c5c3_Var36 string
 		templ_7745c5c3_Var36, templ_7745c5c3_Err = templ.JoinStringErrs(templ.GetNonce(ctx))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/templui/component/selectbox/selectbox.templ`, Line: 337, Col: 42}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/templui/component/selectbox/selectbox.templ`, Line: 339, Col: 42}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var36))
 		if templ_7745c5c3_Err != nil {
@@ -986,7 +988,7 @@ func Script() templ.Component {
 		var templ_7745c5c3_Var37 string
 		templ_7745c5c3_Var37, templ_7745c5c3_Err = templ.JoinStringErrs(utils.ScriptURL("/assets/js/selectbox.min.js"))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/templui/component/selectbox/selectbox.templ`, Line: 337, Col: 97}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/templui/component/selectbox/selectbox.templ`, Line: 339, Col: 97}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var37))
 		if templ_7745c5c3_Err != nil {

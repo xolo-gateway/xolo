@@ -71,7 +71,7 @@ templ ModelForm(vmodel ModelFormVModel) {
 							@common.SectionBody(common.SectionBodyProps{Class: "space-y-4"}) {
 								<div class="space-y-2">
 									<div class="flex items-center justify-between gap-2">
-										@form.Label(form.LabelProps{}) {
+										@form.Label(form.LabelProps{For: "proxy_name"}) {
 											{ i18n.T(ctx, "org.model.proxy_name") }
 										}
 									</div>
@@ -79,14 +79,14 @@ templ ModelForm(vmodel ModelFormVModel) {
 										{ i18n.T(ctx, "org.model.proxy_name_format") }{ " " }<code>{ vmodel.Org.Slug() + "/" + i18n.T(ctx, "org.model.proxy_name_token") }</code>. 
 									}
 									if !vmodel.IsNew && vmodel.Model != nil {
-										@input.Input(input.Props{Name: "proxy_name", Value: vmodel.Model.ProxyName(), Disabled: readonly})
+										@input.Input(input.Props{ID: "proxy_name", Name: "proxy_name", Value: vmodel.Model.ProxyName(), Disabled: readonly})
 									} else {
-										@input.Input(input.Props{Name: "proxy_name", Placeholder: "gpt-4o", Disabled: readonly})
+										@input.Input(input.Props{ID: "proxy_name", Name: "proxy_name", Placeholder: "gpt-4o", Disabled: readonly})
 									}
 								</div>
 								<div class="space-y-2">
 									<div class="flex items-center justify-between">
-										@form.Label(form.LabelProps{}) {
+										@form.Label(form.LabelProps{For: "real_model"}) {
 											{ i18n.T(ctx, "org.model.real_model") }
 										}
 										if vmodel.CatalogEnabled {
@@ -117,19 +117,19 @@ templ ModelForm(vmodel ModelFormVModel) {
 										}
 									</div>
 									if !vmodel.IsNew && vmodel.Model != nil {
-										@input.Input(input.Props{Name: "real_model", Value: vmodel.Model.RealModel(), Disabled: readonly})
+										@input.Input(input.Props{ID: "real_model", Name: "real_model", Value: vmodel.Model.RealModel(), Disabled: readonly})
 									} else {
-										@input.Input(input.Props{Name: "real_model", Placeholder: "gpt-4o-2024-11-20", Disabled: readonly})
+										@input.Input(input.Props{ID: "real_model", Name: "real_model", Placeholder: "gpt-4o-2024-11-20", Disabled: readonly})
 									}
 								</div>
 								<div class="space-y-2">
-									@form.Label(form.LabelProps{}) {
+									@form.Label(form.LabelProps{For: "description"}) {
 										{ i18n.T(ctx, "org.model.description") }
 									}
 									if !vmodel.IsNew && vmodel.Model != nil {
-										@textarea.Textarea(textarea.Props{Name: "description", Value: vmodel.Model.Description(), Disabled: readonly})
+										@textarea.Textarea(textarea.Props{ID: "description", Name: "description", Value: vmodel.Model.Description(), Disabled: readonly})
 									} else {
-										@textarea.Textarea(textarea.Props{Name: "description", Disabled: readonly})
+										@textarea.Textarea(textarea.Props{ID: "description", Name: "description", Disabled: readonly})
 									}
 								</div>
 								<div class="space-y-2">
@@ -170,17 +170,17 @@ templ ModelForm(vmodel ModelFormVModel) {
 									<div class="grid grid-cols-2 gap-3">
 										<div class="space-y-2">
 											if !vmodel.IsNew && vmodel.Model != nil {
-												@input.Input(input.Props{Name: "context_window", Type: "number", Value: fmtInt(vmodel.Model.ContextWindow()), Placeholder: "128000", Disabled: readonly})
+												@input.Input(input.Props{Name: "context_window", Type: "number", Value: fmtInt(vmodel.Model.ContextWindow()), Placeholder: "128000", Disabled: readonly, Attributes: templ.Attributes{"aria-label": i18n.T(ctx, "org.model.context_window")}})
 											} else {
-												@input.Input(input.Props{Name: "context_window", Type: "number", Placeholder: "128000", Disabled: readonly})
+												@input.Input(input.Props{Name: "context_window", Type: "number", Placeholder: "128000", Disabled: readonly, Attributes: templ.Attributes{"aria-label": i18n.T(ctx, "org.model.context_window")}})
 											}
 											@catalogEstimatedBadge(vmodel, "context_window")
 										</div>
 										<div class="space-y-2">
 											if !vmodel.IsNew && vmodel.Model != nil {
-												@input.Input(input.Props{Name: "output_window", Type: "number", Value: fmtInt(vmodel.Model.OutputWindow()), Placeholder: "8192", Disabled: readonly})
+												@input.Input(input.Props{Name: "output_window", Type: "number", Value: fmtInt(vmodel.Model.OutputWindow()), Placeholder: "8192", Disabled: readonly, Attributes: templ.Attributes{"aria-label": i18n.T(ctx, "org.model.output_window")}})
 											} else {
-												@input.Input(input.Props{Name: "output_window", Type: "number", Placeholder: "8192", Disabled: readonly})
+												@input.Input(input.Props{Name: "output_window", Type: "number", Placeholder: "8192", Disabled: readonly, Attributes: templ.Attributes{"aria-label": i18n.T(ctx, "org.model.output_window")}})
 											}
 											@catalogEstimatedBadge(vmodel, "output_window")
 										</div>
@@ -244,21 +244,19 @@ templ ModelForm(vmodel ModelFormVModel) {
 								<div class="space-y-4">
 									<div class="space-y-2">
 										<div class="flex items-center gap-2">
-											@form.Label(form.LabelProps{}) {
-												{ i18n.T(ctx, "org.model.prompt_cost", vmodel.Provider.Currency()) }
+											@form.Label(form.LabelProps{For: "prompt_cost"}) {
 											}
 											@catalogEstimatedBadge(vmodel, "prompt_cost")
 										</div>
 										if !vmodel.IsNew && vmodel.Model != nil {
-											@input.Input(input.Props{Name: "prompt_cost", Type: "number", Value: formatCostField(vmodel.Model.PromptCostPer1KTokens()), Placeholder: "2.50", Disabled: readonly, Attributes: templ.Attributes{"step": "any"}})
+											@input.Input(input.Props{ID: "prompt_cost", Name: "prompt_cost", Type: "number", Value: formatCostField(vmodel.Model.PromptCostPer1KTokens()), Placeholder: "2.50", Disabled: readonly, Attributes: templ.Attributes{"step": "any"}})
 										} else {
-											@input.Input(input.Props{Name: "prompt_cost", Type: "number", Placeholder: "2.50", Disabled: readonly, Attributes: templ.Attributes{"step": "any"}})
+											@input.Input(input.Props{ID: "prompt_cost", Name: "prompt_cost", Type: "number", Placeholder: "2.50", Disabled: readonly, Attributes: templ.Attributes{"step": "any"}})
 										}
 									</div>
 									<div class="space-y-2">
 										<div class="flex items-center gap-2">
-											@form.Label(form.LabelProps{}) {
-												{ i18n.T(ctx, "org.model.cached_prompt_cost", vmodel.Provider.Currency()) }
+											@form.Label(form.LabelProps{For: "cached_prompt_cost"}) {
 											}
 											@catalogEstimatedBadge(vmodel, "cached_prompt_cost")
 										</div>
@@ -266,22 +264,21 @@ templ ModelForm(vmodel ModelFormVModel) {
 											{ i18n.T(ctx, "org.model.cached_prompt_cost_help") }
 										}
 										if !vmodel.IsNew && vmodel.Model != nil {
-											@input.Input(input.Props{Name: "cached_prompt_cost", Type: "number", Value: formatCostField(vmodel.Model.CachedPromptCostPer1KTokens()), Placeholder: "0.25", Disabled: readonly, Attributes: templ.Attributes{"step": "any"}})
+											@input.Input(input.Props{ID: "cached_prompt_cost", Name: "cached_prompt_cost", Type: "number", Value: formatCostField(vmodel.Model.CachedPromptCostPer1KTokens()), Placeholder: "0.25", Disabled: readonly, Attributes: templ.Attributes{"step": "any"}})
 										} else {
-											@input.Input(input.Props{Name: "cached_prompt_cost", Type: "number", Placeholder: "0.25", Disabled: readonly, Attributes: templ.Attributes{"step": "any"}})
+											@input.Input(input.Props{ID: "cached_prompt_cost", Name: "cached_prompt_cost", Type: "number", Placeholder: "0.25", Disabled: readonly, Attributes: templ.Attributes{"step": "any"}})
 										}
 									</div>
 									<div class="space-y-2">
 										<div class="flex items-center gap-2">
-											@form.Label(form.LabelProps{}) {
-												{ i18n.T(ctx, "org.model.completion_cost", vmodel.Provider.Currency()) }
+											@form.Label(form.LabelProps{For: "completion_cost"}) {
 											}
 											@catalogEstimatedBadge(vmodel, "completion_cost")
 										</div>
 										if !vmodel.IsNew && vmodel.Model != nil {
-											@input.Input(input.Props{Name: "completion_cost", Type: "number", Value: formatCostField(vmodel.Model.CompletionCostPer1KTokens()), Placeholder: "10.00", Disabled: readonly, Attributes: templ.Attributes{"step": "any"}})
+											@input.Input(input.Props{ID: "completion_cost", Name: "completion_cost", Type: "number", Value: formatCostField(vmodel.Model.CompletionCostPer1KTokens()), Placeholder: "10.00", Disabled: readonly, Attributes: templ.Attributes{"step": "any"}})
 										} else {
-											@input.Input(input.Props{Name: "completion_cost", Type: "number", Placeholder: "10.00", Disabled: readonly, Attributes: templ.Attributes{"step": "any"}})
+											@input.Input(input.Props{ID: "completion_cost", Name: "completion_cost", Type: "number", Placeholder: "10.00", Disabled: readonly, Attributes: templ.Attributes{"step": "any"}})
 										}
 									</div>
 								</div>
@@ -299,41 +296,38 @@ templ ModelForm(vmodel ModelFormVModel) {
 								<div class="grid grid-cols-3 gap-3">
 									<div class="space-y-2">
 										<div class="flex items-center gap-2">
-											@form.Label(form.LabelProps{}) {
-												{ i18n.T(ctx, "org.model.active_params") }
+											@form.Label(form.LabelProps{For: "active_params"}) {
 											}
 											@catalogEstimatedBadge(vmodel, "active_params")
 										</div>
 										if !vmodel.IsNew && vmodel.Model != nil && vmodel.Model.ActiveParams() > 0 {
-											@input.Input(input.Props{Name: "active_params", Type: "number", Value: formatActiveParamsBillions(vmodel.Model.ActiveParams()), Placeholder: "7", Disabled: readonly, Attributes: templ.Attributes{"step": "any", "min": "0"}})
+											@input.Input(input.Props{ID: "active_params", Name: "active_params", Type: "number", Value: formatActiveParamsBillions(vmodel.Model.ActiveParams()), Placeholder: "7", Disabled: readonly, Attributes: templ.Attributes{"step": "any", "min": "0"}})
 										} else {
-											@input.Input(input.Props{Name: "active_params", Type: "number", Placeholder: "7", Disabled: readonly, Attributes: templ.Attributes{"step": "any", "min": "0"}})
+											@input.Input(input.Props{ID: "active_params", Name: "active_params", Type: "number", Placeholder: "7", Disabled: readonly, Attributes: templ.Attributes{"step": "any", "min": "0"}})
 										}
 									</div>
 									<div class="space-y-2">
 										<div class="flex items-center gap-2">
-											@form.Label(form.LabelProps{}) {
-												{ i18n.T(ctx, "org.model.throughput_min") }
+											@form.Label(form.LabelProps{For: "tokens_per_sec_low"}) {
 											}
 											@catalogEstimatedBadge(vmodel, "tokens_per_sec_low")
 										</div>
 										if !vmodel.IsNew && vmodel.Model != nil && vmodel.Model.TokensPerSecLow() > 0 {
-											@input.Input(input.Props{Name: "tokens_per_sec_low", Type: "number", Value: strconv.FormatFloat(vmodel.Model.TokensPerSecLow(), 'f', -1, 64), Placeholder: "30", Disabled: readonly, Attributes: templ.Attributes{"step": "any", "min": "0"}})
+											@input.Input(input.Props{ID: "tokens_per_sec_low", Name: "tokens_per_sec_low", Type: "number", Value: strconv.FormatFloat(vmodel.Model.TokensPerSecLow(), 'f', -1, 64), Placeholder: "30", Disabled: readonly, Attributes: templ.Attributes{"step": "any", "min": "0"}})
 										} else {
-											@input.Input(input.Props{Name: "tokens_per_sec_low", Type: "number", Placeholder: "30", Disabled: readonly, Attributes: templ.Attributes{"step": "any", "min": "0"}})
+											@input.Input(input.Props{ID: "tokens_per_sec_low", Name: "tokens_per_sec_low", Type: "number", Placeholder: "30", Disabled: readonly, Attributes: templ.Attributes{"step": "any", "min": "0"}})
 										}
 									</div>
 									<div class="space-y-2">
 										<div class="flex items-center gap-2">
-											@form.Label(form.LabelProps{}) {
-												{ i18n.T(ctx, "org.model.throughput_max") }
+											@form.Label(form.LabelProps{For: "tokens_per_sec_high"}) {
 											}
 											@catalogEstimatedBadge(vmodel, "tokens_per_sec_high")
 										</div>
 										if !vmodel.IsNew && vmodel.Model != nil && vmodel.Model.TokensPerSecHigh() > 0 {
-											@input.Input(input.Props{Name: "tokens_per_sec_high", Type: "number", Value: strconv.FormatFloat(vmodel.Model.TokensPerSecHigh(), 'f', -1, 64), Placeholder: "100", Disabled: readonly, Attributes: templ.Attributes{"step": "any", "min": "0"}})
+											@input.Input(input.Props{ID: "tokens_per_sec_high", Name: "tokens_per_sec_high", Type: "number", Value: strconv.FormatFloat(vmodel.Model.TokensPerSecHigh(), 'f', -1, 64), Placeholder: "100", Disabled: readonly, Attributes: templ.Attributes{"step": "any", "min": "0"}})
 										} else {
-											@input.Input(input.Props{Name: "tokens_per_sec_high", Type: "number", Placeholder: "100", Disabled: readonly, Attributes: templ.Attributes{"step": "any", "min": "0"}})
+											@input.Input(input.Props{ID: "tokens_per_sec_high", Name: "tokens_per_sec_high", Type: "number", Placeholder: "100", Disabled: readonly, Attributes: templ.Attributes{"step": "any", "min": "0"}})
 										}
 									</div>
 								</div>
@@ -364,13 +358,13 @@ templ ModelForm(vmodel ModelFormVModel) {
 							}
 							<div class="grid grid-cols-2 gap-3">
 								<div class="space-y-2">
-									@form.Label(form.LabelProps{}) {
+									@form.Label(form.LabelProps{For: "token_limit_max_tokens"}) {
 										{ i18n.T(ctx, "org.model.token_limit_max") }
 									}
 									if tlCfg != nil {
-										@input.Input(input.Props{Name: "token_limit_max_tokens", Type: "number", Value: fmt.Sprintf("%d", tlCfg.MaxTokens), Placeholder: "100000", Disabled: readonly, Attributes: templ.Attributes{"min": "1"}})
+										@input.Input(input.Props{ID: "token_limit_max_tokens", Name: "token_limit_max_tokens", Type: "number", Value: fmt.Sprintf("%d", tlCfg.MaxTokens), Placeholder: "100000", Disabled: readonly, Attributes: templ.Attributes{"min": "1"}})
 									} else {
-										@input.Input(input.Props{Name: "token_limit_max_tokens", Type: "number", Placeholder: "100000", Disabled: readonly, Attributes: templ.Attributes{"min": "1"}})
+										@input.Input(input.Props{ID: "token_limit_max_tokens", Name: "token_limit_max_tokens", Type: "number", Placeholder: "100000", Disabled: readonly, Attributes: templ.Attributes{"min": "1"}})
 									}
 								</div>
 								<div class="space-y-2">
@@ -379,9 +373,9 @@ templ ModelForm(vmodel ModelFormVModel) {
 									}
 									<div class="flex gap-2">
 										if tlCfg != nil {
-											@input.Input(input.Props{Name: "token_limit_interval_value", Type: "number", Value: durationValue(tlCfg.Interval), Placeholder: "1", Disabled: readonly, Attributes: templ.Attributes{"min": "1", "class": "flex-1"}})
+											@input.Input(input.Props{Name: "token_limit_interval_value", Type: "number", Value: durationValue(tlCfg.Interval), Placeholder: "1", Disabled: readonly, Attributes: templ.Attributes{"min": "1", "class": "flex-1", "aria-label": i18n.T(ctx, "org.model.token_limit_interval")}})
 										} else {
-											@input.Input(input.Props{Name: "token_limit_interval_value", Type: "number", Placeholder: "1", Disabled: readonly, Attributes: templ.Attributes{"min": "1", "class": "flex-1"}})
+											@input.Input(input.Props{Name: "token_limit_interval_value", Type: "number", Placeholder: "1", Disabled: readonly, Attributes: templ.Attributes{"min": "1", "class": "flex-1", "aria-label": i18n.T(ctx, "org.model.token_limit_interval")}})
 										}
 										@selectbox.SelectBox(selectbox.Props{ID: "token_limit_interval_unit", Class: "w-24"}) {
 											@selectbox.Trigger(selectbox.TriggerProps{Name: "token_limit_interval_unit", Disabled: readonly}) {
@@ -445,10 +439,10 @@ templ ModelForm(vmodel ModelFormVModel) {
 								}
 							</div>
 							<div class="space-y-2">
-								@form.Label(form.LabelProps{}) {
+								@form.Label(form.LabelProps{For: "api_base_url"}) {
 									{ i18n.T(ctx, "org.model.base_url") }
 								}
-								@input.Input(input.Props{Name: "api_base_url", Value: modelBaseURL(vmodel.Model), Placeholder: vmodel.Provider.BaseURL(), Class: "font-mono", Disabled: readonly})
+								@input.Input(input.Props{ID: "api_base_url", Name: "api_base_url", Value: modelBaseURL(vmodel.Model), Placeholder: vmodel.Provider.BaseURL(), Class: "font-mono", Disabled: readonly})
 								@form.Description() {
 									{ i18n.T(ctx, "org.model.base_url_help") }
 								}

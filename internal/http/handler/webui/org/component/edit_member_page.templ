@@ -46,7 +46,7 @@ templ EditMemberPage(vmodel EditMemberPageVModel) {
 			<!-- Member Info (read-only) -->
 			@card.Card() {
 				@card.Header() {
-					@card.Title() {
+					@card.Title(card.TitleProps{Level: 2}) {
 						@icon.User(icon.Props{Class: "h-4 w-4 inline mr-2"})
 						{ i18n.T(ctx, "org.members.edit_page.info") }
 					}
@@ -75,7 +75,7 @@ templ EditMemberPage(vmodel EditMemberPageVModel) {
 			<!-- Edit Roles -->
 			@card.Card() {
 				@card.Header() {
-					@card.Title() {
+					@card.Title(card.TitleProps{Level: 2}) {
 						@icon.Shield(icon.Props{Class: "h-4 w-4 inline mr-2"})
 						{ i18n.T(ctx, "org.members.edit_page.roles") }
 					}

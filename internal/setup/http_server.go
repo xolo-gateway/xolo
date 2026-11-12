@@ -386,6 +386,10 @@ func NewHTTPServerFromConfig(ctx context.Context, conf *config.Config) (*http.Se
 		http.WithRoute("POST /locale", rateLimiter(localeMiddleware.Handler(locales, conf.HTTP.Session.Cookie.Secure, memberLocale, localeSignedIn))),
 		http.WithMount("/assets/", assets),
 		http.WithMount("/assets/pipeline/", pipelineAssets.NewAssetsHandler()),
+		http.WithRoute("GET /robots.txt", gohttp.HandlerFunc(func(w gohttp.ResponseWriter, r *gohttp.Request) {
+			w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+			_, _ = w.Write([]byte("User-agent: *\nAllow: /\n"))
+		})),
 		http.WithMount("/auth/oidc/", rateLimiter(oidcAuthn)),
 		// The identity provider may send logouts in bursts from a single
 		// address, and a throttled one is lost: each request is authenticated

@@ -2041,12 +2041,6 @@
       color: color-mix(in oklab, var(--muted-foreground) 60%, transparent);
     }
   }
-  .text-muted-foreground\/70 {
-    color: var(--muted-foreground);
-    @supports (color: color-mix(in lab, red, red)) {
-      color: color-mix(in oklab, var(--muted-foreground) 70%, transparent);
-    }
-  }
   .text-personal {
     color: var(--personal);
   }
@@ -2707,16 +2701,16 @@
       left: calc(1 / 2 * 100%);
     }
   }
-  .before\:h-1\.5 {
+  .before\:h-2\.5 {
     &::before {
       content: var(--tw-content);
-      height: calc(var(--spacing) * 1.5);
+      height: calc(var(--spacing) * 2.5);
     }
   }
-  .before\:w-1\.5 {
+  .before\:w-2\.5 {
     &::before {
       content: var(--tw-content);
-      width: calc(var(--spacing) * 1.5);
+      width: calc(var(--spacing) * 2.5);
     }
   }
   .before\:-translate-x-1\/2 {
@@ -3282,6 +3276,11 @@
   .has-\[\>svg\]\:gap-x-3 {
     &:has(>svg) {
       column-gap: calc(var(--spacing) * 3);
+    }
+  }
+  .has-\[\>svg\]\:px-0 {
+    &:has(>svg) {
+      padding-inline: calc(var(--spacing) * 0);
     }
   }
   .has-\[\>svg\]\:px-1 {
@@ -4569,6 +4568,13 @@
 }
 .prose-sm h1, .prose-sm h2, .prose-sm h3, .prose-sm h4 {
   margin: 0.75rem 0 0.375rem;
+}
+.hljs-addition, .hljs-attribute, .hljs-meta .hljs-string, .hljs-regexp, .hljs-string {
+  color: #383a42;
+  border-bottom: 1px solid #50a14f;
+}
+.hljs-built_in, .hljs-class .hljs-title, .hljs-title.class_ {
+  color: #8f6100;
 }
 @property --tw-translate-x {
   syntax: "*";

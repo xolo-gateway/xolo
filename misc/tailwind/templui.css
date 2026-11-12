@@ -455,3 +455,17 @@
 .prose-sm h4 {
   margin: 0.75rem 0 0.375rem;
 }
+
+/* Le thème de coloration (assets/vendor/highlight-atom-one-light.min.css) est
+   vendu tel quel et chargé avant cette feuille : ses deux jetons qui échouent au
+   contraste AA sur fond clair sont corrigés ici, pour survivre à sa prochaine
+   mise à jour. */
+.hljs-addition, .hljs-attribute, .hljs-meta .hljs-string, .hljs-regexp, .hljs-string {
+    /* #50a14f donnait 3,07:1 : encre normale sous un filet vert, 10,86:1. */
+    color: #383a42;
+    border-bottom: 1px solid #50a14f;
+}
+.hljs-built_in, .hljs-class .hljs-title, .hljs-title.class_ {
+    /* #c18401 donnait 3,06:1 ; assombri à 5,19:1. */
+    color: #8f6100;
+}

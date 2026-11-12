@@ -261,7 +261,7 @@ func keyValueRow(props KeyValueEditorProps, idx int, row ExtraBodyRow, readonly 
 			Value:       row.Key,
 			Placeholder: props.KeyPlaceholder,
 			Disabled:    readonly,
-			Attributes:  templ.Attributes{"data-xolo-name": props.Name + "_k{i}_key"},
+			Attributes:  templ.Attributes{"data-xolo-name": props.Name + "_k{i}_key", "aria-label": props.KeyPlaceholder},
 		}).Render(ctx, templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
@@ -275,7 +275,7 @@ func keyValueRow(props KeyValueEditorProps, idx int, row ExtraBodyRow, readonly 
 			Value:       row.Value,
 			Placeholder: props.ValuePlaceholder,
 			Disabled:    readonly,
-			Attributes:  templ.Attributes{"data-xolo-name": props.Name + "_k{i}_value"},
+			Attributes:  templ.Attributes{"data-xolo-name": props.Name + "_k{i}_value", "aria-label": props.ValuePlaceholder},
 		}).Render(ctx, templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
@@ -585,7 +585,7 @@ func providerKeyRow(idx int, k model.ProviderKey, plan *model.SubscriptionPlan, 
 			Value:       k.Label,
 			Placeholder: i18n.T(ctx, "org.provider.api_keys_label_placeholder"),
 			Disabled:    readonly,
-			Attributes:  templ.Attributes{"data-xolo-name": "provider_key_k{i}_label"},
+			Attributes:  templ.Attributes{"data-xolo-name": "provider_key_k{i}_label", "aria-label": i18n.T(ctx, "org.provider.api_keys_label_placeholder")},
 		}).Render(ctx, templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
@@ -595,12 +595,13 @@ func providerKeyRow(idx int, k model.ProviderKey, plan *model.SubscriptionPlan, 
 			return templ_7745c5c3_Err
 		}
 		templ_7745c5c3_Err = input.Input(input.Props{
-			Name:        "provider_key_k" + idxKey + "_value",
-			Type:        input.TypePassword,
-			Placeholder: valuePlaceholder,
-			Class:       "font-mono",
-			Disabled:    readonly,
-			Attributes:  templ.Attributes{"data-xolo-name": "provider_key_k{i}_value", "autocomplete": "off"},
+			Name:                "provider_key_k" + idxKey + "_value",
+			Type:                input.TypePassword,
+			Placeholder:         valuePlaceholder,
+			Class:               "font-mono",
+			Disabled:            readonly,
+			PasswordToggleLabel: i18n.T(ctx, "common.show_password"),
+			Attributes:          templ.Attributes{"data-xolo-name": "provider_key_k{i}_value", "autocomplete": "off", "aria-label": valuePlaceholder},
 		}).Render(ctx, templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
@@ -673,7 +674,7 @@ func providerKeyRow(idx int, k model.ProviderKey, plan *model.SubscriptionPlan, 
 					var templ_7745c5c3_Var25 string
 					templ_7745c5c3_Var25, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.provider.api_keys_overrides"))
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/extra_body_editor.templ`, Line: 242, Col: 53}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/extra_body_editor.templ`, Line: 243, Col: 53}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var25))
 					if templ_7745c5c3_Err != nil {
@@ -716,7 +717,7 @@ func providerKeyRow(idx int, k model.ProviderKey, plan *model.SubscriptionPlan, 
 						var templ_7745c5c3_Var28 string
 						templ_7745c5c3_Var28, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "org.provider.api_keys_overrides_help"))
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/extra_body_editor.templ`, Line: 246, Col: 59}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/extra_body_editor.templ`, Line: 247, Col: 59}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var28))
 						if templ_7745c5c3_Err != nil {
@@ -787,7 +788,7 @@ func providerKeyOverride(idxKey string, j int, c model.PlanConstraint, o model.P
 		var templ_7745c5c3_Var30 string
 		templ_7745c5c3_Var30, templ_7745c5c3_Err = templ.JoinStringErrs(prefix + "label")
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/extra_body_editor.templ`, Line: 263, Col: 46}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/extra_body_editor.templ`, Line: 264, Col: 46}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var30))
 		if templ_7745c5c3_Err != nil {
@@ -800,7 +801,7 @@ func providerKeyOverride(idxKey string, j int, c model.PlanConstraint, o model.P
 		var templ_7745c5c3_Var31 string
 		templ_7745c5c3_Var31, templ_7745c5c3_Err = templ.JoinStringErrs(c.Label)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/extra_body_editor.templ`, Line: 263, Col: 64}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/extra_body_editor.templ`, Line: 264, Col: 64}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var31))
 		if templ_7745c5c3_Err != nil {
@@ -813,7 +814,7 @@ func providerKeyOverride(idxKey string, j int, c model.PlanConstraint, o model.P
 		var templ_7745c5c3_Var32 string
 		templ_7745c5c3_Var32, templ_7745c5c3_Err = templ.JoinStringErrs(pattern + "label")
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/extra_body_editor.templ`, Line: 263, Col: 101}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/extra_body_editor.templ`, Line: 264, Col: 101}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var32))
 		if templ_7745c5c3_Err != nil {
@@ -826,7 +827,7 @@ func providerKeyOverride(idxKey string, j int, c model.PlanConstraint, o model.P
 		var templ_7745c5c3_Var33 string
 		templ_7745c5c3_Var33, templ_7745c5c3_Err = templ.JoinStringErrs(c.Label)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/extra_body_editor.templ`, Line: 264, Col: 42}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/org/component/extra_body_editor.templ`, Line: 265, Col: 42}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var33))
 		if templ_7745c5c3_Err != nil {
@@ -843,7 +844,7 @@ func providerKeyOverride(idxKey string, j int, c model.PlanConstraint, o model.P
 				Value:       overrideValueBudget(o),
 				Placeholder: i18n.T(ctx, "org.provider.api_keys_override_value", formatBudgetField(*c.ValueBudget)),
 				Disabled:    readonly,
-				Attributes:  templ.Attributes{"data-xolo-name": pattern + "value_budget", "min": "0", "step": "any"},
+				Attributes:  templ.Attributes{"data-xolo-name": pattern + "value_budget", "min": "0", "step": "any", "aria-label": i18n.T(ctx, "org.provider.api_keys_override_value", formatBudgetField(*c.ValueBudget))},
 			}).Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
@@ -856,7 +857,7 @@ func providerKeyOverride(idxKey string, j int, c model.PlanConstraint, o model.P
 				Value:       overrideTokenBudget(o),
 				Placeholder: i18n.T(ctx, "org.provider.api_keys_override_tokens", *c.TokenBudget),
 				Disabled:    readonly,
-				Attributes:  templ.Attributes{"data-xolo-name": pattern + "token_budget", "min": "0"},
+				Attributes:  templ.Attributes{"data-xolo-name": pattern + "token_budget", "min": "0", "aria-label": i18n.T(ctx, "org.provider.api_keys_override_tokens", *c.TokenBudget)},
 			}).Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
@@ -867,7 +868,7 @@ func providerKeyOverride(idxKey string, j int, c model.PlanConstraint, o model.P
 			Value:       overrideResetIn(c, o),
 			Placeholder: i18n.T(ctx, "org.provider.api_keys_override_reset_in"),
 			Disabled:    readonly,
-			Attributes:  templ.Attributes{"data-xolo-name": pattern + "reset_in"},
+			Attributes:  templ.Attributes{"data-xolo-name": pattern + "reset_in", "aria-label": i18n.T(ctx, "org.provider.api_keys_override_reset_in")},
 		}).Render(ctx, templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
@@ -884,7 +885,7 @@ func providerKeyOverride(idxKey string, j int, c model.PlanConstraint, o model.P
 				Placeholder: i18n.T(ctx, "org.provider.api_keys_override_models"),
 				Disabled:    readonly,
 				Class:       "font-mono text-xs",
-				Attributes:  templ.Attributes{"data-xolo-name": pattern + "model_budgets"},
+				Attributes:  templ.Attributes{"data-xolo-name": pattern + "model_budgets", "aria-label": i18n.T(ctx, "org.provider.api_keys_override_models")},
 			}).Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err

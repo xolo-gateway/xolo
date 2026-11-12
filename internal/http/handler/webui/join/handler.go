@@ -49,6 +49,7 @@ func (h *Handler) getJoinPage(w http.ResponseWriter, r *http.Request) {
 	}
 	templ.Handler(component.JoinPage(component.JoinPageVModel{
 		User: user, Org: view.Org, RoleName: view.Role.Name(), LoginURL: loginURL,
+		AcceptURL:  baseURL.JoinPath("/join/" + tokenID).String(),
 		DeclineURL: baseURL.JoinPath("/no-org/invitations/" + tokenID + "/decline").String(),
 	})).ServeHTTP(w, r)
 }

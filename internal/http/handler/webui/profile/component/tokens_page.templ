@@ -214,7 +214,7 @@ templ TokensPage(vmodel TokensPageVModel) {
 									@selectbox.Trigger(selectbox.TriggerProps{ID: "token-team-trigger", Name: "team_id"}) {
 										@selectbox.Value(selectbox.ValueProps{Placeholder: i18n.T(ctx, "profile.tokens.form.no_team")})
 									}
-									@selectbox.Content(selectbox.ContentProps{NoSearch: len(vmodel.Teams) < 8}) {
+									@selectbox.Content(selectbox.ContentProps{NoSearch: len(vmodel.Teams) < 8, SearchPlaceholder: i18n.T(ctx, "common.search")}) {
 										@selectbox.Group() {
 											@selectbox.Item(selectbox.ItemProps{Value: "", Selected: vmodel.FormTeamID == ""}) {
 												{ i18n.T(ctx, "profile.tokens.form.no_team") }

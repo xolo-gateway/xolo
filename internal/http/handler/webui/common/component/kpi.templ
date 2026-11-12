@@ -83,7 +83,7 @@ templ KPIPending(label string, note string) {
 	<div class="flex flex-col bg-card px-3.5 py-3">
 		<div class="text-2xs font-semibold uppercase tracking-caps text-muted-foreground">{ label }</div>
 		<div class="mt-1.5 text-2xl font-semibold tracking-tight text-muted-foreground/50">—</div>
-		<div class="mt-2 text-xs text-muted-foreground/70">
+		<div class="mt-2 text-xs text-muted-foreground">
 			if note != "" {
 				{ note }
 			} else {

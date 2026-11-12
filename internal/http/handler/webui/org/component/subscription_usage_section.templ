@@ -139,21 +139,20 @@ templ subscriptionConstraintGroupView(g subscriptionConstraintGroup) {
 // percentage, then the secondary figures, which wrap below on a narrow card.
 templ subscriptionGaugeLine(g subscriptionConstraintGroup, r subscriptionGaugeRow) {
 	{{ cu := r.Usage }}
+	{{ rowLabel := subscriptionGaugeRowLabel(ctx, g, cu) }}
 	<div class="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs">
 		<span class="w-full min-w-0 truncate @md:w-40">
 			if cu.UpstreamModel != "" {
-				<code title={ cu.UpstreamModel }>{ cu.UpstreamModel }</code>
+				<code title={ cu.UpstreamModel }>{ rowLabel }</code>
 			} else if g.IdlePerModel {
-				@common.Badge(common.ToneNeutral, i18n.T(ctx, "org.subscription.per_model"))
-			} else if cu.Constraint.Kind == model.ConstraintConcurrency {
-				{ i18n.T(ctx, "org.subscription.concurrent_requests") }
+				@common.Badge(common.ToneNeutral, rowLabel)
 			} else {
-				{ i18n.T(ctx, "org.subscription.all_models") }
+				{ rowLabel }
 			}
 		</span>
 		if r.Kind != gaugeNone {
 			<div class="min-w-16 flex-1">
-				@progressBar(r.Pct, r.Pct >= subscriptionDangerPct || cu.Exhausted)
+				@progressBar(r.Pct, rowLabel, r.Pct >= subscriptionDangerPct || cu.Exhausted)
 			</div>
 			<span class="min-w-12 whitespace-nowrap text-right tabular-nums">
 				if r.Kind == gaugeConcurrency {
@@ -245,15 +244,18 @@ templ subscriptionExplanation(text string) {
 }
 
 // progressBar renders a plan consumption bar.
+// `label` is the visible label of the row the bar belongs to — the model name
+// or the scope it covers — and doubles as the bar's accessible name.
 // danger=true colours it with the destructive token instead of the primary one.
-templ progressBar(pct int, danger bool) {
+templ progressBar(pct int, label string, danger bool) {
 	{{ barClass := "bg-primary" }}
 	if danger {
 		{{ barClass = "bg-destructive" }}
 	}
 	@progress.Progress(progress.Props{
-		Value:    pct,
-		BarClass: barClass,
+		Value:     pct,
+		AriaLabel: label,
+		BarClass:  barClass,
 	})
 }
 
@@ -274,6 +276,22 @@ func subscriptionGroupTiming(ctx context.Context, g subscriptionConstraintGroup)
 		return i18n.T(ctx, "org.subscription.fixed_window_reset", duration, formatUntil(ctx, g.ResetAt))
 	}
 	return i18n.T(ctx, "org.subscription.sliding_window_of", duration)
+}
+
+// subscriptionGaugeRowLabel is the visible label of a gauge row: the upstream
+// model of a per-model constraint, otherwise the scope the row covers. It is
+// also the accessible name of the bar, so the two cannot drift apart.
+func subscriptionGaugeRowLabel(ctx context.Context, g subscriptionConstraintGroup, cu SubscriptionConstraintUsage) string {
+	if cu.UpstreamModel != "" {
+		return cu.UpstreamModel
+	}
+	if g.IdlePerModel {
+		return i18n.T(ctx, "org.subscription.per_model")
+	}
+	if cu.Constraint.Kind == model.ConstraintConcurrency {
+		return i18n.T(ctx, "org.subscription.concurrent_requests")
+	}
+	return i18n.T(ctx, "org.subscription.all_models")
 }
 
 func subscriptionGaugeKindLabel(ctx context.Context, kind subscriptionGaugeKind) string {

@@ -23,10 +23,10 @@ templ InviteForm(vmodel InviteFormVModel) {
 					@card.Content() {
 						<div class="space-y-4 pt-4">
 							<div class="space-y-2">
-								@form.Label(form.LabelProps{}) {
+								@form.Label(form.LabelProps{For: "invitee_email"}) {
 									{ i18n.T(ctx, "org.invites.form.email") }
 								}
-								@input.Input(input.Props{Name: "invitee_email", Type: "email", Placeholder: i18n.T(ctx, "org.invites.form.email_placeholder")})
+								@input.Input(input.Props{ID: "invitee_email", Name: "invitee_email", Type: "email", Placeholder: i18n.T(ctx, "org.invites.form.email_placeholder")})
 								@form.Description() {
 									{ i18n.T(ctx, "org.invites.form.email_help") }
 								}
@@ -43,7 +43,7 @@ templ InviteForm(vmodel InviteFormVModel) {
 										@selectbox.Trigger(selectbox.TriggerProps{Name: "team_id", Attributes: inviteTeamAttributes(vmodel)}) {
 											@selectbox.Value(selectbox.ValueProps{Placeholder: i18n.T(ctx, "org.invites.form.no_team")})
 										}
-										@selectbox.Content(selectbox.ContentProps{NoSearch: len(vmodel.Teams) < 8}) {
+										@selectbox.Content(selectbox.ContentProps{NoSearch: len(vmodel.Teams) < 8, SearchPlaceholder: i18n.T(ctx, "common.search")}) {
 											@selectbox.Group() {
 												if !vmodel.TeamOnly {
 													@selectbox.Item(selectbox.ItemProps{Value: "", Selected: true}) {
@@ -92,16 +92,16 @@ templ InviteForm(vmodel InviteFormVModel) {
 							</div>
 							}
 							<div class="space-y-2">
-								@form.Label(form.LabelProps{}) {
+								@form.Label(form.LabelProps{For: "expires_at"}) {
 									{ i18n.T(ctx, "org.invites.form.expires_at") }
 								}
-								@input.Input(input.Props{Name: "expires_at", Type: "date"})
+								@input.Input(input.Props{ID: "expires_at", Name: "expires_at", Type: "date"})
 							</div>
 							<div class="space-y-2">
-								@form.Label(form.LabelProps{}) {
+								@form.Label(form.LabelProps{For: "max_uses"}) {
 									{ i18n.T(ctx, "org.invites.form.max_uses") }
 								}
-								@input.Input(input.Props{Name: "max_uses", Type: "number", Placeholder: "1"})
+								@input.Input(input.Props{ID: "max_uses", Name: "max_uses", Type: "number", Placeholder: "1"})
 							</div>
 						</div>
 					}

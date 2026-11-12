@@ -1642,7 +1642,7 @@ func personalOrgBudget(ou OrgUsage) templ.Component {
 			return templ_7745c5c3_Err
 		}
 		if vm.Budget != nil {
-			templ_7745c5c3_Err = common.BudgetGauge(vm.Percent, 0, "").Render(ctx, templ_7745c5c3_Buffer)
+			templ_7745c5c3_Err = common.BudgetGauge(vm.Percent, 0, "", vm.Name).Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}

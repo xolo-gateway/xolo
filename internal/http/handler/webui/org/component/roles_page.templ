@@ -7,7 +7,6 @@ import (
 	"github.com/xolo-gateway/xolo/internal/core/rbac"
 	common "github.com/xolo-gateway/xolo/internal/http/handler/webui/common/component"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/button"
-	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/checkbox"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/icon"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/selectbox"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/table"
@@ -261,13 +260,11 @@ templ permissionGroupRow(label string, roleCount int) {
 	}
 }
 
-// permissionCellControl renders one cell of the matrix: a checkbox when the
+// permissionCellControl renders one cell of the matrix: a toggle when the
 // reader may change it, a static mark otherwise.
 //
-// Each cell is its own form posting a single permission. A click then means
-// exactly what it looks like — one permission, one role — and it works without
-// JavaScript: the endpoint answers with a redirect, and hx-boost swaps the page
-// content in place when it is available.
+// Each cell is its own form posting a single permission: the toggle is a submit
+// button, since the click saves at once and no later submission follows.
 templ permissionCellControl(vmodel RolesPageVModel, role model.Role, perm rbac.Permission, writable bool) {
 	{{ cell := permissionCell(role, perm, writable) }}
 	switch {
@@ -299,16 +296,24 @@ templ permissionCellControl(vmodel RolesPageVModel, role model.Role, perm rbac.P
 				était en train de lire. -->
 				<input type="hidden" name="q" value={ vmodel.Query }/>
 				<input type="hidden" name="role" value={ vmodel.RoleID }/>
-				@checkbox.Checkbox(checkbox.Props{
-					ID:      "perm-" + string(role.ID()) + "-" + string(perm),
-					Name:    "granted",
-					Value:   "1",
-					Checked: cell.Granted,
+				if !cell.Granted {
+					<!-- Le bouton poste l'état visé : accorder se dit, révoquer se tait. -->
+					<input type="hidden" name="granted" value="1"/>
+				}
+				@button.Button(button.Props{
+					Type:    button.TypeSubmit,
+					Variant: button.VariantGhost,
+					Class:   permissionToggleClass(cell),
 					Attributes: templ.Attributes{
-						"data-xolo-submit-on-change": true,
-						"title":                      permissionToggleTitle(ctx, cell, perm),
+						"aria-pressed": strconv.FormatBool(cell.Granted),
+						"aria-label":   permissionToggleTitle(ctx, cell, perm),
+						"title":        permissionToggleTitle(ctx, cell, perm),
 					},
-				})
+				}) {
+					if cell.Granted {
+						@icon.Check(icon.Props{Size: 14})
+					}
+				}
 			</form>
 		default:
 			@permissionMark(cell.Effective())

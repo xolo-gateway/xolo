@@ -109,13 +109,14 @@ templ ProviderForm(vmodel ProviderFormVModel) {
 								}
 							}
 							@input.Input(input.Props{
-								ID:          "provider_api_key",
-								Name:        "api_key",
-								Type:        input.TypePassword,
-								Placeholder: "sk-...",
-								Class:       "font-mono",
-								Disabled:    readonly,
-								Attributes:  apiKeyAttributes(vmodel),
+								ID:                  "provider_api_key",
+								Name:                "api_key",
+								Type:                input.TypePassword,
+								Placeholder:         "sk-...",
+								Class:               "font-mono",
+								Disabled:            readonly,
+								PasswordToggleLabel: i18n.T(ctx, "common.show_password"),
+								Attributes:          apiKeyAttributes(vmodel),
 							})
 							if vmodel.IsNew && vmodel.Error != "" {
 								@form.Description() {

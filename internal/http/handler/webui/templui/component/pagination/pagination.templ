@@ -20,12 +20,6 @@ type ContentProps struct {
 	Attributes templ.Attributes
 }
 
-type ItemProps struct {
-	ID         string
-	Class      string
-	Attributes templ.Attributes
-}
-
 type LinkProps struct {
 	ID         string
 	Class      string
@@ -76,10 +70,13 @@ templ Content(props ...ContentProps) {
 	if len(props) > 0 {
 		{{ p = props[0] }}
 	}
+	// Tailwind Preflight neutralises `list-style`, so `role="list"` keeps the
+	// list semantics for assistive technologies (VoiceOver drops them otherwise).
 	<ul
 		if p.ID != "" {
 			id={ p.ID }
 		}
+		role="list"
 		class="flex flex-row items-center gap-1"
 		{ p.Attributes... }
 	>
@@ -87,49 +84,36 @@ templ Content(props ...ContentProps) {
 	</ul>
 }
 
-templ Item(props ...ItemProps) {
-	{{ var p ItemProps }}
-	if len(props) > 0 {
-		{{ p = props[0] }}
-	}
-	<li
-		if p.ID != "" {
-			id={ p.ID }
-		}
-		{ p.Attributes... }
-	>
-		{ children... }
-	</li>
-}
-
 templ Link(props ...LinkProps) {
 	{{ var p LinkProps }}
 	if len(props) > 0 {
 		{{ p = props[0] }}
 	}
-	if p.Disabled {
-		@button.Button(button.Props{
-			ID:         p.ID,
-			Disabled:   true,
-			Size:       button.SizeIcon,
-			Variant:    button.VariantGhost,
-			Class:      p.Class,
-			Attributes: p.Attributes,
-		}) {
-			{ children... }
+	<li>
+		if p.Disabled {
+			@button.Button(button.Props{
+				ID:         p.ID,
+				Disabled:   true,
+				Size:       button.SizeIcon,
+				Variant:    button.VariantGhost,
+				Class:      p.Class,
+				Attributes: p.Attributes,
+			}) {
+				{ children... }
+			}
+		} else {
+			@button.Button(button.Props{
+				ID:         p.ID,
+				Href:       p.Href,
+				Size:       button.SizeIcon,
+				Variant:    button.Variant(buttonVariant(p.IsActive)),
+				Class:      p.Class,
+				Attributes: p.Attributes,
+			}) {
+				{ children... }
+			}
 		}
-	} else {
-		@button.Button(button.Props{
-			ID:         p.ID,
-			Href:       p.Href,
-			Size:       button.SizeIcon,
-			Variant:    button.Variant(buttonVariant(p.IsActive)),
-			Class:      p.Class,
-			Attributes: p.Attributes,
-		}) {
-			{ children... }
-		}
-	}
+	</li>
 }
 
 templ Previous(props ...PreviousProps) {
@@ -137,19 +121,21 @@ templ Previous(props ...PreviousProps) {
 	if len(props) > 0 {
 		{{ p = props[0] }}
 	}
-	@button.Button(button.Props{
-		ID:         p.ID,
-		Href:       p.Href,
-		Disabled:   p.Disabled,
-		Variant:    button.VariantGhost,
-		Class:      utils.TwMerge("gap-1", p.Class),
-		Attributes: p.Attributes,
-	}) {
-		@icon.ChevronLeft(icon.Props{Size: 16})
-		if p.Label != "" {
-			<span>{ p.Label }</span>
+	<li>
+		@button.Button(button.Props{
+			ID:         p.ID,
+			Href:       p.Href,
+			Disabled:   p.Disabled,
+			Variant:    button.VariantGhost,
+			Class:      utils.TwMerge("gap-1", p.Class),
+			Attributes: p.Attributes,
+		}) {
+			@icon.ChevronLeft(icon.Props{Size: 16})
+			if p.Label != "" {
+				<span>{ p.Label }</span>
+			}
 		}
-	}
+	</li>
 }
 
 templ Next(props ...NextProps) {
@@ -157,23 +143,27 @@ templ Next(props ...NextProps) {
 	if len(props) > 0 {
 		{{ p = props[0] }}
 	}
-	@button.Button(button.Props{
-		ID:         p.ID,
-		Href:       p.Href,
-		Disabled:   p.Disabled,
-		Variant:    button.VariantGhost,
-		Class:      utils.TwMerge("gap-1", p.Class),
-		Attributes: p.Attributes,
-	}) {
-		if p.Label != "" {
-			<span>{ p.Label }</span>
+	<li>
+		@button.Button(button.Props{
+			ID:         p.ID,
+			Href:       p.Href,
+			Disabled:   p.Disabled,
+			Variant:    button.VariantGhost,
+			Class:      utils.TwMerge("gap-1", p.Class),
+			Attributes: p.Attributes,
+		}) {
+			if p.Label != "" {
+				<span>{ p.Label }</span>
+			}
+			@icon.ChevronRight(icon.Props{Size: 16})
 		}
-		@icon.ChevronRight(icon.Props{Size: 16})
-	}
+	</li>
 }
 
 templ Ellipsis() {
-	@icon.Ellipsis(icon.Props{Size: 16})
+	<li>
+		@icon.Ellipsis(icon.Props{Size: 16})
+	</li>
 }
 
 func CreatePagination(currentPage, totalPages, maxVisible int) struct {

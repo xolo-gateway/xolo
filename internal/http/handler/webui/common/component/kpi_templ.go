@@ -340,7 +340,7 @@ func KPIPending(label string, note string) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 24, "</div><div class=\"mt-1.5 text-2xl font-semibold tracking-tight text-muted-foreground/50\">—</div><div class=\"mt-2 text-xs text-muted-foreground/70\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 24, "</div><div class=\"mt-1.5 text-2xl font-semibold tracking-tight text-muted-foreground/50\">—</div><div class=\"mt-2 text-xs text-muted-foreground\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

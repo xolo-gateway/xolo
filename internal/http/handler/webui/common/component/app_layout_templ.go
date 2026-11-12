@@ -1261,6 +1261,7 @@ func contextSwitcherContent(vmodel AppLayoutVModel) templ.Component {
 				Placeholder: i18n.T(ctx, "layout.search_placeholder"),
 				Class:       "h-8",
 				Attributes: templ.Attributes{
+					"aria-label": i18n.T(ctx, "layout.search"),
 					"hx-get":     SwitcherFragmentURL(ctx, vmodel.Context, vmodel.ContextSlug),
 					"hx-trigger": "input changed delay:200ms, search",
 					"hx-target":  "#switcher-list",
@@ -1334,7 +1335,7 @@ func SwitcherList(entries []SwitcherEntry) templ.Component {
 			var templ_7745c5c3_Var63 string
 			templ_7745c5c3_Var63, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "switcher.no_results"))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/common/component/app_layout.templ`, Line: 369, Col: 102}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/common/component/app_layout.templ`, Line: 370, Col: 102}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var63))
 			if templ_7745c5c3_Err != nil {
@@ -1364,7 +1365,7 @@ func SwitcherList(entries []SwitcherEntry) templ.Component {
 				var templ_7745c5c3_Var64 string
 				templ_7745c5c3_Var64, templ_7745c5c3_Err = templ.JoinStringErrs(label)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/common/component/app_layout.templ`, Line: 377, Col: 12}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/common/component/app_layout.templ`, Line: 378, Col: 12}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var64))
 				if templ_7745c5c3_Err != nil {
@@ -1427,7 +1428,7 @@ func switcherItem(entry SwitcherEntry) templ.Component {
 		var templ_7745c5c3_Var67 templ.SafeURL
 		templ_7745c5c3_Var67, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(entry.Href))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/common/component/app_layout.templ`, Line: 387, Col: 34}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/common/component/app_layout.templ`, Line: 388, Col: 34}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var67))
 		if templ_7745c5c3_Err != nil {
@@ -1482,7 +1483,7 @@ func switcherItem(entry SwitcherEntry) templ.Component {
 			var templ_7745c5c3_Var71 string
 			templ_7745c5c3_Var71, templ_7745c5c3_Err = templ.JoinStringErrs(entry.Initial())
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/common/component/app_layout.templ`, Line: 398, Col: 21}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/common/component/app_layout.templ`, Line: 399, Col: 21}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var71))
 			if templ_7745c5c3_Err != nil {
@@ -1496,7 +1497,7 @@ func switcherItem(entry SwitcherEntry) templ.Component {
 		var templ_7745c5c3_Var72 string
 		templ_7745c5c3_Var72, templ_7745c5c3_Err = templ.JoinStringErrs(entry.Label)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/common/component/app_layout.templ`, Line: 402, Col: 39}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/common/component/app_layout.templ`, Line: 403, Col: 39}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var72))
 		if templ_7745c5c3_Err != nil {
@@ -1514,7 +1515,7 @@ func switcherItem(entry SwitcherEntry) templ.Component {
 			var templ_7745c5c3_Var73 string
 			templ_7745c5c3_Var73, templ_7745c5c3_Err = templ.JoinStringErrs(entry.Slug)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/common/component/app_layout.templ`, Line: 404, Col: 79}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/common/component/app_layout.templ`, Line: 405, Col: 79}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var73))
 			if templ_7745c5c3_Err != nil {
@@ -1593,7 +1594,7 @@ func headerActions(vmodel AppLayoutVModel) templ.Component {
 			var templ_7745c5c3_Var76 string
 			templ_7745c5c3_Var76, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "layout.search"))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/common/component/app_layout.templ`, Line: 426, Col: 33}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/common/component/app_layout.templ`, Line: 427, Col: 33}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var76))
 			if templ_7745c5c3_Err != nil {
@@ -1696,7 +1697,7 @@ func headerActions(vmodel AppLayoutVModel) templ.Component {
 					var templ_7745c5c3_Var81 string
 					templ_7745c5c3_Var81, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "layout.api_docs"))
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/common/component/app_layout.templ`, Line: 444, Col: 37}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/common/component/app_layout.templ`, Line: 445, Col: 37}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var81))
 					if templ_7745c5c3_Err != nil {
@@ -1876,7 +1877,7 @@ func userCard(vmodel AppLayoutVModel) templ.Component {
 						var templ_7745c5c3_Var89 string
 						templ_7745c5c3_Var89, templ_7745c5c3_Err = templ.JoinStringErrs(vmodel.User.DisplayName())
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/common/component/app_layout.templ`, Line: 490, Col: 76}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/common/component/app_layout.templ`, Line: 491, Col: 76}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var89))
 						if templ_7745c5c3_Err != nil {
@@ -1889,7 +1890,7 @@ func userCard(vmodel AppLayoutVModel) templ.Component {
 						var templ_7745c5c3_Var90 string
 						templ_7745c5c3_Var90, templ_7745c5c3_Err = templ.JoinStringErrs(UserRoleLabel(ctx, vmodel))
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/common/component/app_layout.templ`, Line: 491, Col: 110}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/common/component/app_layout.templ`, Line: 492, Col: 110}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var90))
 						if templ_7745c5c3_Err != nil {
@@ -1955,7 +1956,7 @@ func userCard(vmodel AppLayoutVModel) templ.Component {
 				var templ_7745c5c3_Var92 string
 				templ_7745c5c3_Var92, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "layout.login"))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/common/component/app_layout.templ`, Line: 505, Col: 32}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/common/component/app_layout.templ`, Line: 506, Col: 32}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var92))
 				if templ_7745c5c3_Err != nil {
@@ -2052,7 +2053,7 @@ func userMenuContent(vmodel AppLayoutVModel) templ.Component {
 						var templ_7745c5c3_Var97 string
 						templ_7745c5c3_Var97, templ_7745c5c3_Err = templ.JoinStringErrs(vmodel.User.DisplayName())
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/common/component/app_layout.templ`, Line: 526, Col: 76}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/common/component/app_layout.templ`, Line: 527, Col: 76}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var97))
 						if templ_7745c5c3_Err != nil {
@@ -2070,7 +2071,7 @@ func userMenuContent(vmodel AppLayoutVModel) templ.Component {
 							var templ_7745c5c3_Var98 string
 							templ_7745c5c3_Var98, templ_7745c5c3_Err = templ.JoinStringErrs(email)
 							if templ_7745c5c3_Err != nil {
-								return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/common/component/app_layout.templ`, Line: 528, Col: 67}
+								return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/common/component/app_layout.templ`, Line: 529, Col: 67}
 							}
 							_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var98))
 							if templ_7745c5c3_Err != nil {
@@ -2126,7 +2127,7 @@ func userMenuContent(vmodel AppLayoutVModel) templ.Component {
 						var templ_7745c5c3_Var100 string
 						templ_7745c5c3_Var100, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "nav.profile"))
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/common/component/app_layout.templ`, Line: 538, Col: 33}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/common/component/app_layout.templ`, Line: 539, Col: 33}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var100))
 						if templ_7745c5c3_Err != nil {
@@ -2176,7 +2177,7 @@ func userMenuContent(vmodel AppLayoutVModel) templ.Component {
 						var templ_7745c5c3_Var102 string
 						templ_7745c5c3_Var102, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "locale.label"))
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/common/component/app_layout.templ`, Line: 546, Col: 34}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/common/component/app_layout.templ`, Line: 547, Col: 34}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var102))
 						if templ_7745c5c3_Err != nil {
@@ -2198,7 +2199,7 @@ func userMenuContent(vmodel AppLayoutVModel) templ.Component {
 					var templ_7745c5c3_Var103 templ.SafeURL
 					templ_7745c5c3_Var103, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(BaseURLString(ctx, WithPath("/locale"))))
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/common/component/app_layout.templ`, Line: 548, Col: 87}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/common/component/app_layout.templ`, Line: 549, Col: 87}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var103))
 					if templ_7745c5c3_Err != nil {
@@ -2211,7 +2212,7 @@ func userMenuContent(vmodel AppLayoutVModel) templ.Component {
 					var templ_7745c5c3_Var104 string
 					templ_7745c5c3_Var104, templ_7745c5c3_Err = templ.JoinStringErrs(localeReturnTo(ctx))
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/common/component/app_layout.templ`, Line: 549, Col: 70}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/common/component/app_layout.templ`, Line: 550, Col: 70}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var104))
 					if templ_7745c5c3_Err != nil {
@@ -2253,7 +2254,7 @@ func userMenuContent(vmodel AppLayoutVModel) templ.Component {
 								var templ_7745c5c3_Var107 string
 								templ_7745c5c3_Var107, templ_7745c5c3_Err = templ.JoinStringErrs(option.Tag)
 								if templ_7745c5c3_Err != nil {
-									return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/common/component/app_layout.templ`, Line: 567, Col: 90}
+									return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/common/component/app_layout.templ`, Line: 568, Col: 90}
 								}
 								_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var107))
 								if templ_7745c5c3_Err != nil {
@@ -2266,7 +2267,7 @@ func userMenuContent(vmodel AppLayoutVModel) templ.Component {
 								var templ_7745c5c3_Var108 string
 								templ_7745c5c3_Var108, templ_7745c5c3_Err = templ.JoinStringErrs(option.Name)
 								if templ_7745c5c3_Err != nil {
-									return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/common/component/app_layout.templ`, Line: 568, Col: 22}
+									return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/common/component/app_layout.templ`, Line: 569, Col: 22}
 								}
 								_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var108))
 								if templ_7745c5c3_Err != nil {
@@ -2343,7 +2344,7 @@ func userMenuContent(vmodel AppLayoutVModel) templ.Component {
 						var templ_7745c5c3_Var110 string
 						templ_7745c5c3_Var110, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "layout.logout"))
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/common/component/app_layout.templ`, Line: 586, Col: 35}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/common/component/app_layout.templ`, Line: 587, Col: 35}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var110))
 						if templ_7745c5c3_Err != nil {
@@ -2466,7 +2467,7 @@ func appBreadcrumb(items []BreadcrumbItem) templ.Component {
 								var templ_7745c5c3_Var116 string
 								templ_7745c5c3_Var116, templ_7745c5c3_Err = templ.JoinStringErrs(item.Label)
 								if templ_7745c5c3_Err != nil {
-									return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/common/component/app_layout.templ`, Line: 604, Col: 19}
+									return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/common/component/app_layout.templ`, Line: 605, Col: 19}
 								}
 								_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var116))
 								if templ_7745c5c3_Err != nil {
@@ -2494,7 +2495,7 @@ func appBreadcrumb(items []BreadcrumbItem) templ.Component {
 								var templ_7745c5c3_Var118 string
 								templ_7745c5c3_Var118, templ_7745c5c3_Err = templ.JoinStringErrs(item.Label)
 								if templ_7745c5c3_Err != nil {
-									return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/common/component/app_layout.templ`, Line: 608, Col: 19}
+									return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/http/handler/webui/common/component/app_layout.templ`, Line: 609, Col: 19}
 								}
 								_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var118))
 								if templ_7745c5c3_Err != nil {

@@ -124,7 +124,7 @@ templ providerBundlePlan(vmodel ProviderBundleImportVModel, importURL string) {
 						@form.Label(form.LabelProps{For: "api_key"}) {
 							{ i18n.T(ctx, "org.provider_bundle.api_key_label") }
 						}
-						@input.Input(input.Props{ID: "api_key", Name: "api_key", Type: input.TypePassword, Class: "max-w-sm", Attributes: templ.Attributes{"required": "required", "autocomplete": "off"}})
+						@input.Input(input.Props{ID: "api_key", Name: "api_key", Type: input.TypePassword, Class: "max-w-sm", PasswordToggleLabel: i18n.T(ctx, "common.show_password"), Attributes: templ.Attributes{"required": "required", "autocomplete": "off"}})
 						@form.Description() {
 							{ i18n.T(ctx, "org.provider_bundle.api_key_help") }
 						}

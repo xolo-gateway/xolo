@@ -51,9 +51,9 @@ func Radio(props ...Props) templ.Component {
 			p = props[0]
 		}
 		var templ_7745c5c3_Var2 = []any{utils.TwMerge(
-			"relative h-4 w-4",
+			"relative h-6 w-6",
 			"before:absolute before:left-1/2 before:top-1/2",
-			"before:h-1.5 before:w-1.5 before:-translate-x-1/2 before:-translate-y-1/2",
+			"before:h-2.5 before:w-2.5 before:-translate-x-1/2 before:-translate-y-1/2",
 			"appearance-none rounded-full",
 			"border-2 border-primary",
 			"before:content[''] before:rounded-full before:bg-background",

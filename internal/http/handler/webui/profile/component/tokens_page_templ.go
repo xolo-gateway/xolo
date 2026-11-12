@@ -1258,7 +1258,7 @@ func TokensPage(vmodel TokensPageVModel) templ.Component {
 									}
 									return nil
 								})
-								templ_7745c5c3_Err = selectbox.Content(selectbox.ContentProps{NoSearch: len(vmodel.Teams) < 8}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var63), templ_7745c5c3_Buffer)
+								templ_7745c5c3_Err = selectbox.Content(selectbox.ContentProps{NoSearch: len(vmodel.Teams) < 8, SearchPlaceholder: i18n.T(ctx, "common.search")}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var63), templ_7745c5c3_Buffer)
 								if templ_7745c5c3_Err != nil {
 									return templ_7745c5c3_Err
 								}

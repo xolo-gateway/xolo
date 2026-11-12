@@ -25,6 +25,7 @@ templ PersonalModelsPage(vmodel PersonalModelsPageVModel) {
 					Type:       input.TypeFile,
 					FileAccept: ".json,application/json",
 					Attributes: templ.Attributes{
+						"aria-label":         i18n.T(ctx, "profile.personal_models.import"),
 						"data-xolo-import":   vmodel.BaseURL + "/api/personal-models/import",
 						"data-redirect-base": common.BaseURLString(ctx, common.WithPath("/profile/personal-models/")),
 					},
@@ -185,11 +186,12 @@ templ PersonalModelFormPage(vmodel PersonalModelFormVModel) {
 			@common.FlashError(vmodel.Error, i18n.T(ctx, "profile.personal_models.subject_indefinite"))
 			<form method="POST" action={ templ.SafeURL(action) } class="space-y-4">
 				<div class="space-y-2">
-					@form.Label() {
+					@form.Label(form.LabelProps{For: "name"}) {
 						{ i18n.T(ctx, "profile.personal_models.form.name") }
 					}
 					if vmodel.IsNew {
 						@input.Input(input.Props{
+							ID:          "name",
 							Name:        "name",
 							Placeholder: i18n.T(ctx, "profile.personal_models.form.name_placeholder"),
 							Attributes:  templ.Attributes{"required": true},
@@ -199,6 +201,7 @@ templ PersonalModelFormPage(vmodel PersonalModelFormVModel) {
 						}
 					} else {
 						@input.Input(input.Props{
+							ID:          "name",
 							Name:        "name",
 							Value:       vmodel.Name,
 							Placeholder: i18n.T(ctx, "profile.personal_models.form.name_placeholder"),
@@ -210,10 +213,10 @@ templ PersonalModelFormPage(vmodel PersonalModelFormVModel) {
 					}
 				</div>
 				<div class="space-y-2">
-					@form.Label() {
+					@form.Label(form.LabelProps{For: "description"}) {
 						{ i18n.T(ctx, "profile.personal_models.form.description") }
 					}
-					@textarea.Textarea(textarea.Props{Name: "description", Rows: 3, Value: vmodel.Description})
+					@textarea.Textarea(textarea.Props{ID: "description", Name: "description", Rows: 3, Value: vmodel.Description})
 				</div>
 				if len(vmodel.Teams) > 0 {
 					<div class="space-y-2">
@@ -224,7 +227,7 @@ templ PersonalModelFormPage(vmodel PersonalModelFormVModel) {
 							@selectbox.Trigger(selectbox.TriggerProps{ID: "pvm-team-trigger", Name: "team_id"}) {
 								@selectbox.Value(selectbox.ValueProps{Placeholder: i18n.T(ctx, "profile.personal_models.form.no_team")})
 							}
-							@selectbox.Content(selectbox.ContentProps{NoSearch: len(vmodel.Teams) < 8}) {
+							@selectbox.Content(selectbox.ContentProps{NoSearch: len(vmodel.Teams) < 8, SearchPlaceholder: i18n.T(ctx, "common.search")}) {
 								@selectbox.Group() {
 									@selectbox.Item(selectbox.ItemProps{Value: "", Selected: vmodel.TeamID == ""}) {
 										{ i18n.T(ctx, "profile.personal_models.form.no_team") }

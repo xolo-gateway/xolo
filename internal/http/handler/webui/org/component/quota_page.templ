@@ -154,6 +154,6 @@ templ quotaUsageRow(label string, spent int64, budget int64, currency string) {
 		de période sur la jauge. Il demande une extrapolation de la dépense (rythme
 		courant × jours restants) qui n'existe pas côté domaine ; BudgetGauge sait
 		déjà le dessiner dès qu'une projection lui sera fournie (cf. lot 7 du plan). -->
-		@common.BudgetGauge(pct, 0, "")
+		@common.BudgetGauge(pct, 0, "", label)
 	</div>
 }

@@ -86,7 +86,7 @@ templ keyValueRow(props KeyValueEditorProps, idx int, row ExtraBodyRow, readonly
 				Value:       row.Key,
 				Placeholder: props.KeyPlaceholder,
 				Disabled:    readonly,
-				Attributes:  templ.Attributes{"data-xolo-name": props.Name + "_k{i}_key"},
+				Attributes:  templ.Attributes{"data-xolo-name": props.Name + "_k{i}_key", "aria-label": props.KeyPlaceholder},
 			})
 		</div>
 		<div class="flex-1">
@@ -95,7 +95,7 @@ templ keyValueRow(props KeyValueEditorProps, idx int, row ExtraBodyRow, readonly
 				Value:       row.Value,
 				Placeholder: props.ValuePlaceholder,
 				Disabled:    readonly,
-				Attributes:  templ.Attributes{"data-xolo-name": props.Name + "_k{i}_value"},
+				Attributes:  templ.Attributes{"data-xolo-name": props.Name + "_k{i}_value", "aria-label": props.ValuePlaceholder},
 			})
 		</div>
 		if !readonly {
@@ -209,17 +209,18 @@ templ providerKeyRow(idx int, k model.ProviderKey, plan *model.SubscriptionPlan,
 					Value:       k.Label,
 					Placeholder: i18n.T(ctx, "org.provider.api_keys_label_placeholder"),
 					Disabled:    readonly,
-					Attributes:  templ.Attributes{"data-xolo-name": "provider_key_k{i}_label"},
+					Attributes:  templ.Attributes{"data-xolo-name": "provider_key_k{i}_label", "aria-label": i18n.T(ctx, "org.provider.api_keys_label_placeholder")},
 				})
 			</div>
 			<div class="flex-1">
 				@input.Input(input.Props{
-					Name:        "provider_key_k" + idxKey + "_value",
-					Type:        input.TypePassword,
-					Placeholder: valuePlaceholder,
-					Class:       "font-mono",
-					Disabled:    readonly,
-					Attributes:  templ.Attributes{"data-xolo-name": "provider_key_k{i}_value", "autocomplete": "off"},
+					Name:                "provider_key_k" + idxKey + "_value",
+					Type:                input.TypePassword,
+					Placeholder:         valuePlaceholder,
+					Class:               "font-mono",
+					Disabled:            readonly,
+					PasswordToggleLabel: i18n.T(ctx, "common.show_password"),
+					Attributes:          templ.Attributes{"data-xolo-name": "provider_key_k{i}_value", "autocomplete": "off", "aria-label": valuePlaceholder},
 				})
 			</div>
 			if !readonly {
@@ -270,7 +271,7 @@ templ providerKeyOverride(idxKey string, j int, c model.PlanConstraint, o model.
 					Value:       overrideValueBudget(o),
 					Placeholder: i18n.T(ctx, "org.provider.api_keys_override_value", formatBudgetField(*c.ValueBudget)),
 					Disabled:    readonly,
-					Attributes:  templ.Attributes{"data-xolo-name": pattern + "value_budget", "min": "0", "step": "any"},
+					Attributes:  templ.Attributes{"data-xolo-name": pattern + "value_budget", "min": "0", "step": "any", "aria-label": i18n.T(ctx, "org.provider.api_keys_override_value", formatBudgetField(*c.ValueBudget))},
 				})
 			}
 			if c.TokenBudget != nil {
@@ -280,7 +281,7 @@ templ providerKeyOverride(idxKey string, j int, c model.PlanConstraint, o model.
 					Value:       overrideTokenBudget(o),
 					Placeholder: i18n.T(ctx, "org.provider.api_keys_override_tokens", *c.TokenBudget),
 					Disabled:    readonly,
-					Attributes:  templ.Attributes{"data-xolo-name": pattern + "token_budget", "min": "0"},
+					Attributes:  templ.Attributes{"data-xolo-name": pattern + "token_budget", "min": "0", "aria-label": i18n.T(ctx, "org.provider.api_keys_override_tokens", *c.TokenBudget)},
 				})
 			}
 			@input.Input(input.Props{
@@ -288,7 +289,7 @@ templ providerKeyOverride(idxKey string, j int, c model.PlanConstraint, o model.
 				Value:       overrideResetIn(c, o),
 				Placeholder: i18n.T(ctx, "org.provider.api_keys_override_reset_in"),
 				Disabled:    readonly,
-				Attributes:  templ.Attributes{"data-xolo-name": pattern + "reset_in"},
+				Attributes:  templ.Attributes{"data-xolo-name": pattern + "reset_in", "aria-label": i18n.T(ctx, "org.provider.api_keys_override_reset_in")},
 			})
 		</div>
 		if c.Scope == model.PlanScopeModel || c.Scope == model.PlanScopeShared {
@@ -299,7 +300,7 @@ templ providerKeyOverride(idxKey string, j int, c model.PlanConstraint, o model.
 				Placeholder: i18n.T(ctx, "org.provider.api_keys_override_models"),
 				Disabled:    readonly,
 				Class:       "font-mono text-xs",
-				Attributes:  templ.Attributes{"data-xolo-name": pattern + "model_budgets"},
+				Attributes:  templ.Attributes{"data-xolo-name": pattern + "model_budgets", "aria-label": i18n.T(ctx, "org.provider.api_keys_override_models")},
 			})
 		}
 	</div>

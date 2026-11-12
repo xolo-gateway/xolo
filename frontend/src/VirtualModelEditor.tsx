@@ -335,6 +335,7 @@ export function VirtualModelEditor() {
                   type="file"
                   accept=".json,application/json"
                   style={{ display: 'none' }}
+                  aria-label={t('editor.import.title')}
                   onChange={handleImportFile}
                 />
                 <button

@@ -344,6 +344,7 @@ templ contextSwitcherContent(vmodel AppLayoutVModel) {
 				Placeholder: i18n.T(ctx, "layout.search_placeholder"),
 				Class:       "h-8",
 				Attributes: templ.Attributes{
+					"aria-label": i18n.T(ctx, "layout.search"),
 					"hx-get":     SwitcherFragmentURL(ctx, vmodel.Context, vmodel.ContextSlug),
 					"hx-trigger": "input changed delay:200ms, search",
 					"hx-target":  "#switcher-list",
