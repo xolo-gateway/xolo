@@ -267,6 +267,8 @@ templ hashKeyFields(pd uiPageData) {
 			Type:        input.TypePassword,
 			Form:        "hash-key-form",
 			Placeholder: hashKeyPlaceholder(pd.HasHashKey),
+			PasswordToggleLabel:     i18n.T(ctx, "common.show_password"),
+			PasswordToggleHideLabel: i18n.T(ctx, "common.hide_password"),
 		})
 		<p class="text-xs text-muted-foreground">
 			if pd.HasHashKey {

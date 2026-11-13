@@ -79,6 +79,8 @@ templ page(pd uiPageData) {
 									Name:        "auth_value",
 									Type:        input.TypePassword,
 									Placeholder: authValuePlaceholder(pd.HasAuthValue),
+									PasswordToggleLabel:     i18n.T(ctx, "common.show_password"),
+									PasswordToggleHideLabel: i18n.T(ctx, "common.hide_password"),
 								})
 								<p class="text-xs text-muted-foreground">
 									if pd.HasAuthValue {

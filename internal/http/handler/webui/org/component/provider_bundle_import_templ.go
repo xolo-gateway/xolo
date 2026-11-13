@@ -675,7 +675,7 @@ func providerBundlePlan(vmodel ProviderBundleImportVModel, importURL string) tem
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
-					templ_7745c5c3_Err = input.Input(input.Props{ID: "api_key", Name: "api_key", Type: input.TypePassword, Class: "max-w-sm", PasswordToggleLabel: i18n.T(ctx, "common.show_password"), Attributes: templ.Attributes{"required": "required", "autocomplete": "off"}}).Render(ctx, templ_7745c5c3_Buffer)
+					templ_7745c5c3_Err = input.Input(input.Props{ID: "api_key", Name: "api_key", Type: input.TypePassword, Class: "max-w-sm", PasswordToggleLabel: i18n.T(ctx, "common.show_password"), PasswordToggleHideLabel: i18n.T(ctx, "common.hide_password"), Attributes: templ.Attributes{"required": "required", "autocomplete": "off"}}).Render(ctx, templ_7745c5c3_Buffer)
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
