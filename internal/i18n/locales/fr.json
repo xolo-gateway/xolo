@@ -122,6 +122,7 @@
   "common.cancel": "Annuler",
   "common.search": "Rechercher",
   "common.unidentified": "Non identifié",
+  "common.hide_password": "Masquer le mot de passe",
   "common.show_password": "Afficher le mot de passe",
   "common.save": "Enregistrer",
   "common.add_item": "+ Ajouter",

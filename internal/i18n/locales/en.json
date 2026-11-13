@@ -122,6 +122,7 @@
   "common.cancel": "Cancel",
   "common.search": "Search",
   "common.unidentified": "Unidentified",
+  "common.hide_password": "Hide password",
   "common.show_password": "Show password",
   "common.save": "Save",
   "common.add_item": "+ Add",

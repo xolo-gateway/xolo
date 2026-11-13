@@ -1759,11 +1759,13 @@ func hashKeyFields(pd uiPageData) templ.Component {
 				return templ_7745c5c3_Err
 			}
 			templ_7745c5c3_Err = input.Input(input.Props{
-				ID:          "hash_key",
-				Name:        "hash_key",
-				Type:        input.TypePassword,
-				Form:        "hash-key-form",
-				Placeholder: hashKeyPlaceholder(pd.HasHashKey),
+				ID:                      "hash_key",
+				Name:                    "hash_key",
+				Type:                    input.TypePassword,
+				Form:                    "hash-key-form",
+				Placeholder:             hashKeyPlaceholder(pd.HasHashKey),
+				PasswordToggleLabel:     i18n.T(ctx, "common.show_password"),
+				PasswordToggleHideLabel: i18n.T(ctx, "common.hide_password"),
 			}).Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
@@ -1776,7 +1778,7 @@ func hashKeyFields(pd uiPageData) templ.Component {
 				var templ_7745c5c3_Var94 string
 				templ_7745c5c3_Var94, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "plugin.pseudonymizer.hash_key.configured"))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `plugins/pseudonymizer/page.templ`, Line: 273, Col: 61}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `plugins/pseudonymizer/page.templ`, Line: 275, Col: 61}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var94))
 				if templ_7745c5c3_Err != nil {
@@ -1786,7 +1788,7 @@ func hashKeyFields(pd uiPageData) templ.Component {
 				var templ_7745c5c3_Var95 string
 				templ_7745c5c3_Var95, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "plugin.pseudonymizer.hash_key.help"))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `plugins/pseudonymizer/page.templ`, Line: 275, Col: 55}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `plugins/pseudonymizer/page.templ`, Line: 277, Col: 55}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var95))
 				if templ_7745c5c3_Err != nil {
@@ -1813,7 +1815,7 @@ func hashKeyFields(pd uiPageData) templ.Component {
 					var templ_7745c5c3_Var97 string
 					templ_7745c5c3_Var97, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "plugin.pseudonymizer.hash_key.delete"))
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `plugins/pseudonymizer/page.templ`, Line: 281, Col: 58}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `plugins/pseudonymizer/page.templ`, Line: 283, Col: 58}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var97))
 					if templ_7745c5c3_Err != nil {
@@ -1841,7 +1843,7 @@ func hashKeyFields(pd uiPageData) templ.Component {
 				var templ_7745c5c3_Var99 string
 				templ_7745c5c3_Var99, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "plugin.pseudonymizer.hash_key.save"))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `plugins/pseudonymizer/page.templ`, Line: 285, Col: 55}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `plugins/pseudonymizer/page.templ`, Line: 287, Col: 55}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var99))
 				if templ_7745c5c3_Err != nil {
@@ -1892,7 +1894,7 @@ func choice(name, value string, checked bool, title, description string) templ.C
 		var templ_7745c5c3_Var101 string
 		templ_7745c5c3_Var101, templ_7745c5c3_Err = templ.JoinStringErrs(name + "-" + value)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `plugins/pseudonymizer/page.templ`, Line: 294, Col: 32}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `plugins/pseudonymizer/page.templ`, Line: 296, Col: 32}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var101))
 		if templ_7745c5c3_Err != nil {
@@ -1913,7 +1915,7 @@ func choice(name, value string, checked bool, title, description string) templ.C
 		var templ_7745c5c3_Var102 string
 		templ_7745c5c3_Var102, templ_7745c5c3_Err = templ.JoinStringErrs(title)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `plugins/pseudonymizer/page.templ`, Line: 299, Col: 43}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `plugins/pseudonymizer/page.templ`, Line: 301, Col: 43}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var102))
 		if templ_7745c5c3_Err != nil {
@@ -1926,7 +1928,7 @@ func choice(name, value string, checked bool, title, description string) templ.C
 		var templ_7745c5c3_Var103 string
 		templ_7745c5c3_Var103, templ_7745c5c3_Err = templ.JoinStringErrs(description)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `plugins/pseudonymizer/page.templ`, Line: 300, Col: 57}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `plugins/pseudonymizer/page.templ`, Line: 302, Col: 57}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var103))
 		if templ_7745c5c3_Err != nil {
@@ -1969,7 +1971,7 @@ func choiceExample(name, value string, checked bool, title, example, description
 		var templ_7745c5c3_Var105 string
 		templ_7745c5c3_Var105, templ_7745c5c3_Err = templ.JoinStringErrs(name + "-" + value)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `plugins/pseudonymizer/page.templ`, Line: 307, Col: 32}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `plugins/pseudonymizer/page.templ`, Line: 309, Col: 32}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var105))
 		if templ_7745c5c3_Err != nil {
@@ -1990,7 +1992,7 @@ func choiceExample(name, value string, checked bool, title, example, description
 		var templ_7745c5c3_Var106 string
 		templ_7745c5c3_Var106, templ_7745c5c3_Err = templ.JoinStringErrs(title)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `plugins/pseudonymizer/page.templ`, Line: 313, Col: 45}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `plugins/pseudonymizer/page.templ`, Line: 315, Col: 45}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var106))
 		if templ_7745c5c3_Err != nil {
@@ -2003,7 +2005,7 @@ func choiceExample(name, value string, checked bool, title, example, description
 		var templ_7745c5c3_Var107 string
 		templ_7745c5c3_Var107, templ_7745c5c3_Err = templ.JoinStringErrs(example)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `plugins/pseudonymizer/page.templ`, Line: 314, Col: 67}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `plugins/pseudonymizer/page.templ`, Line: 316, Col: 67}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var107))
 		if templ_7745c5c3_Err != nil {
@@ -2016,7 +2018,7 @@ func choiceExample(name, value string, checked bool, title, example, description
 		var templ_7745c5c3_Var108 string
 		templ_7745c5c3_Var108, templ_7745c5c3_Err = templ.JoinStringErrs(description)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `plugins/pseudonymizer/page.templ`, Line: 316, Col: 57}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `plugins/pseudonymizer/page.templ`, Line: 318, Col: 57}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var108))
 		if templ_7745c5c3_Err != nil {
@@ -2060,7 +2062,7 @@ func nativeSelect(name string) templ.Component {
 		var templ_7745c5c3_Var110 string
 		templ_7745c5c3_Var110, templ_7745c5c3_Err = templ.JoinStringErrs(name)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `plugins/pseudonymizer/page.templ`, Line: 325, Col: 11}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `plugins/pseudonymizer/page.templ`, Line: 327, Col: 11}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var110))
 		if templ_7745c5c3_Err != nil {
@@ -2073,7 +2075,7 @@ func nativeSelect(name string) templ.Component {
 		var templ_7745c5c3_Var111 string
 		templ_7745c5c3_Var111, templ_7745c5c3_Err = templ.JoinStringErrs(name)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `plugins/pseudonymizer/page.templ`, Line: 326, Col: 13}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `plugins/pseudonymizer/page.templ`, Line: 328, Col: 13}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var111))
 		if templ_7745c5c3_Err != nil {
@@ -2136,7 +2138,7 @@ func numberField(name, title, value, placeholder, step, max string) templ.Compon
 			var templ_7745c5c3_Var114 string
 			templ_7745c5c3_Var114, templ_7745c5c3_Err = templ.JoinStringErrs(title)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `plugins/pseudonymizer/page.templ`, Line: 336, Col: 48}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `plugins/pseudonymizer/page.templ`, Line: 338, Col: 48}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var114))
 			if templ_7745c5c3_Err != nil {
@@ -2226,7 +2228,7 @@ func textField(name, title, value, placeholder, class string) templ.Component {
 			var templ_7745c5c3_Var119 string
 			templ_7745c5c3_Var119, templ_7745c5c3_Err = templ.JoinStringErrs(title)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `plugins/pseudonymizer/page.templ`, Line: 351, Col: 48}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `plugins/pseudonymizer/page.templ`, Line: 353, Col: 48}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var119))
 			if templ_7745c5c3_Err != nil {
@@ -2291,7 +2293,7 @@ func modelStatusBadge(ms modelStatusEntry) templ.Component {
 				var templ_7745c5c3_Var122 string
 				templ_7745c5c3_Var122, templ_7745c5c3_Err = templ.JoinStringErrs(ms.Lang)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `plugins/pseudonymizer/page.templ`, Line: 359, Col: 16}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `plugins/pseudonymizer/page.templ`, Line: 361, Col: 16}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var122))
 				if templ_7745c5c3_Err != nil {
@@ -2323,7 +2325,7 @@ func modelStatusBadge(ms modelStatusEntry) templ.Component {
 				var templ_7745c5c3_Var124 string
 				templ_7745c5c3_Var124, templ_7745c5c3_Err = templ.JoinStringErrs(ms.Lang)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `plugins/pseudonymizer/page.templ`, Line: 363, Col: 16}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `plugins/pseudonymizer/page.templ`, Line: 365, Col: 16}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var124))
 				if templ_7745c5c3_Err != nil {
@@ -2377,7 +2379,7 @@ func indecisStatusBadge(ms indecisStatus) templ.Component {
 				var templ_7745c5c3_Var127 string
 				templ_7745c5c3_Var127, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "plugin.pseudonymizer.models.local"))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `plugins/pseudonymizer/page.templ`, Line: 371, Col: 53}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `plugins/pseudonymizer/page.templ`, Line: 373, Col: 53}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var127))
 				if templ_7745c5c3_Err != nil {
@@ -2409,7 +2411,7 @@ func indecisStatusBadge(ms indecisStatus) templ.Component {
 				var templ_7745c5c3_Var129 string
 				templ_7745c5c3_Var129, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "plugin.pseudonymizer.models.cached"))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `plugins/pseudonymizer/page.templ`, Line: 375, Col: 58}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `plugins/pseudonymizer/page.templ`, Line: 377, Col: 58}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var129))
 				if templ_7745c5c3_Err != nil {
@@ -2441,7 +2443,7 @@ func indecisStatusBadge(ms indecisStatus) templ.Component {
 				var templ_7745c5c3_Var131 string
 				templ_7745c5c3_Var131, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "plugin.pseudonymizer.models.missing"))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `plugins/pseudonymizer/page.templ`, Line: 379, Col: 59}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `plugins/pseudonymizer/page.templ`, Line: 381, Col: 59}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var131))
 				if templ_7745c5c3_Err != nil {
@@ -2506,7 +2508,7 @@ func checkboxRow(name, title, description string, checked bool) templ.Component 
 			var templ_7745c5c3_Var134 string
 			templ_7745c5c3_Var134, templ_7745c5c3_Err = templ.JoinStringErrs(title)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `plugins/pseudonymizer/page.templ`, Line: 390, Col: 49}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `plugins/pseudonymizer/page.templ`, Line: 392, Col: 49}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var134))
 			if templ_7745c5c3_Err != nil {
@@ -2525,7 +2527,7 @@ func checkboxRow(name, title, description string, checked bool) templ.Component 
 		var templ_7745c5c3_Var135 string
 		templ_7745c5c3_Var135, templ_7745c5c3_Err = templ.JoinStringErrs(description)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `plugins/pseudonymizer/page.templ`, Line: 391, Col: 57}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `plugins/pseudonymizer/page.templ`, Line: 393, Col: 57}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var135))
 		if templ_7745c5c3_Err != nil {

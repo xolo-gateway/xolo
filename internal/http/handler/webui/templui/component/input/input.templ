@@ -42,8 +42,14 @@ type Props struct {
 	HasError         bool
 	NoTogglePassword bool
 	// PasswordToggleLabel is the translated name of the show/hide button, which
-	// the component cannot translate itself (no request context).
+	// the component cannot translate itself (no request context). It is the name
+	// while the password is *hidden* — the action the button offers.
 	PasswordToggleLabel string
+	// PasswordToggleHideLabel is that name once the password is *visible*. It is
+	// rendered inside the span the toggle script reveals, so the announced name
+	// follows the state; leaving it empty falls back to PasswordToggleLabel, which
+	// keeps the previous behaviour for a caller that only sets one label.
+	PasswordToggleHideLabel string
 }
 
 templ Input(props ...Props) {
@@ -107,25 +113,36 @@ templ Input(props ...Props) {
 			{ p.Attributes... }
 		/>
 		if p.Type == TypePassword && !p.NoTogglePassword {
-			{{ toggleAttributes := templ.Attributes{"data-tui-input-toggle-password": p.ID} }}
-			if p.PasswordToggleLabel != "" {
-				{{ toggleAttributes["aria-label"] = p.PasswordToggleLabel }}
+			{{ hideLabel := p.PasswordToggleHideLabel }}
+			if hideLabel == "" {
+				{{ hideLabel = p.PasswordToggleLabel }}
 			}
 			@button.Button(button.Props{
 				Size:       button.SizeIcon,
 				Variant:    button.VariantGhost,
 				Class:      "absolute right-0 top-1/2 -translate-y-1/2 opacity-50 cursor-pointer",
-				Attributes: toggleAttributes,
+				Attributes: templ.Attributes{"data-tui-input-toggle-password": p.ID},
 			}) {
+				{{
+					/* Le nom est le contenu du bouton, pas un aria-label : le script
+					bascule « hidden » entre ces deux spans, donc le nom annoncé suit
+					l'état du champ au lieu de rester figé sur « afficher ». */
+				}}
 				<span class="icon-open block">
 					@icon.Eye(icon.Props{
 						Size: 18,
 					})
+					if p.PasswordToggleLabel != "" {
+						<span class="sr-only">{ p.PasswordToggleLabel }</span>
+					}
 				</span>
 				<span class="icon-closed hidden">
 					@icon.EyeOff(icon.Props{
 						Size: 18,
 					})
+					if hideLabel != "" {
+						<span class="sr-only">{ hideLabel }</span>
+					}
 				</span>
 			}
 		}
