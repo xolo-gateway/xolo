@@ -219,7 +219,8 @@ templ providerKeyRow(idx int, k model.ProviderKey, plan *model.SubscriptionPlan,
 					Placeholder:         valuePlaceholder,
 					Class:               "font-mono",
 					Disabled:            readonly,
-					PasswordToggleLabel: i18n.T(ctx, "common.show_password"),
+					PasswordToggleLabel:     i18n.T(ctx, "common.show_password"),
+					PasswordToggleHideLabel: i18n.T(ctx, "common.hide_password"),
 					Attributes:          templ.Attributes{"data-xolo-name": "provider_key_k{i}_value", "autocomplete": "off", "aria-label": valuePlaceholder},
 				})
 			</div>

@@ -138,6 +138,28 @@ func TestPageRendersConfigFields(t *testing.T) {
 	}
 }
 
+// The hash key renders without a toggle: this page loads no input.min.js, so a
+// toggle would POST the configuration form without toggling anything.
+func TestPageHashKeyHasNoToggleButton(t *testing.T) {
+	pd := uiPageData{
+		BasePath:  "/",
+		Config:    defaultConfig(),
+		Languages: []string{"fr", "en"},
+		NodeID:    "node-1",
+	}
+	var out strings.Builder
+	if err := page(pd).Render(context.Background(), &out); err != nil {
+		t.Fatalf("render page: %v", err)
+	}
+	html := out.String()
+	if !strings.Contains(html, `name="hash_key"`) {
+		t.Fatalf("hash_key must render for the test to mean anything: %s", html)
+	}
+	if strings.Contains(html, `data-tui-input-toggle-password="hash_key"`) {
+		t.Error("hash_key toggle rendered, but the page loads no input.min.js: clicking would POST the form")
+	}
+}
+
 func TestConfigFromForm_PreservesFieldsAbsentFromTheForm(t *testing.T) {
 	base := defaultConfig()
 	base.SkipTypes = []string{"MISC"}
