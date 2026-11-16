@@ -189,6 +189,11 @@ func OrgNavGroups(ctx context.Context, slug string, orgID model.OrgID, selected 
 			Label: i18n.T(ctx, "nav.invitations"), Href: href("/admin/invites"), Icon: icon.Mail, Active: selected == prefix+"invites",
 		})
 	}
+	if httpCtx.EnrollmentEnabled(ctx) && HasPermission(ctx, orgID, rbac.PermInvitesRead) {
+		governance.Items = append(governance.Items, NavEntry{
+			Label: i18n.T(ctx, "nav.enrollment"), Href: href("/admin/enrollment-rules"), Icon: icon.UserCheck, Active: selected == prefix+"enrollment",
+		})
+	}
 	gateway := NavGroup{Title: i18n.T(ctx, "nav.group.gateway")}
 	if HasPermission(ctx, orgID, rbac.PermProvidersRead) {
 		gateway.Items = append(gateway.Items, NavEntry{

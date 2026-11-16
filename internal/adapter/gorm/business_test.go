@@ -452,6 +452,7 @@ func TestBusinessCascades(t *testing.T) {
 		require.NoError(t, db.Table("providers").Where("org_id = ?", string(fixture.org)).Count(&count).Error)
 		require.EqualValues(t, 1, count)
 
+		require.NoError(t, base.CreateEnrollmentRule(ctx, model.NewEnrollmentRule(fixture.org, "Staff", model.EnrollmentKindClaim, "groups", "staff", model.RoleMember, true)))
 		cursor, err := base.CaptureEventCursor(ctx)
 		require.NoError(t, err)
 		require.NoError(t, base.DeleteOrg(ctx, fixture.org))

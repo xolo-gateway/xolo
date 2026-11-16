@@ -84,8 +84,14 @@ func NewIdentityResolver(users port.UserStore, invites port.InviteStore, transac
 // Resolve returns the account of the identity, creating, linking or updating
 // it as the policy allows.
 func (r *IdentityResolver) Resolve(ctx context.Context, tenantID model.TenantID, proof AuthenticatedIdentity, policy LoginPolicy) (model.User, error) {
+	user, _, err := r.ResolveAccount(ctx, tenantID, proof, policy)
+	return user, err
+}
+
+// ResolveAccount is Resolve, and also tells whether it created the account.
+func (r *IdentityResolver) ResolveAccount(ctx context.Context, tenantID model.TenantID, proof AuthenticatedIdentity, policy LoginPolicy) (model.User, bool, error) {
 	if proof.Provider == "" || proof.Subject == "" {
-		return nil, errors.Wrap(port.ErrNotAllowed, "identity without provider or subject")
+		return nil, false, errors.Wrap(port.ErrNotAllowed, "identity without provider or subject")
 	}
 	// The invitation lookup goes through the ordinary store: it runs in the
 	// read phase only, and the transaction reuses its answer. An invitation
@@ -101,10 +107,10 @@ func (r *IdentityResolver) Resolve(ctx context.Context, tenantID model.TenantID,
 	newID := model.NewUserID()
 	user, next, err := r.decide(ctx, r.users, tenantID, proof, policy, isInvited, newID)
 	if err != nil || next == nil {
-		return user, err
+		return user, false, err
 	}
 	if r.transactions == nil {
-		return nil, errors.New("identity resolution can not write without a provisioning transaction")
+		return nil, false, errors.New("identity resolution can not write without a provisioning transaction")
 	}
 
 	// The audit names the account written as its actor, and reads the actor
@@ -136,9 +142,10 @@ func (r *IdentityResolver) Resolve(ctx context.Context, tenantID model.TenantID,
 		}
 	}
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
-	return user, nil
+	// Only the creation uses newID.
+	return user, user.ID() == newID, nil
 }
 
 // decide resolves the identity in order: its sign-in link, the identity

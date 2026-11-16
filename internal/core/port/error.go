@@ -41,6 +41,10 @@ var (
 	// team, the middleware would run for every request of the organization.
 	ErrTeamHasMiddlewares = fmt.Errorf("middlewares are attached to the team alone: %w", ErrNotAllowed)
 
+	// ErrRoleGrantedByEnrollment refuses to delete a custom role an
+	// enrollment rule grants: the rule would then fail on every sign-in.
+	ErrRoleGrantedByEnrollment = fmt.Errorf("role granted by an enrollment rule: %w", ErrNotAllowed)
+
 	// ErrPlatformAdminProtected refuses any provisioning change to a platform
 	// administrator: provisioning never acts on platform-wide privileges.
 	ErrPlatformAdminProtected = fmt.Errorf("platform admin protected: %w", ErrNotAllowed)

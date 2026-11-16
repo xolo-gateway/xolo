@@ -84,6 +84,8 @@ var projectionFamilies = map[string]int{
 	model.FamilyApplication:  14,
 	model.FamilyQuota:        15,
 	model.FamilyAlert:        16,
+	// A rule designates a role of its organization.
+	model.FamilyEnrollmentRule: 17,
 }
 
 type projectionID struct{ family, tenantID, orgID, key string }

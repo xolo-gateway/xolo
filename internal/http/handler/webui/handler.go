@@ -7,6 +7,7 @@ import (
 	"github.com/xolo-gateway/xolo/internal/catalog"
 	"github.com/xolo-gateway/xolo/internal/core/port"
 	"github.com/xolo-gateway/xolo/internal/core/service"
+	httpCtx "github.com/xolo-gateway/xolo/internal/http/context"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/admin"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/join"
 	"github.com/xolo-gateway/xolo/internal/http/handler/webui/org"
@@ -41,12 +42,21 @@ type Handler struct {
 	fairShare           *service.FairShareService
 	orgHandler          *org.Handler
 	profileHandler      *profile.Handler
+	enrollment          bool
 }
 
 // WithTeams enables the team pages and the team pickers of the profile.
 func (h *Handler) WithTeams(teams port.TeamStore) *Handler {
 	h.orgHandler.SetTeams(teams)
 	h.profileHandler.SetTeams(teams)
+	return h
+}
+
+// WithEnrollment enables the pages of the enrollment rules. Nil leaves them
+// out, for an instance where rules do not apply.
+func (h *Handler) WithEnrollment(enrollment *service.EnrollmentService) *Handler {
+	h.orgHandler.SetEnrollment(enrollment)
+	h.enrollment = enrollment != nil
 	return h
 }
 
@@ -60,6 +70,9 @@ func (h *Handler) WithCatalog(source *catalog.Source, origins port.CatalogOrigin
 
 // ServeHTTP implements http.Handler.
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if h.enrollment {
+		r = r.WithContext(httpCtx.SetEnrollmentEnabled(r.Context(), true))
+	}
 	h.mux.ServeHTTP(w, r)
 }
 

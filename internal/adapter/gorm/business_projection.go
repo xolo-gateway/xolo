@@ -223,6 +223,8 @@ func businessFamilyOf(key mutationKey, row snapshotRow) (string, bool) {
 		return model.FamilyQuota, true
 	case "alert":
 		return model.FamilyAlert, true
+	case "enrollment_rule":
+		return model.FamilyEnrollmentRule, true
 	case "provider":
 		return model.FamilyProvider, true
 	case "llm_model":
@@ -252,6 +254,7 @@ var businessRepresentationFields = map[string][]string{
 	model.FamilyQuota:                {"scope", "scope_id", "currency", "daily_budget", "monthly_budget", "yearly_budget", "cascade"},
 	model.FamilyTeamSettings:         {"description", "share_quota_equally", "model_grants", "middleware_ids", "member_roles"},
 	model.FamilyAlert:                {"name", "description", "scope", "owner_id", "query", "aggregation", "window_seconds", "comparator", "threshold", "for_seconds", "enabled"},
+	model.FamilyEnrollmentRule:       {"name", "kind", "claim", "value", "role", "enabled"},
 	model.FamilyProvider:             {"name", "type", "base_url", "active", "currency", "cloud_tier", "billing_mode", "subscription_plan", "retry_config", "rate_limit_config", "request_headers"},
 	model.FamilyLLMModel:             {"provider_id", "proxy_name", "kind", "enabled"},
 	model.FamilyVirtualModel:         {"name", "description", "catalog_overrides", "graph"},

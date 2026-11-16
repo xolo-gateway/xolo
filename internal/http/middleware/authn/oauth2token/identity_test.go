@@ -47,6 +47,21 @@ func TestAuthenticate_IdentityProof(t *testing.T) {
 		}
 	})
 
+	t.Run("claims", func(t *testing.T) {
+		srv, _ := newIntrospectionServer(t, map[string]any{"active": true, "sub": "u", "groups": []any{"staff"}})
+		user, err := NewHandler([]Provider{{ID: "corp", Issuer: testIssuer, IntrospectionURL: srv.URL, ClientID: "xolo"}}).
+			Authenticate(nil, requestWithToken("good"))
+		if err != nil || user == nil || !user.Claims.Has("groups", "staff") {
+			t.Fatalf("introspection: user=%+v err=%v", user, err)
+		}
+		srv, _ = newUserInfoServer(t, map[string]any{"sub": "u", "groups": []any{"staff"}})
+		user, err = NewHandler([]Provider{{ID: "corp", Issuer: testIssuer, UserInfoURL: srv.URL}}).
+			Authenticate(nil, requestWithToken("good"))
+		if err != nil || user == nil || !user.Claims.Has("groups", "staff") {
+			t.Fatalf("userinfo: user=%+v err=%v", user, err)
+		}
+	})
+
 	t.Run("a provider without issuer proves none", func(t *testing.T) {
 		srv, _ := newIntrospectionServer(t, map[string]any{"active": true, "sub": "u"})
 		h := NewHandler([]Provider{{ID: "corp", IntrospectionURL: srv.URL, ClientID: "xolo"}})

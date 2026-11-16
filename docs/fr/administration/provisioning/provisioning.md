@@ -587,7 +587,7 @@ sont refusés.
 
 ## Ressources métier
 
-Dix familles propres à Xolo suivent le même contrat que les familles
+Onze familles propres à Xolo suivent le même contrat que les familles
 communes : lecture unitaire avec `ETag`, listes paginées, `PUT` conditionnels
 et événements. `llm_model` et `personal_virtual_model` sont en lecture
 seule : ni `PUT` ni `DELETE` (`405`), voir [Modèles LLM](#modeles-llm) et
@@ -600,6 +600,7 @@ seule : ni `PUT` ni `DELETE` (`405`), voir [Modèles LLM](#modeles-llm) et
 | `GET`, `GET`, `PUT` | `/v1/xolo/tenants/{tenantID}/organizations/{orgID}/team-settings[/{teamID}]` |
 | `GET`, `GET`, `PUT`, `DELETE` | `/v1/xolo/tenants/{tenantID}/organizations/{orgID}/applications[/{key}]` |
 | `GET`, `GET`, `PUT`, `DELETE` | `/v1/xolo/tenants/{tenantID}/organizations/{orgID}/alerts[/{key}]` |
+| `GET`, `GET`, `PUT`, `DELETE` | `/v1/xolo/tenants/{tenantID}/organizations/{orgID}/enrollment-rules[/{key}]` |
 | `GET`, `GET`, `PUT`, `DELETE` | `/v1/xolo/tenants/{tenantID}/organizations/{orgID}/providers[/{key}]` |
 | `GET`, `GET` | `/v1/xolo/tenants/{tenantID}/organizations/{orgID}/llm-models[/{key}]` |
 | `GET`, `GET` | `/v1/xolo/tenants/{tenantID}/members/{memberID}/personal-models[/{key}]` |
@@ -620,6 +621,7 @@ Les représentations sont en snake_case et complètes : chaque champ est requis,
 | `application` | `{"name","description","active","role_ids":[…]}`, plus `"team_id"` facultatif (vide pour aucune équipe) |
 | `quota` | `{"scope","scope_id","currency","daily_budget","monthly_budget","yearly_budget"}`, budgets en microcents ou `null`, plus `"cascade"` facultatif (`free` par défaut, `capped` ou `split`) |
 | `alert` | `{"name","description","scope","owner_id","query","aggregation","window_seconds","comparator","threshold","for_seconds","enabled"}` |
+| `enrollment_rule` | `{"name","kind","claim","value","role","enabled"}`, `kind` valant `email_domain` ou `claim`, `role` valant `member`, `org:admin` ou l'identifiant d'un rôle personnalisé, voir [Règles d'inscription](../organisation/inscription/inscription.md) |
 | `virtual_model` | `{"name","description","catalog_overrides","graph"}`, `catalog_overrides` à `null` ou `{"contextWindow","maxOutputTokens","capabilities"}`, comme dans l'interface web |
 | `middleware` | `{"name","description","enabled","priority","applies_to_all","targets":[{"kind","id"}],"graph"}` |
 | `llm_model` | `{"provider_id","proxy_name","kind","enabled"}`, en lecture seule |

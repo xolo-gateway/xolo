@@ -43,6 +43,7 @@ templ RolesPage(vmodel RolesPageVModel) {
 			if vmodel.Success != "" {
 				@common.InfoBanner(common.TonePositive, i18n.T(ctx, "org.roles.success"))
 			}
+			@common.FlashError(vmodel.Error, "")
 			if len(vmodel.Roles) == 0 {
 				@common.EmptyState(common.EmptyStateProps{
 					Icon:        icon.Shield,

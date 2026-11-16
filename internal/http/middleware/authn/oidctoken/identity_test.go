@@ -80,6 +80,18 @@ func TestValidateTokenIdentityProof(t *testing.T) {
 		})
 	}
 
+	t.Run("claims of the verified token", func(t *testing.T) {
+		withGroups := claims(true)
+		withGroups["groups"] = []any{"staff"}
+		user, err := NewHandler(nil).validateToken(t.Context(), sign(withGroups), Provider{ID: "corp", Issuer: testIssuer, JWKSURL: jwksURL})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if claims, _ := user.ClaimSet(nil); !claims.Has("groups", "staff") || !claims.Has("iss", testIssuer) {
+			t.Errorf("unexpected claims: %v", claims)
+		}
+	})
+
 	t.Run("another issuer is refused", func(t *testing.T) {
 		other := claims(true)
 		other["iss"] = "https://other.example.test/"

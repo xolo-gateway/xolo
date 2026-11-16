@@ -31,6 +31,11 @@ func getBridgeMiddlewareFromConfig(ctx context.Context, conf *config.Config) (fu
 		return nil, errors.WithStack(err)
 	}
 
+	enrollment, err := getEnrollmentServiceFromConfig(ctx, conf)
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+
 	bridgeMiddleware := bridge.Middleware(userStore, inviteStore, emitter, bridge.Options{
 		ActiveByDefault: conf.HTTP.Authn.ActiveByDefault,
 		AutoCreateUsers: conf.HTTP.Authn.AutoCreateUsers,
@@ -39,6 +44,7 @@ func getBridgeMiddlewareFromConfig(ctx context.Context, conf *config.Config) (fu
 		// same value on every replica.
 		Managed:      conf.Ownership.Effective()[model.FamilyMember] == model.OwnerControlPlane,
 		Transactions: transactions,
+		Enrollment:   enrollment,
 	})
 
 	return bridgeMiddleware, nil
