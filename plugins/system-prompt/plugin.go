@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
+	"strings"
 
 	"github.com/xolo-gateway/xolo/pkg/pluginsdk"
 	proto "github.com/xolo-gateway/xolo/pkg/pluginsdk/proto"
@@ -43,49 +44,14 @@ func (p *Plugin) PreRequest(ctx context.Context, in *proto.PreRequestInput) (*pr
 		return &proto.PreRequestOutput{Allowed: true}, nil
 	}
 
-	var modified []map[string]interface{}
-
-	if cfg.Append {
-		// Append mode: add to existing system prompt if present
-		found := false
-		for i, msg := range messages {
-			if msg["role"] == "system" {
-				existing, _ := msg["content"].(string)
-				messages[i]["content"] = existing + "\n\n" + cfg.SystemPrompt
-				found = true
-				break
-			}
-		}
-		if !found {
-			// No existing system message, prepend
-			systemMsg := map[string]interface{}{
-				"role":    "system",
-				"content": cfg.SystemPrompt,
-			}
-			modified = append([]map[string]interface{}{systemMsg}, messages...)
-		} else {
-			modified = messages
-		}
-	} else {
-		// Replace mode: remove any existing system messages, then prepend the configured one
-		filtered := make([]map[string]interface{}, 0, len(messages))
-		for _, msg := range messages {
-			if msg["role"] != "system" {
-				filtered = append(filtered, msg)
-			}
-		}
-		systemMsg := map[string]interface{}{
-			"role":    "system",
-			"content": cfg.SystemPrompt,
-		}
-		modified = append([]map[string]interface{}{systemMsg}, filtered...)
-	}
+	modified, clientSystemCount := rewriteSystemPrompt(messages, cfg)
 
 	b, _ := json.Marshal(modified)
 	slog.InfoContext(ctx, "system-prompt: pre-request handled",
 		slog.String("org_id", in.GetCtx().GetOrgId()),
 		slog.Int("original_messages_count", len(messages)),
 		slog.Int("modified_messages_count", len(modified)),
+		slog.Int("client_system_messages_count", clientSystemCount),
 		slog.Int("original_messages_bytes", len(messagesJSON)),
 		slog.Int("modified_messages_bytes", len(b)),
 		slog.Bool("append", cfg.Append),
@@ -95,4 +61,84 @@ func (p *Plugin) PreRequest(ctx context.Context, in *proto.PreRequestInput) (*pr
 		Allowed:              true,
 		ModifiedMessagesJson: string(b),
 	}, nil
+}
+
+// systemPromptSeparator joins the system prompts folded into a single message.
+const systemPromptSeparator = "\n\n"
+
+// rewriteSystemPrompt returns the conversation with exactly one system
+// message, at its head, whatever the mode and however many system messages
+// the client sent. Both modes share this invariant so that every provider
+// (some accept a single, leading system prompt only) and every downstream
+// adapter see the same shape:
+//
+//   - replace: the system message is the configured prompt alone;
+//   - append: it is every client system prompt, in order, followed by the
+//     configured prompt, so the configured prompt has the last word.
+//
+// A client system message sent in the middle of the conversation therefore
+// moves to its head. It also returns how many client system messages were
+// folded or dropped.
+func rewriteSystemPrompt(messages []map[string]interface{}, cfg Config) ([]map[string]interface{}, int) {
+	clientPrompts, rest, count := splitSystemMessages(messages)
+
+	content := cfg.SystemPrompt
+	if cfg.Append {
+		content = strings.Join(append(clientPrompts, cfg.SystemPrompt), systemPromptSeparator)
+	}
+
+	systemMsg := map[string]interface{}{
+		"role":    "system",
+		"content": content,
+	}
+	return append([]map[string]interface{}{systemMsg}, rest...), count
+}
+
+// splitSystemMessages separates the system messages from the rest of the
+// conversation, keeping the order of both. It returns the non-empty text of
+// each system message, the other messages, and the number of system messages
+// found.
+func splitSystemMessages(messages []map[string]interface{}) (prompts []string, rest []map[string]interface{}, count int) {
+	rest = make([]map[string]interface{}, 0, len(messages))
+	for _, msg := range messages {
+		if msg["role"] != "system" {
+			rest = append(rest, msg)
+			continue
+		}
+		count++
+		if text := textContent(msg["content"]); text != "" {
+			prompts = append(prompts, text)
+		}
+	}
+	return prompts, rest, count
+}
+
+// textContent returns the text of a message content, which the OpenAI
+// format allows either as a plain string or as an array of content parts
+// ({"type":"text","text":"..."}). It reads the parts as the proxy does
+// (genai's extractContentParts): text parts and bare strings, concatenated
+// without a separator, so a folded prompt reads as it would untouched. Parts
+// that carry no text are ignored.
+func textContent(content interface{}) string {
+	switch c := content.(type) {
+	case string:
+		return c
+	case []interface{}:
+		var b strings.Builder
+		for _, part := range c {
+			switch p := part.(type) {
+			case string:
+				b.WriteString(p)
+			case map[string]interface{}:
+				switch p["type"] {
+				case "text", "input_text", "output_text":
+					text, _ := p["text"].(string)
+					b.WriteString(text)
+				}
+			}
+		}
+		return b.String()
+	default:
+		return ""
+	}
 }

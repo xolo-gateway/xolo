@@ -286,32 +286,123 @@ func TestPreRequest_AppendMode_NoExistingSystem(t *testing.T) {
 	}
 }
 
-// TestPreRequest_AppendMode_OnlyMergesFirstSystemMessage pins the current
-// append-mode behaviour: when several client system messages are already
-// present, only the first one is merged with the configured prompt and any
-// subsequent system messages are left untouched. Tracked in #149.
-func TestPreRequest_AppendMode_OnlyMergesFirstSystemMessage(t *testing.T) {
+// TestPreRequest_AppendMode_FoldsEverySystemMessage is the regression test
+// for #149: append mode merged the configured prompt with the first client
+// system message only and left the others in place, so the model still got
+// several system prompts. Every client system prompt is now folded, in order,
+// into a single leading system message ending with the configured prompt.
+func TestPreRequest_AppendMode_FoldsEverySystemMessage(t *testing.T) {
 	input := mustMarshal(t, []map[string]string{
 		{"role": "system", "content": "first client prompt"},
 		{"role": "user", "content": "middle"},
 		{"role": "system", "content": "second client prompt"},
+		{"role": "assistant", "content": "answer"},
 	})
 	out := runPreRequest(t, `{"system_prompt":"configured prompt","append":true}`, input)
 	msgs := decodeMessages(t, out)
 
-	if len(msgs) != 3 {
-		t.Fatalf("expected 3 messages, got %d: %v", len(msgs), msgs)
+	want := []map[string]any{
+		{"role": "system", "content": "first client prompt\n\nsecond client prompt\n\nconfigured prompt"},
+		{"role": "user", "content": "middle"},
+		{"role": "assistant", "content": "answer"},
 	}
-	if role, _ := msgs[0]["role"].(string); role != "system" {
-		t.Fatalf("expected first message to be system, got %#v", msgs[0])
+	assertMessages(t, msgs, want)
+}
+
+// TestPreRequest_AppendMode_MovesSystemMessageToHead checks that a client
+// system message sent after other messages ends up at the head of the
+// conversation: providers that accept a single system prompt want it first.
+func TestPreRequest_AppendMode_MovesSystemMessageToHead(t *testing.T) {
+	input := mustMarshal(t, []map[string]string{
+		{"role": "user", "content": "hello"},
+		{"role": "system", "content": "late client prompt"},
+	})
+	out := runPreRequest(t, `{"system_prompt":"configured prompt","append":true}`, input)
+	msgs := decodeMessages(t, out)
+
+	assertMessages(t, msgs, []map[string]any{
+		{"role": "system", "content": "late client prompt\n\nconfigured prompt"},
+		{"role": "user", "content": "hello"},
+	})
+}
+
+// TestPreRequest_AppendMode_KeepsTextOfContentParts covers a client system
+// message whose content is an array of content parts: its text used to be
+// lost, the message ending up as "\n\nconfigured prompt". The parts are read
+// as the proxy reads them: text parts (and bare strings) concatenated without
+// a separator.
+func TestPreRequest_AppendMode_KeepsTextOfContentParts(t *testing.T) {
+	input := mustMarshal(t, []map[string]any{
+		{"role": "system", "content": []any{
+			map[string]any{"type": "text", "text": "part one, "},
+			map[string]any{"type": "image_url", "image_url": map[string]any{"url": "https://example.test/a.png"}},
+			map[string]any{"type": "input_text", "text": "part two"},
+			" and three",
+		}},
+		{"role": "user", "content": "hello"},
+	})
+	out := runPreRequest(t, `{"system_prompt":"configured prompt","append":true}`, input)
+	msgs := decodeMessages(t, out)
+
+	assertMessages(t, msgs, []map[string]any{
+		{"role": "system", "content": "part one, part two and three\n\nconfigured prompt"},
+		{"role": "user", "content": "hello"},
+	})
+}
+
+// TestPreRequest_AppendMode_SkipsEmptySystemMessages checks that an empty
+// client system message does not leave a leading separator in the result.
+func TestPreRequest_AppendMode_SkipsEmptySystemMessages(t *testing.T) {
+	input := mustMarshal(t, []map[string]string{
+		{"role": "system", "content": ""},
+		{"role": "user", "content": "hello"},
+	})
+	out := runPreRequest(t, `{"system_prompt":"configured prompt","append":true}`, input)
+	msgs := decodeMessages(t, out)
+
+	assertMessages(t, msgs, []map[string]any{
+		{"role": "system", "content": "configured prompt"},
+		{"role": "user", "content": "hello"},
+	})
+}
+
+// TestPreRequest_BothModes_LeaveExactlyOneLeadingSystemMessage pins the
+// invariant shared by both modes: whatever the client sends, the rewritten
+// conversation holds exactly one system message, and it comes first.
+func TestPreRequest_BothModes_LeaveExactlyOneLeadingSystemMessage(t *testing.T) {
+	input := mustMarshal(t, []map[string]string{
+		{"role": "user", "content": "one"},
+		{"role": "system", "content": "a"},
+		{"role": "system", "content": "b"},
+		{"role": "user", "content": "two"},
+		{"role": "system", "content": "c"},
+	})
+	for _, appendMode := range []bool{false, true} {
+		config := mustMarshal(t, map[string]any{"system_prompt": "configured prompt", "append": appendMode})
+		msgs := decodeMessages(t, runPreRequest(t, config, input))
+
+		if len(msgs) != 3 {
+			t.Fatalf("append=%v: expected 3 messages, got %d: %v", appendMode, len(msgs), msgs)
+		}
+		for i, m := range msgs {
+			isSystem := m["role"] == "system"
+			if isSystem != (i == 0) {
+				t.Errorf("append=%v: expected a system message at index 0 only, got %#v at %d", appendMode, m, i)
+			}
+		}
 	}
-	if content, _ := msgs[0]["content"].(string); content != "first client prompt\n\nconfigured prompt" {
-		t.Errorf("expected first system message to be merged, got %#v", msgs[0])
+}
+
+func assertMessages(t *testing.T, got, want []map[string]any) {
+	t.Helper()
+	if len(got) != len(want) {
+		t.Fatalf("expected %d messages, got %d: %v", len(want), len(got), got)
 	}
-	if role, _ := msgs[2]["role"].(string); role != "system" {
-		t.Fatalf("expected third message to be system, got %#v", msgs[2])
-	}
-	if content, _ := msgs[2]["content"].(string); content != "second client prompt" {
-		t.Errorf("expected second client system prompt to be left untouched, got %#v", msgs[2])
+	for i := range want {
+		for _, key := range []string{"role", "content"} {
+			if got[i][key] != want[i][key] {
+				t.Errorf("message %d: expected %s %q, got %#v", i, key, want[i][key], got[i])
+			}
+		}
 	}
 }

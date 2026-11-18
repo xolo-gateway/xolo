@@ -1653,7 +1653,7 @@
   "plugin.script_processor.script.title": "Tengo script",
   "plugin.script_processor.title": "Scripted request processor",
   "plugin.system_prompt.append.label": "Concatenate with the existing system prompt (otherwise, replace)",
-  "plugin.system_prompt.intro": "Injects a fixed system prompt into LLM request messages. In \"replace\" mode, any system messages from the client are removed; in \"append\" mode, the client's first system message (if any) is concatenated.",
+  "plugin.system_prompt.intro": "Injects a fixed system prompt into LLM request messages. In \"replace\" mode, any system messages from the client are removed; in \"append\" mode, every client system message is kept and the prompt is appended after them. Either way, the model receives a single system message, at the head of the conversation.",
   "plugin.system_prompt.prompt.label": "Prompt content (sent as a system message)",
   "plugin.system_prompt.prompt.placeholder": "You are a helpful and concise assistant...",
   "plugin.system_prompt.prompt.title": "System prompt",
