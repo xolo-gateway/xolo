@@ -204,3 +204,25 @@ func TestKeyDashboardGauges_PerModelGaugesCloseTheKeyOnceEveryModelIsUsedUp(t *t
 		t.Errorf("closed = %v until %s, want closed until the first model frees up, %s", closed.closed, closed.freeAt, soon)
 	}
 }
+
+func TestKeyDashboardGauges_AKnownFreeingBoundsAnUnknownOne(t *testing.T) {
+	// A used-up model whose freeing is unknown leaves the instant to a known
+	// one: the key frees up no later than it. With none known, the instant
+	// is unknown.
+	now := time.Now()
+	soon := now.Add(time.Hour)
+	known := orgcomponent.SubscriptionConstraintUsage{Constraint: model.PlanConstraint{ValueBudget: int64Ptr(10)}, ValueUsed: 10, Anchored: true, ResetAt: soon}
+	unknown := orgcomponent.SubscriptionConstraintUsage{Constraint: model.PlanConstraint{ValueBudget: int64Ptr(10)}, ValueUsed: 10}
+
+	var bounded keyDashboardGauges
+	bounded.measure([]orgcomponent.SubscriptionConstraintUsage{unknown, known}, now)
+	if bounded.freeUnknown || !bounded.freeAt.Equal(soon) {
+		t.Errorf("freeAt = %s (unknown %v), want %s", bounded.freeAt, bounded.freeUnknown, soon)
+	}
+
+	var blind keyDashboardGauges
+	blind.measure([]orgcomponent.SubscriptionConstraintUsage{unknown}, now)
+	if !blind.closed || !blind.freeUnknown {
+		t.Errorf("closed = %v, unknown = %v, want a closed key with an unknown freeing", blind.closed, blind.freeUnknown)
+	}
+}

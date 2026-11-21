@@ -636,8 +636,10 @@ func (h *Handler) constraintDashboardUsage(
 		h.fillDashboardRollingWindowUsage(ctx, &cu, c, scope, models, userID, memberCount, now)
 		if h.subscriptionMonitor != nil && scope.ByKey {
 			// On one key of a pool, a cooldown closes the key to the viewer.
-			cu.Exhausted = h.subscriptionMonitor.IsExhausted(scope.OrgID, p.ID(), keys, c.Label, "")
+			// One read, so that a cooldown ending in between cannot leave
+			// the gauge exhausted with no end.
 			cu.ExhaustedUntil = h.subscriptionMonitor.ExhaustedUntil(scope.OrgID, p.ID(), keys, c.Label, "")
+			cu.Exhausted = !cu.ExhaustedUntil.IsZero()
 		}
 
 	case model.ConstraintConcurrency:
@@ -708,14 +710,16 @@ func (h *Handler) pooledDashboardUsage(
 // constraint of its plan, and how much room they leave the viewer.
 type keyDashboardGauges struct {
 	constraints [][]orgcomponent.SubscriptionConstraintUsage
-	// fill is how much of their share the viewer used, on the fullest gauge.
+	// fill is how much of their share the viewer used: on each constraint,
+	// on the gauge with the most room left, and the fullest of the
+	// constraints.
 	fill float64
-	// closed reports that one gauge is used up or in cooldown: the key is
+	// closed reports that a constraint is used up or in cooldown: the key is
 	// closed to the viewer until freeAt, when the last of them frees up.
 	closed bool
 	freeAt time.Time
-	// freeUnknown reports that when one of the closing gauges frees up is
-	// not known.
+	// freeUnknown reports that when one of the closing constraints frees up
+	// is not known.
 	freeUnknown bool
 }
 
@@ -723,25 +727,23 @@ type keyDashboardGauges struct {
 // of a per-model constraint are one per model the viewer used: the enforcer
 // holds a request to the gauge of its own model only, so they close the key
 // once every one of them is used up, and the key frees up with the first.
+// A gauge whose freeing is unknown leaves that instant to the others: the
+// key frees up no later than the first known one. It is unknown only when
+// none is.
 func (g *keyDashboardGauges) measure(rows []orgcomponent.SubscriptionConstraintUsage, now time.Time) {
 	if len(rows) == 0 {
 		return
 	}
 	fill, closed := gaugeFill(rows[0]), true
 	var freeAt time.Time
-	known := true
 	for _, cu := range rows {
 		fill = min(fill, gaugeFill(cu))
 		if gaugeFill(cu) < 1 && !cu.Exhausted {
 			closed = false
 			continue
 		}
-		free, ok := gaugeFreeAt(cu, now)
-		switch {
-		case !ok:
-			known = known && !freeAt.IsZero()
-		case freeAt.IsZero() || free.Before(freeAt):
-			freeAt, known = free, true
+		if free, ok := gaugeFreeAt(cu, now); ok && (freeAt.IsZero() || free.Before(freeAt)) {
+			freeAt = free
 		}
 	}
 	g.fill = max(g.fill, fill)
@@ -749,7 +751,7 @@ func (g *keyDashboardGauges) measure(rows []orgcomponent.SubscriptionConstraintU
 		return
 	}
 	g.closed = true
-	if !known {
+	if freeAt.IsZero() {
 		g.freeUnknown = true
 	} else if freeAt.After(g.freeAt) {
 		g.freeAt = freeAt
@@ -980,8 +982,8 @@ func (h *Handler) perModelDashboardUsage(
 		scope.ModelIDs = um.ModelIDs
 		h.fillDashboardRollingWindowUsage(ctx, &cu, mc, scope, models, userID, memberCount, now)
 		if h.subscriptionMonitor != nil {
-			cu.Exhausted = h.subscriptionMonitor.IsExhausted(providerScope.OrgID, providerScope.ProviderID, keys, c.Label, um.UpstreamModel)
 			cu.ExhaustedUntil = h.subscriptionMonitor.ExhaustedUntil(providerScope.OrgID, providerScope.ProviderID, keys, c.Label, um.UpstreamModel)
+			cu.Exhausted = !cu.ExhaustedUntil.IsZero()
 		}
 		result = append(result, cu)
 	}
