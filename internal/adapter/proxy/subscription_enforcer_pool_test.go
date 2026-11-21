@@ -368,6 +368,11 @@ func TestSubscriptionEnforcer_PoolDeniesOnceTheUserUsedTheirShareOfEveryKey(t *t
 	if !strings.Contains(msg, "fair-share") {
 		t.Errorf("message = %q, want a fair-share denial: she used her share of every key", msg)
 	}
+	// The figures would be those of one key, which she cannot match with
+	// anything she is shown.
+	if strings.Contains(msg, "$") || strings.Contains(msg, "/") {
+		t.Errorf("message = %q, want no amount of a key", msg)
+	}
 	if _, msg := f.check(t, "bob"); msg != "" {
 		t.Errorf("bob denied (%q), want granted: alice's usage is not his", msg)
 	}
@@ -672,5 +677,19 @@ func TestSubscriptionEnforcer_ReadsOfARequestShareItsMemo(t *testing.T) {
 	f.check(t, "alice")
 	if len(f.usage.memos) == 0 || f.usage.memos[0] == first {
 		t.Error("the next request reused the memo of the previous one")
+	}
+}
+
+func TestSubscriptionState_ExhaustedUntilTheFirstKeyComesOut(t *testing.T) {
+	now := time.Now()
+	s := NewSubscriptionState()
+	keys := []model.ProviderKeyID{model.PrimaryProviderKey, "k2"}
+	s.MarkExhausted("org-1", "p1", model.PrimaryProviderKey, "5h", "", now.Add(time.Hour))
+	if until := s.ExhaustedUntil("org-1", "p1", keys, "5h", ""); !until.IsZero() {
+		t.Errorf("ExhaustedUntil = %s, want zero: k2 is not in cooldown", until)
+	}
+	s.MarkExhausted("org-1", "p1", "k2", "5h", "", now.Add(time.Minute))
+	if until := s.ExhaustedUntil("org-1", "p1", keys, "5h", ""); !until.Equal(now.Add(time.Minute)) {
+		t.Errorf("ExhaustedUntil = %s, want k2's, the first to come out, %s", until, now.Add(time.Minute))
 	}
 }

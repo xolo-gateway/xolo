@@ -228,6 +228,7 @@ func (e *rollingWindowEvaluator) shareDenial(ctx context.Context, scope planScop
 		MemberCount: scope.MemberCount,
 		Constraint:  c,
 		Now:         scope.now(),
+		Since:       since,
 		PlanUsage:   &planUsage,
 		UserUsage:   &service.PlanUsage{Tokens: userTokens, Value: userValue},
 	})
@@ -244,14 +245,24 @@ func (e *rollingWindowEvaluator) shareDenial(ctx context.Context, scope planScop
 	}
 
 	name, dur := scope.constraintName(c), c.Duration.Duration()
-	if share.TokenAllowance != nil && share.UserTokens >= *share.TokenAllowance {
+	tokensOut := share.TokenAllowance != nil && share.UserTokens >= *share.TokenAllowance
+	valueOut := share.ValueAllowance != nil && share.UserValue >= *share.ValueAllowance
+	if (tokensOut || valueOut) && usage.ByKey {
+		// Like budgetDenial on one key: the request was refused because the
+		// user had no share left on any key, and the user is not told about
+		// keys, nor shown the figures of one of them.
+		return &planDenial{
+			Message: fmt.Sprintf("fair-share quota exceeded [%s]: your share of the plan is used up for the last %s", name, formatDuration(dur)),
+		}, nil
+	}
+	if tokensOut {
 		return &planDenial{
 			Message: fmt.Sprintf("fair-share quota exceeded [%s]: %d / %d tokens used in the last %s (%s)",
 				name, share.UserTokens, *share.TokenAllowance, formatDuration(dur),
 				shareBasis(share, share.TokenMode, scope.MemberCount)),
 		}, nil
 	}
-	if share.ValueAllowance != nil && share.UserValue >= *share.ValueAllowance {
+	if valueOut {
 		return &planDenial{
 			Message: fmt.Sprintf("fair-share quota exceeded [%s]: value budget of %s / %s reached in the last %s (%s)",
 				name, formatMicrocents(share.UserValue, scope.Currency), formatMicrocents(*share.ValueAllowance, scope.Currency),

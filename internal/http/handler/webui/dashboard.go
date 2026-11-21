@@ -637,6 +637,7 @@ func (h *Handler) constraintDashboardUsage(
 		if h.subscriptionMonitor != nil && scope.ByKey {
 			// On one key of a pool, a cooldown closes the key to the viewer.
 			cu.Exhausted = h.subscriptionMonitor.IsExhausted(scope.OrgID, p.ID(), keys, c.Label, "")
+			cu.ExhaustedUntil = h.subscriptionMonitor.ExhaustedUntil(scope.OrgID, p.ID(), keys, c.Label, "")
 		}
 
 	case model.ConstraintConcurrency:
@@ -671,7 +672,8 @@ func (h *Handler) pooledDashboardUsage(
 	memberCount int64,
 	now time.Time,
 ) []orgcomponent.SubscriptionConstraintUsage {
-	// Every key's reads share one read of each window, as a proxied request's.
+	// The keys' reads of one window share one read of it, as a proxied
+	// request's; a key whose window an override moves reads its own.
 	ctx = port.WithPlanUsageMemo(ctx, userID)
 
 	gauges := make([]keyDashboardGauges, len(keys))
@@ -712,20 +714,45 @@ type keyDashboardGauges struct {
 	// closed to the viewer until freeAt, when the last of them frees up.
 	closed bool
 	freeAt time.Time
+	// freeUnknown reports that when one of the closing gauges frees up is
+	// not known.
+	freeUnknown bool
 }
 
-// measure accounts for the gauges of one constraint of the key.
+// measure accounts for the gauges of one constraint of the key. The gauges
+// of a per-model constraint are one per model the viewer used: the enforcer
+// holds a request to the gauge of its own model only, so they close the key
+// once every one of them is used up, and the key frees up with the first.
 func (g *keyDashboardGauges) measure(rows []orgcomponent.SubscriptionConstraintUsage, now time.Time) {
+	if len(rows) == 0 {
+		return
+	}
+	fill, closed := gaugeFill(rows[0]), true
+	var freeAt time.Time
+	known := true
 	for _, cu := range rows {
-		fill := gaugeFill(cu)
-		g.fill = max(g.fill, fill)
-		if fill < 1 && !cu.Exhausted {
+		fill = min(fill, gaugeFill(cu))
+		if gaugeFill(cu) < 1 && !cu.Exhausted {
+			closed = false
 			continue
 		}
-		g.closed = true
-		if free := gaugeFreeAt(cu, now); free.After(g.freeAt) {
-			g.freeAt = free
+		free, ok := gaugeFreeAt(cu, now)
+		switch {
+		case !ok:
+			known = known && !freeAt.IsZero()
+		case freeAt.IsZero() || free.Before(freeAt):
+			freeAt, known = free, true
 		}
+	}
+	g.fill = max(g.fill, fill)
+	if !closed {
+		return
+	}
+	g.closed = true
+	if !known {
+		g.freeUnknown = true
+	} else if freeAt.After(g.freeAt) {
+		g.freeAt = freeAt
 	}
 }
 
@@ -752,22 +779,42 @@ func ratio(used, budget int64) float64 {
 	return float64(used) / float64(budget)
 }
 
-// gaugeFreeAt is when a used-up gauge frees up: the reset of a fixed window,
-// or, on a sliding window, when its oldest usage leaves it. Unknown is now.
-func gaugeFreeAt(cu orgcomponent.SubscriptionConstraintUsage, now time.Time) time.Time {
-	switch {
-	case cu.Anchored && !cu.ResetAt.IsZero():
-		return cu.ResetAt
-	case !cu.OldestUsage.IsZero():
-		return cu.OldestUsage.Add(cu.Constraint.Duration.Duration())
+// gaugeFreeAt is when a closed gauge frees up: once its share has room again,
+// at the reset of a fixed window or, on a sliding window, when its oldest
+// usage leaves it, and once its cooldown ends. It reports false when one of
+// them is unknown.
+func gaugeFreeAt(cu orgcomponent.SubscriptionConstraintUsage, now time.Time) (time.Time, bool) {
+	free := now
+	if gaugeFill(cu) >= 1 {
+		switch {
+		case cu.Anchored && !cu.ResetAt.IsZero():
+			free = cu.ResetAt
+		case !cu.OldestUsage.IsZero():
+			free = cu.OldestUsage.Add(cu.Constraint.Duration.Duration())
+		default:
+			return time.Time{}, false
+		}
 	}
-	return now
+	if cu.Exhausted {
+		if cu.ExhaustedUntil.IsZero() {
+			return time.Time{}, false
+		}
+		free = latest(free, cu.ExhaustedUntil)
+	}
+	return free, true
+}
+
+func latest(a, b time.Time) time.Time {
+	if b.After(a) {
+		return b
+	}
+	return a
 }
 
 // pickDashboardKey returns the index of the key whose gauges the viewer is
-// shown: among the keys open to them, the one with the most room left, the
-// one the enforcer would rather serve them through; when every key is closed
-// to them, the one that frees up first.
+// shown: among the keys open to them, the one with the most room left; when
+// every key is closed to them, the one that frees up first, a key whose
+// freeing is unknown last.
 func pickDashboardKey(gauges []keyDashboardGauges) int {
 	shown := -1
 	for k, g := range gauges {
@@ -783,7 +830,8 @@ func pickDashboardKey(gauges []keyDashboardGauges) int {
 	}
 	shown = 0
 	for k, g := range gauges {
-		if g.freeAt.Before(gauges[shown].freeAt) {
+		s := gauges[shown]
+		if s.freeUnknown && !g.freeUnknown || s.freeUnknown == g.freeUnknown && g.freeAt.Before(s.freeAt) {
 			shown = k
 		}
 	}
@@ -933,6 +981,7 @@ func (h *Handler) perModelDashboardUsage(
 		h.fillDashboardRollingWindowUsage(ctx, &cu, mc, scope, models, userID, memberCount, now)
 		if h.subscriptionMonitor != nil {
 			cu.Exhausted = h.subscriptionMonitor.IsExhausted(providerScope.OrgID, providerScope.ProviderID, keys, c.Label, um.UpstreamModel)
+			cu.ExhaustedUntil = h.subscriptionMonitor.ExhaustedUntil(providerScope.OrgID, providerScope.ProviderID, keys, c.Label, um.UpstreamModel)
 		}
 		result = append(result, cu)
 	}

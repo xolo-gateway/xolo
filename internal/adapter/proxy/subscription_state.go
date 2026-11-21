@@ -156,6 +156,28 @@ func (s *SubscriptionStateDetailed) IsExhausted(orgID model.OrgID, providerID mo
 	return true
 }
 
+// ExhaustedUntil returns when the cooldown of a constraint ends on the first
+// of the given keys to come out of it, zero when one of them is not in
+// cooldown.
+func (s *SubscriptionStateDetailed) ExhaustedUntil(orgID model.OrgID, providerID model.ProviderID, keys []model.ProviderKeyID, label, upstreamModel string) time.Time {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if len(keys) == 0 {
+		keys = []model.ProviderKeyID{model.PrimaryProviderKey}
+	}
+	var first time.Time
+	for _, key := range keys {
+		k := constraintKey{scopeKey{orgID, providerID}, key, label, upstreamModel}
+		if !s.exhaustedLocked(k) {
+			return time.Time{}
+		}
+		if until := s.exhaustedUntil[k]; first.IsZero() || until.Before(first) {
+			first = until
+		}
+	}
+	return first
+}
+
 func (s *SubscriptionStateDetailed) exhaustedLocked(key constraintKey) bool {
 	until, ok := s.exhaustedUntil[key]
 	if !ok {

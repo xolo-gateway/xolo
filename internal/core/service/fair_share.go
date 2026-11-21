@@ -40,6 +40,13 @@ type FairShareRequest struct {
 	MemberCount int
 	Constraint  model.PlanConstraint
 	Now         time.Time
+	// Since, when set, is the start the window's reads run from, when the
+	// caller read the plan from another start than Constraint's: on one key
+	// of a pool, the provider's window, the key held to its own through
+	// KeyWindows. Reading from the same start as the caller keeps the reads
+	// in the request's memo (see port.PlanUsageMemo). Zero means Constraint's
+	// current window.
+	Since time.Time
 	// PlanUsage, when set, is the plan-wide consumption of the window as the
 	// caller already read it. Callers that check the plan-wide budget before
 	// allocating pass it so the window is aggregated once per request instead of
@@ -301,7 +308,10 @@ func (s *FairShareService) Resolve(ctx context.Context, req FairShareRequest) (*
 	}
 
 	c := req.Constraint
-	since := c.CurrentWindowStart(req.Now)
+	since := req.Since
+	if since.IsZero() {
+		since = c.CurrentWindowStart(req.Now)
+	}
 
 	var planTokens, planValue int64
 	if req.PlanUsage != nil {
