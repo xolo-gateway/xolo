@@ -242,6 +242,11 @@ func TestPlanUsageHourly_WindowReadsMatchTheRecords(t *testing.T) {
 							byModel, err := store.SumPlanUsageByModelSince(ctx, scope, model.UserID(user), since)
 							require.NoError(t, err)
 							require.Equal(t, wantByModel, byModel, "%s by model", user)
+
+							// Answered by the memo for u1, whose window it has read.
+							present, err := store.HasPlanUsageSince(ctx, model.UserID(user), scope, since)
+							require.NoError(t, err)
+							require.Equal(t, len(expectedPlanUsage(records, scope, user, since)) > 0, present, "%s presence", user)
 						}
 					})
 				}
@@ -350,6 +355,12 @@ func TestPlanUsageReadsAreOneStatement(t *testing.T) {
 		oneKey.ByKey, oneKey.KeyID = true, "k2"
 		_, _, err = store.SumPlanUsageSince(ctx, oneKey, since)
 		require.NoError(t, err)
+		// The memo's user's presence, on the pool or on one of its keys, is
+		// read from it too.
+		for _, s := range []model.PlanUsageScope{scope, oneKey} {
+			_, err = store.HasPlanUsageSince(ctx, "u1", s, since)
+			require.NoError(t, err)
+		}
 		require.Len(t, statements, 1, "the reads of one window ran %d statements: %v", len(statements), statements)
 	})
 }

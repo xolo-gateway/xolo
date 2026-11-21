@@ -582,6 +582,19 @@ func (s *Store) CountActivePlanUsersSince(ctx context.Context, scope model.PlanU
 
 // HasPlanUsageSince implements port.UsageStore.
 func (s *Store) HasPlanUsageSince(ctx context.Context, userID model.UserID, scope model.PlanUsageScope, since time.Time) (bool, error) {
+	// The request's memo, once read, already tells which keys the user
+	// consumed on. On a pool the probe would otherwise run on every request
+	// for each key the user has not used, walking all their rows of the
+	// window: no index bounds the key.
+	if splits, ok := s.loadedPlanUsage(ctx, scope, userID, since); ok {
+		for r := range splitsOf(scope, splits) {
+			if r.UserRows > 0 {
+				return true, nil
+			}
+		}
+		return false, nil
+	}
+
 	var ids []string
 
 	err := s.read(ctx, func(ctx context.Context, db *gorm.DB) error {

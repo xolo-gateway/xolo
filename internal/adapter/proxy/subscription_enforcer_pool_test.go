@@ -59,19 +59,29 @@ func (s *poolUsageStore) SumUserPlanUsageSince(_ context.Context, user model.Use
 	return 0, s.sum(scope, user), nil
 }
 
-func (s *poolUsageStore) CountActivePlanUsersSince(_ context.Context, _ model.PlanUsageScope, _ time.Time, exclude model.UserID) (int64, error) {
+// active reports whether a user consumed on a scope: the whole pool, or one
+// key of it.
+func (s *poolUsageStore) active(scope model.PlanUsageScope, user model.UserID) bool {
+	byKey, ok := s.value[user]
+	if !ok || !scope.ByKey {
+		return ok
+	}
+	_, ok = byKey[scope.KeyID]
+	return ok
+}
+
+func (s *poolUsageStore) CountActivePlanUsersSince(_ context.Context, scope model.PlanUsageScope, _ time.Time, exclude model.UserID) (int64, error) {
 	var n int64
 	for u := range s.value {
-		if u != exclude {
+		if u != exclude && s.active(scope, u) {
 			n++
 		}
 	}
 	return n, nil
 }
 
-func (s *poolUsageStore) HasPlanUsageSince(_ context.Context, user model.UserID, _ model.PlanUsageScope, _ time.Time) (bool, error) {
-	_, ok := s.value[user]
-	return ok, nil
+func (s *poolUsageStore) HasPlanUsageSince(_ context.Context, user model.UserID, scope model.PlanUsageScope, _ time.Time) (bool, error) {
+	return s.active(scope, user), nil
 }
 
 func (s *poolUsageStore) SumPlanUsageByKeySince(ctx context.Context, scope model.PlanUsageScope, since time.Time) (map[model.ProviderKeyID]map[model.LLMModelID]port.PlanUsageTotals, error) {
@@ -320,25 +330,91 @@ func TestSubscriptionEnforcer_PoolDeniesWithoutNamingKeysOnceEveryKeyIsFull(t *t
 	}
 }
 
-func TestSubscriptionEnforcer_PoolDecidesSharesOnTheWholePool(t *testing.T) {
-	// Two members of two, both active, on three 10$ keys: each holds half of
-	// the 30$ pool, far more than half of one key.
+func TestSubscriptionEnforcer_PoolDecidesSharesKeyByKey(t *testing.T) {
+	// Alice and bob share the provider's own key: alice holds half of it, and
+	// has used it. The other keys, where she has used nothing, still hold a
+	// share for her.
 	f := newPoolFixture(t, 2)
-	f.consume("bob", "k3", 1_000_000)
-	f.consume("alice", model.PrimaryProviderKey, 6_000_000)
-	f.consume("alice", "k2", 6_000_000)
+	f.consume("bob", model.PrimaryProviderKey, 3_000_000)
+	f.consume("alice", model.PrimaryProviderKey, 5_000_000)
+	f.usage.last = map[model.UserID]model.ProviderKeyID{"alice": model.PrimaryProviderKey, "bob": model.PrimaryProviderKey}
 
-	if _, msg := f.check(t, "alice"); msg != "" {
-		t.Fatalf("alice denied (%q), want granted: her 12$ are under her share of the 30$ pool", msg)
+	req, msg := f.check(t, "alice")
+	if msg != "" {
+		t.Fatalf("alice denied (%q), want granted on a key where she has a share left", msg)
+	}
+	if key := chosenKey(t, req); key == model.PrimaryProviderKey {
+		t.Error("alice kept on the provider's own key, want moved off it: she used her share of it")
+	}
+	fallbacks, _ := req.Metadata[metaProviderKeyFallbacks].([]model.ProviderKeyID)
+	if slices.Contains(fallbacks, model.PrimaryProviderKey) {
+		t.Errorf("fallbacks = %q, want the provider's own key left out: she used her share of it", fallbacks)
 	}
 
-	f.consume("alice", "k2", 4_000_000)
+	if _, msg := f.check(t, "bob"); msg != "" {
+		t.Errorf("bob denied (%q), want granted: alice's usage is not his", msg)
+	}
+}
+
+func TestSubscriptionEnforcer_PoolDeniesOnceTheUserUsedTheirShareOfEveryKey(t *testing.T) {
+	// No key is full, but alice used her half of each.
+	f := newPoolFixture(t, 2)
+	for _, key := range []model.ProviderKeyID{model.PrimaryProviderKey, "k2", "k3"} {
+		f.consume("bob", key, 1_000_000)
+		f.consume("alice", key, 5_000_000)
+	}
+
 	_, msg := f.check(t, "alice")
 	if !strings.Contains(msg, "fair-share") {
-		t.Errorf("message = %q, want a fair-share denial once she takes more than her share of the pool", msg)
+		t.Errorf("message = %q, want a fair-share denial: she used her share of every key", msg)
 	}
 	if _, msg := f.check(t, "bob"); msg != "" {
 		t.Errorf("bob denied (%q), want granted: alice's usage is not his", msg)
+	}
+}
+
+func TestSubscriptionEnforcer_PoolGivesAShareBackWhenAKeyWindowResets(t *testing.T) {
+	// Alice used her share of every key; k2's window then resets, while the
+	// others' run on. Its usage leaves her count, and k2 is open to her again
+	// without waiting for the other keys.
+	f := newPoolFixture(t, 2)
+	for _, key := range []model.ProviderKeyID{model.PrimaryProviderKey, "k2", "k3"} {
+		f.consume("bob", key, 1_000_000)
+		f.consume("alice", key, 5_000_000)
+	}
+	if _, msg := f.check(t, "alice"); !strings.Contains(msg, "fair-share") {
+		t.Fatalf("message = %q, want a fair-share denial before k2 resets", msg)
+	}
+
+	delete(f.usage.value["alice"], "k2")
+	delete(f.usage.value["bob"], "k2")
+	req, msg := f.check(t, "alice")
+	if msg != "" {
+		t.Fatalf("alice denied (%q), want granted on k2, whose window reset", msg)
+	}
+	if key := chosenKey(t, req); key != "k2" {
+		t.Errorf("alice on %q, want k2, the only key she has a share left on", key)
+	}
+}
+
+func TestSubscriptionEnforcer_PoolHoldsTheShareOfAKeyToItsOwnWindow(t *testing.T) {
+	// The share of a key whose window an override moves is counted in that
+	// window: its users, the user's consumption and its budget's.
+	f := newPoolFixture(t, 2)
+	moved := time.Now().Add(-time.Hour)
+	f.provider.SetExtraAPIKeys([]model.ProviderKey{
+		{ID: "k2", Label: "member 2", APIKey: "key2", Overrides: map[string]model.PlanConstraintOverride{"5h": {WindowAnchor: &moved}}},
+		{ID: "k3", Label: "member 3", APIKey: "key3"},
+	})
+	f.consume("alice", "k2", 1_000_000)
+
+	if _, msg := f.check(t, "alice"); msg != "" {
+		t.Fatalf("alice denied (%q), want granted", msg)
+	}
+	for _, scope := range f.usage.scopes {
+		if start, ok := scope.KeyWindows["k2"]; !ok || !start.Equal(moved) {
+			t.Errorf("read on %v, want k2 counted from its own window", scope.KeyWindows)
+		}
 	}
 }
 
@@ -519,15 +595,22 @@ func TestSubscriptionEnforcer_PoolHoldsKeysToABudgetSetPerModelOnly(t *testing.T
 	}
 }
 
+// pastHerShareOfEveryKey has alice past her half of every key, each key at
+// 6$ of its 10$.
+func pastHerShareOfEveryKey(f *poolFixture) {
+	for _, key := range []model.ProviderKeyID{model.PrimaryProviderKey, "k2", "k3"} {
+		f.consume("bob", key, 500_000)
+		f.consume("alice", key, 5_500_000)
+	}
+}
+
 func TestSubscriptionEnforcer_ShareThresholdLetsAUserPastTheirShare(t *testing.T) {
 	f := newPoolFixture(t, 2)
-	f.consume("bob", "k3", 1_000_000)
-	f.consume("alice", model.PrimaryProviderKey, 8_000_000)
-	f.consume("alice", "k2", 8_000_000)
+	pastHerShareOfEveryKey(f)
 
 	_, msg := f.check(t, "alice")
 	if !strings.Contains(msg, "fair-share") {
-		t.Fatalf("message = %q, want a fair-share denial: her 16$ are past her share of the 30$ pool", msg)
+		t.Fatalf("message = %q, want a fair-share denial: her 5.50$ are past her share of each 10$ key", msg)
 	}
 
 	threshold := 0.7
@@ -536,18 +619,16 @@ func TestSubscriptionEnforcer_ShareThresholdLetsAUserPastTheirShare(t *testing.T
 	plan.Constraints[0].ShareThreshold = &threshold
 	f.provider.SetSubscriptionPlan(&plan)
 	if _, msg := f.check(t, "alice"); msg != "" {
-		t.Errorf("alice denied (%q), want granted: the pool, at 17$ of 30$, is under its 70%% threshold", msg)
+		t.Errorf("alice denied (%q), want granted: every key, at 6$ of 10$, is under its 70%% threshold", msg)
 	}
 }
 
 func TestSubscriptionEnforcer_OpenShareMultiplierBoundsTheOpenPlan(t *testing.T) {
 	f := newPoolFixture(t, 2)
-	f.consume("bob", "k3", 1_000_000)
-	f.consume("alice", model.PrimaryProviderKey, 8_000_000)
-	f.consume("alice", "k2", 8_000_000)
+	pastHerShareOfEveryKey(f)
 
 	// Under the 70 % threshold, but one share is all the open plan hands out:
-	// alice, past hers, stays refused.
+	// alice, past hers on every key, stays refused.
 	threshold, multiplier := 0.7, 1.0
 	plan := *f.provider.SubscriptionPlan()
 	plan.Constraints = slices.Clone(plan.Constraints)

@@ -544,8 +544,9 @@ func (h *Handler) serveUserUsageCSV(w http.ResponseWriter, r *http.Request, user
 // user. Rolling-window budgets go through the same allocator as the enforcer, so
 // the denominators shown are the ones a request is actually decided against;
 // concurrency limits keep the static division by the member count. Reset
-// countdowns of anchored windows are window-level and stay org-wide; the
-// free-up hint of a sliding window follows the viewer's own records.
+// countdowns of anchored windows are window-level and stay org-wide, those of
+// a pool of keys the shown key's (see pooledDashboardUsage); the free-up hint
+// of a sliding window follows the viewer's own records.
 func (h *Handler) buildDashboardSubscriptionUsage(ctx context.Context, orgID model.OrgID, userID model.UserID) []orgcomponent.SubscriptionProviderUsage {
 	providers, err := h.providerStore.ListProviders(ctx, orgID)
 	if err != nil {
@@ -591,39 +592,202 @@ func (h *Handler) buildDashboardSubscriptionUsage(ctx context.Context, orgID mod
 			}
 		}
 
-		for _, c := range plan.Constraints {
-			// The keys whose window an override moves are counted in it.
-			constraintScope := providerScope
-			constraintScope.KeyWindows = model.KeyWindows(p, c.Label, now)
-			if c.PerModel() {
-				pu.Constraints = append(pu.Constraints, h.perModelDashboardUsage(ctx, c, constraintScope, keys, models, userID, memberCount, now)...)
-				continue
+		if len(keys) > 1 {
+			pu.Constraints = h.pooledDashboardUsage(ctx, p, plan, keys, models, userID, memberCount, now)
+		} else {
+			for _, c := range plan.Constraints {
+				pu.Constraints = append(pu.Constraints, h.constraintDashboardUsage(ctx, p, c, providerScope, keys, models, userID, memberCount, now)...)
 			}
-
-			// Fall back to the static share; rolling windows below replace it with
-			// the allowance the enforcer actually grants right now.
-			cu := orgcomponent.SubscriptionConstraintUsage{Constraint: fairShareConstraint(c, memberCount)}
-
-			switch c.Kind {
-			case model.ConstraintRollingWindow:
-				h.fillDashboardRollingWindowUsage(ctx, &cu, c, constraintScope, models, userID, memberCount, now)
-
-			case model.ConstraintConcurrency:
-				if h.subscriptionMonitor != nil {
-					cu.InFlight = h.subscriptionMonitor.CurrentUserInFlight(orgID, p.ID(), userID)
-					if c.MaxConcurrent != nil {
-						cu.Exhausted = h.subscriptionMonitor.IsExhausted(orgID, p.ID(), keys, c.Label, "")
-					}
-				}
-			}
-
-			pu.Constraints = append(pu.Constraints, cu)
 		}
 
 		result = append(result, pu)
 	}
 
 	return result
+}
+
+// constraintDashboardUsage returns the viewer's gauges of one constraint of a
+// provider's plan on a plan scope: the whole provider, or one key of a pool.
+// keys are the keys the scope covers, whose cooldowns mark the gauges
+// exhausted.
+func (h *Handler) constraintDashboardUsage(
+	ctx context.Context,
+	p model.Provider,
+	c model.PlanConstraint,
+	scope model.PlanUsageScope,
+	keys []model.ProviderKeyID,
+	models []model.LLMModel,
+	userID model.UserID,
+	memberCount int64,
+	now time.Time,
+) []orgcomponent.SubscriptionConstraintUsage {
+	// The keys whose window an override moves are counted in it.
+	scope.KeyWindows = model.KeyWindows(p, c.Label, now)
+	if c.PerModel() {
+		return h.perModelDashboardUsage(ctx, c, scope, keys, models, userID, memberCount, now)
+	}
+
+	// Fall back to the static share; rolling windows below replace it with
+	// the allowance the enforcer actually grants right now.
+	cu := orgcomponent.SubscriptionConstraintUsage{Constraint: fairShareConstraint(c, memberCount)}
+
+	switch c.Kind {
+	case model.ConstraintRollingWindow:
+		h.fillDashboardRollingWindowUsage(ctx, &cu, c, scope, models, userID, memberCount, now)
+		if h.subscriptionMonitor != nil && scope.ByKey {
+			// On one key of a pool, a cooldown closes the key to the viewer.
+			cu.Exhausted = h.subscriptionMonitor.IsExhausted(scope.OrgID, p.ID(), keys, c.Label, "")
+		}
+
+	case model.ConstraintConcurrency:
+		if h.subscriptionMonitor != nil {
+			cu.InFlight = h.subscriptionMonitor.CurrentUserInFlight(scope.OrgID, p.ID(), userID)
+			if c.MaxConcurrent != nil {
+				cu.Exhausted = h.subscriptionMonitor.IsExhausted(scope.OrgID, p.ID(), keys, c.Label, "")
+			}
+		}
+	}
+
+	return []orgcomponent.SubscriptionConstraintUsage{cu}
+}
+
+// pooledDashboardUsage returns the viewer's gauges of a plan a provider
+// spreads over several keys. The enforcer holds each user to their share of
+// each key, in the key's own window, and serves them through a key where they
+// have room left on every window: the gauges shown are that key's, the one
+// with the most room left for the viewer. When none has, they are those of
+// the key that frees up first, so that the reset shown is when the viewer
+// gets room back, not when the plan's own window resets. The keys stay out of
+// sight: only the figures of one of them are shown.
+//
+// The concurrency limits are held on the pool, as the enforcer holds them.
+func (h *Handler) pooledDashboardUsage(
+	ctx context.Context,
+	p model.Provider,
+	pooled *model.SubscriptionPlan,
+	keys []model.ProviderKeyID,
+	models []model.LLMModel,
+	userID model.UserID,
+	memberCount int64,
+	now time.Time,
+) []orgcomponent.SubscriptionConstraintUsage {
+	// Every key's reads share one read of each window, as a proxied request's.
+	ctx = port.WithPlanUsageMemo(ctx, userID)
+
+	gauges := make([]keyDashboardGauges, len(keys))
+	for k, key := range keys {
+		scope := model.PlanUsageScope{OrgID: p.OrgID(), ProviderID: p.ID(), ByKey: true, KeyID: key}
+		kp := model.KeyPlan(p, key)
+		gauges[k].constraints = make([][]orgcomponent.SubscriptionConstraintUsage, len(kp.Constraints))
+		for i, c := range kp.Constraints {
+			if c.Kind == model.ConstraintConcurrency {
+				continue
+			}
+			rows := h.constraintDashboardUsage(ctx, p, c, scope, []model.ProviderKeyID{key}, models, userID, memberCount, now)
+			gauges[k].constraints[i] = rows
+			gauges[k].measure(rows, now)
+		}
+	}
+	shown := pickDashboardKey(gauges)
+
+	result := make([]orgcomponent.SubscriptionConstraintUsage, 0, len(pooled.Constraints))
+	for i, c := range pooled.Constraints {
+		if c.Kind == model.ConstraintConcurrency {
+			scope := model.PlanUsageScope{OrgID: p.OrgID(), ProviderID: p.ID()}
+			result = append(result, h.constraintDashboardUsage(ctx, p, c, scope, keys, models, userID, memberCount, now)...)
+			continue
+		}
+		result = append(result, gauges[shown].constraints[i]...)
+	}
+	return result
+}
+
+// keyDashboardGauges are the viewer's gauges of one key of a pool, per
+// constraint of its plan, and how much room they leave the viewer.
+type keyDashboardGauges struct {
+	constraints [][]orgcomponent.SubscriptionConstraintUsage
+	// fill is how much of their share the viewer used, on the fullest gauge.
+	fill float64
+	// closed reports that one gauge is used up or in cooldown: the key is
+	// closed to the viewer until freeAt, when the last of them frees up.
+	closed bool
+	freeAt time.Time
+}
+
+// measure accounts for the gauges of one constraint of the key.
+func (g *keyDashboardGauges) measure(rows []orgcomponent.SubscriptionConstraintUsage, now time.Time) {
+	for _, cu := range rows {
+		fill := gaugeFill(cu)
+		g.fill = max(g.fill, fill)
+		if fill < 1 && !cu.Exhausted {
+			continue
+		}
+		g.closed = true
+		if free := gaugeFreeAt(cu, now); free.After(g.freeAt) {
+			g.freeAt = free
+		}
+	}
+}
+
+// gaugeFill is how much of its budget a gauge used, the larger of tokens and
+// value.
+func gaugeFill(cu orgcomponent.SubscriptionConstraintUsage) float64 {
+	fill := 0.0
+	if b := cu.Constraint.TokenBudget; b != nil {
+		fill = max(fill, ratio(cu.TokensUsed, *b))
+	}
+	if b := cu.Constraint.ValueBudget; b != nil {
+		fill = max(fill, ratio(cu.ValueUsed, *b))
+	}
+	return fill
+}
+
+func ratio(used, budget int64) float64 {
+	if budget <= 0 {
+		if used > 0 {
+			return 1
+		}
+		return 0
+	}
+	return float64(used) / float64(budget)
+}
+
+// gaugeFreeAt is when a used-up gauge frees up: the reset of a fixed window,
+// or, on a sliding window, when its oldest usage leaves it. Unknown is now.
+func gaugeFreeAt(cu orgcomponent.SubscriptionConstraintUsage, now time.Time) time.Time {
+	switch {
+	case cu.Anchored && !cu.ResetAt.IsZero():
+		return cu.ResetAt
+	case !cu.OldestUsage.IsZero():
+		return cu.OldestUsage.Add(cu.Constraint.Duration.Duration())
+	}
+	return now
+}
+
+// pickDashboardKey returns the index of the key whose gauges the viewer is
+// shown: among the keys open to them, the one with the most room left, the
+// one the enforcer would rather serve them through; when every key is closed
+// to them, the one that frees up first.
+func pickDashboardKey(gauges []keyDashboardGauges) int {
+	shown := -1
+	for k, g := range gauges {
+		if g.closed {
+			continue
+		}
+		if shown < 0 || g.fill < gauges[shown].fill {
+			shown = k
+		}
+	}
+	if shown >= 0 {
+		return shown
+	}
+	shown = 0
+	for k, g := range gauges {
+		if g.freeAt.Before(gauges[shown].freeAt) {
+			shown = k
+		}
+	}
+	return shown
 }
 
 // fillDashboardRollingWindowUsage fills the viewer's gauge of a rolling-window
@@ -809,6 +973,8 @@ func applyFairShare(
 		ProviderID:  scope.ProviderID,
 		ModelIDs:    scope.ModelIDs,
 		KeyWindows:  scope.KeyWindows,
+		ByKey:       scope.ByKey,
+		KeyID:       scope.KeyID,
 		UserID:      userID,
 		MemberCount: int(memberCount),
 		Constraint:  c,

@@ -28,7 +28,14 @@ type FairShareRequest struct {
 	ModelIDs []model.LLMModelID
 	// KeyWindows are the window starts of the keys of a pool whose window is
 	// moved (see model.PlanUsageScope.KeyWindows).
-	KeyWindows  map[model.ProviderKeyID]time.Time
+	KeyWindows map[model.ProviderKeyID]time.Time
+	// ByKey narrows the allocation to one API key of a pool, KeyID: its
+	// budget, its consumption and the users active on it, in its own window.
+	// Constraint is then the key's own (model.KeyPlan). The shares of a pool
+	// are decided key by key, so that a key whose window resets gives its
+	// users room back without waiting for the others.
+	ByKey       bool
+	KeyID       model.ProviderKeyID
 	UserID      model.UserID
 	MemberCount int
 	Constraint  model.PlanConstraint
@@ -46,7 +53,7 @@ type FairShareRequest struct {
 }
 
 func (r FairShareRequest) usageScope() model.PlanUsageScope {
-	return model.PlanUsageScope{OrgID: r.OrgID, ProviderID: r.ProviderID, ModelIDs: r.ModelIDs, KeyWindows: r.KeyWindows}
+	return model.PlanUsageScope{OrgID: r.OrgID, ProviderID: r.ProviderID, ModelIDs: r.ModelIDs, KeyWindows: r.KeyWindows, ByKey: r.ByKey, KeyID: r.KeyID}
 }
 
 // PlanUsage is the plan-wide consumption of a window.

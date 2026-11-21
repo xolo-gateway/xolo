@@ -322,11 +322,13 @@ première du lot.
 Le plan décrit les limites d'**une** clé. Xolo l'applique à chacune, avec
 ses éventuels ajustements (voir plus bas) :
 
-- **les parts des utilisateurs** se calculent sur l'ensemble des clés. Avec
-  trois clés et une fenêtre de 30 $, la répartition entre utilisateurs porte
-  sur 90 $ ; c'est ce que montrent les jauges ;
+- **les parts des utilisateurs** se calculent clé par clé : sur chaque clé,
+  la répartition porte sur le budget de la clé, entre les utilisateurs actifs
+  sur cette clé, et un utilisateur n'y est compté que pour ce qu'il a consommé
+  par elle. Un utilisateur qui a épuisé sa part d'une clé reste servi par une
+  autre où il lui en reste ;
 - **chaque requête** passe par une seule clé, qui doit avoir de la marge sur
-  toutes ses fenêtres. Un utilisateur reste sur la clé de sa requête précédente,
+  toutes ses fenêtres, pour le forfait comme pour la part de l'utilisateur. Un utilisateur reste sur la clé de sa requête précédente,
   où vit le cache de ses conversations, tant qu'elle a de la marge et qu'elle
   n'a pas trop d'avance sur la clé la moins remplie. Sinon, il passe sur la clé
   la moins remplie ; sur un forfait encore vide, les nouveaux arrivants se
@@ -343,7 +345,9 @@ ses éventuels ajustements (voir plus bas) :
   clé.
 
 Les clés restent invisibles pour les utilisateurs : ni leur tableau de bord, ni
-les messages de refus ne les mentionnent. La page d'usage de l'organisation
+les messages de refus ne les mentionnent. Les jauges personnelles montrent
+celles de la clé où l'utilisateur a le plus de marge ou, s'il n'en a plus
+nulle part, de la clé qui lui en rendra le plus tôt. La page d'usage de l'organisation
 détaille la consommation clé par clé, sous la carte du fournisseur, pour les
 personnes autorisées à consulter les fournisseurs.
 
@@ -362,10 +366,12 @@ renouvelle un autre jour. Chaque champ laissé vide garde la valeur du plan.
 
 Chaque clé est alors mesurée sur ses propres budgets et dans sa propre
 fenêtre : le choix de clé ne retient que celles qui ont de la marge selon
-leur propre plan. Les parts des utilisateurs portent sur la somme des budgets
-des clés, l'usage de chaque clé compté dans sa fenêtre. Le rythme, la fin de
-fenêtre et le « réinitialisation dans » des jauges personnelles suivent la
-fenêtre du plan. Sur une fenêtre commune pondérée, les budgets par modèle
+leur propre plan. Les parts des utilisateurs suivent aussi la fenêtre de
+chaque clé : quand les clés se renouvellent à des jours différents, un
+utilisateur qui a épuisé sa part retrouve de la marge dès que l'une d'elles se
+renouvelle, sans attendre les autres. Le rythme, la fin de fenêtre et le
+« réinitialisation dans » des jauges personnelles sont ceux de la clé
+affichée. Pour la jauge commune du forfait, sur une fenêtre commune pondérée, les budgets par modèle
 s'additionnent aussi : une clé qui ne cite pas un modèle y compte pour le
 budget de sa fenêtre, et un modèle illimité sur une clé n'ajoute rien au
 budget commun.
