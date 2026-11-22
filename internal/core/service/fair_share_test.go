@@ -922,3 +922,57 @@ func TestFairShareService_PreReadUserTotalsAreNotSummedAgain(t *testing.T) {
 		t.Errorf("user usage = (%d, %d), want the values handed in", got.UserTokens, got.UserValue)
 	}
 }
+
+// sinceRecordingReader records the window start of every read.
+type sinceRecordingReader struct {
+	fakePlanUsageReader
+	mu     sync.Mutex
+	sinces []time.Time
+}
+
+func (f *sinceRecordingReader) record(since time.Time) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.sinces = append(f.sinces, since)
+}
+
+func (f *sinceRecordingReader) CountActivePlanUsersSince(ctx context.Context, scope model.PlanUsageScope, since time.Time, exclude model.UserID) (int64, error) {
+	f.record(since)
+	return f.fakePlanUsageReader.CountActivePlanUsersSince(ctx, scope, since, exclude)
+}
+
+func (f *sinceRecordingReader) HasPlanUsageSince(ctx context.Context, user model.UserID, scope model.PlanUsageScope, since time.Time) (bool, error) {
+	f.record(since)
+	return f.fakePlanUsageReader.HasPlanUsageSince(ctx, user, scope, since)
+}
+
+func TestFairShareService_ReadsFromTheCallersWindowStart(t *testing.T) {
+	// On one key of a pool whose window an override moves, the caller read
+	// the plan from the provider's window start, the key held to its own
+	// through KeyWindows: the count and the presence probe read from the same
+	// start, which keeps them in the request's memo, not from the key's.
+	now := time.Now()
+	keyAnchor, poolStart := now.Add(-2*time.Hour), now.Add(-4*time.Hour)
+	c := tokenAndValueConstraint(1000, 10_000)
+	c.WindowAnchor = &keyAnchor
+	reader := &sinceRecordingReader{fakePlanUsageReader: fakePlanUsageReader{otherActiveUsers: 1}}
+	svc := service.NewFairShareService(reader)
+
+	req := request(c)
+	req.Now = now
+	req.ByKey, req.KeyID = true, "k2"
+	req.KeyWindows = map[model.ProviderKeyID]time.Time{"k2": keyAnchor}
+	req.Since = poolStart
+	req.PlanUsage, req.UserUsage = &service.PlanUsage{}, &service.PlanUsage{}
+	if _, err := svc.Resolve(context.Background(), req); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(reader.sinces) != 2 {
+		t.Fatalf("%d reads, want the count and the presence probe", len(reader.sinces))
+	}
+	for _, since := range reader.sinces {
+		if !since.Equal(poolStart) {
+			t.Errorf("read from %s, want the caller's window start %s", since, poolStart)
+		}
+	}
+}

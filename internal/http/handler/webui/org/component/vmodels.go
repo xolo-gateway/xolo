@@ -257,6 +257,9 @@ type SubscriptionConstraintUsage struct {
 	// concurrency fields
 	InFlight  int
 	Exhausted bool
+	// ExhaustedUntil is when the cooldown that sets Exhausted ends, zero when
+	// unknown. Not displayed: it tells which key of a pool frees up first.
+	ExhaustedUntil time.Time
 }
 
 // SubscriptionProviderUsage aggregates plan usage for one subscription provider.

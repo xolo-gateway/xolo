@@ -128,6 +128,7 @@ func (e *XoloSubscriptionEnforcer) PreRequest(ctx context.Context, req *genaiPro
 	keys := model.ProviderKeyIDs(p)
 	pooled := len(keys) > 1
 	shared := model.PooledPlan(p)
+	scope.Pooled = pooled
 	if pooled {
 		for _, c := range plan.Constraints {
 			if windows := model.KeyWindows(p, c.Label, scope.Now); windows != nil {
@@ -211,8 +212,8 @@ func (e *XoloSubscriptionEnforcer) PreRequest(ctx context.Context, req *genaiPro
 // (model.KeyAffinity), so the users arriving on an idle plan spread over the
 // keys. The fallbacks are the other keys with room left, in the same order.
 //
-// Each key is held to its own plan (model.KeyPlan); the users' shares were
-// already decided on the pool.
+// Each key is held to its own plan (model.KeyPlan), and each user to their
+// share of it: a key the user has used their share of is closed to them.
 func (e *XoloSubscriptionEnforcer) pickKey(ctx context.Context, scope planScope, p model.Provider, keys []model.ProviderKeyID) (model.ProviderKeyID, []model.ProviderKeyID, *planDenial, error) {
 	sticky, hasSticky := model.ProviderKeyID(""), false
 	if scope.UserID != "" {
@@ -293,9 +294,10 @@ type keyState struct {
 	denial *planDenial
 }
 
-// keyStates measures every key of a pool against its own plan, with one read
-// per rolling window for all the keys together, each key in its own window.
-// The concurrency constraints are held on the pool only.
+// keyStates measures every key of a pool against its own plan, and the user's
+// consumption of it against their share of it, with one read per rolling
+// window for all the keys together, each key in its own window. The
+// concurrency constraints are held on the pool only.
 func (e *XoloSubscriptionEnforcer) keyStates(ctx context.Context, scope planScope, p model.Provider, keys []model.ProviderKeyID) (map[model.ProviderKeyID]keyState, error) {
 	plans := make(map[model.ProviderKeyID]*model.SubscriptionPlan, len(keys))
 	for _, key := range keys {
@@ -307,6 +309,9 @@ func (e *XoloSubscriptionEnforcer) keyStates(ctx context.Context, scope planScop
 			continue
 		}
 		var usage map[model.ProviderKeyID]map[model.LLMModelID]port.PlanUsageTotals
+		// Every key's usage is read from the plan's window start, each key
+		// whose window an override moves from its own (scope.KeyWindows).
+		since := c.CurrentWindowStart(scope.now())
 		if c.Kind == model.ConstraintRollingWindow && c.Duration.Duration() > 0 && anyBudget(plans, i, scope.UpstreamModel) {
 			var err error
 			if usage, err = e.rolling.keysUsage(ctx, scope, c.ForModel(scope.UpstreamModel)); err != nil {
@@ -329,6 +334,16 @@ func (e *XoloSubscriptionEnforcer) keyStates(ctx context.Context, scope planScop
 				u := keyUsage(kc, scope.Models, usage[key])
 				state.denial = budgetDenial(keyScope, kc, keyScope.constraintName(kc), u.Tokens, u.Value)
 				state.fill = max(state.fill, fillRatio(kc, u))
+				if state.denial == nil {
+					// The user's share of the key, in the key's own window: a
+					// key whose window resets gives its users room back
+					// without waiting for the other keys of the pool.
+					denial, err := e.rolling.shareDenial(ctx, keyScope, kc, keyScope.usageScope(kc), since, u)
+					if err != nil {
+						return nil, err
+					}
+					state.denial = denial
+				}
 			}
 			states[key] = state
 		}

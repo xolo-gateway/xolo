@@ -35,10 +35,14 @@ type planScope struct {
 	// KeyWindows are, per constraint label, the window starts of the keys of a
 	// pool whose window an override moves (see model.KeyWindows).
 	KeyWindows map[string]map[model.ProviderKeyID]time.Time
+	// Pooled is set when the provider spreads its plan over several keys: the
+	// users' shares are then decided key by key, each key in its own window,
+	// rather than on the whole pool.
+	Pooled bool
 	// ByKey narrows the scope to one API key of the provider, KeyID, when the
 	// provider spreads its plan over several keys. A constraint is then checked
-	// against that key's usage and budget alone: the users' shares are decided
-	// on the whole pool, never per key.
+	// against that key's usage and budget alone, and the user's share against
+	// that key's.
 	ByKey bool
 	KeyID model.ProviderKeyID
 	// Now is the time the request is checked at. Every window of the request
@@ -183,62 +187,89 @@ func (e *rollingWindowEvaluator) Acquire(ctx context.Context, scope planScope, c
 		return nil, denial, nil
 	}
 
-	// Per-user fair-share check, decided on the whole pool of keys.
-	if scope.UserID != "" && scope.MemberCount > 0 && !scope.ByKey {
-		// A shared constraint weighs the user's consumption the way it weighed
-		// the plan's, which the allocator's own plain sum cannot.
-		var userUsage *service.PlanUsage
-		if c.Shared() {
-			userTokens, userValue, err := e.planUsage(ctx, scope, c, usage, scope.UserID, since)
-			if err != nil {
-				return nil, nil, err
-			}
-			userUsage = &service.PlanUsage{Tokens: userTokens, Value: userValue}
-		}
-		// The plan-wide totals were just read for the check above; handing them to
-		// the allocator keeps this to one aggregation of the window per request.
-		share, err := e.fairShare.Resolve(ctx, service.FairShareRequest{
-			OrgID:       scope.OrgID,
-			ProviderID:  scope.ProviderID,
-			ModelIDs:    usage.ModelIDs,
-			KeyWindows:  usage.KeyWindows,
-			UserID:      scope.UserID,
-			MemberCount: scope.MemberCount,
-			Constraint:  c,
-			Now:         now,
-			PlanUsage:   &service.PlanUsage{Tokens: tokens, Value: providerValue},
-			UserUsage:   userUsage,
-		})
-		if err != nil {
-			return nil, nil, err
-		}
-		if share.CountDegraded {
-			// Not a Warn: the failure is cached for a TTL and every request in
-			// that TTL lands here, so a struggling database would flood the log.
-			// The counter is what to alert on; the line is for a debugger.
-			metrics.FairShareDegradedShares.With(prometheus.Labels{metrics.LabelOrg: string(scope.OrgID)}).Inc()
-			slog.DebugContext(ctx, "rolling window: active-user count unavailable, share computed on the whole membership",
-				slog.String("org", string(scope.OrgID)), slog.String("provider", string(scope.ProviderID)))
-		}
-
-		if share.TokenAllowance != nil && share.UserTokens >= *share.TokenAllowance {
-			return nil, &planDenial{
-				Message: fmt.Sprintf("fair-share quota exceeded [%s]: %d / %d tokens used in the last %s (%s)",
-					name, share.UserTokens, *share.TokenAllowance, formatDuration(dur),
-					shareBasis(share, share.TokenMode, scope.MemberCount)),
-			}, nil
-		}
-
-		if share.ValueAllowance != nil && share.UserValue >= *share.ValueAllowance {
-			return nil, &planDenial{
-				Message: fmt.Sprintf("fair-share quota exceeded [%s]: value budget of %s / %s reached in the last %s (%s)",
-					name, formatMicrocents(share.UserValue, scope.Currency), formatMicrocents(*share.ValueAllowance, scope.Currency),
-					formatDuration(dur), shareBasis(share, share.ValueMode, scope.MemberCount)),
-			}, nil
+	// Per-user fair-share check. On a pool of keys it is decided key by key,
+	// when one is picked (see XoloSubscriptionEnforcer.keyStates).
+	if !scope.Pooled {
+		denial, err := e.shareDenial(ctx, scope, c, usage, since, service.PlanUsage{Tokens: tokens, Value: providerValue})
+		if err != nil || denial != nil {
+			return nil, denial, err
 		}
 	}
 
 	return noopReservation{}, nil, nil
+}
+
+// shareDenial checks the user's consumption of a constraint against their
+// share of it, on the whole plan or, when the scope is narrowed to one key of
+// a pool, on that key alone: its budget, its window and the users active on
+// it. planUsage is the consumption of the plan, or of the key, the caller
+// already read. It returns no denial when the scope has no user or no
+// membership to share between.
+func (e *rollingWindowEvaluator) shareDenial(ctx context.Context, scope planScope, c model.PlanConstraint, usage model.PlanUsageScope, since time.Time, planUsage service.PlanUsage) (*planDenial, error) {
+	if scope.UserID == "" || scope.MemberCount <= 0 || (c.TokenBudget == nil && c.ValueBudget == nil) {
+		return nil, nil
+	}
+	// The user's figures are read here rather than by the allocator: a shared
+	// constraint weighs them the way it weighed the plan's, which the
+	// allocator's own plain sum cannot, and the read goes through the
+	// request's memo, shared with the plan's.
+	userTokens, userValue, err := e.planUsage(ctx, scope, c, usage, scope.UserID, since)
+	if err != nil {
+		return nil, err
+	}
+	share, err := e.fairShare.Resolve(ctx, service.FairShareRequest{
+		OrgID:       scope.OrgID,
+		ProviderID:  scope.ProviderID,
+		ModelIDs:    usage.ModelIDs,
+		KeyWindows:  usage.KeyWindows,
+		ByKey:       usage.ByKey,
+		KeyID:       usage.KeyID,
+		UserID:      scope.UserID,
+		MemberCount: scope.MemberCount,
+		Constraint:  c,
+		Now:         scope.now(),
+		Since:       since,
+		PlanUsage:   &planUsage,
+		UserUsage:   &service.PlanUsage{Tokens: userTokens, Value: userValue},
+	})
+	if err != nil {
+		return nil, err
+	}
+	if share.CountDegraded {
+		// Not a Warn: the failure is cached for a TTL and every request in
+		// that TTL lands here, so a struggling database would flood the log.
+		// The counter is what to alert on; the line is for a debugger.
+		metrics.FairShareDegradedShares.With(prometheus.Labels{metrics.LabelOrg: string(scope.OrgID)}).Inc()
+		slog.DebugContext(ctx, "rolling window: active-user count unavailable, share computed on the whole membership",
+			slog.String("org", string(scope.OrgID)), slog.String("provider", string(scope.ProviderID)))
+	}
+
+	name, dur := scope.constraintName(c), c.Duration.Duration()
+	tokensOut := share.TokenAllowance != nil && share.UserTokens >= *share.TokenAllowance
+	valueOut := share.ValueAllowance != nil && share.UserValue >= *share.ValueAllowance
+	if (tokensOut || valueOut) && usage.ByKey {
+		// Like budgetDenial on one key: the request was refused because the
+		// user had no share left on any key, and the user is not told about
+		// keys, nor shown the figures of one of them.
+		return &planDenial{
+			Message: fmt.Sprintf("fair-share quota exceeded [%s]: your share of the plan is used up for the last %s", name, formatDuration(dur)),
+		}, nil
+	}
+	if tokensOut {
+		return &planDenial{
+			Message: fmt.Sprintf("fair-share quota exceeded [%s]: %d / %d tokens used in the last %s (%s)",
+				name, share.UserTokens, *share.TokenAllowance, formatDuration(dur),
+				shareBasis(share, share.TokenMode, scope.MemberCount)),
+		}, nil
+	}
+	if valueOut {
+		return &planDenial{
+			Message: fmt.Sprintf("fair-share quota exceeded [%s]: value budget of %s / %s reached in the last %s (%s)",
+				name, formatMicrocents(share.UserValue, scope.Currency), formatMicrocents(*share.ValueAllowance, scope.Currency),
+				formatDuration(dur), shareBasis(share, share.ValueMode, scope.MemberCount)),
+		}, nil
+	}
+	return nil, nil
 }
 
 // budgetDenial checks the window's usage against the constraint's budgets.

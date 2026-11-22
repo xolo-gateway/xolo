@@ -71,6 +71,24 @@ func (s *Store) memoizedPlanUsage(ctx context.Context, scope model.PlanUsageScop
 	return rows, true, nil
 }
 
+// loadedPlanUsage returns the memo's usage of a plan scope since a time when
+// it was already read for userID, the memo's user, and reports false
+// otherwise. It never reads: a caller with a cheaper query of its own runs it
+// rather than load the whole window.
+func (s *Store) loadedPlanUsage(ctx context.Context, scope model.PlanUsageScope, userID model.UserID, since time.Time) ([]planUsageSplit, bool) {
+	memo := port.PlanUsageMemoFrom(ctx)
+	if memo == nil || userID == "" || userID != memo.UserID {
+		return nil, false
+	}
+	pool := scope
+	pool.ByKey, pool.KeyID = false, ""
+	rows, ok := memo.Load(planUsageMemoKey(pool, since))
+	if !ok {
+		return nil, false
+	}
+	return rows.([]planUsageSplit), true
+}
+
 // planUsageMemoKey identifies a plan scope's window in a memo.
 func planUsageMemoKey(scope model.PlanUsageScope, since time.Time) string {
 	var b strings.Builder

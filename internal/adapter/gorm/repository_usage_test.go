@@ -583,6 +583,24 @@ func scenarioUsageStorePlanUsageByKey(t *testing.T, store *xologorm.Store) {
 		t.Errorf("SumUserPlanUsageSince (k3 moved) = %d, %v; want user A's k3 record out of k3's window", value, err)
 	}
 
+	// One key of a pool, in its own window: the reads the users' shares of
+	// that key are decided on. They run from the provider's window start, as
+	// the enforcer's, the key held to its own by KeyWindows.
+	movedK3 := moved
+	movedK3.ByKey, movedK3.KeyID = true, "k3"
+	if _, value, err := store.SumPlanUsageSince(ctx, movedK3, since); err != nil || value != 8_000 {
+		t.Errorf("SumPlanUsageSince (k3 alone, moved) = %d, %v; want 8000", value, err)
+	}
+	if _, value, err := store.SumUserPlanUsageSince(ctx, f.userA, movedK3, since); err != nil || value != 0 {
+		t.Errorf("SumUserPlanUsageSince (k3 alone, moved) = %d, %v; want 0: user A's k3 record is out of k3's window", value, err)
+	}
+	if count, err := store.CountActivePlanUsersSince(ctx, movedK3, since, ""); err != nil || count != 1 {
+		t.Errorf("CountActivePlanUsersSince (k3 alone, moved) = %d, %v; want user B alone", count, err)
+	}
+	if present, err := store.HasPlanUsageSince(ctx, f.userA, movedK3, since); err != nil || present {
+		t.Errorf("HasPlanUsageSince (k3 alone, moved) = %v, %v; want user A absent from k3's window", present, err)
+	}
+
 	_, userOnK3, err := store.SumUserPlanUsageSince(ctx, f.userA, model.PlanUsageScope{OrgID: f.orgID, ProviderID: f.providerID, ByKey: true, KeyID: "k3"}, since)
 	if err != nil {
 		t.Fatalf("SumUserPlanUsageSince: %v", err)

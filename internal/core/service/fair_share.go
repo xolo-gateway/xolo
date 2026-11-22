@@ -28,11 +28,25 @@ type FairShareRequest struct {
 	ModelIDs []model.LLMModelID
 	// KeyWindows are the window starts of the keys of a pool whose window is
 	// moved (see model.PlanUsageScope.KeyWindows).
-	KeyWindows  map[model.ProviderKeyID]time.Time
+	KeyWindows map[model.ProviderKeyID]time.Time
+	// ByKey narrows the allocation to one API key of a pool, KeyID: its
+	// budget, its consumption and the users active on it, in its own window.
+	// Constraint is then the key's own (model.KeyPlan). The shares of a pool
+	// are decided key by key, so that a key whose window resets gives its
+	// users room back without waiting for the others.
+	ByKey       bool
+	KeyID       model.ProviderKeyID
 	UserID      model.UserID
 	MemberCount int
 	Constraint  model.PlanConstraint
 	Now         time.Time
+	// Since, when set, is the start the window's reads run from, when the
+	// caller read the plan from another start than Constraint's: on one key
+	// of a pool, the provider's window, the key held to its own through
+	// KeyWindows. Reading from the same start as the caller keeps the reads
+	// in the request's memo (see port.PlanUsageMemo). Zero means Constraint's
+	// current window.
+	Since time.Time
 	// PlanUsage, when set, is the plan-wide consumption of the window as the
 	// caller already read it. Callers that check the plan-wide budget before
 	// allocating pass it so the window is aggregated once per request instead of
@@ -46,7 +60,7 @@ type FairShareRequest struct {
 }
 
 func (r FairShareRequest) usageScope() model.PlanUsageScope {
-	return model.PlanUsageScope{OrgID: r.OrgID, ProviderID: r.ProviderID, ModelIDs: r.ModelIDs, KeyWindows: r.KeyWindows}
+	return model.PlanUsageScope{OrgID: r.OrgID, ProviderID: r.ProviderID, ModelIDs: r.ModelIDs, KeyWindows: r.KeyWindows, ByKey: r.ByKey, KeyID: r.KeyID}
 }
 
 // PlanUsage is the plan-wide consumption of a window.
@@ -294,7 +308,10 @@ func (s *FairShareService) Resolve(ctx context.Context, req FairShareRequest) (*
 	}
 
 	c := req.Constraint
-	since := c.CurrentWindowStart(req.Now)
+	since := req.Since
+	if since.IsZero() {
+		since = c.CurrentWindowStart(req.Now)
+	}
 
 	var planTokens, planValue int64
 	if req.PlanUsage != nil {
