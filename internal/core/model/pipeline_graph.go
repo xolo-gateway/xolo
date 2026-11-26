@@ -175,8 +175,8 @@ type ContextNodeData struct {
 // TraceConditionPort is the fixed, optional boolean input of a trace node:
 // connected, the node records its event only when the value is true, so a
 // trace can stand for a fact worth an alert instead of one event per request.
-// It is never recorded as an attribute, and a declared input of the same name
-// is taken as this port.
+// It is never recorded as an attribute. Writing a graph whose trace declares
+// an input of the same name is refused (see service.ValidatePipelineNode).
 const TraceConditionPort = "condition"
 
 // TraceNodeData is the Data payload for NodeTypeTrace.

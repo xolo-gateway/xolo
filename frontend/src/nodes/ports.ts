@@ -47,7 +47,7 @@ function fromDescriptors(ports: PortDescriptor[] | undefined): ResolvedPort[] {
  * their input ports in the node data, the way script-processor does through
  * its config. The declared ports come after the fixed ones of the catalog,
  * such as the condition port of a trace; a declared port named like a fixed
- * one is dropped, the server reading that name as the fixed port.
+ * one is not shown twice, and the server refuses to save it.
  */
 export function builtinPorts(
   data: Record<string, unknown>,

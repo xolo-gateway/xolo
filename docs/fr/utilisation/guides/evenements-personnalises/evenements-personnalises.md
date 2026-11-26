@@ -68,7 +68,7 @@ Déclarez ensuite les ports qui diront, le jour où l'événement se produit, qu
 
 ![La trace fin-de-budget : sévérité warning, quatre ports déclarés, et le port condition en tête de la liste des ports](./screenshots/trace.png)
 
-Nommez les ports d'après ce qu'ils reçoivent : l'événement se lit alors sans rouvrir le graphe. Ne déclarez pas de port nommé `condition` : ce nom est celui de l'entrée fixe.
+Nommez les ports d'après ce qu'ils reçoivent : l'événement se lit alors sans rouvrir le graphe. Ne déclarez pas de port nommé `condition` : ce nom est celui de l'entrée fixe, et le pipeline serait refusé à l'enregistrement.
 
 Enregistrez. Le bandeau indique **Graphe valide**.
 
