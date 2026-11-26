@@ -13,6 +13,10 @@ set -euo pipefail
 
 here=$(cd "$(dirname "$0")" && pwd)
 dist=${1:-"$here/../../dist"}
+if ! ls "$dist"/xolo*.rpm "$dist"/xolo*.deb >/dev/null 2>&1; then
+  echo "no package in $dist: run make packages first" >&2
+  exit 2
+fi
 dist=$(cd "$dist" && pwd)
 
 # name|format|base image|what the base image lacks to boot systemd and probe

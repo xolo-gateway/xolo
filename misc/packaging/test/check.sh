@@ -13,13 +13,22 @@ fail() {
     exit 1
 }
 
-install_packages() {
+# Installs the package files given, from /packages, with no other repository.
+install() {
     if [ "$format" = rpm ]; then
-        dnf install -y --disablerepo='*' /packages/*.rpm >/dev/null
+        dnf install -y --disablerepo='*' "$@" >/dev/null
     else
-        DEBIAN_FRONTEND=noninteractive apt-get install -y /packages/*.deb >/dev/null
+        DEBIAN_FRONTEND=noninteractive apt-get install -y "$@" >/dev/null
     fi
 }
+
+if [ "$format" = rpm ]; then
+    server_package=$(echo /packages/xolo-[0-9]*.rpm)
+    dummy_package=$(echo /packages/xolo-plugin-dummy-model-[0-9]*.rpm)
+else
+    server_package=$(echo /packages/xolo_*.deb)
+    dummy_package=$(echo /packages/xolo-plugin-dummy-model_*.deb)
+fi
 
 reinstall_packages() {
     if [ "$format" = rpm ]; then
@@ -95,8 +104,18 @@ until systemctl is-system-running 2>/dev/null | grep -Eq 'running|degraded'; do
     sleep 1
 done
 
-step "installation"
-install_packages
+step "a plugin is refused without xolo"
+! install "$dummy_package" 2>/dev/null || fail "a plugin installed without xolo"
+[ -z "$(plugin_packages)" ] || fail "plugin packages left: $(plugin_packages)"
+
+step "xolo alone brings no plugin"
+install "$server_package"
+[ -z "$(plugin_packages)" ] || fail "plugins installed with xolo: $(plugin_packages)"
+
+step "a plugin alone, then every plugin"
+install "$dummy_package"
+[ -x /usr/lib/xolo/plugins/xolo-plugin-dummy-model ] || fail "the plugin is not installed"
+install_plugins
 
 step "account, files and permissions"
 [ "$(id -gn xolo)" = xolo ] || fail "no xolo account"
