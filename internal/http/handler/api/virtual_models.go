@@ -346,10 +346,12 @@ func (h *Handler) handlePipelineNodeTypes(w http.ResponseWriter, r *http.Request
 			ConfigSchema: `{"type":"object","properties":{"timezone":{"type":"string","title":"Fuseau horaire (IANA)","description":"Ex. Europe/Paris. UTC par défaut."}}}`,
 		},
 		nodeTypeDescriptor{
-			Type:         model.NodeTypeTrace,
-			Label:        "Trace",
-			Description:  "Enregistre les valeurs connectées dans un événement Xolo (type pipeline.trace) pour observer le pipeline en production. Les ports d'entrée se déclarent dans la configuration.",
-			InputPorts:   []*proto.PortDescriptor{},
+			Type:        model.NodeTypeTrace,
+			Label:       "Trace",
+			Description: "Enregistre les valeurs connectées dans un événement Xolo (type pipeline.trace) pour observer le pipeline en production. Les ports d'entrée se déclarent dans la configuration. Le port condition, s'il est connecté, n'enregistre l'événement que lorsqu'il est vrai.",
+			InputPorts: []*proto.PortDescriptor{
+				{Name: model.TraceConditionPort, PortType: string(model.PortTypeBoolean)},
+			},
 			OutputPorts:  []*proto.PortDescriptor{},
 			ConfigSchema: `{"type":"object","properties":{"severity":{"type":"string","title":"Sévérité","enum":["info","warning","error"],"default":"info"},"inputs":{"type":"array","title":"Ports d'entrée","items":{"type":"object","properties":{"name":{"type":"string","title":"Nom"},"portType":{"type":"string","title":"Type","enum":["string","number","boolean","request","response"]}},"required":["name"]}}}}`,
 		},

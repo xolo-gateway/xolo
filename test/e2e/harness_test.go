@@ -66,6 +66,8 @@ var env struct {
 	baseURL  string
 	dsn      string
 	provider *fakeProvider
+	// mcp is the MCP server of the tooled agent guide.
+	mcp *fakeMCP
 	// catalogURL serves the test release of the model catalog: Xolo embeds
 	// none and reads it from its URL.
 	catalogURL string
@@ -164,7 +166,10 @@ func run(m *testing.M) (int, error) {
 	defer catalogServer.Close()
 	env.catalogURL = catalogServer.URL
 
-	if err := prepareDatabase(env.dsn, env.provider.baseURL()); err != nil {
+	env.mcp = newFakeMCP()
+	defer env.mcp.Close()
+
+	if err := prepareDatabase(env.dsn, env.provider.baseURL(), env.mcp.URL()); err != nil {
 		return 1, fmt.Errorf("prepare database: %w", err)
 	}
 
@@ -346,7 +351,10 @@ type chatRequest struct {
 	// Header keeps the request headers, for the Messages endpoint only.
 	Header http.Header `json:"-"`
 	Stream bool        `json:"stream"`
-	Tools  []struct {
+	// ToolChoice is "none" when the gateway forces the final answer of a
+	// tool loop.
+	ToolChoice any `json:"tool_choice"`
+	Tools      []struct {
 		// Name is an Anthropic tool's, Function.Name an OpenAI one's.
 		Name     string `json:"name"`
 		Function struct {
@@ -439,7 +447,16 @@ func (p *fakeProvider) handleChat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if call, ok := guideToolCall(req); ok {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(call)
+		return
+	}
+
 	answer := "Bien reçu : " + lastUserText(req.Messages)
+	if result := lastToolResult(req.Messages); result != "" {
+		answer += " — d'après l'outil : " + result
+	}
 	resp := map[string]any{
 		"id":      "chatcmpl-e2e",
 		"object":  "chat.completion",

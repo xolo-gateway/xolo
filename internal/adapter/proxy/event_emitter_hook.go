@@ -130,8 +130,14 @@ func (h *XoloEventEmitterHook) OnError(ctx context.Context, req *genaiProxy.Prox
 
 	status := http.StatusInternalServerError
 	var httpErr *llm.HTTPError
-	if errors.As(err, &httpErr) {
+	var apiErr *genaiProxy.APIError
+	switch {
+	case errors.As(err, &httpErr):
 		status = httpErr.StatusCode
+	case errors.As(err, &apiErr):
+		// A refusal the gateway answers itself, such as a tool result a
+		// pipeline node rejected inside the model loop.
+		status = apiErr.StatusCode
 	}
 	attrs["status"] = strconv.Itoa(status)
 	attrs["error"] = truncate(err.Error(), maxErrorAttributeLength)

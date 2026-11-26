@@ -53,6 +53,7 @@ En cas d'échec de la mise en place, le journal du serveur est imprimé.
 | `TestNodes_LogicPipeline` | `acme/e2e-logic` | `value`, `math`, `compare`, `select`, `model_ref`, `sample`, `context`, `trace`, `model` | `max(0,2 ; 0,9) > 0,5` appelle le modèle fort ; un `sample` à 0 % ne sélectionne jamais ; l'événement `pipeline.trace` porte chaque valeur intermédiaire et l'identifiant de l'appelant |
 | `TestNodes_ModelFallback` | `acme/e2e-fallback` | `model_fallback` | le fournisseur reçoit d'abord le modèle cassé (503), puis le modèle de secours ; le client obtient une réponse normale |
 | `TestNodes_Block` | `acme/e2e-block` | `prompt-guard` (score seul) → `compare` → `block` | injection refusée (403) avec le message du nœud, sans appel amont, événement `request.blocked` attribué à l'appelant ; question honnête servie sans événement |
+| `TestNodes_TraceCondition` | `acme/e2e-trace-condition` | `value`, `trace` | deux traces du même score, l'une au port `condition` vrai, l'autre faux : seule la première enregistre un événement, sans attribut `condition` |
 | `TestNodes_GuardedAgent` | `acme/e2e-agent` | `system-prompt`, `pseudonymizer`, `prompt-guard` → `compare` → `block`, `llm-classifier` → `compare` (port `text`) → `select` → `model`, `trace` | message honnête servi avec le prompt système en tête et le nom pseudonymisé dans les deux appels fournisseur (classifieur puis réponse), catégorie de repli `support` ; message nommant `hors_sujet` routé vers `acme/e2e-dummy`, un seul appel fournisseur ; injection refusée (403) après le seul appel du classifieur, événement `request.blocked` |
 
 ### Plugins (`plugins_test.go`)
@@ -65,6 +66,24 @@ En cas d'échec de la mise en place, le journal du serveur est imprimé.
 | `TestPlugins_TimeRestriction` | `acme/e2e-open`, `acme/e2e-closed` | `time-restriction` | 200 dans la plage, 403 hors plage avec événement `request.blocked` ; la plage fermée vise un jour qui n'est pas aujourd'hui (UTC) |
 | `TestPlugins_PromptGuard` | `acme/e2e-guard` | `prompt-guard` | injection flagrante refusée (403) sans appel amont, question honnête servie |
 | `TestPlugins_Telemetry` | `acme/e2e-telemetry` | `request-inspector`, `text-classifier`, `energy-estimator`, `budget-pressure`, `script-processor` → `trace` | nombre de messages, catégorie `code` par règle, énergie > 0, budget présent (jeton de Carol), doublement par script Tengo |
+
+### Guides de la documentation (`guides_test.go`)
+
+Chaque guide de `docs/fr/utilisation/guides` fournit un bundle. Le harnais
+crée un modèle virtuel par bundle, tel que publié, après la validation qu'un
+import lui appliquerait ; seule l'adresse du serveur MCP d'exemple est
+remplacée par celle d'un faux serveur MCP (`rechercher`, `lire_document`,
+`supprimer_document`, ce dernier hors du filtre d'outils du guide). Le faux
+fournisseur appelle `rechercher` à une requête non streamée qui le propose,
+puis répond en recopiant le résultat de l'outil. Les requêtes EventQL citées
+par les guides sont compilées et confrontées aux événements réels.
+
+| Test | Modèle virtuel | Attendu |
+|---|---|---|
+| `TestGuides_PersonalData` | `acme/assistant-confidentiel` | le fournisseur ne voit que des jetons, la réponse restitue le nom et la ville, événement `sensitive-data.detected` avec `types=LOC:1,PER:1` ; une demande sans donnée personnelle part telle quelle |
+| `TestGuides_ToolAgent` | `acme/agent-documentaire` | seuls les deux outils du filtre sont proposés, le modèle appelle `rechercher` et répond à partir du document ; injection directe refusée (403) sans appel au fournisseur ni au serveur MCP ; document piégé renvoyé par l'outil refusé (403) avant que le modèle ne le lise, événement `segment=tool` ; canari expurgé de la réponse, événement `canary_leak` |
+| `TestGuides_AutoSelection` | `acme/auto` | salutation vers le modèle léger, question ordinaire vers le standard, conception d'architecture vers l'expert, image vers le modèle vision ; la trace porte le score et le modèle retenu |
+| `TestGuides_CustomEvents` | `acme/assistant-budget` | loin de la fin du budget (le seed le calibre autour de la moitié), la trace `fin-de-budget`, conditionnée par un `compare` à 80 %, n'enregistre rien ; l'alerte du guide reconnaît l'événement attendu et pas les autres traces |
 
 ### Pseudonymizer (`pseudonymizer_test.go`)
 

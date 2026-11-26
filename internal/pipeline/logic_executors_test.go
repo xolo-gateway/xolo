@@ -232,3 +232,71 @@ func TestTraceExecutor(t *testing.T) {
 		t.Error(err)
 	}
 }
+
+// TestTraceExecutor_Condition checks that the condition port decides whether
+// the event is recorded, and that it is never recorded as an attribute.
+func TestTraceExecutor_Condition(t *testing.T) {
+	cases := []struct {
+		name      string
+		condition any
+		connected bool
+		want      bool
+	}{
+		{"not connected", nil, false, true},
+		{"true", true, true, true},
+		{"false", false, true, false},
+		{"non-zero number", 0.9, true, true},
+		{"zero", 0.0, true, false},
+		{"neither boolean nor number", "oui", true, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			em := &recordingEmitter{}
+			in := map[string]interface{}{"budget_pressure": 0.93}
+			if tc.connected {
+				in[model.TraceConditionPort] = tc.condition
+			}
+			res, err := NewTraceExecutor(em).Forward(context.Background(),
+				model.PipelineNode{ID: "tr", Type: model.NodeTypeTrace, Data: json.RawMessage(`{"label":"fin-de-budget","severity":"warning"}`)},
+				in, ExecutionContext{OrgID: "o", UserID: "u"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(res.OutputValues) != 0 {
+				t.Errorf("a trace has no output: %v", res.OutputValues)
+			}
+			if got := len(em.events) == 1; got != tc.want {
+				t.Fatalf("recorded = %v (%d event(s)), want %v", got, len(em.events), tc.want)
+			}
+			if !tc.want {
+				return
+			}
+			attrs := em.events[0].Attributes()
+			if _, ok := attrs["port."+model.TraceConditionPort]; ok {
+				t.Errorf("the condition is recorded as an attribute: %v", attrs)
+			}
+			if attrs["port.budget_pressure"] != "0.93" {
+				t.Errorf("attributes = %v", attrs)
+			}
+		})
+	}
+}
+
+// TestTraceExecutor_DeclaredConditionPort checks that a trace saved before the
+// condition port existed, declaring a port of that name, keeps recording it
+// as a value instead of falling silent on a false.
+func TestTraceExecutor_DeclaredConditionPort(t *testing.T) {
+	em := &recordingEmitter{}
+	node := model.PipelineNode{ID: "tr", Type: model.NodeTypeTrace,
+		Data: json.RawMessage(`{"label":"ancien","inputs":[{"name":"condition","portType":"boolean"}]}`)}
+	if _, err := NewTraceExecutor(em).Forward(context.Background(), node,
+		map[string]interface{}{model.TraceConditionPort: false}, ExecutionContext{OrgID: "o", UserID: "u"}); err != nil {
+		t.Fatal(err)
+	}
+	if len(em.events) != 1 {
+		t.Fatalf("recorded %d event(s), want 1", len(em.events))
+	}
+	if got := em.events[0].Attributes()["port."+model.TraceConditionPort]; got != "false" {
+		t.Errorf("port.condition = %q, want the declared value false", got)
+	}
+}

@@ -1,0 +1,432 @@
+{
+  "version": "1",
+  "exportedAt": "2026-11-27T09:00:00Z",
+  "name": "auto",
+  "description": "Choisit le modèle selon la complexité de la demande, l'image jointe et la pression budgétaire de l'utilisateur.",
+  "graph": {
+    "nodes": [
+      {
+        "id": "gen",
+        "type": "generator",
+        "position": {
+          "x": 0,
+          "y": 400
+        },
+        "data": null
+      },
+      {
+        "id": "scorer",
+        "type": "plugin",
+        "position": {
+          "x": 300,
+          "y": 0
+        },
+        "data": {
+          "pluginName": "complexity-scorer"
+        }
+      },
+      {
+        "id": "inspector",
+        "type": "plugin",
+        "position": {
+          "x": 300,
+          "y": 700
+        },
+        "data": {
+          "pluginName": "request-inspector"
+        }
+      },
+      {
+        "id": "budget",
+        "type": "plugin",
+        "position": {
+          "x": 300,
+          "y": 440
+        },
+        "data": {
+          "pluginName": "budget-pressure"
+        }
+      },
+      {
+        "id": "cmp_expert",
+        "type": "compare",
+        "position": {
+          "x": 600,
+          "y": -150
+        },
+        "data": {
+          "label": "demande difficile ?",
+          "op": "gte",
+          "threshold": 0.5
+        }
+      },
+      {
+        "id": "cmp_leger",
+        "type": "compare",
+        "position": {
+          "x": 600,
+          "y": 180
+        },
+        "data": {
+          "label": "demande simple ?",
+          "op": "lt",
+          "threshold": 0.15
+        }
+      },
+      {
+        "id": "cmp_budget",
+        "type": "compare",
+        "position": {
+          "x": 600,
+          "y": 440
+        },
+        "data": {
+          "label": "budget presque épuisé ?",
+          "op": "gte",
+          "threshold": 0.9
+        }
+      },
+      {
+        "id": "leger",
+        "type": "model_ref",
+        "position": {
+          "x": 900,
+          "y": 260
+        },
+        "data": {
+          "label": "léger",
+          "proxyName": "acme/leger"
+        }
+      },
+      {
+        "id": "standard",
+        "type": "model_ref",
+        "position": {
+          "x": 900,
+          "y": -50
+        },
+        "data": {
+          "label": "standard",
+          "proxyName": "acme/standard"
+        }
+      },
+      {
+        "id": "expert",
+        "type": "model_ref",
+        "position": {
+          "x": 900,
+          "y": -170
+        },
+        "data": {
+          "label": "expert",
+          "proxyName": "acme/expert"
+        }
+      },
+      {
+        "id": "vision",
+        "type": "model_ref",
+        "position": {
+          "x": 1500,
+          "y": 660
+        },
+        "data": {
+          "label": "vision",
+          "proxyName": "acme/vision"
+        }
+      },
+      {
+        "id": "sel_niveau",
+        "type": "select",
+        "position": {
+          "x": 1200,
+          "y": -130
+        },
+        "data": {
+          "label": "standard ou expert"
+        }
+      },
+      {
+        "id": "sel_complexite",
+        "type": "select",
+        "position": {
+          "x": 1500,
+          "y": 200
+        },
+        "data": {
+          "label": "modèle selon complexité"
+        }
+      },
+      {
+        "id": "sel_budget",
+        "type": "select",
+        "position": {
+          "x": 1800,
+          "y": 400
+        },
+        "data": {
+          "label": "modèle selon budget"
+        }
+      },
+      {
+        "id": "sel_vision",
+        "type": "select",
+        "position": {
+          "x": 2100,
+          "y": 560
+        },
+        "data": {
+          "label": "modèle retenu"
+        }
+      },
+      {
+        "id": "llm",
+        "type": "model",
+        "position": {
+          "x": 2400,
+          "y": 440
+        },
+        "data": {
+          "label": "modèle choisi"
+        }
+      },
+      {
+        "id": "sink",
+        "type": "sink",
+        "position": {
+          "x": 2700,
+          "y": 440
+        },
+        "data": null
+      },
+      {
+        "id": "trace",
+        "type": "trace",
+        "position": {
+          "x": 2400,
+          "y": -170
+        },
+        "data": {
+          "label": "auto",
+          "severity": "info",
+          "inputs": [
+            {
+              "name": "complexity",
+              "portType": "number"
+            },
+            {
+              "name": "level",
+              "portType": "string"
+            },
+            {
+              "name": "budget_pressure",
+              "portType": "number"
+            },
+            {
+              "name": "has_vision",
+              "portType": "boolean"
+            },
+            {
+              "name": "model_name",
+              "portType": "string"
+            }
+          ]
+        }
+      },
+      {
+        "id": "note",
+        "type": "note",
+        "position": {
+          "x": 0,
+          "y": 960
+        },
+        "data": {
+          "text": "Seuils de départ : sous 0,15 léger, à partir de 0,5 expert, standard entre les deux. Ajustez-les d'après les traces « auto » après une semaine de trafic réel."
+        }
+      }
+    ],
+    "edges": [
+      {
+        "id": "e1",
+        "source": "gen",
+        "sourcePort": "request",
+        "target": "scorer",
+        "targetPort": "request"
+      },
+      {
+        "id": "e2",
+        "source": "gen",
+        "sourcePort": "request",
+        "target": "inspector",
+        "targetPort": "request"
+      },
+      {
+        "id": "e3",
+        "source": "gen",
+        "sourcePort": "request",
+        "target": "budget",
+        "targetPort": "request"
+      },
+      {
+        "id": "e4",
+        "source": "gen",
+        "sourcePort": "request",
+        "target": "llm",
+        "targetPort": "request"
+      },
+      {
+        "id": "e5",
+        "source": "scorer",
+        "sourcePort": "complexity",
+        "target": "cmp_expert",
+        "targetPort": "value"
+      },
+      {
+        "id": "e6",
+        "source": "scorer",
+        "sourcePort": "complexity",
+        "target": "cmp_leger",
+        "targetPort": "value"
+      },
+      {
+        "id": "e7",
+        "source": "budget",
+        "sourcePort": "budget_pressure",
+        "target": "cmp_budget",
+        "targetPort": "value"
+      },
+      {
+        "id": "e8",
+        "source": "cmp_expert",
+        "sourcePort": "result",
+        "target": "sel_niveau",
+        "targetPort": "condition"
+      },
+      {
+        "id": "e9",
+        "source": "expert",
+        "sourcePort": "model_name",
+        "target": "sel_niveau",
+        "targetPort": "when_true"
+      },
+      {
+        "id": "e10",
+        "source": "standard",
+        "sourcePort": "model_name",
+        "target": "sel_niveau",
+        "targetPort": "when_false"
+      },
+      {
+        "id": "e11",
+        "source": "cmp_leger",
+        "sourcePort": "result",
+        "target": "sel_complexite",
+        "targetPort": "condition"
+      },
+      {
+        "id": "e12",
+        "source": "leger",
+        "sourcePort": "model_name",
+        "target": "sel_complexite",
+        "targetPort": "when_true"
+      },
+      {
+        "id": "e13",
+        "source": "sel_niveau",
+        "sourcePort": "value",
+        "target": "sel_complexite",
+        "targetPort": "when_false"
+      },
+      {
+        "id": "e14",
+        "source": "cmp_budget",
+        "sourcePort": "result",
+        "target": "sel_budget",
+        "targetPort": "condition"
+      },
+      {
+        "id": "e15",
+        "source": "leger",
+        "sourcePort": "model_name",
+        "target": "sel_budget",
+        "targetPort": "when_true"
+      },
+      {
+        "id": "e16",
+        "source": "sel_complexite",
+        "sourcePort": "value",
+        "target": "sel_budget",
+        "targetPort": "when_false"
+      },
+      {
+        "id": "e17",
+        "source": "inspector",
+        "sourcePort": "has_vision",
+        "target": "sel_vision",
+        "targetPort": "condition"
+      },
+      {
+        "id": "e18",
+        "source": "vision",
+        "sourcePort": "model_name",
+        "target": "sel_vision",
+        "targetPort": "when_true"
+      },
+      {
+        "id": "e19",
+        "source": "sel_budget",
+        "sourcePort": "value",
+        "target": "sel_vision",
+        "targetPort": "when_false"
+      },
+      {
+        "id": "e20",
+        "source": "sel_vision",
+        "sourcePort": "value",
+        "target": "llm",
+        "targetPort": "model_name"
+      },
+      {
+        "id": "e21",
+        "source": "llm",
+        "sourcePort": "response",
+        "target": "sink",
+        "targetPort": "response"
+      },
+      {
+        "id": "e22",
+        "source": "scorer",
+        "sourcePort": "complexity",
+        "target": "trace",
+        "targetPort": "complexity"
+      },
+      {
+        "id": "e23",
+        "source": "scorer",
+        "sourcePort": "level",
+        "target": "trace",
+        "targetPort": "level"
+      },
+      {
+        "id": "e24",
+        "source": "budget",
+        "sourcePort": "budget_pressure",
+        "target": "trace",
+        "targetPort": "budget_pressure"
+      },
+      {
+        "id": "e25",
+        "source": "inspector",
+        "sourcePort": "has_vision",
+        "target": "trace",
+        "targetPort": "has_vision"
+      },
+      {
+        "id": "e26",
+        "source": "sel_vision",
+        "sourcePort": "value",
+        "target": "trace",
+        "targetPort": "model_name"
+      }
+    ]
+  }
+}

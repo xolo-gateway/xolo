@@ -79,6 +79,19 @@ func ValidatePipelineNode(node model.PipelineNode) error {
 			return errors.Wrapf(port.ErrInvalid, "plugin node %q names no plugin", node.ID)
 		}
 	}
+	if node.Type == model.NodeTypeTrace {
+		// A declared input named like the fixed condition port would be read
+		// as the condition, and a false value would silence the trace without
+		// a word: refuse it where the graph is written instead.
+		var data model.TraceNodeData
+		if json.Unmarshal(node.Data, &data) == nil {
+			for _, in := range data.Inputs {
+				if in.Name == model.TraceConditionPort {
+					return errors.Wrapf(port.ErrInvalid, "trace node %q declares a port named %q, the name of its fixed input: rename it", node.ID, model.TraceConditionPort)
+				}
+			}
+		}
+	}
 	return nil
 }
 

@@ -1,0 +1,158 @@
+{
+  "version": "1",
+  "exportedAt": "2026-11-27T09:00:00Z",
+  "name": "assistant-budget",
+  "description": "Assistant qui enregistre un événement quand l'utilisateur approche de la fin de son budget.",
+  "graph": {
+    "nodes": [
+      {
+        "id": "gen",
+        "type": "generator",
+        "position": {
+          "x": 0,
+          "y": 300
+        },
+        "data": null
+      },
+      {
+        "id": "budget",
+        "type": "plugin",
+        "position": {
+          "x": 300,
+          "y": 60
+        },
+        "data": {
+          "pluginName": "budget-pressure"
+        }
+      },
+      {
+        "id": "cmp",
+        "type": "compare",
+        "position": {
+          "x": 600,
+          "y": -170
+        },
+        "data": {
+          "label": "budget presque épuisé ?",
+          "op": "gte",
+          "threshold": 0.8
+        }
+      },
+      {
+        "id": "trace",
+        "type": "trace",
+        "position": {
+          "x": 900,
+          "y": 60
+        },
+        "data": {
+          "label": "fin-de-budget",
+          "severity": "warning",
+          "inputs": [
+            {
+              "name": "budget_pressure",
+              "portType": "number"
+            },
+            {
+              "name": "daily_pressure",
+              "portType": "number"
+            },
+            {
+              "name": "monthly_pressure",
+              "portType": "number"
+            },
+            {
+              "name": "yearly_pressure",
+              "portType": "number"
+            }
+          ]
+        }
+      },
+      {
+        "id": "llm",
+        "type": "model",
+        "position": {
+          "x": 600,
+          "y": 360
+        },
+        "data": {
+          "proxyName": "acme/gpt-4o"
+        }
+      },
+      {
+        "id": "sink",
+        "type": "sink",
+        "position": {
+          "x": 900,
+          "y": 360
+        },
+        "data": null
+      }
+    ],
+    "edges": [
+      {
+        "id": "e1",
+        "source": "gen",
+        "sourcePort": "request",
+        "target": "budget",
+        "targetPort": "request"
+      },
+      {
+        "id": "e2",
+        "source": "gen",
+        "sourcePort": "request",
+        "target": "llm",
+        "targetPort": "request"
+      },
+      {
+        "id": "e3",
+        "source": "llm",
+        "sourcePort": "response",
+        "target": "sink",
+        "targetPort": "response"
+      },
+      {
+        "id": "e4",
+        "source": "budget",
+        "sourcePort": "budget_pressure",
+        "target": "cmp",
+        "targetPort": "value"
+      },
+      {
+        "id": "e5",
+        "source": "cmp",
+        "sourcePort": "result",
+        "target": "trace",
+        "targetPort": "condition"
+      },
+      {
+        "id": "e6",
+        "source": "budget",
+        "sourcePort": "budget_pressure",
+        "target": "trace",
+        "targetPort": "budget_pressure"
+      },
+      {
+        "id": "e7",
+        "source": "budget",
+        "sourcePort": "daily_pressure",
+        "target": "trace",
+        "targetPort": "daily_pressure"
+      },
+      {
+        "id": "e8",
+        "source": "budget",
+        "sourcePort": "monthly_pressure",
+        "target": "trace",
+        "targetPort": "monthly_pressure"
+      },
+      {
+        "id": "e9",
+        "source": "budget",
+        "sourcePort": "yearly_pressure",
+        "target": "trace",
+        "targetPort": "yearly_pressure"
+      }
+    ]
+  }
+}

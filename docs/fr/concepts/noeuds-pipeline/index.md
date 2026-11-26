@@ -94,7 +94,7 @@ Ces plugins transforment des mesures en décision quand `compare` et `select` ne
 
 ## Quatre assemblages types
 
-Le [tutoriel de l'agent support gardé](../../utilisation/tutoriels/agent-garde/agent-garde.md) assemble plusieurs de ces briques pas à pas, captures d'écran à l'appui.
+Quatre guides assemblent ces briques pas à pas, chacun autour d'un cas d'usage : [protéger les données personnelles](../../utilisation/guides/donnees-personnelles/donnees-personnelles.md), [un agent outillé protégé des injections](../../utilisation/guides/agent-outille/agent-outille.md), [choisir le modèle automatiquement](../../utilisation/guides/selection-automatique/selection-automatique.md) et [lever des événements personnalisés](../../utilisation/guides/evenements-personnalises/evenements-personnalises.md).
 
 Politique de refus composée. `prompt-guard.risk` entre dans `compare` avec le seuil 0,6, `result` entre dans `block`. Le plugin mesure, le graphe décide, et le seuil se lit sur le canevas au lieu d'être enfoui dans la configuration du plugin. Un `math` en `max` entre plusieurs signaux, `risk` et `pressure` par exemple, refuse dès que l'un d'eux dépasse.
 
