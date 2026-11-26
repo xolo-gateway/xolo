@@ -262,14 +262,20 @@ nfpms:
       postremove: misc/packaging/scripts/postremove.sh
     deb:
       # Calls the post-installation script of xolo once per dpkg run that
-      # installs, upgrades or removes plugins: one restart for all of them.
+      # installs, upgrades or removes plugins or xolo itself: one restart for
+      # all of them.
+      # xolo-restart is activated by its own post-installation script, so
+      # that dpkg merges it with the activations of the plugin packages.
       triggers:
         interest_noawait:
           - /usr/lib/xolo/plugins
+          - xolo-restart
     rpm:
       group: System Environment/Daemons
       # xz is read by every rpm since RHEL 6; zstd would be too, from RHEL 8.
       compression: xz
+      scripts:
+        posttrans: misc/packaging/scripts/posttrans.sh
 
   - id: xolo-plugin-time-restriction
     package_name: xolo-plugin-time-restriction
@@ -295,7 +301,7 @@ nfpms:
       group: System Environment/Daemons
       compression: xz
       scripts:
-        posttrans: misc/packaging/scripts/plugin-posttrans.sh
+        posttrans: misc/packaging/scripts/posttrans.sh
 
   - id: xolo-plugin-dummy-model
     package_name: xolo-plugin-dummy-model
@@ -321,7 +327,7 @@ nfpms:
       group: System Environment/Daemons
       compression: xz
       scripts:
-        posttrans: misc/packaging/scripts/plugin-posttrans.sh
+        posttrans: misc/packaging/scripts/posttrans.sh
 
   - id: xolo-plugin-fuzzy-evaluator
     package_name: xolo-plugin-fuzzy-evaluator
@@ -347,7 +353,7 @@ nfpms:
       group: System Environment/Daemons
       compression: xz
       scripts:
-        posttrans: misc/packaging/scripts/plugin-posttrans.sh
+        posttrans: misc/packaging/scripts/posttrans.sh
 
   - id: xolo-plugin-request-inspector
     package_name: xolo-plugin-request-inspector
@@ -373,7 +379,7 @@ nfpms:
       group: System Environment/Daemons
       compression: xz
       scripts:
-        posttrans: misc/packaging/scripts/plugin-posttrans.sh
+        posttrans: misc/packaging/scripts/posttrans.sh
 
   - id: xolo-plugin-complexity-scorer
     package_name: xolo-plugin-complexity-scorer
@@ -399,7 +405,7 @@ nfpms:
       group: System Environment/Daemons
       compression: xz
       scripts:
-        posttrans: misc/packaging/scripts/plugin-posttrans.sh
+        posttrans: misc/packaging/scripts/posttrans.sh
 
   - id: xolo-plugin-text-classifier
     package_name: xolo-plugin-text-classifier
@@ -425,7 +431,7 @@ nfpms:
       group: System Environment/Daemons
       compression: xz
       scripts:
-        posttrans: misc/packaging/scripts/plugin-posttrans.sh
+        posttrans: misc/packaging/scripts/posttrans.sh
 
   - id: xolo-plugin-prompt-guard
     package_name: xolo-plugin-prompt-guard
@@ -451,7 +457,7 @@ nfpms:
       group: System Environment/Daemons
       compression: xz
       scripts:
-        posttrans: misc/packaging/scripts/plugin-posttrans.sh
+        posttrans: misc/packaging/scripts/posttrans.sh
 
   - id: xolo-plugin-llm-classifier
     package_name: xolo-plugin-llm-classifier
@@ -477,7 +483,7 @@ nfpms:
       group: System Environment/Daemons
       compression: xz
       scripts:
-        posttrans: misc/packaging/scripts/plugin-posttrans.sh
+        posttrans: misc/packaging/scripts/posttrans.sh
 
   - id: xolo-plugin-energy-estimator
     package_name: xolo-plugin-energy-estimator
@@ -503,7 +509,7 @@ nfpms:
       group: System Environment/Daemons
       compression: xz
       scripts:
-        posttrans: misc/packaging/scripts/plugin-posttrans.sh
+        posttrans: misc/packaging/scripts/posttrans.sh
 
   - id: xolo-plugin-budget-pressure
     package_name: xolo-plugin-budget-pressure
@@ -529,7 +535,7 @@ nfpms:
       group: System Environment/Daemons
       compression: xz
       scripts:
-        posttrans: misc/packaging/scripts/plugin-posttrans.sh
+        posttrans: misc/packaging/scripts/posttrans.sh
 
   - id: xolo-plugin-script-processor
     package_name: xolo-plugin-script-processor
@@ -555,7 +561,7 @@ nfpms:
       group: System Environment/Daemons
       compression: xz
       scripts:
-        posttrans: misc/packaging/scripts/plugin-posttrans.sh
+        posttrans: misc/packaging/scripts/posttrans.sh
 
   - id: xolo-plugin-pseudonymizer
     package_name: xolo-plugin-pseudonymizer
@@ -581,7 +587,7 @@ nfpms:
       group: System Environment/Daemons
       compression: xz
       scripts:
-        posttrans: misc/packaging/scripts/plugin-posttrans.sh
+        posttrans: misc/packaging/scripts/posttrans.sh
 
   - id: xolo-plugin-mcp-bridge
     package_name: xolo-plugin-mcp-bridge
@@ -607,7 +613,7 @@ nfpms:
       group: System Environment/Daemons
       compression: xz
       scripts:
-        posttrans: misc/packaging/scripts/plugin-posttrans.sh
+        posttrans: misc/packaging/scripts/posttrans.sh
 
   - id: xolo-plugin-system-prompt
     package_name: xolo-plugin-system-prompt
@@ -633,7 +639,7 @@ nfpms:
       group: System Environment/Daemons
       compression: xz
       scripts:
-        posttrans: misc/packaging/scripts/plugin-posttrans.sh
+        posttrans: misc/packaging/scripts/posttrans.sh
 
   # Installs every official plugin. A plugin added to builds gets a package
   # above and a line here.

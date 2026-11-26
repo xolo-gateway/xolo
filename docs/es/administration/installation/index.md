@@ -76,7 +76,7 @@ sudo systemctl enable --now xolo
 sudo journalctl -u xolo -f
 ```
 
-Una actualización del paquete reinicia el servicio si está en marcha. Su desinstalación lo detiene y deja en su sitio la configuración, `/etc/xolo/secret.env` y la base.
+Una actualización del paquete reinicia el servicio si está en marcha. Su desinstalación lo detiene y deja en su sitio la configuración, `/etc/xolo/secret.env`, la base y la cuenta `xolo`, incluso tras un `apt purge`; retírelos a mano para borrar la instancia. En Red Hat, la desinstalación también deshabilita el servicio; en Debian, sigue habilitado hasta el `apt purge` y vuelve en el siguiente arranque tras una reinstalación.
 
 Las órdenes de administración sin conexión `xolo-migrate` ([migración UUID](./uuid-migration.md)) y `xolo-adoption` solo leen su configuración del entorno. `xolo-admin` las ejecuta con la del servicio (`/etc/xolo/xolo.env` y `/etc/xolo/secret.env`), con la cuenta `xolo`: ejecutadas como root, dejarían en la base SQLite archivos que el servicio ya no podría abrir.
 

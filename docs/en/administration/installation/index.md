@@ -74,7 +74,7 @@ sudo systemctl enable --now xolo
 sudo journalctl -u xolo -f
 ```
 
-An upgrade of the package restarts the service when it runs. Its removal stops it and leaves the configuration, `/etc/xolo/secret.env` and the database in place.
+An upgrade of the package restarts the service when it runs. Its removal stops it and leaves the configuration, `/etc/xolo/secret.env`, the database and the `xolo` account in place, even after an `apt purge`; remove them by hand to erase the instance. On Red Hat, the removal also disables the service; on Debian, it stays enabled until `apt purge`, and comes back at the next boot after a reinstallation.
 
 The offline administration commands `xolo-migrate` ([UUID migration](./uuid-migration.md)) and `xolo-adoption` read their configuration from the environment only. `xolo-admin` runs them with the configuration of the service (`/etc/xolo/xolo.env` and `/etc/xolo/secret.env`), under the `xolo` account: run as root, they would leave SQLite files the service could no longer open.
 

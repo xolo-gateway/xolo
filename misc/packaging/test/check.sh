@@ -183,15 +183,15 @@ wait_ready
 loaded=$(loaded_plugins)
 [ "$loaded" -eq "$plugins" ] || fail "$loaded plugins loaded out of $plugins"
 
-step "reinstallation keeps the secrets and restarts the service"
+step "reinstalling xolo and every plugin keeps the secrets and restarts once"
 secret=$(cat /etc/xolo/secret.env)
-pid=$(systemctl show -p MainPID --value xolo)
+before=$(starts)
 echo "XOLO_HTTP_BASE_URL=http://changed.example.com" >>/etc/xolo/xolo.env
 reinstall_packages
 [ "$(cat /etc/xolo/secret.env)" = "$secret" ] || fail "secret.env was regenerated"
 grep -q changed.example.com /etc/xolo/xolo.env || fail "xolo.env was replaced"
 wait_ready
-[ "$(systemctl show -p MainPID --value xolo)" != "$pid" ] || fail "the service was not restarted"
+[ "$(starts)" -eq $((before + 1)) ] || fail "$(($(starts) - before)) restarts for one reinstallation"
 
 step "removal stops the service and keeps the data"
 remove xolo
@@ -200,5 +200,21 @@ remove xolo
 [ ! -e /usr/bin/xolo-server ] || fail "binary left behind"
 [ "$(cat /etc/xolo/secret.env)" = "$secret" ] || fail "secret.env was removed"
 [ -s /var/lib/xolo/data.sqlite ] || fail "the database was removed"
+
+# rpm disables on removal; dpkg keeps the enablement until a purge.
+wants=/etc/systemd/system/multi-user.target.wants/xolo.service
+if [ "$format" = rpm ]; then
+    [ ! -e "$wants" ] && [ ! -L "$wants" ] || fail "still enabled after removal"
+else
+    [ -L "$wants" ] || fail "disabled on removal"
+
+    step "purge forgets the enablement and keeps the data"
+    DEBIAN_FRONTEND=noninteractive apt-get purge -y xolo >/dev/null
+    [ ! -L "$wants" ] || fail "still enabled after purge"
+    [ ! -e /var/cache/xolo ] || fail "/var/cache/xolo left after purge"
+    [ "$(cat /etc/xolo/secret.env)" = "$secret" ] || fail "secret.env was purged"
+    [ -s /var/lib/xolo/data.sqlite ] || fail "the database was purged"
+fi
+id xolo >/dev/null 2>&1 || fail "the xolo account was removed"
 
 echo "all checks passed"

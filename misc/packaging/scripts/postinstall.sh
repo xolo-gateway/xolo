@@ -22,9 +22,26 @@ if [ ! -e "$secret" ]; then
     mv "$secret.tmp" "$secret"
 fi
 
-if [ -d /run/systemd/system ]; then
-    systemctl daemon-reload >/dev/null 2>&1 || true
-    # The service is neither enabled nor started by the package: it needs an
-    # identity provider first. A running one is restarted on the new version.
-    systemctl try-restart xolo.service >/dev/null 2>&1 || true
-fi
+[ -d /run/systemd/system ] || exit 0
+
+systemctl daemon-reload >/dev/null 2>&1 || true
+
+# The service is neither enabled nor started by the package: it needs an
+# identity provider first. A running one is restarted on the new version,
+# once per command even when plugin packages change with it:
+case "$1" in
+    configure)
+        # dpkg: the restart goes through the trigger, which dpkg runs once
+        # for this activation and those of the plugin packages.
+        dpkg-trigger --no-await xolo-restart 2>/dev/null ||
+            systemctl try-restart xolo.service >/dev/null 2>&1 || true
+        ;;
+    triggered)
+        systemctl try-restart xolo.service >/dev/null 2>&1 || true
+        ;;
+    [0-9]*)
+        # rpm: the restart is left to the post-transaction script.
+        mkdir -p /run/xolo-packages
+        : >/run/xolo-packages/restart
+        ;;
+esac

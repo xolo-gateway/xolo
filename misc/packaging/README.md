@@ -28,16 +28,20 @@ dependencies of `xolo-plugin-all`, as it needs a line in the Docker image.
   not a file of the package: no upgrade, removal or purge touches it.
 - The service is never enabled nor started by the package. An upgrade restarts
   it when it was running.
-- The server lists its plugins at startup only, so a plugin package installed,
-  upgraded or removed restarts it, once per command whatever the number of
-  plugins: on Debian, `xolo` declares a dpkg trigger on
-  `/usr/lib/xolo/plugins` and its post-installation script runs once at the
-  end; on RPM, each plugin leaves a marker under `/run/xolo-packages` and the
-  first post-transaction script to find it restarts. rpm runs no
-  post-transaction script for an erased package, and a restart per removed
-  package trips the start limit of systemd (5 starts in 10 s): the first
-  removal schedules one restart 5 s later with `systemd-run`, under a unit name
-  the next removals find taken.
+- The server lists its plugins at startup only, so a package of xolo or of a
+  plugin installed, upgraded or removed restarts it, once per command whatever
+  the number of packages: on Debian, `xolo` declares dpkg triggers on
+  `/usr/lib/xolo/plugins` and on `xolo-restart`, which its own
+  post-installation script activates, and dpkg runs them once at the end; on
+  RPM, every post-installation script leaves a marker under
+  `/run/xolo-packages` and the first post-transaction script to find it
+  restarts. rpm runs no post-transaction script for an erased package, and a
+  restart per removed package trips the start limit of systemd (5 starts in
+  10 s): the first removal schedules one restart 5 s later with `systemd-run`,
+  under a unit name the next removals find taken.
+- Removal follows the convention of each format: rpm stops and disables the
+  service, dpkg stops it and keeps it enabled until a purge. Neither removes
+  the database, `/etc/xolo/secret.env` nor the `xolo` account.
 
 ## Testing
 
