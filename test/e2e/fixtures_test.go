@@ -15,9 +15,8 @@ import (
 )
 
 // Plugins built from the working tree and served to the server under test.
-// mcp-bridge (needs an MCP server), llm-classifier (needs a model answering
-// structured JSON) and fuzzy-evaluator (covered by its own unit tests) are
-// left out on purpose.
+// fuzzy-evaluator (covered by its own unit tests) is left out on purpose;
+// mcp-bridge runs against the fake MCP server of guides_test.go.
 var e2ePlugins = []string{
 	"pseudonymizer",
 	"system-prompt",
@@ -31,6 +30,7 @@ var e2ePlugins = []string{
 	"prompt-guard",
 	"script-processor",
 	"llm-classifier",
+	"mcp-bridge",
 }
 
 // Models added on the fake provider. The fake answers any real model name,
@@ -68,17 +68,18 @@ const (
 
 // Virtual models created by the harness, one per scenario family.
 const (
-	vmRouter       = "acme/e2e-router"        // complexity-scorer → compare → select → model
-	vmLogic        = "acme/e2e-logic"         // value, math, compare, select, sample, context, trace
-	vmFallback     = "acme/e2e-fallback"      // model_fallback: broken → fast
-	vmSystemPrompt = "acme/e2e-system-prompt" // system-prompt plugin
-	vmDummy        = "acme/e2e-dummy"         // dummy-model plugin (no upstream call)
-	vmClosed       = "acme/e2e-closed"        // time-restriction, always outside the slots
-	vmOpen         = "acme/e2e-open"          // time-restriction, always inside the slots
-	vmGuard        = "acme/e2e-guard"         // prompt-guard in blocking mode
-	vmTelemetry    = "acme/e2e-telemetry"     // request-inspector, text-classifier, energy-estimator, budget-pressure, script-processor → trace
-	vmBlock        = "acme/e2e-block"         // prompt-guard risk → compare → block
-	vmAgent        = "acme/e2e-agent"         // the guarded agent: system-prompt, pseudonymizer, prompt-guard → compare → block, llm-classifier → compare(text) → select, trace
+	vmRouter       = "acme/e2e-router"          // complexity-scorer → compare → select → model
+	vmLogic        = "acme/e2e-logic"           // value, math, compare, select, sample, context, trace
+	vmFallback     = "acme/e2e-fallback"        // model_fallback: broken → fast
+	vmSystemPrompt = "acme/e2e-system-prompt"   // system-prompt plugin
+	vmDummy        = "acme/e2e-dummy"           // dummy-model plugin (no upstream call)
+	vmClosed       = "acme/e2e-closed"          // time-restriction, always outside the slots
+	vmOpen         = "acme/e2e-open"            // time-restriction, always inside the slots
+	vmGuard        = "acme/e2e-guard"           // prompt-guard in blocking mode
+	vmTelemetry    = "acme/e2e-telemetry"       // request-inspector, text-classifier, energy-estimator, budget-pressure, script-processor → trace
+	vmBlock        = "acme/e2e-block"           // prompt-guard risk → compare → block
+	vmAgent        = "acme/e2e-agent"           // the guarded agent: system-prompt, pseudonymizer, prompt-guard → compare → block, llm-classifier → compare(text) → select, trace
+	vmTraceCond    = "acme/e2e-trace-condition" // two traces, one whose condition holds and one whose condition does not
 )
 
 const dummyTemplate = "Réponse factice pour {{.User}} : {{.LastMessage}}"
@@ -183,7 +184,7 @@ func (b *graph) json() string { return string(mustJSON(b.g)) }
 
 // prepareDatabase points the seeded OpenAI provider at the fake one and adds
 // the models, middlewares and virtual models the scenarios rely on.
-func prepareDatabase(dsn, providerURL string) error {
+func prepareDatabase(dsn, providerURL, mcpURL string) error {
 	db, err := openDB(dsn)
 	if err != nil {
 		return err
@@ -213,6 +214,9 @@ func prepareDatabase(dsn, providerURL string) error {
 		return err
 	}
 	if err := createVirtualModels(db); err != nil {
+		return err
+	}
+	if err := createGuideVirtualModels(db, mcpURL); err != nil {
 		return err
 	}
 	if err := joinSeededTeam(db); err != nil {
@@ -327,7 +331,8 @@ func createTypeSafeProvider(db *gorm.DB, providerURL string) error {
 
 func createModels(db *gorm.DB) error {
 	now := time.Now()
-	for _, name := range []string{"e2e-fast", "e2e-strong", realModelBroken, realModelIndecis} {
+	names := append([]string{"e2e-fast", "e2e-strong", realModelBroken, realModelIndecis}, guideModels...)
+	for _, name := range names {
 		m := &gormadapter.LLMModel{
 			ID: "mdl-" + name, CreatedAt: now, UpdatedAt: now,
 			ProviderID: providerAcmeOpenAI, OrgID: orgAcme,
@@ -564,6 +569,24 @@ func virtualModelGraphs() map[string]*graph {
 			edge("guard.risk", "trace.risk").
 			edge("cls.category", "trace.category").
 			edge("sel.value", "trace.model_name").
+			edge("llm.response", "out.response"),
+
+		// Two traces recording the same value, the condition of one true and
+		// of the other false: only the first may produce an event.
+		vmTraceCond: newGraph().
+			generator("gen").
+			value("yes", "boolean", "true").
+			value("no", "boolean", "false").
+			value("score", "number", "0.83").
+			trace("recorded", "condition-vraie", "score:number").
+			trace("skipped", "condition-fausse", "score:number").
+			modelNode("llm", modelFast).
+			sink("out").
+			edge("yes.value", "recorded.condition").
+			edge("no.value", "skipped.condition").
+			edge("score.value", "recorded.score").
+			edge("score.value", "skipped.score").
+			edge("gen.request", "llm.request").
 			edge("llm.response", "out.response"),
 
 		// Analysis plugins feeding one trace: their outputs become event

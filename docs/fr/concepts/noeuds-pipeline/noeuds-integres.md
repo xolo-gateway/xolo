@@ -102,7 +102,11 @@ Configuration : le fuseau horaire IANA, `Europe/Paris` par exemple. UTC par déf
 
 Enregistre les valeurs connectées dans un événement Xolo de type `pipeline.trace`. Les ports d'entrée se déclarent dans la configuration, un nom et un type chacun, autant qu'on veut, comme pour `script-processor`. Aucune sortie. Configuration : une sévérité et la liste des ports, plus le libellé commun à tous les nœuds.
 
+Ports : `condition` (boolean, facultatif), puis les ports déclarés. Sans liaison sur `condition`, l'événement s'enregistre à chaque requête. Avec une liaison, il ne s'enregistre que lorsque la valeur est vraie ; un nombre compte comme vrai s'il n'est pas nul. Une condition sans valeur, ou d'un autre type, laisse l'événement s'enregistrer, avec un avertissement dans le journal pour le second cas : une trace observe, et une observation perdue sur une erreur de câblage passerait inaperçue. La condition n'est pas enregistrée en attribut, et un port déclaré sous ce nom est lu comme elle.
+
 Les valeurs apparaissent dans les attributs de l'événement sous `port.<nom>`. Nommez les ports d'après ce qu'ils reçoivent, `complexity`, `model_name`, `selected`, et l'événement se lit sans consulter le graphe. On les retrouve dans la page Événements et on peut écrire une [alerte eventql](../eventql.md) dessus.
+
+Avec une condition, une trace devient un événement personnalisé : un `compare` sur `budget-pressure.budget_pressure` relié à `condition`, et l'événement n'existe que lorsqu'un budget approche de sa fin. Le [guide des événements personnalisés](../../utilisation/guides/evenements-personnalises/evenements-personnalises.md) construit cet exemple jusqu'à l'alerte.
 
 Posez-en un après le scorer quand un routage vous surprend. C'est le seul moyen de savoir ce que les nœuds ont produit en production sans le deviner.
 

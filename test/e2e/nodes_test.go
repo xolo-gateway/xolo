@@ -247,3 +247,29 @@ func TestNodes_GuardedAgent(t *testing.T) {
 		}
 	})
 }
+
+// TestNodes_TraceCondition checks that a trace records its event only when
+// its condition port is true, and never records the condition itself.
+func TestNodes_TraceCondition(t *testing.T) {
+	snap := snapshotEvents(t)
+
+	res := chat(t, tokenAlice, vmTraceCond, "Bonjour !")
+	if res.Status != 200 {
+		t.Fatalf("status = %d, body = %s", res.Status, res.Body)
+	}
+
+	evt := traceEvent(t, snap, "condition-vraie")
+	if got := portNumber(t, evt, "score"); got != 0.83 {
+		t.Errorf("trace score = %v, want 0.83", got)
+	}
+	if _, ok := evt.Attributes()["port.condition"]; ok {
+		t.Errorf("the condition is recorded as an attribute: %v", evt.Attributes())
+	}
+
+	sleepShort()
+	for _, e := range newEvents(t, snap, eventTrace) {
+		if e.Attributes()["label"] == "condition-fausse" {
+			t.Fatalf("a trace whose condition is false recorded an event: %v", e.Attributes())
+		}
+	}
+}

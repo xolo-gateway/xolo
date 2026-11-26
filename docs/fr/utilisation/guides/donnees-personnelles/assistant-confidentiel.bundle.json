@@ -1,0 +1,83 @@
+{
+  "version": "1",
+  "exportedAt": "2026-11-27T09:00:00Z",
+  "name": "assistant-confidentiel",
+  "description": "Assistant qui pseudonymise les données personnelles avant l'appel au fournisseur et les restitue dans la réponse.",
+  "graph": {
+    "nodes": [
+      {
+        "id": "gen",
+        "type": "generator",
+        "position": {
+          "x": 0,
+          "y": 200
+        },
+        "data": null
+      },
+      {
+        "id": "pseudo",
+        "type": "plugin",
+        "position": {
+          "x": 300,
+          "y": 200
+        },
+        "data": {
+          "pluginName": "pseudonymizer",
+          "config": {
+            "engine": "crf",
+            "language": "fr",
+            "strategy": "tag",
+            "inject_instruction": true,
+            "verification": true,
+            "verification_strict": false,
+            "process_attachments": true,
+            "unsupported_attachments": "block"
+          }
+        }
+      },
+      {
+        "id": "llm",
+        "type": "model",
+        "position": {
+          "x": 600,
+          "y": 200
+        },
+        "data": {
+          "proxyName": "acme/gpt-4o"
+        }
+      },
+      {
+        "id": "sink",
+        "type": "sink",
+        "position": {
+          "x": 900,
+          "y": 200
+        },
+        "data": null
+      }
+    ],
+    "edges": [
+      {
+        "id": "e1",
+        "source": "gen",
+        "sourcePort": "request",
+        "target": "pseudo",
+        "targetPort": "request"
+      },
+      {
+        "id": "e2",
+        "source": "pseudo",
+        "sourcePort": "request",
+        "target": "llm",
+        "targetPort": "request"
+      },
+      {
+        "id": "e3",
+        "source": "llm",
+        "sourcePort": "response",
+        "target": "sink",
+        "targetPort": "response"
+      }
+    ]
+  }
+}
