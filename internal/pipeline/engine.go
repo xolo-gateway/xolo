@@ -4,8 +4,10 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net/http"
 
 	"github.com/bornholm/genai/llm"
+	genaiProxy "github.com/bornholm/genai/proxy"
 	"github.com/pkg/errors"
 	"github.com/xolo-gateway/xolo/internal/core/model"
 	proto "github.com/xolo-gateway/xolo/pkg/pluginsdk/proto"
@@ -319,6 +321,24 @@ func (e *RejectionError) Error() string {
 		return "request rejected by pipeline: " + e.Reason
 	}
 	return "request rejected by pipeline"
+}
+
+// As lets the proxy answer a refusal with a 403 and its reason. A node that
+// refuses before the model call goes through the pipeline hook, which builds
+// that answer itself; a tool result refused inside the model loop surfaces as
+// the error of the model call, which the proxy would otherwise report as a
+// failure of the provider, with a 500 and a generic message.
+func (e *RejectionError) As(target any) bool {
+	apiErr, ok := target.(**genaiProxy.APIError)
+	if !ok {
+		return false
+	}
+	*apiErr = &genaiProxy.APIError{
+		StatusCode: http.StatusForbidden,
+		Type:       "permission_error",
+		Message:    e.Error(),
+	}
+	return true
 }
 
 // validateGraph checks graph structure: generator + sink present, sink connected.
