@@ -1,0 +1,3 @@
+# The account the xolo service runs under. Kept in sync with the line that
+# misc/packaging/scripts/preinstall.sh feeds to systemd-sysusers.
+u xolo - "Xolo LLM gateway" /var/lib/xolo

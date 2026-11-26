@@ -1,5 +1,10 @@
 version: 2
 
+# Static binaries: the packages must not depend on the C library of the
+# machine that built them (see misc/packaging/README.md).
+env:
+  - CGO_ENABLED=0
+
 before:
   hooks:
     - go mod tidy
@@ -191,6 +196,484 @@ builds:
       - -trimpath
     ldflags:
       - -w -s
+
+nfpms:
+  - id: xolo
+    package_name: xolo
+    ids:
+      - xolo-server
+      - xolo-migrate
+      - xolo-adoption
+    formats: [deb, rpm]
+    file_name_template: "{{ .ConventionalFileName }}"
+    vendor: Xolo
+    homepage: https://xolo-gateway.org
+    maintainer: William Petit <wpetit@cadoles.com>
+    description: |-
+      Xolo LLM gateway
+      Self-hosted gateway between an organization and its LLM providers:
+      OpenAI-compatible API, authentication, quotas, usage accounting and a
+      web administration interface.
+    license: AGPL-3.0-only
+    section: net
+    bindir: /usr/bin
+    suggests:
+      - xolo-plugin-all
+    contents:
+      - src: misc/packaging/xolo.service
+        dst: /usr/lib/systemd/system/xolo.service
+      - src: misc/packaging/xolo-admin
+        dst: /usr/bin/xolo-admin
+        file_info:
+          mode: 0755
+      - src: misc/packaging/xolo.sysusers
+        dst: /usr/lib/sysusers.d/xolo.conf
+      - dst: /etc/xolo
+        type: dir
+        file_info:
+          mode: 0755
+      - src: misc/packaging/xolo.env
+        dst: /etc/xolo/xolo.env
+        type: config|noreplace
+        file_info:
+          mode: 0640
+          owner: root
+          group: xolo
+      - dst: /usr/lib/xolo/plugins
+        type: dir
+        file_info:
+          mode: 0755
+      # Also created by StateDirectory= on start; here for xolo-admin, which
+      # may run before the service ever started.
+      - dst: /var/lib/xolo
+        type: dir
+        file_info:
+          mode: 0750
+          owner: xolo
+          group: xolo
+      - src: LICENSE.md
+        dst: /usr/share/doc/xolo/LICENSE.md
+      - src: LICENSE-EXCEPTION
+        dst: /usr/share/doc/xolo/LICENSE-EXCEPTION
+    scripts:
+      preinstall: misc/packaging/scripts/preinstall.sh
+      postinstall: misc/packaging/scripts/postinstall.sh
+      preremove: misc/packaging/scripts/preremove.sh
+      postremove: misc/packaging/scripts/postremove.sh
+    deb:
+      # Calls the post-installation script of xolo once per dpkg run that
+      # installs, upgrades or removes plugins or xolo itself: one restart for
+      # all of them.
+      # xolo-restart is activated by its own post-installation script, so
+      # that dpkg merges it with the activations of the plugin packages.
+      triggers:
+        interest_noawait:
+          - /usr/lib/xolo/plugins
+          - xolo-restart
+    rpm:
+      group: System Environment/Daemons
+      # xz is read by every rpm since RHEL 6; zstd would be too, from RHEL 8.
+      compression: xz
+      scripts:
+        posttrans: misc/packaging/scripts/posttrans.sh
+
+  - id: xolo-plugin-time-restriction
+    package_name: xolo-plugin-time-restriction
+    ids:
+      - xolo-plugin-time-restriction
+    formats: [deb, rpm]
+    file_name_template: "{{ .ConventionalFileName }}"
+    vendor: Xolo
+    homepage: https://xolo-gateway.org
+    maintainer: William Petit <wpetit@cadoles.com>
+    license: AGPL-3.0-only
+    section: net
+    description: |-
+      Xolo plugin time-restriction
+      Restricts access to the LLM proxy to weekly time slots set per organization.
+    bindir: /usr/lib/xolo/plugins
+    dependencies:
+      - xolo
+    scripts:
+      postinstall: misc/packaging/scripts/plugin-postinstall.sh
+      postremove: misc/packaging/scripts/plugin-postremove.sh
+    rpm:
+      group: System Environment/Daemons
+      compression: xz
+      scripts:
+        posttrans: misc/packaging/scripts/posttrans.sh
+
+  - id: xolo-plugin-dummy-model
+    package_name: xolo-plugin-dummy-model
+    ids:
+      - xolo-plugin-dummy-model
+    formats: [deb, rpm]
+    file_name_template: "{{ .ConventionalFileName }}"
+    vendor: Xolo
+    homepage: https://xolo-gateway.org
+    maintainer: William Petit <wpetit@cadoles.com>
+    license: AGPL-3.0-only
+    section: net
+    description: |-
+      Xolo plugin dummy-model
+      Answers with a forged response instead of an LLM, for tests, streamed or not.
+    bindir: /usr/lib/xolo/plugins
+    dependencies:
+      - xolo
+    scripts:
+      postinstall: misc/packaging/scripts/plugin-postinstall.sh
+      postremove: misc/packaging/scripts/plugin-postremove.sh
+    rpm:
+      group: System Environment/Daemons
+      compression: xz
+      scripts:
+        posttrans: misc/packaging/scripts/posttrans.sh
+
+  - id: xolo-plugin-fuzzy-evaluator
+    package_name: xolo-plugin-fuzzy-evaluator
+    ids:
+      - xolo-plugin-fuzzy-evaluator
+    formats: [deb, rpm]
+    file_name_template: "{{ .ConventionalFileName }}"
+    vendor: Xolo
+    homepage: https://xolo-gateway.org
+    maintainer: William Petit <wpetit@cadoles.com>
+    license: AGPL-3.0-only
+    section: net
+    description: |-
+      Xolo plugin fuzzy-evaluator
+      Generic fuzzy inference engine over the numeric values of a pipeline.
+    bindir: /usr/lib/xolo/plugins
+    dependencies:
+      - xolo
+    scripts:
+      postinstall: misc/packaging/scripts/plugin-postinstall.sh
+      postremove: misc/packaging/scripts/plugin-postremove.sh
+    rpm:
+      group: System Environment/Daemons
+      compression: xz
+      scripts:
+        posttrans: misc/packaging/scripts/posttrans.sh
+
+  - id: xolo-plugin-request-inspector
+    package_name: xolo-plugin-request-inspector
+    ids:
+      - xolo-plugin-request-inspector
+    formats: [deb, rpm]
+    file_name_template: "{{ .ConventionalFileName }}"
+    vendor: Xolo
+    homepage: https://xolo-gateway.org
+    maintainer: William Petit <wpetit@cadoles.com>
+    license: AGPL-3.0-only
+    section: net
+    description: |-
+      Xolo plugin request-inspector
+      Inspects the structure of a request: images, reasoning, tools, streaming, context size.
+    bindir: /usr/lib/xolo/plugins
+    dependencies:
+      - xolo
+    scripts:
+      postinstall: misc/packaging/scripts/plugin-postinstall.sh
+      postremove: misc/packaging/scripts/plugin-postremove.sh
+    rpm:
+      group: System Environment/Daemons
+      compression: xz
+      scripts:
+        posttrans: misc/packaging/scripts/posttrans.sh
+
+  - id: xolo-plugin-complexity-scorer
+    package_name: xolo-plugin-complexity-scorer
+    ids:
+      - xolo-plugin-complexity-scorer
+    formats: [deb, rpm]
+    file_name_template: "{{ .ConventionalFileName }}"
+    vendor: Xolo
+    homepage: https://xolo-gateway.org
+    maintainer: William Petit <wpetit@cadoles.com>
+    license: AGPL-3.0-only
+    section: net
+    description: |-
+      Xolo plugin complexity-scorer
+      Scores the complexity of the current request and measures the size of its context.
+    bindir: /usr/lib/xolo/plugins
+    dependencies:
+      - xolo
+    scripts:
+      postinstall: misc/packaging/scripts/plugin-postinstall.sh
+      postremove: misc/packaging/scripts/plugin-postremove.sh
+    rpm:
+      group: System Environment/Daemons
+      compression: xz
+      scripts:
+        posttrans: misc/packaging/scripts/posttrans.sh
+
+  - id: xolo-plugin-text-classifier
+    package_name: xolo-plugin-text-classifier
+    ids:
+      - xolo-plugin-text-classifier
+    formats: [deb, rpm]
+    file_name_template: "{{ .ConventionalFileName }}"
+    vendor: Xolo
+    homepage: https://xolo-gateway.org
+    maintainer: William Petit <wpetit@cadoles.com>
+    license: AGPL-3.0-only
+    section: net
+    description: |-
+      Xolo plugin text-classifier
+      Classifies a request by topic with lexical rules and an embedded model, without an LLM call.
+    bindir: /usr/lib/xolo/plugins
+    dependencies:
+      - xolo
+    scripts:
+      postinstall: misc/packaging/scripts/plugin-postinstall.sh
+      postremove: misc/packaging/scripts/plugin-postremove.sh
+    rpm:
+      group: System Environment/Daemons
+      compression: xz
+      scripts:
+        posttrans: misc/packaging/scripts/posttrans.sh
+
+  - id: xolo-plugin-prompt-guard
+    package_name: xolo-plugin-prompt-guard
+    ids:
+      - xolo-plugin-prompt-guard
+    formats: [deb, rpm]
+    file_name_template: "{{ .ConventionalFileName }}"
+    vendor: Xolo
+    homepage: https://xolo-gateway.org
+    maintainer: William Petit <wpetit@cadoles.com>
+    license: AGPL-3.0-only
+    section: net
+    description: |-
+      Xolo plugin prompt-guard
+      Detects prompt injection attempts with rules, structural signals and an embedded model.
+    bindir: /usr/lib/xolo/plugins
+    dependencies:
+      - xolo
+    scripts:
+      postinstall: misc/packaging/scripts/plugin-postinstall.sh
+      postremove: misc/packaging/scripts/plugin-postremove.sh
+    rpm:
+      group: System Environment/Daemons
+      compression: xz
+      scripts:
+        posttrans: misc/packaging/scripts/posttrans.sh
+
+  - id: xolo-plugin-llm-classifier
+    package_name: xolo-plugin-llm-classifier
+    ids:
+      - xolo-plugin-llm-classifier
+    formats: [deb, rpm]
+    file_name_template: "{{ .ConventionalFileName }}"
+    vendor: Xolo
+    homepage: https://xolo-gateway.org
+    maintainer: William Petit <wpetit@cadoles.com>
+    license: AGPL-3.0-only
+    section: net
+    description: |-
+      Xolo plugin llm-classifier
+      Classifies a request by asking a model of the organization to choose among categories.
+    bindir: /usr/lib/xolo/plugins
+    dependencies:
+      - xolo
+    scripts:
+      postinstall: misc/packaging/scripts/plugin-postinstall.sh
+      postremove: misc/packaging/scripts/plugin-postremove.sh
+    rpm:
+      group: System Environment/Daemons
+      compression: xz
+      scripts:
+        posttrans: misc/packaging/scripts/posttrans.sh
+
+  - id: xolo-plugin-energy-estimator
+    package_name: xolo-plugin-energy-estimator
+    ids:
+      - xolo-plugin-energy-estimator
+    formats: [deb, rpm]
+    file_name_template: "{{ .ConventionalFileName }}"
+    vendor: Xolo
+    homepage: https://xolo-gateway.org
+    maintainer: William Petit <wpetit@cadoles.com>
+    license: AGPL-3.0-only
+    section: net
+    description: |-
+      Xolo plugin energy-estimator
+      Estimates the energy an inference consumes from its tokens and the size of the model.
+    bindir: /usr/lib/xolo/plugins
+    dependencies:
+      - xolo
+    scripts:
+      postinstall: misc/packaging/scripts/plugin-postinstall.sh
+      postremove: misc/packaging/scripts/plugin-postremove.sh
+    rpm:
+      group: System Environment/Daemons
+      compression: xz
+      scripts:
+        posttrans: misc/packaging/scripts/posttrans.sh
+
+  - id: xolo-plugin-budget-pressure
+    package_name: xolo-plugin-budget-pressure
+    ids:
+      - xolo-plugin-budget-pressure
+    formats: [deb, rpm]
+    file_name_template: "{{ .ConventionalFileName }}"
+    vendor: Xolo
+    homepage: https://xolo-gateway.org
+    maintainer: William Petit <wpetit@cadoles.com>
+    license: AGPL-3.0-only
+    section: net
+    description: |-
+      Xolo plugin budget-pressure
+      Measures the share of the user budget already spent over the day, month and year.
+    bindir: /usr/lib/xolo/plugins
+    dependencies:
+      - xolo
+    scripts:
+      postinstall: misc/packaging/scripts/plugin-postinstall.sh
+      postremove: misc/packaging/scripts/plugin-postremove.sh
+    rpm:
+      group: System Environment/Daemons
+      compression: xz
+      scripts:
+        posttrans: misc/packaging/scripts/posttrans.sh
+
+  - id: xolo-plugin-script-processor
+    package_name: xolo-plugin-script-processor
+    ids:
+      - xolo-plugin-script-processor
+    formats: [deb, rpm]
+    file_name_template: "{{ .ConventionalFileName }}"
+    vendor: Xolo
+    homepage: https://xolo-gateway.org
+    maintainer: William Petit <wpetit@cadoles.com>
+    license: AGPL-3.0-only
+    section: net
+    description: |-
+      Xolo plugin script-processor
+      Runs a Tengo script on the LLM request, able to change its messages.
+    bindir: /usr/lib/xolo/plugins
+    dependencies:
+      - xolo
+    scripts:
+      postinstall: misc/packaging/scripts/plugin-postinstall.sh
+      postremove: misc/packaging/scripts/plugin-postremove.sh
+    rpm:
+      group: System Environment/Daemons
+      compression: xz
+      scripts:
+        posttrans: misc/packaging/scripts/posttrans.sh
+
+  - id: xolo-plugin-pseudonymizer
+    package_name: xolo-plugin-pseudonymizer
+    ids:
+      - xolo-plugin-pseudonymizer
+    formats: [deb, rpm]
+    file_name_template: "{{ .ConventionalFileName }}"
+    vendor: Xolo
+    homepage: https://xolo-gateway.org
+    maintainer: William Petit <wpetit@cadoles.com>
+    license: AGPL-3.0-only
+    section: net
+    description: |-
+      Xolo plugin pseudonymizer
+      Pseudonymizes the messages before the LLM and restores the original data in the answer.
+    bindir: /usr/lib/xolo/plugins
+    dependencies:
+      - xolo
+    scripts:
+      postinstall: misc/packaging/scripts/plugin-postinstall.sh
+      postremove: misc/packaging/scripts/plugin-postremove.sh
+    rpm:
+      group: System Environment/Daemons
+      compression: xz
+      scripts:
+        posttrans: misc/packaging/scripts/posttrans.sh
+
+  - id: xolo-plugin-mcp-bridge
+    package_name: xolo-plugin-mcp-bridge
+    ids:
+      - xolo-plugin-mcp-bridge
+    formats: [deb, rpm]
+    file_name_template: "{{ .ConventionalFileName }}"
+    vendor: Xolo
+    homepage: https://xolo-gateway.org
+    maintainer: William Petit <wpetit@cadoles.com>
+    license: AGPL-3.0-only
+    section: net
+    description: |-
+      Xolo plugin mcp-bridge
+      Connects an external MCP server and exposes its tools to the LLM.
+    bindir: /usr/lib/xolo/plugins
+    dependencies:
+      - xolo
+    scripts:
+      postinstall: misc/packaging/scripts/plugin-postinstall.sh
+      postremove: misc/packaging/scripts/plugin-postremove.sh
+    rpm:
+      group: System Environment/Daemons
+      compression: xz
+      scripts:
+        posttrans: misc/packaging/scripts/posttrans.sh
+
+  - id: xolo-plugin-system-prompt
+    package_name: xolo-plugin-system-prompt
+    ids:
+      - xolo-plugin-system-prompt
+    formats: [deb, rpm]
+    file_name_template: "{{ .ConventionalFileName }}"
+    vendor: Xolo
+    homepage: https://xolo-gateway.org
+    maintainer: William Petit <wpetit@cadoles.com>
+    license: AGPL-3.0-only
+    section: net
+    description: |-
+      Xolo plugin system-prompt
+      Injects a fixed system prompt into the request messages.
+    bindir: /usr/lib/xolo/plugins
+    dependencies:
+      - xolo
+    scripts:
+      postinstall: misc/packaging/scripts/plugin-postinstall.sh
+      postremove: misc/packaging/scripts/plugin-postremove.sh
+    rpm:
+      group: System Environment/Daemons
+      compression: xz
+      scripts:
+        posttrans: misc/packaging/scripts/posttrans.sh
+
+  # Installs every official plugin. A plugin added to builds gets a package
+  # above and a line here.
+  - id: xolo-plugin-all
+    package_name: xolo-plugin-all
+    meta: true
+    formats: [deb, rpm]
+    file_name_template: "{{ .ConventionalFileName }}"
+    vendor: Xolo
+    homepage: https://xolo-gateway.org
+    maintainer: William Petit <wpetit@cadoles.com>
+    license: AGPL-3.0-only
+    section: net
+    description: |-
+      All the official plugins of the Xolo LLM gateway
+      Depends on one package per official plugin.
+    dependencies:
+      - xolo-plugin-time-restriction
+      - xolo-plugin-dummy-model
+      - xolo-plugin-fuzzy-evaluator
+      - xolo-plugin-request-inspector
+      - xolo-plugin-complexity-scorer
+      - xolo-plugin-text-classifier
+      - xolo-plugin-prompt-guard
+      - xolo-plugin-llm-classifier
+      - xolo-plugin-energy-estimator
+      - xolo-plugin-budget-pressure
+      - xolo-plugin-script-processor
+      - xolo-plugin-pseudonymizer
+      - xolo-plugin-mcp-bridge
+      - xolo-plugin-system-prompt
+    rpm:
+      group: System Environment/Daemons
+      compression: xz
 
 checksum:
   name_template: "checksums.txt"

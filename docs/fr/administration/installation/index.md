@@ -61,7 +61,65 @@ healthcheck:
 
 Pour un déploiement avec `docker-compose`, ajoutez un service pointant vers cette image, un volume nommé pour `/data`, et les variables d'environnement décrites dans [Configuration](./configuration.md).
 
-## Option 2 : binaire compilé depuis les sources
+## Option 2 : paquets RPM et Debian
+
+Chaque version publie sur sa [page GitHub](https://github.com/xolo-gateway/xolo/releases) des paquets aux formats `.rpm` et `.deb`, pour `x86_64` et `arm64` :
+
+| Paquet                 | Contenu                                                                    |
+| ---------------------- | -------------------------------------------------------------------------- |
+| `xolo`                 | `xolo-server`, `xolo-migrate`, `xolo-adoption`, `xolo-admin`, le service systemd `xolo` |
+| `xolo-plugin-<nom>`    | un plugin officiel, installé sous `/usr/lib/xolo/plugins` (un paquet par plugin : `xolo-plugin-pseudonymizer`, `xolo-plugin-mcp-bridge`…) |
+| `xolo-plugin-all`      | aucun fichier : dépend de tous les paquets de plugins officiels            |
+
+Les binaires sont liés statiquement : les paquets ne dépendent d'aucune bibliothèque du système. Ils sont installés et vérifiés à chaque modification sur Red Hat Enterprise Linux 10 et 9, Debian 13 et 12 ; les distributions qui en dérivent (AlmaLinux, Rocky Linux, Ubuntu) conviennent aussi.
+
+Téléchargez le paquet `xolo` et ceux des plugins voulus, ou tous les paquets de la version avec `xolo-plugin-all`, puis installez-les ensemble :
+
+```bash
+# Red Hat Enterprise Linux, AlmaLinux, Rocky Linux : tout
+sudo dnf install ./xolo-*.x86_64.rpm ./xolo-plugin-all-*.noarch.rpm
+
+# Debian, Ubuntu : le serveur et deux plugins
+sudo apt install ./xolo_*_amd64.deb ./xolo-plugin-pseudonymizer_*_amd64.deb ./xolo-plugin-mcp-bridge_*_amd64.deb
+```
+
+Le serveur ne découvre ses plugins qu'au démarrage : installer, mettre à jour ou retirer des paquets de plugins redémarre le service s'il tournait, une seule fois pour tous les paquets d'une même commande. Sur Red Hat, la relance qui suit une suppression a lieu 5 secondes après la commande.
+
+Les paquets ne sont pas signés et ne sont pas servis par un dépôt `dnf` ou `apt` : contrôlez les fichiers téléchargés avec le `checksums.txt` de la version.
+
+L'installation crée le compte système `xolo` et les fichiers suivants :
+
+| Chemin                    | Rôle                                                                                           |
+| ------------------------- | ---------------------------------------------------------------------------------------------- |
+| `/etc/xolo/xolo.env`      | Configuration : une variable `XOLO_*` par ligne. Conservé lors des mises à jour.               |
+| `/etc/xolo/secret.env`    | `XOLO_SECRET_KEY` et `XOLO_HTTP_SESSION_KEYS`, générés à la première installation, jamais remplacés. |
+| `/var/lib/xolo`           | Base SQLite (`data.sqlite`), créée au premier démarrage.                                       |
+| `/var/cache/xolo`         | Modèles téléchargés par le plugin `pseudonymizer`.                                             |
+
+Sauvegardez `/etc/xolo/secret.env` avec la base : sans `XOLO_SECRET_KEY`, les clés API des fournisseurs qu'elle contient sont illisibles.
+
+Le service n'est ni activé ni démarré par le paquet, puisqu'il lui faut d'abord un fournisseur d'authentification. Renseignez `/etc/xolo/xolo.env` (voir [Configuration](./configuration.md)), puis :
+
+```bash
+sudo systemctl enable --now xolo
+sudo journalctl -u xolo -f
+```
+
+Une mise à jour du paquet redémarre le service s'il tournait. Sa désinstallation l'arrête et laisse en place la configuration, `/etc/xolo/secret.env`, la base et le compte `xolo`, même après un `apt purge` ; retirez-les à la main pour effacer l'instance. Sur Red Hat, la désinstallation désactive aussi le service ; sur Debian, il reste activé jusqu'au `apt purge`, et revient au prochain démarrage de la machine après une réinstallation.
+
+Les commandes d'administration hors ligne `xolo-migrate` ([migration UUID](./uuid-migration.md)) et `xolo-adoption` ne lisent leur configuration que dans l'environnement. `xolo-admin` les lance avec celle du service (`/etc/xolo/xolo.env` et `/etc/xolo/secret.env`), sous le compte `xolo` : lancées en root, elles laisseraient à la base SQLite des fichiers que le service ne pourrait plus ouvrir.
+
+```bash
+sudo systemctl stop xolo
+sudo xolo-admin migrate diagnose
+sudo xolo-admin migrate plan -out /var/lib/xolo/recovery.json
+```
+
+Les fichiers qu'elles écrivent doivent être accessibles en écriture au compte `xolo`, sous `/var/lib/xolo` par exemple.
+
+Sur Red Hat Enterprise Linux, ouvrez le port dans le pare-feu si l'instance est jointe sans mandataire inverse sur la même machine : `sudo firewall-cmd --permanent --add-port=3002/tcp && sudo firewall-cmd --reload`.
+
+## Option 3 : binaire compilé depuis les sources
 
 ```bash
 git clone https://github.com/xolo-gateway/xolo.git

@@ -41,6 +41,12 @@ jobs:
         env:
           REPO_OWNER: ${{ github.repository_owner }}
 
+      # Installs the RPM and Debian packages goreleaser just built on RHEL 10,
+      # RHEL 9, Debian 13 and Debian 12, under systemd, and checks the service
+      # there (see misc/packaging/README.md).
+      - name: Test the packages
+        run: make test-packages
+
   # Runs the store suite against both storage backends. The `build` job above
   # only covers SQLite; here testcontainers starts a throwaway PostgreSQL on the
   # runner's Docker daemon so every store behaviour is asserted on both.

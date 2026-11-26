@@ -20,6 +20,7 @@ make test                      # root module + pkg/pluginsdk (nested Go module, 
 make test-integration         # store suite on BOTH backends (PostgreSQL via testcontainers, needs Docker; run by the `integration` CI job)
 make test-e2e                 # real server + fake provider over HTTP (see test/e2e/README.md; run by the `e2e` CI job)
 make docs-check               # strict Zensical build of docs/ with the xolo-gateway/docs toolchain (needs Python; run by the `docs` CI job)
+make test-packages            # installs dist/*.rpm and dist/*.deb (from `make packages`) on RHEL 10/9 and Debian 13/12 under systemd (needs Docker; see misc/packaging/README.md)
 make seed                     # generates e2e.sqlite, a deterministic E2E fixture (see cmd/seed/README.md)
 
 # Release

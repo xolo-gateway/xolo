@@ -1,0 +1,47 @@
+[Unit]
+Description=Xolo LLM gateway
+Documentation=https://xolo-gateway.org/latest/
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=exec
+User=xolo
+Group=xolo
+
+# Defaults of the package. A variable set in one of the files below wins.
+# Kept in sync with misc/packaging/xolo-admin.
+Environment=XOLO_STORAGE_DATABASE_DSN=/var/lib/xolo/data.sqlite
+Environment=XOLO_PLUGINS_DIR=/usr/lib/xolo/plugins
+# The pseudonymizer plugin downloads its models under the user cache.
+Environment=XDG_CACHE_HOME=/var/cache/xolo
+EnvironmentFile=/etc/xolo/xolo.env
+# Written once by the package on its first installation, never replaced.
+EnvironmentFile=-/etc/xolo/secret.env
+
+ExecStart=/usr/bin/xolo-server
+WorkingDirectory=/var/lib/xolo
+StateDirectory=xolo
+StateDirectoryMode=0750
+CacheDirectory=xolo
+CacheDirectoryMode=0750
+
+Restart=on-failure
+RestartSec=5s
+# In-flight completions are given time to end on SIGTERM.
+TimeoutStopSec=60s
+LimitNOFILE=65536
+
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+
+[Install]
+WantedBy=multi-user.target

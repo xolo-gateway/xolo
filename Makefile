@@ -149,6 +149,19 @@ tools/templui/bin/templui:
 goreleaser: tools/goreleaser/bin/goreleaser
 	REPO_OWNER=$(shell whoami) tools/goreleaser/bin/goreleaser $(GORELEASER_ARGS)
 
+# Builds the RPM and Debian packages of the working tree under dist/, without
+# the Docker image.
+.PHONY: packages
+packages: tools/goreleaser/bin/goreleaser
+	REPO_OWNER=$(shell whoami) tools/goreleaser/bin/goreleaser release --snapshot --clean --skip=docker
+
+# Installs the packages found under dist/ on RHEL 10, RHEL 9, Debian 13 and
+# Debian 12, each in a privileged container booted on systemd, and checks the
+# service there (see misc/packaging/README.md). Needs Docker.
+.PHONY: test-packages
+test-packages:
+	misc/packaging/test.sh dist
+
 .env:
 	cp .env.dist .env
 
