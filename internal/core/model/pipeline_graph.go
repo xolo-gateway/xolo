@@ -176,7 +176,8 @@ type ContextNodeData struct {
 // connected, the node records its event only when the value is true, so a
 // trace can stand for a fact worth an alert instead of one event per request.
 // It is never recorded as an attribute. Writing a graph whose trace declares
-// an input of the same name is refused (see service.ValidatePipelineNode).
+// an input of the same name is refused (see service.ValidatePipelineNode); a
+// stored graph that declares one keeps recording it as a value.
 const TraceConditionPort = "condition"
 
 // TraceNodeData is the Data payload for NodeTypeTrace.

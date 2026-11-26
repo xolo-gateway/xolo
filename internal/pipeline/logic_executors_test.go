@@ -281,3 +281,22 @@ func TestTraceExecutor_Condition(t *testing.T) {
 		})
 	}
 }
+
+// TestTraceExecutor_DeclaredConditionPort checks that a trace saved before the
+// condition port existed, declaring a port of that name, keeps recording it
+// as a value instead of falling silent on a false.
+func TestTraceExecutor_DeclaredConditionPort(t *testing.T) {
+	em := &recordingEmitter{}
+	node := model.PipelineNode{ID: "tr", Type: model.NodeTypeTrace,
+		Data: json.RawMessage(`{"label":"ancien","inputs":[{"name":"condition","portType":"boolean"}]}`)}
+	if _, err := NewTraceExecutor(em).Forward(context.Background(), node,
+		map[string]interface{}{model.TraceConditionPort: false}, ExecutionContext{OrgID: "o", UserID: "u"}); err != nil {
+		t.Fatal(err)
+	}
+	if len(em.events) != 1 {
+		t.Fatalf("recorded %d event(s), want 1", len(em.events))
+	}
+	if got := em.events[0].Attributes()["port."+model.TraceConditionPort]; got != "false" {
+		t.Errorf("port.condition = %q, want the declared value false", got)
+	}
+}

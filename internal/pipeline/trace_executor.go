@@ -32,7 +32,14 @@ func (e *TraceExecutor) Forward(ctx context.Context, node model.PipelineNode, in
 		return nil, errors.Wrap(err, "trace node: invalid data")
 	}
 
-	if !traceConditionHolds(ctx, node, inputs) {
+	// A graph saved before the condition port existed may declare a port of
+	// that name, which writing a graph now refuses. Such a port stays what it
+	// was, a recorded value, so the trace does not fall silent on a false.
+	legacy := declaresConditionPort(data)
+	if legacy {
+		slog.WarnContext(ctx, "pipeline: trace declares a port named like its condition, recorded as a value; rename it",
+			slog.String("node", node.ID), slog.String("port", model.TraceConditionPort))
+	} else if !traceConditionHolds(ctx, node, inputs) {
 		return &ForwardResult{OutputValues: map[string]interface{}{}}, nil
 	}
 
@@ -42,7 +49,7 @@ func (e *TraceExecutor) Forward(ctx context.Context, node model.PipelineNode, in
 	}
 	keys := make([]string, 0, len(inputs))
 	for k := range inputs {
-		if k == model.TraceConditionPort {
+		if k == model.TraceConditionPort && !legacy {
 			continue
 		}
 		keys = append(keys, k)
@@ -100,4 +107,15 @@ func traceConditionHolds(ctx context.Context, node model.PipelineNode, inputs ma
 	slog.WarnContext(ctx, "pipeline: trace condition is neither a boolean nor a number, recording anyway",
 		slog.String("node", node.ID), slog.Any("value", v))
 	return true
+}
+
+// declaresConditionPort reports whether the trace declares an input named like
+// its fixed condition port.
+func declaresConditionPort(data model.TraceNodeData) bool {
+	for _, in := range data.Inputs {
+		if in.Name == model.TraceConditionPort {
+			return true
+		}
+	}
+	return false
 }
