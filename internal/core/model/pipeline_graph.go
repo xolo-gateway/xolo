@@ -172,10 +172,18 @@ type ContextNodeData struct {
 	Timezone string `json:"timezone,omitempty"`
 }
 
+// TraceConditionPort is the fixed, optional boolean input of a trace node:
+// connected, the node records its event only when the value is true, so a
+// trace can stand for a fact worth an alert instead of one event per request.
+// It is never recorded as an attribute, and a declared input of the same name
+// is taken as this port.
+const TraceConditionPort = "condition"
+
 // TraceNodeData is the Data payload for NodeTypeTrace.
 // Inputs declares the ports the node offers; each connected value is recorded
 // under its port name. The list is free so a trace can capture exactly the
 // values a pipeline author wants to see, whatever their number and type.
+// TraceConditionPort comes on top of them.
 type TraceNodeData struct {
 	Label    string          `json:"label,omitempty"`
 	Severity string          `json:"severity,omitempty"`

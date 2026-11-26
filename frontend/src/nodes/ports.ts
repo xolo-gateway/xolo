@@ -45,17 +45,24 @@ function fromDescriptors(ports: PortDescriptor[] | undefined): ResolvedPort[] {
  * builtinPorts resolves the ports of a built-in node. Most built-in kinds have
  * a fixed shape declared in the catalog; a few (trace) let the user declare
  * their input ports in the node data, the way script-processor does through
- * its config. When the data declares ports they win.
+ * its config. The declared ports come after the fixed ones of the catalog,
+ * such as the condition port of a trace; a declared port named like a fixed
+ * one is dropped, the server reading that name as the fixed port.
  */
 export function builtinPorts(
   data: Record<string, unknown>,
   desc: NodeTypeDescriptor | undefined
 ): { inputs: ResolvedPort[]; outputs: ResolvedPort[] } {
+  const fixed = fromDescriptors(desc?.inputPorts)
   const declared = data.inputs as Array<{ name?: string; portType?: string }> | undefined
   const inputs = Array.isArray(declared)
-    ? declared
-        .filter(i => i && typeof i.name === 'string' && i.name !== '')
-        .map(i => ({ name: i.name as string, port_type: i.portType ?? 'string' }))
-    : fromDescriptors(desc?.inputPorts)
+    ? [
+        ...fixed,
+        ...declared
+          .filter(i => i && typeof i.name === 'string' && i.name !== '')
+          .filter(i => !fixed.some(f => f.name === i.name))
+          .map(i => ({ name: i.name as string, port_type: i.portType ?? 'string' })),
+      ]
+    : fixed
   return { inputs, outputs: fromDescriptors(desc?.outputPorts) }
 }
