@@ -20,11 +20,17 @@ Le fichier [`auto.bundle.json`](./auto.bundle.json){ download="auto.bundle.json"
 
 ## Étape 1 : le modèle virtuel
 
+Les clients ne doivent avoir qu'un nom à retenir : `acme/auto`. Le modèle virtuel porte ce nom et décide, à chaque requête, du modèle qui répondra vraiment. Changer de modèle, de seuil ou de fournisseur se fera ensuite ici, sans toucher aux applications qui l'appellent.
+
 Créez un modèle virtuel nommé `auto` et ouvrez son éditeur (voir [Modèle virtuel](../../../administration/organisation/virtual_model/virtual_model.md)). Ajoutez un nœud `model` et reliez `generator.request` à `model.request`, puis `model.response` à `sink.response`.
 
 Le nœud `model` ne nommera aucun modèle : son port `model_name` recevra le choix calculé par le graphe. Dès que ce port est connecté, le champ **Modèle appelé** est ignoré.
 
+![Le nœud model : le champ Modèle appelé est ignoré dès que le port model_name est connecté](./screenshots/model.png)
+
 ## Étape 2 : mesurer la complexité
+
+Pour choisir le modèle le moins cher capable de répondre, il faut d'abord estimer ce que la demande exige. Une salutation ne demande pas le même modèle qu'une analyse en dix contraintes. Le score de complexité fournit cette estimation, sans appeler de modèle, donc sans coût ni délai notables.
 
 Ajoutez le plugin `complexity-scorer` et reliez `generator.request` à son port `request`. Il donne sur `complexity` un score entre 0 et 1, et sur `level` une étiquette, de `trivial` à `very_complex`.
 
@@ -49,9 +55,13 @@ L'échelle est tassée vers le bas : une demande ordinaire dépasse rarement 0,2
 
 ## Étape 3 : trois niveaux
 
+Un score ne choisit rien à lui seul : il faut le traduire en décision. Trois niveaux suffisent le plus souvent à capter l'essentiel de l'économie, car la plupart des demandes sont simples, et chaque niveau de plus complique le réglage sans gain proportionnel.
+
 Deux questions suffisent à ranger une demande en trois niveaux. Chacune est un `compare`, et chaque réponse choisit entre deux modèles avec un `select`.
 
 Ajoutez trois `model_ref`, réglés sur `acme/leger`, `acme/standard` et `acme/expert`, puis :
+
+![Un model_ref réglé sur acme/leger](./screenshots/model-ref.png)
 
 1. Un `compare` libellé « demande difficile ? », opérateur `gte`, seuil 0,5. Reliez `complexity-scorer.complexity` à son port `value`.
 2. Un `select` libellé « standard ou expert ». Reliez le `result` du premier `compare` à sa `condition`, le `model_ref` expert à `when_true`, le standard à `when_false`.
@@ -60,9 +70,13 @@ Ajoutez trois `model_ref`, réglés sur `acme/leger`, `acme/standard` et `acme/e
 
 Le second `select` reçoit ainsi soit le modèle léger, soit le choix déjà fait entre standard et expert. Le graphe se lit comme une suite de questions : simple ? léger ; sinon, difficile ? expert ; sinon, standard.
 
+![Le compare « demande difficile ? » : opérateur gte, seuil 0,5](./screenshots/compare.png)
+
+![Les trois niveaux : deux compare, trois model_ref et deux select](./screenshots/niveaux.png)
+
 ## Étape 4 : ménager le budget
 
-Un utilisateur qui a presque épuisé son budget sera bientôt refusé par son quota. Mieux vaut le servir avec le modèle léger tant qu'il reste de quoi.
+Un utilisateur qui a presque épuisé son budget sera bientôt refusé par son quota, au milieu de son travail. Mieux vaut le servir avec le modèle léger tant qu'il reste de quoi : une réponse plus simple vaut mieux qu'un refus, et le budget tient jusqu'à la fin de la période.
 
 Ajoutez le plugin `budget-pressure`, alimenté par `generator.request`. Son port `budget_pressure` donne la part déjà consommée du budget le plus tendu qui s'applique à la requête, celui de l'utilisateur, de son organisation ou de son équipe, sur le jour, le mois ou l'année : 0,9 veut dire 90 %. Sans budget, il vaut 0.
 
@@ -70,7 +84,9 @@ Ajoutez un `compare` libellé « budget presque épuisé ? », opérateur `gte`,
 
 ## Étape 5 : les images
 
-Une image ne peut aller que vers un modèle qui la lit, quel que soit le reste. Ajoutez le plugin `request-inspector`, alimenté par `generator.request`, un `model_ref` réglé sur `acme/vision` et un dernier `select` libellé « modèle retenu » : `condition` depuis `request-inspector.has_vision`, `when_true` depuis le `model_ref` vision, `when_false` depuis le `select` de l'étape 4.
+Une image ne peut aller que vers un modèle qui la lit, quel que soit le reste : envoyée à un modèle qui ne voit pas, elle est ignorée, ou la requête échoue. Cette règle passe donc avant toutes les autres.
+
+Ajoutez le plugin `request-inspector`, alimenté par `generator.request`, un `model_ref` réglé sur `acme/vision` et un dernier `select` libellé « modèle retenu » : `condition` depuis `request-inspector.has_vision`, `when_true` depuis le `model_ref` vision, `when_false` depuis le `select` de l'étape 4.
 
 Placé en dernier, ce `select` l'emporte sur le budget : un utilisateur au bout de son budget qui envoie une image va vers le modèle vision, puisque le modèle léger ne la verrait pas. Si vous préférez l'inverse, échangez l'ordre des deux étapes.
 
@@ -78,13 +94,19 @@ Reliez enfin la sortie `value` de ce dernier `select` au port `model_name` du n�
 
 ## Étape 6 : tracer le choix
 
+Un routage qu'on ne voit pas ne se règle pas. Sans trace, on ne sait ni quel modèle a répondu à quelle demande, ni si les seuils envoient trop de demandes vers le modèle cher. La trace enregistre, pour chaque requête, ce que le graphe a mesuré et ce qu'il a décidé.
+
 Ajoutez un nœud `trace`, libellé `auto`, avec cinq ports : `complexity` (number), `level` (string), `budget_pressure` (number), `has_vision` (boolean) et `model_name` (string). Reliez-y les sorties du même nom, et la sortie du dernier `select` sur `model_name`. Chaque requête produit un événement `pipeline.trace` qui dit ce que le graphe a mesuré et ce qu'il a choisi : c'est sur ces événements que se règlent les seuils.
 
 Une `note` sur le canevas rappelle les seuils retenus et la date à laquelle les revoir.
 
 Enregistrez. Le bandeau indique **Graphe valide**.
 
+![Le pipeline complet du modèle acme/auto](./screenshots/pipeline.png)
+
 ## Étape 7 : tester
+
+Avant de laisser `acme/auto` choisir pour les utilisateurs, vérifiez qu'il choisit comme prévu sur des demandes dont vous connaissez la réponse : une simple, une ordinaire, une exigeante, une avec image.
 
 ```bash
 curl -s http://localhost:3002/api/v1/chat/completions \
@@ -101,9 +123,13 @@ Les traces enregistrées pour quelques demandes :
 | Conçois l'architecture d'un service de réservation… | 0,629 | `complex` | `acme/expert` |
 | Bonjour !, avec une image jointe | 0,040 | `trivial` | `acme/vision` |
 
+![Les traces « auto » dans la page Événements](./screenshots/evenements.png)
+
 ## Étape 8 : régler les seuils
 
-Les seuils de ce guide sont un point de départ. Après une semaine de trafic réel, la page **Événements** filtrée sur `{type="pipeline.trace"} | label="auto"` donne la répartition des demandes entre les modèles, et le tableau de bord ce qu'elles ont coûté. Si le modèle expert reçoit trop de demandes qui n'en valaient pas la peine, montez son seuil ; si les utilisateurs se plaignent des réponses du modèle léger, baissez le sien.
+Les seuils de départ viennent de quelques demandes d'exemple ; vos utilisateurs écrivent autrement. Seul le trafic réel dit si le compromis entre coût et qualité est le bon.
+
+Après une semaine de trafic réel, la page **Événements** filtrée sur `{type="pipeline.trace"} | label="auto"` donne la répartition des demandes entre les modèles, et le tableau de bord ce qu'elles ont coûté. Si le modèle expert reçoit trop de demandes qui n'en valaient pas la peine, montez son seuil ; si les utilisateurs se plaignent des réponses du modèle léger, baissez le sien.
 
 Pour essayer un nouveau seuil sans l'imposer à tous, un nœud [`sample`](../../../concepts/noeuds-pipeline/noeuds-integres.md#sample) à 10 % par utilisateur, branché sur un `select` entre l'ancien et le nouveau réglage, et un port de plus sur la trace, permettent de comparer les deux sur les mêmes semaines.
 

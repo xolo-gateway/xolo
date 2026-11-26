@@ -4,6 +4,8 @@ Ce guide construit un modèle virtuel `acme/assistant-confidentiel` qui remplace
 
 Le fichier [`assistant-confidentiel.bundle.json`](./assistant-confidentiel.bundle.json){ download="assistant-confidentiel.bundle.json" } contient le résultat final : téléchargez-le, puis chargez-le avec le bouton **Importer un bundle** de la page Modèles virtuels. Vérifiez ensuite que le modèle appelé, `acme/gpt-4o`, existe dans votre organisation : l'import ne contrôle pas les noms de modèles, et un nom absent échoue à la première requête.
 
+![La page Modèles virtuels : le bouton Importer un bundle et l'aperçu du pipeline importé](./screenshots/liste-modeles-virtuels.png)
+
 ## Prérequis
 
 - Une organisation dont vous êtes administrateur, avec la permission d'écrire les modèles virtuels.
@@ -14,17 +16,19 @@ La création d'un modèle virtuel et la prise en main de l'éditeur sont décrit
 
 ## Étape 1 : le modèle virtuel
 
+Un modèle virtuel se présente aux clients comme un modèle ordinaire : ils l'appellent par son nom, sans rien changer à leur code. C'est ce qui permet d'imposer la pseudonymisation sans compter sur la discipline de chaque utilisateur : la protection se trouve sur le chemin de la requête, pas dans ses habitudes.
+
 Dans **Passerelle › Modèles virtuels**, créez un modèle virtuel nommé `assistant-confidentiel`, puis ouvrez son éditeur. Il ne contient que les nœuds `generator` et `sink`.
 
 Ajoutez le plugin `pseudonymizer` et le nœud intégré `model`, puis tracez le chemin de la requête : `generator.request` vers `pseudonymizer.request`, `pseudonymizer.request` vers `model.request`, `model.response` vers `sink.response`. Dans l'inspecteur du nœud `model`, choisissez `acme/gpt-4o`.
 
-```
-generator ──request──▶ pseudonymizer ──request──▶ model (acme/gpt-4o) ──response──▶ sink
-```
+![Le pipeline : generator, pseudonymizer, model et sink sur le chemin de la requête](./screenshots/pipeline.png)
 
 Le plugin est sur le chemin de la requête : il transforme les messages qui le traversent, et le modèle reçoit les messages pseudonymisés. Au retour, il restitue les valeurs d'origine dans la réponse, sans liaison supplémentaire.
 
 ## Étape 2 : choisir le moteur
+
+Avant de remplacer une donnée, il faut la trouver. Le moteur de détection décide de ce qui est reconnu comme personnel : trop timide, il laisse passer des noms ; trop zélé, il masque des mots dont le modèle a besoin pour répondre. Le bon choix dépend de ce que les utilisateurs enverront.
 
 Sélectionnez le nœud `pseudonymizer`. Son écran de configuration s'ouvre dans le panneau de droite et suit l'ordre des décisions.
 
@@ -39,7 +43,11 @@ Sous **Moteur de détection**, deux choix :
 
 Réglez **Langue des messages** sur **Français**. En détection automatique, la langue est déterminée à chaque requête ; la fixer évite qu'une demande courte, en franglais, soit lue avec le mauvais modèle.
 
+![Moteur de détection et langue des messages](./screenshots/moteur.png)
+
 ## Étape 3 : choisir ce qui est masqué
+
+Tout masquer n'est pas toujours souhaitable : une donnée masquée est une information que le modèle ne peut plus utiliser. Cette étape règle, type par type, le compromis entre protection et utilité.
 
 La section **Ce qui est masqué** liste chaque type de donnée avec sa case, en trois groupes :
 
@@ -49,9 +57,13 @@ La section **Ce qui est masqué** liste chaque type de donnée avec sa case, en 
 
 Décochez un type pour le laisser lisible. Un assistant de prise de rendez-vous peut par exemple garder les lieux en clair, pour que le modèle sache de quelle ville il parle, et masquer tout le reste.
 
+![Ce qui est masqué : une case par type de donnée](./screenshots/types-masques.png)
+
 Les secrets ne sont pas pseudonymisés mais caviardés : le marqueur `⟦…_REDACTED⟧` remplace la valeur, sans correspondance pour la restituer. Si un agent lit un fichier qui contient une clé puis le réécrit, le marqueur atterrit dans le fichier à la place de la clé. Décochez les secrets sur un modèle virtuel destiné à des agents qui modifient des fichiers de configuration.
 
 ## Étape 4 : choisir le remplacement
+
+Une fois la donnée trouvée, reste à décider ce qui la remplace. Ce choix détermine si l'utilisateur retrouvera la valeur d'origine dans la réponse, et si le modèle pourra suivre une même personne d'un message à l'autre.
 
 Sous **Remplacement** :
 
@@ -65,7 +77,11 @@ Choisissez **Jetons**. Une même personne garde son jeton d'un tour à l'autre, 
 
 Laissez cochée **Demander au LLM de recopier les jetons** : le plugin ajoute une consigne qui demande au modèle de recopier les jetons tels quels, faute de quoi il les reformule parfois et la restitution échoue.
 
+![Remplacement par jetons, avec la consigne de recopie](./screenshots/remplacement.png)
+
 ## Étape 5 : choisir la conduite en cas de fuite
+
+Aucun moteur ne trouve tout : un nom rare ou une adresse mal orthographiée peuvent passer. La relecture après remplacement mesure ce qui a échappé ; cette étape décide de ce qu'on en fait : le savoir, ou l'empêcher.
 
 Après remplacement, le plugin peut relire le texte pour trouver ce qui serait resté lisible. Sous **En cas de fuite** :
 
@@ -75,7 +91,11 @@ Après remplacement, le plugin peut relire le texte pour trouver ce qui serait r
 
 Commencez par **Signaler**. Les événements des premières semaines disent quels types échappent au moteur sur vos données réelles ; passez à **Bloquer** quand ils deviennent rares, ou d'emblée si une fuite est inacceptable pour ce modèle virtuel.
 
+![Conduite en cas de fuite](./screenshots/fuite.png)
+
 ## Étape 6 : les pièces jointes
+
+Une donnée personnelle ne voyage pas toujours dans le texte : un contrat, un relevé ou une capture d'écran en contiennent autant. Sans règle pour les pièces jointes, le message serait protégé et le document joint partirait en clair.
 
 Sous **Pièces jointes**, **Traiter les pièces jointes documentaires** extrait le texte des documents joints (PDF, DOCX, ODT, CSV, texte), le pseudonymise et le transmet à la place du fichier. Reste le cas des fichiers dont le contenu ne peut pas être pseudonymisé : une image, un PDF scanné, un format inconnu. **Pièces jointes non traitables** décide de leur sort :
 
@@ -84,9 +104,13 @@ Sous **Pièces jointes**, **Traiter les pièces jointes documentaires** extrait 
 
 Gardez **Bloquer** : une capture d'écran qui montre un nom partirait sinon en clair, ou disparaîtrait sans que l'utilisateur comprenne pourquoi le modèle ne la voit pas.
 
+![Pièces jointes documentaires et pièces jointes non traitables](./screenshots/pieces-jointes.png)
+
 Enregistrez la configuration du nœud, puis le pipeline. Le bandeau du bas indique **Graphe valide**.
 
 ## Étape 7 : tester
+
+Une configuration se vérifie sur une vraie requête : c'est le seul moyen de constater que le fournisseur ne voit que des jetons et que l'utilisateur retrouve ses noms. C'est aussi le moment de poser les alertes qui préviendront si la protection cesse un jour de fonctionner.
 
 Avec un jeton d'API de l'organisation, envoyez une demande qui cite une personne et une ville :
 
@@ -98,9 +122,11 @@ curl -s http://localhost:3002/api/v1/chat/completions \
 
 La réponse parle de Jean Dupont et de Lyon : le plugin a restitué les noms. Le fournisseur, lui, a reçu `⟦PERSON_1_…⟧` et `⟦LOCATION_1_…⟧`.
 
-La restitution suppose que le modèle recopie les jetons tels quels, crochets compris. Faites cet essai avec le modèle que vous comptez utiliser, pas avec un autre : un petit modèle local les déforme. Essayé avec `qwen2.5:3b` sur Ollama, il a écrit `[Prénom_PERSON_267830_3dbaa6]` ou `LOCATION_263704_3dbaa6` sans crochets, et même en caractères pleine chasse ; aucun de ces jetons n'a pu être restitué, et la réponse ne nommait ni Jean Dupont ni Lyon. Aucun événement ne signale ce cas : seule la lecture des réponses le révèle.
-
 La page **Événements** de l'organisation le confirme. Chaque requête où quelque chose a été remplacé produit un événement `plugin.pseudonymizer.sensitive-data.detected` dont l'attribut `types` compte ce qui a été remplacé, par exemple `LOC:1,PER:1`. Une demande sans donnée personnelle part telle quelle, sans événement.
+
+![L'événement sensitive-data.detected dans la page Événements](./screenshots/evenements.png)
+
+La restitution suppose que le modèle recopie les jetons tels quels, crochets compris. Faites cet essai avec le modèle que vous comptez utiliser, pas avec un autre : un petit modèle local les déforme. Essayé avec `qwen2.5:3b` sur Ollama, il a écrit `[Prénom_PERSON_267830_3dbaa6]` ou `LOCATION_263704_3dbaa6` sans crochets, et même en caractères pleine chasse ; aucun de ces jetons n'a pu être restitué, et la réponse ne nommait ni Jean Dupont ni Lyon. Aucun événement ne signale ce cas : seule la lecture des réponses le révèle.
 
 Deux alertes [EventQL](../../../concepts/eventql.md) méritent d'être posées dès la mise en service :
 

@@ -19,7 +19,7 @@
         "type": "plugin",
         "position": {
           "x": 300,
-          "y": 160
+          "y": 0
         },
         "data": {
           "pluginName": "complexity-scorer"
@@ -30,7 +30,7 @@
         "type": "plugin",
         "position": {
           "x": 300,
-          "y": 760
+          "y": 700
         },
         "data": {
           "pluginName": "request-inspector"
@@ -41,7 +41,7 @@
         "type": "plugin",
         "position": {
           "x": 300,
-          "y": 560
+          "y": 440
         },
         "data": {
           "pluginName": "budget-pressure"
@@ -52,7 +52,7 @@
         "type": "compare",
         "position": {
           "x": 600,
-          "y": 40
+          "y": -150
         },
         "data": {
           "label": "demande difficile ?",
@@ -65,7 +65,7 @@
         "type": "compare",
         "position": {
           "x": 600,
-          "y": 240
+          "y": 180
         },
         "data": {
           "label": "demande simple ?",
@@ -78,7 +78,7 @@
         "type": "compare",
         "position": {
           "x": 600,
-          "y": 560
+          "y": 440
         },
         "data": {
           "label": "budget presque épuisé ?",
@@ -90,8 +90,8 @@
         "id": "leger",
         "type": "model_ref",
         "position": {
-          "x": 600,
-          "y": 400
+          "x": 900,
+          "y": 260
         },
         "data": {
           "label": "léger",
@@ -103,7 +103,7 @@
         "type": "model_ref",
         "position": {
           "x": 900,
-          "y": 400
+          "y": -50
         },
         "data": {
           "label": "standard",
@@ -115,7 +115,7 @@
         "type": "model_ref",
         "position": {
           "x": 900,
-          "y": 520
+          "y": -170
         },
         "data": {
           "label": "expert",
@@ -126,8 +126,8 @@
         "id": "vision",
         "type": "model_ref",
         "position": {
-          "x": 1200,
-          "y": 760
+          "x": 1500,
+          "y": 660
         },
         "data": {
           "label": "vision",
@@ -139,7 +139,7 @@
         "type": "select",
         "position": {
           "x": 1200,
-          "y": 40
+          "y": -130
         },
         "data": {
           "label": "standard ou expert"
@@ -150,7 +150,7 @@
         "type": "select",
         "position": {
           "x": 1500,
-          "y": 160
+          "y": 200
         },
         "data": {
           "label": "modèle selon complexité"
@@ -172,7 +172,7 @@
         "type": "select",
         "position": {
           "x": 2100,
-          "y": 600
+          "y": 560
         },
         "data": {
           "label": "modèle retenu"
@@ -183,7 +183,7 @@
         "type": "model",
         "position": {
           "x": 2400,
-          "y": 400
+          "y": 440
         },
         "data": {
           "label": "modèle choisi"
@@ -194,7 +194,7 @@
         "type": "sink",
         "position": {
           "x": 2700,
-          "y": 400
+          "y": 440
         },
         "data": null
       },
@@ -203,7 +203,7 @@
         "type": "trace",
         "position": {
           "x": 2400,
-          "y": 760
+          "y": -170
         },
         "data": {
           "label": "auto",
@@ -236,8 +236,8 @@
         "id": "note",
         "type": "note",
         "position": {
-          "x": 1500,
-          "y": 900
+          "x": 0,
+          "y": 960
         },
         "data": {
           "text": "Seuils de départ : sous 0,15 léger, à partir de 0,5 expert, standard entre les deux. Ajustez-les d'après les traces « auto » après une semaine de trafic réel."

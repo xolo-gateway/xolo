@@ -10,7 +10,7 @@
         "type": "generator",
         "position": {
           "x": 0,
-          "y": 200
+          "y": 300
         },
         "data": null
       },
@@ -19,7 +19,7 @@
         "type": "plugin",
         "position": {
           "x": 300,
-          "y": 40
+          "y": 60
         },
         "data": {
           "pluginName": "budget-pressure"
@@ -30,7 +30,7 @@
         "type": "compare",
         "position": {
           "x": 600,
-          "y": 40
+          "y": -170
         },
         "data": {
           "label": "budget presque épuisé ?",
@@ -43,7 +43,7 @@
         "type": "trace",
         "position": {
           "x": 900,
-          "y": 40
+          "y": 60
         },
         "data": {
           "label": "fin-de-budget",
@@ -73,7 +73,7 @@
         "type": "model",
         "position": {
           "x": 600,
-          "y": 300
+          "y": 360
         },
         "data": {
           "proxyName": "acme/gpt-4o"
@@ -84,7 +84,7 @@
         "type": "sink",
         "position": {
           "x": 900,
-          "y": 300
+          "y": 360
         },
         "data": null
       }

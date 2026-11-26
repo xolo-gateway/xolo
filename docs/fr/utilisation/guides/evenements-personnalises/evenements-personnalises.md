@@ -33,9 +33,13 @@ La décision se prend dans le graphe, le plus souvent avec un `compare` sur une 
 
 ## Étape 1 : le modèle virtuel
 
+Un pipeline ne s'exécute que sur les requêtes qui le traversent : pour observer les budgets, il faut un modèle virtuel par lequel passent les requêtes des utilisateurs. Celui-ci se contente de transmettre au modèle ; tout son intérêt est dans ce qu'il observera en chemin.
+
 Créez un modèle virtuel nommé `assistant-budget` et ouvrez son éditeur (voir [Modèle virtuel](../../../administration/organisation/virtual_model/virtual_model.md)). Ajoutez un nœud `model` réglé sur `acme/gpt-4o`, reliez `generator.request` à `model.request` et `model.response` à `sink.response`.
 
 ## Étape 2 : mesurer et décider
+
+Quand le quota refuse une requête, il est trop tard : l'utilisateur est bloqué et l'administrateur l'apprend par une plainte. Pour prévenir avant, il faut mesurer la consommation à chaque requête et décider, dans le graphe, du moment où elle devient préoccupante. Le seuil de 80 % laisse le temps d'ajuster un budget ou de prévenir l'utilisateur.
 
 Ajoutez le plugin `budget-pressure` et reliez `generator.request` à son port `request`. Ses sorties donnent la part déjà consommée du budget le plus tendu qui s'applique à la requête, celui de l'utilisateur, de son organisation ou de son équipe :
 
@@ -49,6 +53,8 @@ Ajoutez un `compare` libellé « budget presque épuisé ? », opérateur `gte`,
 
 ## Étape 3 : la trace
 
+La décision prise dans le graphe n'existe que le temps de la requête. Pour qu'elle serve, il faut qu'elle laisse une trace qu'on puisse consulter et sur laquelle on puisse alerter : c'est le rôle du nœud `trace`, qui ne l'écrira que lorsque la décision est positive.
+
 Ajoutez un nœud `trace` et reliez `compare.result` à son port `condition`. Son libellé, `fin-de-budget`, devient le message de l'événement et la clé par laquelle l'alerte le retrouvera. Réglez la sévérité sur `warning` : l'événement ne s'enregistre que lorsqu'il y a de quoi s'inquiéter, et une requête EventQL peut le distinguer des simples observations avec `severity="warning"`.
 
 Déclarez ensuite les ports qui diront, le jour où l'événement se produit, quel budget est en cause, un nom et un type chacun :
@@ -60,36 +66,29 @@ Déclarez ensuite les ports qui diront, le jour où l'événement se produit, qu
 | `monthly_pressure` | number | `budget-pressure.monthly_pressure` |
 | `yearly_pressure` | number | `budget-pressure.yearly_pressure` |
 
+![La trace fin-de-budget : sévérité warning, quatre ports déclarés, et le port condition en tête de la liste des ports](./screenshots/trace.png)
+
 Nommez les ports d'après ce qu'ils reçoivent : l'événement se lit alors sans rouvrir le graphe. Ne déclarez pas de port nommé `condition` : ce nom est celui de l'entrée fixe.
 
 Enregistrez. Le bandeau indique **Graphe valide**.
 
-```
-generator ──▶ model (acme/gpt-4o) ──▶ sink
-    └──▶ budget-pressure ──budget_pressure──▶ compare (≥ 0,8) ──result──▶ trace.condition
-                └──── budget, daily, monthly, yearly_pressure ──────────────▶ trace « fin-de-budget »
-```
+![Le pipeline : budget-pressure, le compare relié à la condition de la trace, et le chemin de la requête](./screenshots/pipeline.png)
 
 ## Étape 4 : vérifier
 
-Envoyez une requête à `acme/assistant-budget` avec un utilisateur loin de sa limite : aucun événement `fin-de-budget` ne s'enregistre. Avec un utilisateur qui a consommé plus de 80 % d'un budget, la page **Événements**, avec la requête `{type="pipeline.trace"} | label="fin-de-budget"`, montre un événement de ce genre :
+Une alerte posée sur un événement qui ne s'enregistre jamais reste silencieuse, et ce silence ressemble à une bonne nouvelle. Avant de poser l'alerte, vérifiez que l'événement apparaît quand il le doit, et seulement à ce moment-là.
 
-```
-type      pipeline.trace
-severity  warning
-message   fin-de-budget
-label                  fin-de-budget
-port.budget_pressure   0.83
-port.daily_pressure    0.83
-port.monthly_pressure  0.21
-port.yearly_pressure   0.04
-```
+Envoyez une requête à `acme/assistant-budget` avec un utilisateur loin de sa limite : aucun événement `fin-de-budget` ne s'enregistre. Avec un utilisateur qui a consommé plus de 80 % d'un budget, la page **Événements**, avec la requête `{type="pipeline.trace"} | label="fin-de-budget"`, montre l'événement. Celui-ci a été enregistré pour un membre d'Acme dont l'organisation avait consommé 86 % de son budget du jour :
 
-Ici, c'est le budget du jour qui est presque épuisé.
+![L'événement fin-de-budget, de sévérité warning, avec la pression de chaque période](./screenshots/evenement.png)
+
+Le budget du jour est le plus tendu : c'est lui qui donne `budget_pressure`. Celui du mois n'est entamé qu'à 2 %.
 
 Pour vérifier le montage sans attendre qu'un budget s'épuise, baissez provisoirement le seuil du `compare` sous la pression actuelle, envoyez une requête, puis remettez-le à 0,8.
 
 ## Étape 5 : l'alerte
+
+Un événement dans une page que personne ne consulte ne prévient personne. L'alerte transforme l'événement en signal : elle compte les occurrences sur une fenêtre de temps, se déclenche au premier, et garde la trace de chaque déclenchement dans les incidents.
 
 Dans **Événements › Alertes**, cliquez sur **Nouvelle alerte** :
 
@@ -101,7 +100,11 @@ Dans **Événements › Alertes**, cliquez sur **Nouvelle alerte** :
 | **Comparateur** | `>` |
 | **Seuil** | 0 |
 
+![Le formulaire de l'alerte Fin de budget](./screenshots/alerte.png)
+
 L'alerte compte les événements `fin-de-budget` de la dernière heure et se déclenche dès le premier. La même requête, dans la page **Événements**, montre qui est en cause et les valeurs de ses ports.
+
+![L'alerte Fin de budget à l'état firing, déclenchée par l'événement ci-dessus](./screenshots/alertes.png)
 
 La portée décide de qui est surveillé. Une alerte d'organisation évalue les requêtes de tous les membres : c'est celle d'un administrateur qui veut ajuster un budget à temps. Une alerte personnelle n'évalue que les requêtes de celui qui la crée : chaque membre peut la poser pour lui-même, et apprendre qu'il approche de sa limite avant d'être refusé.
 
