@@ -48,7 +48,7 @@ func (t CloudTier) String() string {
 
 // CloudPreset encapsule les hypothèses d'infrastructure pour un provider cloud.
 // Les valeurs sont des fourchettes [Low, High] pour produire une estimation min/max.
-// Sources : Ji & Jiang (2025), IEA "Electricity 2024", SemiAnalysis (2024).
+// Sources : Ji & Jiang (2025), IEA "Electricity 2024", SemiAnalysis (2023).
 type CloudPreset struct {
 	Tier    CloudTier
 	PUELow  float64
@@ -71,7 +71,7 @@ type CloudPreset struct {
 // Références :
 //   - Ji & Jiang (2025) "Energy Consumption of LLM Inference"
 //   - IEA "Electricity 2024" : ~0.001-0.01 kWh par requête ChatGPT
-//   - SemiAnalysis "The Inference Cost of AI" (2024)
+//   - SemiAnalysis "Inference Race To The Bottom - Make It Up On Volume?" (2023)
 var (
 	PresetHyperscaler = CloudPreset{
 		Tier:                TierHyperscaler,
@@ -289,7 +289,7 @@ func flopEfficiencyRange(tier CloudTier) (low, high float64) {
 	}
 }
 
-// estimateTokensPerSec heuristique : 7B→~100 tok/s, 70B→~30, 400B→~15.
+// estimateTokensPerSec heuristique : 200 / bParams^0.4, soit 7B→~92 tok/s, 70B→~37, 400B→~18.
 // optimistic=true retourne une vitesse nominale, false retourne 50% de la vitesse nominale.
 func estimateTokensPerSec(activeParams float64, optimistic bool) float64 {
 	bParams := activeParams / 1e9
