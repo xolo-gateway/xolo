@@ -959,6 +959,8 @@
   "org.alerts.form.scope_personal_help": " - esta alerta solo evalúa sus propios eventos.",
   "org.alerts.form.scope_org": "organización",
   "org.alerts.form.scope_org_help": " - esta alerta evalúa los eventos de toda la organización.",
+  "org.alerts.scope_badge.org": "org",
+  "org.alerts.scope_badge.personal": "personal",
   "org.alerts.form.name": "Nombre",
   "org.alerts.form.description": "Descripción",
   "org.alerts.form.query": "Consulta (eventql)",

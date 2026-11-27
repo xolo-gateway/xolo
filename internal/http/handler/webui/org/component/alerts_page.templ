@@ -82,9 +82,9 @@ templ alertRow(slug string, a model.Alert, view string) {
 		}
 		@table.Cell() {
 			if a.Scope() == model.AlertScopePersonal {
-				@common.Badge(common.ToneNeutral, "perso")
+				@common.Badge(common.ToneNeutral, i18n.T(ctx, "org.alerts.scope_badge.personal"))
 			} else {
-				@common.Badge(common.ToneInfo, "org")
+				@common.Badge(common.ToneInfo, i18n.T(ctx, "org.alerts.scope_badge.org"))
 			}
 		}
 		@table.Cell(table.CellProps{Class: "font-mono text-xs max-w-xs truncate"}) {
