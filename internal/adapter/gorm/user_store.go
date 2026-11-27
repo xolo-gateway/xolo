@@ -500,6 +500,8 @@ func deleteUsersWithin(db *gorm.DB, userIDs []string) (int64, error) {
 		&UserRole{},
 		&UserPreferences{},
 		&PersonalVirtualModel{},
+		&EnrollmentApplication{},
+		&EnrollmentPendingActivation{},
 	}
 	for _, m := range userScoped {
 		if err := db.Where("user_id IN ?", userIDs).Delete(m).Error; err != nil {

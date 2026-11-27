@@ -60,6 +60,9 @@ var lifecycleTables = []lifecycleTable{
 	{table: "application_roles", org: "(SELECT org_id FROM applications WHERE id = r.application_id)", key: []string{"application_id", "role_id"}},
 	{table: "auth_tokens", org: "r.org_id", member: "r.owner_id", secret: []string{"value"}},
 	{table: "invite_tokens", org: "r.org_id"},
+	{table: "enrollment_rules", org: "r.org_id", family: model.FamilyEnrollmentRule},
+	{table: "enrollment_applications", org: "r.org_id", member: "r.user_id", key: []string{"rule_id", "user_id"}},
+	{table: "enrollment_pending_activations", member: "r.user_id", key: []string{"user_id"}, unexported: true},
 	{table: "providers", org: "r.org_id", family: model.FamilyProvider, secret: []string{"api_key", "api_keys"}},
 	{table: "llm_models", org: "r.org_id"},
 	{table: "virtual_models", org: "r.org_id", family: model.FamilyVirtualModel},
@@ -185,7 +188,7 @@ var purgeOrder = []string{
 	"plugin_node_secrets", "plugin_ui_configs", "event_settings",
 	"team_member_roles", "team_members", "team_middlewares", "team_model_grants", "teams",
 	"middlewares", "virtual_models", "role_permissions", "llm_models", "providers",
-	"invite_tokens", "auth_tokens", "application_roles", "membership_roles",
+	"enrollment_pending_activations", "enrollment_applications", "enrollment_rules", "invite_tokens", "auth_tokens", "application_roles", "membership_roles",
 	"memberships", "personal_virtual_models", "user_preferences", "user_roles",
 	"users", "applications", "roles", "organizations", "domains", "tenants",
 }

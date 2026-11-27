@@ -1,0 +1,151 @@
+package component
+
+import (
+	"context"
+
+	"github.com/xolo-gateway/xolo/internal/core/model"
+	common "github.com/xolo-gateway/xolo/internal/http/handler/webui/common/component"
+	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/button"
+	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/card"
+	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/form"
+	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/input"
+	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/selectbox"
+	switchcomp "github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/switch"
+	"github.com/xolo-gateway/xolo/internal/i18n"
+)
+
+func enrollmentRuleFormTitle(ctx context.Context, vmodel EnrollmentRuleFormVModel) string {
+	if vmodel.RuleID == "" {
+		return i18n.T(ctx, "org.enrollment.new")
+	}
+	return i18n.T(ctx, "org.enrollment.form.edit_title")
+}
+
+// enrollableRoles leaves out the owner role, which a rule never hands out.
+func enrollableRoles(roles []model.Role) []model.Role {
+	kept := make([]model.Role, 0, len(roles))
+	for _, role := range roles {
+		if role.BuiltinKind() != model.BuiltinKindOwner {
+			kept = append(kept, role)
+		}
+	}
+	return kept
+}
+
+// enrollmentRoleSelected also recognizes the builtin value a rule set through
+// the provisioning API stores.
+func enrollmentRoleSelected(vmodel EnrollmentRuleFormVModel, role model.Role) bool {
+	if vmodel.Role == "" {
+		return role.BuiltinKind() == model.BuiltinKindMember
+	}
+	switch vmodel.Role {
+	case model.RoleMember:
+		return role.BuiltinKind() == model.BuiltinKindMember
+	case model.RoleOrgAdmin:
+		return role.BuiltinKind() == model.BuiltinKindAdmin
+	}
+	return vmodel.Role == string(role.ID())
+}
+
+templ EnrollmentRuleFormPage(vmodel EnrollmentRuleFormVModel) {
+	@common.AppLayout(vmodel.AppLayoutVModel, common.WithTitle(i18n.T(ctx, "org.enrollment.page_title", vmodel.Org.Name()))) {
+		{{ slug := vmodel.Org.Slug() }}
+		{{ action := common.BaseURLString(ctx, common.WithPath("/orgs/", slug, "/admin/enrollment-rules")) }}
+		if vmodel.RuleID != "" {
+			{{ action = common.BaseURLString(ctx, common.WithPath("/orgs/", slug, "/admin/enrollment-rules/", string(vmodel.RuleID), "/edit")) }}
+		}
+		<div class="space-y-6 max-w-2xl">
+			@common.PageHeader(common.PageHeaderProps{Title: enrollmentRuleFormTitle(ctx, vmodel)})
+			@common.FlashError(vmodel.Error, i18n.T(ctx, "org.enrollment.flash_error_subject"))
+			<form method="POST" action={ action } class="space-y-4">
+				@card.Card() {
+					@card.Content() {
+						<div class="space-y-4 pt-4">
+							<div class="space-y-2">
+								@form.Label(form.LabelProps{For: "name"}) {
+									{ i18n.T(ctx, "org.enrollment.form.name") }
+								}
+								@input.Input(input.Props{ID: "name", Name: "name", Value: vmodel.Name})
+							</div>
+							<div class="space-y-2">
+								@form.Label(form.LabelProps{}) {
+									{ i18n.T(ctx, "org.enrollment.form.kind") }
+								}
+								@selectbox.SelectBox(selectbox.Props{ID: "enrollment_kind"}) {
+									@selectbox.Trigger(selectbox.TriggerProps{Name: "kind"}) {
+										@selectbox.Value(selectbox.ValueProps{})
+									}
+									@selectbox.Content(selectbox.ContentProps{NoSearch: true}) {
+										@selectbox.Group() {
+											@selectbox.Item(selectbox.ItemProps{Value: string(model.EnrollmentKindEmailDomain), Selected: vmodel.Kind != model.EnrollmentKindClaim}) {
+												{ i18n.T(ctx, "org.enrollment.form.kind.email_domain") }
+											}
+											@selectbox.Item(selectbox.ItemProps{Value: string(model.EnrollmentKindClaim), Selected: vmodel.Kind == model.EnrollmentKindClaim}) {
+												{ i18n.T(ctx, "org.enrollment.form.kind.claim") }
+											}
+										}
+									}
+								}
+								@form.Description() {
+									{ i18n.T(ctx, "org.enrollment.form.kind_help") }
+								}
+							</div>
+							<div class="space-y-2">
+								@form.Label(form.LabelProps{For: "claim"}) {
+									{ i18n.T(ctx, "org.enrollment.form.claim") }
+								}
+								@input.Input(input.Props{ID: "claim", Name: "claim", Value: vmodel.Claim, Placeholder: "groups"})
+								@form.Description() {
+									{ i18n.T(ctx, "org.enrollment.form.claim_help") }
+								}
+							</div>
+							<div class="space-y-2">
+								@form.Label(form.LabelProps{For: "value"}) {
+									{ i18n.T(ctx, "org.enrollment.form.value") }
+								}
+								@input.Input(input.Props{ID: "value", Name: "value", Value: vmodel.Value, Placeholder: "example.org"})
+							</div>
+							<div class="space-y-2">
+								@form.Label(form.LabelProps{}) {
+									{ i18n.T(ctx, "org.enrollment.form.role") }
+								}
+								@selectbox.SelectBox(selectbox.Props{ID: "enrollment_role"}) {
+									@selectbox.Trigger(selectbox.TriggerProps{Name: "role"}) {
+										@selectbox.Value(selectbox.ValueProps{})
+									}
+									@selectbox.Content(selectbox.ContentProps{NoSearch: true}) {
+										@selectbox.Group() {
+											for _, r := range enrollableRoles(vmodel.OrgRoles) {
+												{{ label := r.Name() }}
+												if r.BuiltinKind() != "" {
+													{{ label = BuiltinRoleLabel(ctx, r.BuiltinKind()) }}
+												}
+												@selectbox.Item(selectbox.ItemProps{Value: string(r.ID()), Selected: enrollmentRoleSelected(vmodel, r)}) {
+													{ label }
+												}
+											}
+										}
+									}
+								}
+							</div>
+							@form.ItemFlex() {
+								@switchcomp.Switch(switchcomp.Props{ID: "enabled", Name: "enabled", Checked: vmodel.Enabled})
+								@form.Label(form.LabelProps{For: "enabled"}) {
+									{ i18n.T(ctx, "org.enrollment.form.enabled") }
+								}
+							}
+							@form.Description() {
+								{ i18n.T(ctx, "org.enrollment.form.once_help") }
+							}
+						</div>
+					}
+					<div class="pt-0 flex items-center p-6">
+						@button.Button(button.Props{Type: button.TypeSubmit}) {
+							{ i18n.T(ctx, "org.enrollment.form.submit") }
+						}
+					</div>
+				}
+			</form>
+		</div>
+	}
+}

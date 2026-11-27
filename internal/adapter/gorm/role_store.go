@@ -96,8 +96,16 @@ func (s *Store) SaveRole(ctx context.Context, role model.Role) error {
 // DeleteRole implements port.RoleStore. It refuses to delete builtin roles.
 func (s *Store) DeleteRole(ctx context.Context, id model.RoleID) error {
 	return s.recorded(ctx, trackingTree("role", string(id)), func(ctx context.Context, db *gorm.DB) error {
+		// A rule saved concurrently holds a share lock on the role it grants
+		// (provisioningTx.GetRoleByID reads through parentReader, FOR SHARE on
+		// PostgreSQL): this lock waits for it, so the count below sees the
+		// rule.
+		locked := db
+		if isPostgres(db) {
+			locked = db.Clauses(clause.Locking{Strength: "UPDATE"})
+		}
 		var role Role
-		if err := db.First(&role, "id = ?", string(id)).Error; err != nil {
+		if err := locked.First(&role, "id = ?", string(id)).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				return errors.WithStack(port.ErrNotFound)
 			}
@@ -105,6 +113,13 @@ func (s *Store) DeleteRole(ctx context.Context, id model.RoleID) error {
 		}
 		if role.Builtin {
 			return errors.WithStack(port.ErrNotAllowed)
+		}
+		var rules int64
+		if err := db.Model(&EnrollmentRule{}).Where("role = ?", string(id)).Count(&rules).Error; err != nil {
+			return errors.WithStack(err)
+		}
+		if rules > 0 {
+			return errors.WithStack(port.ErrRoleGrantedByEnrollment)
 		}
 		if err := db.Where("role_id = ?", string(id)).Delete(&MembershipRole{}).Error; err != nil {
 			return errors.WithStack(err)

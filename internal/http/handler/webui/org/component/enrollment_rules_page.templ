@@ -1,0 +1,120 @@
+package component
+
+import (
+	"github.com/xolo-gateway/xolo/internal/core/model"
+	common "github.com/xolo-gateway/xolo/internal/http/handler/webui/common/component"
+	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/button"
+	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/icon"
+	"github.com/xolo-gateway/xolo/internal/http/handler/webui/templui/component/table"
+	"github.com/xolo-gateway/xolo/internal/i18n"
+)
+
+templ EnrollmentRulesPage(vmodel EnrollmentRulesPageVModel) {
+	@common.AppLayout(vmodel.AppLayoutVModel, common.WithTitle(i18n.T(ctx, "org.enrollment.page_title", vmodel.Org.Name()))) {
+		{{ slug := vmodel.Org.Slug() }}
+		<div class="space-y-6">
+			@common.PageHeader(common.PageHeaderProps{
+				Title:    i18n.T(ctx, "org.nav.enrollment"),
+				Subtitle: i18n.T(ctx, "org.enrollment.subtitle"),
+			}) {
+				if vmodel.CanWrite {
+					@button.Button(button.Props{
+						Size:  button.SizeSm,
+						Class: "gap-1.5",
+						Href:  common.BaseURLString(ctx, common.WithPath("/orgs/", slug, "/admin/enrollment-rules/new")),
+					}) {
+						@icon.Plus(icon.Props{Class: "size-3.5"})
+						{ i18n.T(ctx, "org.enrollment.new") }
+					}
+				}
+			}
+			@common.FlashToastFeminine(vmodel.Success, i18n.T(ctx, "org.enrollment.flash_subject"))
+			@common.Section() {
+				@table.Table() {
+					@table.Header() {
+						@table.Row() {
+							@table.Head() {
+								{ i18n.T(ctx, "org.enrollment.col.name") }
+							}
+							@table.Head() {
+								{ i18n.T(ctx, "org.enrollment.col.condition") }
+							}
+							@table.Head() {
+								{ i18n.T(ctx, "org.enrollment.col.role") }
+							}
+							@table.Head() {
+								{ i18n.T(ctx, "org.enrollment.col.enabled") }
+							}
+							if vmodel.CanWrite {
+								@table.Head()
+							}
+						}
+					}
+					@table.Body() {
+						if len(vmodel.Rules) == 0 {
+							{{ columns := "4" }}
+							if vmodel.CanWrite {
+								{{ columns = "5" }}
+							}
+							@table.Row() {
+								@table.Cell(table.CellProps{Attributes: templ.Attributes{"colspan": columns},Class: "py-8 text-center text-sm text-muted-foreground"}) {
+									{ i18n.T(ctx, "org.enrollment.empty") }
+								}
+							}
+						}
+						for _, rule := range vmodel.Rules {
+							@enrollmentRuleRow(vmodel, slug, rule)
+						}
+					}
+				}
+			}
+		</div>
+	}
+}
+
+templ enrollmentRuleRow(vmodel EnrollmentRulesPageVModel, slug string, rule model.EnrollmentRule) {
+	@table.Row() {
+		@table.Cell(table.CellProps{Class: "font-medium"}) {
+			{ rule.Name() }
+		}
+		@table.Cell(table.CellProps{Class: "font-mono text-xs max-w-xs truncate"}) {
+			if rule.Kind() == model.EnrollmentKindClaim {
+				{ rule.Claim() } = { rule.Value() }
+			} else {
+				{ "@" + rule.Value() }
+			}
+		}
+		@table.Cell() {
+			{ vmodel.RoleName(rule.Role()) }
+		}
+		@table.Cell() {
+			if rule.Enabled() {
+				@common.Badge(common.TonePositive, i18n.T(ctx, "org.enrollment.yes"))
+			} else {
+				@common.Badge(common.ToneNeutral, i18n.T(ctx, "org.enrollment.no"))
+			}
+		}
+		if vmodel.CanWrite {
+			@table.Cell(table.CellProps{Class: "text-right whitespace-nowrap"}) {
+				<div class="flex gap-2 justify-end">
+					@button.Button(button.Props{
+						Variant:    button.VariantGhost,
+						Size:       button.SizeIcon,
+						Class:      "size-7",
+						Href:       common.BaseURLString(ctx, common.WithPath("/orgs/", slug, "/admin/enrollment-rules/", string(rule.ID()), "/edit")),
+						Attributes: templ.Attributes{"title": i18n.T(ctx, "org.enrollment.edit")},
+					}) {
+						@icon.Pencil(icon.Props{Class: "size-3.5"})
+					}
+					@common.ConfirmDelete(common.ConfirmDeleteProps{
+						URL:         common.BaseURLString(ctx, common.WithPath("/orgs/", slug, "/admin/enrollment-rules/", string(rule.ID()), "/delete")),
+						Method:      "POST",
+						Tooltip:     i18n.T(ctx, "org.enrollment.delete"),
+						Title:       i18n.T(ctx, "org.enrollment.delete_title"),
+						Description: i18n.T(ctx, "org.enrollment.delete_description"),
+					})
+				</div>
+			}
+		}
+	}
+}

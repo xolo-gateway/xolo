@@ -8,6 +8,7 @@ Tutoriels pour administrer une organisation Xolo au quotidien.
 | **[Rôles](./roles/roles.md)** | Création et configuration des rôles et permissions |
 | **[Équipes](./equipes/equipes.md)** | Regroupement des membres, accès aux modèles et budgets par équipe |
 | **[Invitations](./invitation/invitation.md)** | Création de liens d'invitation pour intégrer des utilisateurs |
+| **[Règles d'inscription](./inscription/inscription.md)** | Inscription automatique à la connexion, par domaine d'email ou claim OIDC |
 | **[Budget](./budget/budget.md)** | Gestion des budgets (journalier, mensuel, annuel) pour contrôler les dépenses |
 | **[Fournisseurs](./fournisseurs/fournisseurs.md)** | Gestion des fournisseurs LLM et de leurs modèles |
 | **[Modèles virtuels](./virtual_model/virtual_model.md)** | Création de modèles personnalisés avec plugins (anonymisation, prompts système) |

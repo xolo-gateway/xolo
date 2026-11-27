@@ -15,7 +15,7 @@ Un membre est un utilisateur qui appartient à votre organisation. Chaque membre
 
 ## Inviter un nouveau membre
 
-Pour ajouter un membre, vous devez d'abord créer une invitation. Consultez le [tutoriel Invitations](../invitation/invitation.md).
+Pour ajouter un membre, vous devez d'abord créer une invitation. Consultez le [tutoriel Invitations](../invitation/invitation.md). Pour éviter cette étape, une [règle d'inscription](../inscription/inscription.md) inscrit les identités qu'elle reconnaît dès leur connexion.
 
 ## Liste des membres
 

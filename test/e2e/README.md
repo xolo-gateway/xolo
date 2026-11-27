@@ -128,6 +128,12 @@ par les guides sont compilées et confrontées aux événements réels.
 |---|---|
 | `TestLifecyclePurge` | un serveur dédié, multi-tenant, cycle de vie activé (rétention et sondage d'une seconde) : un tenant provisionné avec une organisation et un membre est supprimé (`DELETE` → 202 et `ETag`), son export se vérifie et se confirme avec son condensat ; le worker le purge, le tenant répond 404, son identifiant est refusé à la réutilisation (409 `resource_deleted`) et seul `tenant.deleted.v1` reste dans le flux à son sujet |
 
+### Règles d'inscription (`enrollment_test.go`)
+
+| Test | Attendu |
+|---|---|
+| `TestEnrollmentByBearerToken` | un serveur dédié, comptes inactifs par défaut, configuré avec le fournisseur OIDC factice et une règle de l'organisation `acme` sur le claim `groups` : un ID Token encore inconnu de Xolo présenté en `Bearer` liste `acme/e2e-fast` dès sa première requête et obtient une réponse du modèle ; un jeton sans le groupe attendu ne voit pas le modèle |
+
 Le pseudonymizer est branché par quatre middlewares (`mw-e2e-pseudo-tag`,
 `mw-e2e-pseudo-hash`, `mw-e2e-pseudo-claude`, `mw-e2e-pseudo-indecis`) enveloppant chacun un seul modèle ; les autres scénarios
 passent par des modèles virtuels dédiés, tous déclarés dans `fixtures_test.go`

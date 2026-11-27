@@ -1,9 +1,11 @@
 package oidc
 
 import (
+	"context"
 	"time"
 
 	"github.com/pkg/errors"
+	"github.com/xolo-gateway/xolo/internal/core/model"
 	"github.com/xolo-gateway/xolo/internal/core/port"
 	"github.com/xolo-gateway/xolo/internal/http/middleware/authn/oidc/component"
 )
@@ -34,6 +36,10 @@ type Options struct {
 	Sessions          port.SessionRegistry
 	SessionTTL        time.Duration
 }
+
+// ComparedClaims returns, per claim name, the values the enrollment rules of a
+// tenant compare: the session keeps them first.
+type ComparedClaims func(ctx context.Context, tenantID model.TenantID) (map[string][]string, error)
 
 type OptionFunc func(opts *Options)
 

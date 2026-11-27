@@ -371,6 +371,8 @@ type RolesPageVModel struct {
 	// audit one role in a matrix that shows them all.
 	RoleID  string
 	Success string
+	// Error is the translated reason the last deletion was refused.
+	Error string
 }
 
 // ModelGrantOption is a selectable model (LLM or virtual) for team model

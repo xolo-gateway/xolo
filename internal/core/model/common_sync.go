@@ -32,7 +32,10 @@ const (
 	FamilyApplication = "application"
 	FamilyQuota       = "quota"
 	FamilyAlert       = "alert"
-	FamilyProvider    = "provider"
+	// FamilyEnrollmentRule designates the rules that enroll identities into
+	// an organization.
+	FamilyEnrollmentRule = "enrollment_rule"
+	FamilyProvider       = "provider"
 	// FamilyLLMModel designates the models of a provider. It is read-only:
 	// models are managed from the web UI, the API only exposes the identifier
 	// that middleware targets and team grants designate, and the name a
@@ -61,7 +64,7 @@ var CommonFamilies = []string{FamilyTenant, FamilyTenantDomain, FamilyOrganizati
 // belong to providers, middlewares target models and virtual models, team
 // grants designate them and the middlewares, team members hold roles,
 // applications are bound to teams, quotas cap applications and teams.
-var BusinessFamilies = []string{FamilyProvider, FamilyLLMModel, FamilyCustomRole, FamilyVirtualModel, FamilyMiddleware, FamilyPersonalVirtualModel, FamilyTeamSettings, FamilyApplication, FamilyQuota, FamilyAlert}
+var BusinessFamilies = []string{FamilyProvider, FamilyLLMModel, FamilyCustomRole, FamilyVirtualModel, FamilyMiddleware, FamilyPersonalVirtualModel, FamilyTeamSettings, FamilyApplication, FamilyQuota, FamilyAlert, FamilyEnrollmentRule}
 
 // IsBusinessFamily tells whether family is a business family.
 func IsBusinessFamily(family string) bool { return slices.Contains(BusinessFamilies, family) }

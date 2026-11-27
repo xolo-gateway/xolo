@@ -1,6 +1,7 @@
 package oidc
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -54,10 +55,15 @@ func (h *Handler) handleProviderCallback(w http.ResponseWriter, r *http.Request)
 	// name goth hands back carries that host. Identities are keyed on
 	// (tenant, provider, subject): strip it, or the same account would be a
 	// different user on every hostname it ever signed in from.
+	claims, dropped := authn.NewSessionClaims(gothUser.RawData, h.sessionComparedClaims(r.Context()))
 	user := &authn.User{
 		Email:       gothUser.Email,
 		Provider:    BaseProviderID(gothUser.Provider),
 		DisplayName: getUserDisplayName(gothUser),
+		Claims:      claims,
+	}
+	if len(dropped) > 0 {
+		slog.WarnContext(r.Context(), "claims too large for the session are ignored by enrollment rules", slog.Any("claims", dropped), slog.String("provider", user.Provider))
 	}
 
 	rawSubject := gothUser.RawData["sub"]
@@ -189,6 +195,21 @@ func getUserDisplayName(user goth.User) string {
 	}
 
 	return displayName
+}
+
+// sessionComparedClaims returns the claims the rules of the request tenant
+// compare, or nil when none can be read: the claims then keep their name order.
+func (h *Handler) sessionComparedClaims(ctx context.Context) map[string][]string {
+	tenant := httpCtx.Tenant(ctx)
+	if h.comparedClaims == nil || tenant == nil {
+		return nil
+	}
+	compared, err := h.comparedClaims(ctx, tenant.ID())
+	if err != nil {
+		slog.ErrorContext(ctx, "could not read the claims enrollment rules compare", slogx.Error(err))
+		return nil
+	}
+	return compared
 }
 
 // proveIdentity records what the provider proved about the sign-in: its

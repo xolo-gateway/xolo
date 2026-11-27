@@ -2,8 +2,12 @@ package bridge
 
 import (
 	"context"
+	"log/slog"
 	"net/http"
+	"slices"
+	"strconv"
 
+	"github.com/bornholm/go-x/slogx"
 	"github.com/pkg/errors"
 	"github.com/xolo-gateway/xolo/internal/core/model"
 	"github.com/xolo-gateway/xolo/internal/core/port"
@@ -40,6 +44,10 @@ type Options struct {
 	// Transactions opens the transaction that creates, links or updates an
 	// account. Defaults to the user store when it can open one.
 	Transactions port.ProvisioningTransaction
+
+	// Enrollment applies the enrollment rules to the identities it resolves.
+	// Nil when memberships belong to the control plane.
+	Enrollment *service.EnrollmentService
 }
 
 func Middleware(userStore port.UserStore, inviteStore port.InviteStore, emitter port.EventEmitter, opts Options) func(http.Handler) http.Handler {
@@ -86,8 +94,9 @@ func Middleware(userStore port.UserStore, inviteStore port.InviteStore, emitter 
 			}
 
 			var (
-				user model.User
-				err  error
+				user    model.User
+				created bool
+				err     error
 			)
 			switch {
 			case authnUser.AccountID != "":
@@ -109,7 +118,7 @@ func Middleware(userStore port.UserStore, inviteStore port.InviteStore, emitter 
 				common.HandleError(w, r, common.NewHTTPError(http.StatusUnauthorized))
 				return
 			default:
-				user, err = resolver.Resolve(ctx, tenant.ID(), service.AuthenticatedIdentity{
+				user, created, err = resolver.ResolveAccount(ctx, tenant.ID(), service.AuthenticatedIdentity{
 					Provider:      authnUser.Provider,
 					Subject:       authnUser.Subject,
 					Issuer:        authnUser.Issuer,
@@ -149,6 +158,10 @@ func Middleware(userStore port.UserStore, inviteStore port.InviteStore, emitter 
 				return
 			}
 
+			if opts.Enrollment != nil && authnUser.AccountID == "" && authnUser.Provider != model.ApplicationProvider {
+				user = enroll(ctx, opts.Enrollment, userStore, emitter, tenant.ID(), user, created, authnUser)
+			}
+
 			ctx = httpCtx.SetUser(ctx, user)
 			r = r.WithContext(ctx)
 
@@ -157,4 +170,54 @@ func Middleware(userStore port.UserStore, inviteStore port.InviteStore, emitter 
 
 		return fn
 	}
+}
+
+// enroll applies the enrollment rules and returns the account as it stands
+// afterwards. A rule that fails does not refuse the identity: it authenticated,
+// and the rule is tried again on a later request.
+func enroll(ctx context.Context, enrollment *service.EnrollmentService, userStore port.UserStore, emitter port.EventEmitter, tenantID model.TenantID, user model.User, created bool, authnUser *authn.User) model.User {
+	identity := model.EnrollmentIdentity{Email: authnUser.Email, EmailVerified: authnUser.EmailVerified, NewAccount: created}
+	// A claim of a provider proving no issuer says nothing: on GitHub, the
+	// person writes their profile themselves.
+	if authnUser.Issuer != "" {
+		if compared, err := enrollment.ComparedClaims(ctx, tenantID); err == nil && len(compared) > 0 {
+			claims, dropped := authnUser.ClaimSet(compared)
+			identity.Claims = claims
+			// A claim no rule compares matches none, whether kept or not.
+			dropped = slices.DeleteFunc(dropped, func(name string) bool { return len(compared[name]) == 0 })
+			if len(dropped) > 0 {
+				slog.WarnContext(ctx, "claims too large are ignored by enrollment rules", slog.Any("claims", dropped), slog.String("provider", authnUser.Provider))
+			}
+		}
+	}
+	enrollments, activated, err := enrollment.Enroll(ctx, tenantID, user, identity)
+	if err != nil {
+		slog.ErrorContext(ctx, "could not apply enrollment rules", slogx.Error(err), slog.String("user", string(user.ID())))
+	}
+	for _, e := range enrollments {
+		if emitter == nil {
+			break
+		}
+		emitter.Emit(ctx, model.NewEvent(model.EventSourcePlatform, model.EventTypeMemberEnrolled,
+			model.WithEventOrg(e.Rule.OrgID()),
+			model.WithEventUser(user.ID()),
+			model.WithEventSeverity(model.SeverityInfo),
+			model.WithEventMessage("Membre inscrit par la règle "+e.Rule.Name()),
+			model.WithEventAttribute("rule", string(e.Rule.ID())),
+			model.WithEventAttribute("rule_name", e.Rule.Name()),
+			model.WithEventAttribute("role", e.Role.Name()),
+			model.WithEventAttribute("activated", strconv.FormatBool(e.Activated)),
+		))
+	}
+	// Only an activation writes the account: an enrollment writes its
+	// membership.
+	if !activated {
+		return user
+	}
+	account, err := userStore.GetUserByID(ctx, user.ID())
+	if err != nil {
+		slog.ErrorContext(ctx, "could not read an enrolled account", slogx.Error(err), slog.String("user", string(user.ID())))
+		return user
+	}
+	return account
 }

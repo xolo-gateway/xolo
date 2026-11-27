@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -176,6 +177,8 @@ func (h *Handler) resolveViaUserInfo(ctx context.Context, token string, provider
 		Subject:       info.Subject,
 		Email:         info.Email,
 		EmailVerified: bool(info.EmailVerified),
+		Claims:        info.claims,
+		ClaimsSource:  info.source,
 	}
 	switch {
 	case info.PreferredUsername != "":
@@ -218,7 +221,8 @@ func (h *Handler) introspect(ctx context.Context, token string, provider Provide
 	}
 
 	var out introspectionResponse
-	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+	claims, source, err := decode(resp.Body, &out)
+	if err != nil {
 		return nil, time.Time{}, errors.WithStack(err)
 	}
 
@@ -253,6 +257,8 @@ func (h *Handler) introspect(ctx context.Context, token string, provider Provide
 		Subject:       subject,
 		Email:         out.Email,
 		EmailVerified: bool(out.EmailVerified),
+		Claims:        claims,
+		ClaimsSource:  source,
 	}
 	// A username is no OIDC subject, and a token another issuer minted proves
 	// nothing about the configured one.
@@ -292,6 +298,31 @@ type userInfoResponse struct {
 	EmailVerified     authn.BoolClaim `json:"email_verified"`
 	PreferredUsername string          `json:"preferred_username"`
 	Name              string          `json:"name"`
+
+	claims authn.Claims
+	source authn.ClaimsSource
+}
+
+// decode reads a provider response into out and returns its claims. When some
+// do not fit, it returns a source instead, which keeps the response to make
+// room for the claims the rules compare.
+func decode(body io.Reader, out any) (authn.Claims, authn.ClaimsSource, error) {
+	data, err := io.ReadAll(body)
+	if err != nil {
+		return nil, nil, errors.WithStack(err)
+	}
+	if err := json.Unmarshal(data, out); err != nil {
+		return nil, nil, errors.WithStack(err)
+	}
+	var raw map[string]any
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return nil, nil, errors.WithStack(err)
+	}
+	claims, dropped := authn.NewClaims(raw)
+	if len(dropped) > 0 {
+		return nil, authn.PayloadClaims(data), nil
+	}
+	return claims, nil, nil
 }
 
 // fetchUserInfo calls the OIDC UserInfo endpoint with the access token as a
@@ -318,9 +349,11 @@ func (h *Handler) fetchUserInfo(ctx context.Context, token, userInfoURL string) 
 	}
 
 	var info userInfoResponse
-	if err := json.NewDecoder(resp.Body).Decode(&info); err != nil {
+	claims, source, err := decode(resp.Body, &info)
+	if err != nil {
 		return nil, errors.WithStack(err)
 	}
+	info.claims, info.source = claims, source
 	return &info, nil
 }
 

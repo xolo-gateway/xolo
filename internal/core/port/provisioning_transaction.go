@@ -73,6 +73,13 @@ type ProvisioningBusinessStore interface {
 	CreateAlert(ctx context.Context, alert model.Alert) error
 	UpdateAlert(ctx context.Context, alert model.Alert) error
 	GetAlertByID(ctx context.Context, id model.AlertID) (model.Alert, error)
+	CreateEnrollmentRule(ctx context.Context, rule model.EnrollmentRule) error
+	UpdateEnrollmentRule(ctx context.Context, rule model.EnrollmentRule) error
+	DeleteEnrollmentRule(ctx context.Context, id model.EnrollmentRuleID) error
+	GetEnrollmentRuleByID(ctx context.Context, id model.EnrollmentRuleID) (model.EnrollmentRule, error)
+	RecordEnrollmentApplication(ctx context.Context, rule model.EnrollmentRule, userID model.UserID) (bool, error)
+	CountEnrollmentApplications(ctx context.Context, orgID model.OrgID, userID model.UserID) (int64, error)
+	ClearEnrollmentActivationPending(ctx context.Context, userID model.UserID) error
 	CreateProvider(ctx context.Context, p model.Provider) error
 	SaveProvider(ctx context.Context, p model.Provider) error
 	GetProviderByID(ctx context.Context, id model.ProviderID) (model.Provider, error)

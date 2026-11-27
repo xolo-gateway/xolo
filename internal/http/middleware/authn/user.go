@@ -25,6 +25,14 @@ type User struct {
 	// verified. Only such an email can attach a sign-in to an existing account.
 	EmailVerified bool
 
+	// Claims are the values the identity provider asserted, for the
+	// authenticators that read them from it.
+	Claims Claims
+	// ClaimsSource, when Claims is nil, decodes them on demand: a bearer
+	// token only pays for its claims when a rule compares one. Not stored in
+	// a session, as gob ignores a func field.
+	ClaimsSource ClaimsSource
+
 	// AccountID designates the Xolo account directly. It is set only by the
 	// API-token authenticator, which already resolved the token's owner: the
 	// bridge then never resolves nor provisions anything.
