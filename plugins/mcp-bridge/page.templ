@@ -79,6 +79,7 @@ templ page(pd uiPageData) {
 									Name:        "auth_value",
 									Type:        input.TypePassword,
 									Placeholder: authValuePlaceholder(pd.HasAuthValue),
+									NoTogglePassword: true,
 								})
 								<p class="text-xs text-muted-foreground">
 									if pd.HasAuthValue {
