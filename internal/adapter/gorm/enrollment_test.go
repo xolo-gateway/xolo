@@ -110,6 +110,13 @@ func TestEnrollmentRuleValidation(t *testing.T) {
 			require.ErrorIs(t, f.service.DeleteRule(t.Context(), f.tenant.ID(), model.NewOrgID(), rule.ID()), port.ErrNotFound)
 		})
 
+		t.Run("another tenant can not delete a rule", func(t *testing.T) {
+			rule := f.rule(t, model.EnrollmentKindClaim, "iss", "x", model.RoleMember)
+			require.ErrorIs(t, f.service.DeleteRule(t.Context(), model.NewTenantID(), f.org.ID(), rule.ID()), port.ErrNotFound)
+			_, err := f.service.GetRule(t.Context(), f.org.ID(), rule.ID())
+			require.NoError(t, err)
+		})
+
 		t.Run("a domain is stored normalized", func(t *testing.T) {
 			rule := f.rule(t, model.EnrollmentKindEmailDomain, "", " @Example.ORG", model.RoleMember)
 			require.Equal(t, "example.org", rule.Value())
@@ -135,7 +142,7 @@ func TestEnrollmentMatching(t *testing.T) {
 
 		t.Run("an unverified domain does not match", func(t *testing.T) {
 			user := f.user(t, true)
-			enrollments, err := f.service.Enroll(ctx, f.tenant.ID(), user, model.EnrollmentIdentity{Email: user.Email()})
+			enrollments, _, err := f.service.Enroll(ctx, f.tenant.ID(), user, model.EnrollmentIdentity{Email: user.Email()})
 			require.NoError(t, err)
 			require.Empty(t, enrollments)
 			require.Nil(t, f.membership(t, user))
@@ -143,7 +150,7 @@ func TestEnrollmentMatching(t *testing.T) {
 
 		t.Run("another domain does not match", func(t *testing.T) {
 			user := f.user(t, true)
-			_, err := f.service.Enroll(ctx, f.tenant.ID(), user, model.EnrollmentIdentity{Email: "a@sub.example.org", EmailVerified: true})
+			_, _, err := f.service.Enroll(ctx, f.tenant.ID(), user, model.EnrollmentIdentity{Email: "a@sub.example.org", EmailVerified: true})
 			require.NoError(t, err)
 			require.Nil(t, f.membership(t, user))
 		})
@@ -152,7 +159,7 @@ func TestEnrollmentMatching(t *testing.T) {
 			user := f.user(t, false)
 			identity := verified(user)
 			identity.NewAccount = true
-			enrollments, err := f.service.Enroll(ctx, f.tenant.ID(), user, identity)
+			enrollments, _, err := f.service.Enroll(ctx, f.tenant.ID(), user, identity)
 			require.NoError(t, err)
 			require.Len(t, enrollments, 1)
 			require.True(t, enrollments[0].Activated)
@@ -170,7 +177,7 @@ func TestEnrollmentMatching(t *testing.T) {
 		// on purpose: a rule created afterwards enrolls it, never activates it.
 		t.Run("an existing inactive account stays inactive", func(t *testing.T) {
 			user := f.user(t, false)
-			enrollments, err := f.service.Enroll(ctx, f.tenant.ID(), user, verified(user))
+			enrollments, _, err := f.service.Enroll(ctx, f.tenant.ID(), user, verified(user))
 			require.NoError(t, err)
 			require.Len(t, enrollments, 1)
 			require.False(t, enrollments[0].Activated)
@@ -186,7 +193,7 @@ func TestEnrollmentMatching(t *testing.T) {
 			require.NoError(t, store.CreateRole(ctx, role))
 			f.rule(t, model.EnrollmentKindClaim, "groups", "ops", string(role.ID()))
 			user := f.user(t, true)
-			enrollments, err := f.service.Enroll(ctx, f.tenant.ID(), user, fromIssuer(enrollmentIssuer))
+			enrollments, _, err := f.service.Enroll(ctx, f.tenant.ID(), user, fromIssuer(enrollmentIssuer))
 			require.NoError(t, err)
 			require.Len(t, enrollments, 1)
 			require.False(t, enrollments[0].Activated)
@@ -197,9 +204,9 @@ func TestEnrollmentMatching(t *testing.T) {
 			f := newEnrollmentFixture(t, store)
 			f.rule(t, model.EnrollmentKindClaim, "iss", enrollmentIssuer, model.RoleMember)
 			matching, other := f.user(t, true), f.user(t, true)
-			_, err := f.service.Enroll(ctx, f.tenant.ID(), matching, fromIssuer(enrollmentIssuer))
+			_, _, err := f.service.Enroll(ctx, f.tenant.ID(), matching, fromIssuer(enrollmentIssuer))
 			require.NoError(t, err)
-			_, err = f.service.Enroll(ctx, f.tenant.ID(), other, fromIssuer("https://other.example.test/"))
+			_, _, err = f.service.Enroll(ctx, f.tenant.ID(), other, fromIssuer("https://other.example.test/"))
 			require.NoError(t, err)
 			require.NotNil(t, f.membership(t, matching))
 			require.Nil(t, f.membership(t, other))
@@ -211,7 +218,7 @@ func TestEnrollmentMatching(t *testing.T) {
 				model.WithEnrollmentRuleEnabled(false))
 			require.NoError(t, f.service.SaveRule(ctx, f.tenant.ID(), rule, false))
 			user := f.user(t, true)
-			_, err := f.service.Enroll(ctx, f.tenant.ID(), user, fromIssuer(enrollmentIssuer))
+			_, _, err := f.service.Enroll(ctx, f.tenant.ID(), user, fromIssuer(enrollmentIssuer))
 			require.NoError(t, err)
 			require.Nil(t, f.membership(t, user))
 		})
@@ -221,7 +228,7 @@ func TestEnrollmentMatching(t *testing.T) {
 			foreign := newEnrollmentFixture(t, store)
 			f.rule(t, model.EnrollmentKindClaim, "iss", enrollmentIssuer, model.RoleMember)
 			user := foreign.user(t, true)
-			_, err := foreign.service.Enroll(ctx, foreign.tenant.ID(), user, fromIssuer(enrollmentIssuer))
+			_, _, err := foreign.service.Enroll(ctx, foreign.tenant.ID(), user, fromIssuer(enrollmentIssuer))
 			require.NoError(t, err)
 			require.Nil(t, f.membership(t, user))
 			require.Nil(t, foreign.membership(t, user))
@@ -236,7 +243,7 @@ func TestEnrollmentActsOnce(t *testing.T) {
 		// A service of its own forgets what it settled, like another replica.
 		enroll := func(t *testing.T, f *enrollmentFixture, user model.User) []service.Enrollment {
 			t.Helper()
-			enrollments, err := service.NewEnrollmentService(store, store).Enroll(ctx, f.tenant.ID(), user, fromIssuer(enrollmentIssuer))
+			enrollments, _, err := service.NewEnrollmentService(store, store).Enroll(ctx, f.tenant.ID(), user, fromIssuer(enrollmentIssuer))
 			require.NoError(t, err)
 			return enrollments
 		}
@@ -330,7 +337,7 @@ func TestEnrollmentFailingRuleDoesNotBlockTheOthers(t *testing.T) {
 	require.NoError(t, db.Exec("UPDATE enrollment_rules SET role = ? WHERE id = ?", string(model.NewRoleID()), string(broken.ID())).Error)
 	f.rule(t, model.EnrollmentKindClaim, "groups", "ops", model.RoleMember)
 	user := f.user(t, true)
-	enrollments, err := service.NewEnrollmentService(store, store).Enroll(t.Context(), f.tenant.ID(), user, fromIssuer(enrollmentIssuer))
+	enrollments, _, err := service.NewEnrollmentService(store, store).Enroll(t.Context(), f.tenant.ID(), user, fromIssuer(enrollmentIssuer))
 	require.ErrorIs(t, err, port.ErrInvalid)
 	require.Len(t, enrollments, 1)
 }
@@ -349,7 +356,7 @@ func TestEnrollmentConcurrentRequests(t *testing.T) {
 		for range 4 {
 			wg.Go(func() {
 				<-start
-				enrollments, err := service.NewEnrollmentService(store, store).Enroll(t.Context(), f.tenant.ID(), user, fromIssuer(enrollmentIssuer))
+				enrollments, _, err := service.NewEnrollmentService(store, store).Enroll(t.Context(), f.tenant.ID(), user, fromIssuer(enrollmentIssuer))
 				if err != nil {
 					t.Error(err)
 				}
@@ -373,19 +380,83 @@ func TestEnrollmentActivatesAnAccountAConcurrentRequestEnrolled(t *testing.T) {
 		f.rule(t, model.EnrollmentKindClaim, "iss", enrollmentIssuer, model.RoleMember)
 		user := f.user(t, false)
 
-		enrollments, err := service.NewEnrollmentService(store, store).Enroll(ctx, f.tenant.ID(), user, fromIssuer(enrollmentIssuer))
+		enrollments, _, err := service.NewEnrollmentService(store, store).Enroll(ctx, f.tenant.ID(), user, fromIssuer(enrollmentIssuer))
 		require.NoError(t, err)
 		require.Len(t, enrollments, 1)
 		require.False(t, enrollments[0].Activated)
 
 		creating := fromIssuer(enrollmentIssuer)
 		creating.NewAccount = true
-		enrollments, err = service.NewEnrollmentService(store, store).Enroll(ctx, f.tenant.ID(), user, creating)
+		enrollments, activated, err := service.NewEnrollmentService(store, store).Enroll(ctx, f.tenant.ID(), user, creating)
 		require.NoError(t, err)
 		require.Empty(t, enrollments)
+		require.True(t, activated)
 		account, err := store.GetUserByID(ctx, user.ID())
 		require.NoError(t, err)
 		require.True(t, account.Active())
+	})
+}
+
+// The sign-in that created an account activates it once a member, even when
+// the rule that matches does not enroll it.
+func TestEnrollmentActivatesANewMemberItDoesNotEnroll(t *testing.T) {
+	eachBackend(t, func(t *testing.T, store *xologorm.Store) {
+		ctx := t.Context()
+		creating := fromIssuer(enrollmentIssuer)
+		creating.NewAccount = true
+
+		t.Run("already a member", func(t *testing.T) {
+			f := newEnrollmentFixture(t, store)
+			f.rule(t, model.EnrollmentKindClaim, "iss", enrollmentIssuer, model.RoleOrgAdmin)
+			user := f.user(t, false)
+			require.NoError(t, store.AddMember(ctx, model.NewMembership(user.ID(), f.org.ID())))
+			enrollments, activated, err := service.NewEnrollmentService(store, store).Enroll(ctx, f.tenant.ID(), user, creating)
+			require.NoError(t, err)
+			require.Empty(t, enrollments)
+			require.True(t, activated)
+			require.Empty(t, f.membership(t, user).Roles())
+			account, err := store.GetUserByID(ctx, user.ID())
+			require.NoError(t, err)
+			require.True(t, account.Active())
+		})
+
+		t.Run("enrolled by another rule of the organization", func(t *testing.T) {
+			f := newEnrollmentFixture(t, store)
+			first := f.rule(t, model.EnrollmentKindClaim, "iss", enrollmentIssuer, model.RoleMember)
+			user := f.user(t, false)
+			enrollments, activated, err := service.NewEnrollmentService(store, store).Enroll(ctx, f.tenant.ID(), user, fromIssuer(enrollmentIssuer))
+			require.NoError(t, err)
+			require.Len(t, enrollments, 1)
+			require.False(t, activated)
+			require.NoError(t, f.service.DeleteRule(ctx, f.tenant.ID(), f.org.ID(), first.ID()))
+			f.rule(t, model.EnrollmentKindClaim, "groups", "ops", model.RoleMember)
+
+			enrollments, activated, err = service.NewEnrollmentService(store, store).Enroll(ctx, f.tenant.ID(), user, creating)
+			require.NoError(t, err)
+			require.Empty(t, enrollments)
+			require.True(t, activated)
+			account, err := store.GetUserByID(ctx, user.ID())
+			require.NoError(t, err)
+			require.True(t, account.Active())
+		})
+
+		t.Run("not a member", func(t *testing.T) {
+			f := newEnrollmentFixture(t, store)
+			first := f.rule(t, model.EnrollmentKindClaim, "iss", enrollmentIssuer, model.RoleMember)
+			user := f.user(t, false)
+			_, _, err := service.NewEnrollmentService(store, store).Enroll(ctx, f.tenant.ID(), user, fromIssuer(enrollmentIssuer))
+			require.NoError(t, err)
+			require.NoError(t, store.RemoveMember(ctx, f.membership(t, user).ID()))
+			require.NoError(t, f.service.DeleteRule(ctx, f.tenant.ID(), f.org.ID(), first.ID()))
+			f.rule(t, model.EnrollmentKindClaim, "groups", "ops", model.RoleMember)
+
+			_, activated, err := service.NewEnrollmentService(store, store).Enroll(ctx, f.tenant.ID(), user, creating)
+			require.NoError(t, err)
+			require.False(t, activated)
+			account, err := store.GetUserByID(ctx, user.ID())
+			require.NoError(t, err)
+			require.False(t, account.Active())
+		})
 	})
 }
 
@@ -402,11 +473,11 @@ func TestEnrollmentRetryActivatesANewAccount(t *testing.T) {
 
 	creating := fromIssuer(enrollmentIssuer)
 	creating.NewAccount = true
-	_, err := f.service.Enroll(ctx, f.tenant.ID(), user, creating)
+	_, _, err := f.service.Enroll(ctx, f.tenant.ID(), user, creating)
 	require.ErrorIs(t, err, port.ErrInvalid)
 
 	f.rule(t, model.EnrollmentKindClaim, "groups", "ops", model.RoleMember)
-	enrollments, err := f.service.Enroll(ctx, f.tenant.ID(), user, fromIssuer(enrollmentIssuer))
+	enrollments, _, err := f.service.Enroll(ctx, f.tenant.ID(), user, fromIssuer(enrollmentIssuer))
 	require.NoError(t, err)
 	require.Len(t, enrollments, 1)
 	require.True(t, enrollments[0].Activated)
@@ -425,11 +496,11 @@ func TestEnrollmentRetryOnAnotherReplicaActivatesANewAccount(t *testing.T) {
 
 	creating := fromIssuer(enrollmentIssuer)
 	creating.NewAccount = true
-	_, err := f.service.Enroll(ctx, f.tenant.ID(), user, creating)
+	_, _, err := f.service.Enroll(ctx, f.tenant.ID(), user, creating)
 	require.ErrorIs(t, err, port.ErrInvalid)
 
 	require.NoError(t, db.Exec("UPDATE enrollment_rules SET role = ? WHERE id = ?", role, string(rule.ID())).Error)
-	enrollments, err := service.NewEnrollmentService(store, store).Enroll(ctx, f.tenant.ID(), user, fromIssuer(enrollmentIssuer))
+	enrollments, _, err := service.NewEnrollmentService(store, store).Enroll(ctx, f.tenant.ID(), user, fromIssuer(enrollmentIssuer))
 	require.NoError(t, err)
 	require.Len(t, enrollments, 1)
 	require.True(t, enrollments[0].Activated)
@@ -457,7 +528,7 @@ func TestEnrollmentRetryKeepsADeactivation(t *testing.T) {
 
 	creating := fromIssuer(enrollmentIssuer)
 	creating.NewAccount = true
-	enrollments, err := f.service.Enroll(ctx, f.tenant.ID(), user, creating)
+	enrollments, _, err := f.service.Enroll(ctx, f.tenant.ID(), user, creating)
 	require.ErrorIs(t, err, port.ErrInvalid)
 	require.Len(t, enrollments, 1)
 	require.True(t, enrollments[0].Activated)
@@ -469,7 +540,7 @@ func TestEnrollmentRetryKeepsADeactivation(t *testing.T) {
 	require.NoError(t, store.SaveUser(ctx, deactivated))
 
 	require.NoError(t, db.Exec("UPDATE enrollment_rules SET role = ? WHERE id = ?", model.RoleMember, string(broken.ID())).Error)
-	enrollments, err = service.NewEnrollmentService(store, store).Enroll(ctx, f.tenant.ID(), deactivated, fromIssuer(enrollmentIssuer))
+	enrollments, _, err = service.NewEnrollmentService(store, store).Enroll(ctx, f.tenant.ID(), deactivated, fromIssuer(enrollmentIssuer))
 	require.NoError(t, err)
 	require.Len(t, enrollments, 1)
 	require.False(t, enrollments[0].Activated)
@@ -490,12 +561,12 @@ func TestEnrollmentReenabledRuleActs(t *testing.T) {
 		replica := service.NewEnrollmentService(store, store)
 		require.NoError(t, replica.SaveRule(ctx, f.tenant.ID(), model.UpdateEnrollmentRule(rule, model.WithEnrollmentRuleEnabled(false)), false))
 		user := f.user(t, true)
-		enrollments, err := f.service.Enroll(ctx, f.tenant.ID(), user, fromIssuer(enrollmentIssuer))
+		enrollments, _, err := f.service.Enroll(ctx, f.tenant.ID(), user, fromIssuer(enrollmentIssuer))
 		require.NoError(t, err)
 		require.Empty(t, enrollments)
 
 		require.NoError(t, replica.SaveRule(ctx, f.tenant.ID(), model.UpdateEnrollmentRule(rule, model.WithEnrollmentRuleEnabled(true)), false))
-		enrollments, err = f.service.Enroll(ctx, f.tenant.ID(), user, fromIssuer(enrollmentIssuer))
+		enrollments, _, err = f.service.Enroll(ctx, f.tenant.ID(), user, fromIssuer(enrollmentIssuer))
 		require.NoError(t, err)
 		require.Len(t, enrollments, 1)
 	})
@@ -539,7 +610,7 @@ func TestEnrollmentSettledRequestsCostNothing(t *testing.T) {
 	svc := service.NewEnrollmentService(counting, store)
 	user := f.user(t, true)
 	for range 5 {
-		_, err := svc.Enroll(t.Context(), f.tenant.ID(), user, fromIssuer(enrollmentIssuer))
+		_, _, err := svc.Enroll(t.Context(), f.tenant.ID(), user, fromIssuer(enrollmentIssuer))
 		require.NoError(t, err)
 	}
 	require.EqualValues(t, 1, counting.rules.Load())
@@ -568,7 +639,7 @@ func TestEnrollmentCascades(t *testing.T) {
 		f.rule(t, model.EnrollmentKindClaim, "iss", enrollmentIssuer, model.RoleMember)
 		kept, gone := f.user(t, true), f.user(t, true)
 		for _, user := range []model.User{kept, gone} {
-			_, err := f.service.Enroll(ctx, f.tenant.ID(), user, fromIssuer(enrollmentIssuer))
+			_, _, err := f.service.Enroll(ctx, f.tenant.ID(), user, fromIssuer(enrollmentIssuer))
 			require.NoError(t, err)
 		}
 

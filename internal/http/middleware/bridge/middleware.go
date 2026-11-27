@@ -190,14 +190,9 @@ func enroll(ctx context.Context, enrollment *service.EnrollmentService, userStor
 			}
 		}
 	}
-	enrollments, err := enrollment.Enroll(ctx, tenantID, user, identity)
+	enrollments, activated, err := enrollment.Enroll(ctx, tenantID, user, identity)
 	if err != nil {
 		slog.ErrorContext(ctx, "could not apply enrollment rules", slogx.Error(err), slog.String("user", string(user.ID())))
-	}
-	// A rule may activate an inactive account without enrolling it, when a
-	// concurrent or an earlier request enrolled it.
-	if len(enrollments) == 0 && !created && user.Active() {
-		return user
 	}
 	for _, e := range enrollments {
 		if emitter == nil {
@@ -213,6 +208,11 @@ func enroll(ctx context.Context, enrollment *service.EnrollmentService, userStor
 			model.WithEventAttribute("role", e.Role.Name()),
 			model.WithEventAttribute("activated", strconv.FormatBool(e.Activated)),
 		))
+	}
+	// Only an activation writes the account: an enrollment writes its
+	// membership.
+	if !activated {
+		return user
 	}
 	account, err := userStore.GetUserByID(ctx, user.ID())
 	if err != nil {

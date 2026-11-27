@@ -181,11 +181,25 @@ func (s *EnrollmentService) SaveRule(ctx context.Context, tenantID model.TenantI
 // the record of the accounts it acted on: a member an administrator removed
 // is not enrolled again by a rule created afterwards.
 func (s *EnrollmentService) DeleteRule(ctx context.Context, tenantID model.TenantID, orgID model.OrgID, id model.EnrollmentRuleID) error {
-	if _, err := s.GetRule(ctx, orgID, id); err != nil {
+	err := s.transactions.WithProvisioningTransaction(ctx, func(tx port.ProvisioningTx) error {
+		org, err := tx.GetOrgByID(ctx, orgID)
+		if err != nil {
+			return errors.WithStack(err)
+		}
+		if org.TenantID() != tenantID {
+			return errors.WithStack(port.ErrNotFound)
+		}
+		rule, err := tx.GetEnrollmentRuleByID(ctx, id)
+		if err != nil {
+			return errors.WithStack(err)
+		}
+		if rule.OrgID() != orgID {
+			return errors.WithStack(port.ErrNotFound)
+		}
+		return errors.WithStack(tx.DeleteEnrollmentRule(ctx, id))
+	})
+	if err != nil {
 		return err
-	}
-	if err := s.store.DeleteEnrollmentRule(ctx, id); err != nil {
-		return errors.WithStack(err)
 	}
 	s.rules.Remove(tenantID)
 	return nil
@@ -193,11 +207,12 @@ func (s *EnrollmentService) DeleteRule(ctx context.Context, tenantID model.Tenan
 
 // Enroll applies to the account the rules its identity matches that did not
 // act on it yet. A rule that fails does not stop the others: the error comes
-// with the enrollments that succeeded.
-func (s *EnrollmentService) Enroll(ctx context.Context, tenantID model.TenantID, user model.User, identity model.EnrollmentIdentity) ([]Enrollment, error) {
+// with the enrollments that succeeded. activated tells that a rule activated
+// the account, enrolling it or not.
+func (s *EnrollmentService) Enroll(ctx context.Context, tenantID model.TenantID, user model.User, identity model.EnrollmentIdentity) (enrollments []Enrollment, activated bool, err error) {
 	active, err := s.activeRules(ctx, tenantID)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	var pending []model.EnrollmentRule
 	for _, rule := range active.rules {
@@ -206,17 +221,14 @@ func (s *EnrollmentService) Enroll(ctx context.Context, tenantID model.TenantID,
 		}
 	}
 	if len(pending) == 0 {
-		return nil, nil
+		return nil, false, nil
 	}
 	applied, err := s.store.ListAppliedEnrollmentRules(ctx, user.ID())
 	if err != nil {
-		return nil, errors.WithStack(err)
+		return nil, false, errors.WithStack(err)
 	}
 
-	var (
-		enrollments []Enrollment
-		failures    []error
-	)
+	var failures []error
 	// Only an account still inactive is activated. That its sign-in created
 	// it is stored, not kept in memory: the retry of a rule that fails may
 	// reach another replica. The first rule that activates the account
@@ -232,7 +244,7 @@ func (s *EnrollmentService) Enroll(ctx context.Context, tenantID model.TenantID,
 	default:
 		activate, err = s.store.IsEnrollmentActivationPending(ctx, user.ID(), time.Now().Add(-enrollmentActivationWindow))
 		if err != nil {
-			return nil, errors.WithStack(err)
+			return nil, false, errors.WithStack(err)
 		}
 	}
 	for _, rule := range pending {
@@ -242,21 +254,22 @@ func (s *EnrollmentService) Enroll(ctx context.Context, tenantID model.TenantID,
 			s.settle(user, rule, enrollmentSettledTTL)
 			continue
 		}
-		enrollment, outcome, err := s.apply(ctx, user, rule, activate)
+		result, err := s.apply(ctx, user, rule, activate)
 		if err != nil {
 			s.settle(user, rule, enrollmentRetryDelay)
 			failures = append(failures, errors.Wrapf(err, "enrollment rule %s", rule.ID()))
 			continue
 		}
-		if outcome == ruleWithdrawn {
+		if result.outcome == ruleWithdrawn {
 			// The cached rules are stale: the next request reads them again,
 			// and acts on the rule if it is enabled again by then.
 			s.rules.Remove(tenantID)
 			continue
 		}
 		s.settle(user, rule, enrollmentSettledTTL)
-		if enrollment != nil {
-			enrollments = append(enrollments, *enrollment)
+		activated = activated || result.activated
+		if result.enrollment != nil {
+			enrollments = append(enrollments, *result.enrollment)
 		}
 	}
 	// No rule is left to retry: nothing will activate the account anymore.
@@ -265,7 +278,7 @@ func (s *EnrollmentService) Enroll(ctx context.Context, tenantID model.TenantID,
 			failures = append(failures, errors.WithStack(err))
 		}
 	}
-	return enrollments, stderrors.Join(failures...)
+	return enrollments, activated, stderrors.Join(failures...)
 }
 
 // ComparedClaims returns, per claim name, the values the active rules of a
@@ -319,27 +332,34 @@ const (
 	ruleWithdrawn
 )
 
+// applyResult is what a rule did to an account.
+type applyResult struct {
+	// enrollment is nil when no membership was created.
+	enrollment *Enrollment
+	// activated tells that the rule activated the account, enrolling it or
+	// not.
+	activated bool
+	outcome   applyOutcome
+}
+
 // apply runs one rule in its own transaction, which replays everything the
 // read decided: the rule may have changed, and a concurrent request may have
 // applied it. The application is recorded first, so that the concurrent
-// request waits for this one. It returns nil when no membership was created.
+// request waits for this one.
 // activate allows activating the account, for one this sign-in created.
-func (s *EnrollmentService) apply(ctx context.Context, user model.User, rule model.EnrollmentRule, activate bool) (*Enrollment, applyOutcome, error) {
+func (s *EnrollmentService) apply(ctx context.Context, user model.User, rule model.EnrollmentRule, activate bool) (applyResult, error) {
 	actor := model.ActorFromContext(model.EnsureActor(ctx))
 	ctx = model.WithActor(ctx, model.Actor{UserID: user.ID(), RequestID: actor.RequestID})
 	// The rule may activate the account of the identity signing in, as a
 	// sign-in writes its own account.
 	ctx = model.WithSignInAccount(ctx, user.ID())
 
-	var (
-		result  *Enrollment
-		outcome applyOutcome
-	)
+	var result applyResult
 	err := s.transactions.WithProvisioningTransaction(ctx, func(tx port.ProvisioningTx) error {
-		result, outcome = nil, ruleSettled
+		result = applyResult{outcome: ruleSettled}
 		current, err := tx.GetEnrollmentRuleByID(ctx, rule.ID())
 		if errors.Is(err, port.ErrNotFound) {
-			outcome = ruleWithdrawn
+			result.outcome = ruleWithdrawn
 			return nil
 		}
 		if err != nil {
@@ -353,25 +373,34 @@ func (s *EnrollmentService) apply(ctx context.Context, user model.User, rule mod
 			return nil
 		}
 		if !current.Enabled() || !org.Active() {
-			outcome = ruleWithdrawn
+			result.outcome = ruleWithdrawn
 			return nil
+		}
+		// The account this sign-in created is activated once a member of the
+		// organization, even when the rule does not enroll it.
+		activateMember := func(member bool) error {
+			if !activate {
+				return nil
+			}
+			if !member {
+				if _, err := tx.GetUserOrgMembership(ctx, user.ID(), org.ID()); errors.Is(err, port.ErrNotFound) {
+					return nil
+				} else if err != nil {
+					return errors.WithStack(err)
+				}
+			}
+			activated, err := activateAccount(ctx, tx, user.ID())
+			result.activated = activated
+			return err
 		}
 		recorded, err := tx.RecordEnrollmentApplication(ctx, current, user.ID())
 		if err != nil {
 			return errors.WithStack(err)
 		}
+		// The rule already acted on the account, on a concurrent request
+		// that did not know the account was new.
 		if !recorded {
-			if !activate {
-				return nil
-			}
-			// The rule already enrolled the account this sign-in created.
-			if _, err := tx.GetUserOrgMembership(ctx, user.ID(), org.ID()); errors.Is(err, port.ErrNotFound) {
-				return nil
-			} else if err != nil {
-				return errors.WithStack(err)
-			}
-			_, err := activateAccount(ctx, tx, user.ID())
-			return err
+			return activateMember(false)
 		}
 		// Another rule of the organization already acted on the account: a
 		// member an administrator removed stays out, whichever rule matches.
@@ -380,12 +409,12 @@ func (s *EnrollmentService) apply(ctx context.Context, user model.User, rule mod
 			return errors.WithStack(err)
 		}
 		if applications > 1 {
-			return nil
+			return activateMember(false)
 		}
 		// A member keeps what an administrator gave them, a suspension
 		// included.
 		if _, err := tx.GetUserOrgMembership(ctx, user.ID(), org.ID()); err == nil {
-			return nil
+			return activateMember(true)
 		} else if !errors.Is(err, port.ErrNotFound) {
 			return errors.WithStack(err)
 		}
@@ -400,19 +429,16 @@ func (s *EnrollmentService) apply(ctx context.Context, user model.User, rule mod
 		if err := tx.SetMembershipRoles(ctx, membership.ID(), []model.RoleID{role.ID()}); err != nil {
 			return errors.WithStack(err)
 		}
-		enrollment := &Enrollment{Rule: current, Membership: membership.ID(), Role: role}
-		if activate {
-			if enrollment.Activated, err = activateAccount(ctx, tx, user.ID()); err != nil {
-				return err
-			}
+		if err := activateMember(true); err != nil {
+			return err
 		}
-		result = enrollment
+		result.enrollment = &Enrollment{Rule: current, Membership: membership.ID(), Role: role, Activated: result.activated}
 		return nil
 	})
 	if err != nil {
-		return nil, ruleSettled, err
+		return applyResult{outcome: ruleSettled}, err
 	}
-	return result, outcome, nil
+	return result, nil
 }
 
 // activateAccount activates an inactive account, and tells whether it did.

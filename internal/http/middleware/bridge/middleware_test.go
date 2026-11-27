@@ -69,7 +69,7 @@ func call(t *testing.T, store *xologorm.Store, opts bridge.Options, identity *au
 }
 
 // callWith is call with a distinct invite store, to inject lookup failures.
-func callWith(t *testing.T, store *xologorm.Store, inviteStore port.InviteStore, opts bridge.Options, identity *authn.User) callResult {
+func callWith(t *testing.T, store port.UserStore, inviteStore port.InviteStore, opts bridge.Options, identity *authn.User) callResult {
 	t.Helper()
 
 	result := callResult{emitter: &recordingEmitter{}}
@@ -753,5 +753,50 @@ func TestEnrollmentKeepsAnExistingAccountInactive(t *testing.T) {
 	}
 	if _, err := store.GetUserOrgMembership(t.Context(), existing.ID(), org.ID()); err != nil {
 		t.Fatalf("membership: %v", err)
+	}
+}
+
+// countingUserStore counts the reads of an account by its ID.
+type countingUserStore struct {
+	*xologorm.Store
+	reads int
+}
+
+func (s *countingUserStore) GetUserByID(ctx context.Context, id model.UserID) (model.User, error) {
+	s.reads++
+	return s.Store.GetUserByID(ctx, id)
+}
+
+// Every request of a bearer token comes through the bridge: an inactive
+// account no rule activates costs no read of its own.
+func TestEnrollmentReadsOnlyAnActivatedAccount(t *testing.T) {
+	store, opts, _ := enrollmentSetup(t)
+	inactive := model.NewUser(testTenant.ID(), "oidc", "dave", "dave@example.org", "", false, model.PlatformRoleUser)
+	if err := store.SaveUser(t.Context(), inactive); err != nil {
+		t.Fatal(err)
+	}
+	counting := &countingUserStore{Store: store}
+	identity := &authn.User{Provider: "oidc", Subject: "dave", Issuer: "https://id.example.test/", Email: "dave@example.org"}
+	for range 3 {
+		result := callWith(t, counting, store, opts, identity)
+		if result.user == nil || result.user.ID() != inactive.ID() {
+			t.Fatalf("status=%d user=%v", result.status, result.user)
+		}
+	}
+	if counting.reads != 0 {
+		t.Fatalf("an account nothing changed was read %d times", counting.reads)
+	}
+
+	created := &countingUserStore{Store: store}
+	opts.ActiveByDefault = false
+	result := callWith(t, created, store, opts, &authn.User{
+		Provider: "oidc", Subject: "erin", Issuer: "https://id.example.test/", Email: "erin@example.org",
+		Claims: authn.Claims{"groups": {"staff"}},
+	})
+	if result.user == nil || !result.user.Active() {
+		t.Fatalf("status=%d user=%v", result.status, result.user)
+	}
+	if created.reads != 1 {
+		t.Fatalf("an activated account was read %d times, want 1", created.reads)
 	}
 }

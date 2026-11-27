@@ -97,8 +97,9 @@ func (s *Store) SaveRole(ctx context.Context, role model.Role) error {
 func (s *Store) DeleteRole(ctx context.Context, id model.RoleID) error {
 	return s.recorded(ctx, trackingTree("role", string(id)), func(ctx context.Context, db *gorm.DB) error {
 		// A rule saved concurrently holds a share lock on the role it grants
-		// (provisioningTx.GetRoleByID): this lock waits for it, so the count
-		// below sees the rule.
+		// (provisioningTx.GetRoleByID reads through parentReader, FOR SHARE on
+		// PostgreSQL): this lock waits for it, so the count below sees the
+		// rule.
 		locked := db
 		if isPostgres(db) {
 			locked = db.Clauses(clause.Locking{Strength: "UPDATE"})
