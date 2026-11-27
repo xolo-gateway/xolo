@@ -1,0 +1,44 @@
+# Navegación del sitio, leída por xolo-gateway/docs al preparar las fuentes.
+# Una página ausente de esta lista se publica pero no aparece en el menú.
+nav = [
+  { "Inicio" = "index.md" },
+  { "Descubrir" = [
+    { "Visión general" = "decouvrir/index.md" },
+    "decouvrir/organisation-et-permissions.md",
+    "decouvrir/fournisseurs-modeles-pipeline.md",
+    "decouvrir/budgets-et-quotas.md",
+    "decouvrir/estimation-energetique.md",
+  ] },
+  { "Usar" = [
+    { "Visión general" = "utilisation/index.md" },
+    "utilisation/tableau-de-bord.md",
+    "utilisation/evenements.md",
+  ] },
+  { "Administrar una organización" = [
+    { "Visión general" = "organisation/index.md" },
+    { "Gobernanza" = [
+      "organisation/membres.md",
+      "organisation/invitations.md",
+      "organisation/roles.md",
+      "organisation/equipes.md",
+      "organisation/budget.md",
+    ] },
+    { "Pasarela" = [
+      "organisation/fournisseurs.md",
+      "organisation/modeles-virtuels.md",
+      "organisation/middlewares.md",
+      "organisation/applications.md",
+      "organisation/parametres.md",
+    ] },
+  ] },
+  { "Operar la instancia" = [
+    { "Visión general" = "exploitation/index.md" },
+    "exploitation/installation.md",
+    "exploitation/configuration.md",
+    "exploitation/provisioning.md",
+  ] },
+  { "Referencia" = [
+    "reference/eventql.md",
+    "developpement/plugins.md",
+  ] },
+]

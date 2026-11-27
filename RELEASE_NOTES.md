@@ -79,9 +79,9 @@ unknown window is left out, and a card without any known window has no
 operator set. No migration.
 
 Details:
-[English](docs/en/administration/organisation/application/application.md#capabilities-and-pricing-of-the-listed-models),
-[Français](docs/fr/administration/organisation/application/application.md#capacites-et-tarif-des-modeles-listes),
-[Español](docs/es/administration/organisation/application/application.md#capacidades-y-precio-de-los-modelos-listados).
+[English](docs/en/organisation/applications.md#capabilities-and-pricing-of-the-listed-models),
+[Français](docs/fr/organisation/applications.md#capacites-et-tarif-des-modeles-listes),
+[Español](docs/es/organisation/applications.md#capacidades-y-precio-de-los-modelos-listados).
 
 # Unreleased — LLM models and personal models in the provisioning API
 
@@ -106,13 +106,13 @@ Migration `202610230001` projects the existing models and personal models; it
 requires every server to be stopped.
 
 Details:
-[English](docs/en/administration/provisioning/provisioning.md#llm-models),
-[Français](docs/fr/administration/provisioning/provisioning.md#modeles-llm),
-[Español](docs/es/administration/provisioning/provisioning.md#modelos-llm);
+[English](docs/en/exploitation/provisioning.md#llm-models),
+[Français](docs/fr/exploitation/provisioning.md#modeles-llm),
+[Español](docs/es/exploitation/provisioning.md#modelos-llm);
 personal models:
-[English](docs/en/administration/provisioning/provisioning.md#personal-models),
-[Français](docs/fr/administration/provisioning/provisioning.md#modeles-personnels),
-[Español](docs/es/administration/provisioning/provisioning.md#modelos-personales).
+[English](docs/en/exploitation/provisioning.md#personal-models),
+[Français](docs/fr/exploitation/provisioning.md#modeles-personnels),
+[Español](docs/es/exploitation/provisioning.md#modelos-personales).
 
 # Unreleased — virtual models and middlewares in the provisioning API
 
@@ -129,9 +129,9 @@ to a missing node (`422`). Migration `202610220003` projects the existing
 virtual models and middlewares; it requires every server to be stopped.
 
 Details:
-[English](docs/en/administration/provisioning/provisioning.md#virtual-models-and-middlewares),
-[Français](docs/fr/administration/provisioning/provisioning.md#modeles-virtuels-et-middlewares),
-[Español](docs/es/administration/provisioning/provisioning.md#modelos-virtuales-y-middlewares).
+[English](docs/en/exploitation/provisioning.md#virtual-models-and-middlewares),
+[Français](docs/fr/exploitation/provisioning.md#modeles-virtuels-et-middlewares),
+[Español](docs/es/exploitation/provisioning.md#modelos-virtuales-y-middlewares).
 
 # Unreleased — model catalogue declarations
 
@@ -145,9 +145,9 @@ other fields are unchanged; `pricing` is in currency units per 1,000 tokens.
 No migration.
 
 Details:
-[English](docs/en/administration/organisation/application/application.md#capabilities-and-pricing-of-the-listed-models),
-[Français](docs/fr/administration/organisation/application/application.md#capacites-et-tarif-des-modeles-listes),
-[Español](docs/es/administration/organisation/application/application.md#capacidades-y-precio-de-los-modelos-listados).
+[English](docs/en/organisation/applications.md#capabilities-and-pricing-of-the-listed-models),
+[Français](docs/fr/organisation/applications.md#capacites-et-tarif-des-modeles-listes),
+[Español](docs/es/organisation/applications.md#capacidades-y-precio-de-los-modelos-listados).
 
 # Unreleased — user quota API
 
@@ -160,9 +160,9 @@ token included, needs no permission, and refuses applications. Organization,
 team and member budgets are not reported. No migration.
 
 Details:
-[English](docs/en/concepts/budgets-et-quotas.md#reading-your-own-budget),
-[Français](docs/fr/concepts/budgets-et-quotas.md#consulter-son-propre-budget),
-[Español](docs/es/concepts/budgets-et-quotas.md#consultar-su-propio-presupuesto).
+[English](docs/en/decouvrir/budgets-et-quotas.md#reading-your-own-budget),
+[Français](docs/fr/decouvrir/budgets-et-quotas.md#consulter-son-propre-budget),
+[Español](docs/es/decouvrir/budgets-et-quotas.md#consultar-su-propio-presupuesto).
 
 # Unreleased — durable OIDC sessions and back-channel logout
 
@@ -190,9 +190,9 @@ once more. Stop every old replica before migrating: an old server accepts
 revoked sessions and issues cookies the new ones refuse.
 
 Details:
-[English](docs/en/administration/installation/configuration.md#oidc-sessions-and-back-channel-logout),
-[Français](docs/fr/administration/installation/configuration.md#sessions-oidc-et-deconnexion-back-channel),
-[Español](docs/es/administration/installation/configuration.md#sesiones-oidc-y-cierre-de-sesion-back-channel).
+[English](docs/en/exploitation/configuration.md#oidc-sessions-and-back-channel-logout),
+[Français](docs/fr/exploitation/configuration.md#sessions-oidc-et-deconnexion-back-channel),
+[Español](docs/es/exploitation/configuration.md#sesiones-oidc-y-cierre-de-sesion-back-channel).
 
 # Unreleased — declared member identities
 
@@ -212,9 +212,9 @@ identity is declared. Stop every old replica before migrating: an old server
 ignores declared identities at sign-in.
 
 Details:
-[English](docs/en/administration/provisioning/provisioning.md#declared-identity),
-[Français](docs/fr/administration/provisioning/provisioning.md#identite-declaree),
-[Español](docs/es/administration/provisioning/provisioning.md#identidad-declarada).
+[English](docs/en/exploitation/provisioning.md#declared-identity),
+[Français](docs/fr/exploitation/provisioning.md#identite-declaree),
+[Español](docs/es/exploitation/provisioning.md#identidad-declarada).
 
 # Unreleased — durable signed webhooks
 
@@ -233,9 +233,9 @@ every replica before enabling webhooks: an old replica deleting a tenant would
 leave its subscriptions behind.
 
 Details:
-[English](docs/en/administration/provisioning/provisioning.md#webhooks),
-[Français](docs/fr/administration/provisioning/provisioning.md#webhooks),
-[Español](docs/es/administration/provisioning/provisioning.md#webhooks).
+[English](docs/en/exploitation/provisioning.md#webhooks),
+[Français](docs/fr/exploitation/provisioning.md#webhooks),
+[Español](docs/es/exploitation/provisioning.md#webhooks).
 
 # Unreleased — provisioning reads, conditional writes and event feed
 
@@ -253,9 +253,9 @@ emitting events, and cannot be rolled back. Events are kept for
 `XOLO_PROVISIONNING_API_EVENT_RETENTION` (default `720h`).
 
 Details:
-[English](docs/en/administration/provisioning/provisioning.md#reads-conditions-and-synchronization),
-[Français](docs/fr/administration/provisioning/provisioning.md#lectures-conditions-et-synchronisation),
-[Español](docs/es/administration/provisioning/provisioning.md#lecturas-condiciones-y-sincronizacion).
+[English](docs/en/exploitation/provisioning.md#reads-conditions-and-synchronization),
+[Français](docs/fr/exploitation/provisioning.md#lectures-conditions-et-synchronisation),
+[Español](docs/es/exploitation/provisioning.md#lecturas-condiciones-y-sincronizacion).
 
 # Unreleased — UUID identity migration
 
@@ -278,9 +278,9 @@ checks compatibility without changing the schema. Automatic migration remains
 enabled by default. Downgrading after conversion requires the pre-upgrade backup.
 
 Upgrade instructions:
-[English](docs/en/administration/installation/uuid-migration.md),
-[Français](docs/fr/administration/installation/uuid-migration.md),
-[Español](docs/es/administration/installation/uuid-migration.md).
+[English](https://xolo-gateway.org/en/0.98.0/administration/installation/uuid-migration/),
+[Français](https://xolo-gateway.org/0.98.0/administration/installation/uuid-migration/),
+[Español](https://xolo-gateway.org/es/0.98.0/administration/installation/uuid-migration/).
 
 Recovery plans now use version 2: UUID mappings and explicit serialized corrections
 only. Regenerate version 1 plans against the stopped pre-migration database and

@@ -561,12 +561,12 @@ func alertRow(slug string, a model.Alert, view string) templ.Component {
 				}
 				ctx = templ.InitializeContext(ctx)
 				if a.Scope() == model.AlertScopePersonal {
-					templ_7745c5c3_Err = common.Badge(common.ToneNeutral, "perso").Render(ctx, templ_7745c5c3_Buffer)
+					templ_7745c5c3_Err = common.Badge(common.ToneNeutral, i18n.T(ctx, "org.alerts.scope_badge.personal")).Render(ctx, templ_7745c5c3_Buffer)
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 				} else {
-					templ_7745c5c3_Err = common.Badge(common.ToneInfo, "org").Render(ctx, templ_7745c5c3_Buffer)
+					templ_7745c5c3_Err = common.Badge(common.ToneInfo, i18n.T(ctx, "org.alerts.scope_badge.org")).Render(ctx, templ_7745c5c3_Buffer)
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
