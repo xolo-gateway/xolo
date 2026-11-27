@@ -1653,7 +1653,7 @@
   "plugin.script_processor.script.title": "Script Tengo",
   "plugin.script_processor.title": "Procesador de solicitudes con script",
   "plugin.system_prompt.append.label": "Concatenar con el prompt de sistema existente (si no, reemplazar)",
-  "plugin.system_prompt.intro": "Inyecta un prompt de sistema fijo en los mensajes de las solicitudes LLM. En modo \"reemplazar\", se eliminan los mensajes de sistema del cliente; en modo \"añadir\", se concatena el primer mensaje de sistema del cliente (si existe).",
+  "plugin.system_prompt.intro": "Inyecta un prompt de sistema fijo en los mensajes de las solicitudes LLM. En modo \"reemplazar\", se eliminan los mensajes de sistema del cliente; en modo \"añadir\", se conservan los mensajes de sistema del cliente y el prompt se añade a continuación. En ambos casos, la conversación reescrita contiene un único mensaje de sistema, al inicio.",
   "plugin.system_prompt.prompt.label": "Contenido del prompt (se enviará como mensaje de sistema)",
   "plugin.system_prompt.prompt.placeholder": "Usted es un asistente útil y conciso...",
   "plugin.system_prompt.prompt.title": "Prompt de sistema",
