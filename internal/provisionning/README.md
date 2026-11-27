@@ -1324,5 +1324,5 @@ In production, use a managed certificate authority (Vault, cert-manager, interna
 ## User documentation
 
 User-facing versions of this page live in
-`docs/{en,fr,es}/administration/provisioning/provisioning.md`, e.g.
+`docs/{en,fr,es}/exploitation/provisioning.md`, e.g.
 [`docs/fr/exploitation/provisioning.md`](../../docs/fr/exploitation/provisioning.md).

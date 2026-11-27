@@ -14,7 +14,7 @@ Cette page mène d'une machine vide à une première requête qui traverse Xolo,
 
 Xolo est un seul binaire, avec une base SQLite par défaut. Il lui faut une clé secrète, qui chiffre les clés API des fournisseurs, l'adresse sous laquelle il est joint, et de quoi connecter un premier administrateur.
 
-L'exemple utilise GitHub. Créez une application OAuth dans les paramètres développeur de GitHub, avec `http://localhost:3002` comme adresse de l'application, puis relevez son identifiant et son secret. L'URL de retour à déclarer et les autres fournisseurs sont décrits dans [Configuration](../exploitation/configuration.md).
+L'exemple utilise GitHub. Créez une application OAuth dans les paramètres développeur de GitHub, avec `http://localhost:3002` comme adresse de l'application et `http://localhost:3002/auth/oidc/providers/github/callback` comme URL de retour (*Authorization callback URL*), puis relevez son identifiant et son secret. Les autres fournisseurs d'identité sont décrits dans [Configuration](../exploitation/configuration.md).
 
 ```bash
 docker run -d \

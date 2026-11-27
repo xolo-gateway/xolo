@@ -155,30 +155,19 @@ Xolo adds a `xolo` object:
 
 ## Integration with OpenWebUI
 
-OpenWebUI can be configured to use Xolo as its LLM backend.
+OpenWebUI connects to Xolo like to any OpenAI-compatible API: give it the Xolo base URL and an application token.
 
 ### Configuration
 
-In the OpenWebUI configuration file (`openwebui.ini` or environment variables):
-
-```ini
-# Xolo base URL
-XOLO_BASE_URL=https://xolo.example.com
-
-# API token of the Xolo application
-XOLO_API_TOKEN=xlo_your_application_token
-
-# Default model (optional)
-DEFAULT_MODEL=my-org/gpt-4o
-```
+In the OpenWebUI administration, add an OpenAI connection with the URL `https://xolo.example.com/api/v1` and the application token as the key.
 
 ### Environment variables
 
-You can also use environment variables:
+The same connection can be declared when OpenWebUI starts:
 
 ```bash
-export XOLO_BASE_URL=https://xolo.example.com
-export XOLO_API_TOKEN=xlo_your_application_token
+OPENAI_API_BASE_URL=https://xolo.example.com/api/v1
+OPENAI_API_KEY=xlo_your_application_token
 ```
 
 ### Checking
