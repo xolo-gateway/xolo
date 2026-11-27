@@ -870,7 +870,7 @@
   "org.members.builtin_role.user": "Usuario",
   "org.alerts.subtitle": "Una alerta se activa cuando el número de eventos que coinciden con su consulta supera su umbral en su ventana.",
   "org.alerts.subtitle_org": "Una alerta se activa cuando el número de eventos que coinciden con su consulta supera su umbral en su ventana. Usted gestiona las alertas de la organización (ámbito \"org\").",
-  "org.alerts.subtitle_own": "Una alerta se activa cuando el número de eventos que coinciden con su consulta supera su umbral en su ventana. Sus alertas cubren sus propios eventos (ámbito \"perso\").",
+  "org.alerts.subtitle_own": "Una alerta se activa cuando el número de eventos que coinciden con su consulta supera su umbral en su ventana. Sus alertas cubren sus propios eventos (ámbito \"personal\").",
   "org.quota.field.daily": "Diario",
   "org.quota.field.monthly": "Mensual",
   "org.quota.field.yearly": "Anual",

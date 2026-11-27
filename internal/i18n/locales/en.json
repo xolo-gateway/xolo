@@ -870,7 +870,7 @@
   "org.members.builtin_role.user": "User",
   "org.alerts.subtitle": "An alert fires when the number of events matching its query crosses its threshold over its window.",
   "org.alerts.subtitle_org": "An alert fires when the number of events matching its query crosses its threshold over its window. You manage the organisation's alerts (\"org\" scope).",
-  "org.alerts.subtitle_own": "An alert fires when the number of events matching its query crosses its threshold over its window. Your alerts cover your own events (\"perso\" scope).",
+  "org.alerts.subtitle_own": "An alert fires when the number of events matching its query crosses its threshold over its window. Your alerts cover your own events (\"personal\" scope).",
   "org.quota.field.daily": "Daily",
   "org.quota.field.monthly": "Monthly",
   "org.quota.field.yearly": "Yearly",
