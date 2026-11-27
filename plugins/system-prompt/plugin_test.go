@@ -329,7 +329,7 @@ func TestPreRequest_AppendMode_MovesSystemMessageToHead(t *testing.T) {
 // TestPreRequest_AppendMode_KeepsTextOfContentParts covers a client system
 // message whose content is an array of content parts: its text used to be
 // lost, the message ending up as "\n\nconfigured prompt". The parts are read
-// as the proxy reads them: text parts (and bare strings) concatenated without
+// as the proxy reads them: text (and bare strings) concatenated without
 // a separator.
 func TestPreRequest_AppendMode_KeepsTextOfContentParts(t *testing.T) {
 	input := mustMarshal(t, []map[string]any{
@@ -346,6 +346,30 @@ func TestPreRequest_AppendMode_KeepsTextOfContentParts(t *testing.T) {
 
 	assertMessages(t, msgs, []map[string]any{
 		{"role": "system", "content": "part one, part two and three\n\nconfigured prompt"},
+		{"role": "user", "content": "hello"},
+	})
+}
+
+// TestPreRequest_AppendMode_KeepsTextOfUntypedAndUnknownParts pins the parity
+// with the proxy on the parts that do not declare a text type: a part with no
+// type but a "text" field, and a part of an unknown type carrying "text",
+// keep their text; a known non-textual part drops its "text" field.
+func TestPreRequest_AppendMode_KeepsTextOfUntypedAndUnknownParts(t *testing.T) {
+	input := mustMarshal(t, []map[string]any{
+		{"role": "system", "content": []any{map[string]any{"text": "untyped"}}},
+		{"role": "system", "content": []any{
+			map[string]any{"type": "custom_text", "text": "unknown, "},
+			map[string]any{"type": "image", "text": "caption", "source": map[string]any{"type": "url", "url": "https://example.test/a.png"}},
+			map[string]any{"type": "refusal", "refusal": "no"},
+			map[string]any{"text": "kept"},
+		}},
+		{"role": "user", "content": "hello"},
+	})
+	out := runPreRequest(t, `{"system_prompt":"configured prompt","append":true}`, input)
+	msgs := decodeMessages(t, out)
+
+	assertMessages(t, msgs, []map[string]any{
+		{"role": "system", "content": "untyped\n\nunknown, kept\n\nconfigured prompt"},
 		{"role": "user", "content": "hello"},
 	})
 }

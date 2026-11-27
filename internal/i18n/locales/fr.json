@@ -1653,7 +1653,7 @@
   "plugin.script_processor.script.title": "Script Tengo",
   "plugin.script_processor.title": "Processeur de requête scripté",
   "plugin.system_prompt.append.label": "Concaténer avec le prompt système existant (sinon, remplacer)",
-  "plugin.system_prompt.intro": "Injecte un prompt système fixe dans les messages de requête LLM. En mode \"remplacer\", les éventuels messages système du client sont supprimés ; en mode \"ajouter\", les messages système du client sont conservés et le prompt est ajouté à leur suite. Dans les deux cas, le modèle reçoit un seul message système, en tête de la conversation.",
+  "plugin.system_prompt.intro": "Injecte un prompt système fixe dans les messages de requête LLM. En mode \"remplacer\", les éventuels messages système du client sont supprimés ; en mode \"ajouter\", les messages système du client sont conservés et le prompt est ajouté à leur suite. Dans les deux cas, la conversation réécrite contient un seul message système, en tête.",
   "plugin.system_prompt.prompt.label": "Contenu du prompt (sera envoyé comme message système)",
   "plugin.system_prompt.prompt.placeholder": "Tu es un assistant utile et concis...",
   "plugin.system_prompt.prompt.title": "Prompt système",

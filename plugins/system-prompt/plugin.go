@@ -115,10 +115,18 @@ func splitSystemMessages(messages []map[string]interface{}) (prompts []string, r
 
 // textContent returns the text of a message content, which the OpenAI
 // format allows either as a plain string or as an array of content parts
-// ({"type":"text","text":"..."}). It reads the parts as the proxy does
-// (genai's extractContentParts): text parts and bare strings, concatenated
-// without a separator, so a folded prompt reads as it would untouched. Parts
-// that carry no text are ignored.
+// ({"type":"text","text":"..."}). It keeps the text the proxy keeps (genai's
+// extractContentParts), concatenated without a separator so a folded prompt
+// reads as it would untouched:
+//
+//   - bare strings;
+//   - the "text" of a text part ("text", "input_text", "output_text");
+//   - the "text" of a part that declares no type, or a type the proxy does not
+//     know: the proxy classifies the first by its shape, where a "text" field
+//     makes it a text part, and keeps the text of the second.
+//
+// A part of a known non-textual kind (an image, an audio clip, a file, a
+// structural block) contributes nothing, even if it carries a "text" field.
 func textContent(content interface{}) string {
 	switch c := content.(type) {
 	case string:
@@ -130,15 +138,25 @@ func textContent(content interface{}) string {
 			case string:
 				b.WriteString(p)
 			case map[string]interface{}:
-				switch p["type"] {
-				case "text", "input_text", "output_text":
-					text, _ := p["text"].(string)
-					b.WriteString(text)
+				if partType, _ := p["type"].(string); nonTextPartTypes[partType] {
+					continue
 				}
+				text, _ := p["text"].(string)
+				b.WriteString(text)
 			}
 		}
 		return b.String()
 	default:
 		return ""
 	}
+}
+
+// nonTextPartTypes lists the declared content part types whose payload is
+// not text for the proxy: attachments and structural blocks. Any other part
+// is read for its "text" field.
+var nonTextPartTypes = map[string]bool{
+	"image_url": true, "input_image": true, "image": true,
+	"input_audio": true, "audio": true,
+	"file": true, "input_file": true, "document": true,
+	"refusal": true, "thinking": true, "redacted_thinking": true, "tool_use": true, "tool_result": true,
 }

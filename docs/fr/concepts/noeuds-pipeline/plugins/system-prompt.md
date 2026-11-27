@@ -22,12 +22,14 @@ Ce plugin ouvre son propre écran de configuration dans le panneau de droite.
 
 ## Comportement
 
-Quel que soit le mode, le modèle reçoit **un seul message système, en tête de la conversation**, même si le client en envoie plusieurs.
+Quel que soit le mode, la conversation réécrite par le plugin contient **un seul message système, en tête**, même si le client en envoie plusieurs.
 
 - **Remplacement** (`append: false`) : les messages système du client sont supprimés ; seul le prompt configuré est envoyé.
 - **Ajout** (`append: true`) : les messages système du client sont regroupés dans l'ordre, séparés par une ligne vide, et le prompt configuré est ajouté à la fin. Il a donc le dernier mot.
 
-Un message système envoyé par le client au milieu de la conversation est remonté en tête. Seul le texte des messages système est conservé : une partie non textuelle (une image, par exemple) est ignorée.
+Un message système envoyé par le client au milieu de la conversation est remonté en tête. Seul le texte des messages système est conservé, lu comme le proxy le lit : les chaînes, les parties textuelles (`text`, `input_text`, `output_text`), et le champ `text` d'une partie sans type déclaré ou d'un type inconnu. Une partie non textuelle (une image, un fichier, par exemple) est ignorée.
+
+> **Attention** : sur l'endpoint au format Anthropic `/v1/messages`, le champ `system` de premier niveau n'appartient pas à la conversation que le plugin réécrit : il est rajouté devant elle par l'adaptateur. Un client qui le renseigne fait donc encore parvenir deux prompts système au fournisseur. Ce défaut est suivi par le ticket [#114](https://github.com/xolo-gateway/xolo/issues/114).
 
 ## En pratique
 
