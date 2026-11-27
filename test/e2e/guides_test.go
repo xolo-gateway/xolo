@@ -23,7 +23,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// The virtual model guides of the documentation (docs/fr/utilisation/guides)
+// The virtual model guides of the documentation (docs/fr/guides)
 // each ship a bundle. The harness creates one virtual model per bundle, as
 // published, so these tests fail as soon as a guide stops describing what the
 // gateway does. The only change made to a bundle is the address of its MCP
@@ -32,10 +32,10 @@ import (
 // guideBundles maps each guide bundle, relative to the guides directory, to
 // the proxy name the bundle declares.
 var guideBundles = map[string]string{
-	"donnees-personnelles/assistant-confidentiel.bundle.json": vmGuidePersonalData,
-	"agent-outille/agent-documentaire.bundle.json":            vmGuideAgent,
-	"selection-automatique/auto.bundle.json":                  vmGuideAuto,
-	"evenements-personnalises/assistant-budget.bundle.json":   vmGuideBudget,
+	"assistant-confidentiel.bundle.json": vmGuidePersonalData,
+	"agent-documentaire.bundle.json":     vmGuideAgent,
+	"auto.bundle.json":                   vmGuideAuto,
+	"assistant-budget.bundle.json":       vmGuideBudget,
 }
 
 const (
@@ -62,7 +62,7 @@ func guidesDir() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(root, "docs", "fr", "utilisation", "guides"), nil
+	return filepath.Join(root, "docs", "fr", "guides"), nil
 }
 
 // createGuideVirtualModels creates a virtual model from each guide bundle,

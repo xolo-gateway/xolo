@@ -380,7 +380,8 @@ carry no representation and no personal data:
 
 1. Capture a cursor with `GET /v1/events/cursor`, **before** the inventory.
 2. Enumerate `/v1/tenants`, then the domains, organizations, members and
-   memberships of each tenant.
+   memberships of each tenant, the teams of each organization with their
+   memberships, and the [business resources](#business-resources) you follow.
 3. Poll `GET /v1/events?cursor=`; for each event, read the resource again and
    apply its current representation (`404` means it is gone). Deduplicate
    events by `(source, id)`; never let a read issued earlier overwrite the
@@ -409,7 +410,7 @@ removes events: deleting resources never invalidates other consumers' cursors.
   its very end, and holds it until commit; on PostgreSQL it is an advisory lock
   next to a sequence. Reads, no-ops, sign-ins that change nothing and the LLM
   proxy never take it. Projection changes are thereby serialized for the short
-  time of their commit: this trades write throughput for a gapless feed.
+  time of their commit: this trades write throughput for a feed in which a reader never skips a committed event. Positions can still have gaps.
 
 ## Webhooks
 
@@ -520,10 +521,11 @@ the process with a firewall as well.
 | `backpressure` | The queue capacity is reached: preparation pauses at its position and resumes when deliveries finish. Only waiting and in-flight deliveries count, and a subscription can only fill its own share |
 | `history_lost` | The [retention](#retention) removed events the subscription had not prepared yet, typically after a long pause. It never skips them silently: rebuild the consumer, then reset the subscription |
 
-A suspended tenant receives nothing: its subscriptions pause and resume at
-reactivation, the suspension included. A pause — disabled subscription or
+A suspended tenant receives nothing: its subscriptions keep their position and,
+at reactivation, also deliver the events published during the suspension. A pause — disabled subscription or
 suspended tenant — longer than the retention ends in `history_lost`, since
-the purged events can no longer be told apart. Deleting a tenant deletes its
+the events removed by the retention can no longer be read, so the instance
+cannot tell whether one of them concerned the subscription. Deleting a tenant deletes its
 subscriptions and deliveries. The retention of the whole feed is the only
 thing that can move a subscription to `history_lost`.
 
@@ -822,7 +824,7 @@ control plane (this listener), or both.
 | `XOLO_OWNERSHIP` | — | Comma-separated `family=owner` pairs. Families: `tenant`, `tenant_domain`, `organization`, `member`, `organization_membership`, `team`, `team_membership`, `subscription`, and the business families `provider`, `custom_role`, `virtual_model`, `middleware`, `application`, `quota`, `alert`; `team` also governs the team settings. Owners: `shared`, `local`, `control_plane`. Omitted families are `shared`; an unknown family or owner prevents startup |
 
 ```dotenv
-XOLO_OWNERSHIP=tenant=control_plane,tenant_domain=control_plane,organization=control_plane,member=control_plane,organization_membership=control_plane,subscription=control_plane
+XOLO_OWNERSHIP=tenant=control_plane,tenant_domain=control_plane,organization=control_plane,member=control_plane,organization_membership=control_plane,team=control_plane,team_membership=control_plane,subscription=control_plane
 ```
 
 - `shared`, the default, keeps the previous behavior: both write.
@@ -911,7 +913,7 @@ taking any lock. The format, `xolo-adoption/1`, is NDJSON
 (`application/x-ndjson`):
 
 ```text
-{"version":"xolo-adoption/1","contract":"0.1.0-draft.3","source":"urn:uuid:…","c0":"…","families":["tenant","tenant_domain","organization","member","organization_membership","team","team_membership","provider","custom_role","team_settings","application","quota","alert"]}
+{"version":"xolo-adoption/1","contract":"0.1.0-draft.3","source":"urn:uuid:…","c0":"…","families":["tenant","tenant_domain","organization","member","organization_membership","team","team_membership","provider","llm_model","custom_role","virtual_model","middleware","personal_virtual_model","team_settings","application","quota","alert"]}
 {"family":"tenant","key":{"tenant_id":"…"},"representation":{…},"etag":"W/\"42\""}
 …
 {"count":128,"complete":true,"sha256":"…"}
@@ -928,8 +930,10 @@ taking any lock. The format, `xolo-adoption/1`, is NDJSON
 - An interrupted export lacks its last line, and verification rejects it.
 - The export holds contact emails and declared identities: protect it like the
   database. It holds no undeclared sign-in link, session, token, secret nor
-  audit entry. `verify` also accepts an export listing only the five common
-  families, made before the business families.
+  audit entry. `verify` also accepts an export that declares only some of the
+  business families, or none, provided it declares the seven common families
+  in order. An export with five common families, made before teams, is
+  rejected.
 
 `xolo-adoption verify -in <file>` (`-in -` reads the standard input) checks the
 checksum, the count, the version and contract of the header, the syntax of the
@@ -1125,7 +1129,7 @@ Every error uses the same envelope:
 | `resource_deleted` | 409 | The resource, or a resource holding it, is frozen by its deletion |
 | `lifecycle_disabled` | 409 | Deleting a tenant, an organization or a member while `XOLO_LIFECYCLE_ENABLED` is off |
 | `export_mismatch` | 409 | The confirmed digest is not the one of the current export, or another digest is already confirmed |
-| `purge_not_ready` | 409 | The deletion is not confirmed, or its retention has not elapsed |
+| `purge_not_ready` | 409 | The deletion is not confirmed, its retention has not elapsed, or its tenant is itself deleted. Only the purge worker meets it today: no route returns it |
 | `not_found` | 404 | Unknown resource or route, or a resource belonging to another tenant or organization |
 | `parent_not_found` | 404 | The tenant, organization or member a resource hangs from does not exist in that scope |
 | `method_not_allowed` | 405 | Known resource, wrong method |
@@ -1227,7 +1231,9 @@ operation with bounded, cancelable backoff. Only a transaction changing a projec
 takes the feed lock, at its very end (see [Storage and costs](#storage-and-costs)).
 
 `mutation_audits` records one before/after pair per resource actually changed
-(tenants, domains, organizations, users, memberships and roles), including role associations
+(tenants, domains, organizations, users, memberships, roles, teams and their
+settings, team memberships, applications, quotas, alerts, providers, LLM
+models, virtual models, middlewares and personal virtual models), including role associations
 and cascading deletion. Repeated changes to a resource coalesce within the
 transaction; a no-op produces no audit. States exclude secrets and technical
 timestamps. Audits retain the tenant/organization scope after resource deletion.
@@ -1319,4 +1325,4 @@ In production, use a managed certificate authority (Vault, cert-manager, interna
 
 User-facing versions of this page live in
 `docs/{en,fr,es}/administration/provisioning/provisioning.md`, e.g.
-[`docs/fr/administration/provisioning/provisioning.md`](../../docs/fr/administration/provisioning/provisioning.md).
+[`docs/fr/exploitation/provisioning.md`](../../docs/fr/exploitation/provisioning.md).

@@ -69,7 +69,7 @@ En cas d'échec de la mise en place, le journal du serveur est imprimé.
 
 ### Guides de la documentation (`guides_test.go`)
 
-Chaque guide de `docs/fr/utilisation/guides` fournit un bundle. Le harnais
+Chaque guide de `docs/fr/guides` fournit un bundle. Le harnais
 crée un modèle virtuel par bundle, tel que publié, après la validation qu'un
 import lui appliquerait ; seule l'adresse du serveur MCP d'exemple est
 remplacée par celle d'un faux serveur MCP (`rechercher`, `lire_document`,

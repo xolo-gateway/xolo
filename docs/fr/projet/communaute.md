@@ -20,10 +20,10 @@ Le suivi se fait sur le [dépôt GitHub](https://github.com/xolo-gateway/xolo) :
 - une [issue](https://github.com/xolo-gateway/xolo/issues) pour un bug ou une
   demande de fonctionnalité ;
 - une pull request pour une correction ou une amélioration de la
-  documentation, en suivant le guide [Contribuer à Xolo](contribuer.md).
+  documentation, en suivant le guide [Contribuer à Xolo](./contribuer.md).
 
 Les vulnérabilités ne se signalent pas en public : voir la
-[politique de sécurité](securite.md).
+[politique de sécurité](./securite.md).
 
 ## Se faire accompagner
 

@@ -1,0 +1,45 @@
+# Site navigation, read by xolo-gateway/docs when it prepares the sources.
+# A page left out of this list is published but does not show in the menu.
+nav = [
+  { "Home" = "index.md" },
+  { "Discover" = [
+    { "Overview" = "decouvrir/index.md" },
+    "decouvrir/organisation-et-permissions.md",
+    "decouvrir/fournisseurs-modeles-pipeline.md",
+    "decouvrir/budgets-et-quotas.md",
+    "decouvrir/estimation-energetique.md",
+  ] },
+  { "Use" = [
+    { "Overview" = "utilisation/index.md" },
+    "utilisation/tableau-de-bord.md",
+    "utilisation/evenements.md",
+  ] },
+  { "Administer an organization" = [
+    { "Overview" = "organisation/index.md" },
+    { "Governance" = [
+      "organisation/membres.md",
+      "organisation/invitations.md",
+      "organisation/roles.md",
+      "organisation/equipes.md",
+      "organisation/budget.md",
+    ] },
+    { "Gateway" = [
+      "organisation/fournisseurs.md",
+      "organisation/modeles-virtuels.md",
+      "organisation/middlewares.md",
+      "organisation/applications.md",
+      "organisation/parametres.md",
+    ] },
+  ] },
+  { "Operate the instance" = [
+    { "Overview" = "exploitation/index.md" },
+    "exploitation/installation.md",
+    "exploitation/configuration.md",
+    "exploitation/provisioning.md",
+    "exploitation/hebergement-agpl.md",
+  ] },
+  { "Reference" = [
+    "reference/eventql.md",
+    "developpement/plugins.md",
+  ] },
+]
