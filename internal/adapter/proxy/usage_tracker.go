@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"math"
 	"strings"
+	"time"
 
 	genaiProxy "github.com/bornholm/genai/proxy"
 	"github.com/pkg/errors"
@@ -198,6 +199,13 @@ func (t *XoloUsageTracker) PostResponse(ctx context.Context, req *genaiProxy.Pro
 	record.SetPlanCovered(planCovered)
 	record.SetProviderCost(providerCost)
 	record.SetStatus(status)
+	timing := usageTiming(req.Timing)
+	record.SetTiming(timing)
+	record.SetFinishReason(string(res.FinishReason))
+	record.SetStreamed(req.Stream)
+	record.SetSessionID(req.SessionID)
+	record.SetTrace(keptTrace(req))
+	observeTiming(string(orgID), p.Name(), llmModel.ProxyName(), timing, completionTokens, estimatedUsage)
 	// The energy is estimated once, as the request is recorded, with the
 	// model it ran on as it is now: the usage pages read it from the daily
 	// sums instead of estimating every request of their period again.
@@ -232,6 +240,113 @@ func zeroPlanCost(planCovered bool, cost float64, tokens int) bool {
 }
 
 var _ genaiProxy.PostResponseHook = &XoloUsageTracker{}
+
+// failureRecordTimeout bounds the write of a request failure. The error hooks
+// run on the request's context, which a client hanging up cancels: the write
+// is detached from it, and this keeps a stuck store from holding the handler.
+const failureRecordTimeout = 5 * time.Second
+
+// OnError implements proxy.ErrorHook: it records a call the provider failed
+// before answering anything, so that the request logs show the failures of a
+// provider beside its answers. It never answers in the client's stead.
+//
+// Only a call that reached the provider is recorded. A refusal of the gateway
+// itself — a quota, an access rule, an unknown model — fails before the
+// upstream call starts and says nothing of the providers; a client hanging up
+// is not the provider's failure either.
+func (t *XoloUsageTracker) OnError(ctx context.Context, req *genaiProxy.ProxyRequest, err error) (*genaiProxy.HookResult, error) {
+	if err == nil || req.UserID == "" || req.Timing.UpstreamStartAt.IsZero() || errors.Is(err, context.Canceled) {
+		return nil, nil
+	}
+
+	PopulateMetaFromContext(ctx, req.Metadata)
+	orgID := OrgIDFromMeta(req.Metadata)
+	if orgID == "" {
+		return nil, nil
+	}
+
+	failure := model.NewRequestFailure()
+	failure.UserID = model.UserID(req.UserID)
+	failure.ApplicationID = ApplicationIDFromMeta(req.Metadata)
+	failure.OrgID = orgID
+	failure.TeamID = TeamIDFromMeta(req.Metadata)
+	failure.ModelID = ModelIDFromMeta(req.Metadata)
+	failure.ProxyModelName = req.Model
+	if v, ok := req.Metadata[MetaOriginalModel].(string); ok && v != "" {
+		failure.ProxyModelName = v
+	}
+	failure.AuthTokenID = AuthTokenIDFromMeta(req.Metadata)
+	failure.ProviderKeyID = usedKey(req)
+	failure.HTTPStatus, failure.ErrorClass = classifyUpstreamError(err)
+	failure.Timing = usageTiming(req.Timing)
+	failure.Streamed = req.Stream
+	failure.SessionID = req.SessionID
+	failure.Trace = keptTrace(req)
+
+	writeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), failureRecordTimeout)
+	defer cancel()
+
+	if failure.ModelID != "" {
+		if llmModel, err := t.providerStore.GetLLMModelByID(writeCtx, failure.ModelID); err == nil {
+			failure.ProviderID = llmModel.ProviderID()
+		} else {
+			slog.WarnContext(ctx, "usage tracker: could not load the LLM model of a failed request", slog.Any("error", err), slog.String("modelID", string(failure.ModelID)))
+		}
+	}
+
+	if err := t.usageStore.RecordRequestFailure(writeCtx, failure); err != nil {
+		slog.ErrorContext(ctx, "usage tracker: could not record a request failure", slog.Any("error", errors.WithStack(err)))
+	}
+	return nil, nil
+}
+
+var _ genaiProxy.ErrorHook = &XoloUsageTracker{}
+
+// usageTiming keeps the stages of the exchange the proxy measured.
+func usageTiming(timing genaiProxy.ExchangeTiming) model.UsageTiming {
+	optional := func(d time.Duration, ok bool) *time.Duration {
+		if !ok {
+			return nil
+		}
+		return &d
+	}
+	return model.UsageTiming{
+		Routing:     optional(timing.RoutingDuration()),
+		FirstOutput: optional(timing.TimeToFirstOutput()),
+		Upstream:    optional(timing.UpstreamDuration()),
+	}
+}
+
+// keptTrace returns the trace kept with the usage record of req: only one that
+// says more than the record does, a request that went through several
+// upstream attempts. A single attempt is the record's own timing.
+func keptTrace(req *genaiProxy.ProxyRequest) *model.UsageTrace {
+	trace := existingRequestTrace(req.Metadata)
+	if trace.len() < 2 {
+		return nil
+	}
+	return trace.usageTrace(req.Timing.ReceivedAt)
+}
+
+// observeTiming feeds the provider latency and throughput histograms. Token
+// counts the proxy estimated are left out of the throughput: they are an order
+// of magnitude, and an interrupted stream would skew it.
+func observeTiming(orgID, provider, modelName string, timing model.UsageTiming, completionTokens int, estimated bool) {
+	labels := prometheus.Labels{
+		metrics.LabelOrg:      orgID,
+		metrics.LabelProvider: provider,
+		metrics.LabelModel:    modelName,
+	}
+	if timing.FirstOutput != nil {
+		metrics.ProxyTimeToFirstOutput.With(labels).Observe(timing.FirstOutput.Seconds())
+	}
+	if estimated {
+		return
+	}
+	if throughput, ok := model.Throughput(timing, completionTokens); ok {
+		metrics.ProxyOutputThroughput.With(labels).Observe(throughput)
+	}
+}
 
 // usageStatus maps how the proxy reported the exchange ending onto the status
 // stored on the record. A stream cut short still produced and delivered tokens

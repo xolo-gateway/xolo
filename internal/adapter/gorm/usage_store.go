@@ -36,6 +36,15 @@ func (s *Store) RecordUsage(ctx context.Context, record model.UsageRecord) error
 			if err := tx.Create(row).Error; err != nil {
 				return errors.WithStack(err)
 			}
+			trace, err := usageTraceRow(record, row)
+			if err != nil {
+				return err
+			}
+			if trace != nil {
+				if err := tx.Create(trace).Error; err != nil {
+					return errors.WithStack(err)
+				}
+			}
 			if err := incrementQuotaUsage(tx, quotaUsageRows(record)); err != nil {
 				return err
 			}

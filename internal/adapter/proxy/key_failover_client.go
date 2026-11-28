@@ -3,6 +3,7 @@ package proxy
 import (
 	"context"
 	"net/http"
+	"time"
 
 	"github.com/bornholm/genai/llm"
 	"github.com/pkg/errors"
@@ -57,14 +58,19 @@ func newKeyFailoverClient(clients []keyedClient, metadata map[string]any, exhaus
 }
 
 // try runs call on each key in turn until one does not answer an exhaustion.
+// Each call is recorded as an upstream attempt in the trace of the request,
+// which is kept with its usage when it moved from one key to another.
 func try[T any](ctx context.Context, c *keyFailoverClient, call func(llm.Client) (T, error)) (T, error) {
 	var (
 		res T
 		err error
 	)
+	trace := requestTraceOf(c.metadata)
 	for i, kc := range c.clients {
 		c.metadata[MetaProviderKeyUsed] = kc.key
+		start := time.Now()
 		res, err = call(kc.client)
+		trace.add(upstreamAttemptSpan(kc.key, err), start, time.Now())
 		header, exhausted := planExhaustion(err)
 		if !exhausted || i == len(c.clients)-1 {
 			return res, err

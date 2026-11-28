@@ -285,6 +285,10 @@ func NewHTTPServerFromConfig(ctx context.Context, conf *config.Config) (*http.Se
 		return nil, errors.Wrap(err, "could not start provisioning event retention from config")
 	}
 
+	if _, err := startUsageTraceRetentionFromConfig(ctx, conf); err != nil {
+		return nil, errors.Wrap(err, "could not start usage trace retention from config")
+	}
+
 	if _, err := startOIDCSessionSweepFromConfig(ctx, conf); err != nil {
 		return nil, errors.Wrap(err, "could not start oidc session sweep from config")
 	}
