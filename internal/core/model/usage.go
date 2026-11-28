@@ -111,12 +111,61 @@ type UsageRecord interface {
 	// recorded. Only the daily usage sums keep it: a record read back from the
 	// store reports none.
 	Energy() UsageEnergy
+	// Timing is how long each stage of the call took, as the proxy measured
+	// it. Records written before it was measured know none.
+	Timing() UsageTiming
+	// FinishReason is why the model stopped, as the client was told: stop,
+	// length, tool_calls or content_filter. Empty when unknown: an
+	// interrupted stream, an embeddings call, or a record written before it
+	// was kept.
+	FinishReason() string
+	// Streamed reports whether the client asked for a streamed answer.
+	Streamed() bool
+	// SessionID names the conversation the request belongs to, as the client
+	// sent it in a session header; empty for a standalone call.
+	SessionID() string
 }
 
 // UsageEnergy is the estimated energy of usage, mid estimates.
 type UsageEnergy struct {
 	Wh       float64
 	CO2Grams float64
+}
+
+// UsageTiming is how long the stages of a proxy call took. A nil duration is
+// a stage the call did not reach, or one that does not apply to it.
+type UsageTiming struct {
+	// Routing is the time the gateway spent before calling the provider:
+	// authentication, quotas, pipelines and model resolution.
+	Routing *time.Duration
+	// FirstOutput is the time between the call to the provider and the first
+	// streamed chunk carrying output, the latency a streaming client perceives
+	// from the provider. Nil for an answer that was not streamed.
+	FirstOutput *time.Duration
+	// Upstream is the time the call to the provider took, from its start to
+	// its end, whether it succeeded or not.
+	Upstream *time.Duration
+}
+
+// Generation is the time the provider spent streaming the answer, from the
+// first output to the end of the stream. ok is false when the call was not
+// streamed or its stages are unknown.
+func (t UsageTiming) Generation() (time.Duration, bool) {
+	if t.FirstOutput == nil || t.Upstream == nil || *t.Upstream < *t.FirstOutput {
+		return 0, false
+	}
+	return *t.Upstream - *t.FirstOutput, true
+}
+
+// Throughput is the output tokens per second of a streamed answer, over the
+// time the provider spent producing them. ok is false when the generation
+// time is unknown or empty, or when there is no output to measure.
+func Throughput(timing UsageTiming, completionTokens int) (float64, bool) {
+	generation, ok := timing.Generation()
+	if !ok || generation <= 0 || completionTokens <= 0 {
+		return 0, false
+	}
+	return float64(completionTokens) / generation.Seconds(), true
 }
 
 type BaseUsageRecord struct {
@@ -143,6 +192,11 @@ type BaseUsageRecord struct {
 	providerKeyID     ProviderKeyID
 	status            UsageStatus
 	energy            UsageEnergy
+	timing            UsageTiming
+	finishReason      string
+	streamed          bool
+	sessionID         string
+	trace             *UsageTrace
 }
 
 func (r *BaseUsageRecord) ID() UsageRecordID            { return r.id }
@@ -169,6 +223,14 @@ func (r *BaseUsageRecord) ProviderCost() int64          { return r.providerCost 
 func (r *BaseUsageRecord) ProviderKeyID() ProviderKeyID { return r.providerKeyID }
 func (r *BaseUsageRecord) Status() UsageStatus          { return r.status }
 func (r *BaseUsageRecord) Energy() UsageEnergy          { return r.energy }
+func (r *BaseUsageRecord) Timing() UsageTiming          { return r.timing }
+func (r *BaseUsageRecord) FinishReason() string         { return r.finishReason }
+func (r *BaseUsageRecord) Streamed() bool               { return r.streamed }
+func (r *BaseUsageRecord) SessionID() string            { return r.sessionID }
+
+// Trace implements UsageTraceCarrier: the spans recorded with the request,
+// nil when it kept none.
+func (r *BaseUsageRecord) Trace() *UsageTrace { return r.trace }
 
 func (r *BaseUsageRecord) SetResolvedModelName(v string)    { r.resolvedModelName = v }
 func (r *BaseUsageRecord) SetPlanCovered(v bool)            { r.planCovered = v }
@@ -176,8 +238,14 @@ func (r *BaseUsageRecord) SetProviderCost(v int64)          { r.providerCost = v
 func (r *BaseUsageRecord) SetStatus(v UsageStatus)          { r.status = v }
 func (r *BaseUsageRecord) SetProviderKeyID(v ProviderKeyID) { r.providerKeyID = v }
 func (r *BaseUsageRecord) SetEnergy(v UsageEnergy)          { r.energy = v }
+func (r *BaseUsageRecord) SetTiming(v UsageTiming)          { r.timing = v }
+func (r *BaseUsageRecord) SetFinishReason(v string)         { r.finishReason = v }
+func (r *BaseUsageRecord) SetStreamed(v bool)               { r.streamed = v }
+func (r *BaseUsageRecord) SetSessionID(v string)            { r.sessionID = v }
+func (r *BaseUsageRecord) SetTrace(v *UsageTrace)           { r.trace = v }
 
 var _ UsageRecord = &BaseUsageRecord{}
+var _ UsageTraceCarrier = &BaseUsageRecord{}
 
 // NewUsageRecord builds the record of a request. teamID is the team the
 // request is attributed to, empty for the organization alone: it feeds the

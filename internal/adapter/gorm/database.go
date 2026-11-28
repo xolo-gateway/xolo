@@ -151,7 +151,7 @@ func MigrateDatabase(ctx context.Context, db *gorm.DB, artifact *RecoveryArtifac
 					// Quota store
 					&Quota{}, &QuotaUsage{}, &UsageDaily{}, &PlanUsageHourly{}, &PlanUsageMinutely{},
 					// Usage store
-					&UsageRecord{},
+					&UsageRecord{}, &UsageTrace{}, &RequestFailure{},
 					// Invite store
 					&InviteToken{},
 					// Exchange rate cache
@@ -842,6 +842,29 @@ func schemaMigrations(artifact *RecoveryArtifact) []*gormigrate.Migration {
 				return errors.WithStack(tx.Migrator().DropTable(&PlanUsageMinutely{}))
 			},
 		},
+		{
+			// Add the timing, the finish reason, the streaming flag and the
+			// session of each request to usage_records; usage_traces, the
+			// spans kept beside the records that need them; and
+			// request_failures, the calls the provider failed (#252). The new
+			// columns are nullable or carry a constant default, so adding them
+			// rewrites no row; the history keeps them unknown.
+			ID: requestTimelineMigrationID,
+			Migrate: func(tx *gorm.DB) error {
+				return errors.WithStack(tx.AutoMigrate(&UsageRecord{}, &UsageTrace{}, &RequestFailure{}))
+			},
+			Rollback: func(tx *gorm.DB) error {
+				if err := tx.Migrator().DropTable(&UsageTrace{}, &RequestFailure{}); err != nil {
+					return errors.WithStack(err)
+				}
+				for _, column := range []string{"routing_us", "first_output_us", "upstream_us", "finish_reason", "streamed", "session_id"} {
+					if err := tx.Migrator().DropColumn(&UsageRecord{}, column); err != nil {
+						return errors.WithStack(err)
+					}
+				}
+				return nil
+			},
+		},
 	}
 }
 
@@ -860,4 +883,5 @@ const (
 	cacheGenerationsMigrationID       = "202611100001"
 	pluginUIConfigsMigrationID        = "202611100002"
 	planUsageMinutelyMigrationID      = "202611110001"
+	requestTimelineMigrationID        = "202611280001"
 )

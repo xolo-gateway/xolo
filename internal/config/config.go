@@ -26,6 +26,7 @@ type Config struct {
 	Multitenancy     Multitenancy       `envPrefix:"MULTITENANCY_"`
 	Webhooks         Webhooks           `envPrefix:"WEBHOOKS_"`
 	Lifecycle        Lifecycle          `envPrefix:"LIFECYCLE_"`
+	Usage            Usage              `envPrefix:"USAGE_"`
 	// Ownership assigns a write authority to each family of identity
 	// resources, as family=owner pairs. Omitted families are shared.
 	Ownership model.OwnershipPolicy `env:"OWNERSHIP" envSeparator:"," envKeyValSeparator:"="`
@@ -193,6 +194,10 @@ func (c *Config) Validate() error {
 	}
 
 	if err := c.Lifecycle.Validate(); err != nil {
+		return errors.WithStack(err)
+	}
+
+	if err := c.Usage.Validate(); err != nil {
 		return errors.WithStack(err)
 	}
 

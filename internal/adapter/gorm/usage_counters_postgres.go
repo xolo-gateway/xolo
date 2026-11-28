@@ -37,6 +37,13 @@ func recordUsagePostgres(ctx context.Context, db *gorm.DB, record model.UsageRec
 	row := fromUsageRecord(record)
 
 	statements := []*gorm.Statement{dry.Create(row).Statement}
+	trace, err := usageTraceRow(record, row)
+	if err != nil {
+		return err
+	}
+	if trace != nil {
+		statements = append(statements, dry.Create(trace).Statement)
+	}
 	if counters := quotaUsageRows(record); len(counters) != 0 {
 		slices.SortFunc(counters, func(a, b *QuotaUsage) int {
 			return cmp.Or(cmp.Compare(a.Scope, b.Scope), cmp.Compare(a.ScopeID, b.ScopeID))

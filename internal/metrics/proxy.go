@@ -79,3 +79,37 @@ var StreamInterrupted = promauto.NewCounterVec(
 	},
 	[]string{LabelOrg, LabelModel, LabelCause},
 )
+
+const (
+	NameProxyTimeToFirstOutput = "proxy_time_to_first_output_seconds"
+	NameProxyOutputThroughput  = "proxy_output_tokens_per_second"
+	// LabelProvider is the name of the provider a request went through.
+	LabelProvider = "provider"
+)
+
+// ProxyTimeToFirstOutput is the time between the call to a provider and the
+// first streamed chunk carrying output: the latency a streaming client
+// perceives from the provider, the gateway's own work left out. Only streamed
+// answers are observed.
+var ProxyTimeToFirstOutput = promauto.NewHistogramVec(
+	prometheus.HistogramOpts{
+		Name:      NameProxyTimeToFirstOutput,
+		Help:      "Time between the call to the provider and the first streamed output, in seconds",
+		Namespace: Namespace,
+		Buckets:   []float64{0.1, 0.25, 0.5, 1, 2, 5, 10, 30, 60},
+	},
+	[]string{LabelOrg, LabelProvider, LabelModel},
+)
+
+// ProxyOutputThroughput is the output tokens per second of a streamed answer,
+// over the time the provider spent producing it. Answers whose token counts
+// are estimated are not observed: an interrupted stream would skew it.
+var ProxyOutputThroughput = promauto.NewHistogramVec(
+	prometheus.HistogramOpts{
+		Name:      NameProxyOutputThroughput,
+		Help:      "Output tokens per second of streamed answers",
+		Namespace: Namespace,
+		Buckets:   []float64{5, 10, 20, 40, 80, 160, 320, 640},
+	},
+	[]string{LabelOrg, LabelProvider, LabelModel},
+)

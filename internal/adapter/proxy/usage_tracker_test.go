@@ -45,10 +45,20 @@ func (f *fakeOrgStore) GetOrgByID(ctx context.Context, id model.OrgID) (model.Or
 type fakeUsageStore struct {
 	port.UsageStore
 	recorded model.UsageRecord
+	failures []*model.RequestFailure
+	// failureCtxErr is the error of the context the last failure was
+	// written with.
+	failureCtxErr error
 }
 
 func (f *fakeUsageStore) RecordUsage(ctx context.Context, record model.UsageRecord) error {
 	f.recorded = record
+	return nil
+}
+
+func (f *fakeUsageStore) RecordRequestFailure(ctx context.Context, failure *model.RequestFailure) error {
+	f.failures = append(f.failures, failure)
+	f.failureCtxErr = ctx.Err()
 	return nil
 }
 

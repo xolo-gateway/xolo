@@ -397,6 +397,13 @@ func (r *wrappedChatCompletionResponse) ToolCalls() []llm.ToolCall {
 }
 func (r *wrappedChatCompletionResponse) Usage() llm.ChatCompletionUsage { return r.inner.Usage() }
 
+// FinishReason is delegated so that wrapping a response does not hide why the
+// model stopped: the proxy would otherwise tell the client "stop" for an
+// answer cut by the token limit.
+func (r *wrappedChatCompletionResponse) FinishReason() llm.FinishReason {
+	return llm.FinishReasonOf(r.inner)
+}
+
 // modifiedMessage replaces Content() while delegating everything else.
 type modifiedMessage struct {
 	original  llm.Message
@@ -427,6 +434,12 @@ type contentOverrideChunk struct {
 }
 
 func (c *contentOverrideChunk) Delta() llm.StreamDelta { return c.delta }
+
+// FinishReason is delegated: the embedded llm.StreamChunk interface does not
+// carry it, and a provider may report its reason on a delta chunk.
+func (c *contentOverrideChunk) FinishReason() llm.FinishReason {
+	return llm.FinishReasonOf(c.StreamChunk)
+}
 
 // contentOverrideDelta replaces the Content() of a StreamDelta while
 // delegating role, tool calls, reasoning and audio fields to the original.

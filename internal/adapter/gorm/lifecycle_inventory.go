@@ -81,6 +81,8 @@ var lifecycleTables = []lifecycleTable{
 		member: "CASE WHEN r.scope = 'user' THEN r.scope_id WHEN r.scope = 'team_member' THEN (SELECT users.id FROM users WHERE r.scope_id LIKE '%:' || users.id) END", family: model.FamilyQuota},
 	{table: "quota_usages", org: "r.org_id", member: "CASE WHEN r.scope = 'user' THEN r.scope_id WHEN r.scope = 'team_member' THEN (SELECT users.id FROM users WHERE r.scope_id LIKE '%:' || users.id) END", key: []string{"scope", "scope_id", "org_id", "currency", "day"}},
 	{table: "usage_records", org: "r.org_id", member: "r.user_id"},
+	{table: "usage_traces", org: "r.org_id", member: "r.user_id", key: []string{"usage_record_id"}},
+	{table: "request_failures", org: "r.org_id", member: "r.user_id"},
 	{table: "usage_daily", org: "r.org_id", member: "r.user_id", key: []string{"org_id", "day", "user_id", "application_id", "team_id", "provider_id", "model_id", "model_name", "currency", "plan_covered"}},
 	{table: "plan_usage_hourly", org: "r.org_id", member: "r.user_id", key: []string{"org_id", "provider_id", "hour", "provider_key_id", "model_id", "user_id"}},
 	{table: "plan_usage_minutely", org: "r.org_id", member: "r.user_id", key: []string{"org_id", "provider_id", "minute", "provider_key_id", "model_id", "user_id"}},
@@ -181,7 +183,7 @@ func (t lifecycleTable) scopePredicate(d ResourceDeletion) (string, []any) {
 // their application, go before the applications.
 var purgeOrder = []string{
 	"webhook_deliveries", "webhook_subscriptions", "oidc_sessions",
-	"events", "usage_records", "usage_daily", "plan_usage_hourly", "plan_usage_minutely", "quota_usages", "alert_incidents", "alerts", "quota",
+	"events", "usage_traces", "request_failures", "usage_records", "usage_daily", "plan_usage_hourly", "plan_usage_minutely", "quota_usages", "alert_incidents", "alerts", "quota",
 	"plugin_node_secrets", "plugin_ui_configs", "event_settings",
 	"team_member_roles", "team_members", "team_middlewares", "team_model_grants", "teams",
 	"middlewares", "virtual_models", "role_permissions", "llm_models", "providers",

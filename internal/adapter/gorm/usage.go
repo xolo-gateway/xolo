@@ -71,6 +71,36 @@ type UsageRecord struct {
 	// reports can filter the calls that ended early without scanning the
 	// table; every status counts toward quotas and costs.
 	Status string `gorm:"index;default:ok"`
+	// RoutingUs, FirstOutputUs and UpstreamUs are the stages of
+	// model.UsageTiming in microseconds, NULL for a stage the call did not
+	// reach and for every record written before they were measured.
+	RoutingUs     *int64
+	FirstOutputUs *int64
+	UpstreamUs    *int64
+	// FinishReason is why the model stopped, empty when unknown.
+	FinishReason string `gorm:"not null;default:''"`
+	Streamed     bool   `gorm:"not null;default:false"`
+	// SessionID names the conversation of the request, empty for a
+	// standalone call.
+	SessionID string `gorm:"not null;default:''"`
+}
+
+// durationToMicros stores an optional duration, nil staying NULL.
+func durationToMicros(d *time.Duration) *int64 {
+	if d == nil {
+		return nil
+	}
+	us := d.Microseconds()
+	return &us
+}
+
+// microsToDuration reads back an optional duration.
+func microsToDuration(us *int64) *time.Duration {
+	if us == nil {
+		return nil
+	}
+	d := time.Duration(*us) * time.Microsecond
+	return &d
 }
 
 type wrappedUsageRecord struct {
@@ -115,10 +145,29 @@ func (w *wrappedUsageRecord) Status() model.UsageStatus {
 // Energy reports none: only usage_daily keeps the energy of the records.
 func (w *wrappedUsageRecord) Energy() model.UsageEnergy { return model.UsageEnergy{} }
 
+func (w *wrappedUsageRecord) Timing() model.UsageTiming {
+	return model.UsageTiming{
+		Routing:     microsToDuration(w.r.RoutingUs),
+		FirstOutput: microsToDuration(w.r.FirstOutputUs),
+		Upstream:    microsToDuration(w.r.UpstreamUs),
+	}
+}
+
+func (w *wrappedUsageRecord) FinishReason() string { return w.r.FinishReason }
+func (w *wrappedUsageRecord) Streamed() bool       { return w.r.Streamed }
+func (w *wrappedUsageRecord) SessionID() string    { return w.r.SessionID }
+
 var _ model.UsageRecord = &wrappedUsageRecord{}
 
 func fromUsageRecord(r model.UsageRecord) *UsageRecord {
+	timing := r.Timing()
 	return &UsageRecord{
+		RoutingUs:         durationToMicros(timing.Routing),
+		FirstOutputUs:     durationToMicros(timing.FirstOutput),
+		UpstreamUs:        durationToMicros(timing.Upstream),
+		FinishReason:      r.FinishReason(),
+		Streamed:          r.Streamed(),
+		SessionID:         r.SessionID(),
 		ID:                string(r.ID()),
 		UserID:            string(r.UserID()),
 		ApplicationID:     string(r.ApplicationID()),

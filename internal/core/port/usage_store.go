@@ -8,7 +8,27 @@ import (
 )
 
 type UsageStore interface {
+	// RecordUsage writes a usage record, with the trace it carries when it
+	// implements model.UsageTraceCarrier and carries one.
 	RecordUsage(ctx context.Context, record model.UsageRecord) error
+	// GetUsageTrace returns the trace kept beside a usage record, ErrNotFound
+	// when the request kept none or its trace was purged.
+	GetUsageTrace(ctx context.Context, id model.UsageRecordID) (*model.UsageTrace, error)
+	// PurgeUsageTraces removes the traces of the requests recorded before the
+	// given time, and returns how many it removed. The usage records stay:
+	// the traces have a retention of their own, shorter than the history the
+	// costs are read from.
+	PurgeUsageTraces(ctx context.Context, before time.Time) (int64, error)
+	// RecordRequestFailure writes a call the provider failed before
+	// answering. It feeds no counter: a failure is neither usage nor cost.
+	RecordRequestFailure(ctx context.Context, failure *model.RequestFailure) error
+	// QueryRequestFailures returns the failures matching filter, the most
+	// recent first.
+	QueryRequestFailures(ctx context.Context, filter RequestFailureFilter) ([]*model.RequestFailure, error)
+	// PurgeRequestFailures removes the failures recorded before the given
+	// time, and returns how many it removed. They share the retention of the
+	// traces.
+	PurgeRequestFailures(ctx context.Context, before time.Time) (int64, error)
 	QueryUsage(ctx context.Context, filter UsageFilter) ([]model.UsageRecord, error)
 	AggregateUsage(ctx context.Context, filter UsageFilter) (*UsageAggregate, error)
 	// SumCostSince sums all PAYG (plan_covered=false) costs for a user+org since the given time.
@@ -200,6 +220,16 @@ type UsageFilter struct {
 	Until          *time.Time
 	Limit          *int
 	Offset         *int
+}
+
+// RequestFailureFilter selects request failures. Unset fields do not filter.
+type RequestFailureFilter struct {
+	OrgID  *model.OrgID
+	UserID *model.UserID
+	Since  *time.Time
+	Until  *time.Time
+	Limit  *int
+	Offset *int
 }
 
 type UsageAggregate struct {
